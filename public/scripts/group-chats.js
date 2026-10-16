@@ -2943,6 +2943,9 @@ function toggleHiddenControls(group, generationMode = null) {
  * @param {boolean} skipAnimation If true, skips the animation when selecting the group
  */
 function select_group_chats(groupId, skipAnimation) {
+    // SillyBunny: the member-list styles are a deferred stylesheet (frontend budget);
+    // it is preloaded, so activating it here applies before the rows paint.
+    window.SillyBunnyLoadStylesheet?.();
     const loadResult = beginGroupEditorLoad(groupId ?? null);
     openGroupId = groupId;
     const group = openGroupId && groups.find((x) => x.id == openGroupId);

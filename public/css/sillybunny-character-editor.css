@@ -1207,10 +1207,59 @@ body.reduced-motion :is(
 /* Tag chips — libadwaita pill style
    ========================================================================= */
 
-/* Shared chip chrome lives beside the entity list in sillybunny-tabs.css;
-   only the editor's field insets belong here. */
+/* The .tags container (tagList) and upstream .tag pills need libadwaita
+   treatment inside the editors. Scope tightly to avoid changing global tag
+   appearance on other panels. Entity-row chips (.ds-tag-chips) mirror these
+   values in sillybunny-entity-list.css. */
 #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
     padding: 6px 16px 10px;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    font-size: var(--sb-type-meta, 13px);
+    font-weight: 500;
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.3;
+    cursor: default;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: 10px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+    flex-shrink: 0;
+}
+
+@media (hover: hover) {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        border-color: var(--sb-shell-border);
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:hover {
+        background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
+    }
 }
 
 /* Draft-recovery toast actions (sillybunny-editor/chrome.js). Toasts render
@@ -1306,202 +1355,7 @@ body.reduced-motion :is(
     border-radius: inherit;
 }
 
-/* Member rows
-   ========================================================================= */
-
-/* SB-GroupUtilities owns legacy grid tracks and 18px buttons. These scoped
-   flex overrides keep its injected .send_as suffix without inheriting the grid. */
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row {
-    display: flex;
-    grid-template-columns: none;
-    position: relative;
-    gap: 8px;
-    min-height: 56px;
-    padding: 8px 16px;
-    border-radius: 0;
-    outline: none;
-}
-
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .character_version {
-    font: inherit;
-    color: inherit;
-}
-
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .ds-entity-row__avatar,
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .ds-entity-row__avatar img {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    max-width: 32px;
-    flex: 0 0 32px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .group_member_icon {
-    display: flex;
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    flex-wrap: nowrap;
-    gap: 4px;
-}
-
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    min-height: 40px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    font-size: var(--sb-type-control);
-    line-height: 1;
-    cursor: pointer;
-}
-
-.group_member.ds-entity-row .sb-group-member-grip {
-    cursor: grab;
-    touch-action: none;
-}
-
-.group_member.ds-entity-row .sb-group-member-grip:active {
-    cursor: grabbing;
-}
-
-@media (hover: hover) {
-    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button):hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button):active {
-    background: var(--sb-flat-active-bg);
-}
-
-:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button):focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-group-member-replies {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 40px;
-    min-width: 44px;
-    margin: 0;
-    cursor: pointer;
-}
-
-.group_member.disabled .ds-entity-row__avatar {
-    opacity: 0.55;
-}
-
-.group_member .sb-group-member-legacy,
-#rm_group_chats_block #rm_group_add_members .group_member_icon > :not([data-action="add"]),
-#rm_group_members .group_member .group_member_icon > [data-action="add"],
-#groupMemberListPopout .group_member .group_member_icon > [data-action="add"],
-#rm_group_add_members .group_member :is(.sb-group-member-replies, .sb-group-member-menu, .sb-group-member-grip),
-#groupMemberListPopout .group_member .sb-group-member-grip,
-#rm_group_members.is-filtered .sb-group-member-grip {
-    display: none !important;
-}
-
-.group_member .queue_position:not(:empty)::before {
-    content: '#';
-}
-
-.group_member.is_active .queue_position {
-    color: var(--sb-accent);
-}
-
-.group_member.is_queued .queue_position {
-    color: var(--color-warning);
-}
-
-.group_member.sb-group-candidate {
-    cursor: pointer;
-}
-
-@media (pointer: coarse), (max-width: 768px) {
-    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row {
-        gap: 4px;
-        padding-inline: 8px;
-    }
-
-    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button) {
-        width: 44px;
-        min-width: 44px;
-        height: 44px;
-        min-height: 44px;
-    }
-
-    .sb-group-member-replies {
-        min-height: 44px;
-    }
-}
-
-/* The jQuery UI sortable clone is a floating chip; give it a surface so it
-   reads as lifted rather than pasted over the row beneath. */
-#rm_group_members .group_member.ui-sortable-helper {
-    background: var(--sb-layer-view);
-    border-radius: var(--sb-radius-card, 12px);
-    box-shadow: var(--sb-shadow-popover);
-    opacity: 0.95;
-}
-
-#rm_group_members .group_member.ui-sortable-placeholder {
-    visibility: visible !important;
-    border: 1px dashed var(--sb-shell-border);
-    border-radius: var(--sb-radius-card, 12px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-}
-
-/* Member lists and their search rows
-   ========================================================================= */
-
-#rm_group_chats_block .sb-group-members-heading.ds-pref-group-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: 8px;
-}
-
-.sb-group-members-heading > :is(h3, p) {
-    grid-column: 1;
-}
-
-.sb-group-members-heading > .ds-row-suffix {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    gap: 0;
-}
-
-#rm_group_members:empty::before,
-#groupMemberListPopout .rm_group_members:empty::before {
-    content: attr(group_empty_text);
-}
-
-#rm_group_add_members:empty::before {
-    content: attr(no_characters_text);
-}
-
-#rm_group_members_header,
-#rm_group_add_members_header {
-    padding: 8px 12px;
-}
-
-#rm_group_members_header input,
-#rm_group_add_members_header input {
-    width: 100%;
-}
+/* Member rows and member-list chrome live in the deferred sillybunny-entity-list.css. */
 
 /* The tag filter rows sit between the search row and the list. */
 :is(#rm_group_chats_block, #groupMemberListPopout) .rm_tag_controls {
