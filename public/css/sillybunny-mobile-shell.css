@@ -2735,11 +2735,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         display: none !important;
     }
 
-    .sb-inline-select-picker-control {
-        cursor: pointer;
-        touch-action: manipulation;
-    }
-
     #nanogpt_form :is(#nanogpt_allowed_providers, #nanogpt_ignored_providers) {
         display: none;
     }
