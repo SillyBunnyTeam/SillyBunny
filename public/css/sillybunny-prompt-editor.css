@@ -850,14 +850,23 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 /* A phone-width header cannot fit text Cancel beside Save, Preview and the
    actions menu; Cancel collapses to an icon and keeps its text for assistive tech. */
 @container sb-list-editor-detail (width < 440px) {
+    /* The icon form is a flat Libadwaita icon button, matching its header neighbours. */
     #sb-settings-page .sb-prompt-editor .sb-prompt-cancel {
+        position: relative;
         width: 40px;
         min-width: 40px;
+        height: 40px;
+        min-height: 40px;
         padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        line-height: 1;
     }
 
     #sb-settings-page .sb-prompt-editor .sb-prompt-cancel .sb-editor-action__icon {
-        display: inline-block;
+        display: block;
+        line-height: 1;
     }
 
     #sb-settings-page .sb-prompt-editor .sb-prompt-cancel .sb-editor-action__label {
@@ -877,6 +886,8 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
         #sb-settings-page .sb-prompt-editor .sb-prompt-cancel {
             width: 44px;
             min-width: 44px;
+            height: 44px;
+            min-height: 44px;
         }
     }
 }
