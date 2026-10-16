@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
 const BACKEND_CATEGORY_TITLE = ':scope > .sb-settings-flat-header .sb-settings-category-title, :scope > .sb-settings-flat-header b';
 
@@ -354,6 +354,9 @@ test('Sampling uses compact full-width rows at desktop and mobile widths', async
     expect(compactHeights.every((height, index) => height >= 32 && height <= previousHeights[index] + 1)).toBe(true);
     await expect.poll(() => rows.evaluateAll(rows => rows.every(row => {
         const style = getComputedStyle(row);
+        if (row.classList.contains('sb-sampling-help-row')) {
+            return style.padding === '6px 16px' && parseFloat(style.minHeight) === 44;
+        }
         return style.padding === '4px 16px'
             && parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? 44 : 36);
     }))).toBe(true);
@@ -400,6 +403,8 @@ test('Sampling uses compact full-width rows at desktop and mobile widths', async
 });
 
 test('Prompting and Formatting rehome live template nodes across repeated backend changes', async ({ page, baseURL }) => {
+    // Multiple backend switches follow app startup.
+    test.slow();
     await loadSettings(page, baseURL);
     const uniqueSelectors = [
         '#SystemPromptBlock', '#InstructSettingsColumn', '#context_presets', '#always-force-name2-checkbox',
@@ -852,6 +857,8 @@ test('Chat Completions lists Text Completions-only samplers as inert rows in the
 });
 
 test('Mobile Sampling follows provider and manual sampler visibility', async ({ page, baseURL }) => {
+    // Multiple backend switches follow app startup.
+    test.slow();
     await loadSettings(page, baseURL);
     await page.setViewportSize({ width: 390, height: 844 });
     await selectBackend(page, 'textgenerationwebui', 'ooba');
