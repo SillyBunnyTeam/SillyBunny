@@ -24,6 +24,33 @@ async function openEditor(page) {
     await expect(page.locator('#sb_character_editor_header')).toBeVisible();
 }
 
+async function stubCharacterMutations(page) {
+    await page.route('**/api/characters/edit*', route => route.fulfill({ body: 'ok' }));
+    await page.route('**/api/characters/save*', route => route.fulfill({ body: 'ok' }));
+}
+
+async function hasGreetingMotion(page) {
+    return page.evaluate(() => {
+        const list = document.querySelector('.alternate_greetings_list');
+        if (!list) return false;
+        return document.getAnimations().some(animation => {
+            const target = animation.effect?.target;
+            return target === list || (target instanceof Node && list.contains(target));
+        });
+    });
+}
+
+/** Animations inside the editor form; unrelated app motion (e.g. loading spinners) is ignored. */
+function countEditorAnimations(page) {
+    return page.evaluate(() => {
+        const form = document.getElementById('form_create');
+        return document.getAnimations().filter(animation => {
+            const target = animation.effect?.target;
+            return target instanceof Node && Boolean(form?.contains(target));
+        }).length;
+    });
+}
+
 async function openExportMenu(page) {
     const trigger = page.locator('#export_button');
     if (await trigger.isVisible()) {
@@ -117,6 +144,77 @@ test('keyboard previews reset cleanly when another editor session opens', async 
     await page.locator('#description_textarea').evaluate(node => $(node).trigger('input'));
     await expect(page.locator('[data-sb-preview-pane="description_textarea"]')).toBeHidden();
     await expect(page.locator('#sb_character_editor_save')).toBeDisabled();
+});
+
+test('alternate greeting additions skip motion when reduced motion is enabled', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await stubCharacterMutations(page);
+    await openEditor(page);
+    await expect.poll(() => countEditorAnimations(page)).toBe(0);
+    const list = page.locator('.alternate_greetings_list');
+    const count = await list.locator('.sb-greeting-row').count();
+    await page.locator('#character_greetings_editor .sb-greetings-editor__add').click();
+    await expect(list.locator('.sb-greeting-row')).toHaveCount(count + 1);
+    expect(await hasGreetingMotion(page)).toBe(false);
+});
+
+test('alternate greeting additions animate the greeting list', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await stubCharacterMutations(page);
+    await openEditor(page);
+    const list = page.locator('.alternate_greetings_list');
+    const count = await list.locator('.sb-greeting-row').count();
+    await page.locator('#character_greetings_editor .sb-greetings-editor__add').click();
+    await expect(list.locator('.sb-greeting-row')).toHaveCount(count + 1);
+    await expect.poll(() => hasGreetingMotion(page)).toBe(true);
+});
+
+test('edit and preview transitions honor reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await stubCharacterMutations(page);
+    await openEditor(page);
+    const wrapper = page.locator('#descriptionWrapper');
+    const preview = page.locator('[data-sb-segment-for="description_textarea"]').getByRole('radio', { name: 'Preview', exact: true });
+    await preview.check();
+    await expect.poll(() => wrapper.evaluate(node => document.getAnimations().some(animation => {
+        const target = animation.effect?.target;
+        return target === node || (target instanceof Node && node.contains(target));
+    }))).toBe(true);
+    await expect.poll(() => countEditorAnimations(page)).toBe(0);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await wrapper.locator('[data-sb-segment-for="description_textarea"]').getByRole('radio', { name: 'Edit', exact: true }).check();
+    expect(await countEditorAnimations(page)).toBe(0);
+});
+
+test('opening an alternate greeting row reveals its content with motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await stubCharacterMutations(page);
+    await openEditor(page);
+    const list = page.locator('.alternate_greetings_list');
+    const add = page.locator('#character_greetings_editor .sb-greetings-editor__add');
+    await add.click();
+    const row = list.locator('.sb-greeting-row').last();
+    await expect(row).toHaveAttribute('open', '');
+    await row.evaluate(node => { node.open = false; });
+    await row.locator('summary').click();
+    await expect.poll(() => row.evaluate(node => document.getAnimations().some(animation => {
+        const target = animation.effect?.target;
+        return target === node || (target instanceof Node && node.contains(target));
+    }))).toBe(true);
+});
+
+test('opening an alternate greeting row skips motion with reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await stubCharacterMutations(page);
+    await openEditor(page);
+    const list = page.locator('.alternate_greetings_list');
+    await page.locator('#character_greetings_editor .sb-greetings-editor__add').click();
+    const row = list.locator('.sb-greeting-row').last();
+    await expect(row).toHaveAttribute('open', '');
+    await row.evaluate(node => { node.open = false; });
+    await row.locator('summary').click();
+    expect(await countEditorAnimations(page)).toBe(0);
 });
 
 test('mobile scroll-hide reclaims header and toolbar space and restores it on scroll-up', async ({ page }) => {

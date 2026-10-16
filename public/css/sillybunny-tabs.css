@@ -7425,7 +7425,7 @@ body.reduced-motion :is(.ds-entity-row .ds-entity-row__button, .ds-entity-row--a
 
 .ds-row-switch {
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 .ds-row-switch > input[type='checkbox'] {
@@ -7496,7 +7496,7 @@ body.reduced-motion :is(.ds-entity-row .ds-entity-row__button, .ds-entity-row--a
     border-bottom: 0;
     list-style: none;
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 .ds-row-expander > summary.ds-row::-webkit-details-marker {

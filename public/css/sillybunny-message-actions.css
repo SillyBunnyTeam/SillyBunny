@@ -197,7 +197,8 @@
     transition:
         opacity var(--sb-transition-fast),
         background-color var(--sb-transition-fast),
-        color var(--sb-transition-fast);
+        color var(--sb-transition-fast),
+        box-shadow var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -280,6 +281,7 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-user-select: none;
     user-select: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 .sb-action-menu-item > :is(i, svg, img):first-child {
@@ -374,6 +376,7 @@
     line-height: 1;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -388,6 +391,17 @@
 
 .sb-action-menu-reaction[aria-checked='true'] {
     background: var(--sb-flat-selected-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-action-menu-item,
+    .sb-action-menu-reaction {
+        transition: none;
+    }
+}
+
+body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
+    transition: none;
 }
 
 /* Popover (desktop): anchored to the trigger, trailing-aligned, flips above when needed. */

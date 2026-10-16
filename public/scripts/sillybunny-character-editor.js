@@ -39,6 +39,7 @@ import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { mountEditorPreviews } from './sillybunny-editor/preview.js';
+import { animateHeightFrom, animateListChange, MOTION_SLOW, prefersReducedMotion } from './sillybunny-motion.js';
 
 // Existing users' backups live under this prefix; changing it orphans them.
 const DRAFT_KEY_PREFIX = 'sb-editor-draft-';
@@ -87,6 +88,11 @@ let draftAlt = [];
 let draftGrp = [];
 /** @type {string|null} */
 let draftOwner = null;
+let greetingKeySeed = 0;
+/** @type {string[]} */
+let draftAltKeys = [];
+/** @type {string[]} */
+let draftGrpKeys = [];
 
 // ============================================================
 // Public API
@@ -100,6 +106,7 @@ export function initCharacterEditor() {
     previews = mountEditorPreviews(/** @type {HTMLElement} */ (document.getElementById('form_create')), _renderPreview);
     _mountRoleSegment();
     _bindGreetingAddButtons();
+    _bindGreetingExpanders();
     _bindFieldDirtyListeners();
     registerEditorNavigation(navigation);
 
@@ -132,6 +139,8 @@ export function loadCharacterEditorGreetings(chid, mode) {
         draftGrp = _copyGreetings(data?.group_only_greetings);
         draftOwner = characters[chid]?.avatar ?? null;
     }
+    draftAltKeys = draftAlt.map(() => _newGreetingKey());
+    draftGrpKeys = draftGrp.map(() => _newGreetingKey());
     _renderAlternateGreetings();
     _renderGroupGreetings();
 }
@@ -200,7 +209,8 @@ export function addAlternateGreeting() {
     if (!session.isOpen()) return;
     const newIndex = draftAlt.length;
     draftAlt.push('');
-    _renderAlternateGreetings();
+    draftAltKeys.push(_newGreetingKey());
+    _renderAlternateGreetings({ animate: true });
     _commitCreateDrafts();
     session.changed({ immediate: true });
     _focusGreetingRow('.alternate_greetings_list', newIndex);
@@ -213,7 +223,8 @@ export function addGroupGreeting() {
     if (!session.isOpen()) return;
     const newIndex = draftGrp.length;
     draftGrp.push('');
-    _renderGroupGreetings();
+    draftGrpKeys.push(_newGreetingKey());
+    _renderGroupGreetings({ animate: true });
     _commitCreateDrafts();
     session.changed({ immediate: true });
     _focusGreetingRow('.group_only_greetings_list', newIndex);
@@ -237,6 +248,23 @@ function _openSession(context) {
 /** @param {unknown} list */
 function _copyGreetings(list) {
     return Array.isArray(list) ? list.map(value => String(value ?? '')) : [];
+}
+
+function _newGreetingKey() {
+    greetingKeySeed += 1;
+    return `greeting-${greetingKeySeed}`;
+}
+
+function _greetingKeys(kind) {
+    return kind === 'alternate' ? draftAltKeys : draftGrpKeys;
+}
+
+function _ensureGreetingKeys(kind) {
+    const greetings = kind === 'alternate' ? draftAlt : draftGrp;
+    const keys = _greetingKeys(kind);
+    while (keys.length < greetings.length) keys.push(_newGreetingKey());
+    if (keys.length > greetings.length) keys.splice(greetings.length);
+    return keys;
 }
 
 /** @param {string|null} targetAvatar */
@@ -844,21 +872,34 @@ function _restoreSnapshot(snap) {
 // Greeting renderers
 // ============================================================
 
-function _renderAlternateGreetings() {
+function _renderAlternateGreetings({ animate = false } = {}) {
     const list = document.querySelector('.alternate_greetings_list');
     if (!list) return;
-    list.innerHTML = '';
-    draftAlt.forEach((g, i) => list.appendChild(_createGreetingRow(g, i, 'alternate')));
+    const render = () => _renderGreetingList(list, draftAlt, 'alternate');
+    if (!animate) return render();
+    return animateListChange(list, render, { key: element => element.dataset.greetingId });
 }
 
-function _renderGroupGreetings() {
+function _renderGroupGreetings({ animate = false } = {}) {
     const list = document.querySelector('.group_only_greetings_list');
     if (!list) return;
-    list.innerHTML = '';
-    draftGrp.forEach((g, i) => list.appendChild(_createGreetingRow(g, i, 'group')));
+    const render = () => _renderGreetingList(list, draftGrp, 'group');
+    if (animate) {
+        animateListChange(list, render, { key: element => element.dataset.greetingId });
+    } else {
+        render();
+    }
 
     const badge = document.getElementById('sb_character_group_greetings_count');
     if (badge) badge.textContent = draftGrp.length > 0 ? String(draftGrp.length) : '';
+}
+
+function _renderGreetingList(list, greetings, kind) {
+    const keys = _ensureGreetingKeys(kind);
+    list.innerHTML = '';
+    greetings.forEach((greeting, index) => {
+        list.appendChild(_createGreetingRow(greeting, index, kind, keys[index]));
+    });
 }
 
 const GREETING_SNIPPET_LENGTH = 80;
@@ -877,8 +918,9 @@ function _greetingSnippet(text) {
  * @param {string} greeting
  * @param {number} index
  * @param {'alternate'|'group'} kind
+ * @param {string} greetingId
  */
-function _createGreetingRow(greeting, index, kind) {
+function _createGreetingRow(greeting, index, kind, greetingId) {
     const greetingsRef = kind === 'alternate' ? draftAlt : draftGrp;
     // Upstream's maximize editor and extensions address greetings by these ids.
     const textareaId = kind === 'alternate' ? `alternate_greeting_inline_${index}` : `group_greeting_inline_${index}`;
@@ -886,6 +928,7 @@ function _createGreetingRow(greeting, index, kind) {
     const row = document.createElement('details');
     row.className = 'ds-row-expander sb-greeting-row alternate_greeting';
     row.dataset.index = String(index);
+    row.dataset.greetingId = greetingId;
     row.setAttribute('role', 'listitem');
 
     const summary = document.createElement('summary');
@@ -945,7 +988,8 @@ function _createGreetingRow(greeting, index, kind) {
         const popup = new Popup(t`Delete this greeting?`, POPUP_TYPE.CONFIRM);
         if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) return;
         greetingsRef.splice(index, 1);
-        _reRenderKind(kind);
+        _greetingKeys(kind).splice(index, 1);
+        _reRenderKind(kind, { animate: true });
         _commitCreateDrafts();
         session.changed({ immediate: true });
     });
@@ -961,6 +1005,7 @@ function _createGreetingRow(greeting, index, kind) {
         row.parentElement?.querySelectorAll(':scope > details[open]').forEach(other => {
             if (other !== row) /** @type {HTMLDetailsElement} */ (other).open = false;
         });
+        _animateExpanderContent(row);
     });
 
     return row;
@@ -997,10 +1042,12 @@ function _createGreetingButton(icon, label, handler) {
  */
 function _moveGreeting(kind, index, delta) {
     const list = kind === 'alternate' ? draftAlt : draftGrp;
+    const keys = _greetingKeys(kind);
     const target = index + delta;
     if (target < 0 || target >= list.length) return;
     [list[index], list[target]] = [list[target], list[index]];
-    _reRenderKind(kind);
+    [keys[index], keys[target]] = [keys[target], keys[index]];
+    _reRenderKind(kind, { animate: true });
     _commitCreateDrafts();
     session.changed({ immediate: true });
 
@@ -1016,9 +1063,9 @@ function _moveGreeting(kind, index, delta) {
     }
 }
 
-function _reRenderKind(kind) {
-    if (kind === 'alternate') _renderAlternateGreetings();
-    else _renderGroupGreetings();
+function _reRenderKind(kind, options = {}) {
+    if (kind === 'alternate') _renderAlternateGreetings(options);
+    else _renderGroupGreetings(options);
 }
 
 function _focusGreetingRow(listSelector, index) {
@@ -1026,9 +1073,26 @@ function _focusGreetingRow(listSelector, index) {
         const row = document.querySelector(`${listSelector} > .sb-greeting-row[data-index="${index}"]`);
         if (!(row instanceof HTMLDetailsElement)) return;
         row.open = true;
-        row.scrollIntoView({ block: 'nearest', behavior: _prefersReducedMotion() ? 'auto' : 'smooth' });
+        row.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
         row.querySelector('textarea')?.focus({ preventScroll: true });
     });
+}
+
+function _bindGreetingExpanders() {
+    document.querySelectorAll('.sb-greetings-expander').forEach(expander => {
+        if (!(expander instanceof HTMLDetailsElement) || expander.dataset.motionBound) return;
+        expander.dataset.motionBound = 'true';
+        expander.addEventListener('toggle', () => {
+            if (expander.open) _animateExpanderContent(expander);
+        });
+    });
+}
+
+function _animateExpanderContent(expander) {
+    if (!(expander instanceof HTMLDetailsElement) || !expander.open) return;
+    const content = expander.querySelector(':scope > .ds-row-expander-content');
+    if (!(content instanceof HTMLElement)) return;
+    animateHeightFrom(content, 0, { duration: MOTION_SLOW });
 }
 
 // ============================================================
@@ -1046,8 +1110,4 @@ function _isEditorVisible() {
     if (!panel?.classList.contains('openDrawer')) return false;
     const menuType = panel.dataset.menuType;
     return menuType === 'character_edit' || menuType === 'create';
-}
-
-function _prefersReducedMotion() {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }

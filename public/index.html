@@ -66,8 +66,8 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261016b">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261016b" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261001e">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261003a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261016b">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261016b">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-character-editor.css?v=20261016c">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -7049,7 +7049,7 @@
                                                     <label class="ds-field-label" for="tagInput" data-i18n="Tags">Tags</label>
                                                     <div class="tag_controls">
                                                         <input id="tagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
-                                                        <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
+                                                        <button type="button" class="tags_view menu_button fa-solid fa-tags" title="View all tags" aria-label="View all tags" data-i18n="[title]View all tags;[aria-label]View all tags"></button>
                                                     </div>
                                                     <div id="tagList" class="tags"></div>
                                                 </div>
@@ -7436,7 +7436,7 @@
                                                 <label class="ds-field-label" for="groupTagInput" data-i18n="Tags">Tags</label>
                                                 <div class="tag_controls">
                                                     <input id="groupTagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
-                                                    <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
+                                                    <button type="button" class="tags_view menu_button fa-solid fa-tags" title="View all tags" aria-label="View all tags" data-i18n="[title]View all tags;[aria-label]View all tags"></button>
                                                 </div>
                                                 <div id="groupTagList" class="tags"></div>
                                             </div>

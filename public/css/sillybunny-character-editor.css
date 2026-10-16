@@ -284,7 +284,7 @@
     font-family: var(--mainFontFamily);
     text-align: start;
     cursor: text;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -370,6 +370,7 @@
     font-size: var(--sb-type-meta, 13px);
     color: var(--sb-muted-fg);
     white-space: nowrap;
+    transition: color var(--sb-transition-fast), opacity var(--sb-transition-fast);
 }
 
 .sb-editor-tokens.is-over-budget {
@@ -430,7 +431,7 @@
     border: 1px solid var(--sb-shell-border);
     background: transparent;
     color: var(--sb-shell-text);
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -493,14 +494,17 @@
     color: var(--sb-shell-text);
     font-size: var(--sb-type-body, 15px);
     box-shadow: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 /* sillybunny-theme.css:1044 supplies its own hover fill for .menu_button, which
    would fight the flat hover below unless it is overridden at the same weight. */
-#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):hover {
-    background: var(--sb-flat-hover-bg);
-    border-color: transparent;
-    box-shadow: none;
+@media (hover: hover) {
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):hover {
+        background: var(--sb-flat-hover-bg);
+        border-color: transparent;
+        box-shadow: none;
+    }
 }
 
 #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):active {
@@ -656,7 +660,7 @@
     font-size: inherit;
     text-align: start;
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 .ds-pref-group > .ds-row-button:last-child {
@@ -761,8 +765,10 @@
     transition: opacity var(--sb-transition-fast, 200ms ease);
 }
 
-.sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div):hover {
-    opacity: 0.9;
+@media (hover: hover) {
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div):hover {
+        opacity: 0.9;
+    }
 }
 
 .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) img {
@@ -930,7 +936,7 @@
 #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button {
     border: 0;
     background: transparent;
-    transition: background-color var(--sb-transition-fast);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -943,6 +949,12 @@
 #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active,
 #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:active {
     background: var(--sb-flat-active-bg);
+}
+
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):focus-visible,
+#right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 #form_create .sb-greetings-editor__add {
@@ -1058,8 +1070,8 @@
 }
 
 .sb-greeting-row__btn:focus-visible {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 1px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-greeting-row__btn:disabled {
@@ -1106,6 +1118,30 @@
 
 .sb-greetings-expander .sb-greetings-editor {
     border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button),
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div),
+    .ds-row-button,
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+    #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button,
+    .sb-greeting-row__btn,
+    .sb-editor-tokens {
+        transition: none;
+    }
+}
+
+body.reduced-motion :is(
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button),
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div),
+    .ds-row-button,
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+    #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button,
+    .sb-greeting-row__btn,
+    .sb-editor-tokens
+) {
+    transition: none;
 }
 
 /* Quick edit mode — hide all sections except Essentials

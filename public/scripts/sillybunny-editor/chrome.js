@@ -7,7 +7,7 @@
 /* global moment */
 import { openActionMenu, closeActionMenu, isActionMenuOpen } from '../sillybunny-action-menu.js';
 import { t } from '../i18n.js';
-import { prefersReducedMotion } from '../sillybunny-motion.js';
+import { animateIn, animateOut, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReducedMotion } from '../sillybunny-motion.js';
 
 /**
  * @typedef {{ label: string, icon: string, onSelect: () => void, danger?: boolean }} ActionItem
@@ -101,13 +101,25 @@ export function mountEditorChrome(config) {
         controls.cancel.disabled = !state.dirty;
 
         const wasHidden = controls.dirty.hidden;
-        controls.dirty.hidden = !state.dirty;
-        if (state.dirty && wasHidden) {
+        if (!state.dirty) {
+            if (wasHidden) return;
+            if (prefersReducedMotion()) {
+                controls.dirty.hidden = true;
+                return;
+            }
+            animateOut(controls.dirty, [{ opacity: 1 }, { opacity: 0 }], () => {
+                controls.dirty.hidden = true;
+            }, { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD });
+            return;
+        }
+
+        controls.dirty.hidden = false;
+        if (wasHidden) {
             // DESIGN.md: state reveals are a fade with a small scale, no movement.
             if (prefersReducedMotion()) return;
-            controls.dirty.animate?.(
+            animateIn(controls.dirty,
                 [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }],
-                { duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' },
+                { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD },
             );
         }
     }
