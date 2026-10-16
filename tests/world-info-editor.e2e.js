@@ -55,6 +55,16 @@ async function openBook(page) {
 
 const row = (editor, title) => editor.locator('.sb-wi-row', { hasText: title });
 
+async function selectSettings(page, editor) {
+    await editor.locator('.sb-wi-book-actions').click();
+    await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
+}
+
+async function selectSortOrFilter(page, editor, label) {
+    await editor.locator('.sb-wi-sort-button').click();
+    await page.locator('.sb-action-menu').last().getByRole('menuitemradio', { name: label, exact: true }).click();
+}
+
 test.describe('World Info editor', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -101,6 +111,34 @@ test.describe('World Info editor', () => {
         await expect.poll(async () => (await readEntries(page))[2].disable).toBe(false);
     });
 
+    test('row toggles keep Priority positions and Active matches until a deliberate sort change', async ({ page }) => {
+        const editor = await openBook(page);
+        await selectSortOrFilter(page, editor, 'All');
+        await selectSortOrFilter(page, editor, 'Priority');
+        const orderedTitles = () => editor.locator('.sb-wi-row').evaluateAll(rows => rows.map(row => row.getAttribute('aria-label')));
+        const before = await orderedTitles();
+        const alphaIndex = before.indexOf('Alpha');
+        await row(editor, 'Alpha').locator('input.sb-switch').uncheck();
+        await expect.poll(async () => (await readEntries(page))[0].disable).toBe(true);
+        await expect(row(editor, 'Alpha')).toHaveClass(/is-disabled/);
+        expect((await orderedTitles()).indexOf('Alpha')).toBe(alphaIndex);
+        await selectSortOrFilter(page, editor, 'Title A-Z');
+        await selectSortOrFilter(page, editor, 'Priority');
+        await expect.poll(async () => (await orderedTitles()).indexOf('Alpha')).not.toBe(alphaIndex);
+        await row(editor, 'Alpha').locator('input.sb-switch').check();
+        await expect.poll(async () => (await readEntries(page))[0].disable).toBe(false);
+        await selectSortOrFilter(page, editor, 'Active');
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(2);
+        const activeBefore = await orderedTitles();
+        await row(editor, 'Alpha').locator('input.sb-switch').uncheck();
+        await expect.poll(async () => (await readEntries(page))[0].disable).toBe(true);
+        await expect(row(editor, 'Alpha')).toHaveClass(/is-disabled/);
+        expect(await orderedTitles()).toEqual(activeBefore);
+        await selectSortOrFilter(page, editor, 'Title A-Z');
+        await expect(row(editor, 'Alpha')).toHaveCount(0);
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(1);
+    });
+
     test('offers to reload when another writer changes a dirty entry', async ({ page }) => {
         const editor = await openBook(page);
         await row(editor, 'Alpha').click();
@@ -120,7 +158,10 @@ test.describe('World Info editor', () => {
     test('settings apply immediately with no book open', async ({ page }) => {
         await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
         const editor = page.locator('#WorldInfo .sb-wi-editor');
-        await editor.getByRole('button', { name: 'Global Settings', exact: true }).click();
+        await expect(editor.locator('.sb-wi-settings-button')).toHaveCount(0);
+        await editor.locator('.sb-wi-book-actions').click();
+        await expect(page.locator('.sb-action-menu [aria-disabled="true"]')).toHaveCount(8);
+        await page.getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
         const recursive = editor.locator('#world_info_recursive');
         await expect(recursive).toBeVisible();
         const before = await recursive.isChecked();
@@ -143,12 +184,14 @@ test.describe('World Info editor', () => {
         await expect(row(editor, 'Alpha')).toBeFocused();
     });
 
-    test('each header and row trigger toggles closed and picker matches its wide trigger', async ({ page }) => {
+    test('each header and row trigger toggles closed and picker keeps its title button pressed', async ({ page }) => {
         const editor = await openBook(page);
         const picker = editor.locator('.sb-wi-book-switcher');
         await picker.click();
         const popover = page.locator('.sb-picker');
         await expect(popover).toBeVisible();
+        await expect(picker).toHaveCSS('transform', 'none');
+        await expect(picker).toHaveAttribute('aria-expanded', 'true');
         // Wait for the scale animation to finish before checking pixel geometry.
         await popover.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
         const anchor = await picker.boundingBox();
@@ -165,15 +208,14 @@ test.describe('World Info editor', () => {
             await expect(trigger).toHaveAttribute('aria-expanded', 'false');
             await expect(page.locator('.sb-action-popover:visible')).toHaveCount(0);
         }
-        const gear = editor.getByRole('button', { name: 'Global Settings', exact: true });
-        await gear.click();
-        await expect(gear).toHaveAttribute('aria-pressed', 'true');
-        await gear.click();
-        await expect(gear).toHaveAttribute('aria-pressed', 'false');
+        await selectSettings(page, editor);
+        await expect(editor.locator('.sb-wi-settings')).toBeVisible();
+        await selectSettings(page, editor);
         await expect(editor.locator('.sb-wi-settings')).toHaveCount(0);
-        await gear.click();
+        await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
+        await selectSettings(page, editor);
         await editor.locator('.sb-wi-settings .sb-wi-detail-back').click();
-        await expect(gear).toHaveAttribute('aria-pressed', 'false');
+        await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
     });
 });
 

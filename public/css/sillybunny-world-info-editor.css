@@ -4,6 +4,12 @@
 }
 
 /* Neutralise the legacy embedded drawer's auto-height/mobile document scrolling. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-wi-editor-mounted) {
+    padding: calc(var(--sb-shell-panel-padding-block) - 4px) var(--sb-shell-panel-padding-inline) 9px;
+    overflow: hidden !important;
+    scrollbar-gutter: auto;
+}
+
 #sb_character_world_info_panel:has(.sb-wi-editor-mounted) {
     display: flex;
     flex: 1 1 0;
@@ -111,18 +117,34 @@
 }
 
 #WorldInfo .sb-wi-editor .sb-wi-book-switcher {
-    flex: 1;
+    flex: 0 1 auto;
     justify-content: flex-start;
     min-width: 0;
-    gap: 8px;
+    gap: 6px;
     text-align: start;
     font-size: calc(var(--mainFontSize) * 1.08);
     font-weight: 700;
-    padding-inline: 0;
+    padding-inline: 6px;
+}
+
+#WorldInfo .sb-wi-editor .sb-wi-book-switcher:is(:active, [aria-expanded='true']) {
+    transform: none;
+    background: var(--sb-flat-selected-bg);
+}
+
+.sb-wi-book-switcher > .fa-chevron-down {
+    flex: none;
+    font-size: 0.7em;
+    color: var(--sb-muted-fg);
+}
+
+.sb-wi-list-header-spacer {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .sb-wi-list-titles {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
 }
 
@@ -185,6 +207,12 @@
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     padding: 8px 0 8px 8px;
+}
+
+#sb-settings-page #WorldInfo .sb-wi-list-heading {
+    margin: 6px 6px 8px;
+    font-size: var(--mainFontSize);
+    font-weight: 700;
 }
 
 #sb-settings-page #WorldInfo .sb-wi-list-box {
@@ -268,7 +296,7 @@
     opacity: 0.6;
 }
 
-#WorldInfo .sb-wi-editor :is(.sb-wi-row.is-selected, .sb-wi-settings-button[aria-pressed='true']) {
+#WorldInfo .sb-wi-editor .sb-wi-row.is-selected {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -316,16 +344,6 @@
     }
 }
 
-/* Collapsed (phone) layout: the title itself is the picker button, and Global
-   Settings moves into the book ⋯ menu, so the book name keeps its room. Keyed to
-   the collapsed layout, not sidebar width, so the desktop split keeps the gear.
-   !important: the global icon-button reset (sillybunny-theme.css, `:not(#bg_selection_mode_button)`)
-   carries ID specificity and sets display on every icon-only .menu_button. */
-#WorldInfo .sb-wi-editor[data-collapsed='true'] .sb-wi-book-switcher > .fa-chevron-down,
-#WorldInfo .sb-wi-editor[data-collapsed='true'] .sb-wi-settings-button {
-    display: none !important;
-}
-
 @container sb-list-editor-sidebar (width < 300px) {
     .sb-wi-row > i {
         display: none;
@@ -354,6 +372,16 @@
     cursor: not-allowed;
 }
 
+/* Flat header icon buttons stay flat when disabled (no book open); only the glyph dims. */
+#WorldInfo .sb-wi-editor .sb-wi-list-header .menu_button_icon:disabled {
+    background: transparent;
+    opacity: 0.4;
+}
+
+.sb-wi-list-titles > span[hidden] {
+    display: none;
+}
+
 @media (pointer: coarse) {
     .sb-wi-row-enable {
         min-width: 44px;
@@ -373,6 +401,11 @@
 }
 
 @media (max-width: 768px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-wi-editor-mounted) {
+        /* Side and bottom gutters match the Backend editor; its larger top offset holds source controls World Info has no equivalent of. */
+        padding: 14px 14px calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
+    }
+
     #sb_character_world_info_panel #WorldInfo.sb-wi-editor-mounted {
         max-height: 100% !important;
         overflow: hidden !important;

@@ -24,7 +24,7 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261017g', id: 'deferred-world-info-editor-css' };
+const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261018c', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -59,8 +59,8 @@ function button(label, glyph, action, className = '') {
     return node;
 }
 
-function menuItem(label, glyph, action, danger = false) {
-    return { label, icon: `fa-solid fa-${glyph}`, danger, onSelect: () => run(action) };
+function menuItem(label, glyph, action, danger = false, disabled = false) {
+    return { label, icon: `fa-solid fa-${glyph}`, danger, disabled, onSelect: () => run(action) };
 }
 
 function transport(id) {
@@ -80,6 +80,18 @@ export function pageForWorldInfoUid(entries, uid, pageSize) {
     if (!Number.isInteger(pageSize) || pageSize <= 0) throw new RangeError('pageSize must be a positive integer.');
     const index = entries.findIndex(entry => String(entry.uid) === String(uid));
     return Math.floor(Math.max(0, index) / pageSize) + 1;
+}
+
+/** Keeps held UIDs in order even when filters omit them; new display entries follow the fresh order. */
+export function preserveWorldInfoEntryOrder(heldUids, displayEntries, allEntries) {
+    const heldKeys = heldUids.map(String);
+    const heldSet = new Set(heldKeys);
+    const entriesByUid = new Map(allEntries.map(entry => [String(entry.uid), entry]));
+    const heldEntries = heldKeys.flatMap(uid => {
+        const entry = entriesByUid.get(uid);
+        return entry ? [entry] : [];
+    });
+    return [...heldEntries, ...displayEntries.filter(entry => !heldSet.has(String(entry.uid)))];
 }
 
 export function createWorldInfoDeps() {
@@ -131,6 +143,7 @@ export function mountWorldInfoEditor(container) {
     let internalPaging = false;
     let renderRevision = 0;
     let dragBook = null;
+    let heldOrder = null;
 
     const listHeader = element('header', 'sb-wi-list-header');
     const bookSwitcher = button(t`Worlds/Lorebooks`, null, trigger => openBookPicker(trigger), 'sb-wi-book-switcher');
@@ -141,19 +154,19 @@ export function mountWorldInfoEditor(container) {
     bookSwitcher.replaceChildren(bookTitles, icon('chevron-down'));
     bookSwitcher.setAttribute('aria-haspopup', 'dialog');
     bookSwitcher.setAttribute('aria-expanded', 'false');
-    const bookActions = button(t`World Info`, 'ellipsis-vertical', trigger => openBookMenu(trigger));
+    const headerSpacer = element('span', 'sb-wi-list-header-spacer');
+    headerSpacer.setAttribute('aria-hidden', 'true');
+    const bookActions = button(t`World Info`, 'ellipsis-vertical', trigger => openBookMenu(trigger), 'sb-wi-book-actions');
     bookActions.setAttribute('aria-haspopup', 'menu');
     bookActions.setAttribute('aria-expanded', 'false');
     const toggleSettings = () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' });
-    const settingsButton = button(t`Global Settings`, 'gear', toggleSettings, 'sb-wi-settings-button');
-    settingsButton.setAttribute('aria-pressed', 'false');
     const newEntryButton = button(t`New Entry`, 'plus', () => clickTransport('world_popup_new'));
     const searchButton = button(t`Search`, 'magnifying-glass', () => searchControl.toggle());
     // HUMAN: replace — Sort control label.
     const filterButton = button(t`lorum ipsum`, 'arrow-down-wide-short', trigger => openFilterMenu(trigger), 'sb-wi-sort-button');
     filterButton.setAttribute('aria-haspopup', 'menu');
     filterButton.setAttribute('aria-expanded', 'false');
-    listHeader.append(bookSwitcher, searchButton, newEntryButton, filterButton, settingsButton, bookActions);
+    listHeader.append(bookSwitcher, headerSpacer, searchButton, newEntryButton, filterButton, bookActions);
     const searchField = element('label', 'sb-wi-search-field');
     searchField.hidden = true;
     const searchInput = element('input', 'sb-wi-search');
@@ -164,10 +177,12 @@ export function mountWorldInfoEditor(container) {
     searchField.append(icon('magnifying-glass'), searchInput);
 
     const listBody = element('div', 'sb-wi-list-body');
+    const entriesHeading = element('h3', 'sb-wi-list-heading', t`Lorebook entries`);
+    entriesHeading.tabIndex = -1;
     const entryBox = element('div', 'sb-wi-list-box ds-pref-group');
     entryBox.setAttribute('role', 'list');
     const listStatus = element('div', 'sb-wi-list-status');
-    listBody.append(entryBox, listStatus);
+    listBody.append(entriesHeading, entryBox, listStatus);
 
     const listContent = element('div', 'sb-wi-list-content');
     const searchStatus = element('div', 'sb-list-editor__status');
@@ -183,6 +198,7 @@ export function mountWorldInfoEditor(container) {
         debounce: 300,
         heightProperty: '--sb-wi-search-height',
         onChange: query => {
+            heldOrder = null;
             if (transport('world_info_search')) transport('world_info_search').value = query;
             worldInfoFilter.setFilterData(FILTER_TYPES.WORLD_INFO_SEARCH, query);
         },
@@ -192,7 +208,13 @@ export function mountWorldInfoEditor(container) {
         readPageSize: () => accountStorage.getItem('WI_PerPage'),
         writePageSize: size => accountStorage.setItem('WI_PerPage', String(size)),
         guard: () => internalPaging || shell.guardLeave(),
-        onChange: () => renderList(),
+        onChange: () => {
+            if (!internalPaging) {
+                heldOrder = null;
+                updateDisplayEntries();
+            }
+            renderList();
+        },
     });
 
     function entryController() {
@@ -265,12 +287,9 @@ export function mountWorldInfoEditor(container) {
     }
 
     function openBookMenu(trigger) {
-        const action = (label, glyph, id, danger = false) => menuItem(label, glyph, () => clickTransport(id), danger);
-        // A narrow sidebar hides the gear button (CSS); Global Settings moves into this menu.
-        const settingsItem = getComputedStyle(settingsButton).display === 'none'
-            ? [menuItem(t`Global Settings`, 'gear', toggleSettings)] : [];
+        const action = (label, glyph, id, danger = false) => menuItem(label, glyph, () => clickTransport(id), danger, !state.data);
         menu(trigger, state.name ?? t`World Info`, [
-            ...(settingsItem.length ? [settingsItem] : []),
+            [menuItem(t`Global Settings`, 'gear', toggleSettings)],
             [action(t`Rename World Info`, 'pencil', 'world_popup_name_button'), action(t`Duplicate World Info`, 'copy', 'world_duplicate'), action(t`Export World Info`, 'file-export', 'world_popup_export')],
             [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill empty Memo/Titles with Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply current sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
             [action(t`Delete World Info`, 'trash', 'world_popup_delete', true)],
@@ -306,6 +325,7 @@ export function mountWorldInfoEditor(container) {
 
     async function setEntryEnabled(uid, enabled) {
         const { name, data } = state;
+        heldOrder ??= entries.map(entry => entry.uid);
         const saving = setEnabled(deps, name, data, uid, enabled);
         rebase(uid, 'disable');
         const result = await saving;
@@ -343,6 +363,7 @@ export function mountWorldInfoEditor(container) {
         const target = index + direction;
         if (index < 0 || target < 0 || target >= ids.length) return false;
         [ids[index], ids[target]] = [ids[target], ids[index]];
+        if (heldOrder) heldOrder = [...ids];
         const { name, data } = state;
         const saving = reorder(deps, name, data, ids);
         rebase(uid, 'displayIndex');
@@ -428,19 +449,27 @@ export function mountWorldInfoEditor(container) {
         return row;
     }
 
+    function updateDisplayEntries() {
+        const displayEntries = state.data ? getWorldInfoDisplayEntries(state.data) : [];
+        const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object' && !Array.isArray(entry));
+        entries = heldOrder && state.data ? preserveWorldInfoEntryOrder(heldOrder, displayEntries, allEntries) : displayEntries;
+        if (heldOrder) heldOrder = entries.map(entry => entry.uid);
+        pagination.setTotal(entries.length);
+    }
+
     function renderList() {
         if (!shell || destroyed) return;
         if (shell.isNavigating || shell.pointerActive) { shell.deferRefresh(); return; }
         bookLabel.textContent = state.name || t`--- Pick to Edit ---`;
-        bookActions.hidden = !state.name;
-        newEntryButton.disabled = !state.data;
+        for (const control of [newEntryButton, searchButton, filterButton]) control.disabled = !state.data;
+        bookSubtitle.hidden = !state.data;
         const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object');
         const total = allEntries.length;
         const active = allEntries.filter(entry => !entry.disable).length;
         // HUMAN: replace — entry-count and active-count subtitle labels.
         bookSubtitle.textContent = `${total} ${t`lorum ipsum`} · ${active} ${t`lorum ipsum`}`;
-        settingsButton.setAttribute('aria-pressed', String(shell.selectedKey === 'settings'));
         listStatus.hidden = Boolean(state.data && entries.length);
+        entriesHeading.hidden = !listStatus.hidden;
         entryBox.hidden = !listStatus.hidden;
         if (!state.data) {
             showStatus(listStatus, {
@@ -448,6 +477,7 @@ export function mountWorldInfoEditor(container) {
                 actions: [
                     { label: t`Worlds/Lorebooks`, primary: true, onActivate: () => openBookPicker(bookSwitcher) },
                     { label: t`New`, onActivate: () => run(() => clickTransport('world_create_button')) },
+                    { label: t`Global Settings`, onActivate: () => run(toggleSettings) },
                 ],
             });
         } else if (!entries.length) {
@@ -475,6 +505,11 @@ export function mountWorldInfoEditor(container) {
             update: () => run(async () => {
                 if (dragBook !== state) return;
                 const ids = [...entryBox.children].map(row => row.dataset.uid);
+                if (heldOrder) {
+                    const pageIds = new Set(pagination.slice(entries).map(entry => String(entry.uid)));
+                    let next = 0;
+                    heldOrder = heldOrder.map(uid => pageIds.has(String(uid)) ? ids[next++] : uid);
+                }
                 const { name, data } = state;
                 const saving = reorder(deps, name, data, ids);
                 if (selectedUid() !== null) rebase(selectedUid(), 'displayIndex');
@@ -512,15 +547,9 @@ export function mountWorldInfoEditor(container) {
         isDirty: () => entryController()?.isDirty() ?? false,
         onSave: () => entryController()?.save() ?? true,
         onDiscard: () => entryController()?.discard(),
-        onDeselect: () => {
-            destroyDetail();
-            settingsButton.setAttribute('aria-pressed', 'false');
-        },
-        onSelect: item => {
-            settingsButton.setAttribute('aria-pressed', String(item.kind === 'settings'));
-            renderList();
-        },
-        findRow: key => key === 'settings' ? settingsButton : rows.get(key)?.row ?? null,
+        onDeselect: () => destroyDetail(),
+        onSelect: () => renderList(),
+        findRow: key => key === 'settings' ? bookActions : rows.get(key)?.row ?? null,
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
@@ -547,6 +576,15 @@ export function mountWorldInfoEditor(container) {
         }
     };
     shell.root.addEventListener('keydown', onEscape);
+    // Capture before the upstream transport handlers synchronously begin their refresh.
+    const onTransportChange = event => {
+        if (event.target instanceof Element && event.target.matches('#world_info_sort_order, #world_editor_select')) heldOrder = null;
+    };
+    const onTransportClick = event => {
+        if (event.target instanceof Element && event.target.closest('.world_info_view_filter, #world_refresh, #world_apply_current_sorting')) heldOrder = null;
+    };
+    worldInfo.addEventListener('change', onTransportChange, true);
+    worldInfo.addEventListener('click', onTransportClick, true);
     const onBookRenamed = (oldName, newName) => updateBookDrafts(oldName, newName);
     const onBookDeleted = name => updateBookDrafts(name);
     eventSource.on(event_types.WORLDINFO_RENAMED, onBookRenamed);
@@ -567,6 +605,7 @@ export function mountWorldInfoEditor(container) {
         if (destroyed) return;
         const revision = ++renderRevision;
         const changedBook = renderedName !== undefined && renderedName !== name;
+        if (changedBook || state.data !== data) heldOrder = null;
         if (changedBook) {
             closeOwnedOverlays();
             if (controllerKind === 'entry') {
@@ -586,9 +625,8 @@ export function mountWorldInfoEditor(container) {
         }
         state = { name, data };
         renderedName = name;
-        entries = data ? getWorldInfoDisplayEntries(data) : [];
+        updateDisplayEntries();
         entryController()?.sync({ name, data });
-        pagination.setTotal(entries.length);
         // A newly created entry can be excluded by the current search/view filter; still open it.
         const target = Number.isFinite(navigation) && navigation >= 0 ? data?.entries?.[navigation] : null;
         const previousPage = pagination.page;
@@ -619,6 +657,8 @@ export function mountWorldInfoEditor(container) {
         eventSource.removeListener(event_types.WORLDINFO_RENAMED, onBookRenamed);
         eventSource.removeListener(event_types.WORLDINFO_DELETED, onBookDeleted);
         shell.root.removeEventListener('keydown', onEscape);
+        worldInfo.removeEventListener('change', onTransportChange, true);
+        worldInfo.removeEventListener('click', onTransportClick, true);
         unbindRows();
         searchControl.destroy();
         pagination.destroy();

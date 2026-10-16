@@ -30,10 +30,11 @@ const setFilterData = jest.fn((_type, value, silent = false) => {
     query = value;
     if (!silent) return adapter?.render(liveState);
 });
-const displayEntries = jest.fn(data => {
+const defaultDisplayEntries = data => {
     if (visibleEntries) return visibleEntries;
     return Object.values(data?.entries ?? {}).filter(entry => !query || entry.comment.toLowerCase().includes(query.toLowerCase()));
-});
+};
+const displayEntries = jest.fn(defaultDisplayEntries);
 await jest.unstable_mockModule('../../public/scripts/world-info.js', () => ({
     createWorldInfoEntry: createEntry,
     deleteWIOriginalDataValue: deleteOriginal,
@@ -127,7 +128,7 @@ const settingsController = { destroy: jest.fn(), focusTarget: () => null };
 const mountSettings = jest.fn(() => settingsController);
 await jest.unstable_mockModule('../../public/scripts/sillybunny-world-info-settings.js', () => ({ mountWorldInfoSettings: mountSettings }), { virtual: true });
 
-const { mountWorldInfoEditor, createWorldInfoDeps, pageForWorldInfoUid } = await import('../../public/scripts/sillybunny-world-info-editor.js');
+const { mountWorldInfoEditor, createWorldInfoDeps, pageForWorldInfoUid, preserveWorldInfoEntryOrder } = await import('../../public/scripts/sillybunny-world-info-editor.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
 let mounted;
 let container;
@@ -161,6 +162,17 @@ async function open(uid = 0) {
     return entryControllers.at(-1);
 }
 
+async function selectMenuAction(label, selector = '.sb-wi-book-actions') {
+    if (!isActionMenuOpen(container.querySelector(selector))) {
+        container.querySelector(selector).click();
+        await settle();
+    }
+    const item = actionMenu.sections.flatMap(section => section.items).find(item => item.label === label);
+    closeActionMenu();
+    item.onSelect();
+    await settle();
+}
+
 function currentPage() {
     return container.querySelector('.sb-list-pagination__status').textContent;
 }
@@ -188,6 +200,7 @@ beforeEach(() => {
         <input id="world_info_search"><select id="world_info_sort_order"><option value="0" data-rule="priority">Priority</option><option value="13" data-rule="custom">Custom</option></select>
         <button class="world_info_view_filter is-active" data-filter="all">All</button><button class="world_info_view_filter" data-filter="active">Active</button>
         <button id="world_popup_new"></button><button id="world_create_button"></button><button id="world_import_button"></button>
+        <button id="world_refresh"></button><button id="world_apply_current_sorting"></button>
         </div></div></div></div>`;
     container = document.getElementById('WorldInfo');
     globalThis.matchMedia = jest.fn(() => ({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }));
@@ -195,6 +208,7 @@ beforeEach(() => {
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
     jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
     globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn().mockResolvedValue() };
+    displayEntries.mockImplementation(defaultDisplayEntries);
 });
 
 afterEach(() => {
@@ -242,14 +256,31 @@ describe('World Info shell', () => {
     test('no book routes to the picker/new status while keeping settings reachable', async () => {
         await mount();
         expect(container.querySelector('.sb-wi-list-status').textContent).toContain('--- Pick to Edit ---');
-        expect(container.querySelectorAll('.sb-wi-list-status button')).toHaveLength(2);
-        expect(container.querySelector('.sb-wi-settings-button').hidden).toBe(false);
+        expect(container.querySelectorAll('.sb-wi-list-status button')).toHaveLength(3);
+        expect(container.querySelector('.sb-wi-book-actions').hidden).toBe(false);
+        expect(container.querySelector('.sb-wi-settings-button')).toBeNull();
+        expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
+        container.querySelector('.sb-wi-list-status button:last-child').click();
+        await settle();
+        expect(mountSettings).toHaveBeenCalled();
+    });
+
+    test.each([null, 'Book A'])('primary menu puts settings first and disables book actions without a book (%s)', async name => {
+        await mount({ name, data: name ? book() : null });
+        container.querySelector('.sb-wi-book-actions').click();
+        await settle();
+        const { title, sections } = actionMenu;
+        expect(title).toBe(name ?? 'World Info');
+        expect(sections[0].items.map(item => item.label)).toEqual(['Global Settings']);
+        expect(sections[0].items[0].disabled).toBe(false);
+        expect(sections.slice(1).flatMap(section => section.items).every(item => item.disabled === !name)).toBe(true);
     });
 
     test('an empty book routes to an empty status with New Entry', async () => {
         await mount({ name: 'Book A', data: book(0) });
         expect(container.querySelector('.sb-wi-list-status').textContent).toContain('New Entry');
         expect(container.querySelector('.sb-wi-list-box').hidden).toBe(true);
+        expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
     });
 
     test('entries render as boxed rows without a persistent empty detail', async () => {
@@ -258,6 +289,9 @@ describe('World Info shell', () => {
         expect(container.querySelector('.sb-wi-list-status').hidden).toBe(true);
         expect(container.querySelector('.sb-wi-empty-detail')).toBeNull();
         expect(container.querySelector('.sb-wi-detail').hidden).toBe(true);
+        expect(container.querySelector('.sb-wi-list-heading').textContent).toBe('Lorebook entries');
+        expect(container.querySelector('.sb-wi-list-heading').tabIndex).toBe(-1);
+        expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(false);
     });
 
     test('filtered nonempty books route to No results, including view-only filters', async () => {
@@ -265,11 +299,12 @@ describe('World Info shell', () => {
         await mount({ name: 'Book A', data: book(3) });
         expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No results');
         expect(container.querySelector('.sb-wi-list-status button')).toBeNull();
+        expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
     });
 
-    test('global settings stay in the header while search reports only entry counts', async () => {
+    test('the primary menu stays in the header while search reports only entry counts', async () => {
         await mount({ name: 'Book A', data: book(3) });
-        const gear = container.querySelector('.sb-wi-settings-button');
+        const menu = container.querySelector('.sb-wi-book-actions');
         const search = container.querySelector('.sb-wi-search');
         search.value = 'missing';
         search.dispatchEvent(new Event('input', { bubbles: true }));
@@ -278,39 +313,33 @@ describe('World Info shell', () => {
         jest.advanceTimersByTime(1);
         await settle();
         expect(setFilterData).toHaveBeenCalledWith('world_info_search', 'missing');
-        expect(container.querySelector('.sb-wi-settings-button')).toBe(gear);
-        expect(gear.closest('.sb-wi-list-header')).not.toBeNull();
+        expect(container.querySelector('.sb-wi-book-actions')).toBe(menu);
+        expect(menu.closest('.sb-wi-list-header')).not.toBeNull();
         expect(container.querySelector('.sb-wi-list-count')).toBeNull();
         expect(container.querySelector('.sb-wi-settings-row')).toBeNull();
         expect(container.querySelector('.sb-list-editor__status[aria-live="polite"]').textContent).toBe('No results');
     });
 
-    test('arrow navigation stays within entries and the gear remains a native Tab stop', async () => {
+    test('arrow navigation stays within entries and the primary menu remains a native Tab stop', async () => {
         await mount({ name: 'Book A', data: book(2) });
         const first = container.querySelector('.sb-wi-row');
         first.focus();
         first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
         expect(document.activeElement).toBe(first);
-        const gear = container.querySelector('.sb-wi-settings-button');
-        expect(gear.tabIndex).toBe(0);
-        gear.click();
-        await settle();
+        const menu = container.querySelector('.sb-wi-book-actions');
+        expect(menu.tabIndex).toBe(0);
+        await selectMenuAction('Global Settings');
         expect(mountSettings).toHaveBeenCalledWith(expect.objectContaining({ host: container.querySelector('.sb-wi-detail') }));
     });
 
-    test('the global gear toggles settings, updates pressed state and receives returning focus', async () => {
+    test('Global Settings toggles its pane and returns focus to the primary menu', async () => {
         await mount();
-        const gear = container.querySelector('.sb-wi-settings-button');
-        expect(gear.getAttribute('aria-pressed')).toBe('false');
-        gear.click();
-        await settle();
-        expect(gear.getAttribute('aria-pressed')).toBe('true');
+        const menu = container.querySelector('.sb-wi-book-actions');
+        await selectMenuAction('Global Settings');
         expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('true');
-        gear.click();
-        await settle();
-        expect(gear.getAttribute('aria-pressed')).toBe('false');
+        await selectMenuAction('Global Settings');
         expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('false');
-        expect(document.activeElement).toBe(gear);
+        expect(document.activeElement).toBe(menu);
     });
 
     test.each(['.sb-wi-sort-button', '.sb-wi-list-header button:has(.fa-ellipsis-vertical)', '.sb-wi-row-menu'])('reclicking %s closes its menu without reopening it', async selector => {
@@ -469,6 +498,68 @@ describe('World Info shell', () => {
         expect(mountEntry).not.toHaveBeenCalled();
     });
 
+    test.each([false, true])('row switches hold the priority order even when Active excludes the row (%s)', async activeOnly => {
+        const data = book(3);
+        displayEntries.mockImplementation(data => Object.values(data.entries)
+            .filter(entry => !activeOnly || !entry.disable)
+            .sort((left, right) => Number(left.disable) - Number(right.disable)));
+        await mount({ name: 'Book A', data });
+        container.querySelector('.sb-wi-row[data-uid="0"] input').click();
+        await settle();
+        expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(['0', '7', '14']);
+        expect(container.querySelector('.sb-wi-row[data-uid="0"]').classList.contains('is-disabled')).toBe(true);
+        await open(0);
+        mountEntry.mock.calls.at(-1)[0].onSaved({ uid: 0 });
+        await settle();
+        expect(container.querySelector('.sb-wi-row').dataset.uid).toBe('0');
+        document.getElementById('world_info_sort_order').dispatchEvent(new Event('change', { bubbles: true }));
+        await render(liveState, navigation.previous);
+        expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(activeOnly ? ['7', '14'] : ['7', '14', '0']);
+    });
+
+    test.each(['view', 'search', 'refresh', 'size', 'page', 'rename', 'reload'])('%s clears the held order', async action => {
+        const data = book(25);
+        displayEntries.mockImplementation(data => Object.values(data.entries)
+            .filter(entry => !entry.disable && (!query || entry.comment.includes(query))));
+        await mount({ name: 'Book A', data });
+        container.querySelector('.sb-wi-row[data-uid="0"] input').click();
+        await settle();
+        expect(container.querySelector('.sb-wi-row[data-uid="0"]')).not.toBeNull();
+        if (action === 'view') container.querySelector('.world_info_view_filter[data-filter="active"]').click();
+        if (action === 'search') {
+            const input = container.querySelector('.sb-wi-search');
+            input.value = 'Entry';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            jest.advanceTimersByTime(300);
+        }
+        if (action === 'refresh') await selectMenuAction('Refresh');
+        if (action === 'size') {
+            const size = container.querySelector('.sb-list-pagination__size');
+            size.value = '25';
+            size.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (action === 'page') container.querySelector('.sb-list-pagination__next').click();
+        await settle();
+        await render({ name: action === 'rename' ? 'Renamed' : 'Book A', data: action === 'reload' ? JSON.parse(JSON.stringify(data)) : data }, navigation.previous);
+        expect(container.querySelector('.sb-wi-row[data-uid="0"]')).toBeNull();
+        expect(displayEntries).toHaveBeenCalled();
+    });
+
+    test('held order drops deleted entries and appends new entries without disturbing surviving rows', async () => {
+        const data = book(3);
+        await mount({ name: 'Book A', data });
+        container.querySelector('.sb-wi-row[data-uid="0"] input').click();
+        await settle();
+        delete data.entries[7];
+        data.entries[21] = { ...data.entries[14], uid: 21, comment: 'New Entry' };
+        visibleEntries = [data.entries[21], data.entries[14], data.entries[0]];
+        await render(liveState, navigation.previous);
+        expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(['0', '14', '21']);
+        visibleEntries.reverse();
+        await render(liveState, navigation.previous);
+        expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(['0', '14', '21']);
+    });
+
     test.each([[3, false], [4, true]])('Move/Copy choice %i uses copy=%s without a second editor reload', async (choice, copy) => {
         await mount({ name: 'Book A', data: book() });
         container.querySelector('.sb-wi-row-menu').click();
@@ -571,8 +662,7 @@ describe('World Info shell', () => {
 
     test('the global settings controller survives book changes and never becomes dirty', async () => {
         await mount();
-        container.querySelector('.sb-wi-settings-button').click();
-        await settle();
+        await selectMenuAction('Global Settings');
         dirty = true;
         await render({ name: 'Book A', data: book() });
         const registration = registerNavigation.mock.calls[0][0];
@@ -601,8 +691,7 @@ describe('World Info shell', () => {
         const detail = await open();
         dirty = true;
         popupChoice = choice;
-        container.querySelector('.sb-wi-settings-button').click();
-        await settle();
+        await selectMenuAction('Global Settings');
         expect(detail[method]).toHaveBeenCalled();
         expect(mountSettings).toHaveBeenCalled();
         expect(detail.destroy).toHaveBeenCalledWith({ keepDraft: false });
@@ -614,11 +703,10 @@ describe('World Info shell', () => {
         dirty = true;
         popupChoice = 1;
         detail.save.mockResolvedValue(false);
-        container.querySelector('.sb-wi-settings-button').click();
-        await settle();
+        await selectMenuAction('Global Settings');
         expect(mountSettings).not.toHaveBeenCalled();
         expect(detail.destroy).not.toHaveBeenCalled();
-        expect(container.querySelector('.sb-wi-settings-button').getAttribute('aria-pressed')).toBe('false');
+        expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('true');
     });
 
     test.each([0, 2])('sidebar Escape guards the open dirty entry instead of closing its settings page (choice %i)', async choice => {
@@ -742,5 +830,24 @@ describe('page-of-UID lookup', () => {
 
     test.each([0, -1, 1.5, NaN])('rejects invalid page size %s', size => {
         expect(() => pageForWorldInfoUid([], 0, size)).toThrow(RangeError);
+    });
+});
+
+describe('held World Info order', () => {
+    test('uses live entries, preserves filtered UIDs and removes missing UIDs without mutating inputs', () => {
+        const all = Object.values(book(3).entries);
+        const fresh = [all[2]];
+        const held = ['7', 0, 999];
+        const ordered = preserveWorldInfoEntryOrder(held, fresh, all);
+        expect(ordered).toEqual([all[1], all[0], all[2]]);
+        expect(ordered[0]).toBe(all[1]);
+        expect(held).toEqual(['7', 0, 999]);
+        expect(fresh).toEqual([all[2]]);
+    });
+
+    test('appends new matches in their fresh order and never reintroduces unrelated filtered entries', () => {
+        const all = Object.values(book(4).entries);
+        expect(preserveWorldInfoEntryOrder([0], [all[2], all[0], all[1]], all)).toEqual([all[0], all[2], all[1]]);
+        expect(preserveWorldInfoEntryOrder([], [], all)).toEqual([]);
     });
 });

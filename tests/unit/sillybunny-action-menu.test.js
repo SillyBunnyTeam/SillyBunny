@@ -65,6 +65,26 @@ describe('action menu optional sections', () => {
         expect(button.getAttribute('aria-expanded')).toBe('false');
     });
 
+    test('disabled items expose their state, reject activation and are skipped by arrow navigation', () => {
+        const disabledAction = jest.fn();
+        const button = trigger();
+        openActionMenu({
+            trigger: button, keyboard: true,
+            sections: [{ items: [
+                { label: 'Settings', onSelect() {} },
+                { label: 'Rename', disabled: true, onSelect: disabledAction },
+                { label: 'Import', onSelect() {} },
+            ] }],
+        });
+        const items = [...document.querySelectorAll('[role="menuitem"]')];
+        expect(items[1].getAttribute('aria-disabled')).toBe('true');
+        items[1].click();
+        expect(disabledAction).not.toHaveBeenCalled();
+        expect(isActionMenuOpen(button)).toBe(true);
+        items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        expect(document.activeElement).toBe(items[2]);
+    });
+
     test.each([['ltr', '300px'], ['rtl', '780px']])('explicit inline-start placement supports %s triggers in the trailing half', (direction, expectedLeft) => {
         const button = trigger();
         button.style.direction = direction;
