@@ -7580,6 +7580,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     width: 100%;
 }
 
+#sb-reasoning-template .ds-row-suffix:has(> #reasoning_select) {
+    flex-wrap: wrap;
+}
+
+#sb-reasoning-template #reasoning_select {
+    flex: 1 1 190px;
+}
+
 #sb-settings-page .sb-prompting-panel #pro-settings-block .ds-row-suffix > [data-randomization-disabled] {
     flex: 0 0 5.5em;
     width: 5.5em;
