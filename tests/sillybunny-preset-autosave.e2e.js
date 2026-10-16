@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
 const USER_PRESET = 'SB Autosave Test';
 const SECOND_PRESET = 'SB Autosave Second';
