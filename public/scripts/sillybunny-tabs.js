@@ -75,6 +75,7 @@ import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import { initCharacterEditor } from './sillybunny-character-editor.js';
+import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybunny-search-entities.js';
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
@@ -1277,6 +1278,9 @@ const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 24;
 const SB_UNIVERSAL_SEARCH_GROUP_LIMIT = 5;
 const SB_UNIVERSAL_SEARCH_QUICK_ACTION_LIMIT = 10;
 const SB_UNIVERSAL_SEARCH_DEBOUNCE_MS = 140;
+// Entity results read names from data: a few thousand characters and worlds stay cheap, but the
+// index is rebuilt per keystroke, so entry bodies are only scanned for the worlds that matched.
+const SB_UNIVERSAL_ENTITY_SCAN_LIMIT = 4000;
 const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
@@ -1428,6 +1432,8 @@ const sbState = {
         renderedQuery: '',
         renderedRows: null,
         expandedAll: false,
+        entityPrimeStarted: false,
+        skippedWorlds: null,
     },
     characterDrawer: {
         stateObserver: null,
@@ -2463,6 +2469,26 @@ function scheduleUniversalSearchRender({ flush = false } = {}) {
     }, SB_UNIVERSAL_SEARCH_DEBOUNCE_MS);
 }
 
+// Loading one book per keystroke would be a request storm, so entry bodies are primed once when
+// the panel opens under a fixed budget, then the list is repainted with whatever arrived.
+function primeUniversalSearchEntityMetadata() {
+    const searchState = getUniversalSearchState();
+    if (searchState.entityPrimeStarted) {
+        return;
+    }
+    searchState.entityPrimeStarted = true;
+    const skippedWorlds = searchState.skippedWorlds ?? new Set();
+    searchState.skippedWorlds = skippedWorlds;
+    const names = getSillyTavernContext()?.getWorldInfoNames?.() ?? [];
+    void primeWorldInfoSearchCache({ names, skippedWorlds }).then(() => {
+        if (getUniversalSearchState().expanded && (getUniversalSearchState().input?.value ?? '').trim()) {
+            scheduleUniversalSearchRender({ flush: true });
+        }
+    }).catch(() => {
+        // A failed priming pass leaves world names searchable; only entry bodies are missing.
+    });
+}
+
 // The panel paints a short list, so a broad query needs a way to ask for the rest. The row carries
 // no id of its own, which keeps it out of the arrow-key list, and it is not a result: Enter on it
 // still opens the highlighted setting.
@@ -2557,6 +2583,7 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     } else if (!wasOpen) {
         // Opening paints the current query once; later keystrokes go through the debounce.
         renderUniversalSearchResults(input?.value ?? '');
+        primeUniversalSearchEntityMetadata();
     } else if (!searchState.renderTimer && (input?.value ?? '').trim()) {
         scheduleUniversalSearchRender();
     }
@@ -12707,7 +12734,7 @@ function getSearchMatchKey(shellKey, entry) {
     ].filter(Boolean).join('::');
 }
 
-function collectGlobalSearchMatches(query, { limit = Infinity } = {}) {
+function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true } = {}) {
     const normalizedQuery = normalizeText(query);
 
     if (!normalizedQuery) {
@@ -12763,13 +12790,18 @@ function collectGlobalSearchMatches(query, { limit = Infinity } = {}) {
         }
     }
 
-    // Characters and personas live outside sbState.shells; their entries come from app data rather
-    // than the tab DOM.
-    {
+    // Characters, groups, World Info books and personas live outside sbState.shells; their entries
+    // come from app data rather than the tab DOM.
+    if (includeEntities) {
+        const searchState = getUniversalSearchState();
         const personas = getPersonaSearchEntries(getCharacterPanelTabConfig('persona'));
         const entities = [
             ...getCharacterPanelSearchEntries(),
             ...personas,
+            ...collectEntitySearchEntries(normalizedQuery, {
+                limit: SB_UNIVERSAL_ENTITY_SCAN_LIMIT,
+                skippedWorlds: searchState.skippedWorlds,
+            }),
         ];
         for (const entry of entities) {
             if (!searchTerms.every(term => entry.searchText.includes(term))) continue;
