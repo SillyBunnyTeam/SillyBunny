@@ -272,25 +272,6 @@ input[type="submit"] {
     z-index: calc(var(--sb-z-modal-content) + 5) !important;
 }
 
-#PersonaManagement .persona-selected-masthead {
-    display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
-    align-items: center;
-    gap: 6px 10px;
-    min-width: 0;
-}
-
-#PersonaManagement .persona-selected-avatar {
-    width: 48px;
-    min-width: 48px;
-    max-width: 48px;
-    height: 48px;
-    min-height: 48px;
-    max-height: 48px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
 .zoomed_avatar > :is(.zoomed_avatar_container, .avatar_zoom_container) {
     position: relative;
     z-index: 0 !important;
@@ -6216,7 +6197,7 @@ body #toast-container > .toast:hover {
 
 /* libadwaita character/group hover: unified token instead of upstream's high-contrast fill. */
 @media (hover: hover) {
-    :is(.sb-shell-root, .sb-character-drawer-root) :is(.character_select:hover, .group_select:hover, .bogus_folder_select:hover, .avatar-container:hover) {
+    :is(.sb-shell-root, .sb-character-drawer-root) :is(.character_select:hover, .group_select:hover, .bogus_folder_select:hover) {
         background-color: var(--sb-flat-hover-bg);
         border-color: transparent;
     }
@@ -6292,22 +6273,6 @@ body.reduced-motion *::after {
         display: none;
     }
 
-    #PersonaManagement .persona-management-actions {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        align-items: stretch;
-    }
-
-    #PersonaManagement .persona-management-browser {
-        display: grid;
-        grid-template-columns: 44px minmax(0, 1fr) 44px;
-        grid-auto-rows: minmax(44px, auto);
-        gap: 6px;
-        align-items: stretch;
-        width: 100%;
-        min-width: 0;
-    }
-
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
         display: flex;
         flex-direction: column;
@@ -6330,97 +6295,10 @@ body.reduced-motion *::after {
         justify-self: stretch;
     }
 
-    #PersonaManagement .persona-management-browser > #create_dummy_persona {
-        grid-column: 1;
-        grid-row: 1;
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_search_bar {
-        grid-column: 2 / -1;
-        grid-row: 1;
-        width: 100%;
-        min-width: 0;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_sort_order {
-        grid-column: 1 / 3;
-        grid-row: 2;
-        width: 100%;
-        min-width: 0;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_grid_toggle {
-        grid-column: 3;
-        grid-row: 2;
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_pagination_container {
-        grid-column: 1 / -1;
-        grid-row: 3;
-        display: flex;
-        align-items: center;
-        width: 100%;
-        min-width: 0;
-    }
-
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
         flex: 0 0 auto;
         width: 100%;
-    }
-
-    #persona_controls {
-        grid-template-columns: 1fr;
-    }
-
-    #persona_controls > label select,
-    #persona_controls > label .text_pole,
-    #persona-management-dropdown {
-        min-height: 44px;
-    }
-
-    #user_avatar_block:not(.gridView) .avatar-container {
-        grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    #user_avatar_block:not(.gridView) .avatar-container .character_select_container {
-        grid-column: 2;
-        grid-template-columns: 1fr;
-    }
-
-    #user_avatar_block:not(.gridView) .avatar-container .avatar_container_states {
-        grid-column: 1 / -1;
-    }
-
-    .persona-section-meta {
-        grid-template-columns: 1fr;
-    }
-
-    #PersonaManagement #persona_connections_buttons {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px;
-    }
-
-    #PersonaManagement #persona_connections_buttons > .menu_button {
-        width: 100%;
-        min-width: 0;
-        min-height: 44px;
-        justify-content: center;
-    }
-
-    #persona_description {
-        min-height: 13rem;
     }
 
     #UI-presets-block > h4,
@@ -6591,97 +6469,6 @@ body.reduced-motion *::after {
         height: 32px;
         min-height: 32px;
         max-height: 32px;
-    }
-
-    #PersonaManagement .persona-management-actions {
-        /* SillyBunny: keep the icon-only action row evenly distributed on narrow shells. */
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        align-items: stretch;
-        gap: 6px;
-        width: 100%;
-        min-width: 0;
-    }
-
-    #PersonaManagement .persona-management-browser {
-        display: grid;
-        grid-template-columns: 44px minmax(0, 1fr) 44px;
-        grid-auto-rows: minmax(44px, auto);
-        align-items: stretch;
-        gap: 6px;
-        width: 100%;
-        min-width: 0;
-    }
-
-    #PersonaManagement .persona-management-actions > .menu_button {
-        width: 100%;
-        min-width: 0;
-        height: 44px;
-        min-height: 44px;
-        max-height: 44px;
-        padding: 0;
-        justify-content: center;
-        gap: 0;
-    }
-
-    #PersonaManagement .persona-management-browser > #create_dummy_persona {
-        flex: 0 0 44px;
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        height: 44px;
-        min-height: 44px;
-        max-height: 44px;
-        padding: 0;
-        justify-content: center;
-        gap: 0;
-    }
-
-    #PersonaManagement .persona-management-browser > #create_dummy_persona {
-        grid-column: 1;
-        grid-row: 1;
-    }
-
-    #PersonaManagement .persona-management-actions > .menu_button > span,
-    #PersonaManagement .persona-management-browser > #create_dummy_persona > div {
-        display: none;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_search_bar {
-        grid-column: 2 / -1;
-        grid-row: 1;
-        flex: 1 1 auto;
-        width: 100%;
-        min-width: 0;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_sort_order {
-        grid-column: 1 / 3;
-        grid-row: 2;
-        flex: 1 1 auto;
-        width: 100%;
-        min-width: 0;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_grid_toggle {
-        grid-column: 3;
-        grid-row: 2;
-        flex: 0 0 44px;
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        min-height: 44px;
-    }
-
-    #PersonaManagement .persona-management-browser > #persona_pagination_container {
-        grid-column: 1 / -1;
-        grid-row: 3;
-        display: flex;
-        flex: 1 1 auto;
-        min-width: 0;
-        width: 100%;
     }
 
     #textgenerationwebui_api-presets > div > .flex-container.flexNoGap {

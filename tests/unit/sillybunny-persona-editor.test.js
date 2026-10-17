@@ -102,7 +102,6 @@ const tabsSource = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
-    { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
@@ -304,16 +303,16 @@ describe('Persona editor shell', () => {
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
         mounted = mountPersonaEditor(container);
         await settle();
-        const failedLinks = personaStylesheets.slice(1).map(({ id }) => document.getElementById(id));
+        const failedLinks = personaStylesheets.map(({ id }) => document.getElementById(id));
         const failure = new Event('error');
-        const rejected = expect(mounted.ready).rejects.toBe(failure);
+        const rejected = mounted.ready;
         for (const link of failedLinks) link.dispatchEvent(failure);
-        await rejected;
+        await expect(rejected).rejects.toBe(failure);
         const previous = mounted;
         mounted = mountPersonaEditor(container);
         expect(mounted).not.toBe(previous);
         await settle();
-        for (const [index, { id }] of personaStylesheets.slice(1).entries()) {
+        for (const [index, { id }] of personaStylesheets.entries()) {
             const link = document.getElementById(id);
             expect(link).not.toBe(failedLinks[index]);
             expect(failedLinks[index].isConnected).toBe(false);
@@ -359,8 +358,8 @@ describe('Persona editor shell', () => {
         const retryLink = document.getElementById(failedId);
         expect(retryLink).not.toBeNull();
         expect(retryLink).not.toBe(originalLinks.get(failedId));
-        for (const [id, link] of originalLinks) {
-            if (id !== failedId) expect(document.getElementById(id)).toBe(link);
+        for (const [id, link] of [...originalLinks].filter(([id]) => id !== failedId)) {
+            expect(document.getElementById(id)).toBe(link);
         }
         retryLink.dispatchEvent(new Event('load'));
         mounted = await tab.mountPromise();
@@ -381,9 +380,8 @@ describe('Persona editor shell', () => {
         const failedId = 'deferred-persona-detail-css';
         const failedLink = document.getElementById(failedId);
         const failure = new Event('error');
-        const rejected = expect(opening).rejects.toBe(failure);
         for (const { id } of personaStylesheets) document.getElementById(id).dispatchEvent(id === failedId ? failure : new Event('load'));
-        await rejected;
+        await expect(opening).rejects.toBe(failure);
         expect(tab.mountPromise()).toBeNull();
         expect(container.querySelector('.sb-persona-editor')).toBeNull();
         const retrying = openPersonaEditor({ avatarId: avatarIds[0] });
@@ -590,7 +588,8 @@ describe('Persona editor shell', () => {
         popupChoice = choice;
         await menuAction('Global Settings');
         expect(popupShow).toHaveBeenCalledTimes(1);
-        if (method) expect(detail[method]).toHaveBeenCalled();
+        expect(detail.save).toHaveBeenCalledTimes(Number(method === 'save'));
+        expect(detail.discard).toHaveBeenCalledTimes(Number(method === 'discard'));
         expect(Boolean(container.querySelector('.sb-persona-settings'))).toBe(Boolean(method));
     });
 

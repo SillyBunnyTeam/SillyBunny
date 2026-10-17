@@ -685,7 +685,6 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-world-info-editor.css?v=20261018e', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
-        { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
         { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
@@ -2399,30 +2398,9 @@ function getSearchText(element, sectionLabel = '', includeCategoryDescription = 
     ].join(' '));
 }
 
-function getPersonaSearchAvatarId(element) {
-    if (!(element instanceof HTMLElement)) {
-        return '';
-    }
-
-    const directAvatarId = element.closest('.avatar-container[data-avatar-id], .avatar[data-avatar-id]')?.getAttribute('data-avatar-id');
-    if (directAvatarId) {
-        return directAvatarId;
-    }
-
-    if (!element.matches('.persona_name')) {
-        return '';
-    }
-
-    return document.querySelector('#user_avatar_block .avatar-container.selected[data-avatar-id]')?.getAttribute('data-avatar-id')
-        ?? '';
-}
-
-function getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element = null, avatarId = '' } = {}) {
+function getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { avatarId = '' } = {}) {
     const personaAvatarId = tabState.id === 'persona'
-        ? normalizeText(
-            avatarId
-            || getPersonaSearchAvatarId(element),
-        )
+        ? normalizeText(avatarId)
         : '';
 
     if (personaAvatarId) {
@@ -12396,6 +12374,8 @@ function getSubpageSearchRoots(searchRoot) {
 }
 
 function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
+    // Persona results come from data; hidden transports and transient editor fields are not search targets.
+    if (tabState.id === 'persona') return [];
     const searchRoot = tabState.searchRoot;
     if (!(searchRoot instanceof HTMLElement)) {
         return [];
@@ -12451,7 +12431,7 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
         const sectionLabel = subpageLabel ?? getSearchSectionLabel(element, tabState.label);
         const searchText = getSearchText(element, sectionLabel, includeCategoryTitles);
         const displayText = getSearchDisplayText(element, sectionLabel);
-        const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element });
+        const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText);
         // Identical sampler explanations belong to separate live backend sections. Keep both
         // until availability filtering, or the hidden first backend masks the active one's help.
         const indexDedupeKey = [dedupeKey, element.closest('[data-sb-sampling-apis]')?.id].filter(Boolean).join('::');
@@ -12557,8 +12537,7 @@ function getSearchSectionLabel(element, fallback) {
         if (text && text !== fallback) return text;
     }
 
-    const preferred = element.closest('.persona_management_global_settings')
-        ?? element.closest('.bg-header-row-1')
+    const preferred = element.closest('.bg-header-row-1')
         ?? element.closest('.bg-header-row-2')
         ?? element.closest('label, h3, h4, h5, strong');
 
@@ -12629,6 +12608,19 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
                 }
             }
         }
+    }
+
+    // Character pages are outside sbState.shells; persona results still come from their canonical data.
+    for (const entry of getPersonaSearchEntries(getCharacterPanelTabConfig('persona'))) {
+        if (!searchTerms.every(term => entry.searchText.includes(term))) continue;
+        matches.set(`characters::${entry.dedupeKey}`, {
+            ...entry,
+            shellKey: 'characters',
+            shellLabel: 'Characters',
+            headingMatch: false,
+            score: Number(entry.searchText === normalizedQuery) * 100
+                + Number(entry.searchText.startsWith(normalizedQuery)) * 10 - entry.displayText.length / 1000,
+        });
     }
 
     return Array.from(matches.values())
@@ -14848,11 +14840,7 @@ function quoteSlashCommandArgument(value) {
 
 function getCurrentPersonaSelection(context = getSillyTavernContext()) {
     const personas = context?.powerUserSettings?.personas ?? {};
-    const selectedAvatarId = document.querySelector('#user_avatar_block .avatar-container.selected[data-avatar-id]')?.getAttribute('data-avatar-id')
-        ?? '';
-    const currentAvatarId = String(context?.userAvatar ?? '').trim()
-        || String(selectedAvatarId).trim()
-        || '';
+    const currentAvatarId = String(context?.userAvatar ?? '').trim();
     const currentName = personas[currentAvatarId] || context?.name1 || 'You';
 
     return {
@@ -15224,19 +15212,13 @@ async function selectPersonaOption(option, picker, avatarId, context) {
             await execSlash(`/persona-set ${quoteSlashCommandArgument(avatarId)}`);
             switched = true;
         } catch (error) {
-            console.warn('[SillyBunny] Persona switch via slash command failed, falling back to DOM selection.', error);
+            console.warn('[SillyBunny] Persona switch via slash command failed, falling back to the persona API.', error);
         }
     }
 
     if (!switched) {
-        // Fallback: try clicking the DOM avatar
-        const avatarBlock = document.getElementById('user_avatar_block');
-        const domAvatar = avatarBlock?.querySelector(`.avatar-container[title="${CSS.escape(avatarId)}"]`);
-        if (domAvatar instanceof HTMLElement) {
-            domAvatar.click();
-        } else {
-            openCharacterPanelTab('persona');
-        }
+        const { usePersona } = await import('./personas.js');
+        await usePersona(avatarId);
     }
 
     updatePersonaBubble();

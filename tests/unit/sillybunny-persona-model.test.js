@@ -887,12 +887,10 @@ describe('inert persona editor adapter hooks', () => {
     });
 
     test('a mounted adapter suppresses legacy layout and redirects state refreshes before navigation or DOM work', () => {
-        const { api } = createApi({}, ['updatePersonaUIStates', 'renderPersonaAppendices', 'updateSelectedPersonaMasthead', 'switchPersonaGridView']);
+        const { api } = createApi({}, ['updatePersonaUIStates', 'switchPersonaGridView']);
         const adapter = { isOpen: () => true, refresh: jest.fn() };
         api.setPersonaEditorAdapter(adapter);
         api.updatePersonaUIStates({ navigateToCurrent: true });
-        api.renderPersonaAppendices();
-        api.updateSelectedPersonaMasthead();
         api.switchPersonaGridView();
         expect(adapter.refresh).toHaveBeenCalledWith('states');
         expect(api.$).not.toHaveBeenCalled();
@@ -931,8 +929,6 @@ describe('inert persona editor adapter hooks', () => {
             eventSource: { on: (event, callback) => callbacks.set(event, callback) },
             user_avatar: 'active.png',
             syncPersonaDescriptionFromDescriptor: jest.fn(),
-            renderPersonaAppendices: jest.fn(),
-            updateSelectedPersonaMasthead: jest.fn(),
         };
         const listener = personaSource.match(/[ ]{4}eventSource\.on\(event_types\.PERSONA_UPDATED, \(avatarId\) => \{[\s\S]*?^[ ]{4}\}\);/m)[0];
         runInNewContext(listener, context);

@@ -5389,11 +5389,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     display: none !important;
 }
 
-#right-nav-panel #PersonaManagement > .flex-container.wide100p.alignitemscenter.spaceBetween.flexNoGap:first-child > .flex-container.alignItemsBaseline.wide100p > .flex1 {
-    display: none !important;
-}
-
-
 #right-nav-panel[data-menu-type="create"] #avatar_controls .char-button-group-icons #create_button_label {
     flex: 0 0 auto;
     width: auto !important;
