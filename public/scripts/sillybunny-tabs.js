@@ -675,13 +675,13 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261016b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261018a', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261016b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261018d', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [

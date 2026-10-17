@@ -47,11 +47,6 @@
     width: var(--sb-list-editor-sidebar-width);
 }
 
-/* libadwaita drops sidebar colours once a split view collapses into stacked pages. */
-.sb-list-editor[data-collapsed='true'] .sb-list-editor__sidebar {
-    background: var(--sb-layer-window);
-}
-
 .sb-list-editor[data-collapsed='true'][data-open='true'] .sb-list-editor__sidebar {
     transform: translateX(-26%);
     opacity: 0.42;
