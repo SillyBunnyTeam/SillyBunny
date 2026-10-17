@@ -34,6 +34,8 @@ function normalizeKeys(keys) {
  * @param {string} [options.keySourceSelector=''] Row descendants (e.g. drag grips) whose Space/Enter toggle the row.
  * @param {(row: HTMLElement) => string} [options.rowLabel] Accessible name used for each row's checkbox.
  * @param {(row: HTMLElement) => string} [options.getKey]
+ * @param {boolean} [options.range=false] Enables anchored Shift-click and Shift-Space/Enter ranges.
+ * @param {() => Iterable<string>} [options.getAllKeys] Keys across every filtered page for select-all.
  * @param {HTMLElement} options.header
  * @param {HTMLElement} options.actionBar
  * @param {{ id: string, label: string, icon?: string|Element, danger?: boolean, onActivate: (keys: string[]) => void }[]} [options.actions=[]]
@@ -53,6 +55,8 @@ export function createSelectionMode({
     rowSelector = '[data-sb-list-key]',
     keySourceSelector = '',
     getKey = row => row.dataset.sbListKey,
+    range = false,
+    getAllKeys,
     rowLabel = row => row.getAttribute('aria-label') || row.querySelector('.ds-row-label, .sb-prompt-row-name')?.textContent?.trim() || '',
     header,
     actionBar,
@@ -69,6 +73,7 @@ export function createSelectionMode({
 
     let active = false;
     let selected = new Set();
+    let anchorKey = null;
     let focusReturn = null;
     let longPressTimer = 0;
     let longPressState = null;
@@ -89,6 +94,8 @@ export function createSelectionMode({
     };
     const keyFromRow = row => normalizeKey(getKey(row));
     const rows = () => [...list.querySelectorAll(rowSelector)].filter(row => row instanceof HTMLElement);
+    const allKeys = () => getAllKeys ? normalizeKeys(getAllKeys()) : rows().map(keyFromRow);
+    const areAllSelected = keys => keys.length > 0 && keys.every(key => key !== null && selected.has(key));
     const selectedSnapshot = () => [...selected];
 
     function emitChange() {
@@ -147,13 +154,9 @@ export function createSelectionMode({
         selectAllButton.className = 'menu_button sb-selection-select-all';
         selectAllButton.textContent = selectAllLabel;
         selectAllButton.addEventListener('click', () => {
-            const allRows = rows();
-            const allSelected = allRows.length > 0 && allRows.every(row => {
-                const key = keyFromRow(row);
-                return key !== null && selected.has(key);
-            });
-            if (allSelected) {
-                const pageKeys = new Set(allRows.map(keyFromRow));
+            const keys = allKeys();
+            if (areAllSelected(keys)) {
+                const pageKeys = new Set(keys);
                 updateSelection(new Set([...selected].filter(key => !pageKeys.has(key))));
             } else {
                 selectAll();
@@ -195,12 +198,7 @@ export function createSelectionMode({
             heading.textContent = title(selected.size);
         }
         const selectAllButton = header.querySelector('.sb-selection-select-all');
-        const allRows = rows();
-        const allSelected = allRows.length > 0 && allRows.every(row => {
-            const key = keyFromRow(row);
-            return key !== null && selected.has(key);
-        });
-        selectAllButton?.setAttribute('aria-pressed', String(allSelected));
+        selectAllButton?.setAttribute('aria-pressed', String(areAllSelected(allKeys())));
         for (const button of actionBar.querySelectorAll('.sb-selection-action')) {
             button.disabled = selected.size === 0;
         }
@@ -227,6 +225,7 @@ export function createSelectionMode({
         root.dataset.selectionMode = 'true';
         selected = new Set();
         const normalized = normalizeKey(initialKey);
+        anchorKey = normalized;
         if (normalized !== null) {
             selected.add(normalized);
         }
@@ -255,6 +254,7 @@ export function createSelectionMode({
         header.replaceChildren();
         actionBar.replaceChildren();
         selected = new Set();
+        anchorKey = null;
         if (hadSelection) {
             emitChange();
         }
@@ -292,6 +292,7 @@ export function createSelectionMode({
     }
 
     function clear() {
+        anchorKey = null;
         if (!active || selected.size === 0) {
             return;
         }
@@ -302,7 +303,27 @@ export function createSelectionMode({
         if (!active) {
             return;
         }
-        updateSelection(new Set([...selected, ...rows().map(keyFromRow).filter(key => key !== null)]));
+        updateSelection(new Set([...selected, ...allKeys().filter(key => key !== null)]));
+    }
+
+    function toggleRow(row, extendRange) {
+        const key = keyFromRow(row);
+        const orderedKeys = range && extendRange ? rows().map(keyFromRow) : [];
+        const anchorIndex = anchorKey === null ? -1 : orderedKeys.indexOf(anchorKey);
+        const targetIndex = key === null ? -1 : orderedKeys.indexOf(key);
+        if (anchorIndex < 0 || targetIndex < 0) {
+            toggle(key);
+            if (range && key !== null) anchorKey = key;
+            return;
+        }
+        const next = new Set(selected);
+        const selectRange = selected.has(anchorKey);
+        for (const rangeKey of orderedKeys.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)) {
+            if (rangeKey === null) continue;
+            if (selectRange) next.add(rangeKey);
+            else next.delete(rangeKey);
+        }
+        updateSelection(next);
     }
 
     function decorate({ prune = false } = {}) {
@@ -386,7 +407,7 @@ export function createSelectionMode({
             }
             return;
         }
-        toggle(keyFromRow(row));
+        toggleRow(row, event.shiftKey);
     }
 
     function handleKeydown(event) {
@@ -398,12 +419,12 @@ export function createSelectionMode({
             || event.target.matches?.('.sb-selection-check')
             || (keySourceSelector && event.target.closest?.(keySourceSelector)));
         if (!fromRow || ![' ', 'Enter'].includes(event.key)
-            || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+            || event.altKey || event.ctrlKey || event.metaKey || (event.shiftKey && !range)) {
             return;
         }
         event.preventDefault();
         event.stopPropagation();
-        toggle(keyFromRow(row));
+        toggleRow(row, event.shiftKey);
     }
 
     function handleContextMenu(event) {
@@ -455,6 +476,7 @@ export function createSelectionMode({
         get count() { return selected.size; },
         decorate,
         destroy() {
+            anchorKey = null;
             stopLongPress();
             list.removeEventListener('pointerdown', handlePointerDown);
             list.removeEventListener('click', handleClick, true);

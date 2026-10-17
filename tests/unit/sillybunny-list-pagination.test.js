@@ -259,4 +259,58 @@ describe('createListPagination', () => {
         expect(pagination.page).toBe(1);
         expect(onChange).not.toHaveBeenCalled();
     });
+
+    test('keepSizeVisible retains only the size control for nonempty single-page totals', () => {
+        const pagination = makePagination({ keepSizeVisible: true });
+        for (const total of [1, 2]) {
+            pagination.setTotal(total);
+
+            expect(pagination.element.hidden).toBe(false);
+            expect(pagination.element.querySelector('.sb-list-pagination__prev').hidden).toBe(true);
+            expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(true);
+            expect(pagination.element.querySelector('.sb-list-pagination__status').hidden).toBe(true);
+            expect(pagination.element.querySelector('select').hidden).toBe(false);
+        }
+    });
+
+    test('keepSizeVisible still hides an empty nav and restores navigation for multiple pages', () => {
+        const pagination = makePagination({ keepSizeVisible: true });
+        expect(pagination.element.hidden).toBe(true);
+        pagination.setTotal(2);
+        expect(pagination.element.hidden).toBe(false);
+        pagination.setTotal(5);
+
+        expect(pagination.element.querySelector('.sb-list-pagination__prev').hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__status').hidden).toBe(false);
+        pagination.setTotal(0);
+        expect(pagination.element.hidden).toBe(true);
+    });
+
+    test('keepSizeVisible responds to size changes without hiding the size control', async () => {
+        const pagination = makePagination({ keepSizeVisible: true });
+        pagination.setTotal(3);
+        const select = pagination.element.querySelector('select');
+        select.value = '4';
+        select.dispatchEvent(new Event('change'));
+        await Promise.resolve();
+
+        expect(pagination.element.hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__status').hidden).toBe(true);
+        select.value = '2';
+        select.dispatchEvent(new Event('change'));
+        await Promise.resolve();
+        expect(pagination.element.querySelector('.sb-list-pagination__status').hidden).toBe(false);
+        expect(select.hidden).toBe(false);
+    });
+
+    test('keepSizeVisible false preserves the original hidden nav and unhidden child controls', () => {
+        const pagination = makePagination({ keepSizeVisible: false });
+        pagination.setTotal(1);
+
+        expect(pagination.element.hidden).toBe(true);
+        expect(pagination.element.querySelector('.sb-list-pagination__prev').hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__status').hidden).toBe(false);
+    });
 });

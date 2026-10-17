@@ -573,3 +573,219 @@ describe('selection mode review regressions', () => {
         expect(selection.selectedKeys).toEqual(['a', 'b']);
     });
 });
+
+describe('selection mode ranges', () => {
+    function click(row, shiftKey = false) {
+        row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey }));
+    }
+
+    test.each([[0, 2], [2, 0]])('Shift-click selects from anchor %s to target %s inclusively', (anchor, target) => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter();
+        click(rows[anchor]);
+        click(rows[target], true);
+
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'b', 'c']));
+        expect(rows.every(row => row.firstElementChild.checked)).toBe(true);
+    });
+
+    test('enter(initialKey) sets an anchor and Shift-click keeps that anchor', () => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter('a');
+        click(rows[2], true);
+        selection.select(['a']);
+        click(rows[1], true);
+
+        expect(selection.selectedKeys).toEqual(['a', 'b']);
+    });
+
+    test('clear removes the anchor so Shift-click acts as an unanchored toggle', () => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter('a');
+        selection.clear();
+        click(rows[2], true);
+
+        expect(selection.selectedKeys).toEqual(['c']);
+    });
+
+    test('clear resets the anchor even when the selection is already empty', () => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter('a');
+        click(rows[0]);
+        expect(selection.selectedKeys).toEqual([]);
+        selection.clear();
+        click(rows[2], true);
+
+        expect(selection.selectedKeys).toEqual(['c']);
+    });
+
+    test('range selection survives full row replacement with the same keys', () => {
+        const { selection, list } = makeSelection({ range: true });
+        selection.enter('a');
+        const replacements = ['a', 'b', 'c'].map(createRow);
+        list.replaceChildren(...replacements);
+        selection.decorate();
+        click(replacements[2], true);
+
+        expect(selection.selectedKeys).toEqual(['a', 'b', 'c']);
+        expect(replacements.every(row => row.querySelector('.sb-selection-check').checked)).toBe(true);
+    });
+
+    test('Shift-click on the checkbox applies a range without undoing its checked state', () => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter('a');
+        const check = rows[2].querySelector('.sb-selection-check');
+        click(check, true);
+
+        expect(selection.selectedKeys).toEqual(['a', 'b', 'c']);
+        expect(check.checked).toBe(true);
+        click(rows[0]);
+        click(check, true);
+        expect(selection.selectedKeys).toEqual([]);
+        expect(check.checked).toBe(false);
+    });
+
+    test.each(['row', 'checkbox'])('long press suppresses the next %s click without changing the range anchor', target => {
+        jest.useFakeTimers();
+        const { selection, rows, list } = makeSelection({ range: true });
+        const onOpen = jest.fn();
+        list.addEventListener('click', onOpen);
+        pointer(rows[1], 'pointerdown');
+        jest.advanceTimersByTime(500);
+        const check = rows[2].querySelector('.sb-selection-check');
+        click(target === 'checkbox' ? check : rows[2], true);
+
+        expect(selection.selectedKeys).toEqual(['b']);
+        expect(check.checked).toBe(false);
+        expect(onOpen).not.toHaveBeenCalled();
+        click(rows[0], true);
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'b']));
+    });
+
+    test('ranges follow current DOM order rather than key order', () => {
+        const { selection, rows, list } = makeSelection({ range: true });
+        list.replaceChildren(rows[0], rows[2], rows[1]);
+        selection.enter('a');
+        click(rows[2], true);
+
+        expect(selection.selectedKeys).toEqual(['a', 'c']);
+    });
+
+    test.each([[0, 2], [2, 0]])('a deselected anchor %s deselects through target %s', (anchor, target) => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter();
+        selection.selectAll();
+        click(rows[anchor]);
+        click(rows[target], true);
+
+        expect(selection.selectedKeys).toEqual([]);
+        expect(rows.every(row => !row.firstElementChild.checked)).toBe(true);
+    });
+
+    test.each([' ', 'Enter'])('Shift+%j applies the keyboard anchor state in both directions', key => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter();
+        rows[2].focus();
+        keydown(rows[2], key);
+        rows[0].focus();
+        const event = keydown(rows[0], key, { shiftKey: true });
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'b', 'c']));
+        keydown(rows[0], key);
+        keydown(rows[2], key, { shiftKey: true });
+        expect(selection.selectedKeys).toEqual([]);
+    });
+
+    test('Shift-click without an anchor acts as a plain toggle and becomes the anchor', () => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter();
+        click(rows[2], true);
+        expect(selection.selectedKeys).toEqual(['c']);
+        click(rows[0], true);
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'b', 'c']));
+    });
+
+    test.each([' ', 'Enter'])('Shift+%j without an anchor acts as a plain toggle', key => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter();
+        keydown(rows[1], key, { shiftKey: true });
+
+        expect(selection.selectedKeys).toEqual(['b']);
+    });
+
+    test('a missing anchor falls back to a plain toggle and exiting clears the anchor', () => {
+        const { selection, rows } = makeSelection({ range: true });
+        selection.enter('a');
+        rows[0].remove();
+        click(rows[2], true);
+        expect(selection.selectedKeys).toEqual(['a', 'c']);
+        selection.exit();
+        selection.enter();
+        click(rows[1], true);
+        expect(selection.selectedKeys).toEqual(['b']);
+    });
+
+    test.each([' ', 'Enter'])('range remains disabled by default for Shift+%j and Shift-click', key => {
+        const { selection, rows } = makeSelection();
+        selection.enter('a');
+        const event = keydown(rows[2], key, { shiftKey: true });
+        expect(event.defaultPrevented).toBe(false);
+        expect(selection.selectedKeys).toEqual(['a']);
+        click(rows[2], true);
+        expect(selection.selectedKeys).toEqual(['a', 'c']);
+    });
+});
+
+describe('selection mode all filtered keys', () => {
+    test('selectAll includes off-page keys and the header toggle deselects all filtered keys', () => {
+        const getAllKeys = jest.fn(() => new Set(['a', 'b', 'c', 'off-page']));
+        const { selection, header } = makeSelection({ getAllKeys });
+        selection.enter();
+        selection.selectAll();
+        const button = header.querySelector('.sb-selection-select-all');
+
+        expect(selection.selectedKeys).toEqual(['a', 'b', 'c', 'off-page']);
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+        button.click();
+        expect(selection.selectedKeys).toEqual([]);
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        button.click();
+        expect(selection.selectedKeys).toEqual(['a', 'b', 'c', 'off-page']);
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    test('aria-pressed uses all filtered keys, not just rendered rows', () => {
+        let keys = ['a', 'b', 'c', 'off-page'];
+        const { selection, header } = makeSelection({ getAllKeys: () => keys });
+        selection.enter();
+        selection.select(['a', 'b', 'c']);
+        const button = header.querySelector('.sb-selection-select-all');
+
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        selection.selectAll();
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+        keys = [];
+        selection.decorate();
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test('toggling all filtered keys preserves selections outside the filter', () => {
+        const { selection, header } = makeSelection({ getAllKeys: () => ['a', 'off-page'] });
+        selection.enter('outside-filter');
+        selection.selectAll();
+        header.querySelector('.sb-selection-select-all').click();
+
+        expect(selection.selectedKeys).toEqual(['outside-filter']);
+    });
+
+    test('Ctrl+A uses getAllKeys without dropping existing selections', () => {
+        const { selection, header } = makeSelection({ getAllKeys: () => ['a', 'off-page'] });
+        selection.enter('outside-filter');
+        const event = keydown(header.querySelector('.sb-selection-cancel'), 'a', { ctrlKey: true });
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(selection.selectedKeys).toEqual(['outside-filter', 'a', 'off-page']);
+        expect(header.querySelector('.sb-selection-select-all').getAttribute('aria-pressed')).toBe('true');
+    });
+});

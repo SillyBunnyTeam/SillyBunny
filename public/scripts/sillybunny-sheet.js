@@ -7,7 +7,7 @@ import { MOTION_FAST, SPRING_SHEET, animateIn, animateOut, stopMotion } from './
 
 const FOCUSABLE_SELECTOR = 'button, select, input, textarea, [href], [tabindex]:not([tabindex="-1"])';
 
-/** @type {{ close: (options?: { animate?: boolean, restoreFocus?: boolean }) => void } | null} */
+/** @type {ReturnType<typeof createSheetController>|null} */
 let activeSheet = null;
 
 // Upstream closes open drawers on html mousedown/touchstart (public/script.js); keep body-level
@@ -34,9 +34,15 @@ function isFocusOnBody() {
  * @param {() => HTMLElement|null} options.getInitialFocus - Focus target after opening.
  * @param {() => HTMLElement|null} [options.getReturnFocus] - Focus target after closing, when focus was inside or fell back to body.
  * @param {() => boolean} [options.canAnimateClose] - Return false when the sheet's styles no longer apply.
+ * @param {(reason: 'escape'|'scrim'|'programmatic') => boolean|Promise<boolean>} [options.canClose]
  * @param {() => void} [options.onClose]
+ * @returns {{ isOpen: () => boolean, open: () => void,
+ * close: (options?: { animate?: boolean, restoreFocus?: boolean, force?: boolean,
+ * reason?: 'escape'|'scrim'|'programmatic' }) => boolean|Promise<boolean> }}
  */
-export function createSheetController({ sheet, backdrop, getInitialFocus, getReturnFocus = () => null, canAnimateClose = () => true, onClose = () => {} }) {
+export function createSheetController({ sheet, backdrop, getInitialFocus, getReturnFocus = () => null, canAnimateClose = () => true, canClose, onClose = () => {} }) {
+    let closeRevision = 0;
+    let closePending = false;
     const controller = {
         isOpen: () => !sheet.hidden,
         open,
@@ -48,8 +54,10 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
             return;
         }
         if (activeSheet && activeSheet !== controller) {
-            activeSheet.close({ animate: false, restoreFocus: false });
+            activeSheet.close({ animate: false, restoreFocus: false, force: true });
         }
+        closeRevision++;
+        closePending = false;
         activeSheet = controller;
         stopMotion(sheet);
         stopMotion(backdrop);
@@ -61,10 +69,32 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
         requestAnimationFrame(() => getInitialFocus()?.focus({ preventScroll: true }));
     }
 
-    function close({ animate = true, restoreFocus = true } = {}) {
-        if (!controller.isOpen()) {
-            return;
+    function close({ animate = true, restoreFocus = true, force = false, reason = 'programmatic' } = {}) {
+        if (!controller.isOpen()) return false;
+        if (force) {
+            closeRevision++;
+            closePending = false;
+            return finishClose({ animate, restoreFocus });
         }
+        if (closePending) return false;
+        if (!canClose) return finishClose({ animate, restoreFocus });
+
+        const approved = canClose(reason);
+        if (typeof approved?.then !== 'function') {
+            return approved === false ? false : finishClose({ animate, restoreFocus });
+        }
+
+        const token = ++closeRevision;
+        closePending = true;
+        return Promise.resolve(approved).then(result => {
+            if (token !== closeRevision || !controller.isOpen() || result === false) return false;
+            return finishClose({ animate, restoreFocus });
+        }).finally(() => {
+            if (token === closeRevision) closePending = false;
+        });
+    }
+
+    function finishClose({ animate, restoreFocus }) {
         if (activeSheet === controller) {
             activeSheet = null;
         }
@@ -84,13 +114,22 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
             returnTarget.focus({ preventScroll: true });
         }
         onClose();
+        return true;
+    }
+
+    async function closeFromEvent(reason) {
+        try {
+            await close({ reason });
+        } catch (error) {
+            console.error('Sheet close failed', error);
+        }
     }
 
     function handleKeydown(event) {
         if (event.key === 'Escape' && !event.isComposing) {
             event.preventDefault();
             event.stopPropagation();
-            close();
+            void closeFromEvent('escape');
             return;
         }
         if (event.key !== 'Tab') {
@@ -115,7 +154,7 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
     }
 
     sheet.addEventListener('keydown', handleKeydown);
-    backdrop.addEventListener('click', () => close());
+    backdrop.addEventListener('click', () => { void closeFromEvent('scrim'); });
     blockUpstreamDrawerClose(backdrop);
     blockUpstreamDrawerClose(sheet);
 

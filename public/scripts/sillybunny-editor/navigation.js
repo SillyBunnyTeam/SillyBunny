@@ -94,6 +94,15 @@ export async function confirmEditorLeave(registration) {
 }
 
 /**
+ * Runs the leave guard for whichever registered editor is open and on screen.
+ * @returns {Promise<boolean>} True when there is no active editor or leaving is approved.
+ */
+export async function confirmActiveEditorLeave() {
+    const editor = activeEditor();
+    return editor ? confirmEditorLeave(editor) : true;
+}
+
+/**
  * Commit whatever field currently holds focus by blurring it, so a control that
  * reports its edit on `change` cannot land that edit *after* the caller has
  * already acted. `change` fires on blur, so a Cancel clicked while focus is still
