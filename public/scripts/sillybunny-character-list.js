@@ -7,12 +7,14 @@ import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { reconcileRows, bindListKeyboard, rowEntry } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
+import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { animateListChange } from './sillybunny-motion.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261018a', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();
@@ -442,11 +444,15 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     const filterRow = node('div', 'sb-character-list__filters');
     filterRow.append(filters);
     const box = node('div', 'ds-entity-list sb-character-list__box');
+    const overlay = dependencies.script.characterGroupOverlay;
+    overlay.setLegacyRowSelectionEnabled(false);
     rowsContainer.replaceChildren();
     rowsContainer.classList.add('ds-entity-list__rows', 'sb-character-list__rows');
     rowsContainer.setAttribute('role', 'list');
     const footer = node('div', 'ds-entity-list__footer');
-    box.append(rowsContainer, footer);
+    const selectionHeader = node('header', 'sb-character-list__selection-header');
+    const selectionBar = node('div', 'sb-character-list__selection-bar');
+    box.append(rowsContainer, footer, selectionBar);
     const transport = document.getElementById('rm_print_characters_pagination');
 
     const state = {
@@ -454,6 +460,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         rows: new Map(),
         lastQuery: '',
         pageSync: 0,
+        selectableKeys: [],
     };
     let header;
     let search;
@@ -469,11 +476,90 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let handlingSearchInput = false;
     let unbindKeyboard;
     let destroyed = false;
+    let selection;
+    let selectionActive = false;
+    let bulkBusy = false;
+    let switchingView = false;
 
     const menu = (trigger, title, sections) => openActionMenu({ trigger, title, sections, onClose: () => trigger.setAttribute('aria-expanded', 'false') });
     function refresh() {
         if (suppressedStateRenders || destroyed) return;
         return dataModules.script.printCharacters(false);
+    }
+
+    function decorateSelection() {
+        const active = Boolean(selection?.isActive);
+        if (active !== selectionActive) {
+            selectionActive = active;
+            run(() => overlay.notifySharedSelectionState(active ? 'select' : 'browse'));
+        }
+        selection?.decorate();
+        for (const row of rowsContainer.querySelectorAll('.ds-entity-row')) {
+            row.classList.toggle('is-selected', !active && Boolean(rowEntry(row)?.active));
+            for (const control of row.querySelectorAll('.ds-entity-row__suffix')) control.inert = active;
+            if (row.matches('.bogus_folder_select')) {
+                row.inert = active;
+                if (active) row.setAttribute('aria-disabled', 'true');
+                else row.removeAttribute('aria-disabled');
+            }
+        }
+    }
+
+    function selectionIdsByKey() {
+        const entries = state.view === 'groups'
+            ? dataModules.groups.groups.map(group => [entityKey('group', group.id), String(group.id)])
+            : dataModules.script.characters.flatMap((character, index) => character?.avatar ? [[entityKey('character', character.avatar), index]] : []);
+        return new Map(entries);
+    }
+
+    async function bulkAction(action) {
+        if (bulkBusy) return;
+        const idsByKey = selectionIdsByKey();
+        const keys = selection.selectedKeys.filter(key => idsByKey.has(key));
+        selection.select(keys);
+        if (!keys.length) return;
+        const currentSelection = selection;
+        bulkBusy = true;
+        selectionBar.inert = true;
+        selectionBar.setAttribute('aria-busy', 'true');
+        try {
+            await overlay.runBulkAction(action, keys.map(key => idsByKey.get(key)));
+            if (!destroyed && selection === currentSelection) selection.exit();
+        } finally {
+            bulkBusy = false;
+            selectionBar.inert = false;
+            selectionBar.removeAttribute('aria-busy');
+        }
+    }
+
+    function createSelection() {
+        const action = (id, label, glyph, danger = false) => ({
+            id, label, icon: `fa-solid fa-${glyph}`, danger, onActivate: () => run(() => bulkAction(id)),
+        });
+        const actions = state.view === 'groups'
+            ? [action('tag', t`Tag`, 'tags'), action('delete', t`Delete`, 'trash', true)]
+            : [
+                action('favorite', t`Favorite`, 'star'),
+                action('tag', t`Tag`, 'tags'),
+                action('duplicate', t`Duplicate`, 'copy'),
+                action('persona', t`Convert to Persona`, 'user'),
+                action('delete', t`Delete`, 'trash', true),
+            ];
+        return createSelectionMode({
+            root: section, list: rowsContainer, header: selectionHeader, actionBar: selectionBar,
+            rowSelector: '.character_select, .group_select',
+            getKey: row => row.dataset.sbListKey,
+            rowLabel: row => row.querySelector('.ch_name')?.textContent ?? '',
+            range: true,
+            getAllKeys: () => state.selectableKeys,
+            canEnter: () => !bulkBusy && state.selectableKeys.length > 0,
+            actions,
+            onChange: decorateSelection,
+            onExit: () => {
+                decorateSelection();
+                if (!switchingView) run(refresh);
+            },
+        });
     }
 
     async function writePagination(view, page, pageSize) {
@@ -496,6 +582,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             run(async () => {
                 await writePagination(view, page, pageSize);
                 await refresh();
+                // Disabling Next/Previous on the last/first page can leave the browser without a keyboard target.
+                const focused = document.activeElement;
+                if (selection.isActive && (!section.contains(focused) || focused.matches?.(':disabled'))) {
+                    selectionHeader.querySelector('.sb-selection-cancel')?.focus({ preventScroll: true });
+                }
             });
         },
         keepSizeVisible: true,
@@ -530,7 +621,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const sections = [];
         if (overflowed.has('sort')) sections.push({ items: [makeMenuItem(t`Sort`, 'arrow-down-wide-short', () => openSortMenu(trigger))] });
         if (overflowed.has('search')) sections.push({ items: [makeMenuItem(t`Search`, 'magnifying-glass', () => search.toggle())] });
-        sections.push({ items: [makeMenuItem(t`Select`, 'check-double', () => clickTransport('#bulkEditButton'))] });
+        sections.push({ items: [makeMenuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !state.selectableKeys.length })] });
         sections.push({ items: [
             makeMenuItem(t`Manage tags`, 'tags', () => filter('.manageTags')?.click()),
             makeMenuItem(t`Show Tag List`, 'tag', () => filter('.showTagList')?.click(), { checked: Boolean(power_user.show_tag_filters) }),
@@ -631,7 +722,21 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const revision = ++renderRevision;
         const view = model.view === 'groups' ? 'groups' : 'characters';
         const viewChanged = state.view !== model.view;
+        if (viewChanged) {
+            switchingView = true;
+            selection.exit();
+            selection.destroy();
+            switchingView = false;
+        }
         state.view = view;
+        const idsByKey = selectionIdsByKey();
+        state.selectableKeys = model.entities.filter(entity => entity.type !== 'tag')
+            .map(entity => view === 'groups'
+                ? entityKey('group', entity.item?.id ?? entity.id)
+                : entityKey('character', (entity.item ?? entity).avatar))
+            .filter(key => idsByKey.has(key));
+        if (viewChanged) selection = createSelection();
+        if (selection.isActive) selection.select(selection.selectedKeys.filter(key => idsByKey.has(key)));
         search.setQuery(searchInput.value, { notify: false });
         if (viewChanged || searchInput.value) {
             searchField.hidden = !searchInput.value;
@@ -679,6 +784,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         });
         if (Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
         else updateRows();
+        decorateSelection();
         box.scrollTop = model.fullRefresh ? 0 : scrollTop;
         state.lastQuery = search?.query ?? '';
         search?.report(modelCount(model), model.sourceCount);
@@ -756,26 +862,13 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     function mount() {
         const headerElement = createHeader();
-        section.append(headerElement, searchField, filterRow, box, status);
+        section.append(headerElement, selectionHeader, searchField, filterRow, box, status);
         if (transport) {
             transport.classList.add('sb-character-list__transports');
             section.append(transport);
         }
-        const bulkButtons = [...(transport?.querySelectorAll('#bulkEditButton, #bulkSelectAllButton, #bulkDeleteButton') ?? [])];
-        const bulkButtonAttributes = bulkButtons.map(button => [...button.attributes].map(attribute => [attribute.name, attribute.value]));
-        const onBulkKey = event => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            event.stopPropagation();
-            event.currentTarget.click();
-        };
-        for (const button of bulkButtons) {
-            button.setAttribute('role', 'button');
-            button.tabIndex = 0;
-            button.setAttribute('aria-label', button.title);
-            button.addEventListener('keydown', onBulkKey);
-        }
         container.append(section);
+        selection = createSelection();
         const searchStatus = node('div', 'sb-character-list__search-status');
         searchStatus.setAttribute('aria-live', 'polite');
         section.append(searchStatus);
@@ -799,8 +892,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         pagination = createPagination(state.view);
         footer.append(pagination.element);
         unbindKeyboard = bindListKeyboard(rowsContainer, {
-            rowSelector: '.ds-entity-row--activatable',
+            rowSelector: '.ds-entity-row--activatable:not([aria-disabled="true"])',
             onOpen: (row, event) => {
+                if (selection.isActive) return true;
                 if (event instanceof KeyboardEvent) {
                     if (event.key === 'Enter') return false;
                     if (event.key === ' ') {
@@ -837,21 +931,19 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 resizeObserver?.disconnect();
                 extensionObserver?.disconnect();
                 search.destroy();
+                selection.exit();
+                selection.destroy();
                 searchInput.removeEventListener('input', beginInput);
                 searchInput.removeEventListener('input', endInput);
                 pagination.destroy();
                 header.destroy();
-                bulkButtons.forEach((button, index) => {
-                    button.removeEventListener('keydown', onBulkKey);
-                    for (const attribute of [...button.attributes]) button.removeAttribute(attribute.name);
-                    for (const [name, value] of bulkButtonAttributes[index]) button.setAttribute(name, value);
-                });
                 mountedLists.delete(container);
                 dataModules.script.setCharacterListRenderer(null);
                 dataModules.state.registerCharacterListStateRenderer?.(null);
                 if (globalThis.SillyBunnyCharacterListController?.section === section) delete globalThis.SillyBunnyCharacterListController;
                 restoreDOM();
                 section.remove();
+                overlay.setLegacyRowSelectionEnabled(true);
             },
         };
     }

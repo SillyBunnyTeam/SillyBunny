@@ -139,7 +139,16 @@ export function createListSearch({
     const onScopeKeydown = event => {
         if (!shortcuts || event.isComposing || event.defaultPrevented) return;
         const mod = event.ctrlKey || event.metaKey;
-        if (mod && !event.altKey && !event.shiftKey && event.key?.toLowerCase() === 'f') {
+        const findShortcut = mod && !event.altKey && !event.shiftKey && event.key?.toLowerCase() === 'f';
+        if (scope?.closest('[data-selection-mode="true"]')) {
+            // Do not let selection-mode Find fall through to the shell's global search.
+            if (findShortcut) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            return;
+        }
+        if (findShortcut) {
             const target = event.target;
             if (target !== input && (target instanceof HTMLTextAreaElement || target?.isContentEditable)) return;
             event.preventDefault();

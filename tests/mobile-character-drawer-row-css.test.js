@@ -46,9 +46,9 @@ describe('mobile character drawer entity row css', () => {
         expect(mobileShellCss).toContain('#rm_print_characters_block:not(.sb-character-list__rows)');
     });
 
-    test('keeps bulk-edit rows from shrinking inside the scroller', () => {
+    test('keeps shared-selection rows from shrinking inside the scroller', () => {
         expect(getRuleBody(listCss, '.sb-character-list .ds-entity-row')).toContain('flex: 0 0 auto;');
-        expect(listCss).toContain('#rm_print_characters_block:is(.bulk_select, .group_overlay_mode_select) .ds-entity-row.character_selected');
+        expect(getRuleBody(listCss, '.sb-character-list .ds-entity-row.is-selection-selected')).toContain('background: var(--sb-flat-selected-bg);');
         expect(mobileStylesCss).toContain('#rm_print_characters_block:not(.sb-character-list__rows).bulk_select');
     });
 });

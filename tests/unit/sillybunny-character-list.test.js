@@ -20,6 +20,15 @@ const deleteCharacterById = jest.fn();
 const duplicateCharacter = jest.fn();
 const deleteGroupById = jest.fn();
 const navigate = jest.fn();
+const runBulkAction = jest.fn();
+const characterGroupOverlay = {
+    legacyRowSelectionEnabled: true,
+    setLegacyRowSelectionEnabled: jest.fn(enabled => { characterGroupOverlay.legacyRowSelectionEnabled = enabled; }),
+    notifySharedSelectionState: jest.fn(async () => {}),
+    runBulkAction,
+};
+const characterLibrary = Array.from({ length: 40 }, (_, id) => ({ name: `Name ${id}`, avatar: `${id}.png` }));
+const groupLibrary = ['g', 'group-id', '0123'].map(id => ({ id, name: id }));
 const setFilterData = jest.fn();
 const setListPage = jest.fn((view, page) => { pages[view] = page; return stateRenderer?.(); });
 const setListPageSize = jest.fn((view, size) => { sizes[view] = size; return stateRenderer?.(); });
@@ -48,9 +57,10 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
     getHiddenBlock: async count => template(`<p>${count} hidden</p>`),
     getEmptyBlock: async () => template('<p>No characters found</p>'),
     toggleCharacterFavoriteById, duplicateCharacter, deleteCharacterById,
+    characterGroupOverlay, characters: characterLibrary,
 }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
-    toggleGroupFavoriteById, deleteGroupById,
+    toggleGroupFavoriteById, deleteGroupById, groups: groupLibrary,
     getGroupAvatarElement: () => template('<img src="/group.png">'),
 }));
 await jest.unstable_mockModule('../../public/scripts/tags.js', () => ({
@@ -75,6 +85,8 @@ async function mount() { mounted = await mountCharacterList(); return mounted; }
 
 beforeEach(() => {
     jest.clearAllMocks();
+    runBulkAction.mockReset().mockResolvedValue(undefined);
+    characterLibrary.splice(0, characterLibrary.length, ...Array.from({ length: 40 }, (_, id) => ({ name: `Name ${id}`, avatar: `${id}.png` })));
     renderer = null;
     stateRenderer = null;
     mounted = null;
@@ -103,12 +115,14 @@ afterEach(() => {
     delete globalThis.SillyBunnyAssets;
     delete globalThis.SillyBunnyShell;
     delete globalThis.SillyBunnyCharacterListController;
+    delete globalThis.toastr;
 });
 
 describe('shared Characters/Groups list', () => {
     test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
         await mount();
         const row = rows()[0];
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261018a', { id: 'deferred-editor-shell-css' });
         expect(row.id).toBe('CharID0');
         expect(row.getAttribute('data-chid')).toBe('0');
         expect(row.getAttribute('chid')).toBe('0');
@@ -270,17 +284,19 @@ describe('shared Characters/Groups list', () => {
         expect(deleteGroupById).toHaveBeenCalledWith('g');
     });
 
-    test('legacy bulk transports stay keyboard reachable and restore their attributes', async () => {
+    test('legacy bulk transports stay in the DOM but do not own shared selection', async () => {
         await mount();
         const bulk = document.getElementById('bulkEditButton');
-        const clicked = jest.fn();
-        bulk.addEventListener('click', clicked);
         expect(bulk.closest('.sb-character-list__transports')).not.toBeNull();
-        expect(bulk.getAttribute('role')).toBe('button');
-        for (const key of ['Enter', ' ']) bulk.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-        expect(clicked).toHaveBeenCalledTimes(2);
+        expect(characterGroupOverlay.setLegacyRowSelectionEnabled).toHaveBeenCalledWith(false);
+        expect(characterGroupOverlay.legacyRowSelectionEnabled).toBe(false);
+        button('more').click();
+        action('Select').onSelect();
+        await settle();
+        expect(mounted.section.dataset.selectionMode).toBe('true');
+        expect(document.querySelector('.bulk_select_checkbox')).toBeNull();
         mounted.destroy();
-        expect(bulk.hasAttribute('role')).toBe(false);
+        expect(characterGroupOverlay.setLegacyRowSelectionEnabled).toHaveBeenLastCalledWith(true);
     });
 
     test('navigation snapshots restore query, page, scroll and keyed focus', async () => {
@@ -330,10 +346,10 @@ describe('shared Characters/Groups list', () => {
         const widths = new Map([...header.querySelectorAll('button')].map(button => [button, 44]));
         widths.set(titles, 96);
         widths.set(extensions, 40);
-        for (const child of header.children) {
+        [...header.children].forEach(child => {
             const width = widths.get(child) ?? 0;
             jest.spyOn(child, 'getBoundingClientRect').mockReturnValue({ width });
-        }
+        });
         Object.defineProperty(header, 'clientWidth', { configurable: true, value: 375 });
         resize();
         expect(button('sort').hidden).toBe(false);
@@ -374,6 +390,7 @@ describe('shared Characters/Groups list', () => {
     test('failed first render restores engines and can be retried', async () => {
         printCharacters.mockRejectedValueOnce(new Error('first render failed'));
         await expect(mount()).rejects.toThrow('first render failed');
+        expect(characterGroupOverlay.legacyRowSelectionEnabled).toBe(true);
         expect(document.querySelector('#form_character_search_form #character_search_bar')).not.toBeNull();
         expect(getMountedCharacterList()).toBeNull();
         await mount();
@@ -409,5 +426,242 @@ describe('shared Characters/Groups list', () => {
         expect(renderer).toBeNull();
         await mount();
         expect(rows()).toHaveLength(3);
+    });
+});
+
+async function enterSelection() {
+    menu = null;
+    button('more').click();
+    action('Select').onSelect();
+    await settle();
+}
+
+describe('Characters/Groups shared selection mode', () => {
+    test('row capture toggles without starting a chat; controls and folders are inert', async () => {
+        model.entities.push({ type: 'tag', id: 'folder', item: { name: 'Folder' } });
+        model.folderOpen = true;
+        model.entities[0].item.active = true;
+        await mount();
+        await enterSelection();
+        const row = document.getElementById('CharID0');
+        const activation = jest.fn();
+        row.addEventListener('click', activation);
+        expect(row.querySelector('.ds-entity-row__suffix').inert).toBe(true);
+        expect(row.classList.contains('is-selected')).toBe(false);
+        expect(document.querySelector('[tagid="folder"]').inert).toBe(true);
+        expect(document.querySelector('[tagid="back"]').inert).toBe(true);
+        row.focus();
+        row.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(document.getElementById('CharID2'));
+        row.querySelector('.ch_name').click();
+        expect(activation).not.toHaveBeenCalled();
+        expect(row.querySelector('.sb-selection-check').checked).toBe(true);
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('1 selected');
+        row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        expect(row.querySelector('.sb-selection-check').checked).toBe(false);
+        expect(activation).not.toHaveBeenCalled();
+        document.querySelector('.sb-selection-cancel').click();
+        expect(row.querySelector('.ds-entity-row__suffix').inert).toBe(false);
+        expect(row.classList.contains('is-selected')).toBe(true);
+    });
+
+    test('Shift range, Select all off-page, filtering and page re-renders retain keys', async () => {
+        model.entities = characters(26);
+        model.entities.push({ type: 'tag', id: 'folder', item: { name: 'Folder' } });
+        model.sourceCount = 26;
+        await mount();
+        await enterSelection();
+        rows()[0].click();
+        rows()[3].dispatchEvent(new MouseEvent('click', { shiftKey: true, bubbles: true, cancelable: true }));
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('4 selected');
+        document.querySelector('.sb-selection-select-all').click();
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('26 selected');
+        await setListPage('characters', 2);
+        expect(document.querySelectorAll('.is-selection-selected')).toHaveLength(10);
+        model.entities = model.entities.slice(10, 12);
+        await mounted.render(model);
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('26 selected');
+        expect(document.querySelector('.sb-selection-select-all').getAttribute('aria-pressed')).toBe('true');
+        characterLibrary.splice(25, 1);
+        await mounted.render(model);
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('25 selected');
+    });
+
+    test('reloads retain avatars rather than reassigned character indices and prune replacements', async () => {
+        await mount();
+        await enterSelection();
+        rows()[1].click();
+        rows()[2].click();
+        characterLibrary.splice(0, 1);
+        characterLibrary.splice(1, 1, { name: 'Replacement', avatar: 'replacement.png' });
+        model.entities = characterLibrary.slice(0, 3).map((item, id) => ({ type: 'character', id, item }));
+        await mounted.render(model);
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('1 selected');
+        expect(rows()[0].querySelector('.sb-selection-check').checked).toBe(true);
+        expect(rows()[1].querySelector('.sb-selection-check').checked).toBe(false);
+        document.querySelector('.sb-selection-action[data-action-id="delete"]').click();
+        await settle();
+        expect(runBulkAction).toHaveBeenCalledWith('delete', [0]);
+    });
+
+    test('bulk actions resolve the current index even if the library changed since rendering', async () => {
+        await mount();
+        await enterSelection();
+        rows()[1].click();
+        characterLibrary.splice(0, 1);
+        document.querySelector('.sb-selection-action[data-action-id="delete"]').click();
+        await settle();
+        expect(runBulkAction).toHaveBeenCalledWith('delete', [0]);
+    });
+
+    test('bulk actions cannot use the replacement of an avatar removed since rendering', async () => {
+        await mount();
+        await enterSelection();
+        rows()[1].click();
+        characterLibrary.splice(1, 1, { name: 'Replacement', avatar: 'replacement.png' });
+        document.querySelector('.sb-selection-action[data-action-id="delete"]').click();
+        await settle();
+        expect(runBulkAction).not.toHaveBeenCalled();
+    });
+
+    test('entering and leaving notify overlay state once, including empty selection and destroy', async () => {
+        await mount();
+        await enterSelection();
+        expect(characterGroupOverlay.notifySharedSelectionState.mock.calls).toEqual([['select']]);
+        document.querySelector('.sb-selection-cancel').click();
+        await settle();
+        expect(characterGroupOverlay.notifySharedSelectionState.mock.calls).toEqual([['select'], ['browse']]);
+        await enterSelection();
+        rows()[0].click();
+        rows()[1].click();
+        mounted.destroy();
+        await settle();
+        expect(characterGroupOverlay.notifySharedSelectionState.mock.calls).toEqual([['select'], ['browse'], ['select'], ['browse']]);
+    });
+
+    test.each([
+        ['x', {}], ['f', { ctrlKey: true }], ['f', { metaKey: true }],
+    ])('selection ignores search shortcut %s %j and restores it on exit', async (key, options) => {
+        const input = document.getElementById('character_search_bar');
+        const upstream = jest.fn();
+        input.addEventListener('input', upstream);
+        await mount();
+        await enterSelection();
+        const row = rows()[0];
+        row.focus();
+        row.dispatchEvent(new KeyboardEvent('keydown', { key, ...options, bubbles: true, cancelable: true }));
+        expect(input.value).toBe('');
+        expect(document.querySelector('.sb-character-list__search').hidden).toBe(true);
+        expect(document.activeElement).toBe(row);
+        expect(upstream).not.toHaveBeenCalled();
+        document.querySelector('.sb-selection-cancel').click();
+        await settle();
+        row.dispatchEvent(new KeyboardEvent('keydown', { key, ...options, bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(input);
+        expect(document.querySelector('.sb-character-list__search').hidden).toBe(false);
+    });
+
+    test.each(['favorite', 'tag', 'duplicate', 'persona', 'delete'])('character %s passes numeric indices and exits after settling', async actionId => {
+        await mount();
+        await enterSelection();
+        rows()[0].click();
+        rows()[1].click();
+        document.querySelector(`.sb-selection-action[data-action-id="${actionId}"]`).click();
+        await settle();
+        expect(runBulkAction).toHaveBeenCalledWith(actionId, [0, 1]);
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+    });
+
+    test('paging to a disabled Next button restores a keyboard target for Escape', async () => {
+        model.entities = characters(11);
+        model.sourceCount = 11;
+        await mount();
+        await enterSelection();
+        const next = document.querySelector('.sb-list-pagination__next');
+        next.focus();
+        next.click();
+        await settle();
+        expect(next.disabled).toBe(true);
+        expect(document.activeElement).toBe(document.querySelector('.sb-selection-cancel'));
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+    });
+
+    test.each(['tag', 'delete'])('group %s passes string ids, including numeric-looking ids', async actionId => {
+        model = { ...model, view: 'groups', entities: groupLibrary.map(item => ({ type: 'group', id: item.id, item })) };
+        await mount();
+        await enterSelection();
+        document.querySelector('.sb-selection-select-all').click();
+        expect([...document.querySelectorAll('.sb-selection-action')].map(button => button.dataset.actionId)).toEqual(['tag', 'delete']);
+        document.querySelector(`.sb-selection-action[data-action-id="${actionId}"]`).click();
+        await settle();
+        expect(runBulkAction).toHaveBeenCalledWith(actionId, ['g', 'group-id', '0123']);
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+    });
+
+    test('only one action runs at a time, with busy state until completion', async () => {
+        let resolve;
+        runBulkAction.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        await mount();
+        await enterSelection();
+        rows()[0].click();
+        const actionBar = document.querySelector('.sb-selection-action-bar');
+        const favorite = actionBar.querySelector('[data-action-id="favorite"]');
+        favorite.click();
+        await settle();
+        expect(actionBar.inert).toBe(true);
+        expect(actionBar.getAttribute('aria-busy')).toBe('true');
+        favorite.click();
+        await settle();
+        expect(runBulkAction).toHaveBeenCalledTimes(1);
+        resolve();
+        await settle();
+        expect(actionBar.inert).toBe(false);
+        expect(actionBar.hasAttribute('aria-busy')).toBe(false);
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+    });
+
+    test('a rejected bulk action reports the error, releases busy state, and retains the selection', async () => {
+        globalThis.toastr = { error: jest.fn() };
+        runBulkAction.mockRejectedValueOnce(new Error('bulk failed'));
+        await mount();
+        await enterSelection();
+        rows()[0].click();
+        document.querySelector('.sb-selection-action[data-action-id="favorite"]').click();
+        await settle();
+        expect(globalThis.toastr.error).toHaveBeenCalledWith('bulk failed');
+        expect(document.querySelector('.sb-selection-action-bar').inert).toBe(false);
+        expect(document.querySelector('.sb-selection-action-bar').hasAttribute('aria-busy')).toBe(false);
+        expect(mounted.section.dataset.selectionMode).toBe('true');
+        expect(document.querySelector('.sb-selection-title').textContent).toBe('1 selected');
+    });
+
+    test('Escape wins over search, restores focus, and view switches exit selection', async () => {
+        await mount();
+        const input = document.getElementById('character_search_bar');
+        input.value = 'query';
+        await mounted.render(model);
+        await enterSelection();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+        expect(document.activeElement).toBe(button('more'));
+        expect(input.value).toBe('query');
+        await enterSelection();
+        rows()[0].click();
+        model = { ...model, view: 'groups', entities: [{ type: 'group', id: 'g', item: groupLibrary[0] }] };
+        await mounted.render(model);
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+        await enterSelection();
+        expect([...document.querySelectorAll('.sb-selection-action')].map(button => button.dataset.actionId)).toEqual(['tag', 'delete']);
+    });
+
+    test('empty and folder-only lists cannot enter selection', async () => {
+        model.entities = [{ type: 'tag', id: 'folder', item: { name: 'Folder' } }];
+        await mount();
+        button('more').click();
+        expect(action('Select').disabled).toBe(true);
+        action('Select').onSelect();
+        await settle();
+        expect(mounted.section.dataset.selectionMode).toBe('false');
     });
 });

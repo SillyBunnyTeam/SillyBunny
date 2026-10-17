@@ -692,14 +692,14 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
-        // SillyBunny: the shared list stays deferred until its mount gate resolves.
+        // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261018a', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
-        // SillyBunny: Characters and Groups use the same deferred list assets.
+        // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261018a', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },

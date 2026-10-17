@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
 
 test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
     // Browser QA must not change the running instance's saved preferences.
     await page.route('**/api/settings/save', route => {
         const request = route.request();
@@ -381,6 +383,13 @@ test.describe('World Info selection mode', () => {
         await expect(editor.locator('.sb-wi-list-header')).toBeHidden();
         await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
         await expect(editor.locator('.sb-selection-action:disabled')).toHaveCount(4);
+        await row(editor, 'Alpha').focus();
+        for (const key of ['x', 'Control+f', 'Meta+f']) {
+            await page.keyboard.press(key);
+            await expect(row(editor, 'Alpha')).toBeFocused();
+            await expect(editor.locator('.sb-wi-search')).toHaveValue('');
+            await expect(editor.locator('.sb-wi-search')).toBeHidden();
+        }
         await row(editor, 'Alpha').click();
         await expect(row(editor, 'Alpha').locator('.sb-selection-check')).toBeChecked();
         await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);

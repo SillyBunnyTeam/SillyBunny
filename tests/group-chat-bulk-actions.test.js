@@ -1,38 +1,59 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
+import { jest, describe, expect, test, afterEach } from '@jest/globals';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const readSource = (...parts) => readFileSync(path.join(repoRoot, ...parts), 'utf8').replace(/\r\n/g, '\n');
+let renderer;
+let menu;
+let mounted;
+const groups = [{ id: '0012', name: 'First' }, { id: 'group-2', name: 'Second' }];
+const overlay = { legacyRowSelectionEnabled: true, runBulkAction: jest.fn(async () => {}), notifySharedSelectionState: jest.fn(async () => {}) };
+overlay.setLegacyRowSelectionEnabled = jest.fn(enabled => { overlay.legacyRowSelectionEnabled = enabled; });
+const model = { view: 'groups', entities: groups.map(item => ({ type: 'group', id: item.id, item })), sourceCount: 2 };
+await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (strings, ...values) => strings.reduce((text, string, index) => text + string + (values[index] ?? ''), '') }));
+await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ power_user: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: options => { menu = options; } }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-motion.js', () => ({ animateListChange: (_rows, update) => update(), play() {}, stopMotion() {}, animateOut() {}, MOTION_SLOW: 0 }));
+await jest.unstable_mockModule('../public/script.js', () => ({
+    characterGroupOverlay: overlay, characters: [],
+    setCharacterListRenderer: value => { renderer = value; },
+    printCharacters: () => renderer?.render(model),
+    getGroupRowData: group => group,
+}));
+await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ groups, getGroupAvatarElement: () => document.createElement('span') }));
+await jest.unstable_mockModule('../public/scripts/tags.js', () => ({}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-character-list-state.js', () => ({ getListPage: () => 1, getListPageSize: () => 10 }));
+const { mountCharacterList } = await import('../public/scripts/sillybunny-character-list.js');
+const settle = async () => { for (let index = 0; index < 40; index++) await Promise.resolve(); };
 
-describe('Group chat bulk actions', () => {
-    test('routes group cards through selection, tag, and delete actions', () => {
-        const tabsSource = readSource('public', 'scripts', 'sillybunny-tabs.js');
-        const tabsCssSource = readSource('public', 'css', 'sillybunny-tabs.css');
-        const overlayCssSource = readSource('public', 'css', 'character-group-overlay.css');
-        const listCssSource = readSource('public', 'css', 'sillybunny-character-list.css');
-        const listSource = readSource('public', 'scripts', 'sillybunny-character-list.js');
-        const bulkEditSource = readSource('public', 'scripts', 'bulk-edit.js');
-        const overlaySource = readSource('public', 'scripts', 'BulkEditOverlay.js');
+afterEach(() => {
+    mounted?.destroy();
+    mounted = null;
+    document.body.replaceChildren();
+    jest.clearAllMocks();
+});
 
-        expect(tabsSource).not.toContain('sbGroupsGuardBound');
-        expect(tabsSource).not.toContain('Bulk edit for groups is not available yet');
-        expect(tabsCssSource).not.toContain('[data-menu-type="groups"] #bulkSelectAllButton');
-        expect(tabsCssSource).not.toContain('[data-menu-type="groups"] #bulkDeleteButton');
-        expect(overlayCssSource).toContain(':is(.character_select, .group_select).character_selected');
-        expect(overlayCssSource).not.toContain('.bogus_folder_select,\n#rm_print_characters_block.group_overlay_mode_select .group_select');
-        expect(listSource).toContain('clickTransport(\'#bulkEditButton\')');
-        expect(listSource).toContain('\'data-grid\': textValue(data.id ?? item.id)');
-        expect(listSource).toContain('button.setAttribute(\'role\', \'button\')');
-        expect(listSource).toContain('button.addEventListener(\'keydown\', onBulkKey)');
-        expect(listCssSource).toMatch(/\.sb-character-list__transports:has\(#bulkEditButton\.bulk_edit_overlay_active\)\s*\{[^}]*display: flex !important;/);
-        expect(listCssSource).toContain('#bulkEditButton, #bulkSelectedCount, #bulkSelectAllButton, #bulkDeleteButton');
-        expect(listCssSource).toContain('#rm_print_characters_block:is(.bulk_select, .group_overlay_mode_select) .ds-entity-row.character_selected');
-        expect(listCssSource).toMatch(/:is\(\.bulk_select, \.group_overlay_mode_select\) \.ds-entity-row__suffix\s*\{\s*visibility: hidden;/);
-        expect(bulkEditSource).toContain('#rm_print_characters_block .character_select, #rm_print_characters_block .group_select');
-        expect(overlaySource).toContain('element.getAttribute(\'data-grid\')');
-        expect(overlaySource).toContain('fetch(\'/api/groups/delete\'');
-        expect(overlaySource).toContain('this.characterIds.map(getBulkEntity)');
+describe('Group chat shared bulk actions', () => {
+    test.each(['tag', 'delete'])('selects shared group rows and routes %s with string ids', async action => {
+        document.body.innerHTML = `<div id="rm_characters_block"><div id="charListFixedTop">
+            <input id="character_search_bar"><div class="rm_tag_controls"></div></div>
+            <div id="rm_print_characters_block"></div><div id="rm_print_characters_pagination">
+            <button id="bulkEditButton"></button><button id="bulkSelectAllButton"></button><button id="bulkDeleteButton"></button><span id="bulkSelectedCount"></span></div></div>`;
+        mounted = await mountCharacterList();
+        expect(overlay.legacyRowSelectionEnabled).toBe(false);
+        mounted.section.querySelector('[data-action-id="more"]').click();
+        menu.sections.flatMap(section => section.items).find(item => item.label === 'Select').onSelect();
+        await settle();
+        const rows = mounted.section.querySelectorAll('.group_select');
+        for (const row of rows) row.querySelector('.ch_name').click();
+        expect(mounted.section.querySelectorAll('.sb-selection-check:checked')).toHaveLength(2);
+        expect([...mounted.section.querySelectorAll('.sb-selection-action')].map(button => button.dataset.actionId)).toEqual(['tag', 'delete']);
+        mounted.section.querySelector(`.sb-selection-action[data-action-id="${action}"]`).click();
+        await settle();
+        expect(overlay.runBulkAction).toHaveBeenCalledWith(action, ['0012', 'group-2']);
+        expect(mounted.section.dataset.selectionMode).toBe('false');
+        expect(document.getElementById('bulkEditButton')).not.toBeNull();
+        mounted.destroy();
+        expect(overlay.legacyRowSelectionEnabled).toBe(true);
     });
 });

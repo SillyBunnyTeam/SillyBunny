@@ -288,6 +288,28 @@ describe('createListSearch', () => {
         expect(onChange).toHaveBeenLastCalledWith('');
     });
 
+    test.each(['scope', 'ancestor'])('selection on the %s suspends shortcuts without changing the query', location => {
+        const { search, field, input, scope, row, onChange } = makeSearch();
+        const root = location === 'scope' ? scope : document.createElement('section');
+        if (root !== scope) { scope.before(root); root.append(scope); }
+        root.dataset.selectionMode = 'true';
+        row.focus();
+        const globalShortcut = listenOnDocument();
+        keydown(row, 'x');
+        globalShortcut.mockClear();
+        expect(keydown(row, 'f', { ctrlKey: true }).defaultPrevented).toBe(true);
+        expect(keydown(row, 'f', { metaKey: true }).defaultPrevented).toBe(true);
+        expect(globalShortcut).not.toHaveBeenCalled();
+        expect(field.hidden).toBe(true);
+        expect(search.query).toBe('');
+        expect(input.value).toBe('');
+        expect(document.activeElement).toBe(row);
+        expect(onChange).not.toHaveBeenCalled();
+        root.dataset.selectionMode = 'false';
+        keydown(row, 'x');
+        expect(search.query).toBe('x');
+    });
+
     test('scroll restore waits for the render that reports after clearing', () => {
         const { search, input, scroller } = makeSearch();
         scroller.scrollTop = 120;

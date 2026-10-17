@@ -56,6 +56,7 @@ async function showView(page, view) {
 async function prepareList(page, viewport) {
     await page.setViewportSize(viewport);
     await page.goto('/');
+    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
     await page.locator('#sb-character-toggle').click();
@@ -265,15 +266,16 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         }
         await list(page).locator('[data-action-id="more"]').click();
         await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
-        await expect(page.locator('#bulkEditButton')).toBeVisible();
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+        await expect(page.locator('#bulkEditButton')).toBeHidden();
         await listRows(page, 'groups').first().locator('.ch_name').click();
-        await expect(page.locator('#bulkSelectedCount')).toHaveText('1');
-        await expect(listRows(page, 'groups').first()).toHaveClass(/character_selected/);
-        await page.locator('#bulkSelectAllButton').press('Enter');
-        await expect(page.locator('#bulkSelectedCount')).toHaveText(String(await listRows(page, 'groups').count()));
-        await expect(page.locator('#bulkDeleteButton')).toBeVisible();
-        await page.locator('#bulkEditButton').press('Enter');
-        await expect(list(page).locator('.character_selected')).toHaveCount(0);
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+        await expect(listRows(page, 'groups').first()).toHaveClass(/is-selection-selected/);
+        await list(page).getByRole('button', { name: 'Select all', exact: true }).click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('28 selected');
+        await expect(list(page).locator('.sb-selection-action[data-action-id="delete"]')).toBeVisible();
+        await list(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(list(page).locator('.is-selection-selected')).toHaveCount(0);
         await expect(list(page).locator('.bulk_select_checkbox')).toHaveCount(0);
         for (const tab of ['characters', 'groups', 'editor', 'world-info', 'persona', 'import']) {
             await page.evaluate(async tab => { await window.SillyBunnyShell.openTab('characters', tab); }, tab);
@@ -281,3 +283,150 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         }
     });
 }
+
+async function enterSelection(page) {
+    await list(page).locator('.sb-character-list__header [data-action-id="more"]').click();
+    await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+    await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+    await expect(list(page).locator('.sb-selection-cancel')).toBeFocused();
+}
+
+async function chatState(page) {
+    return page.evaluate(async () => {
+        const app = await import('/script.js');
+        const groups = await import('/scripts/group-chats.js');
+        return { character: app.this_chid, group: groups.selected_group, chat: app.getCurrentChatId() };
+    });
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`selection gestures, ranges and all filtered pages preserve the chat at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const before = await chatState(page);
+        const total = await page.evaluate(async () => (await import('/script.js')).characters.length);
+        await page.evaluate(async () => {
+            const { eventSource, event_types } = await import('/scripts/events.js');
+            window.__sbSelectionEvents = [];
+            eventSource.on(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_BEFORE, state => { window.__sbSelectionEvents.push(['before', state]); });
+            eventSource.on(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, state => { window.__sbSelectionEvents.push(['after', state]); });
+        });
+        await enterSelection(page);
+        await expect(list(page).locator('.sb-character-list__header')).toBeHidden();
+        await expect(list(page).locator('.sb-character-list__filters')).toBeHidden();
+        await listRows(page, 'characters').first().locator('.ch_name').click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+        await expect(listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+        await listRows(page, 'characters').nth(3).locator('.ch_name').click({ modifiers: ['Shift'] });
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('4 selected');
+        const focusedRow = listRows(page, 'characters').first();
+        await focusedRow.focus();
+        for (const key of ['x', 'Control+f', 'Meta+f']) {
+            await page.keyboard.press(key);
+            await expect(focusedRow).toBeFocused();
+            await expect(page.locator('#character_search_bar')).toHaveValue('');
+            await expect(page.locator('#character_search_bar')).toBeHidden();
+            await expect(listRows(page, 'characters')).toHaveCount(10);
+        }
+        expect(await chatState(page)).toEqual(before);
+        await list(page).getByRole('button', { name: 'Select all', exact: true }).click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
+        await list(page).getByRole('button', { name: 'Next page', exact: true }).click();
+        await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(2);
+        await expect(listRows(page, 'characters').first().locator('.sb-selection-check')).toBeChecked();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
+        await page.keyboard.press('Escape');
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await expect(list(page).locator('.sb-character-list__header [data-action-id="more"]')).toBeFocused();
+        await expect.poll(() => page.evaluate(() => window.__sbSelectionEvents)).toEqual([['before', 1], ['after', 1], ['before', 0], ['after', 0]]);
+        const row = listRows(page, 'characters').first();
+        await row.locator('.ch_name').click({ button: 'right' });
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+        await page.keyboard.press('Escape');
+        await expect(row).toBeFocused();
+        await chooseSortItem(page, 'Grid');
+        await enterSelection(page);
+        const check = listRows(page, 'characters').first().locator('.sb-selection-check');
+        await expect(check).toHaveCSS('position', 'absolute');
+        await check.click();
+        await expect(check).toBeChecked();
+        expect(await chatState(page)).toEqual(before);
+        await showView(page, 'groups');
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+    });
+
+    test(`bulk Favorite uses upstream requests and Delete keeps its confirmation at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const favorites = [];
+        await page.route('**/api/characters/merge-attributes', route => {
+            favorites.push(route.request().postDataJSON());
+            return route.fulfill({ json: {} });
+        });
+        const avatars = await listRows(page, 'characters').evaluateAll(rows => rows.slice(0, 2).map(row => row.dataset.chid));
+        const expected = await page.evaluate(async ids => {
+            const { characters } = await import('/script.js');
+            return ids.map(id => characters[Number(id)].avatar);
+        }, avatars);
+        await enterSelection(page);
+        await listRows(page, 'characters').nth(0).locator('.ch_name').click();
+        await listRows(page, 'characters').nth(1).locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="favorite"]').click();
+        await expect.poll(() => favorites.length).toBe(2);
+        expect(favorites.map(payload => payload.avatar).sort()).toEqual(expected.sort());
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await enterSelection(page);
+        await listRows(page, 'characters').first().locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="delete"]').click();
+        const dialog = page.locator('dialog.popup[open]').last();
+        await expect(dialog).toContainText('Delete 1 characters?');
+        await expect(dialog.locator('#del_char_checkbox')).toBeVisible();
+        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+    });
+
+    test(`group Tag and Delete reuse upstream popups; tab switches exit selection at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await showView(page, 'groups');
+        await enterSelection(page);
+        await expect(list(page).locator('.sb-selection-action')).toHaveCount(2);
+        await listRows(page, 'groups').first().locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="tag"]').click();
+        await expect(page.locator('#bulk_tag_popup')).toContainText('Modify tags of 1 groups');
+        await page.locator('#bulk_tag_popup_cancel').click();
+        await expect(page.locator('#bulk_tag_popup')).toHaveCount(0);
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await enterSelection(page);
+        await listRows(page, 'groups').first().locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="delete"]').click();
+        const dialog = page.locator('dialog.popup[open]').last();
+        await expect(dialog).toContainText('Delete 1 groups?');
+        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await enterSelection(page);
+        await showView(page, 'characters');
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        expect(await page.evaluate(async () => (await import('/script.js')).characterGroupOverlay.legacyRowSelectionEnabled)).toBe(false);
+    });
+}
+
+test.describe('touch selection', () => {
+    test.use({ hasTouch: true });
+    test('a 500ms touch hold enters selection and swallows the release click at 390px', async ({ page }) => {
+        await prepareList(page, { width: 390, height: 844 });
+        const before = await chatState(page);
+        const row = listRows(page, 'characters').first();
+        const bounds = await row.locator('.ch_name').boundingBox();
+        const session = await page.context().newCDPSession(page);
+        try {
+            await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: bounds.x + 8, y: bounds.y + 8 }] });
+            await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+            await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+            expect(await chatState(page)).toEqual(before);
+            await page.keyboard.press('Escape');
+            await expect(row).toBeFocused();
+        } finally {
+            await session.detach();
+        }
+    });
+});
