@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+
+test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -155,8 +158,9 @@ async function mockWrites(page, settingsStore = null) {
             return route.fulfill({ json: { name: request.postDataJSON()?.name ?? '' } });
         }
 
-        if (READ_ONLY_POST_ENDPOINTS.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) {
-            return route.continue();
+        if (READ_ONLY_POST_ENDPOINTS.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')
+            || /^\/api\/chats\/(?:group\/)?get$/.test(url.pathname)) {
+            return route.fallback();
         }
 
         const isWriteMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
@@ -165,7 +169,7 @@ async function mockWrites(page, settingsStore = null) {
             return route.fulfill({ json: {} });
         }
 
-        return route.continue();
+        return route.fallback();
     });
 
     // Keep the legacy settings-save route covered too; the general API route above also blocks it.

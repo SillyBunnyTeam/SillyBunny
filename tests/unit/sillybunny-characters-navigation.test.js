@@ -13,6 +13,16 @@ const openGroupById = jest.fn();
 const captureGroupEditorListState = jest.fn();
 const restoreGroupEditorListState = jest.fn();
 const confirmActiveEditorLeave = jest.fn();
+const mountCharacterList = jest.fn();
+const restoreCharacterListState = jest.fn();
+const switchCharacterListView = jest.fn();
+let activeListView;
+
+await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list.js', () => ({ mountCharacterList, restoreCharacterListState }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-state.js', () => ({
+    getCharacterListView: () => activeListView,
+    switchCharacterListView,
+}));
 
 await jest.unstable_mockModule('../../public/script.js', () => ({ characters, this_chid: 1, selectCharacterById }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
@@ -36,6 +46,8 @@ const registrations = [...register.mock.calls];
 const bindings = [...bindTopLevelClear.mock.calls];
 const characterEditor = registrations.find(([kind]) => kind === 'character-editor')[1];
 const groupEditor = registrations.find(([kind]) => kind === 'group-editor')[1];
+const characterList = registrations.find(([kind]) => kind === 'character-list')[1];
+const groupList = registrations.find(([kind]) => kind === 'group-list')[1];
 const from = { kind: 'group-editor', id: 'qa-group' };
 const target = { kind: 'character-editor', id: 'Alice.png', via: 'group-member' };
 const currentRoute = { isCurrent: () => true };
@@ -51,6 +63,12 @@ beforeEach(() => {
     openGroupEditor.mockResolvedValue(true);
     captureGroupEditorListState.mockReturnValue({ scrollTop: 240, membersPage: 2, focusedMemberAvatar: 'Alice.png' });
     restoreGroupEditorListState.mockResolvedValue(undefined);
+    activeListView = 'characters';
+    mountCharacterList.mockResolvedValue({});
+    restoreCharacterListState.mockResolvedValue(undefined);
+    switchCharacterListView.mockImplementation(async view => { activeListView = view; });
+    window.SillyBunnyShell = { openTab: jest.fn(async () => true) };
+    window.SillyBunnyCharacterListController = { captureState: jest.fn(() => ({ query: 'Alice', page: 2, scrollTop: 80, focusKey: 'character:Alice.png' })) };
     selectCharacterById.mockImplementation(async () => { showCharacterEditor(); return true; });
     openGroupMemberDefinition.mockImplementation(async () => { showCharacterEditor(); return true; });
     window.toastr = { warning: jest.fn(), error: jest.fn() };
@@ -71,6 +89,8 @@ afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
     delete window.toastr;
+    delete window.SillyBunnyShell;
+    delete window.SillyBunnyCharacterListController;
     document.body.replaceChildren();
 });
 
@@ -87,14 +107,53 @@ function deferred() {
 }
 
 describe('character and group editor destinations', () => {
-    test('registers both destinations and binds top-level clearing once', () => {
-        expect(registrations.map(([kind]) => kind)).toEqual(['character-editor', 'group-editor']);
+    test('registers both editor and list destinations and binds top-level clearing once', () => {
+        expect(registrations.map(([kind]) => kind)).toEqual(['character-editor', 'group-editor', 'character-list', 'group-list']);
         expect(bindings).toEqual([['[data-sb-character-tab], [data-sb-settings-tab]']]);
         expect(characterEditor.exists('Alice.png')).toBe(true);
         expect(characterEditor.exists('deleted.png')).toBe(false);
         expect(groupEditor.exists('qa-group')).toBe(true);
         expect(groupEditor.exists('create')).toBe(true);
         expect(groupEditor.exists('deleted')).toBe(false);
+        expect(characterList.exists()).toBe(true);
+        expect(groupList.exists()).toBe(true);
+        expect(characterList.current()).toEqual({ kind: 'character-list' });
+        expect(groupList.current()).toEqual({ kind: 'group-list' });
+    });
+
+    test.each([
+        ['characters', 'character-list', characterList],
+        ['groups', 'group-list', groupList],
+    ])('%s list waits for the shell and mount before restoring its snapshot', async (view, kind, destination) => {
+        const pending = deferred();
+        window.SillyBunnyShell.openTab.mockReturnValueOnce(pending.promise);
+        const snapshot = destination.captureState();
+        const result = destination.open({ kind }, { restore: snapshot, ...currentRoute });
+        expect(mountCharacterList).not.toHaveBeenCalled();
+        pending.resolve(true);
+        expect(await result).toBe(true);
+        expect(window.SillyBunnyShell.openTab).toHaveBeenCalledWith('characters', view);
+        expect(mountCharacterList).toHaveBeenCalledTimes(1);
+        expect(activeListView).toBe(view);
+        expect(restoreCharacterListState).toHaveBeenCalledWith(snapshot, currentRoute.isCurrent);
+        expect(mountCharacterList.mock.invocationCallOrder[0]).toBeLessThan(restoreCharacterListState.mock.invocationCallOrder[0]);
+    });
+
+    test.each([characterList, groupList])('a superseded list destination never mounts or restores', async destination => {
+        const pending = deferred();
+        let current = true;
+        window.SillyBunnyShell.openTab.mockReturnValueOnce(pending.promise);
+        const result = destination.open(destination.current(), { restore: { page: 2 }, isCurrent: () => current });
+        current = false;
+        pending.resolve(true);
+        expect(await result).toBe(false);
+        expect(mountCharacterList).not.toHaveBeenCalled();
+        expect(restoreCharacterListState).not.toHaveBeenCalled();
+    });
+
+    test('group pencil switches chat while group-editor Back stays presentation-only', async () => {
+        expect(await groupEditor.open({ kind: 'group-editor', id: 'qa-group', via: 'group-list' }, currentRoute)).toBe(true);
+        expect(openGroupEditor).toHaveBeenCalledWith('qa-group', { switchChat: true, isCurrent: currentRoute.isCurrent });
     });
 
     test('delegates group existence so an expired create draft cannot be revisited', () => {

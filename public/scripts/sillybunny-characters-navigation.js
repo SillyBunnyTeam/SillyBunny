@@ -71,7 +71,7 @@ objectNavigation.register('group-editor', {
     exists: id => groupEditorTargetExists(id),
     async open(target, { restore = null, isCurrent }) {
         if (!isCurrent()) return false;
-        const opened = await openGroupEditor(target.id, { switchChat: false, isCurrent });
+        const opened = await openGroupEditor(target.id, { switchChat: target.via === 'group-list', isCurrent });
         if (!isCurrent() || !opened) return false;
         if (restore) await restoreGroupEditorListState(restore);
         return isCurrent();
@@ -88,3 +88,30 @@ objectNavigation.setNotify((reason, target) => {
 });
 
 objectNavigation.bindTopLevelClear('[data-sb-character-tab], [data-sb-settings-tab]');
+
+function listDestination(view, kind) {
+    return {
+        exists: () => true,
+        async open(target, { restore = null, isCurrent }) {
+            if (!isCurrent()) return false;
+            const shell = globalThis.SillyBunnyShell;
+            if (typeof shell?.openTab !== 'function') return false;
+            const opened = await shell.openTab('characters', view);
+            if (opened === false || !isCurrent()) return false;
+            const list = await import('./sillybunny-character-list.js');
+            await list.mountCharacterList();
+            if (!isCurrent()) return false;
+            const state = await import('./sillybunny-character-list-state.js');
+            if (!isCurrent()) return false;
+            if (state.getCharacterListView() !== view) await state.switchCharacterListView(view);
+            if (!isCurrent()) return false;
+            await list.restoreCharacterListState(restore, isCurrent);
+            return isCurrent();
+        },
+        captureState: () => globalThis.SillyBunnyCharacterListController?.captureState?.() ?? null,
+        current: () => ({ kind }),
+    };
+}
+
+objectNavigation.register('character-list', listDestination('characters', 'character-list'));
+objectNavigation.register('group-list', listDestination('groups', 'group-list'));

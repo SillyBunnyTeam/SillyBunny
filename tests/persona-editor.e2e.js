@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 
 const sessions = new WeakMap();
 
@@ -10,6 +11,7 @@ async function waitForApp(page) {
 }
 
 test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
     const session = { savedSettings: [], createdAvatars: new Set() };
     sessions.set(page, session);
     await page.route('**/api/settings/save', route => {
@@ -234,6 +236,7 @@ test.describe('Persona editor', () => {
         await page.reload();
         await waitForApp(page);
         const reopened = await openPersona(page, persona.avatarId);
+        await showToasts(page);
         const restore = page.getByRole('button', { name: 'Restore', exact: true });
         await expect(restore).toBeVisible();
         await expect(reopened.getByRole('textbox', { name: 'Persona Description', exact: true })).toHaveValue(persona.descriptor.description || '');

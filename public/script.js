@@ -269,6 +269,16 @@ import { collectHiddenGenerationMessages } from './scripts/generation-hidden-mes
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
+// SillyBunny: the Characters and Groups lists share view-scoped state while
+// retaining the upstream fallback renderer — see docs/ui-migration.md
+import {
+    getCharacterListView,
+    getListSort,
+    recordListPage,
+    registerCharacterListSortAccessors,
+    registerCharacterListStateRenderer,
+    resetListPage,
+} from './scripts/sillybunny-character-list-state.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
 import {
     force_output_sequence,
@@ -350,6 +360,9 @@ import {
     markCharacterEditorSaved,
     getCharacterEditorAlternateGreetings,
     getCharacterEditorGroupGreetings,
+    // SillyBunny: list actions synchronize or close matching hidden drafts — see docs/ui-migration.md
+    syncCharacterEditorFavorite,
+    discardCharacterEditorForEntity,
 } from './scripts/sillybunny-character-editor.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import { fetchResumable } from './scripts/resumable-generation.js';
@@ -564,6 +577,20 @@ export let characters = [];
 export let this_chid;
 let saveCharactersPage = 0;
 let characterMenuEntityView = 'characters';
+// SillyBunny: the optional renderer receives the upstream list model without
+// replacing any extension-facing activation hooks — see docs/ui-migration.md
+/**
+ * @typedef {object} CharacterListModel
+ * @property {'characters'|'groups'} view
+ * @property {Entity[]} entities
+ * @property {number} sourceCount
+ * @property {boolean} hasAnyFilter
+ * @property {boolean} folderOpen
+ * @property {boolean} fullRefresh
+ * @property {() => void} pageLoaded
+ */
+/** @type {{ render: (model: CharacterListModel) => void|Promise<void> }|null} */
+let characterListRenderer = null;
 export const default_avatar = 'img/ai4.png';
 const SILLYBUNNY_FRONTEND_ICON_STORAGE_KEY = 'sb-frontend-icon';
 const SILLYBUNNY_FRONTEND_ICON_DEFAULT = 'pixel';
@@ -571,6 +598,19 @@ const SILLYBUNNY_FRONTEND_ICONS = Object.freeze({
     pixel: 'img/sillybunny-pixel-logo-og.png',
     badge: 'img/sillybunny-badge.png',
 });
+
+// SillyBunny: state accessors let the shared renderer use per-view sorting and
+// paging without changing power-user's persisted character settings — see docs/ui-migration.md
+registerCharacterListSortAccessors({
+    read: () => ({ field: power_user.sort_field, order: power_user.sort_order, rule: power_user.sort_rule }),
+    write: sort => {
+        power_user.sort_field = sort.field;
+        power_user.sort_order = sort.order;
+        power_user.sort_rule = sort.rule;
+        saveSettingsDebounced();
+    },
+});
+registerCharacterListStateRenderer(() => printCharacters(false));
 let appliedSillyBunnyFrontendIconId = '';
 
 function normalizeSillyBunnyFrontendIcon(iconId) {
@@ -1366,12 +1406,23 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
     }
 }
 
-function getBackBlock() {
+// SillyBunny: retain the legacy list block factories for the upstream fallback
+// and expose template copy to the shared list renderer — see docs/ui-migration.md
+/**
+ * Builds the legacy folder back block used by the fallback renderer.
+ * @returns {JQuery<HTMLElement>}
+ */
+export function getBackBlock() {
     const template = $('#bogus_folder_back_template .bogus_folder_select').clone();
     return template;
 }
 
-async function getEmptyBlock() {
+/**
+ * Builds the legacy empty block used by the fallback renderer.
+ * @returns {Promise<JQuery<HTMLElement>>}
+ */
+// SillyBunny: expose the existing template copy to the shared renderer — see docs/ui-migration.md
+export async function getEmptyBlock() {
     const icons = ['fa-dragon', 'fa-otter', 'fa-kiwi-bird', 'fa-crow', 'fa-frog'];
     const texts = [t`Here be dragons`, t`Otterly empty`, t`Kiwibunga`, t`Pump-a-Rum`, t`Croak it`];
     const roll = new Date().getMinutes() % icons.length;
@@ -1385,8 +1436,10 @@ async function getEmptyBlock() {
 
 /**
  * @param {number} hidden Number of hidden characters
+ * @returns {Promise<JQuery<HTMLElement>>}
  */
-async function getHiddenBlock(hidden) {
+// SillyBunny: expose the existing template copy to the shared renderer — see docs/ui-migration.md
+export async function getHiddenBlock(hidden) {
     const params = {
         text: (hidden > 1 ? t`${hidden} characters hidden.` : t`${hidden} character hidden.`),
     };
@@ -1394,7 +1447,18 @@ async function getHiddenBlock(hidden) {
     return $(hiddenBlock);
 }
 
-function getCharacterBlock(item, id) {
+// SillyBunny: preserve reusable upstream list builders — see docs/ui-migration.md
+export { getTagBlock };
+export { getGroupBlock };
+
+/**
+ * Builds the legacy character block used by the fallback renderer.
+ * @param {Character} item
+ * @param {number|string} id
+ * @returns {JQuery<HTMLElement>}
+ */
+// SillyBunny: keep the upstream builder available to fallback consumers — see docs/ui-migration.md
+export function getCharacterBlock(item, id) {
     let this_avatar = default_avatar;
     if (item.avatar != 'none') {
         this_avatar = getThumbnailUrlForViewport('avatar', item.avatar);
@@ -1446,6 +1510,97 @@ function getCharacterBlock(item, id) {
     return template;
 }
 
+// SillyBunny: expose row data separately from fallback DOM templates — see docs/ui-migration.md
+/**
+ * Returns the data needed to render a character row without creating DOM.
+ * @param {Character} item
+ * @param {number|string} id
+ * @returns {object}
+ */
+export function getCharacterRowData(item, id) {
+    const avatar = item?.avatar ?? '';
+    const auxFieldName = power_user.aux_field || 'character_version';
+    const auxFieldValue = item?.data?.[auxFieldName] || '';
+    const creatorNotes = item?.data?.creator_notes || '';
+    const favorite = Boolean(item?.fav || item?.fav === 'true');
+    const isAssistant = avatar === getPermanentAssistantAvatar();
+    return {
+        id,
+        chid: id,
+        name: item?.name ?? '',
+        nameTitle: `[Character] ${item?.name ?? ''}`,
+        avatar,
+        avatarUrl: avatar === 'none' ? default_avatar : getThumbnailUrlForViewport('avatar', avatar),
+        avatarTitle: `[Character] ${item?.name ?? ''}\nFile: ${avatar}`,
+        favorite,
+        fav: item?.fav,
+        favIconDisplay: 'none',
+        active: !selected_group && String(this_chid) === String(id),
+        isActive: !selected_group && String(this_chid) === String(id),
+        assistant: isAssistant,
+        isAssistant,
+        creatorNotes,
+        auxFieldName,
+        auxFieldValue,
+        characterVersion: auxFieldValue,
+        showCardAvatarUrls: Boolean(power_user.show_card_avatar_urls),
+        avatarFileName: avatar,
+    };
+}
+
+/**
+ * Returns the data needed to render a group row without creating DOM.
+ * @param {Group} group
+ * @returns {object}
+ */
+export function getGroupRowData(group) {
+    const members = Array.isArray(group?.members) ? group.members : [];
+    const memberCharacters = members
+        .map(member => characters.find(character => character.avatar === member || character.name === member))
+        .filter(Boolean);
+    const memberNames = memberCharacters.map(character => character.name);
+    const memberCount = memberNames.length;
+    const avatarUrl = typeof group?.avatar_url === 'string' ? group.avatar_url : '';
+    const customAvatar = Boolean(avatarUrl && (isDataURL(avatarUrl) || avatarUrl.startsWith('user') || avatarUrl.startsWith('/user')));
+    return {
+        id: group?.id,
+        name: group?.name ?? '',
+        favorite: Boolean(group?.fav),
+        fav: group?.fav,
+        active: selected_group === group?.id,
+        isActive: selected_group === group?.id,
+        memberNames,
+        memberNamesText: memberNames.join(', '),
+        memberCount,
+        memberCountText: `${memberCount} ` + (memberCount !== 1 ? t`characters` : t`character`),
+        nameTitle: `[Group] ${group?.name ?? ''}`,
+        avatarTitle: `[Group] ${group?.name ?? ''}`,
+        favIconDisplay: 'none',
+        avatarUrl: customAvatar ? avatarUrl : '',
+        avatarInfo: {
+            custom: customAvatar,
+            memberAvatars: members
+                .map(member => characters.find(character => character.avatar === member))
+                .filter(character => character && character.avatar !== 'none')
+                .map(character => character.avatar)
+                .slice(0, 4),
+        },
+    };
+}
+
+// SillyBunny: renderer registration lets the list controller replace pagination
+// without changing upstream row activation — see docs/ui-migration.md
+/**
+ * Registers the main list renderer. Passing null restores the upstream pagination renderer.
+ * @param {{ render(model: CharacterListModel): void|Promise<void> }|null} renderer
+ */
+export function setCharacterListRenderer(renderer) {
+    if (renderer !== null && typeof renderer?.render !== 'function') {
+        throw new TypeError('Character list renderer must expose render(model)');
+    }
+    characterListRenderer = renderer;
+}
+
 /**
  * Prints the global character list, optionally doing a full refresh of the list
  * Use this function whenever the reprinting of the character list is the primary focus, otherwise using `printCharactersDebounced` is preferred for a cleaner, non-blocking experience.
@@ -1454,6 +1609,8 @@ function getCharacterBlock(item, id) {
  *
  * @param {boolean} fullRefresh - If true, the list is fully refreshed and the navigation is being reset
  */
+// SillyBunny: hand the already-filtered/sorted/view-adjusted entities to the
+// shared renderer while preserving the legacy pagination fallback — see docs/ui-migration.md
 export async function printCharacters(fullRefresh = false) {
     const storageKey = 'Characters_PerPage';
     const listId = '#rm_print_characters_block';
@@ -1462,6 +1619,9 @@ export async function printCharacters(fullRefresh = false) {
 
     if (fullRefresh) {
         saveCharactersPage = 0;
+        if (characterListRenderer) {
+            resetListPage(characterMenuEntityView);
+        }
         currentScrollTop = 0;
         await delay(1);
     }
@@ -1478,7 +1638,11 @@ export async function printCharacters(fullRefresh = false) {
     applyTagsOnCharacterSelect();
     applyTagsOnGroupSelect();
 
-    const entities = getEntitiesList({ doFilter: true })
+    const entities = getEntitiesList({
+        doFilter: true,
+        mainList: Boolean(characterListRenderer),
+        sortOptions: characterListRenderer ? getListSort(characterMenuEntityView) : undefined,
+    })
         .filter(entity => entityMatchesCharacterMenuView(entity))
         .map(entity => {
             if (entity.type !== 'tag') {
@@ -1492,6 +1656,22 @@ export async function printCharacters(fullRefresh = false) {
                 hidden: Math.max(0, (entity.entities?.length ?? 0) - visibleEntities.length),
             };
         });
+
+    if (characterListRenderer) {
+        const sourceCount = characterMenuEntityView === 'groups' ? groups.length : characters.length;
+        await characterListRenderer.render({
+            view: characterMenuEntityView,
+            entities,
+            sourceCount,
+            hasAnyFilter: entitiesFilter.hasAnyFilter(),
+            folderOpen: power_user.bogus_folders && isBogusFolderOpen(),
+            fullRefresh,
+            pageLoaded: () => eventSource.emit(event_types.CHARACTER_PAGE_LOADED),
+        });
+        favsToHotswap();
+        updatePersonaConnectionsAvatarList();
+        return;
+    }
 
     const pageSize = Number(accountStorage.getItem(storageKey)) || per_page_default;
     const sizeChangerOptions = [10, 25, 50, 100, 250, 500, 1000];
@@ -1550,6 +1730,8 @@ export async function printCharacters(fullRefresh = false) {
         },
         afterPaging: function (e) {
             saveCharactersPage = e;
+            // SillyBunny: remember fallback paging for a later renderer mount — see docs/ui-migration.md
+            recordListPage(characterMenuEntityView, e);
         },
         afterRender: function () {
             $(listId).scrollTop(currentScrollTop);
@@ -1572,12 +1754,18 @@ export function setCharacterMenuEntityView(value) {
     characterMenuEntityView = value === 'groups' ? 'groups' : 'characters';
 }
 
+// SillyBunny: keep the upstream search-sort option aligned with the active
+// Characters or Groups sort state — see docs/ui-migration.md
 /** Checks the state of the current search, and adds/removes the search sorting option accordingly */
 function verifyCharactersSearchSortRule() {
     const searchTerm = entitiesFilter.getFilterData(FILTER_TYPES.SEARCH);
     const searchOption = $('#character_sort_order option[data-field="search"]');
     const selector = $('#character_sort_order');
     const isHidden = searchOption.attr('hidden') !== undefined;
+    const sort = characterListRenderer ? getListSort(characterMenuEntityView) : {
+        field: power_user.sort_field,
+        order: power_user.sort_order,
+    };
 
     // If we have a search term, we are displaying the sorting option for it
     if (searchTerm && isHidden) {
@@ -1588,7 +1776,7 @@ function verifyCharactersSearchSortRule() {
     // If search got cleared, we make sure to hide the option and go back to the one before
     if (!searchTerm && !isHidden) {
         searchOption.attr('hidden', '');
-        $(`#character_sort_order option[data-order="${power_user.sort_order}"][data-field="${power_user.sort_field}"]`).prop('selected', true);
+        $(`#character_sort_order option[data-order="${sort.order}"][data-field="${sort.field}"]`).prop('selected', true);
     }
 }
 
@@ -1641,9 +1829,13 @@ export function tagToEntity(tag) {
  * @param {object} param0 - Optional parameters
  * @param {boolean} [param0.doFilter] - Whether this entity list should already be filtered based on the global filters
  * @param {boolean} [param0.doSort] - Whether the entity list should be sorted when returned
+ * @param {boolean} [param0.mainList] - Whether legacy Groups-only filtering is neutralized for the shared main list
+ * @param {{ field: string, order: string, rule?: string|null }} [param0.sortOptions] - Optional view-specific sort settings
  * @returns {Entity[]} All entities
  */
-export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
+// SillyBunny: isolate shared-list filtering/sorting without changing other
+// callers or their persisted filters — see docs/ui-migration.md
+export function getEntitiesList({ doFilter = false, doSort = true, mainList = false, sortOptions = undefined } = {}) {
     let entities = [
         ...characters.map((item, index) => characterToEntity(item, index)),
         ...groups.map(item => groupToEntity(item)),
@@ -1673,10 +1865,19 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
             subEntities = filterByTagState(entities, { subForEntity: entity });
             if (doFilter) {
                 // sub entities filter "hacked" because folder filter should not be applied there, so even in "only folders" mode characters show up
-                subEntities = entitiesFilter.applyFilters(subEntities, { clearScoreCache: false, tempOverrides: { [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED }, clearFuzzySearchCaches: false });
+                subEntities = entitiesFilter.applyFilters(subEntities, {
+                    clearScoreCache: false,
+                    // SillyBunny: the Groups-only filter is neutral only for
+                    // the shared main list — see docs/ui-migration.md
+                    tempOverrides: {
+                        [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED,
+                        ...(mainList ? { [FILTER_TYPES.GROUP]: false } : {}),
+                    },
+                    clearFuzzySearchCaches: false,
+                });
             }
             if (doSort) {
-                sortEntitiesList(subEntities, false);
+                sortEntitiesList(subEntities, false, null, sortOptions);
             }
             entity.entities = subEntities;
             entity.hidden = subCount - subEntities.length;
@@ -1686,11 +1887,22 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
     // Second run filters, hiding whatever should be filtered later
     if (doFilter) {
         const beforeFinalEntities = filterByTagState(entities, { globalDisplayFilters: true });
-        entities = entitiesFilter.applyFilters(beforeFinalEntities, { clearFuzzySearchCaches: false });
+        entities = entitiesFilter.applyFilters(beforeFinalEntities, {
+            // SillyBunny: keep the persisted GROUP state for the fallback and
+            // filter UI, but neutralize it for the shared main list — see docs/ui-migration.md
+            tempOverrides: mainList ? { [FILTER_TYPES.GROUP]: false } : {},
+            clearFuzzySearchCaches: false,
+        });
 
         // Magic for folder filter. If that one is enabled, and no folders are display anymore, we remove that filter to actually show the characters.
         if (isFilterState(entitiesFilter.getFilterData(FILTER_TYPES.FOLDER), FILTER_STATES.SELECTED) && entities.filter(x => x.type == 'tag').length == 0) {
-            entities = entitiesFilter.applyFilters(beforeFinalEntities, { tempOverrides: { [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED }, clearFuzzySearchCaches: false });
+            entities = entitiesFilter.applyFilters(beforeFinalEntities, {
+                tempOverrides: {
+                    [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED,
+                    ...(mainList ? { [FILTER_TYPES.GROUP]: false } : {}),
+                },
+                clearFuzzySearchCaches: false,
+            });
         }
     }
 
@@ -1704,7 +1916,7 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
 
     // Sort before returning if requested
     if (doSort) {
-        sortEntitiesList(entities, false);
+        sortEntitiesList(entities, false, null, sortOptions);
     }
     entitiesFilter.clearFuzzySearchCaches();
     return entities;
@@ -9738,6 +9950,82 @@ export async function duplicateCharacter({ avatar = null, silent = false } = {})
     return data.path;
 }
 
+// SillyBunny: expose the single-character merge-attributes favourite path for
+// list row actions without coupling the list to the bulk overlay — see docs/ui-migration.md
+function getCharacterForListAction(chid) {
+    return typeof chid === 'number' || (/^\d+$/.test(String(chid)) && characters[Number(chid)])
+        ? characters[Number(chid)]
+        : characters.find(item => item.avatar === String(chid));
+}
+
+/**
+ * Toggles a character's favourite flag by character index or avatar id.
+ * @param {number|string} chid Character index or avatar filename
+ * @returns {Promise<boolean>} Whether the favourite was persisted
+ */
+export async function toggleCharacterFavoriteById(chid) {
+    const character = getCharacterForListAction(chid);
+    if (!character) {
+        return false;
+    }
+
+    const newFavorite = !character.data?.extensions?.fav;
+    const data = {
+        name: character.name,
+        avatar: character.avatar,
+        data: {
+            extensions: {
+                fav: newFavorite,
+            },
+        },
+        fav: newFavorite,
+    };
+    const response = await fetch('/api/characters/merge-attributes', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+        response.json().then(json => toastr.error(`Character not saved. Error: ${json.message}. Field: ${json.error}`));
+        return false;
+    }
+
+    character.fav = newFavorite;
+    character.data ??= {};
+    character.data.extensions ??= {};
+    character.data.extensions.fav = newFavorite;
+    // SillyBunny: an immediate list action must not be undone by a hidden
+    // editor's later Save or draft recovery — see docs/ui-migration.md
+    if (syncCharacterEditorFavorite(character.avatar, newFavorite)) {
+        updateFavButtonState(newFavorite);
+    }
+    printCharactersDebounced();
+    return true;
+}
+
+// SillyBunny: list deletion reuses the editor's confirmation and chat checkbox,
+// capturing the target before any asynchronous popup — see docs/ui-migration.md
+/**
+ * Confirms and deletes a single character by index or avatar filename.
+ * @param {number|string} chid
+ * @returns {Promise<boolean>} Whether the character was deleted
+ */
+export async function deleteCharacterById(chid) {
+    const character = getCharacterForListAction(chid);
+    if (!character) {
+        return false;
+    }
+    const avatar = character.avatar;
+    let deleteChats = false;
+    const confirmed = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
+        onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },
+    });
+    if (!confirmed || !characters.some(item => item.avatar === avatar)) {
+        return false;
+    }
+    return await deleteCharacter(avatar, { deleteChats });
+}
+
 function setInContextMessages(msgInContextCount, type, preserveLastMessage = false) {
     chatElement.find('.mes').removeClass('lastInContext');
 
@@ -17028,6 +17316,9 @@ export async function deleteCharacter(characterKey, { deleteChats = true } = {})
         accountStorage.removeItem(`AlertWI_${character.avatar}`);
         accountStorage.removeItem(`AlertRegex_${character.avatar}`);
         accountStorage.removeItem(`mediaWarningShown:${character.avatar}`);
+        // SillyBunny: successful deletion retires hidden sessions and their
+        // backups before list reload can resurrect the draft — see docs/ui-migration.md
+        discardCharacterEditorForEntity(character.avatar);
         delete tag_map[character.avatar];
         select_rm_info('char_delete', character.name);
 
@@ -17226,7 +17517,10 @@ API Settings: ${JSON.stringify(getSettingsContents[getSettingsContents.main_api 
 }
 
 function initCharacterSearch() {
-    const debouncedCharacterSearch = debounce((searchQuery) => {
+    // SillyBunny: a debounced input from the outgoing view cannot overwrite
+    // the incoming view's restored search — see docs/ui-migration.md
+    const debouncedCharacterSearch = debounce((searchQuery, view) => {
+        if (view !== getCharacterListView() || String(searchInput.val()) !== searchQuery) return;
         entitiesFilter.setFilterData(FILTER_TYPES.SEARCH, searchQuery);
     });
 
@@ -17238,7 +17532,7 @@ function initCharacterSearch() {
 
     searchInput.on('input', function () {
         const searchQuery = String($(this).val());
-        debouncedCharacterSearch(searchQuery);
+        debouncedCharacterSearch(searchQuery, getCharacterListView());
     });
 
     searchButton.on('click', function () {
@@ -17671,16 +17965,9 @@ jQuery(async function () {
             return;
         }
 
-        let deleteChats = false;
-
-        const confirm = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
-            onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },
-        });
-        if (!confirm) {
-            return;
-        }
-
-        await deleteCharacter(characters[this_chid].avatar, { deleteChats: deleteChats });
+        // SillyBunny: share the confirmed single-character delete flow with
+        // list actions without changing the upstream delete API — see docs/ui-migration.md
+        await deleteCharacterById(this_chid);
     });
 
     //////// OPTIMIZED ALL CHAR CREATION/EDITING TEXTAREA LISTENERS ///////////////

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 const persistenceRequests = new WeakMap();
 const groupDefinitionKeys = [
@@ -9,6 +10,7 @@ const groupDefinitionKeys = [
 ];
 
 test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
     const requests = [];
     persistenceRequests.set(page, requests);
     page.on('request', request => {
@@ -99,7 +101,9 @@ async function openCreateGroup(page, mobile) {
         await page.getByRole('button', { name: 'Back to settings navigation', exact: true }).click();
     }
     await page.getByRole('complementary', { name: 'Settings navigation' }).getByRole('tab', { name: 'Groups' }).click();
-    await page.locator('#rm_button_group_chats').click();
+    await expect(page.locator('.sb-character-list')).toHaveAttribute('data-view', 'groups');
+    await expect(page.locator('.sb-character-list .sb-list-header__title')).toHaveText('Groups');
+    await page.locator('.sb-character-list [data-action-id="new"]').click();
     await expect(page.locator('#sb_group_editor_header')).toBeVisible();
 }
 

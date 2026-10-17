@@ -171,6 +171,10 @@ const ACTIONABLE_FILTER_STORAGE_KEYS = Object.freeze({
     FOLDER: 'TagFilterState_FOLDER',
 });
 
+// SillyBunny: the shared main-list filter helper keeps one identity while its
+// persisted state follows the Characters or Groups view — see docs/ui-migration.md
+let mainListFilterStoragePrefix = 'CharacterList';
+
 /**
  * Gets the storage key prefix for a filter helper to enable persistence.
  * @param {FilterHelper} filterHelper - The filter helper to check
@@ -178,13 +182,32 @@ const ACTIONABLE_FILTER_STORAGE_KEYS = Object.freeze({
  */
 function getFilterStorageKey(filterHelper) {
     if (filterHelper === entitiesFilter) {
-        return 'CharacterList';
+        return mainListFilterStoragePrefix;
     } else if (filterHelper === groupCandidatesFilter) {
         return 'GroupCandidates';
     } else if (filterHelper === groupMembersFilter) {
         return 'GroupMembers';
     }
     return null;
+}
+
+/**
+ * Sets the account-storage prefix used by the shared main character-list filter.
+ * @param {'CharacterList'|'GroupList'} prefix
+ */
+export function setMainListFilterStoragePrefix(prefix) {
+    if (!['CharacterList', 'GroupList'].includes(prefix)) {
+        throw new TypeError(`Invalid main list filter storage prefix: ${prefix}`);
+    }
+    mainListFilterStoragePrefix = prefix;
+}
+
+/**
+ * Gets the account-storage prefix used by the shared main character-list filter.
+ * @returns {'CharacterList'|'GroupList'}
+ */
+export function getMainListFilterStoragePrefix() {
+    return mainListFilterStoragePrefix;
 }
 
 /**
@@ -543,8 +566,9 @@ function applyActionableTagFilter(filterHelper, tag, filterType, storageKey) {
         accountStorage.setItem(contextStorageKey, state);
     }
 
-    // Also update global state for main character list (backward compatibility)
-    if (isMainCharacterList(filterHelper)) {
+    // SillyBunny: Groups never overwrite Characters' legacy compatibility
+    // state while using the shared filter helper — see docs/ui-migration.md
+    if (isMainCharacterList(filterHelper) && mainListFilterStoragePrefix === 'CharacterList') {
         tag.filter_state = state;
     }
 
@@ -1244,7 +1268,15 @@ function printTagList(element, { tags = undefined, addTag = undefined, forEntity
     const tagsDisplayLimit = expanded ? Number.MAX_SAFE_INTEGER : DEFAULT_TAGS_LIMIT;
 
     // Functions to determine tag properties
-    const isFilterActive = (/** @type {Tag} */ tag) => tag.filter_state && !isFilterState(tag.filter_state, FILTER_STATES.UNDEFINED);
+    // SillyBunny: active tags in each view stay visible beyond the chip limit
+    // without sharing tag.filter_state across views — see docs/ui-migration.md
+    const filterHelper = tagOptions.isGeneralList ? getFilterHelper($element) : null;
+    const isFilterActive = (/** @type {Tag} */ tag) => {
+        const state = filterHelper
+            ? determineTagFilterState(filterHelper, tag, 'filter_state' in tag && Boolean(tag.action))
+            : tag.filter_state;
+        return state && !isFilterState(state, FILTER_STATES.UNDEFINED);
+    };
     const shouldPrintTag = (/** @type {Tag} */ tag) => isBogusFolder(tag) || isFilterActive(tag);
 
     // Calculating the number of tags to print
@@ -1396,8 +1428,9 @@ function onTagFilterClick(listElement) {
 
     const filterHelper = getFilterHelper($(listElement));
 
-    // Update the tag's filter_state for the main character list (backward compatibility)
-    if (existingTag && isMainCharacterList(filterHelper)) {
+    // SillyBunny: only Characters updates the persisted legacy tag state;
+    // Groups has independent account-storage keys — see docs/ui-migration.md
+    if (existingTag && isMainCharacterList(filterHelper) && mainListFilterStoragePrefix === 'CharacterList') {
         existingTag.filter_state = state;
         saveSettingsDebounced();
     }
@@ -1422,8 +1455,23 @@ function onTagFilterClick(listElement) {
  * Loads persisted filter states for a given filter context.
  * @param {FilterHelper} filterHelper - The filter helper instance
  * @param {string} storagePrefix - The storage key prefix for this context
+ * @param {{ replace?: boolean }} [options] Replace rather than append existing filter data
  */
-function loadFilterStatesForContext(filterHelper, storagePrefix) {
+// SillyBunny: view switches replace persisted filter data without changing the
+// shared filter helper's identity — see docs/ui-migration.md
+function loadFilterStatesForContext(filterHelper, storagePrefix, { replace = false } = {}) {
+    if (replace) {
+        for (const [filterType, filterData] of Object.entries({
+            [FILTER_TYPES.SEARCH]: '',
+            [FILTER_TYPES.FAV]: false,
+            [FILTER_TYPES.GROUP]: false,
+            [FILTER_TYPES.FOLDER]: false,
+            [FILTER_TYPES.TAG]: { excluded: [], selected: [] },
+        })) {
+            filterHelper.setFilterData(filterType, filterData, true);
+        }
+    }
+
     const validStates = new Set(Object.keys(FILTER_STATES));
     const readState = (/** @type {string} */ storageKey) => {
         const v = accountStorage.getItem(storageKey);
@@ -1447,7 +1495,9 @@ function loadFilterStatesForContext(filterHelper, storagePrefix) {
     }
 
     // Load regular tag filter states
-    const tagFilterData = filterHelper.getFilterData(FILTER_TYPES.TAG);
+    const tagFilterData = replace
+        ? { excluded: [], selected: [] }
+        : filterHelper.getFilterData(FILTER_TYPES.TAG);
     for (const tag of tags) {
         const storageKey = `${storagePrefix}_tag_${tag.id}`;
         const state = readState(storageKey);
@@ -1465,6 +1515,18 @@ function loadFilterStatesForContext(filterHelper, storagePrefix) {
         }
     }
     filterHelper.setFilterData(FILTER_TYPES.TAG, tagFilterData, true);
+}
+
+// SillyBunny: replace filter snapshots on the first visit to a list view so
+// persisted tag arrays cannot leak across Characters and Groups — see docs/ui-migration.md
+/**
+ * Loads persisted filter state for the selected view into the shared main-list filter.
+ * @param {'characters'|'groups'} view
+ */
+export function loadMainListFilterStates(view) {
+    const prefix = view === 'groups' ? 'GroupList' : 'CharacterList';
+    setMainListFilterStoragePrefix(prefix);
+    loadFilterStatesForContext(entitiesFilter, prefix, { replace: true });
 }
 
 /**
@@ -2813,7 +2875,9 @@ function extractCharacterAvatar(avatarSrc) {
 function restoreSavedTagFilters() {
     try {
         // Load persisted filter states for all contexts (including character list)
-        loadFilterStatesForContext(entitiesFilter, 'CharacterList');
+        // SillyBunny: initial restoration uses the same replacing loader as
+        // later view switches — see docs/ui-migration.md
+        loadMainListFilterStates('characters');
         loadFilterStatesForContext(groupCandidatesFilter, 'GroupCandidates');
         loadFilterStatesForContext(groupMembersFilter, 'GroupMembers');
     } catch (e) {

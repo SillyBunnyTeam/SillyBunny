@@ -58,6 +58,9 @@ import { renderTemplateAsync } from './templates.js';
 
 import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
+// SillyBunny: the shared sort control delegates Groups persistence to the
+// view-scoped state module — see docs/ui-migration.md
+import { getCharacterListView, setListSort } from './sillybunny-character-list-state.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { PARSER_FLAG } from './slash-commands/SlashCommandParser.js';
@@ -3132,16 +3135,18 @@ function validateStoryString(storyString, params) {
 }
 
 
-const sortFunc = (a, b) => power_user.sort_order == 'asc' ? compareFunc(a, b) : compareFunc(b, a);
-const compareFunc = (first, second) => {
-    const a = first[power_user.sort_field];
-    const b = second[power_user.sort_field];
+// SillyBunny: accept an isolated view sort without changing power_user's
+// character settings or the upstream callers that omit it — see docs/ui-migration.md
+const sortFunc = (a, b, sortSettings = power_user) => sortSettings.sort_order == 'asc' ? compareFunc(a, b, sortSettings) : compareFunc(b, a, sortSettings);
+const compareFunc = (first, second, sortSettings = power_user) => {
+    const a = first[sortSettings.sort_field];
+    const b = second[sortSettings.sort_field];
 
-    if (power_user.sort_field === 'create_date') {
+    if (sortSettings.sort_field === 'create_date') {
         return sortMoments(timestampToMoment(b), timestampToMoment(a));
     }
 
-    switch (power_user.sort_rule) {
+    switch (sortSettings.sort_rule) {
         case 'boolean':
             if (a === true || a === 'true') return 1;  // Prioritize 'true' or true
             if (b === true || b === 'true') return -1; // Prioritize 'true' or true
@@ -3161,16 +3166,23 @@ const compareFunc = (first, second) => {
  * @param {any[]} entities An array of objects with an `item` property
  * @param {boolean} forceSearch Whether to force search sorting
  * @param {import('./filters.js').FilterHelper} [filterHelper=null] Filter helper to use
+ * @param {{ sort_field?: string, sort_order?: string, sort_rule?: string|null, field?: string, order?: string, rule?: string|null }} [sortSettings=null] Optional isolated sort settings
  */
-export function sortEntitiesList(entities, forceSearch, filterHelper = null) {
+export function sortEntitiesList(entities, forceSearch, filterHelper = null, sortSettings = null) {
     filterHelper = filterHelper ?? entitiesFilter;
-    if (power_user.sort_field == undefined || entities.length === 0) {
+    sortSettings = sortSettings ?? power_user;
+    sortSettings = {
+        sort_field: sortSettings.sort_field ?? sortSettings.field,
+        sort_order: sortSettings.sort_order ?? sortSettings.order,
+        sort_rule: sortSettings.sort_rule ?? sortSettings.rule,
+    };
+    if (sortSettings.sort_field == undefined || entities.length === 0) {
         return;
     }
 
     const isSearch = forceSearch || $('#character_sort_order option[data-field="search"]').is(':selected');
 
-    if (!isSearch && power_user.sort_order === 'random') {
+    if (!isSearch && sortSettings.sort_order === 'random') {
         shuffle(entities);
         return;
     }
@@ -3189,7 +3201,7 @@ export function sortEntitiesList(entities, forceSearch, filterHelper = null) {
             return (aScore - bScore);
         }
 
-        return sortFunc(a.item, b.item);
+        return sortFunc(a.item, b.item, sortSettings);
     });
 }
 
@@ -4470,13 +4482,24 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
+    // SillyBunny: route the shared sort control to per-view storage for Groups
+    // while preserving power_user sort keys for Characters — see docs/ui-migration.md
     $('#character_sort_order').on('change', function () {
         const field = String($(this).find(':selected').data('field'));
         // Save sort order, but do not save search sorting, as this is a temporary sorting option
         if (field !== 'search') {
-            power_user.sort_field = field;
-            power_user.sort_order = $(this).find(':selected').data('order');
-            power_user.sort_rule = $(this).find(':selected').data('rule');
+            const sort = {
+                field,
+                order: $(this).find(':selected').data('order'),
+                rule: $(this).find(':selected').data('rule'),
+            };
+            if (getCharacterListView() === 'groups') {
+                void setListSort('groups', sort);
+                return;
+            }
+            power_user.sort_field = sort.field;
+            power_user.sort_order = sort.order;
+            power_user.sort_rule = sort.rule;
         }
         printCharactersDebounced();
         saveSettingsDebounced();

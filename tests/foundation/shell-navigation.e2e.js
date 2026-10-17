@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { protectMaintainerServer } from '../helpers/maintainer-server.js';
 
 const layerTwoControls = [
     '#sb-left-shell-toggle',
@@ -17,6 +18,7 @@ test.beforeEach(async ({ page, baseURL }) => {
         const url = new URL(route.request().url());
         return url.origin === baseURL ? route.continue() : route.abort();
     });
+    await protectMaintainerServer(page);
 });
 
 test('preserves Layer 2 controls, labels, settings tabs, and settings focus', async ({ page, isMobile }) => {
@@ -112,7 +114,7 @@ test('desktop Characters settings page opens from its top-bar trigger', async ({
     await expect(characterPanel).not.toHaveClass(/sb-settings-active-root/);
 });
 
-test('mobile Characters pager stays below the toolbar after Home navigation', async ({ page, isMobile }) => {
+test('mobile Characters pager stays in the shared list footer after Home navigation', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'The mobile character toolbar layout is mobile-only.');
     await page.route('**/api/settings/save', route => route.fulfill({ json: {} }));
     await page.goto('/');
@@ -123,13 +125,15 @@ test('mobile Characters pager stays below the toolbar after Home navigation', as
     await expect(page.locator('.welcomePanel')).toBeVisible();
     await page.locator('#sb-character-toggle').click();
     await expect(page.locator('#right-nav-panel')).toHaveClass(/openDrawer/);
-    await page.locator('#rm_print_characters_pagination').evaluate((element) => {
-        element.style.setProperty('display', 'flex', 'important');
-    });
+    const list = page.locator('.sb-character-list[data-mounted="true"]');
+    await expect(list).toBeVisible();
+    const pager = list.locator('.ds-entity-list__footer .sb-list-pagination');
+    await expect(pager).toBeVisible();
+    await expect(pager.getByRole('combobox', { name: 'Items per page' })).toBeVisible();
 
     const layout = await page.evaluate(() => {
-        const toolbar = document.querySelector('.sb-character-create-bar');
-        const pager = document.getElementById('rm_print_characters_pagination');
+        const toolbar = document.querySelector('.sb-character-list__header');
+        const pager = document.querySelector('.sb-character-list .sb-list-pagination');
         const toolbarRect = toolbar.getBoundingClientRect();
         const pagerRect = pager.getBoundingClientRect();
         const overlapsToolbar = pagerRect.width > 0 && pagerRect.height > 0 && Array.from(toolbar.children).some((element) => {
@@ -140,14 +144,14 @@ test('mobile Characters pager stays below the toolbar after Home navigation', as
         });
 
         return {
-            pagerParent: pager.parentElement?.id,
+            pagerParent: pager.parentElement?.className,
             toolbarBottom: toolbarRect.bottom,
             pagerTop: pagerRect.top,
             overlapsToolbar,
         };
     });
 
-    expect(layout.pagerParent).toBe('rm_characters_block');
+    expect(layout.pagerParent).toContain('ds-entity-list__footer');
     expect(layout.pagerTop).toBeGreaterThanOrEqual(layout.toolbarBottom);
     expect(layout.overlapsToolbar).toBe(false);
 });

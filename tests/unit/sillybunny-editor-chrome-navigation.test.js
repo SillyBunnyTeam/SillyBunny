@@ -31,7 +31,7 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     }),
 }));
 
-const { mountEditorChrome } = await import('../../public/scripts/sillybunny-editor/chrome.js');
+const { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } = await import('../../public/scripts/sillybunny-editor/chrome.js');
 const { registerEditorNavigation, characterTabGuardSelector, CHARACTER_TAB_GUARD_SELECTOR } = await import('../../public/scripts/sillybunny-editor/navigation.js');
 
 function makeMedia() {
@@ -105,6 +105,25 @@ describe('mountEditorChrome header-only mode', () => {
         expect(handlers.onCancel).toHaveBeenCalledTimes(1);
         expect(handlers.onSave).toHaveBeenCalledTimes(1);
     });
+});
+
+test('entity-scoped draft dismissal leaves another editor recovery toast untouched', () => {
+    let hidden;
+    const toast = { find: jest.fn(() => ({ on: jest.fn() })) };
+    global.toastr = {
+        info: jest.fn((_body, _title, options) => { hidden = options.onHidden; return toast; }),
+        clear: jest.fn(() => hidden()),
+    };
+    try {
+        showDraftRecoveryToast({ ts: 1 }, { restore() {}, discard() {} }, 'group:g1');
+        dismissDraftRecoveryToast('character:alice.png');
+        expect(global.toastr.clear).not.toHaveBeenCalled();
+        dismissDraftRecoveryToast('group:g1');
+        expect(global.toastr.clear).toHaveBeenCalledWith(toast, { force: true });
+    } finally {
+        dismissDraftRecoveryToast();
+        delete global.toastr;
+    }
 });
 
 describe('mountEditorChrome dispose', () => {

@@ -296,7 +296,10 @@ export function createEditorSession(config) {
             restore: () => {
                 // markSaved() can re-key a create session without reopening it.
                 if (token !== offeredToken || context?.entityId !== entityId) return;
-                restoreSnapshot(draft.snapshot);
+                // Live actions can patch a stored backup after the recovery toast was offered.
+                const latest = drafts.read(entityId);
+                if (!latest) return;
+                restoreSnapshot(latest.snapshot);
                 notify();
             },
             discard: () => drafts.remove(entityId),

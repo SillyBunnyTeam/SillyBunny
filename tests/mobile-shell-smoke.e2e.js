@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+
+test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
 // Mobile shell smoke pack: pins the open/close contracts of the SillyBunny
 // mobile shell (settings page, section navigation, chat tools, character
@@ -231,12 +234,13 @@ function openLeftShell(page) {
     return page.evaluate(() => window.SillyBunnyShell.openTab('left'));
 }
 
-// Opening a section for a named tab shows the sidebar first on phones.
+// List/persona navigation APIs reveal mobile content; request the sidebar through its Back control.
 async function openSettingsSection(page, shellKey, tabId) {
     await page.evaluate(({ shell, tab }) => window.SillyBunnyShell.openTab(shell, tab), { shell: shellKey, tab: tabId });
 
     const settingsPage = page.locator('#sb-settings-page');
     await expect(settingsPage).not.toHaveAttribute('hidden');
+    if (await settingsPage.evaluate(element => element.classList.contains('sb-settings-page--content'))) await showSettingsSidebar(page);
     await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
 }
 

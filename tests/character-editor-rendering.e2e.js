@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 
 test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
     // Browser QA must not change the running instance's saved preferences.
     await page.route('**/api/settings/save', route => {
         const request = route.request();
@@ -320,6 +322,7 @@ test('dirty draft recovers after page reload', async ({ page }) => {
         app.select_selected_character(0);
     });
     await expect(page.locator('#sb_character_editor_header')).toBeVisible();
+    await showToasts(page);
     await page.locator('#sb_draft_restore_btn').click();
     await expect(name).toHaveValue('Draft Recovery Test');
     await expect(page.locator('#sb_character_editor_dirty')).toBeVisible();

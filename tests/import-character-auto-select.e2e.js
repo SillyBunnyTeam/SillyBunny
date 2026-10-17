@@ -1,5 +1,37 @@
-/* global document, window */
 import { expect, test } from '@playwright/test';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+
+const createdAvatars = new WeakMap();
+
+test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
+    const created = new Set();
+    createdAvatars.set(page, created);
+    await page.route('**/api/characters/import', async route => {
+        const response = await route.fetch();
+        if (response.ok()) {
+            const result = await response.json();
+            if (!/^Issue 177 Imported \d+$/.test(result.file_name)) throw new Error('Import fixture returned an unexpected cleanup ID');
+            created.add(`${result.file_name}.png`);
+        }
+        await route.fulfill({ response });
+    });
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+    // Only IDs returned by this test's import request are eligible for deletion.
+    await page.unroute(/\/api\/(?:characters|groups)\/(?:create|delete|rename|duplicate)$/);
+    for (const avatar of createdAvatars.get(page)) {
+        expect(await page.evaluate(async avatar => {
+            const { getRequestHeaders } = await import('/script.js');
+            const response = await fetch('/api/characters/delete', {
+                method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ avatar_url: avatar, delete_chats: true }),
+            });
+            return response.ok;
+        }, avatar)).toBe(true);
+    }
+    await testInfo.attach('deleted-import-fixtures', { body: JSON.stringify([...createdAvatars.get(page)]), contentType: 'application/json' });
+});
 
 test.describe('character import selection', () => {
     for (const { name, viewport } of [

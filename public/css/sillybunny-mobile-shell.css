@@ -277,12 +277,6 @@
         justify-content: center;
     }
 
-    #right-nav-panel.openDrawer .sb-character-favorites-label {
-        font-size: calc(var(--mainFontSize) * 0.66);
-        letter-spacing: 0;
-        text-transform: none;
-    }
-
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
         font-size: calc(var(--mainFontSize) * 0.72) !important;
         line-height: 1.1 !important;
@@ -522,7 +516,7 @@
         padding-inline: var(--sb-character-editor-mobile-edge, 6px) !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block,
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows),
     #right-nav-panel.openDrawer #rm_ch_create_block,
     #right-nav-panel.openDrawer #rm_group_chats_block {
         box-sizing: border-box !important;
@@ -1947,7 +1941,8 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         padding-inline: 10px !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block {
+    /* SillyBunny: retain legacy mobile row/avatar/grid layout only for fallback — see docs/ui-migration.md */
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) {
         --sb-character-list-avatar-size: 56px;
         gap: 8px;
         width: 100%;
@@ -1956,7 +1951,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         padding-inline-end: var(--sb-character-scroll-gutter, 8px);
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
         display: grid !important;
         grid-template-columns: var(--sb-character-list-avatar-size) minmax(0, 1fr) !important;
         align-items: center !important;
@@ -1971,20 +1966,20 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         box-sizing: border-box;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) {
         border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 64%, var(--sb-shell-border) 36%) !important;
         background: var(--sb-flat-selected-bg) !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) :is(.ch_name, .group_select_counter) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) :is(.ch_name, .group_select_counter) {
         color: var(--color-primary, var(--sb-accent)) !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
         min-height: calc(var(--sb-character-list-avatar-height) + 46px);
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         grid-column: 1;
         grid-row: 1 / -1;
         align-self: center !important;
@@ -2000,7 +1995,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         overflow: hidden;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
         grid-column: 2;
         grid-row: 1 / -1;
         display: grid !important;
@@ -2012,7 +2007,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         overflow: hidden;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline {
         display: flex !important;
         grid-column: 1;
         grid-row: auto;
@@ -2026,14 +2021,14 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         align-items: flex-start;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline .tag {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline .tag {
         min-height: calc(var(--mainFontSize) * 1.45);
         line-height: 1.25;
         max-width: 100%;
         padding-block: 2px;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline .tag_name {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) .tags_inline .tag_name {
         max-width: min(58vw, 16rem);
     }
 
@@ -2064,7 +2059,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         margin-left: 0;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar:not(.avatar_collage) img {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar:not(.avatar_collage) img {
         width: 100% !important;
         min-width: 100% !important;
         max-width: 100% !important;
@@ -2075,16 +2070,16 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         object-position: center;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage {
         aspect-ratio: 1 / 1 !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage img {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage img {
         object-fit: cover;
         object-position: center;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_2 .img_1 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_2 .img_1 {
         left: 0 !important;
         top: 0 !important;
         width: 50% !important;
@@ -2093,7 +2088,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-height: 100% !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_2 .img_2 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_2 .img_2 {
         left: 50% !important;
         top: 0 !important;
         width: 50% !important;
@@ -2102,27 +2097,27 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-height: 100% !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_3 :is(.img_1, .img_2),
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_4 img {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_3 :is(.img_1, .img_2),
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_4 img {
         width: 50% !important;
         max-width: 50% !important;
         height: 50% !important;
         max-height: 50% !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_3 .img_1,
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_4 .img_1 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_3 .img_1,
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_4 .img_1 {
         left: 0 !important;
         top: 0 !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_3 .img_2,
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_4 .img_2 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_3 .img_2,
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_4 .img_2 {
         left: 50% !important;
         top: 0 !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_3 .img_3 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_3 .img_3 {
         left: 0 !important;
         top: 50% !important;
         width: 100% !important;
@@ -2131,17 +2126,17 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-height: 50% !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_4 .img_3 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_4 .img_3 {
         left: 0 !important;
         top: 50% !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .avatar.avatar_collage.collage_4 .img_4 {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .avatar.avatar_collage.collage_4 .img_4 {
         left: 50% !important;
         top: 50% !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block :is(.character_name_block, .group_name_block) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) :is(.character_name_block, .group_name_block) {
         display: grid !important;
         grid-template-columns: minmax(0, 1fr);
         align-items: center;
@@ -2150,7 +2145,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         margin: 0;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block :is(.ch_name, .group_select_counter, .character_name_block_sub_line, .ch_description, .group_select_block_list) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) :is(.ch_name, .group_select_counter, .character_name_block_sub_line, .ch_description, .group_select_block_list) {
         max-width: 100%;
         min-width: 0;
         margin: 0;
@@ -2160,22 +2155,22 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         white-space: nowrap;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block :is(.ch_name, .group_select_counter) {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) :is(.ch_name, .group_select_counter) {
         line-height: 1.35;
         padding-block-start: 1px;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block .character_name_block_sub_line {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) .character_name_block_sub_line {
         position: static;
         right: auto;
         top: auto;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > .character_select {
         grid-template-columns: 24px var(--sb-character-list-avatar-size) minmax(0, 1fr) !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .bulk_select_checkbox {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > .character_select > .bulk_select_checkbox {
         grid-column: 1 !important;
         grid-row: 1 / -1 !important;
         align-self: center !important;
@@ -2184,22 +2179,22 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         position: static !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .avatar {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > .character_select > .avatar {
         grid-column: 2 !important;
         grid-row: 1 / -1 !important;
     }
 
-    #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > .character_select > .character_select_container {
+    #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > .character_select > .character_select_container {
         grid-column: 3 !important;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows) {
         --sb-character-list-avatar-size: 64px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
@@ -2208,7 +2203,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         padding: 10px 8px;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         flex-basis: var(--sb-character-list-avatar-height) !important;
     }
 

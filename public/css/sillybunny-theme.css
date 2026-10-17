@@ -2679,13 +2679,15 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select):not(.bulk_select) {
+/* SillyBunny: the new shared list uses entity-row styling; these legacy list
+   rules remain available to the upstream fallback only. */
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select):not(.bulk_select) {
     flex-direction: column;
     align-items: stretch;
     gap: 2px;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
     display: grid;
     grid-template-columns: var(--avatar-base-width) minmax(0, 1fr) auto;
     align-items: center;
@@ -2696,20 +2698,20 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     box-sizing: border-box;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 58%, var(--sb-shell-border) 42%);
     background: var(--sb-flat-selected-bg);
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).sb-just-selected:not(.inline_avatar) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select).sb-just-selected:not(.inline_avatar) {
     animation: sb-entity-select-pulse 640ms var(--sb-ease-out, ease-out);
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) :is(.ch_name, .group_select_counter) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select).is-active-entity:not(.inline_avatar) :is(.ch_name, .group_select_counter) {
     color: var(--color-primary, var(--sb-accent));
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
     grid-column: 1;
     grid-row: 1 / span 2;
     align-self: center !important;
@@ -2719,12 +2721,12 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 }
 
 @media screen and (max-width: 1000px) {
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         grid-row: 1 / -1 !important;
     }
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
     grid-column: 2 / -1;
     grid-row: 1 / span 2;
     display: grid;
@@ -2736,7 +2738,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     max-width: none;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .character_name_block {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .character_name_block {
     grid-column: 1;
     grid-row: 1;
     min-width: 0;
@@ -2744,24 +2746,24 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     align-items: center;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_name_block,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .group_name_block {
     display: contents;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
     grid-column: 1;
     grid-row: 1;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_select_counter,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .bogus_folder_counter,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_version,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .ch_avatar_url,
-#rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .ch_assistant {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .group_select_counter,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .bogus_folder_select .bogus_folder_counter,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_version,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .ch_avatar_url,
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .ch_assistant {
     grid-column: 2;
     grid-row: 1;
     justify-self: end;
@@ -2772,11 +2774,11 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     white-space: nowrap;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block .ch_add_placeholder {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_name_block .ch_add_placeholder {
     display: none;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .character_name_block_sub_line {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .character_name_block_sub_line {
     position: static;
     grid-column: 2;
     grid-row: 2;
@@ -2787,7 +2789,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     white-space: nowrap;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_description, .group_select_block_list) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_description, .group_select_block_list) {
     grid-column: 1;
     grid-row: 2;
     min-width: 0;
@@ -2800,7 +2802,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
    every pill in the fork's grid row (a 22px "ST Default" tag rendered at 15px).
    The mobile shell already opts out; do the same here so the desktop drawer
    shows whole tags. */
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
     grid-column: 1 / -1;
     grid-row: 3;
     min-width: 0;
@@ -2808,7 +2810,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     overflow: visible;
 }
 
-#rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
+#rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
     grid-column: 1;
     grid-row: 1;
     justify-self: start;

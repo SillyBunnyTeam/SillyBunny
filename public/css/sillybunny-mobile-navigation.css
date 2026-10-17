@@ -11,75 +11,9 @@ html[data-sb-mobile-ui] .sb-visually-hidden {
     white-space: nowrap !important;
 }
 
-/* Mode bar: the favorites band hosts the Roleplay/Conversation switch on mobile. */
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #HotSwapWrapper {
-    display: none !important;
-}
-
+/* SillyBunny: favorites now live in each list's filter row; keep the strip as a transport. */
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps:not(#sb-specificity) {
-    display: flex !important;
-    align-items: center;
-    min-block-size: 0 !important;
-    max-block-size: none !important;
-    block-size: auto !important;
-    margin: 0 !important;
-    padding: 2px 12px 6px !important;
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='character_edit'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='create'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='group_edit'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='group_create'] > #CharListButtonAndHotSwaps:not(#sb-specificity),
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer[data-menu-type='editor_empty'] > #CharListButtonAndHotSwaps:not(#sb-specificity) {
     display: none !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps > #sb_character_mode_toggle {
-    position: static !important;
-    inset: auto !important;
-    display: flex !important;
-    flex: 1 1 auto;
-    gap: 2px !important;
-    inline-size: 100% !important;
-    min-inline-size: 0;
-    max-inline-size: none !important;
-    min-block-size: 48px !important;
-    block-size: 48px !important;
-    margin: 0 !important;
-    padding: 1px !important;
-    overflow-x: auto;
-    scrollbar-width: none;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor, #cfcfc5) 24%, transparent) !important;
-    border-radius: var(--sb-shell-control-radius) !important;
-    background: var(--sb-raised-bg) !important;
-    box-shadow: var(--sb-shadow-control) !important;
-    transform: none !important;
-    box-sizing: border-box;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps > #sb_character_mode_toggle::-webkit-scrollbar {
-    display: none;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps .sb-character-shell-mode-button {
-    display: inline-flex !important;
-    flex: 1 0 auto;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-inline-size: 44px !important;
-    min-block-size: 44px !important;
-    block-size: 44px !important;
-    padding: 0 14px !important;
-    border-radius: var(--sb-shell-control-radius) !important;
-    white-space: nowrap;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #CharListButtonAndHotSwaps .sb-character-shell-mode-button span {
-    display: inline !important;
 }
 
 /* Characters sheet: same inset, radius and top edge as the Workspace/Customize sheets. */
@@ -208,81 +142,6 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDr
     content: '\f00d';
 }
 
-/* More popover: grid view, Chat Archive and extension buttons as full-width rows. */
-html[data-sb-mobile-ui] .sb-character-list-more {
-    display: none;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-more {
-    display: block;
-    position: relative;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-trigger[aria-expanded='true'] {
-    border-color: var(--sb-focus-ring) !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover {
-    position: absolute;
-    inset: calc(100% + 6px) 0 auto auto;
-    z-index: 1100;
-    display: grid;
-    gap: 4px;
-    min-inline-size: 13rem;
-    max-inline-size: calc(100vw - 48px);
-    padding: 6px;
-    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
-    border-radius: var(--sb-radius-overlay);
-    background: var(--sb-layer-popover);
-    box-shadow: var(--sb-shadow-popover);
-    color: var(--SmartThemeBodyColor);
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover[hidden] {
-    display: none !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover > #rm_buttons_container {
-    display: grid !important;
-    gap: 4px;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover > #rm_buttons_container:empty {
-    display: none !important;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer .sb-character-list-more-popover :is(#charListGridToggle, #rm_buttons_container > *):not(#sb-specificity) {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 12px !important;
-    box-sizing: border-box;
-    width: 100% !important;
-    inline-size: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    max-inline-size: none !important;
-    height: auto !important;
-    min-height: 44px !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 12px !important;
-    aspect-ratio: auto !important;
-    border-radius: 10px !important;
-    text-align: start;
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-character-list-more-popover > #charListGridToggle::after {
-    content: attr(data-sb-list-label);
-    font-family: var(--mainFontFamily);
-    font-size: var(--sb-type-caption, 0.875rem);
-    font-weight: var(--sb-weight-title, 600);
-}
-
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] body.charListGrid .sb-character-list-more-popover > #charListGridToggle {
-    color: var(--sb-accent, #c9c6a8);
-}
-
 /* Pager: sits under the list instead of inside the create bar. */
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer #rm_characters_block > #rm_print_characters_pagination {
     display: flex;
@@ -330,7 +189,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDr
     padding-bottom: 8px;
 }
 
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] body:not(.charListGrid) #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar):not(#sb-specificity) {
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] body:not(.charListGrid) #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar):not(#sb-specificity) {
     min-height: calc(var(--sb-character-list-avatar-size, 56px) + 18px);
     margin: 0;
     padding: 8px;

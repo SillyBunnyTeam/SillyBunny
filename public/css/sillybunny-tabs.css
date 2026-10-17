@@ -1676,7 +1676,7 @@ body:not(.movingUI) .drawer-content.maximized {
     background: var(--sb-layer-view);
 }
 
-#right-nav-panel.openDrawer #rm_print_characters_block,
+#right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows),
 #right-nav-panel.openDrawer #rm_ch_create_block {
     box-sizing: border-box;
     scrollbar-gutter: stable;
@@ -2117,9 +2117,9 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none !important;
 }
 
-#right-nav-panel.openDrawer:is([data-menu-type="characters"], [data-menu-type="world-info"], [data-menu-type="persona"]) > #CharListButtonAndHotSwaps {
-    display: flex !important;
-    visibility: visible !important;
+/* SillyBunny: favorites are reached through the shared list filters on every tab. */
+#right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
+    display: none !important;
 }
 
 #right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
@@ -2147,27 +2147,6 @@ body:not(.movingUI) .drawer-content.maximized {
     padding: 0 !important;
     min-height: 0;
     overflow: hidden;
-}
-
-#right-nav-panel .sb-character-favorites-label {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: var(--sb-type-caption);
-    font-weight: var(--sb-weight-title);
-    letter-spacing: 0;
-    line-height: var(--sb-line-compact);
-    text-transform: none;
-    color: var(--sb-muted-fg);
-}
-
-#right-nav-panel .sb-character-favorites-label::before,
-#right-nav-panel .sb-character-favorites-label::after {
-    content: '';
-    flex: 1 1 auto;
-    height: 1px;
-    background: color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
 }
 
 #right-nav-panel #HotSwapWrapper .hotswap {
@@ -5719,16 +5698,16 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     font-size: var(--sb-type-body);
 }
 
-#rm_print_characters_block {
+#rm_print_characters_block:not(.sb-character-list__rows) {
     --sb-character-list-avatar-height: var(--sb-character-list-avatar-size);
 }
 
-body.big-avatars #rm_print_characters_block {
+body.big-avatars #rm_print_characters_block:not(.sb-character-list__rows) {
     --sb-character-list-avatar-height: calc(var(--sb-character-list-avatar-size) * var(--big-avatar-height-factor) / var(--big-avatar-width-factor));
 }
 
 @media screen and (min-width: 1001px) {
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) {
         --sb-character-list-avatar-size: 88px;
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr));
@@ -5738,7 +5717,7 @@ body.big-avatars #rm_print_characters_block {
         overflow-x: hidden;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
         display: flex !important;
         flex-direction: column !important;
         flex-wrap: nowrap !important;
@@ -5758,7 +5737,7 @@ body.big-avatars #rm_print_characters_block {
         overflow: hidden;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
         width: var(--sb-character-list-avatar-size) !important;
         min-width: var(--sb-character-list-avatar-size) !important;
         max-width: var(--sb-character-list-avatar-size) !important;
@@ -5770,7 +5749,7 @@ body.big-avatars #rm_print_characters_block {
         overflow: hidden;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar:not(.avatar_collage) img {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar:not(.avatar_collage) img {
         width: 100% !important;
         min-width: 100% !important;
         max-width: 100% !important;
@@ -5781,7 +5760,7 @@ body.big-avatars #rm_print_characters_block {
         object-position: center;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
         display: flex !important;
         flex-direction: column !important;
         flex-wrap: nowrap !important;
@@ -5792,7 +5771,7 @@ body.big-avatars #rm_print_characters_block {
         min-width: 0;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) :is(.character_name_block, .group_name_block) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) :is(.character_name_block, .group_name_block) {
         display: flex !important;
         flex-direction: column !important;
         flex-wrap: nowrap !important;
@@ -5804,7 +5783,7 @@ body.big-avatars #rm_print_characters_block {
         margin: 0;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) :is(.ch_name, .group_select_counter, .bogus_folder_counter) {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) :is(.ch_name, .group_select_counter, .bogus_folder_counter) {
         width: 100%;
         max-width: 100%;
         min-width: 0;
@@ -5816,7 +5795,7 @@ body.big-avatars #rm_print_characters_block {
         white-space: normal;
     }
 
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
+    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
         position: absolute !important;
         top: 8px !important;
         left: 8px !important;
@@ -6121,7 +6100,7 @@ body.big-avatars #rm_print_characters_block {
 }
 
 /* Keep shell card avatars inside their cards even when custom themes scale global .avatar nodes. */
-body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
+body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
     scale: 1 !important;
     transform: none !important;
 }

@@ -375,35 +375,36 @@
         text-align: center;
     }
 
-    #rm_print_characters_block {
+    /* SillyBunny: retain legacy mobile rows only for the upstream fallback — see docs/ui-migration.md */
+    #rm_print_characters_block:not(.sb-character-list__rows) {
         gap: 6px;
         padding-inline: 0;
         min-width: 0;
     }
 
-    #rm_print_characters_block .character_select,
-    #rm_print_characters_block .group_select,
-    #rm_print_characters_block .bogus_folder_select {
+    #rm_print_characters_block:not(.sb-character-list__rows) .character_select,
+    #rm_print_characters_block:not(.sb-character-list__rows) .group_select,
+    #rm_print_characters_block:not(.sb-character-list__rows) .bogus_folder_select {
         min-height: 58px;
         border-radius: 14px;
         box-sizing: border-box;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
         grid-template-columns: var(--avatar-base-width) minmax(0, 1fr);
         align-items: center;
         gap: 8px 10px;
         padding: 9px 8px;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar {
         grid-column: 1;
         grid-row: 1 / span 3;
         align-self: center;
         justify-self: center;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
         grid-column: 2;
         grid-row: 1;
         display: grid;
@@ -414,9 +415,9 @@
         min-width: 0;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_name_block,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .group_name_block {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         align-items: center;
@@ -424,9 +425,9 @@
         min-width: 0;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
         grid-column: 1;
         grid-row: 1;
         min-width: 0;
@@ -434,11 +435,11 @@
         line-height: 1.22;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_select_counter,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .bogus_folder_counter,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_version,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .ch_avatar_url,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .ch_assistant {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .group_select_counter,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .bogus_folder_select .bogus_folder_counter,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .character_version,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .ch_avatar_url,
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .character_select .ch_assistant {
         grid-column: 1;
         grid-row: auto;
         justify-self: start;
@@ -452,7 +453,7 @@
         opacity: 0.8;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .character_name_block_sub_line {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > .group_select .character_name_block_sub_line {
         grid-column: 1;
         grid-row: auto;
         justify-self: start;
@@ -464,7 +465,7 @@
         line-height: 1.2;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_description, .group_select_block_list) {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_description, .group_select_block_list) {
         grid-column: 1;
         grid-row: auto;
         min-width: 0;
@@ -473,14 +474,14 @@
         line-height: 1.28;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
         grid-column: 1;
         grid-row: auto;
         min-width: 0;
         max-width: 100%;
     }
 
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
+    body #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
         grid-column: 1;
         grid-row: 1;
         align-self: start;
@@ -488,14 +489,14 @@
         margin: 0;
     }
 
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) {
+    #rm_print_characters_block:not(.sb-character-list__rows).bulk_select > :is(.character_select, .group_select) {
         display: grid;
         flex: 0 0 auto;
         grid-template-columns: minmax(var(--sb-checkbox-size, 1rem), auto) var(--avatar-base-width) minmax(0, 1fr) !important;
         gap: 8px;
     }
 
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > .bulk_select_checkbox {
+    #rm_print_characters_block:not(.sb-character-list__rows).bulk_select > :is(.character_select, .group_select) > .bulk_select_checkbox {
         grid-column: 1;
         grid-row: 1 / span 2;
         align-self: center;
@@ -503,16 +504,16 @@
         margin: 0;
     }
 
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > .avatar {
+    #rm_print_characters_block:not(.sb-character-list__rows).bulk_select > :is(.character_select, .group_select) > .avatar {
         grid-column: 2;
     }
 
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
+    #rm_print_characters_block:not(.sb-character-list__rows).bulk_select > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
         grid-column: 3;
         min-width: 0;
     }
 
-    body.charListGrid #rm_print_characters_block {
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         justify-content: stretch;
@@ -520,9 +521,9 @@
         gap: 8px;
     }
 
-    body.charListGrid #rm_print_characters_block .bogus_folder_select,
-    body.charListGrid #rm_print_characters_block .character_select,
-    body.charListGrid #rm_print_characters_block .group_select {
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .bogus_folder_select,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .character_select,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .group_select {
         display: flex !important;
         flex-direction: column !important;
         width: 100%;
@@ -534,24 +535,24 @@
         padding: 10px 8px;
     }
 
-    body.charListGrid #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.bogus_folder_select, .character_select, .group_select):not(.inline_avatar) > .avatar {
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.bogus_folder_select, .character_select, .group_select):not(.inline_avatar) > .avatar {
         flex: 0 0 auto;
         margin: 0 auto;
         align-self: center;
         justify-self: center;
     }
 
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .ch_name,
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .bogus_folder_counter,
-    body.charListGrid #rm_print_characters_block .character_select .ch_name,
-    body.charListGrid #rm_print_characters_block .group_select .ch_name,
-    body.charListGrid #rm_print_characters_block .group_select .group_select_counter {
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .bogus_folder_select .ch_name,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .bogus_folder_select .bogus_folder_counter,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .character_select .ch_name,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .group_select .ch_name,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .group_select .group_select_counter {
         max-width: 100%;
     }
 
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .character_select_container,
-    body.charListGrid #rm_print_characters_block .character_select .character_select_container,
-    body.charListGrid #rm_print_characters_block .group_select .group_select_container {
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .bogus_folder_select .character_select_container,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .character_select .character_select_container,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .group_select .group_select_container {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
@@ -560,9 +561,9 @@
         width: 100%;
     }
 
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .character_name_block,
-    body.charListGrid #rm_print_characters_block .character_select .character_name_block,
-    body.charListGrid #rm_print_characters_block .group_select .group_name_block {
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .bogus_folder_select .character_name_block,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .character_select .character_name_block,
+    body.charListGrid #rm_print_characters_block:not(.sb-character-list__rows) .group_select .group_name_block {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
@@ -570,7 +571,7 @@
         min-width: 0;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) {
+    body #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) {
         display: grid !important;
         grid-template-columns: 24px var(--avatar-base-width) minmax(0, 1fr) !important;
         align-items: center;
@@ -579,7 +580,7 @@
         padding: 8px;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
+    body #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
         grid-column: 1 !important;
         grid-row: 1 / -1 !important;
         align-self: center !important;
@@ -588,7 +589,7 @@
         position: static !important;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .avatar {
+    body #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .avatar {
         grid-column: 2 !important;
         grid-row: 1 / -1 !important;
         align-self: center !important;
@@ -596,7 +597,7 @@
         margin: 0 !important;
     }
 
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
+    body #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
         grid-column: 3 !important;
         grid-row: 1 !important;
         display: grid !important;

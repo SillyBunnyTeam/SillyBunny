@@ -22,6 +22,8 @@ import {
     chat,
     sendSystemMessage,
     printMessages,
+    // SillyBunny: refresh the shared main list after id-based row actions — see docs/ui-migration.md
+    printCharactersDebounced,
     characters,
     default_avatar,
     clearChat,
@@ -111,6 +113,8 @@ import {
     notifyGroupEditorChanged,
     rebaseGroupEditor,
     initGroupEditor,
+    // SillyBunny: deletion must retire a hidden editor session and backup — see docs/ui-migration.md
+    discardGroupEditorForEntity,
 } from './sillybunny-group-editor.js';
 
 export {
@@ -1821,6 +1825,17 @@ function getGroupAvatar(group) {
     return groupAvatar;
 }
 
+// SillyBunny: the shared main list consumes the existing group collage as a
+// DOM node instead of reconstructing group avatar markup — see docs/ui-migration.md
+/**
+ * Builds the existing custom or collage group avatar node.
+ * @param {Group} group
+ * @returns {HTMLElement|null}
+ */
+export function getGroupAvatarElement(group) {
+    return getGroupAvatar(group)?.[0] ?? null;
+}
+
 /**
  * Gets chat IDs for a group.
  * @param {string} groupId Group ID
@@ -2321,8 +2336,10 @@ function activateNaturalOrder(members, input, lastMessage, allowSelfResponses, i
 /**
  * Deletes a group from the server by ID.
  * @param {string} id Group ID to delete
- * @returns {Promise<void>} Promise that resolves when the group is deleted
+ * @returns {Promise<boolean>} Whether the group was deleted
  */
+// SillyBunny: return deletion success for id-based row actions while preserving
+// the legacy side-effect sequence — see docs/ui-migration.md
 async function deleteGroup(id) {
     const group = groups.find((x) => x.id === id);
 
@@ -2339,6 +2356,15 @@ async function deleteGroup(id) {
     }
 
     if (response.ok) {
+        // SillyBunny: a deleted group cannot retain an editable hidden draft
+        // or a recovery backup — see docs/ui-migration.md
+        discardGroupEditorForEntity(id);
+        if (editorDraft && String(editorDraft.id) === String(id)) {
+            editorDraft = null;
+        }
+        if (String(openGroupId) === String(id)) {
+            openGroupId = null;
+        }
         await clearChat();
         selected_group = null;
         delete tag_map[id];
@@ -2349,7 +2375,9 @@ async function deleteGroup(id) {
         select_rm_info('group_delete', id);
 
         $('#rm_button_selected_ch').children('h2').text('');
+        return true;
     }
+    return false;
 }
 
 /**
@@ -2913,20 +2941,14 @@ function isGroupMemberDisabled(avatarId) {
     return Boolean(thisGroup && thisGroup.disabled_members.includes(avatarId));
 }
 
+// SillyBunny: delegate the existing editor delete action through the shared
+// id-based confirmation and generation guard — see docs/ui-migration.md
 async function onDeleteGroupClick() {
     if (!openGroupId) {
         toastr.warning(t`Currently no group selected.`);
         return;
     }
-    if (is_group_generating) {
-        toastr.warning(t`Not so fast! Wait for the characters to stop typing before deleting the group.`);
-        return;
-    }
-
-    const confirm = await Popup.show.confirm(t`Delete the group?`, '<p>' + t`This will also delete all your chats with that group. If you want to delete a single conversation, select a "View past chats" option in the lower left menu.` + '</p>');
-    if (confirm) {
-        deleteGroup(openGroupId);
-    }
+    await deleteGroupById(openGroupId);
 }
 
 async function onFavoriteGroupClick() {
@@ -2942,6 +2964,72 @@ async function onFavoriteGroupClick() {
         await editGroup(openGroupId, false, false);
         favsToHotswap();
     }
+}
+
+// SillyBunny: list favourites are acknowledged live writes, independent of
+// the shared save debounce and any hidden editor draft — see docs/ui-migration.md
+/**
+ * Persists a group's favourite flag and rebases that field in its owned editor draft.
+ * @param {string} groupId
+ * @returns {Promise<boolean>} Whether a group was toggled
+ */
+export async function toggleGroupFavoriteById(groupId) {
+    const group = groups.find(item => String(item.id) === String(groupId));
+    if (!group) {
+        return false;
+    }
+
+    const previousFavorite = group.fav;
+    group.fav = !previousFavorite;
+    try {
+        await editGroup(group.id, true, false);
+    } catch {
+        group.fav = previousFavorite;
+        printCharactersDebounced();
+        favsToHotswap();
+        toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Group chat could not be saved`);
+        return false;
+    }
+
+    if (editorDraft && String(editorDraft.id) === String(group.id)) {
+        editorDraft.fav = group.fav;
+        updateFavButtonState(group.fav);
+        if (isGroupEditorOwner(group.id)) {
+            const baseline = { ...readGroupEditorBaseline(), fav: group.fav };
+            // A save receipt updates the backup as well as the baseline, keeping
+            // unrelated pending fields dirty without restoring an old favourite.
+            captureGroupEditorSave()?.markSaved(undefined, baseline);
+        }
+    }
+    printCharactersDebounced();
+    favsToHotswap();
+    return true;
+}
+
+/**
+ * Deletes a group by id after the existing confirmation and generation checks.
+ * @param {string} groupId
+ * @returns {Promise<boolean>} Whether the group was deleted
+ */
+export async function deleteGroupById(groupId) {
+    const group = groups.find(item => String(item.id) === String(groupId));
+    if (!group) {
+        return false;
+    }
+    if (is_group_generating) {
+        toastr.warning(t`Not so fast! Wait for the characters to stop typing before deleting the group.`);
+        return false;
+    }
+
+    const confirmed = await Popup.show.confirm(
+        t`Delete the group?`,
+        '<p>' + t`This will also delete all your chats with that group. If you want to delete a single conversation, select a "View past chats" option in the lower left menu.` + '</p>',
+    );
+    if (!confirmed || is_group_generating) {
+        return false;
+    }
+
+    return await deleteGroup(group.id);
 }
 
 async function onGroupSelfResponsesClick() {

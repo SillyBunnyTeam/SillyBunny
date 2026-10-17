@@ -61,7 +61,7 @@ const session = createEditorSession({
     persist: () => createOrEditCharacter(),
     drafts,
     onStateChange: _renderChrome,
-    offerDraft: showDraftRecoveryToast,
+    offerDraft: (draft, actions) => showDraftRecoveryToast(draft, actions, `character:${session.context.entityId}`),
 });
 
 const navigation = {
@@ -178,6 +178,41 @@ export function openCharacterEditorCreateSession() {
  */
 export function markCharacterEditorSaved() {
     session.markSaved();
+}
+
+/** Reconciles an acknowledged live favorite change without saving other editor fields. */
+export function syncCharacterEditorFavorite(avatar, fav) {
+    if (session.context?.mode !== 'edit' || session.context.entityId !== avatar) return false;
+    const button = document.getElementById('favorite_button');
+    if (!button) return false;
+    const favorite = Boolean(fav);
+    button.classList.toggle('fav_on', favorite);
+    button.classList.toggle('fav_off', !favorite);
+    _syncFavoritePressed();
+    const backup = drafts.read(avatar);
+    if (backup) drafts.write(avatar, { ...backup.snapshot, _fav: favorite });
+    session.rebase({ ...session.readBaseline(), _fav: favorite });
+    return true;
+}
+
+/** Drops only the deleted entity's session and backup; the caller owns navigation. */
+export function discardCharacterEditorForEntity(avatar) {
+    if (!avatar) return false;
+    drafts.remove(avatar);
+    dismissDraftRecoveryToast(`character:${avatar}`);
+    if (session.context?.mode !== 'edit' || session.context.entityId !== avatar) return false;
+    session.close();
+    if (draftOwner === avatar) {
+        draftOwner = null;
+        draftAlt = [];
+        draftGrp = [];
+        draftAltKeys = [];
+        draftGrpKeys = [];
+        _renderAlternateGreetings();
+        _renderGroupGreetings();
+    }
+    previews?.reset();
+    return true;
 }
 
 /**

@@ -262,6 +262,47 @@ describe('editor session dirty tracking and draft backup', () => {
         expect(draft.snapshot.name).toBe('B');
         expect(draft.ts).toBe(1000);
     });
+
+    test('an offered recovery action reads a subsequently patched favorite without cleaning other edits', () => {
+        let state = { name: 'Saved', _fav: false };
+        let backup = { v: 1, ts: 1, snapshot: { name: 'Pending', _fav: false } };
+        let recovery;
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: snapshot => { state = { ...snapshot }; },
+            persist: async () => {},
+            drafts: { read: () => backup, write: () => {}, remove: () => { backup = null; } },
+            offerDraft: (_draft, actions) => { recovery = actions; },
+        });
+        session.open({ mode: 'edit', entityId: 'alice.png' });
+        backup = { ...backup, snapshot: { ...backup.snapshot, _fav: true } };
+        state._fav = true;
+        session.rebase({ ...session.readBaseline(), _fav: true });
+        recovery.restore();
+        expect(state).toEqual({ name: 'Pending', _fav: true });
+        expect(session.readBaseline()).toEqual({ name: 'Saved', _fav: true });
+        expect(session.isDirty()).toBe(true);
+        session.close();
+    });
+
+    test('an offered recovery action cannot resurrect a deleted stored backup', () => {
+        let state = { name: 'Saved' };
+        let backup = { v: 1, ts: 1, snapshot: { name: 'Pending' } };
+        let recovery;
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: snapshot => { state = { ...snapshot }; },
+            persist: async () => {},
+            drafts: { read: () => backup, write: () => {}, remove: () => { backup = null; } },
+            offerDraft: (_draft, actions) => { recovery = actions; },
+        });
+        session.open({ mode: 'edit', entityId: 'alice.png' });
+        backup = null;
+        recovery.restore();
+        expect(state).toEqual({ name: 'Saved' });
+        expect(session.isDirty()).toBe(false);
+        session.close();
+    });
 });
 
 describe('character-editor draft key contract', () => {

@@ -47,7 +47,7 @@ const session = createEditorSession({
     persist: _persist,
     drafts,
     onStateChange: _renderChrome,
-    offerDraft: showDraftRecoveryToast,
+    offerDraft: (draft, actions) => showDraftRecoveryToast(draft, actions, `group:${session.context.entityId}`),
 });
 
 const navigation = {
@@ -193,6 +193,17 @@ export function isGroupEditorOwner(groupId) {
     return session.isOpen()
         && session.context?.mode === 'edit'
         && session.context?.entityId === String(groupId);
+}
+
+/** Drops only the deleted group's session and backup; group-chats owns its draft and navigation. */
+export function discardGroupEditorForEntity(groupId) {
+    if (groupId === null || groupId === undefined || groupId === '') return false;
+    const id = String(groupId);
+    drafts.remove(id);
+    dismissDraftRecoveryToast(`group:${id}`);
+    if (!isGroupEditorOwner(id)) return false;
+    session.close();
+    return true;
 }
 
 /**

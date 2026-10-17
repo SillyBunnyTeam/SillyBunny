@@ -331,14 +331,16 @@ export function mountEditorChrome(config) {
 
 /** @type {JQuery|null} */
 let recoveryToast = null;
+let recoveryToastOwner = null;
 
 /**
  * The draft-recovery toast both editors show when a session opens over a
  * stored backup that differs from the saved entity.
  * @param {{ ts: number }} draft
  * @param {{ restore: () => void, discard: () => void }} actions
+ * @param {string|null} [owner] Entity-scoped owner for selective dismissal.
  */
-export function showDraftRecoveryToast(draft, actions) {
+export function showDraftRecoveryToast(draft, actions, owner = null) {
     if (recoveryToast) toastr.clear(recoveryToast, { force: true });
 
     const when = typeof moment !== 'undefined' ? moment(draft.ts).fromNow() : new Date(draft.ts).toLocaleTimeString();
@@ -355,10 +357,13 @@ export function showDraftRecoveryToast(draft, actions) {
         closeButton: true,
         escapeHtml: false,
         onHidden: () => {
-            if (recoveryToast === toast) recoveryToast = null;
+            if (recoveryToast !== toast) return;
+            recoveryToast = null;
+            recoveryToastOwner = null;
         },
     });
     recoveryToast = toast;
+    recoveryToastOwner = owner;
 
     const dismiss = () => toastr.clear(toast, { force: true });
     toast.find('#sb_draft_restore_btn').on('click', () => {
@@ -371,8 +376,10 @@ export function showDraftRecoveryToast(draft, actions) {
     });
 }
 
-/** Dismiss the recovery toast, for example when its session closes. */
-export function dismissDraftRecoveryToast() {
+/** Dismisses the recovery toast, optionally only when its entity owner matches. */
+export function dismissDraftRecoveryToast(owner = null) {
+    if (owner !== null && recoveryToastOwner !== owner) return;
     if (recoveryToast) toastr.clear(recoveryToast, { force: true });
     recoveryToast = null;
+    recoveryToastOwner = null;
 }

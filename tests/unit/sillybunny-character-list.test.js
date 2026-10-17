@@ -1,0 +1,413 @@
+/** @jest-environment jsdom */
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
+import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
+
+let renderer;
+let stateRenderer;
+let model;
+let mounted;
+let menu;
+let resize;
+const pages = { characters: 1, groups: 1 };
+const sizes = { characters: 10, groups: 10 };
+const power_user = { charListGrid: false, show_tag_filters: true, bogus_folders: false };
+const pageLoaded = jest.fn();
+const printCharacters = jest.fn(async () => renderer?.render(model));
+const toggleCharacterFavoriteById = jest.fn();
+const toggleGroupFavoriteById = jest.fn();
+const deleteCharacterById = jest.fn();
+const duplicateCharacter = jest.fn();
+const deleteGroupById = jest.fn();
+const navigate = jest.fn();
+const setFilterData = jest.fn();
+const setListPage = jest.fn((view, page) => { pages[view] = page; return stateRenderer?.(); });
+const setListPageSize = jest.fn((view, size) => { sizes[view] = size; return stateRenderer?.(); });
+const sorts = { characters: { field: 'name', order: 'asc' }, groups: { field: 'name', order: 'desc' } };
+const setListSort = jest.fn();
+const template = html => { const element = document.createElement('div'); element.innerHTML = html; return element; };
+
+await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((out, string, index) => out + string + (values[index] ?? ''), ''),
+}));
+await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
+    openActionMenu: jest.fn(options => { menu = menu?.trigger === options.trigger ? null : options; }),
+}));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { navigate } }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
+    animateListChange: jest.fn((_rows, update) => update()),
+    play: jest.fn(), stopMotion: jest.fn(), animateOut: jest.fn((_node, _frames, done) => done()), MOTION_SLOW: 0,
+}));
+await jest.unstable_mockModule('../../public/script.js', () => ({
+    setCharacterListRenderer: value => { renderer = value; }, printCharacters,
+    getCharacterRowData: (item, id) => ({ ...item, id, chid: id, avatarUrl: `/thumb/${item.avatar}` }),
+    getGroupRowData: group => ({ ...group, memberCountText: '2 characters', memberNamesText: 'One, Two' }),
+    entitiesFilter: { setFilterData, clearFuzzySearchCaches: jest.fn() },
+    getBackBlock: () => template('<span class="ch_name">Go back</span>'),
+    getHiddenBlock: async count => template(`<p>${count} hidden</p>`),
+    getEmptyBlock: async () => template('<p>No characters found</p>'),
+    toggleCharacterFavoriteById, duplicateCharacter, deleteCharacterById,
+}));
+await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
+    toggleGroupFavoriteById, deleteGroupById,
+    getGroupAvatarElement: () => template('<img src="/group.png">'),
+}));
+await jest.unstable_mockModule('../../public/scripts/tags.js', () => ({
+    getTagBlock: item => template(`<span class="ch_name">${item.name}</span><span class="bogus_folder_counter">3 characters</span>`),
+}));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-state.js', () => ({
+    getCharacterListView: () => model.view,
+    registerCharacterListStateRenderer: value => { stateRenderer = value; },
+    getListPage: view => pages[view], setListPage,
+    getListPageSize: view => sizes[view], setListPageSize,
+    getListSort: view => sorts[view], setListSort,
+    getListSortOptions: () => [{ field: 'name', order: 'asc', label: 'Name (A-Z)' }, { field: 'name', order: 'desc', label: 'Name (Z-A)' }],
+}));
+
+const { mountCharacterList, getMountedCharacterList } = await import('../../public/scripts/sillybunny-character-list.js');
+const characters = count => Array.from({ length: count }, (_, id) => ({ type: 'character', id, item: { name: `Name ${id}`, avatar: `${id}.png` } }));
+const settle = async () => { for (let index = 0; index < 40; index++) await Promise.resolve(); };
+const rows = () => [...document.querySelectorAll('#rm_print_characters_block > .ds-entity-row')];
+const button = id => document.querySelector(`[data-action-id="${id}"]`);
+const action = label => menu.sections.flatMap(section => section.items).find(item => item.label === label);
+async function mount() { mounted = await mountCharacterList(); return mounted; }
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    renderer = null;
+    stateRenderer = null;
+    mounted = null;
+    menu = null;
+    pages.characters = pages.groups = 1;
+    sizes.characters = sizes.groups = 10;
+    Object.assign(power_user, { charListGrid: false, show_tag_filters: true, bogus_folders: false });
+    model = { view: 'characters', entities: characters(3), sourceCount: 3, hasAnyFilter: false, folderOpen: false, fullRefresh: false, pageLoaded };
+    document.body.innerHTML = `<div id="rm_characters_block"><div id="charListFixedTop"><div id="rm_button_bar"><div id="rm_buttons_container"></div></div>
+        <form id="form_character_search_form"><input id="character_search_bar"></form>
+        <div class="rm_tag_controls"><div class="rm_tag_filter"><button class="filterByFavorites"></button><button class="filterByFolder"></button><button class="clearAllFilters"></button><button class="manageTags"></button><button class="showTagList"></button></div><div class="rm_tag_bogus_drilldown"></div></div></div>
+        <div id="rm_print_characters_pagination"><button id="charListGridToggle"></button><button id="bulkEditButton"></button><span id="bulkSelectedCount"></span><button id="bulkSelectAllButton"></button><button id="bulkDeleteButton"></button></div>
+        <div id="rm_print_characters_block"></div></div><button id="rm_button_create"></button><button id="rm_button_group_chats"></button>`;
+    document.getElementById('charListGridToggle').onclick = () => { power_user.charListGrid = !power_user.charListGrid; document.body.classList.toggle('charListGrid', power_user.charListGrid); };
+    globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn(async () => {}) };
+    globalThis.SillyBunnyShell = { openTab: jest.fn() };
+    globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} unobserve() {} };
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callback(); return 1; });
+});
+
+afterEach(() => {
+    (mounted ?? getMountedCharacterList())?.destroy();
+    jest.restoreAllMocks();
+    document.body.replaceChildren();
+    document.body.className = '';
+    delete globalThis.SillyBunnyAssets;
+    delete globalThis.SillyBunnyShell;
+    delete globalThis.SillyBunnyCharacterListController;
+});
+
+describe('shared Characters/Groups list', () => {
+    test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
+        await mount();
+        const row = rows()[0];
+        expect(row.id).toBe('CharID0');
+        expect(row.getAttribute('data-chid')).toBe('0');
+        expect(row.getAttribute('chid')).toBe('0');
+        expect(row.querySelector('.avatar img').getAttribute('loading')).toBe('lazy');
+        expect(row.querySelector('input.ch_fav')).not.toBeNull();
+        model.entities[0].item.name = 'Updated';
+        model.entities[0].item.favorite = true;
+        await mounted.render(model);
+        expect(rows()[0]).toBe(row);
+        expect(row.querySelector('.ch_name').textContent).toBe('Updated');
+        expect(row.querySelector('.ch_fav_icon')).not.toBeNull();
+        expect(pageLoaded).toHaveBeenCalledTimes(2);
+        expect(await mountCharacterList()).toBe(mounted);
+    });
+
+    test('renders groups, folders, Back, hidden counts and badges', async () => {
+        model = { ...model, view: 'groups', sourceCount: 5, hasAnyFilter: true, folderOpen: true, entities: [
+            { type: 'group', id: 'group-id', item: { id: 'group-id', name: 'Group', fav: true } },
+            { type: 'tag', id: 'tag-id', item: { name: 'Folder', folder_type: 'OPEN' } },
+        ] };
+        await mount();
+        const group = document.querySelector('.group_select');
+        expect(group.getAttribute('data-grid')).toBe('group-id');
+        expect(group.getAttribute('grid')).toBe('group-id');
+        expect(group.querySelector('.avatar img')).not.toBeNull();
+        expect(group.querySelector('.group_select_counter').textContent).toBe('2 characters');
+        expect(document.querySelector('[tagid="tag-id"]').classList.contains('bogus_folder_select')).toBe(true);
+        expect(document.querySelector('[tagid="back"]')).not.toBeNull();
+        expect(rows().at(-1).textContent).toContain('4 hidden');
+    });
+
+    test('keeps empty subtitle hooks hidden and reveals them when character data arrives', async () => {
+        await mount();
+        const row = rows()[0];
+        expect(row.querySelector('.character_version')).not.toBeNull();
+        expect(row.querySelector('.ch_description')).not.toBeNull();
+        expect(row.querySelector('.character_version').hidden).toBe(true);
+        expect(row.querySelector('.ch_description').hidden).toBe(true);
+        expect(row.querySelector('.ds-entity-row__subtitle').textContent).toBe('');
+        Object.assign(model.entities[0].item, { characterVersion: 'v2', creatorNotes: 'Notes' });
+        await mounted.render(model);
+        expect(row.querySelector('.character_version').hidden).toBe(false);
+        expect(row.querySelector('.ch_description').hidden).toBe(false);
+        expect(row.querySelector('.ds-entity-row__subtitle').textContent).toBe('v2 · Notes');
+        model.entities[0].item.characterVersion = '';
+        await mounted.render(model);
+        expect(row.querySelector('.character_version').hidden).toBe(true);
+        expect(row.querySelector('.ds-entity-row__subtitle').textContent).toBe('Notes');
+    });
+
+    test('pencil and menu clicks do not activate rows and retained handlers use current data', async () => {
+        await mount();
+        const row = rows()[0];
+        const activation = jest.fn();
+        row.addEventListener('click', activation);
+        model.entities[0].id = 9;
+        model.entities[0].item.name = 'Changed';
+        await mounted.render(model);
+        row.querySelector('[aria-label="Edit"]').click();
+        await settle();
+        expect(navigate).toHaveBeenCalledWith({ kind: 'character-editor', id: '0.png', via: 'character-list' }, expect.objectContaining({ from: expect.any(Function) }));
+        row.querySelector('[aria-label="Actions for Changed"]').click();
+        await settle();
+        expect(action('Convert to Persona')).toBeDefined();
+        action('Favorites').onSelect();
+        await settle();
+        expect(toggleCharacterFavoriteById).toHaveBeenCalledWith(9);
+        expect(activation).not.toHaveBeenCalled();
+    });
+
+    test('Enter/Space activate exactly once with the real upstream global keyboard handler', async () => {
+        await mount();
+        const previousCSS = globalThis.CSS;
+        globalThis.CSS = { supports: () => false };
+        const { initKeyboard } = await import('../../public/scripts/keyboard.js');
+        const listeners = jest.spyOn(document, 'addEventListener');
+        jest.spyOn(console, 'debug').mockImplementation(() => {});
+        initKeyboard();
+        const handler = listeners.mock.calls.find(([event]) => event === 'keydown')[1];
+        try {
+            const row = rows()[0];
+            const activation = jest.fn();
+            row.addEventListener('click', activation);
+            for (const key of ['Enter', ' ']) row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+            expect(activation).toHaveBeenCalledTimes(2);
+            const edit = row.querySelector('button');
+            edit.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            expect(activation).toHaveBeenCalledTimes(2);
+            row.focus();
+            row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            expect(document.activeElement).toBe(rows()[1]);
+        } finally {
+            document.removeEventListener('keydown', handler);
+            globalThis.CSS = previousCSS;
+        }
+    });
+
+    test('pagination clamps before slicing, changes size, and isolates equal-size views', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        pages.characters = 99;
+        await mount();
+        expect(rows()[0].id).toBe('CharID20');
+        expect(mounted.captureState().page).toBe(3);
+        const select = document.querySelector('.sb-list-pagination__size');
+        select.value = '25';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await settle();
+        expect(sizes.characters).toBe(25);
+        expect(rows()[0].id).toBe('CharID0');
+        sizes.groups = 25;
+        model.view = 'groups';
+        model.entities = [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group' } }];
+        await mounted.render(model);
+        document.querySelector('.sb-list-pagination__size').value = '50';
+        document.querySelector('.sb-list-pagination__size').dispatchEvent(new Event('change'));
+        await settle();
+        expect(sizes.groups).toBe(50);
+        expect(sizes.characters).toBe(25);
+    });
+
+    test('superseded pagination renders cannot write into the new view', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        pages.characters = 3;
+        await mount();
+        const outgoing = mounted.render({ ...model, entities: characters(1) });
+        const incoming = mounted.render({ ...model, view: 'groups', entities: [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group' } }] });
+        await Promise.all([outgoing, incoming]);
+        expect(pages.characters).toBe(3);
+        expect(pages.groups).toBe(1);
+        expect(rows()[0].getAttribute('data-grid')).toBe('g');
+        expect(mounted.section.dataset.view).toBe('groups');
+    });
+
+    test('row menus expose checked favorites and dispatch the confirmed delete wrappers', async () => {
+        await mount();
+        rows()[0].querySelector('[aria-label^="Actions for"]').click();
+        await settle();
+        expect(action('Favorites').checked).toBe(false);
+        expect(action('Delete').danger).toBe(true);
+        action('Delete').onSelect();
+        action('Duplicate').onSelect();
+        await settle();
+        expect(deleteCharacterById).toHaveBeenCalledWith(0);
+        expect(duplicateCharacter).toHaveBeenCalledWith({ avatar: '0.png' });
+        model = { ...model, view: 'groups', entities: [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group', fav: true } }] };
+        await mounted.render(model);
+        rows()[0].querySelector('[aria-label="Edit"]').click();
+        await settle();
+        expect(navigate).toHaveBeenLastCalledWith({ kind: 'group-editor', id: 'g', via: 'group-list' }, expect.any(Object));
+        rows()[0].querySelector('[aria-label^="Actions for"]').click();
+        await settle();
+        expect(action('Favorites').checked).toBe(true);
+        action('Favorites').onSelect();
+        action('Delete').onSelect();
+        await settle();
+        expect(toggleGroupFavoriteById).toHaveBeenCalledWith('g');
+        expect(deleteGroupById).toHaveBeenCalledWith('g');
+    });
+
+    test('legacy bulk transports stay keyboard reachable and restore their attributes', async () => {
+        await mount();
+        const bulk = document.getElementById('bulkEditButton');
+        const clicked = jest.fn();
+        bulk.addEventListener('click', clicked);
+        expect(bulk.closest('.sb-character-list__transports')).not.toBeNull();
+        expect(bulk.getAttribute('role')).toBe('button');
+        for (const key of ['Enter', ' ']) bulk.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        expect(clicked).toHaveBeenCalledTimes(2);
+        mounted.destroy();
+        expect(bulk.hasAttribute('role')).toBe(false);
+    });
+
+    test('navigation snapshots restore query, page, scroll and keyed focus', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        await mount();
+        await mounted.restoreState({ query: 'Name', page: 2, scrollTop: 65, focusKey: 'character:10.png' });
+        expect(setFilterData).toHaveBeenCalledWith('search', 'Name', true);
+        expect(rows()[0].id).toBe('CharID10');
+        expect(document.activeElement).toBe(rows()[0]);
+        expect(mounted.captureState()).toEqual({ query: 'Name', page: 2, scrollTop: 65, focusKey: 'character:10.png' });
+    });
+
+    test('search shortcuts reach the upstream input engine and restored queries stay in sync', async () => {
+        const input = document.getElementById('character_search_bar');
+        const upstream = jest.fn();
+        input.addEventListener('input', upstream);
+        await mount();
+        rows()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true }));
+        expect(input.value).toBe('x');
+        expect(upstream).toHaveBeenCalledTimes(1);
+        input.value = 'restored';
+        await mounted.render(model);
+        expect(mounted.captureState().query).toBe('restored');
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        expect(input.value).toBe('');
+        expect(upstream).toHaveBeenCalledTimes(2);
+    });
+
+    test('header actions, menus, overflow order and grid use existing transports', async () => {
+        await mount();
+        const create = jest.fn();
+        document.getElementById('rm_button_create').onclick = create;
+        button('new').click();
+        expect(create).toHaveBeenCalledTimes(1);
+        button('sort').click();
+        expect(action('Name (A-Z)').checked).toBe(true);
+        expect(action('Grid').checked).toBe(false);
+        action('Grid').onSelect();
+        await settle();
+        expect(document.body.classList.contains('charListGrid')).toBe(true);
+        const header = document.querySelector('.sb-list-header');
+        header.style.padding = '8px';
+        header.style.columnGap = '4px';
+        const titles = header.querySelector('.sb-list-header__titles');
+        const extensions = document.getElementById('rm_buttons_container');
+        const widths = new Map([...header.querySelectorAll('button')].map(button => [button, 44]));
+        widths.set(titles, 96);
+        widths.set(extensions, 40);
+        for (const child of header.children) {
+            const width = widths.get(child) ?? 0;
+            jest.spyOn(child, 'getBoundingClientRect').mockReturnValue({ width });
+        }
+        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 375 });
+        resize();
+        expect(button('sort').hidden).toBe(false);
+        expect(button('search').hidden).toBe(false);
+        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 320 });
+        resize();
+        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(false);
+        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 270 });
+        resize();
+        expect(button('search').hidden).toBe(true);
+        expect(button('new').hidden).toBe(false);
+        button('more').click();
+        expect(action('Show Tag List').checked).toBe(true);
+        expect(action('Tags as Folders').checked).toBe(false);
+        expect(action('Sort')).toBeDefined();
+        expect(action('Search')).toBeDefined();
+        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 375 });
+        resize();
+        expect(button('sort').hidden).toBe(false);
+        expect(button('search').hidden).toBe(false);
+        extensions.getBoundingClientRect.mockReturnValue({ width: 120 });
+        resize();
+        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(true);
+    });
+
+    test('empty library and no-results status actions reuse existing copy and transports', async () => {
+        model.entities = [];
+        model.sourceCount = 0;
+        await mount();
+        expect(document.querySelector('.sb-character-list__status').textContent).toContain('No characters found');
+        model.sourceCount = 3;
+        await mounted.render(model);
+        expect(document.querySelector('.sb-character-list__status').textContent).toContain('No results');
+    });
+
+    test('failed first render restores engines and can be retried', async () => {
+        printCharacters.mockRejectedValueOnce(new Error('first render failed'));
+        await expect(mount()).rejects.toThrow('first render failed');
+        expect(document.querySelector('#form_character_search_form #character_search_bar')).not.toBeNull();
+        expect(getMountedCharacterList()).toBeNull();
+        await mount();
+        expect(rows()).toHaveLength(3);
+    });
+
+    test('concurrent mounts wait for styles before registering the renderer', async () => {
+        let releaseStyles;
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementationOnce(() => new Promise(resolve => { releaseStyles = resolve; }));
+        const first = mountCharacterList();
+        const second = mountCharacterList();
+        expect(renderer).toBeNull();
+        expect(document.getElementById('charListFixedTop').style.display).toBe('none');
+        expect(document.querySelector('.sb-character-list--loading')).not.toBeNull();
+        releaseStyles();
+        [mounted] = await Promise.all([first, second]);
+        expect(await second).toBe(mounted);
+        expect(document.querySelectorAll('.sb-character-list')).toHaveLength(1);
+        expect(pageLoaded).toHaveBeenCalledTimes(1);
+    });
+
+    test('failed styles restore the fallback and a later mount can retry', async () => {
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementationOnce((_href, { id }) => {
+            const link = document.createElement('link');
+            link.id = id;
+            document.head.append(link);
+            return Promise.reject(new Error('stylesheet unavailable'));
+        });
+        await expect(mount()).rejects.toThrow('stylesheet unavailable');
+        expect(document.getElementById('deferred-entity-list-css')).toBeNull();
+        expect(document.querySelector('#form_character_search_form #character_search_bar')).not.toBeNull();
+        expect(document.getElementById('charListFixedTop').hasAttribute('style')).toBe(false);
+        expect(renderer).toBeNull();
+        await mount();
+        expect(rows()).toHaveLength(3);
+    });
+});

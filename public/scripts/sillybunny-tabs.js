@@ -691,6 +691,16 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
     ],
+    'characters:characters': [
+        // SillyBunny: the shared list stays deferred until its mount gate resolves.
+        { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018a', id: 'deferred-character-list-css' },
+    ],
+    'characters:groups': [
+        // SillyBunny: Characters and Groups use the same deferred list assets.
+        { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018a', id: 'deferred-character-list-css' },
+    ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
@@ -730,7 +740,6 @@ const SB_MOBILE_ACTION_DEBOUNCE_MS = 140;
 let sbInlineDrawerPersistenceObserver = null;
 let sbInlineDrawerPersistenceQueued = false;
 let sbChatScriptModulePromise = null;
-let sbMainScriptModulePromise = null;
 let sbComposerControlsObserver = null;
 let sbComposerControlsSyncQueued = false;
 let sbStorageFlushTimer = 0;
@@ -3721,14 +3730,6 @@ function getChatScriptModule() {
     }
 
     return sbChatScriptModulePromise;
-}
-
-function getMainScriptModule() {
-    if (!sbMainScriptModulePromise) {
-        sbMainScriptModulePromise = import('../script.js');
-    }
-
-    return sbMainScriptModulePromise;
 }
 
 function getCookieClearDomains(hostname) {
@@ -7404,12 +7405,8 @@ function hasActiveCharacterChat(context = getSillyTavernContext()) {
 }
 
 async function setCharacterListEntityView(view) {
-    try {
-        const module = await getMainScriptModule();
-        module.setCharacterMenuEntityView?.(view);
-    } catch (error) {
-        console.warn('[SillyBunny] Could not set character list entity view.', error);
-    }
+    const state = await import('./sillybunny-character-list-state.js');
+    await state.switchCharacterListView(view);
 }
 
 function syncCharacterListControls(view) {
@@ -7449,60 +7446,19 @@ function syncCharacterListControls(view) {
 }
 
 function ensureCharacterListToolbarLayout() {
-    const fixedTop = document.getElementById('charListFixedTop');
-    const buttonBar = document.getElementById('rm_button_bar');
-    const createButton = document.getElementById('rm_button_create');
-    const createGroupButton = document.getElementById('rm_button_group_chats');
-    const searchButton = document.getElementById('rm_button_search');
-    const pagination = document.getElementById('rm_print_characters_pagination');
-
-    if (!(fixedTop instanceof HTMLElement) || !(buttonBar instanceof HTMLElement)) {
-        return;
-    }
-
-    let actionBar = fixedTop.querySelector('.sb-character-create-bar');
-    if (!(actionBar instanceof HTMLElement)) {
-        actionBar = createElement('div', { className: 'sb-character-create-bar' });
-        fixedTop.prepend(actionBar);
-    }
-
-    if (createButton instanceof HTMLElement && createButton.parentElement !== actionBar) {
-        actionBar.prepend(createButton);
-    }
-
-    if (createGroupButton instanceof HTMLElement && createGroupButton.parentElement !== actionBar) {
-        const afterCreate = createButton instanceof HTMLElement && createButton.parentElement === actionBar
-            ? createButton.nextSibling
-            : actionBar.firstChild;
-        actionBar.insertBefore(createGroupButton, afterCreate);
-    }
-
-    if (buttonBar.parentElement !== actionBar) {
-        const actionButton = createGroupButton instanceof HTMLElement && createGroupButton.parentElement === actionBar
-            ? createGroupButton
-            : createButton;
-        const afterAction = actionButton instanceof HTMLElement && actionButton.parentElement === actionBar
-            ? actionButton.nextSibling
-            : actionBar.firstChild;
-        actionBar.insertBefore(buttonBar, afterAction);
-    }
-
-    if (pagination instanceof HTMLElement) {
-        if (isMobileViewport()) {
-            if (pagination.parentElement !== fixedTop.parentElement) {
-                fixedTop.after(pagination);
-            }
-        } else if (pagination.parentElement !== actionBar) {
-            actionBar.insertBefore(pagination, buttonBar.nextSibling);
-        }
-    }
-
-    if (searchButton instanceof HTMLElement && searchButton.parentElement !== buttonBar) {
-        buttonBar.appendChild(searchButton);
-    }
+    // SillyBunny: the shared character-list controller owns the visible toolbar and
+    // re-homes only its search, filters, extension slot, and bulk transports.
 }
 
-async function showCharacterListView(view = 'characters') {
+let characterListViewPromise = null;
+let characterListViewRevision = 0;
+
+function showCharacterListView(view = 'characters') {
+    characterListViewPromise = revealCharacterListView(view, ++characterListViewRevision);
+    return characterListViewPromise;
+}
+
+async function revealCharacterListView(view, revision) {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
@@ -7514,7 +7470,10 @@ async function showCharacterListView(view = 'characters') {
     setCharacterPanelMenuType(panel, normalizedView);
 
     syncCharacterListControls(normalizedView);
+    await mountCharacterListController();
+    if (revision !== characterListViewRevision) return false;
     await setCharacterListEntityView(normalizedView);
+    if (revision !== characterListViewRevision) return false;
 
     const backButton = document.getElementById('rm_button_back');
 
@@ -7656,6 +7615,18 @@ function ensureCharacterWorldInfoPanel() {
 
 // SillyBunny: lazy-mount the persona editor only after its deferred styles load — see docs/ui-migration.md
 let personaEditorMountPromise = null;
+let characterListMountPromise = null;
+
+async function mountCharacterListController() {
+    characterListMountPromise ??= import('./sillybunny-character-list.js')
+        .then(module => module.mountCharacterList())
+        .catch(error => {
+            characterListMountPromise = null;
+            console.warn('[SillyBunny] Could not mount the character list.', error);
+            throw error;
+        });
+    return characterListMountPromise;
+}
 function setCharacterPersonaPanelVisible(visible) {
     const host = ensureCharacterPersonaPanel() ?? document.getElementById('sb_character_persona_panel');
     const content = document.getElementById('PersonaManagement');
@@ -8063,6 +8034,8 @@ function syncCharacterShellTabs(activeTab = null) {
                         ? 'groups'
                         : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
 
+    if (normalizedTab !== 'characters' && normalizedTab !== 'groups') characterListViewRevision++;
+
     sbState.characterDrawer.lastTab = normalizedTab;
 
     if (menuType === 'characters' || menuType === 'groups') {
@@ -8416,6 +8389,12 @@ function preloadPanelStylesheets(shellKey, tabId = null) {
     if (normalizedKey === 'characters:persona') {
         return import('./sillybunny-persona-editor.js')
             .then(module => module.loadPersonaEditorStyles(stylesheets))
+            .catch(error => console.warn('Failed to load panel stylesheet:', normalizedKey, error));
+    }
+
+    if (normalizedKey === 'characters:characters' || normalizedKey === 'characters:groups') {
+        return import('./sillybunny-character-list.js')
+            .then(module => module.loadCharacterListStyles(stylesheets))
             .catch(error => console.warn('Failed to load panel stylesheet:', normalizedKey, error));
     }
 
@@ -15696,6 +15675,10 @@ function initAll() {
                 if (tabId === 'persona') {
                     if (isMobileViewport()) setSettingsMobileContentView(true);
                     return personaEditorMountPromise;
+                }
+                if (tabId === 'characters' || tabId === 'groups') {
+                    if (isMobileViewport()) setSettingsMobileContentView(true);
+                    return characterListViewPromise;
                 }
                 return;
             }

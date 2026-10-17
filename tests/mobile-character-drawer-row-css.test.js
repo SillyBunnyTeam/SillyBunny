@@ -6,6 +6,9 @@ import path from 'node:path';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mobileStylesCss = readFileSync(path.join(repoRoot, 'public', 'css', 'mobile-styles.css'), 'utf8').replace(/\r\n/g, '\n');
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8').replace(/\r\n/g, '\n');
+const listCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-list.css'), 'utf8').replace(/\r\n/g, '\n');
+const navigationCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-navigation.css'), 'utf8').replace(/\r\n/g, '\n');
+const entityCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-entity-list.css'), 'utf8').replace(/\r\n/g, '\n');
 const worldInfoCss = readFileSync(path.join(repoRoot, 'public', 'css', 'world-info.css'), 'utf8').replace(/\r\n/g, '\n');
 const worldInfoEditorCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-world-info-editor.css'), 'utf8').replace(/\r\n/g, '\n');
 
@@ -20,50 +23,33 @@ function getRuleBody(cssSource, selector) {
     return getRuleBodies(cssSource, selector).at(-1) ?? '';
 }
 
-describe('mobile character drawer top row css', () => {
-    test('keeps the favorites strip wide before the close control', () => {
-        const rowRule = getRuleBody(mobileStylesCss, '#right-nav-panel #CharListButtonAndHotSwaps');
-        const wrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
-        const hotswapRule = getRuleBody(mobileStylesCss, '#right-nav-panel #HotSwapWrapper');
-        const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel #sb-character-mobile-close');
-
-        expect(rowRule).toContain('grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px);');
-        expect(rowRule).toContain('padding: 6px var(--sb-character-mobile-edge, var(--sb-shell-panel-padding-inline, 12px));');
-        expect(wrapperRule).toContain('display: none;');
-        expect(hotswapRule).toContain('grid-column: 1;');
-        expect(closeRule).toContain('grid-column: 2;');
+describe('mobile character list header css', () => {
+    test('retires the favorites strip while keeping the per-view favorite filter visible', () => {
+        const strip = getRuleBody(navigationCss, 'html[data-sb-mobile-ui][data-sb-mobile-ui-mode=\'mobile\'] #right-nav-panel.openDrawer > #CharListButtonAndHotSwaps:not(#sb-specificity)');
+        expect(strip).toContain('display: none !important;');
+        expect(getRuleBody(listCss, '#rm_characters_block > .sb-character-list .rm_tag_controls')).toContain('overflow: auto hidden;');
+        expect(listCss).not.toMatch(/\.filterByFavorites\s*\{[^}]*display:\s*none/);
+        expect(navigationCss).not.toContain('.sb-character-list-more-popover');
     });
 
-    test('uses full touch target controls in editor mode', () => {
-        const editorRowRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #CharListButtonAndHotSwaps');
-        const editorWrapperRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container');
-        const editorHotswapRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #HotSwapWrapper');
-        const backRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #sb-character-back-to-list');
-        const closeRule = getRuleBody(mobileStylesCss, '#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) #sb-character-mobile-close');
-
-        expect(editorRowRule).toContain('grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);');
-        expect(editorWrapperRule).toContain('grid-column: 1;');
-        expect(editorHotswapRule).toContain('display: none !important;');
-        expect(backRule).toContain('grid-column: 3;');
-        expect(closeRule).toContain('grid-column: 4;');
+    test('uses full touch targets and preserves hidden overflow actions', () => {
+        expect(getRuleBodies(listCss, '.sb-character-list .sb-list-header__button').join('\n')).toContain('min-height: 44px;');
+        expect(getRuleBody(listCss, '.sb-character-list [hidden]')).toContain('display: none !important;');
     });
 });
 
 describe('mobile character drawer entity row css', () => {
     test('lets tag-heavy rows grow instead of shrinking inside the scroller', () => {
-        const entityRowRules = getRuleBodies(
-            mobileShellCss,
-            '#right-nav-panel.openDrawer #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar)',
-        ).join('\n');
-
-        expect(entityRowRules).toContain('flex: 0 0 auto;');
-        expect(entityRowRules).toContain('overflow: hidden;');
+        expect(getRuleBody(listCss, '.sb-character-list .ds-entity-row')).toContain('flex: 0 0 auto;');
+        expect(getRuleBody(entityCss, '.ds-entity-row')).toContain('min-height: 52px;');
+        expect(getRuleBodies(listCss, '.sb-character-list__box').join('\n')).toContain('overflow: auto;');
+        expect(mobileShellCss).toContain('#rm_print_characters_block:not(.sb-character-list__rows)');
     });
 
     test('keeps bulk-edit rows from shrinking inside the scroller', () => {
-        const bulkEntityRowRule = getRuleBody(mobileStylesCss, '#rm_print_characters_block.bulk_select > :is(.character_select, .group_select)');
-
-        expect(bulkEntityRowRule).toContain('flex: 0 0 auto;');
+        expect(getRuleBody(listCss, '.sb-character-list .ds-entity-row')).toContain('flex: 0 0 auto;');
+        expect(listCss).toContain('#rm_print_characters_block:is(.bulk_select, .group_overlay_mode_select) .ds-entity-row.character_selected');
+        expect(mobileStylesCss).toContain('#rm_print_characters_block:not(.sb-character-list__rows).bulk_select');
     });
 });
 
