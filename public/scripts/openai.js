@@ -2882,12 +2882,37 @@ function bindInlineSelectPickerSelect(select, control) {
         openInlineSelectPicker(select, control);
     };
 
-    select.addEventListener('pointerdown', openPicker);
+    // SillyBunny: a touch or pen pan starts with the same pointerdown as a tap, so every pointer
+    // except the mouse waits for a clean pointerup before the picker opens.
+    let tapStart = null;
+    select.addEventListener('pointerdown', event => {
+        tapStart = null;
+        if (!shouldUseInlineModelSelectPicker()) return;
+        if (event.pointerType === 'mouse') {
+            openPicker(event);
+            return;
+        }
+        event.preventDefault();
+        if (event.isPrimary) tapStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    select.addEventListener('pointermove', event => {
+        if (tapStart?.id === event.pointerId && Math.hypot(event.clientX - tapStart.x, event.clientY - tapStart.y) > 10) {
+            tapStart = null;
+        }
+    });
+    select.addEventListener('pointercancel', () => { tapStart = null; });
+    select.addEventListener('pointerup', event => {
+        const isTap = tapStart?.id === event.pointerId;
+        tapStart = null;
+        if (isTap) openPicker(event);
+    });
+    // Native multiple selects can toggle an option on touchend despite canceled pointer events.
+    select.addEventListener('touchend', event => {
+        if (shouldUseInlineModelSelectPicker()) event.preventDefault();
+    }, { passive: false });
     document.getElementById(`${select.id}_picker`)?.addEventListener('click', openPicker);
     select.addEventListener('click', event => {
-        if (shouldUseInlineModelSelectPicker()) {
-            event.preventDefault();
-        }
+        if (shouldUseInlineModelSelectPicker()) event.preventDefault();
     });
     select.addEventListener('keydown', event => {
         if (!shouldUseInlineModelSelectPicker() || ![' ', 'Enter', 'ArrowDown'].includes(event.key)) {

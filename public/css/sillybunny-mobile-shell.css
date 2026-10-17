@@ -2220,11 +2220,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         display: none !important;
     }
 
-    .sb-inline-select-picker-control {
-        cursor: pointer;
-        touch-action: manipulation;
-    }
-
     #nanogpt_form :is(#nanogpt_allowed_providers, #nanogpt_ignored_providers) {
         display: none;
     }

@@ -10557,6 +10557,16 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     -webkit-overflow-scrolling: touch;
 }
 
+/* The picker binds on phones and tablets; desktop Select2 hides the native control. */
+.sb-inline-select-picker-control {
+    cursor: pointer;
+}
+
+/* The picker scrolls options; native-select gestures scroll the surrounding panel. */
+.sb-inline-select-picker-control[multiple] {
+    overflow: hidden;
+}
+
 /* Keep the model, provider, and quantization menus on the same libadwaita-style option vocabulary
    at every width. The menu option reserves a real checkmark column so long labels never run beneath it. */
 .sb-model-id-picker-group {
