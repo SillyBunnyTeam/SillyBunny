@@ -292,7 +292,7 @@ import {
     isPersonaPanelOpen,
 } from './scripts/personas.js';
 import { getBackgrounds, initBackgrounds, loadBackgroundSettings, background_settings } from './scripts/backgrounds.js';
-import { cleanupActionLoaderArtifacts, loader } from './scripts/action-loader.js';
+import { dismissPreloader, loader } from './scripts/action-loader.js';
 import { BulkEditOverlay } from './scripts/BulkEditOverlay.js';
 import { initTextGenModels } from './scripts/textgen-models.js';
 import { appendFileContent, hasPendingFileAttachment, populateFileAttachment, decodeStyleTags, encodeStyleTags, isExternalMediaAllowed, preserveNeutralChat, restoreNeutralChat, formatCreatorNotes, initChatUtilities, addDOMPurifyHooks } from './scripts/chats.js';
@@ -340,6 +340,17 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
+import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
+// SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
+import {
+    beginCharacterEditorLoad,
+    loadCharacterEditorGreetings,
+    openCharacterEditorSession,
+    openCharacterEditorCreateSession,
+    markCharacterEditorSaved,
+    getCharacterEditorAlternateGreetings,
+    getCharacterEditorGroupGreetings,
+} from './scripts/sillybunny-character-editor.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import { fetchResumable } from './scripts/resumable-generation.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
@@ -920,6 +931,8 @@ export let create_save = {
     world: '',
     talkativeness: talkativeness_default,
     alternate_greetings: [],
+    group_only_greetings: [],
+    nickname: '',
     depth_prompt_prompt: '',
     depth_prompt_depth: depth_prompt_depth_default,
     depth_prompt_role: depth_prompt_role_default,
@@ -1110,51 +1123,25 @@ function scheduleDeferredStartupStylesheets() {
     window.setTimeout(loadStylesheets, 800);
 }
 
+const BOOT_SURFACE_STORAGE_KEY = 'sb-boot-surface';
+
+/**
+ * Stores the resolved page surface so index.html can paint the next startup splash in the same colors.
+ */
+function rememberBootSurface() {
+    try {
+        const style = getComputedStyle(document.body);
+        localStorage.setItem(BOOT_SURFACE_STORAGE_KEY, JSON.stringify({ bg: style.backgroundColor, fg: style.color }));
+    } catch (error) {
+        console.debug('Could not store the startup splash colors.', error);
+    }
+}
+
 //MARK: firstLoadInit
 async function firstLoadInit() {
-    const scheduleStartupLoaderCleanup = (reason) => {
-        cleanupActionLoaderArtifacts({ removePreloader: true, reason });
-        requestAnimationFrame(() => cleanupActionLoaderArtifacts({ removePreloader: true, reason: `${reason} (raf)` }));
-        window.setTimeout(() => cleanupActionLoaderArtifacts({ removePreloader: true, reason: `${reason} (timeout)` }), 250);
-    };
-
-    const initLoaderOverlay = loader.createOverlay();
-    initLoaderOverlay.classList.add('splash-screen');
-
-    const splashLogo = document.createElement('img');
-    splashLogo.src = getSillyBunnyFrontendIconSrc({ absolute: true });
-    splashLogo.alt = 'SillyBunny';
-    splashLogo.className = 'splash-logo';
-    splashLogo.ariaLabel = t`SillyBunny Badge`;
-    splashLogo.dataset.sbFrontendIcon = 'true';
-
-    const splashMessage = document.createElement('h2');
-    splashMessage.className = 'splash-message';
-    splashMessage.textContent = t`Initializing…`;
-    splashMessage.dataset.i18n = 'Initializing…';
-
-    initLoaderOverlay.prepend(splashLogo);
-    initLoaderOverlay.appendChild(splashMessage);
-
-    const initLoaderHandle = loader.show({
-        slug: 'app-init',
-        toastMode: loader.ToastMode.NONE,
-        overlayContent: initLoaderOverlay,
-    });
-    let startupLoaderReleased = false;
-
-
-    const releaseStartupLoader = async (reason) => {
-        if (startupLoaderReleased) return;
-        startupLoaderReleased = true;
-        if (initLoaderHandle.isActive) {
-            await initLoaderHandle.hide().catch((error) => {
-                console.error('Failed to hide startup loader.', error);
-            });
-        }
-        scheduleStartupLoaderCleanup(reason);
-    };
-
+    // SillyBunny: `.splash-screen` is the boot guard's "the app is booting" marker. It is added here
+    // rather than in index.html so a bundle that never runs still surfaces the 25s boot failure.
+    document.querySelector('#preloader .sb-boot-splash')?.classList.add('splash-screen');
     try {
         await refreshCsrfToken();
 
@@ -1197,14 +1184,14 @@ async function firstLoadInit() {
         ToolManager.initToolSlashCommands();
         await initPresetManager();
         await initSystemMessages();
-        await getSettings(initLoaderHandle);
+        await getSettings();
         await checkOpenRouterAuth();
         initKeyboard();
         initDynamicStyles();
         initTags();
         initBookmarks();
         scheduleDeferredStartupStylesheets();
-        await releaseStartupLoader('startup loader release');
+        await dismissPreloader();
         await getUserAvatars(true, user_avatar);
         await getCharacters();
         await getBackgrounds();
@@ -1238,13 +1225,14 @@ async function firstLoadInit() {
         await eventSource.emit(event_types.APP_INITIALIZED);
         await fixViewport();
         await eventSource.emit(event_types.APP_READY);
-        scheduleStartupLoaderCleanup('app ready');
+        rememberBootSurface();
+        window.addEventListener('pagehide', rememberBootSurface);
     } catch (error) {
         console.error('Application initialization failed.', error);
         toastr.error(t`SillyBunny couldn't finish starting. Please refresh the page.`, t`Startup Error`, { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true });
         throw error;
     } finally {
-        await releaseStartupLoader('startup finally');
+        await dismissPreloader();
     }
 }
 
@@ -3608,15 +3596,12 @@ export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfi
 
     let deleteOnlySwipe = canDeleteSwipe;
     if (askConfirmation) {
-        const result = await callGenericPopup(t`Are you sure you want to delete this message?`, POPUP_TYPE.CONFIRM, null, {
-            okButton: canDeleteSwipe ? t`Delete Swipe` : t`Delete Message`,
-            cancelButton: 'Cancel',
-            customButtons: canDeleteSwipe ? [t`Delete Message`] : null,
-        });
-        if (!result) {
+        // SillyBunny: destructive alert with Cancel focused (sillybunny-delete-confirm.js).
+        const choice = await confirmMessageDeletion({ canDeleteSwipe });
+        if (!choice) {
             return;
         }
-        deleteOnlySwipe = canDeleteSwipe && result === POPUP_RESULT.AFFIRMATIVE; // Default button, not the custom one
+        deleteOnlySwipe = canDeleteSwipe && choice === DELETE_CHOICE.SWIPE;
     }
 
     if (deleteOnlySwipe) {
@@ -10904,6 +10889,10 @@ export function activateSendButtons({ emitGenerationEnded = true } = {}) {
     if (!lockState.shouldShowStopButton) {
         hideStopButton({ emitGenerationEnded });
     }
+    // SillyBunny: restore the disabled offline affordance after generation without waiting for a status change.
+    if (online_status === 'no_connection' && !lockState.shouldShowStopButton && !(selected_group && is_group_generating)) {
+        document.getElementById?.('send_but')?.classList?.remove('displayNone');
+    }
     if (!lockState.shouldHideSwipeButtons) {
         showSwipeButtons();
     }
@@ -10951,11 +10940,6 @@ export function resetChatState() {
  */
 export function setMenuType(value) {
     const rightNavPanel = document.getElementById('right-nav-panel');
-
-    if (rightNavPanel instanceof HTMLElement && value !== 'character_edit' && value !== 'create') {
-        rightNavPanel.classList.remove('sb-character-editor-fullscreen');
-        rightNavPanel.dataset.sbCharacterEditorFullscreen = 'false';
-    }
 
     menu_type = value;
     // Allow custom CSS to see which menu type is active
@@ -12040,10 +12024,12 @@ export async function openCharacterChat(file_name) {
 
 ////////// OPTIMZED MAIN API CHANGE FUNCTION ////////////
 
-export function changeMainAPI(api = null) {
-    const selectedVal = api ?? $('#main_api').val();
-    //console.log(selectedVal);
-    const apiElements = {
+// SillyBunny (feat/v1.9.0-ui-overhaul): the element map below is shared by the two halves of the
+// main-API change. It is built once per call rather than hoisted, because several of the ids are
+// authored by extensions after this module is evaluated and a hoisted map would capture nulls. The
+// element set is deliberately unchanged from upstream.
+function collectMainApiElements() {
+    return {
         'koboldhorde': {
             apiStreaming: $('#NULL_SELECTOR'),
             apiSettings: $('#kobold_api-settings'),
@@ -12090,8 +12076,24 @@ export function changeMainAPI(api = null) {
             amountGenElem: $('#amount_gen_block'),
         },
     };
-    //console.log('--- apiElements--- ');
-    //console.log(apiElements);
+}
+
+/**
+ * Reshows the settings groups and backend block the chosen API owns, and hides the rest.
+ *
+ * This is the visibility half of the main-API change, split out so a control that only needs the
+ * right groups on screen can run it without the side effects below. It is pure presentation: the
+ * only writes are `display` on the connector, settings, range, preset, and streaming groups.
+ *
+ * The `apiConnector` ids are the five provider blocks in `#rm_api_block`, which the Connections
+ * panel moves into slots of its own. Those are skipped: the panel hides them with the `hidden`
+ * attribute, and a `display` written here would fight it. Everything else -- the settings, range,
+ * preset, and streaming groups, none of which the panel owns -- is switched as before.
+ *
+ * @param {string} selectedVal the `#main_api` value to show
+ */
+export function changePanelApiVisibility(selectedVal) {
+    const apiElements = collectMainApiElements();
 
     //first, disable everything so the old elements stop showing
     for (const apiName in apiElements) {
@@ -12101,7 +12103,9 @@ export function changeMainAPI(api = null) {
             continue;
         }
         apiObj.apiSettings.css('display', 'none');
-        apiObj.apiConnector.css('display', 'none');
+        if (!apiObj.apiConnector.closest('.sb-connections-provider').length) {
+            apiObj.apiConnector.css('display', 'none');
+        }
         apiObj.apiRanges.css('display', 'none');
         apiObj.apiPresets.css('display', 'none');
         apiObj.apiStreaming.css('display', 'none');
@@ -12109,11 +12113,16 @@ export function changeMainAPI(api = null) {
 
     //then, find and enable the active item.
     //This is split out of the loop so that different apis can share settings divs
-    let activeItem = apiElements[selectedVal];
+    const activeItem = apiElements[selectedVal];
+    if (!activeItem) {
+        return;
+    }
 
     activeItem.apiStreaming.css('display', 'block');
     activeItem.apiSettings.css('display', 'block');
-    activeItem.apiConnector.css('display', 'block');
+    if (!activeItem.apiConnector.closest('.sb-connections-provider').length) {
+        activeItem.apiConnector.css('display', 'block');
+    }
     activeItem.apiRanges.css('display', 'block');
     activeItem.apiPresets.css('display', 'block');
 
@@ -12144,6 +12153,12 @@ export function changeMainAPI(api = null) {
     } else {
         $('#common-gen-settings-block').css('display', 'block');
     }
+}
+
+export function changeMainAPI(api = null) {
+    const selectedVal = api ?? $('#main_api').val();
+
+    changePanelApiVisibility(selectedVal);
 
     main_api = selectedVal;
     setOnlineStatus('no_connection');
@@ -12240,7 +12255,7 @@ async function promptSettingsConflictReload() {
 
 //MARK: getSettings()
 ///////////////////////////////////////////
-export async function getSettings(initLoaderHandle = null) {
+export async function getSettings() {
     const response = await fetch('/api/settings/get', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -12381,7 +12396,7 @@ export async function getSettings(initLoaderHandle = null) {
         firstRun = !!settings.firstRun;
 
         if (firstRun) {
-            await initLoaderHandle?.hide();
+            await dismissPreloader();
             await doOnboarding(user_avatar);
             firstRun = false;
         }
@@ -13459,6 +13474,7 @@ export async function messageEdit(editMessageId) {
     const messageBlock = messageElement.find('.mes_block');
     const messageText = messageBlock.find('.mes_text');
 
+    messageElement.addClass('sb-message-editing');
     messageText.empty();
     messageBlock.find('.mes_buttons').css('display', 'none');
     messageBlock.find('.mes_edit_buttons').css('display', 'inline-flex');
@@ -13487,6 +13503,13 @@ export async function messageEdit(editMessageId) {
 
     if (shouldGuardMobileChatScroll()) {
         markMobileChatManualScroll();
+    }
+
+    // SillyBunny: empty() briefly collapses the message, and near the chat bottom the browser clamps
+    // scrollTop to the shorter scrollHeight; the refilled editor never scrolls back. Undo only that clamp.
+    const chatScrollElement = chatElement[0];
+    if (!shouldGuardMobileChatScroll() && chatScrollElement && chatScrollElement.scrollTop < chatScrollPosition) {
+        chatScrollElement.scrollTop = chatScrollPosition;
     }
 
     // SillyBunny: on desktop the message resize observer owns the edit-open layout change and focus already has preventScroll; restoring here reverts it.
@@ -13527,6 +13550,7 @@ async function messageEditCancel(messageId = this_edit_mes_id) {
     }
 
     const thisMesBlock = thisMesDiv.find('.mes_block');
+    thisMesDiv.addClass('sb-message-edit-restored');
     thisMesBlock.find('.mes_text').empty();
     thisMesDiv.find('.mes_edit_buttons').css('display', 'none');
     thisMesBlock.find('.mes_buttons').css('display', '');
@@ -13616,13 +13640,15 @@ async function messageEditDone(div) {
     }
 
     let { mesBlock, text, mes, bias } = updateMessage(div);
+    const editedMessage = div.closest('.mes');
 
     await eventSource.emit(event_types.MESSAGE_EDITED, this_edit_mes_id);
     text = chat[this_edit_mes_id]?.mes ?? text;
     if (chat[this_edit_mes_id] && !chat[this_edit_mes_id].is_system) {
         await updateMessageTokenAccounting(chat[this_edit_mes_id]);
     }
-    updateMessageMetaBadges(div.closest('.mes'), chat[this_edit_mes_id]);
+    updateMessageMetaBadges(editedMessage, chat[this_edit_mes_id]);
+    editedMessage.addClass('sb-message-edit-restored');
     mesBlock.find('.mes_text').empty();
     mesBlock.find('.mes_edit_buttons').css('display', 'none');
     mesBlock.find('.mes_buttons').css('display', '');
@@ -13637,11 +13663,11 @@ async function messageEditDone(div) {
             false,
         ),
     );
-    notifyCardScriptStripped(div.closest('.mes'), this_edit_mes_id);
+    notifyCardScriptStripped(editedMessage, this_edit_mes_id);
     mesBlock.find('.mes_bias').empty();
     mesBlock.find('.mes_bias').append(messageFormatting(bias, '', false, false, -1, {}, false));
-    appendMediaToMessage(mes, div.closest('.mes'));
-    addCopyToCodeBlocks(div.closest('.mes'));
+    appendMediaToMessage(mes, editedMessage);
+    addCopyToCodeBlocks(editedMessage);
 
     const reasoningEditDone = mesBlock.find('.mes_reasoning_edit_done:visible');
     if (reasoningEditDone.length > 0) {
@@ -14592,25 +14618,11 @@ function getEditableAlternateGreetings() {
     return characters[chid].data.alternate_greetings;
 }
 
-function getSubmittedAlternateGreetings() {
-    const greetings = getEditableAlternateGreetings();
-    if (!Array.isArray(greetings)) {
-        return [];
-    }
-
-    const editor = $('#character_greetings_editor');
-    if (!editor.length) {
-        return greetings;
-    }
-
-    const fields = editor.find('.alternate_greeting_text');
-    if (!fields.length) {
-        return greetings;
-    }
-
-    const currentValues = fields.toArray().map(field => String($(field).val()));
-    greetings.splice(0, greetings.length, ...currentValues);
-    return greetings;
+// SillyBunny: greetings are edited as session drafts in sillybunny-character-editor.js
+// and only reach the entity through a save. Reading the DOM here returned the stale
+// entity list whenever every row had been deleted (no fields to read).
+function getSubmittedAlternateGreetings(targetAvatar) {
+    return getCharacterEditorAlternateGreetings(targetAvatar);
 }
 
 function syncAlternateGreetingsEditor() {
@@ -14849,6 +14861,8 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#add_avatar_button').val('');
     $('#avatar_div').css('display', 'flex');
 
+    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    beginCharacterEditorLoad();
     $('#character_name_pole').val(characters[chid].name);
     $('#description_textarea').val(characters[chid].description);
     $('#character_world').val(characters[chid].data?.extensions?.world || '');
@@ -14884,7 +14898,9 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#set_character_world').data('chid', chid);
     setWorldInfoButtonClass(chid);
     checkEmbeddedWorld(chid);
-    syncAlternateGreetingsEditor();
+    // SillyBunny: controller renders greetings and opens edit session (Step 3b)
+    loadCharacterEditorGreetings(chid, 'edit');
+    openCharacterEditorSession(chid);
     focusUiSurface(document.getElementById('right-nav-panel'));
 
     $('#name_div').removeClass('displayNone');
@@ -14942,7 +14958,10 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     //create text poles
     $('#rm_button_back').css('display', '');
     $('#character_import_button').css('display', '');
+    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    beginCharacterEditorLoad();
     $('#character_name_pole').val(create_save.name);
+    $('#character_nickname_pole').val(create_save.nickname || '');
     $('#description_textarea').val(create_save.description);
     $('#character_world').val(create_save.world);
     $('#creator_notes_textarea').val(create_save.creator_notes);
@@ -14972,7 +14991,9 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     setWorldInfoButtonClass(undefined, !!create_save.world);
     updateFavButtonState(false);
     checkEmbeddedWorld();
-    syncAlternateGreetingsEditor();
+    // SillyBunny: controller renders greetings and opens create session (Step 3b)
+    loadCharacterEditorGreetings(null, 'create');
+    openCharacterEditorCreateSession();
     focusUiSurface(document.getElementById('right-nav-panel'));
 
     $('#form_create').attr('actiontype', 'createcharacter');
@@ -15797,9 +15818,12 @@ export async function createOrEditCharacter(e) {
             }
 
             formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings()) {
+            for (const value of getSubmittedAlternateGreetings(null)) {
                 formData.append('alternate_greetings', value);
             }
+            // SillyBunny: group-only greetings (Step 3b)
+            formData.delete('group_only_greetings');
+            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings(null)));
 
             formData.append('extensions', JSON.stringify(create_save.extensions));
 
@@ -15870,6 +15894,8 @@ export async function createOrEditCharacter(e) {
             await getCharacters();
 
             select_rm_info('char_create', avatarId, oldSelectedChar);
+            // SillyBunny: clear new-character draft after successful create (Step 3b)
+            markCharacterEditorSaved();
 
             crop_data = undefined;
         } catch (error) {
@@ -15884,10 +15910,15 @@ export async function createOrEditCharacter(e) {
                 url += `?crop=${encodeURIComponent(JSON.stringify(crop_data))}`;
             }
 
+            // SillyBunny: submit the drafts only when they belong to the card being saved.
+            const greetingsAvatar = String(formData.get('avatar_url') ?? '');
             formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings()) {
+            for (const value of getSubmittedAlternateGreetings(greetingsAvatar)) {
                 formData.append('alternate_greetings', value);
             }
+            // SillyBunny: group-only greetings (Step 3b)
+            formData.delete('group_only_greetings');
+            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings(greetingsAvatar)));
 
             const editedAvatar = String(formData.get('avatar_url') ?? '');
             const editedCharacter = characters.find(character => character?.avatar === editedAvatar) ?? characters[this_chid];
@@ -15927,6 +15958,8 @@ export async function createOrEditCharacter(e) {
             );
             $('#create_button').attr('value', 'Save');
             crop_data = undefined;
+            // SillyBunny: recapture baseline after successful edit (Step 3b)
+            markCharacterEditorSaved();
             await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: this_chid, character: characters[this_chid] } });
 
             // Recreate the chat if it hasn't been used at least once (i.e. with continue).
@@ -17227,10 +17260,9 @@ function initCharacterSearch() {
 
 // MARK: DOM Handlers Start
 jQuery(async function () {
-    setTimeout(function () {
-        $('#groupControlsToggle').trigger('click');
-        $('#groupCurrentMemberListToggle .inline-drawer-icon').trigger('click');
-    }, 200);
+    // SillyBunny: the group editor's sections are always open in the scrolling
+    // sheet, so the upstream "expand the drawers on open" pre-clicks are gone
+    // with the drawer markup (Step 4).
 
     $(document).on('click', '.api_loading', () => {
         cancelStatusCheck('Canceled because connecting was manually canceled');
@@ -17326,6 +17358,10 @@ jQuery(async function () {
     const userInputGenerateMutex = new SimpleMutex(sendTextareaMessage);
     const sendButtonElement = document.getElementById('send_but');
     bindIOSFastTapSendButton(sendButtonElement, async () => {
+        // SillyBunny: the offline Send control stays visible; reject activation before draft or chat mutation.
+        if (online_status === 'no_connection' || online_status === undefined) {
+            return;
+        }
         await userInputGenerateMutex.update();
     }, { isIOS: isIOSFocusSensitiveBrowser });
 
@@ -17655,6 +17691,12 @@ jQuery(async function () {
         }
     });
 
+    $('#character_nickname_pole').on('input', function () {
+        if (menu_type == 'create') {
+            create_save.nickname = String($('#character_nickname_pole').val());
+        }
+    });
+
     const elementsToUpdate = {
         '#description_textarea': function () { create_save.description = String($('#description_textarea').val()); },
         '#creator_notes_textarea': function () { create_save.creator_notes = String($('#creator_notes_textarea').val()); },
@@ -17677,9 +17719,8 @@ jQuery(async function () {
         $(id).on('input', function () {
             if (menu_type == 'create') {
                 elementsToUpdate[id]();
-            } else {
-                saveCharacterDebounced();
             }
+            // SillyBunny: edit mode uses explicit save; controller dirty listener handles state (Step 3b)
         });
     });
 
@@ -17691,9 +17732,7 @@ jQuery(async function () {
 
     $('#favorite_button').on('click', function () {
         updateFavButtonState(!fav_ch_checked);
-        if (menu_type != 'create') {
-            saveCharacterDebounced();
-        }
+        // SillyBunny: explicit-save model; controller marks dirty via requestAnimationFrame (Step 3b)
     });
 
     /* $("#renameCharButton").on('click', renameCharacter); */
@@ -18274,8 +18313,9 @@ jQuery(async function () {
         const message = chat[this_edit_mes_id];
         const selectedSwipe = message.swipe_id ?? undefined;
         const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
-        const canDeleteSwipe = power_user.confirm_message_delete && !fromSlashCommand && !message.is_user && swipesArray.length > 1 && this_edit_mes_id === chat.length - 1 && selectedSwipe !== undefined;
-        await deleteMessage(Number(this_edit_mes_id), canDeleteSwipe ? selectedSwipe : undefined, power_user.confirm_message_delete && fromSlashCommand !== true);
+        // SillyBunny: deleting from the edit row always confirms, like the row Delete; /del stays silent.
+        const canDeleteSwipe = !fromSlashCommand && !message.is_user && swipesArray.length > 1 && this_edit_mes_id === chat.length - 1 && selectedSwipe !== undefined;
+        await deleteMessage(Number(this_edit_mes_id), canDeleteSwipe ? selectedSwipe : undefined, fromSlashCommand !== true);
     });
 
     $(document).on('click', '.mes_edit_done', async function () {

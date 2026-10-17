@@ -52,14 +52,15 @@ const presetManagers = {};
 const PRESET_CHANGE_EVENT_APIS = new Set(['kobold', 'novel', 'openai', 'textgenerationwebui']);
 const PRESET_CHANGE_TIMEOUT_MS = 10000;
 const PRESET_TEXT_FIELD_SELECTOR = 'textarea, input[type="text"]';
+// SillyBunny: track live text fields independently of their Presets/Editor placement, including relocated context bodies.
 const PRESET_TEXT_FIELD_PANEL_SELECTORS = Object.freeze({
-    kobold: '#kobold_api-settings',
+    kobold: '#kobold_api-settings, #grammar',
     novel: '#range_block_novel, #novel_api-settings',
-    openai: '#range_block_openai, #openai_settings',
+    openai: '#range_block_openai, #openai_settings, #completion_prompt_manager, #sb-editor-utility',
     textgenerationwebui: '#textgenerationwebui_api-settings',
-    context: '#ContextSettings',
-    instruct: '#InstructSettingsColumn',
-    sysprompt: '#SystemPromptBlock',
+    context: '#ContextSettings, #context_story_string, #context_example_separator, #context_chat_start',
+    instruct: '#InstructSettingsColumn, #InstructSequencesColumn',
+    sysprompt: '#SystemPromptBlock, #sysprompt_content, #sysprompt_post_history',
     reasoning: '#reasoning_prefix, #reasoning_suffix, #reasoning_separator',
 });
 
@@ -161,6 +162,13 @@ function registerPresetManagers() {
 
 function snapshotAllPresetManagers() {
     Object.values(presetManagers).forEach(manager => manager.scheduleSnapshotTextFields());
+}
+
+/**
+ * SillyBunny: re-evaluates unload warnings after the preset autosave setting changes.
+ */
+export function refreshPresetDirtyGuards() {
+    Object.values(presetManagers).forEach(manager => manager._updateBeforeUnload());
 }
 
 function registerPresetDirtySnapshots() {
@@ -700,6 +708,15 @@ class PresetManager {
     }
 
     _updateBeforeUnload() {
+        // SillyBunny: with preset autosave on, edits are saved (and flushed on unload) instead of discarded.
+        if (power_user.sb_preset_autosave === true) {
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
+            }
+            return;
+        }
+
         if (this._dirty && !this._beforeUnloadHandler) {
             this._beforeUnloadHandler = (event) => {
                 event.preventDefault();
@@ -744,7 +761,8 @@ class PresetManager {
             this._checkDirty({ force: true });
         }
 
-        if (this._allowPresetSelectChange || !this._dirty) {
+        // SillyBunny: autosave flushes pending edits before the switch, so there is nothing to discard.
+        if (this._allowPresetSelectChange || !this._dirty || power_user.sb_preset_autosave === true) {
             this.scheduleSnapshotTextFields();
             return;
         }

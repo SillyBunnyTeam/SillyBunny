@@ -29,14 +29,25 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
         <div id="sheld"><div id="chat"></div><div id="form_sheld"><form id="send_form">
             <div id="nonQRFormItems"><div id="leftSendForm"></div><textarea id="send_textarea"></textarea><div id="rightSendForm"></div></div>
         </form></div></div>
-        <div id="user-settings-block" class="drawer-content sb-shell-root">
-            <div class="sb-shell-frame"><div class="sb-shell-main"><div class="sb-shell-body">
-                <div class="sb-shell-panel sb-shell-panel-active"><div class="sb-shell-panel-scroller">
-                    <input id="first-setting" aria-label="First setting">
-                    ${Array.from({ length: 30 }, (_, index) => `<p>Setting row ${index}</p>`).join('')}
-                    <textarea id="last-setting" aria-label="Last setting"></textarea>
-                </div></div>
-            </div></div></div>
+        <div id="sb-settings-page" hidden aria-modal="true" role="dialog" aria-label="Settings">
+            <div id="sb-settings-inner">
+                <aside id="sb-settings-sidebar"></aside>
+                <div id="sb-settings-content">
+                    <div id="sb-settings-body" class="sb-settings-body">
+                        <div id="sb-settings-shell-host">
+                            <div class="sb-settings-mounted-shell sb-settings-active-root sb-shell-root">
+                                <div class="sb-shell-frame"><div class="sb-shell-main"><div class="sb-shell-body">
+                                    <div class="sb-shell-panel sb-shell-panel-active"><div class="sb-shell-panel-scroller">
+                                        <input id="first-setting" aria-label="First setting">
+                                        ${Array.from({ length: 30 }, (_, index) => `<p>Setting row ${index}</p>`).join('')}
+                                        <textarea id="last-setting" aria-label="Last setting"></textarea>
+                                    </div></div>
+                                </div></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </body></html>`);
     for (const [file, media] of [
@@ -64,33 +75,33 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
     const [tabs, lifecycle, sendButton] = await Promise.all([
         'scripts/sillybunny-tabs.js', 'scripts/mobile-shell-lifecycle/index.js', 'scripts/mobile-send-button.js',
     ].map(file => fs.readFile(new URL(file, publicRoot), 'utf8')));
-    const bindings = tabs.match(/ {4}window\.addEventListener\('resize', queueMobileViewportStateSync,[\s\S]*?(?= {4}\/\/ SillyBunny: re-sync shell width)/)?.[0];
+    const bindings = tabs.match(/ {4}window\.addEventListener\('resize', queueMobileViewportStateSync,[\s\S]*?(?= {4}\/\/ Reinitialize Select2 widgets)/)?.[0];
     if (!bindings) throw new Error('Missing production viewport/focus bindings');
     await page.addScriptTag({ content: [
         ...['IOS_STABLE_COMPOSER_VIEWPORT_MAJOR'].map(name => extractDeclaration(sendButton, name)),
         ...['isIOSWebKitPlatform', 'isLegacyIOSWebKitPlatform'].map(name => extractFunction(sendButton, name)),
-        ...['MOBILE_SHELL_DRAWER_BOUND_ACTION', 'MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES', 'MOBILE_SHELL_VIEWPORT_SYNC_STEP'].map(name => extractDeclaration(lifecycle, name)),
-        ...['normalizeNumber', 'clampBoundNumber', 'resolveMobileDrawerBounds', 'resolveMobileViewportSyncPlan'].map(name => extractFunction(lifecycle, name)),
+        ...['MOBILE_SHELL_VIEWPORT_SYNC_STEP'].map(name => extractDeclaration(lifecycle, name)),
+        ...['resolveMobileViewportSyncPlan'].map(name => extractFunction(lifecycle, name)),
         ...['SB_MOBILE_MEDIA_QUERY', 'MOBILE_COMPOSER_KEYBOARD_PAN_EPSILON_PX', 'MOBILE_COMPOSER_KEYBOARD_PRESHIFT_WINDOW_MS',
             'MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX', 'sbLastIOSKeyboardHeight', 'sbComposerKeyboardPreShiftDeadline',
-            'sbComposerKeyboardSettleTimer', 'sbMobileViewportStateFrameId', 'sbIsSyncingRailActions', 'sbMobileFocusedInputScrollTimer',
+            'sbComposerKeyboardSettleTimer', 'sbMobileViewportStateFrameId', 'sbMobileFocusedInputScrollTimer',
         ].map(name => extractDeclaration(tabs, name)),
         ...['isMobileViewport', 'isTouchOnlyDesktopViewport', 'readFiniteViewportNumber', 'getLayoutViewportSize', 'getVisualViewportSize',
             'isEditableElement', 'isMobileShellPanelEditableElement', 'isChatComposerEditableElement', 'hasOpenMobileShellDrawer',
             'shouldUseStableIOSPanelViewport', 'isVisualViewportKeyboardOpen', 'getComposerKeyboardInset',
             'handleComposerKeyboardFocusIn', 'handleMobileKeyboardFocusOut', 'syncIOSKeyboardBottomInset',
-            'getShellViewportSize', 'syncShellViewportBounds', 'getResolvedShellTopbarOffset', 'getMobileShellBoundDrawers',
-            'applyMobileDrawerBoundsDecision', 'syncMobileShellDrawerBounds', 'syncMobileViewportState', 'queueMobileViewportStateSync',
+            'getShellViewportSize', 'syncShellViewportBounds', 'getResolvedShellTopbarOffset',
+            'syncMobileViewportState', 'queueMobileViewportStateSync',
             'getMobileFocusedInputScroller', 'syncMobileFocusedInputScroll', 'scheduleMobileFocusedInputScroll',
         ].map(name => extractFunction(tabs, name)),
         // Only unrelated navigation, branding, popup and app construction work is stubbed.
-        ...['closeMobileNav', 'closeMobileChatTools', 'syncMobileShellRailActions', 'syncDesktopShellSizing', 'applyTopbarOffset',
+        ...['closeMobileNav', 'closeMobileChatTools', 'syncDesktopShellSizing', 'applyTopbarOffset',
             'syncChatbarVisibilityState', 'updateTopBarBrand', 'scheduleTopbarContextRefresh', 'syncMobileModalState', 'scheduleMobilePopupKeyboardSync',
         ].map(name => `function ${name}() {}`),
         `const sbMobileShellLifecycle = {
-            drawerBounds: { action: MOBILE_SHELL_DRAWER_BOUND_ACTION, resolveBounds: resolveMobileDrawerBounds },
             viewportSync: { step: MOBILE_SHELL_VIEWPORT_SYNC_STEP, resolveSyncPlan: resolveMobileViewportSyncPlan },
         };`,
+        `function hasOpenMobileShellDrawer() { return document.getElementById('sb-settings-page')?.hasAttribute('hidden') === false; }`,
         bindings,
         'syncMobileViewportState();',
     ].join('\n') });
@@ -105,9 +116,9 @@ async function setVisualViewport(page, height, offsetTop = 0, event = 'resize') 
     }, { height, offsetTop, event });
 }
 
-async function drawerGeometry(page) {
-    return page.locator('#user-settings-block').evaluate(drawer => {
-        const rect = drawer.getBoundingClientRect();
+async function settingsPageGeometry(page) {
+    return page.locator('#sb-settings-page').evaluate(panel => {
+        const rect = panel.getBoundingClientRect();
         return { top: rect.top, bottom: rect.bottom, height: rect.height };
     });
 }
@@ -142,7 +153,7 @@ test('modern iOS keeps the composer flush with the keyboard while focused', asyn
     await expect(composer).toHaveCSS('padding-bottom', '34px');
     await page.locator('#send_textarea').focus();
     await expect(composer).toHaveCSS('padding-bottom', '0px');
-    await page.locator('#user-settings-block').evaluate(drawer => drawer.classList.add('openDrawer'));
+    await page.locator('#sb-settings-page').evaluate(panel => panel.removeAttribute('hidden'));
     await page.locator('#first-setting').focus();
     await expect(composer).toHaveCSS('padding-bottom', '34px');
     await expect(root).not.toHaveClass(controlsClass);
@@ -150,7 +161,7 @@ test('modern iOS keeps the composer flush with the keyboard while focused', asyn
     await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--sb-ios-keyboard-bottom-inset'))).toBe('0px');
     expect(await page.evaluate(() => [window.innerWidth, window.innerHeight, window.visualViewport.height])).toEqual([390, 844, 500]);
 
-    await page.locator('#user-settings-block').evaluate(drawer => drawer.classList.remove('openDrawer'));
+    await page.locator('#sb-settings-page').evaluate(panel => panel.setAttribute('hidden', ''));
     await page.locator('#send_textarea').focus();
     await expect(composer).toHaveCSS('padding-bottom', '0px');
     await setVisualViewport(page, 844);
@@ -161,25 +172,25 @@ test('modern iOS keeps the composer flush with the keyboard while focused', asyn
 
 test('settings follow the visual bottom and keep the final field reachable after viewport panning', async ({ page }) => {
     const errors = await mountFixture(page);
-    await page.locator('#user-settings-block').evaluate(drawer => drawer.classList.add('openDrawer'));
+    await page.locator('#sb-settings-page').evaluate(panel => panel.removeAttribute('hidden'));
     await page.locator('#first-setting').focus();
     await setVisualViewport(page, 500);
-    await expect.poll(async () => (await drawerGeometry(page)).bottom).toBeCloseTo(500, 0);
-    const initial = await drawerGeometry(page);
+    await expect.poll(async () => (await settingsPageGeometry(page)).bottom).toBeCloseTo(500, 0);
+    const initial = await settingsPageGeometry(page);
     expect(initial.height).toBeGreaterThan(300);
     await setVisualViewport(page, 500, 40, 'scroll');
-    await expect.poll(async () => (await drawerGeometry(page)).bottom).toBeCloseTo(540, 0);
-    const shifted = await drawerGeometry(page);
+    await expect.poll(async () => (await settingsPageGeometry(page)).bottom).toBeCloseTo(540, 0);
+    const shifted = await settingsPageGeometry(page);
     expect(shifted.top - initial.top).toBeCloseTo(40, 0);
     expect(shifted.height).toBeCloseTo(initial.height, 0);
     await expect(page.locator('.sb-shell-panel-scroller')).toHaveCSS('padding-bottom', '34px');
 
-    // Remove inline bounds to exercise the final real CSS fallback independently of the JS writes.
-    await page.locator('#user-settings-block').evaluate(drawer => drawer.removeAttribute('style'));
-    const cssOnly = await drawerGeometry(page);
-    expect(cssOnly.bottom).toBeCloseTo(540, 0);
-    expect(cssOnly.top).toBeCloseTo(shifted.top, 0);
-    expect(cssOnly.height).toBeCloseTo(shifted.height, 0);
+    // The settings page uses fixed position with inset based on the top-bar offset,
+    // so it follows the visual viewport through CSS only; no inline bounds writes.
+    const cssGeometry = await settingsPageGeometry(page);
+    expect(cssGeometry.bottom).toBeCloseTo(540, 0);
+    expect(cssGeometry.top).toBeCloseTo(shifted.top, 0);
+    expect(cssGeometry.height).toBeCloseTo(shifted.height, 0);
 
     await page.locator('#last-setting').focus();
     await expect.poll(() => page.locator('#last-setting').evaluate(field => {
@@ -194,7 +205,7 @@ test('settings follow the visual bottom and keep the final field reachable after
     expect(await page.evaluate(() => [window.innerWidth, window.innerHeight])).toEqual([390, 844]);
 
     await setVisualViewport(page, 844);
-    await expect.poll(async () => (await drawerGeometry(page)).bottom).toBeCloseTo(844, 0);
+    await expect.poll(async () => (await settingsPageGeometry(page)).bottom).toBeCloseTo(844, 0);
     await expect(page.locator('#form_sheld')).toHaveCSS('padding-bottom', '0px');
     expect(errors).toEqual([]);
 });
@@ -207,7 +218,7 @@ for (const scenario of [
     test(`${scenario.name} retains its keyboard inset policy without composer controls padding`, async ({ page }) => {
         await page.setViewportSize({ width: scenario.width, height: 844 });
         const errors = await mountFixture(page, scenario);
-        await page.locator('#user-settings-block').evaluate(drawer => drawer.classList.add('openDrawer'));
+        await page.locator('#sb-settings-page').evaluate(panel => panel.removeAttribute('hidden'));
         await page.locator('#first-setting').focus();
         await setVisualViewport(page, 500, 40);
         await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--sb-ios-keyboard-bottom-inset'))).toBe(scenario.inset);

@@ -23,6 +23,9 @@ const stateNames = [
     'openGroupId',
     'groupTurnRouting',
     'groupTurnRoutingApi',
+    // SillyBunny: the group editor's unsaved draft (Step 4)
+    'EDITABLE_KEYS',
+    'editorDraft',
 ];
 
 /**
@@ -162,6 +165,16 @@ export function createGroupChatsRuntime({ exclude = [] } = {}) {
         activateSendButtons: noop,
         deactivateSendButtons: noop,
         unshallowCharacter: async () => {},
+        // SillyBunny: group editor stubs — the sandbox has no editor session (Step 4)
+        isGroupEditorOwner: () => false,
+        notifyGroupEditorChanged: () => {},
+        beginGroupEditorLoad: () => {},
+        openGroupEditorSession: () => {},
+        openGroupEditorCreateSession: () => {},
+        captureGroupEditorSave: () => null,
+        readGroupEditorBaseline: () => null,
+        rebaseGroupEditor: () => {},
+        initGroupEditor: () => {},
     });
     const declarations = groupChatsAst.body.map(node => node.declaration ?? node);
     const state = declarations.filter(node => node.type === 'VariableDeclaration'

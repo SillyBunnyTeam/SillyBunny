@@ -386,7 +386,11 @@ function RA_checkOnlineStatus() {
         const send_textarea = $('#send_textarea');
         send_textarea.attr('placeholder', send_textarea.attr('no_connection_text')); //Input bar placeholder tells users they are not connected
         $('#send_form').addClass('no-connection');
-        $('#send_but').addClass('displayNone'); //send button is hidden when not connected;
+        // SillyBunny: keep idle Send visible offline, but disable keyboard activation and preserve generation hiding.
+        $('#send_but')
+            .toggleClass('displayNone', is_send_press || Boolean(selected_group && is_group_generating))
+            .addClass('disabled')
+            .attr('aria-disabled', 'true');
         $('#mes_continue').addClass('displayNone'); //continue button is hidden when not connected;
         $('#mes_impersonate').addClass('displayNone'); //continue button is hidden when not connected;
         $('#API-status-top').removeClass('fa-plug');
@@ -397,6 +401,7 @@ function RA_checkOnlineStatus() {
             const send_textarea = $('#send_textarea');
             send_textarea.attr('placeholder', send_textarea.attr('connected_text')); //on connect, placeholder tells user to type message
             $('#send_form').removeClass('no-connection');
+            $('#send_but').removeClass('disabled').attr('aria-disabled', 'false');
             $('#API-status-top').removeClass('fa-plug-circle-exclamation redOverlayGlow');
             $('#API-status-top').addClass('fa-plug');
             connection_made = true;
@@ -1244,6 +1249,14 @@ export function initRossMods() {
                 return;
             }
 
+            // SillyBunny: the settings page closes itself on Escape, and other SillyBunny surfaces mark
+            // an Escape they used with preventDefault. The page's sections stay laid out even while it
+            // is closed, so `:visible` is always true for them and they are skipped here.
+            if (event.defaultPrevented || $(event.target).closest('#sb-settings-page').length) {
+                return;
+            }
+            const settingsPageContent = '.sb-settings-mounted-shell, .sb-settings-mounted-shell *';
+
             if ($('.drawer-content')
                 .not('#WorldInfo')
                 .not('#left-nav-panel')
@@ -1252,6 +1265,7 @@ export function initRossMods() {
                 .not('#cfgConfig')
                 .not('#logprobsViewer')
                 .not('#movingDivs > div')
+                .not(settingsPageContent)
                 .is(':visible')) {
                 let visibleDrawerContent = $('.drawer-content:visible')
                     .not('#WorldInfo')
@@ -1260,7 +1274,8 @@ export function initRossMods() {
                     .not('#floatingPrompt')
                     .not('#cfgConfig')
                     .not('#logprobsViewer')
-                    .not('#movingDivs > div');
+                    .not('#movingDivs > div')
+                    .not(settingsPageContent);
                 $(visibleDrawerContent).parent().find('.drawer-icon').trigger('click');
                 return;
             }
@@ -1280,7 +1295,7 @@ export function initRossMods() {
                 return;
             }
 
-            if ($('#WorldInfo').is(':visible')) {
+            if ($('#WorldInfo').not(settingsPageContent).is(':visible')) {
                 globalThis.SillyBunnyShell?.closeCharacters?.();
                 return;
             }
@@ -1293,20 +1308,23 @@ export function initRossMods() {
                 }
             }
 
-            // SillyBunny removes the legacy left-panel pin, so Escape always closes this shell.
-            if ($('#left-nav-panel').is(':visible')) {
+            // SillyBunny removes the legacy left-panel pin. The panel lives in the settings page,
+            // so this only runs if it was never mounted there.
+            if ($('#left-nav-panel').not(settingsPageContent).is(':visible')) {
                 $('#leftNavDrawerIcon').trigger('click');
                 return;
             }
 
-            if ($('#right-nav-panel').is(':visible') &&
+            if ($('#right-nav-panel').not(settingsPageContent).is(':visible') &&
                 $(RPanelPin).prop('checked') === false) {
                 $('#rightNavDrawerIcon').trigger('click');
                 return;
             }
             if ($('.draggable').is(':visible')) {
-                // Remove the first matched element
-                $('.draggable:first').remove();
+                // SillyBunny: hidden draggables such as the chat sidebar come first in the page, and
+                // portraits stay laid out but unseen under the open settings page. Remove the topmost one in view.
+                const draggablesInView = $('.draggable:visible').filter((_, element) => getComputedStyle(element).visibility !== 'hidden');
+                draggablesInView.last().remove();
                 return;
             }
         }

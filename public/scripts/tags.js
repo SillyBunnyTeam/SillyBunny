@@ -30,6 +30,8 @@ import { renderTemplateAsync } from './templates.js';
 import { t, translate } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { enumTypes, SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
+// SillyBunny: editor tag chips opt into local add/remove motion without changing legacy lists.
+import { animateHeightFrom, animateIn, fadeOutAndRemove } from './sillybunny-motion.js';
 
 export {
     TAG_FOLDER_TYPES,
@@ -798,6 +800,12 @@ export function addTagsToEntity(tag, entityId, { tagListSelector = null, tagList
 
     // We should manually add the selected tag to the print tag function, so we cover places where the tag list did not automatically include it
     tagListOptions.addTag = tags;
+    if (tagListOptions.tagOptions?.animateAdded) {
+        tagListOptions.tagOptions = {
+            ...tagListOptions.tagOptions,
+            animateAddedIds: tags.map(item => item.id),
+        };
+    }
 
     // add tag to the UI and internal map - we reprint so sorting and new markup is done correctly
     if (tagListSelector) printTagList(tagListSelector, tagListOptions);
@@ -831,13 +839,26 @@ export function removeTagFromEntity(tag, entityId, { tagListSelector = null, tag
     printCharactersDebounced();
     saveSettingsDebounced();
 
+    const animatedElement = tagElement?.[0] ?? null;
+    const removeElement = (element) => {
+        if (!(element instanceof HTMLElement)) return;
+        // SillyBunny: only the two editor chip lists animate removals; legacy
+        // consumers keep their synchronous removal behavior.
+        const shouldAnimate = Boolean(element.closest('#tagList, #groupTagList'));
+        fadeOutAndRemove(element, { enabled: shouldAnimate });
+    };
+
     // We don't reprint the lists, we can just remove the html elements from them.
     if (tagListSelector) {
         const $selector = (typeof tagListSelector === 'string') ? $(tagListSelector) : tagListSelector;
-        $selector.find(`.tag[id="${tag.id}"]`).remove();
+        $selector.find(`.tag[id="${tag.id}"]`).each((_, element) => {
+            if (element !== animatedElement) removeElement(element);
+        });
     }
-    if (tagElement) tagElement.remove();
-    $(`${getInlineListSelector()} .tag[id="${tag.id}"]`).remove();
+    if (tagElement) removeElement(animatedElement);
+    $(`${getInlineListSelector()} .tag[id="${tag.id}"]`).each((_, element) => {
+        if (element !== animatedElement) removeElement(element);
+    });
 
     return result;
 }
@@ -1168,6 +1189,8 @@ function newTag(tagName) {
  * @property {boolean} [skipExistsCheck=false] - If true, the tag gets added even if a tag with the same id already exists.
  * @property {boolean} [isCharacterList=false] - If true, indicates that this is the character's list of tags.
  * @property {boolean} [isInactive=false] - If true, indicates that the tag is inactive (for styling purposes).
+ * @property {boolean} [animateAdded=false] - Animate chips added through an editor tag input.
+ * @property {string[]} [animateAddedIds] - IDs to animate during the opt-in add render.
  */
 
 /**
@@ -1290,7 +1313,7 @@ function printTagList(element, { tags = undefined, addTag = undefined, forEntity
  * @param {TagOptions} [options={}] - Options for tag behavior
  * @returns {void}
  */
-function appendTagToList(listElement, tag, { removable = false, isFilter = false, action = undefined, removeAction = undefined, isGeneralList = false, skipExistsCheck = false, isInactive = false } = {}) {
+function appendTagToList(listElement, tag, { removable = false, isFilter = false, action = undefined, removeAction = undefined, isGeneralList = false, skipExistsCheck = false, isInactive = false, animateAdded = false, animateAddedIds = [] } = {}) {
     if (!listElement) {
         return;
     }
@@ -1319,6 +1342,9 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     if (tag.class) {
         tagElement.addClass(tag.class);
     }
+    // SillyBunny: expose tag colours as tokens while preserving legacy inline colours.
+    tagElement[0].style.setProperty('--sb-tag-color', tag.color ?? '');
+    tagElement[0].style.setProperty('--sb-tag-color2', tag.color2 ?? '');
     if (tag.title) {
         tagElement.attr('title', tag.title);
     }
@@ -1356,6 +1382,9 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     }
 
     $(listElement).append(tagElement);
+    if (animateAdded && animateAddedIds.includes(tag.id) && ['tagList', 'groupTagList'].includes(listElement[0]?.id)) {
+        animateIn(tagElement[0], [{ opacity: 0 }, { opacity: 1 }]);
+    }
 }
 
 function onTagFilterClick(listElement) {
@@ -1482,6 +1511,7 @@ function toggleTagThreeState(element, { stateOverride = undefined, simulateClick
         states.forEach(state => {
             element.toggleClass(FILTER_STATES[state].class, state === states[targetStateIndex]);
         });
+        element.attr('aria-pressed', String(states[targetStateIndex] !== DEFAULT_FILTER_STATE));
 
         if (states[currentStateIndex] !== states[targetStateIndex]) {
             console.debug('toggle three-way filter from', states[currentStateIndex], 'to', states[targetStateIndex], 'on', element);
@@ -1589,7 +1619,7 @@ function printTagFilters(type = tag_filter_type.character) {
     const showTagListButton = $(FILTER_SELECTOR).closest('.rm_tag_controls').find('.showTagList');
 
     // Update button state to match the saved setting
-    showTagListButton.toggleClass('selected', shouldShowTags);
+    showTagListButton.toggleClass('selected', shouldShowTags).attr('aria-pressed', String(shouldShowTags));
 
     if (shouldShowTags) {
         $(FILTER_SELECTOR).find('.tag:not(.actionable)').show();
@@ -2214,6 +2244,8 @@ const debouncedTagColoring = debounce((tagId, cssProperty, newColor) => {
 }, debounce_timeout.quick);
 
 function onTagListHintClick() {
+    const tagControls = $(this).closest('.ds-tag-filter')[0];
+    const previousHeight = tagControls?.getBoundingClientRect().height;
     $(this).toggleClass('selected');
 
     const $tagSiblings = $(this).siblings('.tag:not(.actionable)');
@@ -2222,6 +2254,11 @@ function onTagListHintClick() {
         $tagSiblings.show();
     } else {
         $tagSiblings.hide();
+    }
+    const isSelected = $(this).hasClass('selected');
+    $(this).attr('aria-pressed', String(isSelected));
+    if (tagControls && Number.isFinite(previousHeight)) {
+        animateHeightFrom(tagControls, previousHeight);
     }
 
     $(this).siblings('.innerActionable').toggleClass('hidden');
@@ -2237,7 +2274,6 @@ function onTagListHintClick() {
         filterType = tag_filter_type.group_members_list;
     }
 
-    const isSelected = $(this).hasClass('selected');
     setTagFilterVisibility(filterType, isSelected);
     console.debug('show_tag_filters for type', filterType, ':', isSelected);
 }
@@ -2786,8 +2822,8 @@ function restoreSavedTagFilters() {
 }
 
 export function initTags() {
-    createTagInput('#tagInput', '#tagList', { tagOptions: { removable: true } });
-    createTagInput('#groupTagInput', '#groupTagList', { tagOptions: { removable: true } });
+    createTagInput('#tagInput', '#tagList', { tagOptions: { removable: true, animateAdded: true } });
+    createTagInput('#groupTagInput', '#groupTagList', { tagOptions: { removable: true, animateAdded: true } });
 
     $(document).on('click', '#rm_button_create', onCharacterCreateClick);
     $(document).on('click', '#rm_button_group_chats', onGroupCreateClick);

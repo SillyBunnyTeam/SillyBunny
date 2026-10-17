@@ -38,7 +38,7 @@ function openShell(storage, mobile = false) {
     });
     const functions = [
         'isSillyBunnyStorageKey', 'scheduleSbStorageFlush', 'flushSbStorageWrites', 'bindSbStorageFlushEvents',
-        'safeGetItem', 'safeSetItem', 'safeRemoveItem', 'normalizeStoredBoolean',
+        'safeGetItem', 'safeSetItem', 'normalizeStoredBoolean',
         'normalizeTopbarLabelPart', 'normalizeTopbarLabelParts', 'normalizeTopbarCustomText',
         'isMobileViewport', 'readTopbarLabelClickCycle', 'isTopbarLabelClickCycleEnabled',
         'setTopbarLabelClickCycle', 'setTopbarCustomText', 'setMobileTopbarLabelPart',

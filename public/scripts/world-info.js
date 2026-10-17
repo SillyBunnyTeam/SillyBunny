@@ -102,11 +102,10 @@ const saveSettingsDebounced = debounce(() => {
 }, debounce_timeout.relaxed);
 const sortFn = (a, b) => b.order - a.order;
 let updateEditor = (navigation, flashOnNav = true) => { console.debug('Triggered WI navigation', navigation, flashOnNav); };
-const WORLD_INFO_DESKTOP_SPLIT_QUERY = '(min-width: 961px)';
-let desktopSelectedWorldInfoUid = null;
-let isWorldInfoEditorPopoutRequested = false;
-let isWorldInfoEditorPopoutShellSyncBound = false;
 let worldInfoEditorLoadId = 0;
+// SillyBunny: the rebuilt editor (sillybunny-world-info-editor.js) registers here and owns list
+// rendering, pagination and drag ordering; toolbar handlers below stay bound and act as its transport.
+let worldInfoEditorAdapter = null;
 
 // Do not optimize. updateEditor is a function that is updated by the displayWorldEntries with new data.
 export const worldInfoFilter = new FilterHelper(() => updateEditor());
@@ -1075,7 +1074,7 @@ export function reloadEditor(file, loadIfNotSelected = false) {
     const selectedIndex = world_names.indexOf(file);
     if (selectedIndex !== -1 && (loadIfNotSelected || currentIndex === selectedIndex)) {
         const input = document.activeElement;
-        if (worldInfoEditor?.name === file && input?.matches('input, textarea, select') && input.closest('#WorldInfo, #world_popup_editor_pane')) {
+        if (worldInfoEditor?.name === file && input?.matches('input, textarea, select') && input.closest('#WorldInfo')) {
             // Keys can still be a DOM-only draft until blur; never replace a focused form.
             $(input).off('blur.worldInfoReload').one('blur.worldInfoReload', () => {
                 setTimeout(() => reloadEditor(file, loadIfNotSelected), 0);
@@ -2092,6 +2091,50 @@ export async function showWorldEditor(name) {
 }
 
 /**
+ * SillyBunny: registers the rebuilt World Info editor. While registered, `displayWorldEntries`
+ * calls `adapter.render({ name, data, navigation, flashOnNav })` instead of building the legacy list.
+ * @param {{ render: (state: { name: string|null, data: object|null, navigation: any, flashOnNav: boolean }) => unknown }|null} adapter
+ */
+export function setWorldInfoEditorAdapter(adapter) {
+    worldInfoEditorAdapter = adapter ?? null;
+    if (worldInfoEditorAdapter) {
+        return worldInfoEditor ? updateEditor(navigation_option.previous, false) : displayWorldEntries(null, null);
+    }
+}
+
+/** SillyBunny: the book open in the editor; `data` is the tracked object that saves must use. */
+export function getWorldInfoEditorState() {
+    return worldInfoEditor ? { name: worldInfoEditor.name, data: worldInfoEditor.data } : { name: null, data: null };
+}
+
+/** SillyBunny: re-runs the editor render for the open book (legacy `updateEditor`). */
+export function refreshWorldInfoEditor(navigation = navigation_option.none, flashOnNav = false) {
+    return updateEditor(navigation, flashOnNav);
+}
+
+/**
+ * SillyBunny: the legacy list pipeline (field backfill → search → view filter → sort), shared by
+ * the legacy list and the rebuilt editor.
+ * @param {object} data
+ * @returns {object[]}
+ */
+export function getWorldInfoDisplayEntries(data) {
+    let entriesArray = Object.keys(data?.entries ?? {}).map(uid => {
+        const entry = data.entries[uid];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            return null;
+        }
+        entry.displayIndex = entry.displayIndex ?? entry.uid;
+        return entry;
+    }).filter(entry => entry !== null);
+
+    entriesArray = addMissingWorldInfoFields(entriesArray);
+    entriesArray = worldInfoFilter.applyFilters(entriesArray);
+    entriesArray = filterWorldInfoEntriesByView(entriesArray);
+    return sortWorldInfoEntries(entriesArray);
+}
+
+/**
  * Loads world info from the backend.
  *
  * This function will return from `worldInfoCache` if it has already been loaded before.
@@ -2162,63 +2205,7 @@ export async function updateWorldInfoList() {
 async function hideWorldEditor() {
     worldInfoEditorLoadId++;
     worldInfoEditor = null;
-    desktopSelectedWorldInfoUid = null;
-    clearWorldInfoDesktopEditor();
     await displayWorldEntries(null, null);
-}
-
-function isWorldInfoDesktopSplitLayout() {
-    return window.matchMedia(WORLD_INFO_DESKTOP_SPLIT_QUERY).matches;
-}
-
-function getWorldInfoDesktopEditorElements() {
-    return {
-        workspace: $('#world_popup_workspace'),
-        pane: $('#world_popup_editor_pane'),
-        host: $('#world_popup_editor_host'),
-        title: $('#world_popup_editor_title'),
-        uid: $('#world_popup_editor_uid'),
-        popoutButton: $('#world_popup_editor_popout'),
-    };
-}
-
-function updateWorldInfoDesktopEditorPopoutButton(isPopout) {
-    const { popoutButton } = getWorldInfoDesktopEditorElements();
-    if (!popoutButton.length) {
-        return;
-    }
-
-    const label = isPopout ? t`Dock editor in panel` : t`Open editor as pop-up`;
-    popoutButton.attr({
-        title: label,
-        'aria-label': label,
-        'aria-pressed': String(isPopout),
-    });
-    popoutButton.find('i')
-        .toggleClass('fa-window-restore', !isPopout)
-        .toggleClass('fa-down-left-and-up-right-to-center', isPopout);
-}
-
-function setWorldInfoDesktopEditorPopout(isPopout) {
-    const { workspace, pane } = getWorldInfoDesktopEditorElements();
-    const requested = Boolean(isPopout);
-    const enabled = requested && isWorldInfoDesktopSplitLayout() && pane.length > 0 && workspace.length > 0;
-
-    isWorldInfoEditorPopoutRequested = requested;
-    workspace.toggleClass('world_popup_editor_popout', enabled);
-    pane.toggleClass('world_popup_editor_pane_popout', enabled);
-
-    if (enabled && pane.parent()[0] !== document.body) {
-        pane.appendTo(document.body);
-    } else if (!enabled && pane.parent()[0] !== workspace[0]) {
-        pane.appendTo(workspace);
-    }
-
-    updateWorldInfoDesktopEditorPopoutButton(enabled);
-}
-
-function syncWorldInfoDesktopEditorPopout() {
-    setWorldInfoDesktopEditorPopout(isWorldInfoEditorPopoutRequested);
 }
 
 function openWorldInfoCharacterPanelTab() {
@@ -2231,42 +2218,6 @@ function openWorldInfoCharacterPanelTab() {
     if (!$('#WorldInfo').is(':visible')) {
         $('#WIDrawerIcon').trigger('click');
     }
-}
-
-function bindWorldInfoDesktopEditorPopoutShellSync() {
-    if (isWorldInfoEditorPopoutShellSyncBound) {
-        return;
-    }
-
-    const characterShell = document.getElementById('right-nav-panel');
-    if (characterShell instanceof HTMLElement) {
-        new MutationObserver(() => {
-            if (!characterShell.classList.contains('openDrawer')) {
-                setWorldInfoDesktopEditorPopout(false);
-            }
-        }).observe(characterShell, { attributes: true, attributeFilter: ['class'] });
-    }
-
-    document.addEventListener('sb:shell-tab-activated', (event) => {
-        if (event instanceof CustomEvent
-            && event.detail?.shellKey === 'characters'
-            && event.detail?.tabId !== 'world-info') {
-            setWorldInfoDesktopEditorPopout(false);
-        }
-    });
-
-    isWorldInfoEditorPopoutShellSyncBound = true;
-}
-
-function clearWorldInfoDesktopEditor() {
-    const { workspace, pane, host, title, uid } = getWorldInfoDesktopEditorElements();
-    if (host.length) {
-        clearEntryList(host);
-    }
-    workspace.removeClass('world_popup_has_selection');
-    pane.removeClass('world_popup_editor_pane_has_selection');
-    title.text(t`No entry selected`);
-    uid.text('');
 }
 
 function getWorldInfoListViewFilter() {
@@ -2325,15 +2276,6 @@ function shouldRefreshWorldInfoListForViewFilter(entry) {
     }
 
     return !filterWorldInfoEntriesByView([entry]).length;
-}
-
-function setWorldInfoDesktopEditorMeta(entry) {
-    const { workspace, pane, title, uid } = getWorldInfoDesktopEditorElements();
-    const fallbackTitle = Array.isArray(entry?.key) && entry.key.length > 0 ? entry.key.join(', ') : t`Untitled entry`;
-    workspace.addClass('world_popup_has_selection');
-    pane.addClass('world_popup_editor_pane_has_selection');
-    title.text(String(entry?.comment || fallbackTitle));
-    uid.text(`UID ${entry?.uid ?? ''}`.trim());
 }
 
 function getWIElement(name) {
@@ -2573,20 +2515,11 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     updateEditor = async (navigation, flashOnNav = true) => await displayWorldEntries(name, data, navigation, flashOnNav);
 
     const worldEntriesList = $('#world_popup_entries_list');
-    const { workspace: desktopWorkspace, host: desktopEditorHost } = getWorldInfoDesktopEditorElements();
-    const isDesktopSplit = isWorldInfoDesktopSplitLayout();
-    syncWorldInfoDesktopEditorPopout();
     const requestedUid = typeof navigation === 'number' && Number(navigation) >= 0 ? Number(navigation) : null;
-    if (requestedUid !== null) {
-        desktopSelectedWorldInfoUid = requestedUid;
-    }
     clearEntryList(worldEntriesList);
-    clearEntryList(desktopEditorHost);
-    clearWorldInfoDesktopEditor();
     worldEntriesList.show();
 
     if (!data || !('entries' in data)) {
-        setWorldInfoDesktopEditorPopout(false);
         $('#world_popup_new').off('click').on('click', nullWorldInfo);
         $('#world_popup_name_button').off('click').on('click', nullWorldInfo);
         $('#world_popup_export').off('click').on('click', nullWorldInfo);
@@ -2594,11 +2527,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         $('#world_duplicate').off('click').on('click', nullWorldInfo);
         worldEntriesList.hide();
         $('#world_info_pagination').html('');
+        await worldInfoEditorAdapter?.render({ name: null, data: null, navigation, flashOnNav });
         return;
-    }
-
-    if (desktopSelectedWorldInfoUid !== null && !data.entries[desktopSelectedWorldInfoUid]) {
-        desktopSelectedWorldInfoUid = null;
     }
 
     const baseline = worldInfoDataSnapshots.get(data);
@@ -2632,21 +2562,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     verifyWorldInfoSearchSortRule();
 
     function getDataArray(callback) {
-        // Convert the data.entries object into an array
-        let entriesArray = Object.keys(data.entries).map(uid => {
-            const entry = data.entries[uid];
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-                return null;
-            }
-            entry.displayIndex = entry.displayIndex ?? entry.uid;
-            return entry;
-        }).filter(entry => entry !== null);
-
-        // Apply the filter and do the chosen sorting
-        entriesArray = addMissingWorldInfoFields(entriesArray);
-        entriesArray = worldInfoFilter.applyFilters(entriesArray);
-        entriesArray = filterWorldInfoEntriesByView(entriesArray);
-        entriesArray = sortWorldInfoEntries(entriesArray);
+        // SillyBunny: pipeline shared with the rebuilt editor.
+        const entriesArray = getWorldInfoDisplayEntries(data);
 
         // Cache keys
         const keys = entriesArray.flatMap(entry => [...entry.key, ...entry.keysecondary]);
@@ -2661,21 +2578,21 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     const perPageDefault = 25;
     let startPage = 1;
 
-    if (navigation === navigation_option.previous) {
+    if (navigation === navigation_option.previous && !worldInfoEditorAdapter) {
         startPage = $('#world_info_pagination').pagination('getCurrentPageNum');
     }
 
-    const navigationTargetUid = requestedUid ?? (isDesktopSplit ? desktopSelectedWorldInfoUid : null);
-    if (navigationTargetUid !== null) {
+    if (requestedUid !== null && !worldInfoEditorAdapter) {
         const data = getDataArray();
-        const uidIndex = data.findIndex(x => x.uid === navigationTargetUid);
+        const uidIndex = data.findIndex(x => x.uid === requestedUid);
         const perPage = Number(accountStorage.getItem(storageKey)) || perPageDefault;
         if (uidIndex >= 0) {
             startPage = Math.floor(uidIndex / perPage) + 1;
         }
     }
 
-    $('#world_info_pagination').pagination({
+    // SillyBunny: the rebuilt editor paginates, scrolls to and drags entries itself.
+    if (!worldInfoEditorAdapter) $('#world_info_pagination').pagination({
         dataSource: getDataArray,
         pageSize: Number(accountStorage.getItem(storageKey)) || perPageDefault,
         sizeChangerOptions: [10, 25, 50, 100, 500, 1000],
@@ -2691,19 +2608,13 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         callback: async function (/** @type {object[]} */ page) {
             try {
                 clearEntryList(worldEntriesList);
-                clearEntryList(desktopEditorHost);
-                clearWorldInfoDesktopEditor();
 
                 const keywordHeaders = await renderTemplateAsync('worldInfoKeywordHeaders');
                 const blocks = [];
 
                 for (const entry of page) {
                     try {
-                        const block = await getWorldEntry(name, data, entry, {
-                            desktopEditorHost,
-                            isDesktopSplit,
-                            selectedUid: desktopSelectedWorldInfoUid,
-                        });
+                        const block = await getWorldEntry(name, data, entry);
                         if (block) {
                             blocks.push(block);
                         }
@@ -2721,14 +2632,6 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
 
                 worldEntriesList.append(keywordHeaders);
                 worldEntriesList.append(blocks);
-
-                if (isDesktopSplit) {
-                    const hasDesktopSelection = desktopSelectedWorldInfoUid !== null && desktopEditorHost.children().length > 0;
-                    desktopWorkspace.toggleClass('world_popup_has_selection', hasDesktopSelection);
-                    if (!hasDesktopSelection) {
-                        clearWorldInfoDesktopEditor();
-                    }
-                }
 
                 const filteredEntryCount = getDataArray().length;
                 updateWorldInfoResultsSummary({
@@ -2750,24 +2653,20 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         },
     });
 
-    if (navigationTargetUid !== null) {
-        const selector = `#world_popup_entries_list [uid="${navigationTargetUid}"]`;
+    if (requestedUid !== null && !worldInfoEditorAdapter) {
+        const selector = `#world_popup_entries_list [uid="${requestedUid}"]`;
         waitUntilCondition(() => document.querySelector(selector) !== null).finally(() => {
             const element = $(selector);
 
             if (element.length === 0) {
-                console.log(`Could not find element for uid ${navigationTargetUid}`);
+                console.log(`Could not find element for uid ${requestedUid}`);
                 return;
             }
 
             const elementOffset = element.offset();
             const parentOffset = element.parent().offset();
             const scrollOffset = elementOffset.top - parentOffset.top;
-            if (isDesktopSplit) {
-                worldEntriesList.scrollTop(scrollOffset);
-            } else {
-                $('#WorldInfo').scrollTop(scrollOffset);
-            }
+            $('#WorldInfo').scrollTop(scrollOffset);
             if (flashOnNav) flashHighlight(element);
         });
     }
@@ -2967,7 +2866,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         worldEntriesList.sortable('destroy');
     }
 
-    worldEntriesList.sortable({
+    if (!worldInfoEditorAdapter) worldEntriesList.sortable({
         items: '.world_entry',
         delay: getSortableDelay(),
         handle: '.drag-handle',
@@ -2996,6 +2895,7 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     });
 
     //$("#world_popup_entries_list").disableSelection();
+    await worldInfoEditorAdapter?.render({ name, data, navigation, flashOnNav });
 }
 
 export const originalWIDataKeyMap = {
@@ -3771,16 +3671,10 @@ function setCommentPlaceholder(keys, commentInput) {
  * @param {object} data - The world info data object.
  * @param {object} entry - The entry object to be edited.
  */
-export async function getWorldEntry(name, data, entry, options = {}) {
+export async function getWorldEntry(name, data, entry) {
     if (!data.entries[entry.uid]) return;
     const finishRender = trackWorldInfoEntryRender(data, entry.uid);
 
-    const {
-        desktopEditorHost = $('#world_popup_editor_host'),
-        isDesktopSplit = isWorldInfoDesktopSplitLayout(),
-        selectedUid = desktopSelectedWorldInfoUid,
-    } = options;
-    const isSelectedEntry = isDesktopSplit && selectedUid === entry.uid;
     const headerTemplate = WI_ENTRY_HEADER_TEMPLATE.clone();
     headerTemplate.data('uid', entry.uid);
     headerTemplate.attr('uid', entry.uid);
@@ -3802,9 +3696,6 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         !skipReset && await resetScrollHeight(this);
         data.entries[uid].comment = value;
         setWIOriginalDataValue(data, uid, 'comment', data.entries[uid].comment);
-        if (desktopSelectedWorldInfoUid === uid) {
-            setWorldInfoDesktopEditorMeta(data.entries[uid]);
-        }
         !noSave && await saveWorldInfo(name, data);
     });
     commentInput.val(entry.comment).trigger('input', { skipReset: true, noSave: true });
@@ -3893,9 +3784,6 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         const deleted = await deleteWorldInfoEntry(data, uid);
         if (!deleted) return;
         deleteWIOriginalDataValue(data, uid);
-        if (desktopSelectedWorldInfoUid === uid) {
-            desktopSelectedWorldInfoUid = null;
-        }
         await saveWorldInfo(name, data);
         updateEditor(navigation_option.previous);
     });
@@ -3959,13 +3847,9 @@ export async function getWorldEntry(name, data, entry, options = {}) {
 
     const editOutlet = headerTemplate.find('.inline-drawer-outlet');
 
-    function addEditorDrawerContent(targetOutlet = editOutlet, { desktop = false } = {}) {
+    function addEditorDrawerContent() {
         const finishRender = trackWorldInfoEntryRender(data, entry.uid);
         const editTemplate = WI_ENTRY_EDIT_TEMPLATE.clone();
-        const editorSurface = desktop
-            ? $('<div class="world_entry world_entry_editor_surface"></div>').attr('uid', entry.uid)
-            : null;
-        const editorRoot = desktop ? editorSurface : editTemplate;
 
         // UID display
         editTemplate.find('.world_entry_form_uid_value').text(`(UID: ${entry.uid})`);
@@ -3982,9 +3866,7 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             saveSettingsDebounced();
             const uid = ($(this).parents('.world_entry')).data('uid');
             updateEditor(uid, false);
-            if (!desktop) {
-                $(`.world_entry[uid="${uid}"] .inline-drawer-icon`).trigger('click');
-            }
+            $(`.world_entry[uid="${uid}"] .inline-drawer-icon`).trigger('click');
         }).each((_, icon) => {
             $(icon).attr('title', $(icon).data(power_user.wi_key_input_plaintext ? 'tooltip-on' : 'tooltip-off'));
             $(icon).text($(icon).data(power_user.wi_key_input_plaintext ? 'icon-on' : 'icon-off'));
@@ -4004,14 +3886,14 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         commentToggle.on('input', async function (_, { noSave = false } = {}) {
             const uid = $(this).data('uid');
             const value = $(this).prop('checked');
-            const commentContainer = editorRoot.find('.commentContainer');
+            const commentContainer = editTemplate.find('.commentContainer');
             data.entries[uid].addMemo = value;
             !noSave && await saveWorldInfo(name, data);
             value ? commentContainer.show() : commentContainer.hide();
         });
         const hasMemo = entry.addMemo ?? true;
         commentToggle.prop('checked', hasMemo);
-        hasMemo ? editorRoot.find('.commentContainer').show() : editorRoot.find('.commentContainer').hide();
+        hasMemo ? editTemplate.find('.commentContainer').show() : editTemplate.find('.commentContainer').hide();
         commentToggle.parent().hide();
 
         // Logic AND/NOT
@@ -4036,9 +3918,9 @@ export async function getWorldEntry(name, data, entry, options = {}) {
             data.entries[uid].selective = value;
             setWIOriginalDataValue(data, uid, 'selective', data.entries[uid].selective);
             !noSave && await saveWorldInfo(name, data);
-            const keysecondary = editorRoot.find('.keysecondary');
-            const keysecondarytextpole = editorRoot.find('.keysecondarytextpole');
-            const keyprimaryselect = editorRoot.find('.keyprimaryselect');
+            const keysecondary = editTemplate.find('.keysecondary');
+            const keysecondarytextpole = editTemplate.find('.keysecondarytextpole');
+            const keyprimaryselect = editTemplate.find('.keyprimaryselect');
             const keyprimaryHeight = keyprimaryselect.outerHeight();
             keysecondarytextpole.css('height', keyprimaryHeight + 'px');
             value ? keysecondary.show() : keysecondary.hide();
@@ -4292,61 +4174,33 @@ export async function getWorldEntry(name, data, entry, options = {}) {
         countTokensDebounced(counter, contentInput.val());
 
         editTemplate.find('.inline-drawer-content').css('display', 'none');
-        if (desktop) {
-            editorSurface.append(editTemplate);
-            targetOutlet.append(editorSurface);
-            setWorldInfoDesktopEditorMeta(data.entries[entry.uid] ?? entry);
-        } else {
-            targetOutlet.append(editTemplate);
-        }
+        editOutlet.append(editTemplate);
         finishRender();
     }
 
-    if (isDesktopSplit) {
-        const header = headerTemplate.find('.inline-drawer-header');
-        const icon = headerTemplate.find('.inline-drawer-icon');
-        icon.removeClass('inline-drawer-toggle down up fa-circle-chevron-down fa-circle-chevron-up')
-            .addClass('fa-pen-to-square');
-        header.addClass('inline-drawer-header-pointer').on('click', function (event) {
-            if ($(event.target).closest('textarea, input, select, option, button, .menu_button, .killSwitch').length) {
-                return;
-            }
-            updateEditor(entry.uid, false);
-        });
-        icon.on('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-            updateEditor(entry.uid, false);
-        });
-
-        if (isSelectedEntry) {
-            headerTemplate.addClass('world_entry_selected');
-            addEditorDrawerContent(desktopEditorHost, { desktop: true });
+    // SillyBunny: upstream inline drawers remain only as the unregistered-adapter fallback.
+    let drawerInitialized = false;
+    let drawerDestroyTimeout = null;
+    headerTemplate.find('.inline-drawer').on('inline-drawer-toggle', function () {
+        if (drawerDestroyTimeout) {
+            clearTimeout(drawerDestroyTimeout);
+            drawerDestroyTimeout = null;
         }
-    } else {
-        let drawerInitialized = false;
-        let drawerDestroyTimeout = null;
-        headerTemplate.find('.inline-drawer').on('inline-drawer-toggle', function () {
-            if (drawerDestroyTimeout) {
-                clearTimeout(drawerDestroyTimeout);
+        if (drawerInitialized) {
+            drawerDestroyTimeout = setTimeout(() => {
+                // Drawer was reopened, so we don't destroy it
+                if (editOutlet.is(':visible')) {
+                    return;
+                }
+                drawerInitialized = false;
+                clearEntryList(editOutlet);
                 drawerDestroyTimeout = null;
-            }
-            if (drawerInitialized) {
-                drawerDestroyTimeout = setTimeout(() => {
-                    // Drawer was reopened, so we don't destroy it
-                    if (editOutlet.is(':visible')) {
-                        return;
-                    }
-                    drawerInitialized = false;
-                    clearEntryList(editOutlet);
-                    drawerDestroyTimeout = null;
-                }, debounce_timeout.relaxed);
-            } else {
-                drawerInitialized = true;
-                addEditorDrawerContent();
-            }
-        });
-    }
+            }, debounce_timeout.relaxed);
+        } else {
+            drawerInitialized = true;
+            addEditorDrawerContent();
+        }
+    });
 
     headerTemplate.find('.inline-drawer-content').css('display', 'none');
 
@@ -7279,15 +7133,6 @@ function updateAuxBooks(fileName, computeNext) {
 export function initWorldInfo() {
     worldInfoListViewFilter = getWorldInfoListViewFilter();
     updateWorldInfoViewFilterButtons();
-    syncWorldInfoDesktopEditorPopout();
-
-    const desktopSplitMediaQuery = window.matchMedia(WORLD_INFO_DESKTOP_SPLIT_QUERY);
-    if (typeof desktopSplitMediaQuery.addEventListener === 'function') {
-        desktopSplitMediaQuery.addEventListener('change', syncWorldInfoDesktopEditorPopout);
-    } else {
-        desktopSplitMediaQuery.addListener(syncWorldInfoDesktopEditorPopout);
-    }
-    bindWorldInfoDesktopEditorPopoutShellSync();
 
     $('#world_info').on('mousedown change', async function (e) {
         // If there's no world names, don't do anything
@@ -7325,27 +7170,6 @@ export function initWorldInfo() {
 
         if (finalName) {
             await createNewWorldInfo(finalName, { interactive: true });
-        }
-    });
-
-    $('#world_popup_editor_close').on('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        desktopSelectedWorldInfoUid = null;
-        setWorldInfoDesktopEditorPopout(false);
-        clearWorldInfoDesktopEditor();
-        updateEditor(navigation_option.none, false);
-    });
-
-    $('#world_popup_editor_popout').on('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const { workspace } = getWorldInfoDesktopEditorElements();
-        setWorldInfoDesktopEditorPopout(!workspace.hasClass('world_popup_editor_popout'));
-    });
-    $('#world_popup_editor_pane').on('mousedown touchstart', (event) => {
-        if ($(event.currentTarget).hasClass('world_popup_editor_pane_popout')) {
-            event.stopPropagation();
         }
     });
 
@@ -7518,77 +7342,20 @@ export function initWorldInfo() {
         $(this).prop('selectedIndex', 0);
 
         if (target === 'renameGroupButton') {
-            await /** @type {any} */ (globalThis.SillyBunnyShell)?.renameOpenGroup?.();
+            // SillyBunny: the group editor's header title is the rename affordance;
+            // it owns the name field, so hand the request over rather than
+            // reaching into the group state from here (Step 4).
+            document.dispatchEvent(new CustomEvent('sb-group-rename-requested'));
             return;
         }
 
         await assignLorebookToChat({ shiftKey: true, altKey: false });
     });
 
-    // Not needed on mobile
-    if (!isMobile()) {
-        const syncWorldInfoSelect2DropdownGeometry = (select) => {
-            const $select = $(select);
-            const select2 = $select.data('select2');
-            const $container = select2?.$container?.length ? select2.$container : $select.next('.select2-container');
-            const containerRect = $container[0]?.getBoundingClientRect();
-            const fallbackRect = select.closest('.world_popup_action_group')?.getBoundingClientRect();
-            const measuredWidth = containerRect?.width || fallbackRect?.width || select.getBoundingClientRect().width;
-            const maxViewportWidth = Math.max(240, (document.documentElement.clientWidth || window.innerWidth || measuredWidth) - 24);
-            const width = Math.min(Math.max(240, Math.ceil(measuredWidth || 0)), maxViewportWidth);
-            const $dropdown = select2?.dropdown?.$dropdown?.length
-                ? select2.dropdown.$dropdown
-                : $(`#select2-${select.id}-results`).closest('.select2-dropdown');
+    // SillyBunny: no Select2 on #world_editor_select / #world_info; the rebuilt editor's book picker
+    // and Active books list drive these native selects (Appendix B D3).
 
-            if (!$dropdown.length || !Number.isFinite(width)) {
-                return;
-            }
-
-            const dropdownWidth = `${width}px`;
-            const $dropdownContainer = $dropdown.closest('.select2-container--open');
-            $dropdown.css({ width: dropdownWidth, minWidth: dropdownWidth });
-            $dropdownContainer.css({ width: dropdownWidth, minWidth: dropdownWidth });
-        };
-
-        $('#world_editor_select').select2({
-            width: '100%',
-            placeholder: t`--- Pick to Edit ---`,
-            searchInputPlaceholder: t`Search...`,
-            dropdownCssClass: 'sb-world-info-select2-dropdown',
-            allowClear: true,
-            closeOnSelect: true,
-            multiple: false,
-        });
-
-        $('#world_info').select2({
-            width: '100%',
-            placeholder: t`No Worlds active. Click here to select.`,
-            dropdownCssClass: 'sb-world-info-select2-dropdown',
-            allowClear: true,
-            closeOnSelect: false,
-        });
-
-        $('#world_editor_select, #world_info')
-            .off('select2:open.sillybunnyWorldInfoGeometry')
-            .on('select2:open.sillybunnyWorldInfoGeometry', function () {
-                window.requestAnimationFrame(() => syncWorldInfoSelect2DropdownGeometry(this));
-            });
-
-        // Subscribe world loading to the select2 multiselect items (We need to target the specific select2 control)
-        select2ChoiceClickSubscribe($('#world_info'), target => {
-            const name = $(target).text();
-            const selectedIndex = world_names.indexOf(name);
-            const alreadySelectedInEditor = $('#world_editor_select option:selected').text() === name;
-            if (selectedIndex !== -1 && !alreadySelectedInEditor) {
-                $('#world_editor_select').val(selectedIndex).trigger('change');
-                console.log('Quick selection of world', name);
-            } else {
-                console.warn('lets not reload an already loaded list yes?');
-            }
-        }, { buttonStyle: true, closeDrawer: true });
-    }
-
-    $('#WorldInfo, #world_popup_editor_host, #world_popup_entries_list').on('scroll', () => {
+    $('#WorldInfo, #world_popup_entries_list').on('scroll', () => {
         $('.world_entry input[name="group"], .world_entry input[name="automationId"]').each((_, el) => {
             const instance = $(el).autocomplete('instance');
 

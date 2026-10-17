@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8').replace(/\r\n/g, '\n');
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8').replace(/\r\n/g, '\n');
 const styleCss = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+const characterEditorCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-editor.css'), 'utf8').replace(/\r\n/g, '\n');
 
 function getRuleBody(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -70,37 +71,30 @@ describe('mobile character editor css', () => {
     });
 
     test('keeps the parked mode toggle and close button clear of the editor sub-tabs on mobile', () => {
-        const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps');
+        const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) > #CharListButtonAndHotSwaps');
 
         // The generic band rule is `min-height: 34px !important`; the toggle sits at top 8px with a 44px touch target.
         expect(editorBandRule).toContain('min-height: 54px !important;');
     });
 
-    test('dims the spoiler-hidden editor sub-tabs without making them untappable', () => {
-        const hiddenTabRule = getRuleBody(tabsCss, '#right-nav-panel .sb-character-editor-subtab.is-spoiler-hidden');
-
-        expect(hiddenTabRule).toContain('opacity: 0.45;');
-        // A tap on a dimmed tab reveals the fields, so nothing here may swallow the click or advertise a dead button.
-        expect(hiddenTabRule).not.toContain('pointer-events');
-        expect(hiddenTabRule).not.toContain('not-allowed');
-        expect(tabsCss).not.toContain('.sb-character-editor-subtab[aria-disabled');
+    test('drops the retired editor sub-tab and spoiler-panel rules', () => {
+        // The editor is one scrolling sheet; stale sub-tab rules would only fight the new layout.
+        for (const source of [tabsCss, mobileShellCss]) {
+            expect(source).not.toContain('sb-character-editor-subtab');
+            expect(source).not.toContain('data-sb-character-editor-panel');
+            expect(source).not.toContain('is-spoiler-hidden');
+        }
     });
 
     test('keeps the desktop editor shell from reintroducing refactor padding and wrapper collapse', () => {
-        const desktopActionWrappersRule = getRuleBody(tabsCss, '#right-nav-panel .sb-character-editor-controls-row #character-editor-pinned-actions,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls > .form_create_bottom_buttons_block,\n#right-nav-panel .sb-character-editor-controls-row #avatar_controls .char-button-toolbar');
-        const desktopNavPaddingRule = getRuleBody(tabsCss, ':root:not([data-sb-desktop-nav-layout=\'vertical\']) #right-nav-panel.openDrawer .sb-character-shell-nav');
+        // The legacy .sb-character-editor-controls-row grid was removed in the Commit 2
+        // field-sheet rebuild; its selectors must not reappear in tabs.css.
         const desktopCreateButtonSelector = '#right-nav-panel .sb-character-create-bar #rm_button_create,\n#right-nav-panel .sb-character-create-bar #rm_button_group_chats';
         const desktopCreateButtonRule = getRuleBody(tabsCss, desktopCreateButtonSelector);
         const unlayeredGuardIndex = tabsCss.indexOf('/* Unlayered fork cascade guards');
         const desktopCreateButtonIndex = getLastRuleIndex(tabsCss, desktopCreateButtonSelector);
 
-        expect(tabsCss).toContain(`#right-nav-panel.openDrawer > .sb-character-shell-header {
-    gap: 4px;
-    padding: 8px calc(var(--sb-shell-panel-padding-inline) + 52px) 10px var(--sb-shell-panel-padding-inline);
-}`);
-        expect(desktopActionWrappersRule).toContain('display: contents !important;');
-        expect(desktopNavPaddingRule).toContain('padding-inline: var(--sb-shell-panel-padding-inline) !important;');
-        expect(desktopNavPaddingRule).not.toContain('60px');
+        expect(tabsCss).not.toContain('.sb-character-editor-controls-row');
         expect(desktopCreateButtonIndex).toBeGreaterThan(unlayeredGuardIndex);
         expect(desktopCreateButtonRule).toContain('inline-size: auto;');
         expect(desktopCreateButtonRule).toContain('min-inline-size: max-content;');

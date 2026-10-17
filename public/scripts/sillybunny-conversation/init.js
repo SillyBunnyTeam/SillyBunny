@@ -128,6 +128,7 @@ export function init() {
         setExternalConversationGenerationActive(false);
         scheduleInterfaceRefreshIfOpen();
     });
+    eventSource.on(event_types.ONLINE_STATUS_CHANGED, scheduleInterfaceRefreshIfOpen);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         if (conversationState.conversationWorkspaceOpen) {
             handleChatChanged();

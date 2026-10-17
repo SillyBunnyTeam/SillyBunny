@@ -88,6 +88,9 @@ import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { isExternalMediaAllowed } from './chats.js';
 import { POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
+// SillyBunny: member actions share the shell's popover / bottom-sheet menu.
+import { openActionMenu } from './sillybunny-action-menu.js';
+import { MOTION_FAST, animateListChange, applyListChange, captureListChange } from './sillybunny-motion.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -95,6 +98,18 @@ import { chat_completion_sources, oai_settings } from './openai.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
 import { ToolManager } from './tool-calling.js';
 import { createGroupTurnRouting, getRoutedReplyStatus } from './group-turn-routing.js';
+// SillyBunny: group editor controller (Step 4 - explicit save)
+import {
+    beginGroupEditorLoad,
+    openGroupEditorSession,
+    openGroupEditorCreateSession,
+    captureGroupEditorSave,
+    readGroupEditorBaseline,
+    isGroupEditorOwner,
+    notifyGroupEditorChanged,
+    rebaseGroupEditor,
+    initGroupEditor,
+} from './sillybunny-group-editor.js';
 
 export {
     selected_group,
@@ -127,7 +142,232 @@ let selected_group = null;
 let group_generation_id = null;
 let fav_grp_checked = false;
 let openGroupId = null;
-let newGroupMembers = [];
+
+// SillyBunny: the group editor's unsaved draft (Step 4). While the explicit-save
+// editor owns a group, every editable field is written here and never into
+// groups[]; Save copies the draft over the live group and calls editGroup().
+// EDITABLE_KEYS is the whole surface: it is what the session baselines, what the
+// draft backup stores, and what a reconcile merges against the live group.
+//
+// `newGroupMembers` is kept as an alias of editorDraft.members, because several
+// upstream helpers read it directly.
+const EDITABLE_KEYS = [
+    'name',
+    'fav',
+    'activation_strategy',
+    'generation_mode',
+    'generation_mode_join_prefix',
+    'generation_mode_join_suffix',
+    'allow_self_responses',
+    'hideMutedSprites',
+    'members',
+    'disabled_members',
+    'member_models',
+];
+
+/** @typedef {Record<string, any>} GroupDraft */
+
+/** @type {GroupDraft|null} */
+let editorDraft = null;
+
+/**
+ * True when the current group has a custom avatar that can be reverted to the
+ * member collage, so the ⋯ menu only offers that action when it applies.
+ * @returns {boolean}
+ */
+export function canRestoreGroupAvatar() {
+    const group = getEditedGroup();
+    return Boolean(group && isValidImageUrl(group.avatar_url));
+}
+
+// ============================================================
+// Editor draft (Step 4)
+// ============================================================
+
+/** @param {any} value */
+function cloneDraftValue(value) {
+    return value === undefined ? undefined : structuredClone(value);
+}
+
+/**
+ * A draft shaped like a group, holding only EDITABLE_KEYS.
+ * @param {Group|null} group
+ * @returns {GroupDraft}
+ */
+function createEditorDraft(group) {
+    /** @type {GroupDraft} */
+    const draft = { id: group?.id ?? null, avatar_url: group?.avatar_url ?? '' };
+    for (const key of EDITABLE_KEYS) {
+        draft[key] = _draftDefaultFor(key, group);
+    }
+    return draft;
+}
+
+/**
+ * @param {string} key
+ * @param {Group|null} group
+ */
+function _draftDefaultFor(key, group) {
+    const live = group?.[key];
+    switch (key) {
+        case 'name': return group?.name ?? '';
+        case 'fav': return Boolean(group?.fav);
+        case 'activation_strategy': return Number(group?.activation_strategy ?? group_activation_strategy.NATURAL);
+        case 'generation_mode': return Number(group?.generation_mode ?? group_generation_mode.SWAP);
+        case 'generation_mode_join_prefix': return String(group?.generation_mode_join_prefix ?? '');
+        case 'generation_mode_join_suffix': return String(group?.generation_mode_join_suffix ?? '');
+        case 'allow_self_responses': return Boolean(group?.allow_self_responses);
+        case 'hideMutedSprites': return Boolean(group?.hideMutedSprites);
+        case 'members': return Array.isArray(live) ? [...live] : [];
+        case 'disabled_members': return Array.isArray(live) ? [...live] : [];
+        case 'member_models': return live && typeof live === 'object' && !Array.isArray(live) ? { ...live } : {};
+        default: return undefined;
+    }
+}
+
+/** Start a new draft for the group being loaded; null starts an empty one. */
+function resetEditorDraft(group) {
+    editorDraft = createEditorDraft(group ?? null);
+}
+
+/**
+ * True when the editor owns the fields on screen, which covers both an edit
+ * session for a persisted group and a create session that has no group yet. In
+ * create mode `openGroupId` stays null for the whole session, so every handler
+ * that used the old `if (!openGroupId) return` guard must ask this instead or
+ * its edits are silently dropped.
+ * @returns {boolean}
+ */
+function isGroupEditorActive() {
+    return Boolean(editorDraft);
+}
+
+/**
+ * The object the editor's member list and fields read. While the editor owns an
+ * edit session this is the draft, so `groups[]` never holds an unsaved value.
+ * @returns {Group|GroupDraft|null}
+ */
+function getEditedGroup() {
+    const groupId = openGroupId ? String(openGroupId) : null;
+    if (editorDraft && groupId && String(editorDraft.id) === groupId) return editorDraft;
+    if (editorDraft && !groupId) return editorDraft;
+    return openGroupId ? groups.find((x) => x.id == openGroupId) : null;
+}
+
+/**
+ * Copy every EDITABLE_KEY of the draft onto the live group in place, so the
+ * `groups` array identity (and every extension holding a reference) survives.
+ * @param {Group} group
+ * @param {GroupDraft} draft
+ */
+function applyDraftToGroup(group, draft) {
+    for (const key of EDITABLE_KEYS) {
+        group[key] = cloneDraftValue(draft[key]);
+    }
+    group.avatar_url = draft.avatar_url || group.avatar_url;
+}
+
+/**
+ * Write the editable fields from the draft (or the live group) into the DOM
+ * without dispatching events, so a re-render is never mistaken for a user edit.
+ * @param {Group|GroupDraft|null} source
+ */
+function writeGroupEditorFields(source) {
+    if (!source) return;
+
+    const name = $('#rm_group_chat_name');
+    if (name.val() !== source.name) name.val(source.name ?? '');
+
+    const strategy = String(source.activation_strategy ?? group_activation_strategy.NATURAL);
+    const strategyField = $('#rm_group_activation_strategy');
+    if (strategyField.val() !== strategy) strategyField.val(strategy);
+
+    const mode = String(source.generation_mode ?? group_generation_mode.SWAP);
+    const modeField = $('#rm_group_generation_mode');
+    if (modeField.val() !== mode) modeField.val(mode);
+
+    const prefix = $('#rm_group_generation_mode_join_prefix');
+    if (prefix.val() !== (source.generation_mode_join_prefix ?? '')) prefix.val(source.generation_mode_join_prefix ?? '');
+
+    const suffix = $('#rm_group_generation_mode_join_suffix');
+    if (suffix.val() !== (source.generation_mode_join_suffix ?? '')) suffix.val(source.generation_mode_join_suffix ?? '');
+
+    $('#rm_group_allow_self_responses').prop('checked', Boolean(source.allow_self_responses));
+    $('#rm_group_hidemutedsprites').prop('checked', Boolean(source.hideMutedSprites));
+    updateFavButtonState(Boolean(source.fav));
+
+    toggleHiddenControls(source);
+    _syncGroupMediaOverrideIcons();
+    updateGroupAvatar(source);
+    updateGroupHeaderTitle(source.name ?? '');
+}
+
+/** The hidden #rm_button_selected_ch h2 mirrors; kept in sync by the editor. */
+function updateGroupHeaderTitle(name) {
+    $('#rm_button_selected_ch').children('h2').text(name);
+}
+
+/**
+ * Apply one member action to a group-like object. Pure: it never touches the
+ * DOM or the live group, so the same code drives the editor draft and the
+ * programmatic path (slash commands, extensions) that still writes straight
+ * through.
+ * @param {Group|GroupDraft} groupLike
+ * @param {'add'|'remove'|'enable'|'disable'} action
+ * @param {string} avatarId
+ * @returns {boolean} true when the object changed
+ */
+function applyMemberAction(groupLike, action, avatarId) {
+    if (!groupLike || !avatarId) return false;
+    groupLike.members = Array.isArray(groupLike.members) ? groupLike.members : [];
+    groupLike.disabled_members = Array.isArray(groupLike.disabled_members) ? groupLike.disabled_members : [];
+
+    switch (action) {
+        case 'add':
+            if (groupLike.members.includes(avatarId)) return false;
+            groupLike.members.unshift(avatarId);
+            return true;
+        case 'remove': {
+            const index = groupLike.members.indexOf(avatarId);
+            if (index === -1) return false;
+            groupLike.members.splice(index, 1);
+            const disabledIndex = groupLike.disabled_members.indexOf(avatarId);
+            if (disabledIndex !== -1) groupLike.disabled_members.splice(disabledIndex, 1);
+            if (groupLike.member_models) delete groupLike.member_models[avatarId];
+            return true;
+        }
+        case 'disable':
+            if (groupLike.disabled_members.includes(avatarId)) return false;
+            groupLike.disabled_members.push(avatarId);
+            return true;
+        case 'enable': {
+            const index = groupLike.disabled_members.indexOf(avatarId);
+            if (index === -1) return false;
+            groupLike.disabled_members.splice(index, 1);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+/**
+ * Move a member within a group-like object's order.
+ * @param {Group|GroupDraft} groupLike
+ * @param {number} from
+ * @param {number} to
+ * @returns {boolean} true when the order changed
+ */
+function moveGroupMember(groupLike, from, to) {
+    const members = groupLike?.members;
+    if (!Array.isArray(members)) return false;
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return false;
+    if (from < 0 || to < 0 || from >= members.length || to >= members.length || from === to) return false;
+    const [moved] = members.splice(from, 1);
+    members.splice(to, 0, moved);
+    return true;
+}
+
 let groupChatSaveQueue = Promise.resolve();
 const queuedGroupChatIntegrityByFile = new Map();
 
@@ -1477,7 +1717,7 @@ export function getGroupBlock(group) {
 
     const avatar = getGroupAvatar(group);
     if (avatar) {
-        $(template).find('.avatar').replaceWith(avatar);
+        $(template).children('.avatar, .missing-avatar').first().replaceWith(avatar);
     }
 
     return template;
@@ -1490,11 +1730,17 @@ export function getGroupBlock(group) {
 function updateGroupAvatar(group) {
     $('#group_avatar_preview').empty().append(getGroupAvatar(group));
 
-    $('.group_select').each(function () {
-        if ($(this).data('id') == group.id) {
-            $(this).find('.avatar').replaceWith(getGroupAvatar(group));
-        }
-    });
+    // SillyBunny: a create-mode draft has no id, and the old loose `data('id') == group.id`
+    // matched the hidden #group_list_template row (undefined == null), stripping its
+    // .avatar so every later getGroupBlock() clone rendered the blank placeholder.
+    const groupId = group?.id === null || group?.id === undefined ? '' : String(group.id);
+    if (groupId) {
+        $('#rm_print_characters_block .group_select').each(function () {
+            if ($(this).attr('data-grid') === groupId) {
+                $(this).children('.avatar, .missing-avatar').first().replaceWith(getGroupAvatar(group));
+            }
+        });
+    }
 
     favsToHotswap();
 }
@@ -2155,30 +2401,31 @@ export async function unshallowGroupMembers(groupId) {
  * @param {boolean} isDelete If true, removes the member; otherwise adds the member
  */
 async function modifyGroupMember(groupId, groupMember, isDelete) {
-    const id = groupMember.data('id');
-    const thisGroup = groups.find((x) => x.id == groupId);
-    const membersArray = thisGroup?.members ?? newGroupMembers;
+    const id = groupMember.data('id') ?? groupMember.attr('data-avatar');
+    if (!id) return;
 
-    if (isDelete) {
-        const index = membersArray.findIndex((x) => x === id);
-        if (index !== -1) {
-            membersArray.splice(membersArray.indexOf(id), 1);
-            if (thisGroup) {
-                setGroupMemberModel(thisGroup, id, '');
+    const action = isDelete ? 'remove' : 'add';
+    const unshallow = () => isDelete ? Promise.resolve() : unshallowGroupMembers(groupId);
+
+    // SillyBunny: an owned no-op must not escape the explicit-save draft.
+    const draftAction = _applyMemberActionToEditor(action, id, groupId);
+    if (draftAction.owned) {
+        if (draftAction.changed) await unshallow();
+    } else {
+        // No editor owns this group: write straight through, as upstream did.
+        const thisGroup = groups.find((x) => x.id == groupId);
+        if (thisGroup && applyMemberAction(thisGroup, action, id)) {
+            await unshallow();
+            if (openGroupId) {
+                await editGroup(openGroupId, false, false);
+                updateGroupAvatar(thisGroup);
             }
         }
-    } else {
-        membersArray.unshift(id);
     }
 
-    if (openGroupId) {
-        await unshallowGroupMembers(openGroupId);
-        await editGroup(openGroupId, false, false);
-        updateGroupAvatar(thisGroup);
-    }
-
-    printGroupCandidates();
-    printGroupMembers();
+    // SillyBunny: data changes synchronously; only the resulting list paint is animated.
+    printGroupCandidates({ animate: true });
+    printGroupMembers({ animate: true });
 
     // Refresh the tag filters for both lists to reflect any new tags
     printTagFilters(tag_filter_type.group_candidates_list);
@@ -2196,73 +2443,106 @@ async function modifyGroupMember(groupId, groupMember, isDelete) {
  * @returns {Promise<void>} Promise that resolves when the member has been reordered
  */
 async function reorderGroupMember(groupId, groupMember, direction) {
-    const id = groupMember.data('id');
-    const thisGroup = groups.find((x) => x.id == groupId);
-    const memberArray = thisGroup?.members ?? newGroupMembers;
+    const id = groupMember.data('id') ?? groupMember.attr('data-avatar');
+    const groupLike = editorDraft ?? groups.find((x) => x.id == groupId);
+    const members = groupLike?.members;
+    if (!Array.isArray(members)) return;
 
-    const indexOf = memberArray.indexOf(id);
-    if (direction == 'down') {
-        const next = memberArray[indexOf + 1];
-        if (next) {
-            memberArray[indexOf + 1] = memberArray[indexOf];
-            memberArray[indexOf] = next;
-        }
+    const from = members.indexOf(id);
+    const to = direction === 'down' ? from + 1 : from - 1;
+    if (from === -1) return;
+
+    moveGroupMemberInEditor(groupLike, from, to);
+    printGroupMembers({ animate: true });
+}
+
+/**
+ * Move a member within the editor's draft when it owns the group, otherwise
+ * write the reordered array straight to the live group.
+ * @param {Group|GroupDraft} groupLike
+ * @param {number} from
+ * @param {number} to
+ */
+function moveGroupMemberInEditor(groupLike, from, to) {
+    if (groupLike === editorDraft) {
+        _editDraft((draft) => moveGroupMember(draft, from, to));
+        return;
     }
-    if (direction == 'up') {
-        const prev = memberArray[indexOf - 1];
-        if (prev) {
-            memberArray[indexOf - 1] = memberArray[indexOf];
-            memberArray[indexOf] = prev;
-        }
-    }
-
-    printGroupMembers();
-
-    // Existing groups need to modify members list
-    if (openGroupId) {
-        await editGroup(groupId, false, false);
-        updateGroupAvatar(thisGroup);
+    if (moveGroupMember(groupLike, from, to) && openGroupId) {
+        editGroup(openGroupId, false, false);
+        updateGroupAvatar(groupLike);
     }
 }
 
 async function onGroupActivationStrategyInput(e) {
-    if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
-        _thisGroup.activation_strategy = Number(e.target.value);
-        // SillyBunny: a turn routing lease ends when its group's reply strategy changes.
+    const value = Number(e.target.value);
+
+    if (_editDraft((draft) => { draft.activation_strategy = value; return true; })) {
+        // A turn routing lease ends when its group's reply strategy changes.
         groupTurnRouting.refresh();
-        await editGroup(openGroupId, false, false);
+        toggleHiddenControls(editorDraft);
+        return;
     }
+    if (!openGroupId) return;
+
+    const _thisGroup = groups.find((x) => x.id == openGroupId);
+    if (!_thisGroup) return;
+    _thisGroup.activation_strategy = value;
+    groupTurnRouting.refresh();
+    await editGroup(openGroupId, false, false);
 }
 
 async function onGroupGenerationModeInput(e) {
-    if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
-        _thisGroup.generation_mode = Number(e.target.value);
-        await editGroup(openGroupId, false, false);
+    const value = Number(e.target.value);
 
-        toggleHiddenControls(_thisGroup);
+    if (_editDraft((draft) => { draft.generation_mode = value; return true; })) {
+        toggleHiddenControls(editorDraft);
+        return;
     }
+    if (!openGroupId) return;
+
+    const _thisGroup = groups.find((x) => x.id == openGroupId);
+    if (!_thisGroup) return;
+    _thisGroup.generation_mode = value;
+    await editGroup(openGroupId, false, false);
+    toggleHiddenControls(_thisGroup);
 }
 
 async function onGroupGenerationModeTemplateInput(e) {
-    if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
-        const prop = $(e.target).attr('setting');
-        _thisGroup[prop] = String(e.target.value);
-        await editGroup(openGroupId, false, false);
-    }
+    const prop = $(e.target).attr('setting');
+    const value = String(e.target.value);
+    if (!prop) return;
+
+    if (_editDraft((draft) => { draft[prop] = value; return true; }, { immediate: false })) return;
+    if (!openGroupId) return;
+
+    const _thisGroup = groups.find((x) => x.id == openGroupId);
+    if (!_thisGroup) return;
+    _thisGroup[prop] = value;
+    await editGroup(openGroupId, false, false);
 }
 
 async function onGroupNameInput() {
-    if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
-        _thisGroup.name = $(this).val();
-        $('#rm_button_selected_ch').children('h2').text(_thisGroup.name);
-        await editGroup(openGroupId, false);
+    const value = String($(this).val() ?? '');
+
+    if (_editDraft((draft) => { draft.name = value; return true; }, { immediate: false })) {
+        updateGroupHeaderTitle(value);
+        return;
     }
+    if (!openGroupId) return;
+
+    const _thisGroup = groups.find((x) => x.id == openGroupId);
+    if (!_thisGroup) return;
+    _thisGroup.name = value;
+    updateGroupHeaderTitle(value);
+    await editGroup(openGroupId, false);
 }
 
+/**
+ * Renames the open group. The legacy flow showed an input popup; the editor's
+ * header title is the rename affordance now, so this focuses it and leaves the
+ * name as an ordinary unsaved edit.
+ */
 async function renameOpenGroup() {
     if (menu_type !== 'group_edit' || !openGroupId) {
         return;
@@ -2273,21 +2553,31 @@ async function renameOpenGroup() {
         return;
     }
 
-    const newName = await callGenericPopup('<h3>' + t`New name:` + '</h3>', POPUP_TYPE.INPUT, group.name);
+    const titleButton = document.getElementById('sb_group_editor_title_button');
+    if (titleButton && !titleButton.disabled) {
+        titleButton.click();
+        return;
+    }
+
+    // Fallback for a group editor that is not mounted (embedded hosts, tests).
+    const newName = await callGenericPopup('<h3>' + t`New name:` + '</h3>', POPUP_TYPE.INPUT, getEditedGroup()?.name ?? group.name);
     if (!newName || newName === group.name) {
         return;
     }
 
+    if (_editDraft((draft) => { draft.name = String(newName); return true; })) {
+        writeGroupEditorFields(editorDraft);
+        updateGroupHeaderTitle(String(newName));
+        return;
+    }
+
     group.name = String(newName);
-    $('#rm_group_chat_name').val(group.name);
-    $('#rm_button_selected_ch').children('h2').text(group.name);
+    writeGroupEditorFields(group);
     await editGroup(openGroupId, true, true);
 }
 
-const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
-globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
-    renameOpenGroup,
-});
+// SillyBunny: the group editor controller is initialised from this module's own
+// ready handler, so it no longer needs a global bridge (Step 4).
 
 /**
  * Checks if a character with the given avatar ID is a member of the group.
@@ -2298,9 +2588,8 @@ globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
 function isGroupMember(group, avatarId) {
     if (group && Array.isArray(group.members)) {
         return group.members.includes(avatarId);
-    } else {
-        return newGroupMembers.includes(avatarId);
     }
+    return Boolean(editorDraft?.members?.includes(avatarId));
 }
 
 /**
@@ -2323,7 +2612,7 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
     }
 
     function handleMembers(results, thisGroup) {
-        const membersArray = thisGroup?.members ?? newGroupMembers;
+        const membersArray = thisGroup?.members ?? editorDraft?.members ?? [];
 
         // Create index map for O(1) lookups in member sort function
         // (separate from characterIndexMap which maps character objects to their array indices)
@@ -2351,7 +2640,9 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
         return filtered;
     }
 
-    const thisGroup = openGroupId && groups.find((x) => x.id == openGroupId);
+    // The editor's draft is the visible truth while an unsaved session owns the
+    // group, so the member lists must filter against it rather than groups[].
+    const thisGroup = getEditedGroup();
 
     // Create index map for O(1) lookups when mapping characters to their array indices
     // (separate from memberIndexMap used later for sorting members by their group order)
@@ -2370,11 +2661,14 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
     return handleMembers(results, thisGroup);
 }
 
-function printGroupCandidates() {
+function printGroupCandidates({ animate = false } = {}) {
     const storageKey = 'GroupCandidates_PerPage';
     const pageSize = Number(accountStorage.getItem(storageKey)) || 5;
     const sizeChangerOptions = [5, 10, 25, 50, 100, 200, 500, 1000];
-    $('#rm_group_add_members_pagination').pagination({
+    const rows = document.getElementById('rm_group_add_members');
+    const pagination = $('#rm_group_add_members_pagination');
+    const previousPage = pagination.data('pagination')?.model?.pageNumber;
+    const render = () => pagination.pagination({
         dataSource: getGroupCharacters({ doFilter: true, onlyMembers: false }),
         pageRange: 1,
         position: 'top',
@@ -2390,59 +2684,120 @@ function printGroupCandidates() {
             accountStorage.setItem(storageKey, e.target.value);
             paginationDropdownChangeHandler(e, size);
         },
-        callback: function (data) {
-            $('#rm_group_add_members').empty();
-            for (const i of data) {
-                $('#rm_group_add_members').append(getGroupCharacterBlock(i.item));
+        callback: function (data, model) {
+            const renderRows = () => {
+                $(rows).empty();
+                for (const i of data) {
+                    $(rows).append(getGroupCharacterBlock(i.item));
+                }
+                localizePagination(pagination);
+            };
+            const pageChanged = !animate && previousPage !== undefined && previousPage !== model.pageNumber;
+            if (pageChanged) {
+                animateListChange(rows, renderRows, { duration: MOTION_FAST, enterDuration: MOTION_FAST });
+                return;
             }
-            localizePagination($('#rm_group_add_members_pagination'));
+            renderRows();
         },
     });
+
+    if (!animate) return render();
+    return animateListChange(rows, render);
 }
 
-function printGroupMembers() {
+function printGroupMembers({ animate = false } = {}) {
     const storageKey = 'GroupMembers_PerPage';
-    $('.rm_group_members_pagination').each(function () {
-        let that = this;
-        const pageSize = Number(accountStorage.getItem(storageKey)) || 5;
-        const sizeChangerOptions = [5, 10, 25, 50, 100, 200, 500, 1000];
-        $(this).pagination({
-            dataSource: getGroupCharacters({ doFilter: true, onlyMembers: true }),
-            pageRange: 1,
-            position: 'top',
-            showPageNumbers: false,
-            prevText: '<',
-            nextText: '>',
-            formatNavigator: PAGINATION_TEMPLATE,
-            showNavigator: true,
-            showSizeChanger: true,
-            formatSizeChanger: renderPaginationDropdown(pageSize, sizeChangerOptions),
-            pageSize,
-            afterSizeSelectorChange: function (e, size) {
-                accountStorage.setItem(storageKey, e.target.value);
-                paginationDropdownChangeHandler(e, size);
-            },
-            callback: function (data) {
-                $('.rm_group_members').empty();
-                for (const i of data) {
-                    $('.rm_group_members').append(getGroupCharacterBlock(i.item));
-                }
-                localizePagination($(that));
-            },
+    const render = () => {
+        $('.rm_group_members_pagination').each(function () {
+            const pagination = $(this);
+            const previousPage = pagination.data('pagination')?.model?.pageNumber;
+            const pageSize = Number(accountStorage.getItem(storageKey)) || 5;
+            const sizeChangerOptions = [5, 10, 25, 50, 100, 200, 500, 1000];
+            pagination.pagination({
+                dataSource: getGroupCharacters({ doFilter: true, onlyMembers: true }),
+                pageRange: 1,
+                position: 'top',
+                showPageNumbers: false,
+                prevText: '<',
+                nextText: '>',
+                formatNavigator: PAGINATION_TEMPLATE,
+                showNavigator: true,
+                showSizeChanger: true,
+                formatSizeChanger: renderPaginationDropdown(pageSize, sizeChangerOptions),
+                pageSize,
+                afterSizeSelectorChange: function (e, size) {
+                    accountStorage.setItem(storageKey, e.target.value);
+                    paginationDropdownChangeHandler(e, size);
+                },
+                callback: function (data, model) {
+                    const renderRows = () => {
+                        const order = getEditedGroup()?.members ?? [];
+                        $('.rm_group_members').empty();
+                        for (const i of data) {
+                            $('.rm_group_members').append(getGroupCharacterBlock(i.item, { draftIndex: order.indexOf(i.item.avatar), grip: true }));
+                        }
+                        localizePagination(pagination);
+                        syncGroupMembersFilteredState();
+                    };
+                    const pageChanged = !animate && previousPage !== undefined && previousPage !== model.pageNumber;
+                    if (pageChanged) {
+                        animateMemberListRender(renderRows, { duration: MOTION_FAST, enterDuration: MOTION_FAST });
+                        return;
+                    }
+                    renderRows();
+                },
+            });
         });
-    });
+    };
+
+    if (!animate) return render();
+    return animateMemberListRender(render);
+}
+
+function getMemberRowsContainers() {
+    return Array.from(document.querySelectorAll('.rm_group_members'));
+}
+
+function animateMemberListRender(render, options = {}) {
+    const snapshots = getMemberRowsContainers()
+        .map(container => captureListChange(container, options));
+    const result = render();
+    const apply = () => snapshots.forEach(snapshot => applyListChange(snapshot, options));
+    if (result && typeof result.then === 'function') {
+        return result.then(value => {
+            apply();
+            return value;
+        });
+    }
+    apply();
+    return result;
 }
 
 /**
  * Creates a jQuery element representing a group character block.
  * @param {Character} character Character object
+ * @param {object} [options]
+ * @param {number} [options.draftIndex] Position the row holds in the editor's draft, or -1.
+ * @param {boolean} [options.grip] Add the drag handle. Only the reorderable current-members list wants one.
  * @returns {JQuery<HTMLElement>} jQuery element representing the group character block
  */
-function getGroupCharacterBlock(character) {
+function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {}) {
     const avatar = getThumbnailUrl('avatar', character.avatar);
     const template = $('#group_member_template .group_member').clone();
     const isFav = !!character.fav || character.fav == 'true';
     template.data('id', character.avatar);
+    // SillyBunny: the avatar id also lives in the DOM, because the member-list
+    // popout is built by cloning these rows and jQuery's data store is not
+    // copied with them - the row buttons would then act on `undefined`.
+    template.attr('data-avatar', character.avatar);
+    // Only the editor's drag-to-reorder reads this: it maps the rows on screen
+    // back to the positions they hold in the draft.
+    template.attr('data-sb-member-index', String(draftIndex));
+    // Appended here rather than shipped in the shared template so the add-members
+    // list and the detached popout never render a handle they cannot use.
+    if (grip) {
+        template.prepend('<div class="sb-group-member-grip ds-entity-row__grip fa-solid fa-grip-vertical" aria-hidden="true"></div>');
+    }
     template.find('.avatar img').attr({ 'src': avatar, 'title': character.avatar });
     template.find('.ch_name').text(character.name);
     template.attr('data-chid', characters.indexOf(character));
@@ -2464,22 +2819,30 @@ function getGroupCharacterBlock(character) {
         template.toggleClass('is_active', queuePosition === 1);
     }
 
-    template.toggleClass('disabled', isGroupMemberDisabled(character.avatar));
-
-    const thisGroup = openGroupId && groups.find((x) => x.id == openGroupId);
-    const modelInput = template.find('.group_member_model_input');
-    modelInput.val(getGroupMemberModel(thisGroup, character.avatar));
-    modelInput.toggle(!!thisGroup && isGroupMember(thisGroup, character.avatar));
+    // SillyBunny: the switch and menu replace the legacy icon strip on both lists.
+    const repliesEnabled = !isGroupMemberDisabled(character.avatar);
+    template.toggleClass('disabled', !repliesEnabled);
+    const thisGroup = getEditedGroup();
+    const isMember = isGroupMember(thisGroup, character.avatar);
+    template.toggleClass('sb-group-candidate ds-entity-row--activatable', !isMember);
+    template.find('.sb-group-member-switch').prop('checked', repliesEnabled).attr({
+        'aria-label': t`Replies from ${character.name}`,
+        'aria-checked': String(repliesEnabled),
+        'data-action': repliesEnabled ? 'disable' : 'enable',
+    });
+    template.find('.sb-group-member-menu').attr('aria-label', t`Member actions`);
+    template.find('[data-action="add"]').attr('aria-label', t`Add to group`);
+    const model = isMember ? getGroupMemberModel(thisGroup, character.avatar) : '';
+    template.find('.sb-group-member-model').text(model ? t`Model: ${model}` : '');
+    template.find('.ds-entity-row__subtitle').toggle(Boolean(auxFieldValue || model));
 
     // Display inline tags
-    const tagsElement = template.find('.tags');
+    const tagsElement = template.find('.tags').addClass('ds-tag-chips');
     printTagList(tagsElement, { forEntityOrKey: characters.indexOf(character), tagOptions: { isCharacterList: true } });
 
+    // Speak only means something for a persisted group.
     if (!openGroupId) {
         template.find('[data-action="speak"]').hide();
-        template.find('[data-action="enable"]').hide();
-        template.find('[data-action="disable"]').hide();
-        modelInput.hide();
     }
 
     return template;
@@ -2491,7 +2854,7 @@ function getGroupCharacterBlock(character) {
  * @returns {boolean} True if the group member is disabled, false otherwise
  */
 function isGroupMemberDisabled(avatarId) {
-    const thisGroup = openGroupId && groups.find((x) => x.id == openGroupId);
+    const thisGroup = getEditedGroup();
     return Boolean(thisGroup && thisGroup.disabled_members.includes(avatarId));
 }
 
@@ -2513,8 +2876,13 @@ async function onDeleteGroupClick() {
 
 async function onFavoriteGroupClick() {
     updateFavButtonState(!fav_grp_checked);
+    if (isGroupEditorActive()) {
+        _editDraft((draft) => { draft.fav = fav_grp_checked; return true; });
+        favsToHotswap();
+        return;
+    }
     if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
+        const _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.fav = fav_grp_checked;
         await editGroup(openGroupId, false, false);
         favsToHotswap();
@@ -2522,19 +2890,27 @@ async function onFavoriteGroupClick() {
 }
 
 async function onGroupSelfResponsesClick() {
+    const value = $(this).prop('checked');
+    if (isGroupEditorActive()) {
+        _editDraft((draft) => { draft.allow_self_responses = value; return true; });
+        return;
+    }
     if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
-        const value = $(this).prop('checked');
+        const _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.allow_self_responses = value;
         await editGroup(openGroupId, false, false);
     }
 }
 
 async function onHideMutedSpritesClick(value) {
+    if (isGroupEditorActive()) {
+        _editDraft((draft) => { draft.hideMutedSprites = value; return true; });
+        await eventSource.emit(event_types.GROUP_UPDATED);
+        return;
+    }
     if (openGroupId) {
-        let _thisGroup = groups.find((x) => x.id == openGroupId);
+        const _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.hideMutedSprites = value;
-        console.log(`_thisGroup.hideMutedSprites = ${_thisGroup.hideMutedSprites}`);
         await editGroup(openGroupId, false, false);
         await eventSource.emit(event_types.GROUP_UPDATED);
     }
@@ -2546,11 +2922,16 @@ async function onHideMutedSpritesClick(value) {
  * @param {number|null} generationMode Generation mode, or null to use the group's current generation mode
  */
 function toggleHiddenControls(group, generationMode = null) {
-    const isJoin = [group_generation_mode.APPEND, group_generation_mode.APPEND_DISABLED].includes(generationMode ?? group?.generation_mode);
-    $('#rm_group_generation_mode_join_prefix').parent().toggle(isJoin);
-    $('#rm_group_generation_mode_join_suffix').parent().toggle(isJoin);
+    const mode = generationMode ?? group?.generation_mode;
+    const isJoin = [group_generation_mode.APPEND, group_generation_mode.APPEND_DISABLED].includes(Number(mode));
+    $('#group_join_templates').toggle(isJoin);
 
-    if (!CSS.supports('field-sizing', 'content')) {
+    // Allow-self-responses only applies to natural order, so the row follows the
+    // strategy rather than the generation mode.
+    const isNatural = Number(group?.activation_strategy ?? group_activation_strategy.NATURAL) === group_activation_strategy.NATURAL;
+    $('#rm_group_allow_self_responses_row').toggle(isNatural);
+
+    if (isJoin && !CSS.supports('field-sizing', 'content')) {
         initScrollHeight($('#rm_group_generation_mode_join_prefix'));
         initScrollHeight($('#rm_group_generation_mode_join_suffix'));
     }
@@ -2562,27 +2943,43 @@ function toggleHiddenControls(group, generationMode = null) {
  * @param {boolean} skipAnimation If true, skips the animation when selecting the group
  */
 function select_group_chats(groupId, skipAnimation) {
+    // SillyBunny: the member-list styles are a deferred stylesheet (frontend budget);
+    // it is preloaded, so activating it here applies before the rows paint.
+    window.SillyBunnyLoadStylesheet?.();
+    const loadResult = beginGroupEditorLoad(groupId ?? null);
     openGroupId = groupId;
-    newGroupMembers = [];
     const group = openGroupId && groups.find((x) => x.id == openGroupId);
+
+    // SillyBunny: re-selecting the group the editor already owns only reconciles
+    // the pending draft with the live group. Nothing is reset, so an unsaved
+    // draft neither loses its edits nor scrolls the panel back to the top.
+    const reconciled = loadResult === 'reconciled';
+    if (reconciled) {
+        if (group) reconcileEditorDraft(group);
+        else syncGroupEditorFields();
+    } else {
+        resetEditorDraft(group);
+    }
+
     const groupName = group?.name ?? '';
-    const replyStrategy = Number(group?.activation_strategy ?? group_activation_strategy.NATURAL);
-    const generationMode = Number(group?.generation_mode ?? group_generation_mode.SWAP);
 
     setMenuType(group ? 'group_edit' : 'group_create');
-    $('#group_avatar_preview').empty().append(getGroupAvatar(group));
-    $('#rm_group_restore_avatar').toggle(!!group && isValidImageUrl(group.avatar_url));
-    $('#rm_group_filter').val('').trigger('input');
-    $('#rm_group_members_filter').val('').trigger('input');
-    $('#rm_group_activation_strategy').val(replyStrategy);
-    $(`#rm_group_activation_strategy option[value="${replyStrategy}"]`).prop('selected', true);
-    $('#rm_group_generation_mode').val(generationMode);
-    $(`#rm_group_generation_mode option[value="${generationMode}"]`).prop('selected', true);
-    $('#rm_group_chat_name').val(groupName);
 
     if (!skipAnimation) {
         selectRightMenuWithAnimation('rm_group_chats_block');
     }
+
+    if (!reconciled) {
+        $('#rm_group_filter').val('').trigger('input');
+        $('#rm_group_members_filter').val('').trigger('input');
+        $('#group_avatar_preview').empty().append(getGroupAvatar(group));
+        $('#rm_group_restore_avatar').toggle(!!group && isValidImageUrl(group.avatar_url));
+    }
+
+    // The draft is the truth for every editable field; writeGroupEditorFields()
+    // skips values that already match, so a reconcile does not disturb what the
+    // user is currently typing into.
+    writeGroupEditorFields(editorDraft ?? group);
 
     // render tags
     applyTagsOnGroupSelect(groupId);
@@ -2591,40 +2988,22 @@ function select_group_chats(groupId, skipAnimation) {
     printGroupCandidates();
     printGroupMembers();
 
-    const groupHasMembers = !!$('#rm_group_members').children().length;
-    $('#rm_group_submit').prop('disabled', !groupHasMembers);
-    $('#rm_group_allow_self_responses').prop('checked', group && group.allow_self_responses);
-    $('#rm_group_hidemutedsprites').prop('checked', group && group.hideMutedSprites);
-    $('#rm_group_generation_mode_join_prefix').val(group?.generation_mode_join_prefix ?? '').attr('setting', 'generation_mode_join_prefix');
-    $('#rm_group_generation_mode_join_suffix').val(group?.generation_mode_join_suffix ?? '').attr('setting', 'generation_mode_join_suffix');
-    toggleHiddenControls(group, generationMode);
+    updateGroupSubmitState();
 
-    // bottom buttons
-    if (openGroupId) {
-        $('#rm_group_submit').hide();
-        $('#rm_group_delete').show();
-        $('#rm_group_scenario').show();
-        $('#group-metadata-controls .chat_lorebook_button').removeClass('disabled').prop('disabled', false);
-        $('#group_open_media_overrides').show();
-        const isMediaAllowed = isExternalMediaAllowed();
-        $('#group_media_allowed_icon').toggle(isMediaAllowed);
-        $('#group_media_forbidden_icon').toggle(!isMediaAllowed);
-    } else {
-        $('#rm_group_submit').show();
-        if ($('#groupAddMemberListToggle .inline-drawer-content').css('display') !== 'block') {
-            $('#groupAddMemberListToggle').trigger('click');
-        }
-        $('#rm_group_delete').hide();
-        $('#rm_group_scenario').hide();
-        $('#group-metadata-controls .chat_lorebook_button').addClass('disabled').prop('disabled', true);
-        $('#group_open_media_overrides').hide();
-    }
+    // Bottom buttons and the ⋯ menu's entries. Overrides and Lorebook only apply
+    // to a group that exists, so their whole section hides in create mode.
+    const isEdit = Boolean(group);
+    $('#rm_group_submit').toggle(!isEdit);
+    $('#rm_group_delete').toggle(isEdit);
+    $('#rm_group_chats_block [data-sb-section="overrides"]').toggle(isEdit);
+    $('#rm_group_chats_block [data-sb-section="lorebook"]').toggle(isEdit);
+    updateGroupAvatar(editorDraft ?? group);
 
-    updateFavButtonState(group?.fav ?? false);
+    updateFavButtonState(Boolean(editorDraft?.fav ?? group?.fav));
 
     // top bar
     if (group) {
-        $('#rm_button_selected_ch').children('h2').text(groupName);
+        updateGroupHeaderTitle(groupName);
     }
 
     // Toggle textbox sizes, as input events have not fired here
@@ -2634,11 +3013,43 @@ function select_group_chats(groupId, skipAnimation) {
         });
     }
 
-    hideMutedSprites = group?.hideMutedSprites ?? false;
-    $('#rm_group_hidemutedsprites').prop('checked', hideMutedSprites);
+    hideMutedSprites = Boolean(editorDraft?.hideMutedSprites ?? group?.hideMutedSprites);
 
     updateGroupSpeakerControls();
     eventSource.emit('groupSelected', { detail: { id: openGroupId, group: group } });
+    // SillyBunny: open the explicit-save editor session once the fields are set
+    if (openGroupId) {
+        openGroupEditorSession(openGroupId);
+    } else {
+        openGroupEditorCreateSession();
+    }
+}
+
+/**
+ * The member list's order is the saved order while a filter is active, so the
+ * drag handle is inert then. Mirrors the condition used for the filter-based
+ * sort in getGroupCharacters().
+ */
+function syncGroupMembersFilteredState() {
+    $('#rm_group_members').toggleClass('is-filtered', Boolean($('#rm_group_members_filter').val()));
+}
+
+/**
+ * Create is only possible with at least one member, so the Create button in the
+ * header follows the draft's member count.
+ */
+function updateGroupSubmitState() {
+    const groupHasMembers = getGroupCharacters({ doFilter: false, onlyMembers: true }).length > 0;
+    $('#rm_group_submit').prop('disabled', !groupHasMembers);
+}
+
+/**
+ * Mirrors isExternalMediaAllowed() into the editor's External media row.
+ */
+function _syncGroupMediaOverrideIcons() {
+    const isMediaAllowed = isExternalMediaAllowed();
+    $('#group_media_allowed_icon').toggle(isMediaAllowed);
+    $('#group_media_forbidden_icon').toggle(!isMediaAllowed);
 }
 
 /**
@@ -2661,6 +3072,8 @@ async function uploadGroupAvatar(event) {
         return;
     }
 
+    const draft = editorDraft;
+    const groupId = openGroupId;
     const result = await getBase64Async(file);
 
     $('#dialogue_popup').addClass('large_dialogue_popup wide_dialogue_popup');
@@ -2675,46 +3088,72 @@ async function uploadGroupAvatar(event) {
     let thumbnail = await createThumbnail(String(croppedImage), 300, 300);
     //remove data:image/whatever;base64
     thumbnail = thumbnail.replace(/^data:image\/[a-z]+;base64,/, '');
-    let _thisGroup = groups.find((x) => x.id == openGroupId);
     // filename should be group id + human readable timestamp
-    const filename = _thisGroup ? `${_thisGroup.id}_${humanizedDateTime()}` : humanizedDateTime();
-    let thumbnailUrl = await saveBase64AsFile(thumbnail, String(openGroupId ?? ''), filename, 'jpg');
-    if (!openGroupId) {
-        $('#group_avatar_preview img').attr('src', thumbnailUrl);
-        $('#rm_group_restore_avatar').show();
+    const filename = groupId ? `${groupId}_${humanizedDateTime()}` : humanizedDateTime();
+    let thumbnailUrl = await saveBase64AsFile(thumbnail, String(groupId ?? ''), filename, 'jpg');
+    if (!groupId) {
+        // Create mode: the preview follows the draft, which carries the avatar
+        // into the create payload.
+        if (editorDraft !== draft || !draft) return;
+        draft.avatar_url = thumbnailUrl;
+        writeGroupEditorFields(draft);
         return;
     }
 
-    _thisGroup.avatar_url = thumbnailUrl;
-    $('#group_avatar_preview').empty().append(getGroupAvatar(_thisGroup));
-    $('#rm_group_restore_avatar').show();
-    await editGroup(openGroupId, true, true);
+    // Uploading is its own endpoint, so it writes the live group directly; the
+    // draft and the editor's baseline follow, otherwise Save would consider the
+    // new avatar an unsaved change. The baseline is taken from the group rather
+    // than from the draft, so any other pending edit stays unsaved.
+    const group = groups.find((x) => x.id == groupId);
+    if (!group) return;
+    group.avatar_url = thumbnailUrl;
+    const savedSnapshot = createEditorDraft(group);
+    if (editorDraft === draft && draft) {
+        draft.avatar_url = thumbnailUrl;
+        writeGroupEditorFields(draft);
+    }
+    await editGroup(groupId, true, true);
+    if (editorDraft === draft && isGroupEditorOwner(groupId)) rebaseGroupEditor(savedSnapshot);
 }
 
 async function restoreGroupAvatar() {
+    const draft = editorDraft;
+    const groupId = openGroupId;
     const confirm = await Popup.show.confirm('Are you sure you want to restore the group avatar?', 'Your custom image will be deleted, and a collage will be used instead.');
     if (!confirm) {
         return;
     }
 
-    if (!openGroupId) {
-        $('#group_avatar_preview img').attr('src', default_avatar);
-        $('#rm_group_restore_avatar').hide();
+    if (!groupId) {
+        if (editorDraft !== draft || !draft) return;
+        draft.avatar_url = '';
+        writeGroupEditorFields(draft);
         return;
     }
 
-    let _thisGroup = groups.find((x) => x.id == openGroupId);
-    _thisGroup.avatar_url = '';
-    $('#group_avatar_preview').empty().append(getGroupAvatar(_thisGroup));
-    $('#rm_group_restore_avatar').hide();
-    await editGroup(openGroupId, true, true);
+    const group = groups.find((x) => x.id == groupId);
+    if (!group) return;
+    group.avatar_url = '';
+    const savedSnapshot = createEditorDraft(group);
+    if (editorDraft === draft && draft) {
+        draft.avatar_url = '';
+        writeGroupEditorFields(draft);
+    }
+    await editGroup(groupId, true, true);
+    if (editorDraft === draft && isGroupEditorOwner(groupId)) rebaseGroupEditor(savedSnapshot);
 }
 
 async function onGroupActionClick(event) {
     event.stopPropagation();
     const action = $(this).data('action');
     const member = $(this).closest('.group_member');
+    await runGroupMemberAction(action, member);
+}
 
+// SillyBunny: delegated clicks, switches and menus use one action path, including
+// detached rows whose jQuery data store was not copied by the popout.
+async function runGroupMemberAction(action, member) {
+    const focus = captureGroupMemberFocus(member);
     if (action === 'remove') {
         await modifyGroupMember(openGroupId, member, true);
     }
@@ -2723,21 +3162,26 @@ async function onGroupActionClick(event) {
         await modifyGroupMember(openGroupId, member, false);
     }
 
-    if (action === 'enable') {
-        member.removeClass('disabled');
-        const _thisGroup = groups.find(x => x.id === openGroupId);
-        const index = _thisGroup.disabled_members.indexOf(member.data('id'));
-        if (index !== -1) {
-            _thisGroup.disabled_members.splice(index, 1);
-            await editGroup(openGroupId, false, false);
-        }
-    }
-
-    if (action === 'disable') {
-        member.addClass('disabled');
-        const _thisGroup = groups.find(x => x.id === openGroupId);
-        if (!_thisGroup.disabled_members.includes(member.data('id'))) {
-            _thisGroup.disabled_members.push(member.data('id'));
+    if (action === 'enable' || action === 'disable') {
+        const avatarId = member.data('id') ?? member.attr('data-avatar');
+        const rows = $('.group_member').filter(function () {
+            return ($(this).data('id') ?? $(this).attr('data-avatar')) === avatarId;
+        });
+        rows.toggleClass('disabled', action === 'disable');
+        rows.find('.sb-group-member-switch').prop('checked', action === 'enable')
+            .attr('aria-checked', String(action === 'enable')).attr('data-action', action === 'enable' ? 'disable' : 'enable');
+        if (isGroupEditorActive()) {
+            _editDraft((draft) => applyMemberAction(draft, action, avatarId));
+        } else if (openGroupId) {
+            const _thisGroup = groups.find(x => x.id === openGroupId);
+            const index = _thisGroup.disabled_members.indexOf(avatarId);
+            if (action === 'enable' && index !== -1) {
+                _thisGroup.disabled_members.splice(index, 1);
+            } else if (action === 'disable' && index === -1) {
+                _thisGroup.disabled_members.push(avatarId);
+            } else {
+                return;
+            }
             await editGroup(openGroupId, false, false);
         }
     }
@@ -2758,26 +3202,261 @@ async function onGroupActionClick(event) {
     }
 
     await eventSource.emit(event_types.GROUP_UPDATED);
+    if (['up', 'down', 'remove', 'enable', 'disable'].includes(action)) {
+        restoreGroupMemberFocus(focus, {
+            removed: action === 'remove',
+            control: action === 'enable' || action === 'disable' ? '.sb-group-member-switch' : '.sb-group-member-menu',
+        });
+    }
 }
 
-function isMobileGroupCandidateRowTap(event) {
-    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
-    if (!target || target.closest('.right_menu_button, input, button, select, textarea, a')) {
-        return false;
-    }
+// SillyBunny: use DOM identity and the originating list so re-rendered controls
+// regain focus in the sheet or its HTML-only popout, never in a newer session.
+function captureGroupMemberFocus(member) {
+    const list = member[0]?.closest('.rm_group_members');
+    return {
+        list,
+        avatar: member.data('id') ?? member.attr('data-avatar'),
+        index: list ? Array.from(list.querySelectorAll('.group_member')).indexOf(member[0]) : -1,
+        draft: editorDraft,
+        groupId: openGroupId,
+    };
+}
 
-    return globalThis.SillyBunnyShell?.isMobileViewport?.() ?? Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches);
+function restoreGroupMemberFocus(focus, { removed = false, control = '.sb-group-member-menu' } = {}) {
+    if (!focus.list?.isConnected || focus.draft !== editorDraft || focus.groupId !== openGroupId) return;
+    const rows = Array.from(focus.list.querySelectorAll('.group_member'));
+    const member = removed
+        ? rows[Math.min(focus.index, rows.length - 1)]
+        : rows.find(row => row.getAttribute('data-avatar') === focus.avatar);
+    const target = member?.querySelector(control)
+        ?? focus.list.closest('.ds-entity-list')?.querySelector('[id="rm_group_members_filter"]');
+    target?.focus({ preventScroll: true });
+}
+
+function isGroupCandidateRowClick(event) {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    // SillyBunny: a11y marks static chips as buttons too; only actionable chips
+    // (including the tag expander) and actual controls consume the row click.
+    return Boolean(target && !target.closest('.right_menu_button, input, button, select, textarea, a, label, [role="button"]:not(.tag), .tag:is(.actionable, .clickable-action, .placeholder-expander, .interactable), .tag_remove'));
 }
 
 async function onGroupCandidateRowClick(event) {
-    if (!isMobileGroupCandidateRowTap(event)) {
+    if (!isGroupCandidateRowClick(event)) {
         return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    await modifyGroupMember(openGroupId, $(this), false);
+    await runGroupMemberAction('add', $(this));
+}
+
+async function onGroupMemberSwitchChange() {
+    await runGroupMemberAction(this.checked ? 'enable' : 'disable', $(this).closest('.group_member'));
+}
+
+function onGroupMemberMenuClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const member = $(this).closest('.group_member');
+    const avatarId = member.data('id') ?? member.attr('data-avatar');
+    const order = getEditedGroup()?.members ?? [];
+    const index = order.indexOf(avatarId);
+    if (index < 0) return;
+
+    const actionItem = (label, icon, action, extra = {}) => ({
+        label,
+        icon: `fa-solid fa-${icon}`,
+        onSelect: () => void runGroupMemberAction(action, member),
+        ...extra,
+    });
+    const actions = [];
+    if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
+    actions.push(actionItem(t`View character`, 'image-portrait', 'view'));
+    actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => void editGroupMemberModel(member) });
+    openActionMenu({
+        trigger: this,
+        title: member.find('.ch_name').text(),
+        sections: [
+            { items: actions },
+            { items: [
+                actionItem(t`Move up`, 'arrow-up', 'up', { disabled: index === 0 }),
+                actionItem(t`Move down`, 'arrow-down', 'down', { disabled: index === order.length - 1 }),
+            ] },
+            { items: [actionItem(t`Remove`, 'minus', 'remove', { danger: true })] },
+        ],
+    });
+}
+
+/**
+ * Apply a member action to the editor's draft when the editor owns this group.
+ * Draft edits are never written to groups[]; Save does that.
+ * @param {'add'|'remove'|'enable'|'disable'} action
+ * @param {string} avatarId
+ * @param {string|null} [groupId] Group whose member is being changed
+ * @returns {{ owned: boolean, changed: boolean }} Ownership is independent of mutation.
+ */
+function _applyMemberActionToEditor(action, avatarId, groupId = openGroupId) {
+    if (!editorDraft) return { owned: false, changed: false };
+    // Create mode has no group id yet, so the draft is the only owner.
+    if (groupId && String(editorDraft.id) !== String(groupId)) return { owned: false, changed: false };
+    return { owned: true, changed: _editDraft((draft) => applyMemberAction(draft, action, avatarId)) };
+}
+
+/**
+ * Reorder the editor's members to match a drag in the rendered list.
+ * @param {number[]} from  Draft indices of the dragged rows, in their old on-screen order.
+ * @param {number[]} to    The same indices in their new on-screen order.
+ * @returns {boolean} true when the draft changed
+ */
+function reorderMembersByIndices(from, to) {
+    if (from.length !== to.length || !from.length) return false;
+    const moved = _editDraft((draft) => {
+        if (!Array.isArray(draft.members)) return false;
+        // The dragged rows keep the slot numbers they came from; only which
+        // member sits in them changes. `from` arrives in ascending slot order
+        // because the rendered list is sorted by slot, so position p maps to
+        // slot from[p] and takes the member that now sits at to[p]. Sort the
+        // slots before writing so a drag that moves rows upward cannot overwrite
+        // a value it still needs.
+        const slots = [...from].sort((a, b) => a - b);
+        const values = to.map((index) => draft.members[index]);
+        if (values.some((value) => value === undefined)) return false;
+        if (slots.every((slot, position) => draft.members[slot] === values[position])) return false;
+        slots.forEach((slot, position) => { draft.members[slot] = values[position]; });
+        return true;
+    });
+
+    if (moved) printGroupMembers({ animate: true });
+    return moved;
+}
+
+/**
+ * Run a mutation against the draft and report it to the editor. Every
+ * editor-owned handler funnels through here, so "the draft changed" and "the
+ * editor is dirty" can never drift apart.
+ * @param {(draft: GroupDraft) => boolean} mutate  Returns true when it changed something.
+ * @param {{ immediate?: boolean }} [options]
+ * @returns {boolean} true when the draft changed
+ */
+function _editDraft(mutate, options = { immediate: true }) {
+    if (!editorDraft || !mutate(editorDraft)) return false;
+    notifyGroupEditorChanged(options);
+    return true;
+}
+
+/**
+ * Saves the editor's draft to an existing group. The caller (the shared editor
+ * session) owns the timing; this only performs the write.
+ *
+ * Live-only fields the draft does not cover (chat_id, chats, conversation
+ * settings, tag maps) are never touched. The live object only adopts values
+ * after confirmation, so a reselect during the request cannot baseline them.
+ * @param {string} groupId
+ * @param {GroupDraft} snapshot
+ * @returns {Promise<boolean>} whether the save landed
+ */
+async function saveDraft(groupId, snapshot) {
+    const group = groups.find((x) => x.id == groupId);
+    if (!group || !snapshot || String(snapshot.id) !== String(groupId)) return false;
+    const submittedGroup = { ...group };
+    applyDraftToGroup(submittedGroup, snapshot);
+    await _save(submittedGroup);
+    applyDraftToGroup(group, snapshot);
+    // A turn routing lease ends when its group's reply strategy changes.
+    groupTurnRouting.refresh();
+    favsToHotswap();
+    if (isGroupEditorOwner(groupId)) {
+        updateGroupAvatar(editorDraft);
+        updateGroupHeaderTitle(editorDraft.name);
+        hideMutedSprites = Boolean(editorDraft.hideMutedSprites);
+    }
     await eventSource.emit(event_types.GROUP_UPDATED);
+    return true;
+}
+
+/**
+ * The group editor's draft as the shared session sees it: the same object the
+ * controller baselines, backs up every 5s, and compares for dirtiness.
+ * @returns {object}
+ */
+function captureEditorSnapshot() {
+    return editorDraft ? structuredClone(editorDraft) : {};
+}
+
+/**
+ * Write a snapshot back into the editor: draft first, then the fields, so the
+ * two never disagree. Does not mark anything dirty.
+ * @param {object} snapshot
+ */
+function applyEditorSnapshot(snapshot) {
+    if (!editorDraft || !snapshot) return;
+    // v1 backups from the DOM-based controller used field IDs and underscored
+    // member keys. Only known editable values may cross the restore boundary.
+    const legacyKeys = {
+        name: 'rm_group_chat_name',
+        activation_strategy: 'rm_group_activation_strategy',
+        generation_mode: 'rm_group_generation_mode',
+        generation_mode_join_prefix: 'rm_group_generation_mode_join_prefix',
+        generation_mode_join_suffix: 'rm_group_generation_mode_join_suffix',
+        allow_self_responses: '_allow_self',
+        hideMutedSprites: '_hide_muted',
+        fav: '_fav',
+        members: '_members',
+        disabled_members: '_disabled',
+        member_models: '_models',
+    };
+    for (const key of EDITABLE_KEYS) {
+        const storedKey = Object.hasOwn(snapshot, key) ? key : legacyKeys[key];
+        if (!Object.hasOwn(snapshot, storedKey)) continue;
+        editorDraft[key] = _draftDefaultFor(key, { [key]: snapshot[storedKey] });
+    }
+    if (typeof snapshot.avatar_url === 'string') editorDraft.avatar_url = snapshot.avatar_url;
+    writeGroupEditorFields(editorDraft);
+    printGroupCandidates();
+    printGroupMembers();
+}
+
+/** Re-render the fields from the draft; used after a discard or a reconcile. */
+function syncGroupEditorFields() {
+    writeGroupEditorFields(editorDraft ?? getEditedGroup());
+    printGroupMembers();
+}
+
+/**
+ * Merge a re-selected group into the editor's pending draft.
+ *
+ * Three-way merge: the editor's baseline is the state last saved, the draft
+ * holds the user's edits, and the live group is the truth for everything the
+ * user did not touch (another tab, a slash command, an extension). Unchanged
+ * keys adopt the live value; edited keys keep the draft's.
+ * @param {Group} group
+ * @returns {boolean} true when anything was adopted from the live group
+ */
+function reconcileEditorDraft(group) {
+    if (!editorDraft) return false;
+    const baseline = readGroupEditorBaseline();
+    let adopted = false;
+    for (const key of EDITABLE_KEYS) {
+        const draftValue = editorDraft[key];
+        const baselineValue = baseline?.[key];
+        const liveValue = _draftDefaultFor(key, group);
+        const untouched = JSON.stringify(draftValue) === JSON.stringify(baselineValue);
+        if (untouched && JSON.stringify(draftValue) !== JSON.stringify(liveValue)) {
+            editorDraft[key] = cloneDraftValue(liveValue);
+            adopted = true;
+        }
+    }
+    // The baseline is what the live group holds, not the merge result: the merge
+    // deliberately keeps the user's edited keys, and baselining those would
+    // report the unsaved edits as saved, so Save would skip them and a later
+    // discard would revert to them instead of the stored group.
+    const liveSnapshot = createEditorDraft(group);
+    rebaseGroupEditor(liveSnapshot);
+    writeGroupEditorFields(editorDraft);
+    printGroupCandidates();
+    printGroupMembers();
+    return adopted;
 }
 
 function updateFavButtonState(state) {
@@ -2868,16 +3547,9 @@ function filterGroupMemberList() {
     // SillyBunny: the editor and its popout share one filter, including the search-order input.
     $('[id="rm_group_members_filter"]').not(this).val(searchValue);
     groupMembersFilter.setFilterData(FILTER_TYPES.SEARCH, searchValue.toLowerCase());
+    syncGroupMembersFilteredState();
 }
 
-
-function getSelectedGroupMemberAvatars() {
-    if (openGroupId) {
-        return groups.find(x => x.id === openGroupId)?.members ?? [];
-    }
-
-    return newGroupMembers;
-}
 
 function getGroupMemberSignature(members) {
     return [...new Set(Array.isArray(members) ? members : [])].sort().join('|');
@@ -2892,70 +3564,65 @@ function findGroupByMembers(members) {
     return groups.find(group => getGroupMemberSignature(group.members) === signature) || null;
 }
 
-async function createQuickGroupFromSelectedMembers() {
-    const members = getSelectedGroupMemberAvatars().filter(onlyUnique);
-    if (members.length === 0) {
-        toastr.warning(t`Select at least one character first.`);
+// SillyBunny: model overrides are available on mobile through the member menu.
+async function editGroupMemberModel(member) {
+    const avatarId = member.data('id') ?? member.attr('data-avatar');
+    if (!avatarId) return;
+    const group = getEditedGroup();
+    const draft = editorDraft;
+    const groupId = openGroupId;
+    const focus = captureGroupMemberFocus(member);
+    const input = await Popup.show.input(t`Model override`, '', getGroupMemberModel(group, avatarId));
+    if (draft !== editorDraft || groupId !== openGroupId) return;
+    if (input === null) {
+        restoreGroupMemberFocus(focus);
         return;
     }
-
-    const existingGroup = !openGroupId ? findGroupByMembers(members) : null;
-    if (existingGroup) {
-        await createNewGroupChat(existingGroup.id);
-        toastr.info(t`Opened a new chat branch for the existing group.`);
-        return;
-    }
-
-    if (openGroupId) {
-        await createNewGroupChat(openGroupId);
-        toastr.info(t`Opened a new chat branch for this group.`);
-        return;
-    }
-
-    const names = members
-        .map(avatar => characters.find(character => character.avatar === avatar)?.name)
-        .filter(Boolean);
-    const defaultName = names.length ? t`Group: ${names.join(', ')}` : t`New Group`;
-    const groupName = await Popup.show.input(t`Create Group Chat`, t`Name this group chat:`, defaultName);
-    if (groupName === null) {
-        return;
-    }
-
-    $('#rm_group_chat_name').val(String(groupName || defaultName));
-    await createGroup();
+    if (!getEditedGroup()?.members?.includes(avatarId)) return;
+    const value = String(input).trim();
+    await updateGroupMemberModel(avatarId, value);
+    printGroupMembers({ animate: true });
+    restoreGroupMemberFocus(focus);
 }
 
-async function onGroupMemberModelInput() {
-    if (!openGroupId) {
+async function updateGroupMemberModel(avatarId, value) {
+    if (isGroupEditorActive()) {
+        _editDraft((draft) => {
+            if (!draft.members.includes(avatarId)) return false;
+            if ((draft.member_models[avatarId] ?? '') === value) return false;
+            if (value) draft.member_models[avatarId] = value;
+            else delete draft.member_models[avatarId];
+            return true;
+        });
         return;
     }
 
+    if (!openGroupId) return;
     const group = groups.find(x => x.id === openGroupId);
-    const member = $(this).closest('.group_member');
-    setGroupMemberModel(group, member.data('id'), $(this).val());
+    if (!group || getGroupMemberModel(group, avatarId) === value.trim()) return;
+    setGroupMemberModel(group, avatarId, value);
     await editGroup(openGroupId, false, false);
 }
 
-async function createGroup() {
-    let name = $('#rm_group_chat_name').val().toString();
-    let allowSelfResponses = !!$('#rm_group_allow_self_responses').prop('checked');
-    let activationStrategy = Number($('#rm_group_activation_strategy').find(':selected').val()) ?? group_activation_strategy.NATURAL;
-    let generationMode = Number($('#rm_group_generation_mode').find(':selected').val()) ?? group_generation_mode.SWAP;
-    const members = newGroupMembers.filter(onlyUnique);
+async function createGroup(receipt = captureGroupEditorSave()) {
+    if (!receipt?.isCurrent()) return false;
+    const draft = receipt.snapshot;
+    const pendingDraft = editorDraft;
+    const members = (draft.members ?? []).filter(onlyUnique);
     const existingGroup = findGroupByMembers(members);
     if (existingGroup) {
         await createNewGroupChat(existingGroup.id);
         toastr.info(t`Opened a new chat branch for the existing group.`);
-        return;
+        return false;
     }
 
     const memberNames = characters.filter(x => members.includes(x.avatar)).map(x => x.name).join(', ');
+    const name = String(draft.name || '').trim() || t`Group: ${memberNames}`;
+    const allowSelfResponses = Boolean(draft.allow_self_responses);
+    const activationStrategy = Number(draft.activation_strategy ?? group_activation_strategy.NATURAL);
+    const generationMode = Number(draft.generation_mode ?? group_generation_mode.SWAP);
 
-    if (!name) {
-        name = t`Group: ${memberNames}`;
-    }
-
-    const avatarUrl = $('#group_avatar_preview img').attr('src');
+    const avatarUrl = draft.avatar_url || $('#group_avatar_preview img').attr('src');
     const chatName = humanizedDateTime();
     const chats = [chatName];
 
@@ -2965,30 +3632,46 @@ async function createGroup() {
         members: members,
         avatar_url: isValidImageUrl(avatarUrl) ? avatarUrl : default_avatar,
         allow_self_responses: allowSelfResponses,
-        hideMutedSprites: hideMutedSprites,
+        hideMutedSprites: Boolean(draft.hideMutedSprites),
         activation_strategy: activationStrategy,
         generation_mode: generationMode,
-        disabled_members: [],
-        [GROUP_MEMBER_MODELS_KEY]: {},
-        fav: fav_grp_checked,
+        // SillyBunny: the join templates and per-member model overrides used to
+        // be dropped here even though the backend accepts them (Step 4 fix).
+        generation_mode_join_prefix: String(draft.generation_mode_join_prefix ?? ''),
+        generation_mode_join_suffix: String(draft.generation_mode_join_suffix ?? ''),
+        disabled_members: [...(draft.disabled_members ?? [])],
+        [GROUP_MEMBER_MODELS_KEY]: { ...(draft.member_models ?? {}) },
+        fav: Boolean(draft.fav),
         chat_id: chatName,
         chats: chats,
         conversation_settings: {},
     };
 
+    const tagList = $('#groupTagList').clone();
     const createGroupResponse = await fetch('/api/groups/create', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify(groupCreateModel),
     });
 
-    if (createGroupResponse.ok) {
-        newGroupMembers = [];
-        const data = await createGroupResponse.json();
-        createTagMapFromList('#groupTagList', data.id);
-        await getCharacters();
-        select_rm_info('group_create', data.id);
+    if (!createGroupResponse.ok) return false;
+    const data = await createGroupResponse.json();
+    createTagMapFromList(tagList, data.id);
+    if (receipt.isCurrent() && editorDraft === pendingDraft) {
+        const savedSnapshot = createEditorDraft(data);
+        // Adopt server defaults without overwriting edits made after submission.
+        for (const key of ['avatar_url', ...EDITABLE_KEYS]) {
+            if (JSON.stringify(editorDraft[key]) === JSON.stringify(draft[key])) {
+                editorDraft[key] = cloneDraftValue(savedSnapshot[key]);
+            }
+        }
+        editorDraft.id = data.id;
+        openGroupId = data.id;
+        receipt.markSaved({ entityId: String(data.id), mode: 'edit' }, savedSnapshot);
     }
+    await getCharacters();
+    if (editorDraft === pendingDraft && isGroupEditorOwner(data.id)) select_rm_info('group_create', data.id);
+    return true;
 }
 
 /**
@@ -3287,11 +3970,16 @@ export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chat
     }
 }
 
+/**
+ * Clones the current-members list into a floating window. This is the same list
+ * node the panel renders, so the clone inherits the row markup as-is; the
+ * sortable instance is not cloned with it, so the popout expects the up/down
+ * buttons.
+ */
 function doCurMemberListPopout() {
-    //repurposes the zoomed avatar template to server as a floating group member list
     if ($('#groupMemberListPopout').length === 0) {
         console.debug('did not see popout yet, creating');
-        const memberListClone = $(this).parent().parent().find('.inline-drawer-content').html();
+        const memberListClone = $('#currentGroupMembers').clone();
         const template = $('#zoomed_avatar_template').html();
         const controlBarHtml = `<div class="panelControlBar flex-container">
         <div id="groupMemberListPopoutheader" class="fa-solid fa-grip drag-grabber hoverglow"></div>
@@ -3306,6 +3994,11 @@ function doCurMemberListPopout() {
             .append(controlBarHtml)
             .append(memberListClone);
 
+        // The clone shares ids with the panel, including #currentGroupMembers;
+        // the popout gets its own list id so printGroupMembers() can target it.
+        memberListClone.attr('id', 'sb-group-members-popout-list');
+        newElement.find('#rm_group_members').attr('id', '').addClass('rm_group_members');
+
         // SillyBunny: HTML copies do not retain the search input's current value.
         newElement.find('#rm_group_members_filter').val($('#rm_group_members_filter').val());
 
@@ -3319,9 +4012,6 @@ function doCurMemberListPopout() {
         $('#groupMemberListPopoutClose').off('click').on('click', function () {
             $('#groupMemberListPopout').fadeOut(animation_duration, () => { $('#groupMemberListPopout').remove(); });
         });
-
-        // Re-add pagination not working in popout
-        printGroupMembers();
     } else {
         console.debug('saw existing popout, removing');
         $('#groupMemberListPopout').fadeOut(animation_duration, () => { $('#groupMemberListPopout').remove(); });
@@ -3330,6 +4020,21 @@ function doCurMemberListPopout() {
 
 jQuery(() => {
     initGroupSpeakerControls();
+    // SillyBunny: the group editor controller lives with the group state it edits
+    // (Step 4). It owns the session, the draft store and the chrome, and calls
+    // back into this module for anything that has to touch groups[].
+    initGroupEditor({
+        captureSnapshot: captureEditorSnapshot,
+        applySnapshot: applyEditorSnapshot,
+        writeDomFromDraft: syncGroupEditorFields,
+        saveDraft,
+        createGroup,
+        getGroupName: (groupId) => groups.find((x) => x.id == groupId)?.name ?? null,
+        getDraftName: () => editorDraft?.name ?? '',
+        canCreate: () => getGroupCharacters({ doFilter: false, onlyMembers: true }).length > 0,
+        canRestoreAvatar: canRestoreGroupAvatar,
+        reorderMembers: reorderMembersByIndices,
+    });
     if (!CSS.supports('field-sizing', 'content')) {
         $(document).on('input', '#rm_group_chats_block .autoSetHeight', function () {
             resetScrollHeight($(this));
@@ -3353,8 +4058,7 @@ jQuery(() => {
     $('#rm_group_filter').on('input', filterGroupMembers);
     // SillyBunny: include the search field created later by the native popout.
     $(document).on('input', '#rm_group_members_filter', filterGroupMemberList);
-    $('#rm_group_submit').on('click', createGroup);
-    $('#rm_group_quick_create').on('click', createQuickGroupFromSelectedMembers);
+    $('#rm_group_submit').on('click', () => void createGroup());
     $('#rm_group_scenario').on('click', setCharacterSettingsOverrides);
     $('#rm_group_hidemutedsprites').on('input', function () {
         const value = $(this).prop('checked');
@@ -3382,11 +4086,19 @@ jQuery(() => {
     $('#group_avatar_button').on('input', uploadGroupAvatar);
     $('#rm_group_restore_avatar').on('click', restoreGroupAvatar);
     $(document).on('click', '.group_member .right_menu_button', onGroupActionClick);
+    // SillyBunny: document delegation survives detached-list HTML cloning.
+    $(document).on('click', '.group_member .sb-group-member-menu', onGroupMemberMenuClick);
+    $(document).on('change', '.group_member .sb-group-member-switch', onGroupMemberSwitchChange);
     $(document).on('click', '#rm_group_add_members .group_member', onGroupCandidateRowClick);
-    $(document).on('change', '.group_member_model_input', onGroupMemberModelInput);
     eventSource.on(event_types.CHAT_CHANGED, updateGroupSpeakerControls);
     eventSource.on(event_types.GROUP_UPDATED, updateGroupSpeakerControls);
     // SillyBunny: a turn routing lease ends when its chat or group changes.
     eventSource.on(event_types.CHAT_CHANGED, () => groupTurnRouting.refresh());
     eventSource.on(event_types.GROUP_UPDATED, () => groupTurnRouting.refresh());
+    // SillyBunny: the More menu's "Rename Group" entry asks the editor's header
+    // title to start an inline rename, instead of reaching into group state from
+    // world-info.js (Step 4).
+    document.addEventListener('sb-group-rename-requested', () => {
+        void renameOpenGroup();
+    });
 });

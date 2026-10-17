@@ -1270,6 +1270,13 @@ function showSamplerControls(apiType = null) {
 
 function showTypeSpecificControls(apiType) {
     $('[data-tg-type]').each(function () {
+        // SillyBunny: the shared Sampling tab shows every sampler for every backend type
+        // (sillybunny-tabs.js SB_SAMPLER_REGISTRY). Manual sampler selection still applies afterwards.
+        if (this.hasAttribute('data-sb-sampler-ungated')) {
+            $(this).show();
+            return;
+        }
+
         const mode = String($(this).attr('data-tg-type-mode') ?? '').toLowerCase().trim();
         const tgTypes = $(this).attr('data-tg-type').split(',').map(x => x.trim());
 

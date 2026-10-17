@@ -154,7 +154,7 @@
         min-height: var(--gg-mobile-action-size) !important;
         max-height: var(--gg-mobile-action-size) !important;
         flex: 0 0 var(--gg-mobile-action-size) !important;
-        border-radius: 8px !important;
+        border-radius: 999px !important;
         font-size: var(--gg-mobile-action-icon-size) !important;
         padding: 0 !important;
     }

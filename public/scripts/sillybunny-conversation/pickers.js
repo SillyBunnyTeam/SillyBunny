@@ -31,7 +31,7 @@ import {
 } from './personas.js';
 import { schedulePalsRailRender } from './render-scheduler.js';
 import { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
-import { closePalsRail, setConversationBackdropVisible } from './settings-panel.js';
+import { closePalsRail } from './settings-panel.js';
 import { conversationState } from './state.js';
 
 export function renderWeeklyScheduleEditor(container, scheduleJson) {
@@ -54,9 +54,9 @@ export function createWeeklyScheduleRow(entry = {}) {
         <div class="sb-conversation-weekly-row-meta">
             <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule time" />
             <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule message" />
-            <label class="checkbox_label sb-conv-weekly-enabled">
-                <input type="checkbox" class="sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
-                <span>On</span>
+            <label class="sb-conversation-pref-row sb-conv-weekly-enabled">
+                <span class="sb-conversation-pref-copy">On</span>
+                <input type="checkbox" class="sb-conversation-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
             </label>
             <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove slot" aria-label="Remove slot">
                 <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
@@ -124,6 +124,165 @@ export function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
 }
 
+const PICKER_MOBILE_QUERY = '(max-width: 768px)';
+const PICKER_GAP = 6;
+const PICKER_MARGIN = 8;
+let activePicker = null;
+let pickerDismissBound = false;
+
+function isPickerSheetLayout() {
+    return window.matchMedia(PICKER_MOBILE_QUERY).matches;
+}
+
+function setPickerExpanded(anchor, expanded) {
+    if (anchor instanceof HTMLElement) {
+        anchor.setAttribute('aria-expanded', String(Boolean(expanded)));
+    }
+}
+
+function clearPickerPosition(picker) {
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+    picker.style.removeProperty('top');
+    picker.style.removeProperty('left');
+    picker.style.removeProperty('inset');
+    picker.style.removeProperty('max-block-size');
+}
+
+// Pickers are absolutely positioned inside #sheld, so coordinates are relative to its padding box.
+function positionConversationPicker(picker, anchor, { preferBelow = false } = {}) {
+    clearPickerPosition(picker);
+    const container = picker.offsetParent;
+    if (isPickerSheetLayout() || !(anchor instanceof HTMLElement) || !anchor.isConnected || !(container instanceof HTMLElement)) {
+        return;
+    }
+
+    const bounds = container.getBoundingClientRect();
+    const originX = bounds.left + container.clientLeft;
+    const originY = bounds.top + container.clientTop;
+    const rect = anchor.getBoundingClientRect();
+    const width = picker.offsetWidth;
+    const natural = picker.scrollHeight + 2;
+    const viewBottom = Math.min(bounds.bottom, window.innerHeight);
+    const viewTop = Math.max(bounds.top, 0);
+    const below = viewBottom - rect.bottom - PICKER_GAP - PICKER_MARGIN;
+    const above = rect.top - viewTop - PICKER_GAP - PICKER_MARGIN;
+    const placeAbove = preferBelow
+        ? below < 160 && above > below
+        : natural > below && above > below;
+    const available = Math.max(160, placeAbove ? above : below);
+    const height = Math.min(natural, available);
+    const startAligned = (rect.left + rect.right) / 2 < (bounds.left + bounds.right) / 2;
+    let left = startAligned ? rect.left : rect.right - width;
+    const minLeft = bounds.left + PICKER_MARGIN;
+    const maxLeft = bounds.right - PICKER_MARGIN - width;
+    left = maxLeft < minLeft
+        ? Math.max(bounds.left, Math.min(left, bounds.right - width))
+        : Math.min(Math.max(left, minLeft), maxLeft);
+    const top = placeAbove ? rect.top - PICKER_GAP - height : rect.bottom + PICKER_GAP;
+    picker.style.maxBlockSize = `${Math.floor(available)}px`;
+    picker.style.left = `${Math.round(left - originX)}px`;
+    picker.style.top = `${Math.round(Math.max(top, viewTop + PICKER_MARGIN) - originY)}px`;
+}
+
+function syncPickerBackdrop() {
+    const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
+    if (backdrop instanceof HTMLElement) {
+        backdrop.dataset.open = String(Boolean(activePicker));
+    }
+}
+
+function handlePickerPointerDown(event) {
+    if (!activePicker) {
+        return;
+    }
+    const target = event.target instanceof Node ? event.target : null;
+    if (target && (activePicker.picker.contains(target) || activePicker.anchor?.contains?.(target))) {
+        return;
+    }
+    // Menus opened from inside a picker live in document.body; leave the picker alone for them.
+    if (target instanceof Element && target.closest('.sb-action-popover, .sb-action-sheet, .sb-action-sheet-backdrop, .popup, dialog')) {
+        return;
+    }
+    hideConversationPickers();
+}
+
+function handlePickerKeydown(event) {
+    if (!activePicker || event.key !== 'Escape' || event.isComposing) {
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    hideConversationPickers({ restoreFocus: true });
+}
+
+function handlePickerLayoutChange() {
+    if (activePicker) {
+        positionConversationPicker(activePicker.picker, activePicker.anchor, { preferBelow: activePicker.preferBelow });
+    }
+}
+
+function bindPickerDismissal() {
+    if (pickerDismissBound) {
+        return;
+    }
+    pickerDismissBound = true;
+    window.addEventListener('pointerdown', handlePickerPointerDown, true);
+    window.addEventListener('keydown', handlePickerKeydown, true);
+    window.addEventListener('resize', handlePickerLayoutChange, { passive: true });
+    const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
+    if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
+        backdrop.dataset.sbConversationBound = 'true';
+        backdrop.addEventListener('click', () => hideConversationPickers({ restoreFocus: true }));
+    }
+}
+
+/** Shows one Conversation picker: an anchored popover on desktop, a bottom sheet on mobile. */
+export function showConversationPicker(picker, anchor = null, { preferBelow = false } = {}) {
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+    bindPickerDismissal();
+    if (activePicker && activePicker.picker !== picker) {
+        activePicker.picker.hidden = true;
+        setPickerExpanded(activePicker.anchor, false);
+    }
+    const fallbackAnchor = activePicker?.picker === picker ? activePicker.anchor : null;
+    const fallbackPreferBelow = activePicker?.picker === picker ? Boolean(activePicker.preferBelow) : false;
+    activePicker = {
+        picker,
+        anchor: anchor instanceof HTMLElement ? anchor : fallbackAnchor,
+        preferBelow: Boolean(preferBelow || fallbackPreferBelow),
+    };
+    picker.hidden = false;
+    setPickerExpanded(activePicker.anchor, true);
+    positionConversationPicker(picker, activePicker.anchor, { preferBelow: activePicker.preferBelow });
+    syncPickerBackdrop();
+}
+
+export function hideConversationPickers({ restoreFocus = false } = {}) {
+    const state = activePicker;
+    activePicker = null;
+    for (const id of [CHROME_IDS.addDmPicker, CHROME_IDS.personaPicker, CHROME_IDS.userStatusPicker]) {
+        const picker = document.getElementById(id);
+        if (picker instanceof HTMLElement) {
+            picker.setAttribute('hidden', '');
+            clearPickerPosition(picker);
+        }
+    }
+    setPickerExpanded(state?.anchor, false);
+    syncPickerBackdrop();
+    if (restoreFocus && state?.anchor?.isConnected) {
+        state.anchor.focus({ preventScroll: true });
+    }
+}
+
+function getPickerAnchor(selector) {
+    const anchor = document.querySelector(selector);
+    return anchor instanceof HTMLElement && anchor.getClientRects().length ? anchor : null;
+}
+
 export function updateUserFooter() {
     const footer = document.getElementById(CHROME_IDS.railFooter);
     if (!(footer instanceof HTMLElement)) {
@@ -156,17 +315,27 @@ export function updateUserFooter() {
     if (activeDot instanceof HTMLElement) {
         activeDot.dataset.status = status;
     }
+    const personaButton = footer.querySelector('[data-sb-conversation-action="open-persona-menu"]');
+    if (personaButton instanceof HTMLElement) {
+        const label = `${personaName}: ${personaStatus || statusCopy.label}`;
+        personaButton.title = label;
+        personaButton.setAttribute('aria-label', label);
+    }
 }
 
-export function toggleUserStatusPicker() {
+export function toggleUserStatusPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]')) {
     const picker = document.getElementById(CHROME_IDS.userStatusPicker);
     if (!(picker instanceof HTMLElement)) {
         return;
     }
 
-    const isHidden = picker.hidden;
-    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
-    picker.hidden = !isHidden;
+    if (!picker.hidden) {
+        hideConversationPickers({ restoreFocus: true });
+        return;
+    }
+    const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]');
+    showConversationPicker(picker, resolvedAnchor, { preferBelow: true });
+    picker.querySelector('button')?.focus?.({ preventScroll: true });
 }
 
 export function renderConversationPersonaPicker(picker) {
@@ -240,20 +409,20 @@ export function renderConversationPersonaPicker(picker) {
     }
 }
 
-export function togglePersonaPicker() {
+export function togglePersonaPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]')) {
     const picker = document.getElementById(CHROME_IDS.personaPicker);
     if (!(picker instanceof HTMLElement)) {
         return;
     }
 
-    const isHidden = picker.hidden;
-    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
-
-    if (isHidden) {
-        renderConversationPersonaPicker(picker);
+    if (!picker.hidden) {
+        hideConversationPickers({ restoreFocus: true });
+        return;
     }
-
-    picker.hidden = !isHidden;
+    renderConversationPersonaPicker(picker);
+    const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]');
+    showConversationPicker(picker, resolvedAnchor, { preferBelow: true });
+    (picker.querySelector('[aria-selected="true"]') || picker.querySelector('button'))?.focus?.({ preventScroll: true });
 }
 
 export function bindWeeklyScheduleEditor() {
@@ -305,28 +474,28 @@ export function bindPartnerList(listId, searchId) {
     }
 }
 
-export function toggleAddDmPicker() {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
+export function toggleAddDmPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-new-menu"]')) {
+    const picker = document.getElementById(CHROME_IDS.addDmPicker);
     if (!(picker instanceof HTMLElement)) {
         return;
     }
+    const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-new-menu"]');
 
     if (!picker.hasAttribute('hidden') && picker.dataset.pickerType === 'solo') {
-        picker.setAttribute('hidden', '');
+        hideConversationPickers({ restoreFocus: true });
         return;
     }
 
     picker.dataset.pickerType = 'solo';
     picker.dataset.selectedMembers = '';
     picker.onchange = null;
-    picker.removeAttribute('hidden');
     picker.innerHTML = `
         <div class="sb-conversation-add-dm-header">
-            <span style="font-weight: var(--sb-weight-title); font-size: var(--sb-type-meta);">Create a solo DM</span>
-            <p class="sb-conversation-field-hint" style="margin: 4px 0 0;">Create a new solo DM with a character card of your choice.</p>
-            <input type="text" id="sb_conversation_add_dm_search" class="text_pole textarea_compact" placeholder="Search characters..." style="inline-size: 100%; margin-top: 8px;" />
+            <span class="sb-conversation-add-dm-title">Create a solo DM</span>
+            <p class="sb-conversation-field-hint sb-conversation-add-dm-description">Create a new solo DM with a character card of your choice.</p>
+            <input type="search" id="sb_conversation_add_dm_search" class="sb-conversation-search-entry sb-conversation-add-dm-search" placeholder="Search characters..." autocomplete="off" />
         </div>
-        <div class="sb-conversation-add-dm-list" id="sb_conversation_add_dm_list" style="margin-top: 8px; max-block-size: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+        <div class="sb-conversation-add-dm-list" id="sb_conversation_add_dm_list"></div>
     `;
 
     const listContainer = document.getElementById('sb_conversation_add_dm_list');
@@ -342,21 +511,22 @@ export function toggleAddDmPicker() {
 
             const thumb = getThumbnailUrl('avatar', character.avatar);
             rows.push(`
-                <button type="button" class="sb-conversation-add-dm-option" data-sb-conversation-action="add-character-dm" data-character-index="${idx}" style="display: flex; align-items: center; gap: 8px; inline-size: 100%; background: none; border: none; padding: 6px; border-radius: var(--sb-radius-sm); text-align: left; cursor: pointer; color: inherit;">
-                    <img src="${escapeHtmlAttribute(thumb)}" alt="" style="inline-size: 24px; block-size: 24px; border-radius: 50%; object-fit: cover;" loading="lazy" />
-                    <span style="font-size: var(--sb-type-caption);">${escapeHtmlText(name)}</span>
+                <button type="button" class="sb-conversation-add-dm-option" data-sb-conversation-action="add-character-dm" data-character-index="${idx}">
+                    <img src="${escapeHtmlAttribute(thumb)}" alt="" class="sb-conversation-group-member-avatar" loading="lazy" />
+                    <span class="sb-conversation-group-member-name">${escapeHtmlText(name)}</span>
                 </button>
             `);
         });
 
         if (!rows.length) {
-            listContainer.innerHTML = '<div class="sb-conversation-empty" style="padding: 8px; font-size: var(--sb-type-meta); opacity: 0.7;">No matching characters found.</div>';
+            listContainer.innerHTML = '<div class="sb-conversation-empty sb-conversation-group-empty">No matching characters found.</div>';
         } else {
             listContainer.innerHTML = rows.join('');
         }
     }
 
     renderList();
+    showConversationPicker(picker, resolvedAnchor);
 
     if (searchInput instanceof HTMLInputElement) {
         searchInput.focus({ preventScroll: true });
@@ -367,18 +537,7 @@ export function toggleAddDmPicker() {
 }
 
 export function hideConversationStartPicker() {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
-    if (picker instanceof HTMLElement) {
-        picker.setAttribute('hidden', '');
-    }
-}
-
-export function openPalsRail() {
-    const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (palsRail instanceof HTMLElement) {
-        palsRail.dataset.open = 'true';
-    }
-    setConversationBackdropVisible();
+    hideConversationPickers({ restoreFocus: true });
 }
 
 export function getUniqueConversationGroupMembers(memberAvatars) {
@@ -482,7 +641,7 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
         return false;
     }
 
-    hideConversationStartPicker();
+    hideConversationPickers();
     closePalsRail();
     const opened = await selectConversationThread(targetAvatar, {
         groupId: String(group.id),
@@ -508,11 +667,12 @@ export function getCurrentGroupMemberAvatars(groupId) {
     return group.members.filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
 }
 
-export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '' } = {}) {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
+export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '', anchor = getPickerAnchor('[data-sb-conversation-action="open-new-menu"]') } = {}) {
+    const picker = document.getElementById(CHROME_IDS.addDmPicker);
     if (!(picker instanceof HTMLElement)) {
         return;
     }
+    const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-new-menu"]');
 
     const normalizedSourceGroupId = sourceGroupId || '';
     const sourceMembers = normalizedSourceGroupId ? getCurrentGroupMemberAvatars(normalizedSourceGroupId) : [];
@@ -524,7 +684,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
         && picker.dataset.pickerType === 'group'
         && picker.dataset.sourceAvatar === (sourceAvatar || '')
         && picker.dataset.copySourceGroupId === normalizedSourceGroupId) {
-        picker.setAttribute('hidden', '');
+        hideConversationPickers({ restoreFocus: true });
         return;
     }
 
@@ -532,7 +692,6 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
     picker.dataset.sourceAvatar = sourceAvatar || '';
     picker.dataset.copySource = String(copyFromCurrentThread);
     picker.dataset.copySourceGroupId = normalizedSourceGroupId;
-    picker.removeAttribute('hidden');
 
     const title = sourceAvatar
         ? (normalizedSourceGroupId ? 'Add members to this group' : 'Add members to this DM')
@@ -545,7 +704,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
         <div class="sb-conversation-add-dm-header">
             <span class="sb-conversation-add-dm-title">${escapeHtmlText(title)}</span>
             <p class="sb-conversation-field-hint sb-conversation-add-dm-description">${escapeHtmlText(description)}</p>
-            <input type="text" id="sb_conversation_group_search" class="text_pole textarea_compact sb-conversation-add-dm-search" placeholder="Search characters..." />
+            <input type="search" id="sb_conversation_group_search" class="sb-conversation-search-entry sb-conversation-add-dm-search" placeholder="Search characters..." autocomplete="off" />
         </div>
         <div class="sb-conversation-add-dm-list sb-conversation-group-list" id="sb_conversation_group_list"></div>
         <div class="sb-conversation-group-picker-actions">
@@ -616,6 +775,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
     };
 
     renderList();
+    showConversationPicker(picker, resolvedAnchor);
 
     if (searchInput instanceof HTMLInputElement) {
         searchInput.focus({ preventScroll: true });
@@ -626,7 +786,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
 }
 
 export async function handleCreateConversationGroupFromPicker() {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
+    const picker = document.getElementById(CHROME_IDS.addDmPicker);
     if (!(picker instanceof HTMLElement)) {
         return false;
     }
@@ -650,9 +810,9 @@ export function openAddMemberPicker() {
         return;
     }
 
-    openPalsRail();
     toggleConversationGroupPicker({
         sourceAvatar: avatar,
         sourceGroupId: conversationState.conversationSelectedGroupId || '',
+        anchor: getPickerAnchor(`#${CHROME_IDS.header} [data-sb-conversation-action="open-conversation-menu"]`),
     });
 }

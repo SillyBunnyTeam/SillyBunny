@@ -52,24 +52,13 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(54px, auto);
+    display: flex;
+    flex-direction: row;
     align-items: center;
-    column-gap: 12px;
-    row-gap: 6px;
     margin-bottom: 0;
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .completion_prompt_manager_prompt_name .fa-solid {
-    color: var(--white50a);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .completion_prompt_manager_prompt_name .fa-solid[data-role] {
-    vertical-align: unset;
-    margin-left: 3px;
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_invisible {
@@ -77,34 +66,58 @@
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_visible {
-    display: grid;
-}
-
-
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head .prompt_manager_prompt_tokens,
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_tokens {
-    font-size: calc(var(--mainFontSize)*0.9);
-    text-align: right;
-    min-width: 54px;
-    justify-self: end;
-    white-space: nowrap;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 82%, transparent);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .prompt_manager_prompt_controls {
-    min-width: max-content;
-    justify-self: end;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
 }
 
 #completion_prompt_manager .completion_prompt_manager_list_head {
-    padding: 0.35em 0.5em 0;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 64%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.78);
+    display: flex;
+    align-items: center;
+    padding: 6px 0 6px 0;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 54%, transparent);
+    font-size: var(--sb-type-meta, calc(var(--mainFontSize) * 0.84));
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-grip {
+    flex: 0 0 24px;
+    width: 24px;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-bar {
+    flex: 0 0 9px;
+    width: 9px;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-name {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 4px;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-tokens {
+    flex: 0 0 72px;
+    width: 72px;
+    text-align: right;
+    padding-right: 6px;
+    min-width: unset;
+    justify-self: unset;
+}
+
+#completion_prompt_manager .completion_prompt_manager_list_head .pm-list-head-toggle {
+    flex: 0 0 44px;
+    width: 44px;
+    text-align: center;
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
     align-items: center;
-    padding: 12px 14px;
+    /* SillyBunny: zero horizontal padding — row parts own their own spacing so the name
+       column gets maximum budget at narrow widths. — feat/v1.9.0-ui-overhaul */
+    padding: 0 4px 0 0;
+    min-height: 44px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 14px;
     transition:
@@ -113,61 +126,365 @@
         transform var(--sb-transition-slow);
 }
 
-/* Runtime inspection rows have no editable controls, including on mobile. */
-#completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
-    grid-template-columns: minmax(0, 1fr) minmax(54px, auto);
-}
+/* ── New AdwActionRow-style flex layout ── SillyBunny: feat/v1.9.0-ui-overhaul ── */
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
+/* Drag grip */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-grip {
+    flex: 0 0 24px;
+    width: 24px;
     display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 4px;
-    font-size: calc(var(--mainFontSize)*1.2);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls span {
-    display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 28px;
-    width: 28px;
-    flex: 0 0 28px;
-    border-radius: 8px;
-    box-sizing: border-box;
+    height: 100%;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+    font-size: 12px;
+    opacity: 0;
+    cursor: grab;
+    transition: opacity var(--sb-transition-slow);
+    white-space: nowrap;
+    padding-left: 4px;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls .prompt-manager-control-placeholder {
+#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-grip,
+#completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-grip {
+    opacity: 0.6;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked li .pm-row-grip {
     opacity: 0;
     pointer-events: none;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls > :is(
-    .prompt-manager-send-to-agents-action,
-    .prompt-manager-detach-action,
-    .prompt-manager-edit-action,
-    .prompt-manager-toggle-action
-) {
-    align-items: center;
-    flex-direction: row;
-    justify-content: center;
-    margin-left: 0;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-slow), color var(--sb-transition-slow), opacity var(--sb-transition-slow);
-    height: 28px;
-    width: 28px;
-    filter: drop-shadow(0px 0px 2px black);
-    opacity: 0.58;
+/* Type accent bar */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-type-bar {
+    flex: 0 0 3px;
+    width: 3px;
+    align-self: stretch;
+    margin: 6px 6px 6px 0;
+    border-radius: 99px;
+    background: transparent;
+    transition: background-color var(--sb-transition-slow);
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls > :is(
-    .prompt-manager-send-to-agents-action,
-    .prompt-manager-detach-action,
-    .prompt-manager-edit-action,
-    .prompt-manager-toggle-action
-):hover {
-    opacity: 1;
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-marker .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 72%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-system .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-injection .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 44%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.pm-row-type-user .pm-row-type-bar {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 32%, transparent);
+}
+
+/* Name area — takes all remaining space */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-name-area,
+#completion_prompt_manager #completion_prompt_manager_list li .completion_prompt_manager_prompt_name {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 6px 7px 4px;
+    overflow: hidden;
+}
+
+/* Primary name line */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary > a,
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary > span:not(.fa-solid):not(.pm-row-chip) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-body, var(--mainFontSize));
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt_disabled .pm-row-primary > a,
+#completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt_disabled .pm-row-primary > span {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
+}
+
+.prompt-manager-inspect-action {
+    cursor: pointer;
+}
+
+.prompt-manager-inspect-action:hover {
+    text-decoration: underline;
+}
+
+.prompt-manager-inspect-action:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+    border-radius: 4px;
+    text-decoration: underline;
+}
+
+/* Chips row */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chips {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 99px;
+    font-size: calc(var(--mainFontSize) * 0.68);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    line-height: 1.6;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-marker {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+    color: var(--SmartThemeQuoteColor);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-system {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 68%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-important {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
+    color: var(--SmartThemeQuoteColor);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-injection {
+    background: color-mix(in srgb, var(--SmartThemeEmColor) 12%, transparent);
+    color: var(--SmartThemeEmColor);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-user {
+    background: color-mix(in srgb, var(--SmartThemeEmColor) 8%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeEmColor) 80%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-role-user {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeQuoteColor) 80%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-role-assistant {
+    background: color-mix(in srgb, var(--SmartThemeEmColor) 10%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeEmColor) 80%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip.pm-chip-depth {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 52%, transparent);
+}
+
+/* End zone — fixed width, position:relative for action overlay */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone {
+    /* SillyBunny: 72px fits 3 × 22px action buttons + gaps and keeps the name column viable
+       at the 280px desktop list pane width. — feat/v1.9.0-ui-overhaul */
+    flex: 0 0 72px;
+    width: 72px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    padding-right: 6px;
+}
+
+/* Token count */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
+    transition: opacity var(--sb-transition-slow);
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+    white-space: nowrap;
+    text-align: right;
+    pointer-events: none;
+    min-width: 0;
+}
+
+/* Action buttons — hover revealed on desktop */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    padding-right: 4px;
+    opacity: 0;
+    transform: translateX(4px);
+    pointer-events: none;
+    transition: opacity var(--sb-transition-slow), transform var(--sb-transition-slow);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-actions,
+#completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-actions {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens,
+#completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-end-zone .prompt_manager_prompt_tokens {
+    opacity: 0;
+}
+
+/* Individual action spans inside pm-row-actions — keep existing fa-icon spans */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    border-radius: 8px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: background-color var(--sb-transition-slow), opacity var(--sb-transition-slow);
+    filter: drop-shadow(0 0 2px black);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > .prompt-manager-control-placeholder {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .prompt-manager-toggle-action {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity var(--sb-transition-slow);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .prompt-manager-toggle-action:hover {
+    opacity: 1;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li:not(.completion_prompt_manager_prompt_disabled) .prompt-manager-toggle-action {
+    color: var(--SmartThemeQuoteColor);
+}
+
+/* Kebab button — hidden on desktop, shown on mobile */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab {
+    display: none;
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    flex: 0 0 28px;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background var(--sb-transition-slow), color var(--sb-transition-slow);
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    color: var(--SmartThemeBodyColor);
+}
+
+/* Toggle cell */
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell {
+    flex: 0 0 44px;
+    width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt_manager_prompt_controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: unset;
+    gap: 0;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt_manager_prompt_controls span {
+    height: 28px;
+    width: 28px;
+    flex: 0 0 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt-manager-control-placeholder {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Kebab context menu */
+.pm-kebab-menu {
+    background: var(--SmartThemeBlurTintColor, #38383c);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    overflow: hidden;
+}
+
+.pm-kebab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-body, var(--mainFontSize));
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background var(--sb-transition-slow);
+}
+
+.pm-kebab-menu-item:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.pm-kebab-menu-item i {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    width: 16px;
+    flex: 0 0 16px;
 }
 
 #completion_prompt_manager_popup #completion_prompt_manager_popup_edit,
@@ -312,30 +629,145 @@
     margin-top: 1em;
 }
 
-#prompt-manager-reset-character,
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_reset {
-    color: rgb(220 173 16);
+/* SillyBunny: trigger chips replace Select2 multi-select to avoid overflow:hidden clipping issues
+   and provide touch-friendly 44px targets. The hidden <select> is kept for upstream JS compat. — feat/v1.9.0-ui-overhaul */
+.pm-trigger-hidden-select {
+    display: none !important;
 }
 
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_close,
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_reset,
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer #completion_prompt_manager_popup_entry_form_save {
-    font-size: 1.25em;
-    padding: 0.5em;
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
+.pm-trigger-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
 }
 
-#completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_footer .menu_button:is(.fa, .fa-solid, .fa-regular, .fa-brands)::before {
+.pm-trigger-chip {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1em;
-    height: 1em;
-    margin: 0;
-    line-height: 1;
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: 99px;
+    background: transparent;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent);
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--sb-transition-slow), border-color var(--sb-transition-slow), color var(--sb-transition-slow);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.pm-trigger-chip:hover {
+    border-color: var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.pm-trigger-chip[aria-checked="true"] {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+    color: var(--SmartThemeQuoteColor);
+}
+
+.pm-trigger-chip:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+}
+
+/* SillyBunny: editor popup footer — proper button elements with icon + text labels replace
+   icon-only <a> tags; Save is primary (accent color), Close is muted. — feat/v1.9.0-ui-overhaul */
+.completion_prompt_manager_popup_entry_form_footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
+}
+
+.pm-editor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    white-space: nowrap;
+}
+
+.pm-editor-btn-primary {
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
+    color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.pm-editor-btn-primary:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+/* SillyBunny: accordion header elements — chevron, active count, lock. — feat/v1.9.0-ui-overhaul */
+.pm-accordion-meta {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.84));
+}
+
+.pm-accordion-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background var(--sb-transition-slow);
+}
+
+.pm-accordion-toggle:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.pm-accordion-toggle:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 2px;
+}
+
+.pm-accordion-chevron {
+    font-size: 10px;
+    transition: transform 160ms ease;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
+}
+
+.pm-accordion-toggle.pm-accordion-collapsed .pm-accordion-chevron {
+    transform: rotate(-90deg);
+}
+
+.pm-accordion-count {
+    font-size: calc(var(--mainFontSize) * 0.75);
+    font-weight: 600;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 48%, transparent);
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+.pm-accordion-lock {
+    font-size: 9px;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+}
+#prompt-manager-reset-character,
+#completion_prompt_manager_popup_entry_form_reset {
+    color: rgb(220 173 16);
 }
 
 #completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_control #completion_prompt_manager_popup_entry_form_prompt {
@@ -350,47 +782,6 @@
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_draggable {
     cursor: grab;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name {
-    white-space: nowrap;
-    overflow: hidden;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > a,
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name > span[title]:not(.fa-solid) {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action {
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:hover {
-    text-decoration: underline;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name .prompt-manager-inspect-action:focus-visible {
-    outline: 2px solid var(--SmartThemeQuoteColor);
-    outline-offset: 2px;
-    border-radius: 4px;
-    text-decoration: underline;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_disabled .completion_prompt_manager_prompt_name,
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_disabled .completion_prompt_manager_prompt_name .prompt-manager-inspect-action {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt:not(.completion_prompt_manager_prompt_disabled) .prompt-manager-toggle-action {
-    color: var(--SmartThemeQuoteColor);
 }
 
 #completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt.completion_prompt_manager_prompt_disabled {
@@ -468,7 +859,8 @@
 }
 
 #completion_prompt_manager .completion_prompt_manager_drawer_content {
-    padding-top: 0.35em;
+    /* SillyBunny: 0.35em resolved to a fractional 5.25px; the tab's row inset is 16px. */
+    padding: 0 16px;
 }
 
 #completion_prompt_manager .completion_prompt_manager_workspace {
@@ -530,20 +922,52 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 88%, transparent);
 }
 
+/* SillyBunny: two-part footer toolbar — left=select+insert, right=global actions. — feat/v1.9.0-ui-overhaul */
 #completion_prompt_manager .completion_prompt_manager_footer {
     display: flex;
     flex-direction: row;
-    justify-content: flex-end;
+    justify-content: space-between;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.25em;
-    padding: 0 0.25em;
+    gap: 6px;
+    padding: 6px 0 0;
     width: 100%;
+    min-width: 0;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
+}
+
+.pm-footer-left,
+.pm-footer-right,
+.pm-footer-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+/* SillyBunny: primary group stretches to fill space; actions group stays compact. — feat/v1.9.0-ui-overhaul */
+.pm-footer-group-primary {
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-#completion_prompt_manager .completion_prompt_manager_footer a {
-    font-size: 12px;
+.pm-footer-group-actions {
+    flex: 0 0 auto;
+}
+
+.pm-footer-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
+    white-space: nowrap;
+}
+
+/* SillyBunny: labeled variant shows icon + text label; icon-only variant gets square padding. — feat/v1.9.0-ui-overhaul */
+.pm-footer-btn-labeled {
+    gap: 6px;
+    padding: 4px 12px;
 }
 
 #completion_prompt_manager .completion_prompt_manager_important a {
@@ -557,24 +981,6 @@
     opacity: 0.8;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .drag-handle:not(.ui-sortable-handle) {
-    display: none;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt:has(.drag-handle.ui-sortable-handle) {
-    position: relative;
-    padding-left: 20px;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt .drag-handle {
-    position: absolute;
-    height: 100%;
-    top: 0;
-    padding: 0 5px;
-    display: flex;
-    align-items: center;
-}
-
 #completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked .completion_prompt_manager_prompt_draggable {
     cursor: default;
 }
@@ -583,11 +989,6 @@
     cursor: default;
     opacity: 1;
     pointer-events: auto;
-}
-
-#completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked .drag-handle {
-    cursor: default;
-    opacity: 0.38;
 }
 
 #completion_prompt_manager_footer_append_prompt {
@@ -654,6 +1055,7 @@
     justify-content: space-between;
 }
 
+/* Small-screen adjustments (popup layout, tab sizing) — viewport-based */
 @media screen and (max-width: 412px) {
     #completion_prompt_manager_popup {
         max-width: 100%;
@@ -682,77 +1084,65 @@
         flex-direction: column;
         gap: 0.5em;
     }
+}
 
-    #completion_prompt_manager #completion_prompt_manager_list li {
-        grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
-        grid-template-areas:
-            "name tokens"
-            "controls controls";
-        column-gap: 8px;
-        row-gap: 8px;
+/* SillyBunny: kebab/hover model keyed on pointer capability, not viewport width.
+   hover:none + pointer:coarse = touch device regardless of window size. — feat/v1.9.0-ui-overhaul */
+@media (hover: none) and (pointer: coarse) {
+    /* On touch devices hover doesn't fire — show kebab, hide hover actions */
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
+        display: none;
     }
 
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Token count makes room for kebab */
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
+        opacity: 1 !important;
+        padding-right: 32px;
+    }
+
+    /* Never fade tokens on touch */
+    #completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens {
+        opacity: 1;
+    }
+
+    /* Larger touch targets */
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
-        min-height: 0;
-        padding: 10px;
+        min-height: 52px;
     }
 
-    #completion_prompt_manager #completion_prompt_manager_list li.prompt-manager-runtime-row {
-        grid-template-areas: "name tokens";
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head > span:nth-child(2) {
-        display: none;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .completion_prompt_manager_prompt_name {
-        grid-area: name;
-        min-width: 0;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_list_head .prompt_manager_prompt_tokens,
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_tokens {
-        grid-area: tokens;
-        align-self: center;
-        min-width: 42px;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt > span:nth-child(3) {
-        grid-area: controls;
-        justify-self: stretch;
-        min-width: 0;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-width: none;
-    }
-
-    /* Keep the controls row clear of the absolutely positioned drag handle. */
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt:has(.drag-handle.ui-sortable-handle) > span:nth-child(3) {
-        padding-left: 14px;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt > span:nth-child(3)::-webkit-scrollbar {
-        display: none;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls {
-        min-width: max-content;
-        justify-content: flex-start;
-        gap: 4px;
-    }
-
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt .prompt_manager_prompt_controls span,
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt span span span {
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell .prompt_manager_prompt_controls span {
         height: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         width: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
         flex-basis: clamp(34px, var(--sb-mobile-toggle-size, var(--sb-mobile-touch-target, 44px)), 44px);
-        flex-shrink: 0;
         border-radius: var(--sb-icon-control-radius, 10px);
     }
+}
 
-    #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt span span span {
-        margin-left: 0;
-    }
+/* SillyBunny: JS-side touch fallback — .sb-touch-device is added when navigator.maxTouchPoints > 0
+   for DevTools and environments where hover:none media query is unreliable. — feat/v1.9.0-ui-overhaul */
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-actions {
+    display: none;
+}
+
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-kebab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
+    opacity: 1 !important;
+    padding-right: 32px;
+}
+
+#completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li.completion_prompt_manager_prompt {
+    min-height: 52px;
 }
 
 .completion_prompt_manager_popup_entry_form_control:has(#completion_prompt_manager_popup_entry_form_prompt:disabled)>div:first-child::after {
@@ -813,44 +1203,190 @@
     line-height: 1.45;
 }
 
-@media screen and (min-width: 961px) {
+/* SillyBunny: mobile slide-in detail (Layout C). The workspace clips its overflow so the
+   editor pane translates off-screen to the right by default and slides in when a prompt is
+   selected, replacing the list view. The back button is only visible in detail mode. */
+.sb-workspace-split {
+    overflow: hidden;
+}
+
+.sb-workspace-back-button {
+    display: none;
+}
+
+.sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-list-pane {
+    pointer-events: none;
+}
+
+@media screen and (max-width: 960px) {
     .sb-workspace-split {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        position: relative;
+    }
+
+    .sb-workspace-list-pane {
+        transition: transform 220ms ease, opacity 220ms ease;
+    }
+
+    .sb-workspace-editor-pane {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        transform: translateX(100%);
+        transition: transform 220ms ease;
+        background: var(--SmartThemeBlurTintColor, var(--grey1000, #18181b));
+        border-radius: var(--sb-radius-md, 16px);
+        padding: 12px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .sb-workspace-back-button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 6px 10px;
+        font-size: var(--sb-type-control, 0.875rem);
+        border-radius: var(--sb-radius-sm, 8px);
+    }
+
+    .sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-list-pane {
+        transform: translateX(-30%);
+        opacity: 0;
+    }
+
+    .sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-editor-pane {
+        transform: translateX(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .sb-workspace-list-pane,
+        .sb-workspace-editor-pane {
+            transition: none;
+        }
+    }
+}
+
+@media screen and (min-width: 961px) {
+    /* SillyBunny: flex layout lets the list pane use --pm-list-width (set by the
+       drag divider) while keeping the editor fluid; replaces the fixed 280px grid. — feat/v1.9.0-ui-overhaul */
+    .sb-workspace-split {
+        display: flex;
         align-items: start;
+        gap: 0;
+    }
+
+    #completion_prompt_manager .completion_prompt_manager_workspace {
+        /* SillyBunny: the list's flex basis is its width, not a cap on its height. */
+        flex-direction: row;
+    }
+
+    .pm-workspace-divider {
+        display: none;
+        flex: 0 0 12px;
+        width: 12px;
+        align-self: stretch;
+        cursor: col-resize;
+        align-items: center;
+        justify-content: center;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: none;
+    }
+
+    .pm-workspace-divider::after {
+        content: '';
+        display: block;
+        width: 2px;
+        height: 40px;
+        border-radius: 99px;
+        background: color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
+        transition: background var(--sb-transition-slow), height var(--sb-transition-slow);
+    }
+
+    .pm-workspace-divider:hover::after,
+    .pm-workspace-divider.sb-divider-active::after {
+        background: var(--SmartThemeQuoteColor);
+        height: 60px;
+    }
+
+    #completion_prompt_manager.completion_prompt_manager_has_editor .pm-workspace-divider {
+        display: flex;
     }
 
     #completion_prompt_manager .completion_prompt_manager_drawer_content {
-        padding: 0.75em 10px 10px;
+        /* SillyBunny: 0.75em resolved to a fractional 11.25px; match the 16px inset above. */
+        padding: 0 16px;
     }
 
     #completion_prompt_manager .completion_prompt_manager_list_pane {
-        min-height: 0;
-        height: clamp(360px, 58vh, 820px);
-        max-height: clamp(360px, 58vh, 820px);
+        /* SillyBunny: width driven by --pm-list-width custom property so the drag
+           divider can resize without JS touching individual element widths. — feat/v1.9.0-ui-overhaul */
+        flex: 0 0 var(--pm-list-width, 280px);
+        width: var(--pm-list-width, 280px);
+        min-width: 200px;
+        max-width: 480px;
+        min-height: min-content;
+        height: min(90vh, 900px);
+        max-height: min(90vh, 900px);
+    }
+
+    #completion_prompt_manager:not(.completion_prompt_manager_has_editor) .completion_prompt_manager_list_pane {
+        /* SillyBunny: keep the saved split width for editing, but fill the idle workspace. */
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: none;
     }
 
     #completion_prompt_manager #completion_prompt_manager_list {
-        min-height: 0;
-        max-height: clamp(280px, 48vh, 700px);
+        /* SillyBunny: reserve prompt space when extension controls and the footer wrap. */
+        flex: 1 1 auto;
+        height: 0;
+        min-height: 140px;
+        max-height: min(74vh, 760px);
         overflow-y: auto;
         padding-right: 4px;
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_pane {
         display: flex;
+        /* SillyBunny: start collapsed; expands to fluid width when has_editor is set
+           so the list pane can occupy full width when nothing is selected. — feat/v1.9.0-ui-overhaul */
+        flex: 0 0 0;
+        width: 0;
+        min-width: 0;
         flex-direction: column;
         min-height: 0;
-        height: clamp(360px, 58vh, 820px);
-        max-height: clamp(360px, 58vh, 820px);
-        padding: 18px;
+        height: min(90vh, 900px);
+        max-height: min(90vh, 900px);
+        padding: 0;
         border-radius: var(--sb-radius-md, 16px);
+        border: 1px solid transparent;
+        background: transparent;
+        box-shadow: none;
+        overflow: hidden;
+        transition:
+            flex-basis 220ms ease,
+            width 220ms ease,
+            padding 220ms ease,
+            border-color 220ms ease,
+            background 220ms ease;
+    }
+
+    #completion_prompt_manager.completion_prompt_manager_has_editor .completion_prompt_manager_editor_pane {
+        flex: 1 1 0;
+        width: auto;
+        min-width: 200px;
+        padding: 18px;
         border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 64%, transparent);
         background:
             linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), transparent 24%),
             color-mix(in srgb, var(--SmartThemeBodyColor) 2%, transparent);
-        box-shadow: none;
-        overflow: hidden;
+    }
+
+    #completion_prompt_manager:not(.completion_prompt_manager_has_editor) .completion_prompt_manager_editor_pane {
+        padding: 0;
+        border: 0;
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host {
@@ -965,7 +1501,9 @@
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host #completion_prompt_manager_popup_entry_form_prompt {
-        flex: 0 0 auto;
+        /* SillyBunny: flex: 1 1 auto lets the textarea fill remaining vertical space in the
+           editor pane rather than collapsing to its default 2-row intrinsic height. — feat/v1.9.0-ui-overhaul */
+        flex: 1 1 auto;
         min-height: clamp(220px, 32vh, 420px);
     }
 
@@ -981,10 +1519,6 @@
 }
 
 @media screen and (min-width: 961px) and (max-height: 820px) {
-    #completion_prompt_manager .sb-workspace-split {
-        gap: 12px;
-    }
-
     #completion_prompt_manager .completion_prompt_manager_list_pane {
         height: clamp(320px, 54vh, 700px);
         max-height: clamp(320px, 54vh, 700px);
@@ -999,6 +1533,10 @@
         max-height: clamp(320px, 54vh, 700px);
         padding: 12px;
         border-radius: 18px;
+    }
+
+    #completion_prompt_manager.completion_prompt_manager_has_editor .completion_prompt_manager_editor_pane {
+        padding: 12px;
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host #completion_prompt_manager_popup_entry_form_prompt {

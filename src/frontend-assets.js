@@ -80,9 +80,10 @@ export function rewriteFrontendHtml(html, { enabled = getFrontendAssetsEnabled()
         ['css/sillybunny-theme.css', resolveFrontendAssetPath('css/sillybunny-theme.css')],
         ['css/sillybunny-tabs.css', resolveFrontendAssetPath('css/sillybunny-tabs.css')],
         ['css/sillybunny-mobile-shell.css', resolveFrontendAssetPath('css/sillybunny-mobile-shell.css')],
-        ['webfonts/Figtree/Figtree-Regular.woff2', resolveFrontendAssetPath('webfonts/Figtree/Figtree-Regular.woff2')],
-        ['webfonts/Figtree/stylesheet.css', resolveFrontendAssetPath('webfonts/Figtree/stylesheet.css')],
+        ['webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2', resolveFrontendAssetPath('webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2')],
+        ['webfonts/AdwaitaSans/stylesheet.css', resolveFrontendAssetPath('webfonts/AdwaitaSans/stylesheet.css')],
         ['webfonts/NotoSans/stylesheet.css', resolveFrontendAssetPath('webfonts/NotoSans/stylesheet.css')],
+        ['webfonts/AdwaitaMono/stylesheet.css', resolveFrontendAssetPath('webfonts/AdwaitaMono/stylesheet.css')],
         ['webfonts/NotoSansMono/stylesheet.css', resolveFrontendAssetPath('webfonts/NotoSansMono/stylesheet.css')],
     ]);
 

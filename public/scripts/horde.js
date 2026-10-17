@@ -465,7 +465,9 @@ export function initHorde() {
 
     // Not needed on mobile
     if (!isMobile()) {
-        const apiDropdownParent = $('#rm_api_block');
+        // SillyBunny (feat/v1.9.0-ui-overhaul): `#rm_api_block` is emptied by the Connections panel,
+        // so the dropdown renders in the panel when it exists and in the block otherwise.
+        const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
         $('#horde_model').select2({
             dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
             width: '100%',
