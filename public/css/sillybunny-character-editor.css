@@ -18,6 +18,51 @@
     padding: 0 !important;
 }
 
+/* Framed like the Prompt Editor box; the header bar sits on the sidebar tone so it
+   reads against the page, matching the Characters/Groups list headers. */
+#form_create.sb-editor-sheet,
+#rm_group_chats_block.sb-editor-sheet {
+    --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    border: 1px solid var(--sb-list-editor-edge);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-layer-window);
+    box-sizing: border-box;
+}
+
+@media (prefers-contrast: more) {
+    #form_create.sb-editor-sheet,
+    #rm_group_chats_block.sb-editor-sheet {
+        --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+:is(#form_create, #rm_group_chats_block).sb-editor-sheet :is(.sb-editor-header, .sb-editor-toolbar) {
+    background: var(--sb-sidebar-bg);
+}
+
+:is(#form_create, #rm_group_chats_block).sb-editor-sheet .sb-editor-toolbar {
+    border-bottom: var(--sb-headerbar-shade);
+}
+
+/* Same gutters as the Persona, World Info and Characters list panels. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+    padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;
+    overflow: hidden !important;
+    scrollbar-gutter: auto;
+}
+
+@media (max-width: 1439px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+        padding: 14px 14px 9px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+        padding-bottom: calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
+    }
+}
+
 /* The group panel is a .right_menu toggled by selectRightMenuWithAnimation
    (script.js:14501), which writes an inline display; the group-specific
    container rules live at the bottom of this file. */

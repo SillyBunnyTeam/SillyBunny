@@ -6,7 +6,10 @@
     display: none !important;
 }
 
+/* The list is framed like the Prompt Editor's .sb-list-editor box, with its list
+   area on the sidebar tone so the header and rows read against the page. */
 .sb-character-list {
+    --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     display: flex;
     flex: 1 1 0;
     flex-direction: column;
@@ -14,7 +17,36 @@
     min-height: 0;
     height: 100%;
     overflow: hidden;
+    border: 1px solid var(--sb-list-editor-edge);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-sidebar-bg);
+    box-sizing: border-box;
     color: var(--SmartThemeBodyColor);
+}
+
+@media (prefers-contrast: more) {
+    .sb-character-list {
+        --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+/* Same gutters as the Persona and World Info panels. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #rm_characters_block.sb-active-right-menu .sb-character-list) {
+    padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;
+    overflow: hidden !important;
+    scrollbar-gutter: auto;
+}
+
+@media (max-width: 1439px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #rm_characters_block.sb-active-right-menu .sb-character-list) {
+        padding: 14px 14px 9px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #rm_characters_block.sb-active-right-menu .sb-character-list) {
+        padding-bottom: calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
+    }
 }
 
 .sb-character-list [hidden] {
@@ -41,8 +73,8 @@
     min-height: 60px;
     max-height: 60px;
     padding: 6px 8px;
-    border-bottom: 1px solid var(--sb-shell-border);
-    background: var(--sb-layer-view);
+    border-bottom: 0;
+    background: transparent;
     box-sizing: border-box;
 }
 
@@ -258,9 +290,9 @@
     min-width: 0;
     min-height: 0;
     margin: 8px;
-    border: 1px solid var(--sb-shell-border);
+    border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--sb-shell-text) 8%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
