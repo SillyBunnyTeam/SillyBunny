@@ -2915,6 +2915,45 @@ body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select,
     opacity: 0.62;
 }
 
+/* Reveals the rest of a broad query: a flat text row, not a result. */
+.sb-search-show-all {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    min-height: 30px;
+    margin-top: 2px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font: inherit;
+    font-size: var(--sb-type-caption);
+    text-align: left;
+    cursor: pointer;
+}
+
+.sb-search-show-all strong {
+    font-weight: var(--sb-weight-title);
+}
+
+@media (hover: hover) {
+    .sb-search-show-all:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-search-show-all:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-search-show-all:focus-visible {
+    outline: none;
+    background: var(--sb-flat-selected-bg);
+    box-shadow: var(--sb-focus-ring-inset);
+    color: var(--SmartThemeBodyColor);
+}
+
 .sb-search-empty {
     padding: 10px 12px;
     display: flex;

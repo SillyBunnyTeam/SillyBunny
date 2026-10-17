@@ -75,7 +75,6 @@ import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import { initCharacterEditor } from './sillybunny-character-editor.js';
-
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
@@ -1012,6 +1011,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         icon: 'fa-address-book',
         tooltip: 'Open and manage character cards',
         description: 'View or create character cards here for your roleplays and chats!',
+        searchAliases: ['character card', 'character list', 'avatars', 'cards'],
     },
     {
         id: 'groups',
@@ -1019,6 +1019,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         icon: 'fa-users',
         tooltip: 'Open and manage group conversations',
         description: 'View or create group chats here for your roleplays and chats!',
+        searchAliases: ['group chat', 'group chats', 'group members', 'muting'],
     },
     {
         id: 'editor',
@@ -1026,6 +1027,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         icon: 'fa-pen-to-square',
         tooltip: 'Edit character cards and groups',
         description: 'Edit your character cards or group chats in great detail here!',
+        searchAliases: ['character editor', 'group editor', 'edit card', 'first message', 'greetings'],
     },
     {
         id: 'world-info',
@@ -1034,6 +1036,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Manage lorebooks and world information',
         description: SB_WORLD_INFO_SUBTITLE_HTML,
         descriptionIsHtml: true,
+        searchAliases: ['lorebook', 'lorebooks', 'world info book', 'world', 'entries'],
     },
     {
         id: 'persona',
@@ -1041,6 +1044,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         icon: 'fa-face-smile',
         tooltip: 'Manage user persona/personality',
         description: 'Edit your own persona here for roleplay and chats!',
+        searchAliases: ['personas', 'persona description', 'impersonate'],
     },
     {
         id: 'import',
@@ -1048,6 +1052,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         icon: 'fa-file-import',
         tooltip: 'Add or import new character cards',
         description: 'Directly import character cards here from various sources.',
+        searchAliases: ['import character', 'import card', 'chub', 'png', 'add character'],
     },
 ]);
 const SB_CHARACTER_PANEL_DEFAULT_TAB = 'characters';
@@ -1073,6 +1078,7 @@ const SB_SHELLS = Object.freeze({
             icon: 'fa-plug',
             tooltip: 'Modify the API connection to the model backend',
             description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
+            searchAliases: ['API Response Configuration', 'AI Response Configuration', 'Response Config', 'Chat Completion', 'Text Completion', 'API key'],
         },
         embeddedTabs: [],
         customTabs: [
@@ -1148,6 +1154,7 @@ const SB_SHELLS = Object.freeze({
             description: 'Customize SillyBunny\'s visual appearance, themes, backgrounds, and UI scale.',
             searchPlaceholder: 'Search themes, backgrounds, blur, or UI scale',
             searchExamples: ['theme', 'background', 'blur', 'scale'],
+            searchAliases: ['colors', 'colours', 'wallpaper', 'fonts', 'UI scale'],
         },
         embeddedTabs: [
             {
@@ -1159,6 +1166,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Install, manage, and configure SillyTavern extensions here. Backwards compatibility isn\'t guaranteed, but should be applicable.',
                 searchPlaceholder: 'Search themes, Quick Reply, Dialogue Colors, or Image Gen',
                 searchExamples: ['themes', 'Quick Reply', 'Dialogue Colors', 'Image Gen'],
+                searchAliases: ['addons', 'plugins', 'install extension', 'third party'],
             },
         ],
         customTabs: [
@@ -1170,6 +1178,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Configure interface behavior, power user features, and UI preferences.',
                 searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
                 searchExamples: ['top bar', 'auto-scroll', 'power user'],
+                searchAliases: ['UI', 'behavior', 'stscript'],
             },
             {
                 id: 'messages',
@@ -1179,6 +1188,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Configure message display, actions, swipes, and interaction preferences.',
                 searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
                 searchExamples: ['swipes', 'message actions', 'auto-scroll'],
+                searchAliases: ['chat', 'message display', 'sending', 'character handling'],
             },
             {
                 id: 'data-security',
@@ -1188,6 +1198,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Manage the SillyBunny backend and server settings here.',
                 searchPlaceholder: 'Search backup, data path, security, or config.yaml',
                 searchExamples: ['backup', 'data path', 'security'],
+                searchAliases: ['backup', 'restore', 'import', 'export', 'server tools', 'data path'],
             },
             {
                 id: 'logs',
@@ -1197,6 +1208,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'View SillyBunny logs for advanced troubleshooting or bug reporting.',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
                 searchExamples: ['error', 'warning', 'npm', 'bun'],
+                searchAliases: ['console', 'console logs', 'errors', 'troubleshooting'],
             },
         ],
     },
@@ -1258,7 +1270,13 @@ const SB_UNIVERSAL_SEARCH_PLACEHOLDER = 'Type to search...';
 const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search all settings';
 const SB_UNIVERSAL_SEARCH_IDLE_HINT = 'Jump to any workspace or customization control from one place.';
 const SB_UNIVERSAL_SEARCH_EMPTY_HINT = 'Could not find query. Try a broader term or a different setting name.';
-const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
+// The panel shows a short list and reveals the rest on request, so the ceiling belongs to the
+// rendered page rather than the match set: `collectGlobalSearchMatches` collects everything and
+// `renderUniversalSearchResults` decides how much of it to paint.
+const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 24;
+const SB_UNIVERSAL_SEARCH_GROUP_LIMIT = 5;
+const SB_UNIVERSAL_SEARCH_QUICK_ACTION_LIMIT = 10;
+const SB_UNIVERSAL_SEARCH_DEBOUNCE_MS = 140;
 const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
@@ -1406,6 +1424,10 @@ const sbState = {
         expanded: false,
         dismissBound: false,
         activeIndex: -1,
+        renderTimer: 0,
+        renderedQuery: '',
+        renderedRows: null,
+        expandedAll: false,
     },
     characterDrawer: {
         stateObserver: null,
@@ -2418,6 +2440,53 @@ function getUniversalSearchState() {
     return sbState.universalSearch;
 }
 
+// One trailing render per typing pause. `flush` is for keys that act on the list immediately.
+function scheduleUniversalSearchRender({ flush = false } = {}) {
+    const searchState = getUniversalSearchState();
+    const input = searchState.input;
+    if (!(input instanceof HTMLInputElement) || !searchState.expanded) {
+        window.clearTimeout(searchState.renderTimer);
+        searchState.renderTimer = 0;
+        return;
+    }
+
+    window.clearTimeout(searchState.renderTimer);
+    if (flush) {
+        searchState.renderTimer = 0;
+        renderUniversalSearchResults(input.value);
+        return;
+    }
+
+    searchState.renderTimer = window.setTimeout(() => {
+        searchState.renderTimer = 0;
+        renderUniversalSearchResults(input.value);
+    }, SB_UNIVERSAL_SEARCH_DEBOUNCE_MS);
+}
+
+// The panel paints a short list, so a broad query needs a way to ask for the rest. The row carries
+// no id of its own, which keeps it out of the arrow-key list, and it is not a result: Enter on it
+// still opens the highlighted setting.
+function createUniversalSearchShowAllRow(hiddenCount, groupLabel = '') {
+    const row = createElement('button', {
+        className: 'sb-search-show-all',
+        attrs: {
+            type: 'button',
+            'data-sb-search-show-all': 'true',
+        },
+    });    row.appendChild(createElement('strong', {
+        text: groupLabel
+            ? `Show ${hiddenCount} more in ${groupLabel}`
+            : `Show all ${hiddenCount} more results`,
+    }));
+    row.addEventListener('click', () => {
+        const searchState = getUniversalSearchState();
+        searchState.expandedAll = true;
+        // Go through the open-state setter: it is the path that repaints an already-open panel.
+        setUniversalSearchOpenState(true);
+    });
+    return row;
+}
+
 function renderSearchEmptyState(container, title, detail) {
     container.replaceChildren();
 
@@ -2479,12 +2548,17 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     }
 
     if (!nextOpenState) {
+        window.clearTimeout(searchState.renderTimer);
+        searchState.renderTimer = 0;
         searchState.results?.classList.remove('is-visible');
         if (wasOpen) {
             requestMobileViewportReset({ restoreScroll: true });
         }
-    } else {
+    } else if (!wasOpen) {
+        // Opening paints the current query once; later keystrokes go through the debounce.
         renderUniversalSearchResults(input?.value ?? '');
+    } else if (!searchState.renderTimer && (input?.value ?? '').trim()) {
+        scheduleUniversalSearchRender();
     }
 
     if (focusInput && input instanceof HTMLInputElement) {
@@ -2537,25 +2611,6 @@ function getCharacterPanelTabConfig(tabId) {
 function normalizeCharacterPanelTab(tabId) {
     const normalizedTabId = normalizeText(tabId);
     return getCharacterPanelTabConfig(normalizedTabId) ? normalizedTabId : SB_CHARACTER_PANEL_DEFAULT_TAB;
-}
-
-function getCharacterPanelSearchEntries() {
-    const panel = getCharacterPanel();
-
-    return SB_CHARACTER_PANEL_TABS.map((tab) => {
-        const button = panel?.querySelector(`[data-sb-character-tab="${CSS.escape(tab.id)}"]`);
-        const searchText = normalizeText([tab.label, tab.id, 'characters'].join(' '));
-
-        return {
-            element: button instanceof HTMLElement ? button : null,
-            searchText,
-            displayText: tab.label,
-            sectionLabel: tab.label,
-            tabId: tab.id,
-            tabLabel: tab.label,
-            dedupeKey: `characters::${tab.id}`,
-        };
-    });
 }
 
 function isMobileViewport() {
@@ -8552,8 +8607,26 @@ function buildUniversalSearchRow() {
         setUniversalSearchOpenState(true);
     });
 
+    // Typing is debounced: a render walks every tab's index, so firing one per keystroke spends a
+    // panel build on a query the user is still typing. Enter and the open panel flush it early.
     searchInput.addEventListener('input', () => {
         setUniversalSearchOpenState(true);
+        scheduleUniversalSearchRender();
+    });
+
+    // Delegated so a row replaced by a re-render cannot swallow the click; an unknown index means the
+    // row no longer belongs to the visible list and is ignored.
+    searchResults.addEventListener('click', event => {
+        const button = event.target instanceof Element ? event.target.closest('[data-sb-search-row]') : null;
+        if (!(button instanceof HTMLElement)) {
+            return;
+        }
+        const match = getUniversalSearchState().renderedRows?.[Number(button.dataset.sbSearchRow)];
+        if (!match) {
+            return;
+        }
+        clearUniversalSearch({ blur: true });
+        revealSearchMatch(match.shellKey, match);
     });
 
     searchInput.addEventListener('keydown', event => {
@@ -8572,8 +8645,7 @@ function buildUniversalSearchRow() {
         }
 
         if (event.key === 'Enter') {
-            const firstMatch = resultButtons[sbState.universalSearch.activeIndex] ?? resultButtons[0];
-            if (firstMatch instanceof HTMLButtonElement) {
+            const firstMatch = resultButtons[sbState.universalSearch.activeIndex] ?? resultButtons[0];            if (firstMatch instanceof HTMLButtonElement) {
                 event.preventDefault();
                 firstMatch.click();
             }
@@ -12373,6 +12445,36 @@ function getSubpageSearchRoots(searchRoot) {
     return { sections, headings };
 }
 
+/**
+ * One entry for the page itself, carrying its name, aliases and description.
+ *
+ * A tab's description never appears as a DOM label, and its aliases exist only for the sidebar, so
+ * without this a page is unfindable by the words that describe it ("Prompt Manager", "API Response
+ * Configuration"). The entry anchors to the page's heading when one is rendered, so activating it
+ * opens the page rather than a control inside it.
+ */
+function createPageSearchEntry(tabState) {
+    const heading = tabState.panel?.querySelector(`.${SB_FLAT_SECTION_HEADER_CLASS}, h3, h4, .standoutHeader`);
+    const searchText = normalizeText([
+        tabState.label,
+        tabState.id,
+        ...(tabState.searchAliases ?? []),
+    ].join(' '));
+    if (searchText.length < 3) {
+        return null;
+    }
+    return {
+        element: heading instanceof HTMLElement ? heading : null,
+        searchText,
+        displayText: tabState.label,
+        sectionLabel: tabState.label,
+        tabId: tabState.id,
+        tabLabel: tabState.label,
+        headingMatch: true,
+        dedupeKey: `${tabState.id}::page`,
+    };
+}
+
 function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
     // Persona results come from data; hidden transports and transient editor fields are not search targets.
     if (tabState.id === 'persona') return [];
@@ -12383,6 +12485,10 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
 
     const entries = [];
     const seen = new Set();
+    const pageEntry = createPageSearchEntry(tabState);
+    if (pageEntry) {
+        entries.push(pageEntry);
+    }
     const excludedSelector = [
         '.sb-search-result',
         '.sb-legacy-search-hidden',
@@ -12454,6 +12560,35 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
     }
 
     return entries;
+}
+
+/**
+ * Returns the Characters pages as search destinations, so "Prompt Manager" or "lorebook" finds the
+ * page that holds them rather than only a control whose label happens to contain the word.
+ */
+function getCharacterPanelSearchEntries() {
+    const panel = getCharacterPanel();
+
+    return SB_CHARACTER_PANEL_TABS.map((tab) => {
+        const button = panel?.querySelector(`[data-sb-character-tab="${CSS.escape(tab.id)}"]`);
+        const searchText = normalizeText([
+            tab.label,
+            tab.id,
+            'characters',
+            ...(tab.searchAliases ?? []),
+        ].join(' '));
+
+        return {
+            element: button instanceof HTMLElement ? button : null,
+            searchText,
+            displayText: tab.label,
+            sectionLabel: tab.label,
+            tabId: tab.id,
+            tabLabel: tab.label,
+            headingMatch: true,
+            dedupeKey: `characters::${tab.id}`,
+        };
+    });
 }
 
 /**
@@ -12545,7 +12680,34 @@ function getSearchSectionLabel(element, fallback) {
     return text || fallback;
 }
 
-function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_LIMIT } = {}) {
+// Ranking is coarse on purpose: an exact query name beats a prefix, a prefix beats a word-start,
+// and a section heading beats a leaf control. Length is only a tiebreak, so a long descriptive row
+// cannot outrank the setting it describes.
+function getSearchMatchScore(entry, normalizedQuery, headingMatch) {
+    const searchText = entry.searchText;
+    const exactMatch = searchText === normalizedQuery;
+    const startsWithQuery = searchText.startsWith(normalizedQuery);
+    const wordMatch = !exactMatch && !startsWithQuery
+        && new RegExp(`(^|\\s)${escapeRegex(normalizedQuery)}`).test(searchText);
+    return Number(exactMatch) * 100
+        + Number(startsWithQuery) * 20
+        + Number(wordMatch) * 8
+        + Number(headingMatch) * 5
+        - Math.min(entry.displayText.length, 400) / 1000;
+}
+
+function getSearchMatchKey(shellKey, entry) {
+    return [
+        shellKey,
+        entry.dedupeKey || [
+            entry.tabId,
+            normalizeText(entry.sectionLabel),
+            normalizeText(entry.displayText),
+        ].filter(Boolean).join('::'),
+    ].filter(Boolean).join('::');
+}
+
+function collectGlobalSearchMatches(query, { limit = Infinity } = {}) {
     const normalizedQuery = normalizeText(query);
 
     if (!normalizedQuery) {
@@ -12554,6 +12716,7 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
 
     const searchTerms = normalizedQuery.split(' ').filter(Boolean);
     const matches = new Map();
+    const availableByEntry = new WeakMap();
 
     for (const [shellKey, shellState] of Object.entries(sbState.shells)) {
         const shellLabel = getShellConfig(shellKey)?.title || shellKey;
@@ -12563,39 +12726,29 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
                 tabState.searchIndex = createSearchIndex(tabState);
             }
 
-            const extraEntries = tabState.id === 'persona'
-                ? getPersonaSearchEntries(tabState)
-                : tabState.id === 'characters'
-                    ? getCharacterPanelSearchEntries()
-                    : [];
+            const extraEntries = tabState.id === 'persona' ? getPersonaSearchEntries(tabState) : [];
 
             for (const entry of [...tabState.searchIndex, ...extraEntries]) {
-                if (!isSearchEntryAvailable(entry, tabState)) continue;
+                // Match first: the visibility check walks ancestors with `getComputedStyle`, and the
+                // memo only covers repeated rows, so this filter is what keeps a keystroke cheap.
                 if (!searchTerms.every(term => entry.searchText.includes(term))) {
                     continue;
                 }
+                if (!isSearchEntryAvailable(entry, tabState, availableByEntry)) continue;
 
-                const startsWithQuery = entry.searchText.startsWith(normalizedQuery);
-                const exactMatch = entry.searchText === normalizedQuery;
+                // Whether the hit names a section rather than a control. The universal search panel
+                // uses this for ranking; the sidebar needs it to tell a page-level hit from a control.
+                const headingMatch = entry.headingMatch === true || (entry.element instanceof HTMLElement
+                    && (entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR)
+                        || (tabState.id !== 'editor' && entry.element.matches('.sb-settings-category-title'))));
                 const match = {
                     ...entry,
                     shellKey,
                     shellLabel,
-                    // Whether the hit sits on a section-name element. The universal search panel
-                    // ignores this; the sidebar needs it to tell a page-level hit from a control.
-                    headingMatch: entry.element instanceof HTMLElement
-                        && (entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR)
-                            || (tabState.id !== 'editor' && entry.element.matches('.sb-settings-category-title'))),
-                    score: Number(exactMatch) * 100 + Number(startsWithQuery) * 10 - entry.displayText.length / 1000,
+                    headingMatch,
+                    score: getSearchMatchScore(entry, normalizedQuery, headingMatch),
                 };
-                const matchKey = [
-                    shellKey,
-                    entry.dedupeKey || [
-                        entry.tabId,
-                        normalizeText(entry.sectionLabel),
-                        normalizeText(entry.displayText),
-                    ].filter(Boolean).join('::'),
-                ].filter(Boolean).join('::');
+                const matchKey = getSearchMatchKey(shellKey, entry);
                 const existingMatch = matches.get(matchKey);
                 const shouldReplaceMatch = !existingMatch
                     || match.score > existingMatch.score
@@ -12610,25 +12763,47 @@ function collectGlobalSearchMatches(query, { limit = SB_UNIVERSAL_SEARCH_RESULT_
         }
     }
 
-    // Character pages are outside sbState.shells; persona results still come from their canonical data.
-    for (const entry of getPersonaSearchEntries(getCharacterPanelTabConfig('persona'))) {
-        if (!searchTerms.every(term => entry.searchText.includes(term))) continue;
-        matches.set(`characters::${entry.dedupeKey}`, {
-            ...entry,
-            shellKey: 'characters',
-            shellLabel: 'Characters',
-            headingMatch: false,
-            score: Number(entry.searchText === normalizedQuery) * 100
-                + Number(entry.searchText.startsWith(normalizedQuery)) * 10 - entry.displayText.length / 1000,
-        });
+    // Characters and personas live outside sbState.shells; their entries come from app data rather
+    // than the tab DOM.
+    {
+        const personas = getPersonaSearchEntries(getCharacterPanelTabConfig('persona'));
+        const entities = [
+            ...getCharacterPanelSearchEntries(),
+            ...personas,
+        ];
+        for (const entry of entities) {
+            if (!searchTerms.every(term => entry.searchText.includes(term))) continue;
+            const headingMatch = entry.headingMatch !== false;
+            matches.set(getSearchMatchKey('characters', entry), {
+                ...entry,
+                shellKey: 'characters',
+                shellLabel: 'Characters',
+                headingMatch,
+                score: getSearchMatchScore(entry, normalizedQuery, headingMatch),
+            });
+        }
     }
 
+    // A stable tiebreak keeps the panel from reshuffling equal scores between keystrokes.
     return Array.from(matches.values())
-        .sort((left, right) => right.score - left.score)
+        .sort((left, right) => right.score - left.score
+            || left.displayText.localeCompare(right.displayText))
         .slice(0, limit);
 }
 
-function isSearchEntryAvailable(entry, tabState) {
+// Intersection-observer-free visibility check is expensive (`getComputedStyle` per ancestor), and a
+// single pass asks about the same rows repeatedly. The memo is per pass: visibility can legitimately
+// change between renders, so it must never outlive one.
+function isSearchEntryAvailable(entry, tabState, availableByEntry = null) {
+    if (availableByEntry?.has(entry)) {
+        return availableByEntry.get(entry);
+    }
+    const available = computeSearchEntryAvailability(entry, tabState);
+    availableByEntry?.set(entry, available);
+    return available;
+}
+
+function computeSearchEntryAvailability(entry, tabState) {
     // Keep both device variants indexed so resizing can reveal the newly available controls.
     const unavailableDevice = isMobileViewport() ? '.sb-desktop-setting' : '.sb-mobile-setting';
     if (entry.element instanceof HTMLElement && entry.element.closest(unavailableDevice)) return false;
@@ -12651,11 +12826,7 @@ function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
 
     return [
         ...(searchIndex || tabState.searchIndex),
-        ...(tabState.id === 'persona'
-            ? getPersonaSearchEntries(tabState)
-            : tabState.id === 'characters'
-                ? getCharacterPanelSearchEntries()
-                : []),
+        ...(tabState.id === 'persona' ? getPersonaSearchEntries(tabState) : []),
     ].filter(entry => isSearchEntryAvailable(entry, tabState));
 }
 
@@ -12699,7 +12870,7 @@ function getMobileQuickActionSearchMatches(query) {
 
     return Array.from(matches.values())
         .sort((left, right) => right.score - left.score)
-        .slice(0, SB_UNIVERSAL_SEARCH_RESULT_LIMIT);
+        .slice(0, SB_UNIVERSAL_SEARCH_QUICK_ACTION_LIMIT);
 }
 
 function findMobileQuickActionMatch(action) {
@@ -12788,6 +12959,12 @@ async function renderUniversalSearchResults(query) {
 
     const trimmedQuery = String(query ?? '').trim();
 
+    // A new query starts from the short list: "show all" belongs to the query it was asked for.
+    if (trimmedQuery !== searchState.renderedQuery) {
+        searchState.renderedQuery = trimmedQuery;
+        searchState.expandedAll = false;
+    }
+
     if (!trimmedQuery) {
         renderSearchEmptyState(results, SB_UNIVERSAL_SEARCH_IDLE_TITLE, SB_UNIVERSAL_SEARCH_IDLE_HINT);
         results.classList.add('is-visible');
@@ -12796,15 +12973,34 @@ async function renderUniversalSearchResults(query) {
 
     await prepareShellSearch();
     if (sbSearchRenderRequests.get(results) !== request || !searchState.expanded) return;
-    const matches = collectGlobalSearchMatches(trimmedQuery);
+    const matches = collectGlobalSearchMatches(trimmedQuery, {
+        limit: searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
+    });
+
+    // Rows are deduped on what the panel actually shows, so two controls that read identically in
+    // one section collapse to one destination instead of filling the list twice.
     const groupedMatches = new Map();
     for (const match of matches) {
         const groupLabel = `${match.shellLabel} · ${match.tabLabel}`;
         if (!groupedMatches.has(groupLabel)) {
-            groupedMatches.set(groupLabel, []);
+            groupedMatches.set(groupLabel, new Map());
         }
-        groupedMatches.get(groupLabel).push(match);
+        const groupMatches = groupedMatches.get(groupLabel);
+        const rowKey = [match.dedupeKey, match.sectionLabel, match.displayText]
+            .map(value => normalizeText(value))
+            .join('::');
+        const existing = groupMatches.get(rowKey);
+        if (!existing || match.score > existing.score) {
+            groupMatches.set(rowKey, match);
+        }
     }
+
+    const totalMatches = matches.length;
+    const perGroupLimit = searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_GROUP_LIMIT;
+    // Rows are addressed by position, not by the element: a debounced re-render can replace a row
+    // between the pointerdown and the click, and a handler bound to the dead node would do nothing.
+    const rows = [];
+    searchState.renderedRows = rows;
 
     for (const [groupLabel, groupMatches] of groupedMatches.entries()) {
         const group = createElement('div', {
@@ -12816,22 +13012,35 @@ async function renderUniversalSearchResults(query) {
         });
         group.appendChild(createElement('div', { className: 'sb-search-result-group-label', text: groupLabel }));
 
-        for (const match of groupMatches) {
+        let shown = 0;
+        // Two cards can legitimately share a name, so identical rows are counted rather than hidden:
+        // three "Bunny Guide" results would otherwise read as three destinations when they are one.
+        const shownCounts = new Map();
+        for (const match of groupMatches.values()) {
+            if (shown >= perGroupLimit) break;
+            shown += 1;
+            const sectionDisplay = match.sectionLabel === match.tabLabel
+                ? match.displayText || match.tabLabel
+                : match.sectionLabel;
+            const duplicateKey = `${sectionDisplay}::${match.displayText}`;
+            shownCounts.set(duplicateKey, (shownCounts.get(duplicateKey) ?? 0) + 1);
+            const duplicateIndex = shownCounts.get(duplicateKey);
+
+            const rowIndex = rows.length;
+            rows.push(match);
             const button = createElement('button', {
                 className: 'sb-search-result',
                 attrs: {
                     type: 'button',
                     role: 'option',
-                    id: `sb-search-result-${results.querySelectorAll('.sb-search-result').length}`,
+                    id: `sb-search-result-${rowIndex}`,
+                    'data-sb-search-row': String(rowIndex),
                     'aria-selected': 'false',
                 },
             });
             const detailText = normalizeText(match.displayText) === normalizeText(match.sectionLabel)
                 ? `Jump straight to this item in ${match.tabLabel}.`
                 : match.displayText;
-            const sectionDisplay = match.sectionLabel === match.tabLabel
-                ? match.displayText || match.tabLabel
-                : match.sectionLabel;
 
             button.appendChild(createElement('strong', { text: sectionDisplay }));
 
@@ -12843,12 +13052,17 @@ async function renderUniversalSearchResults(query) {
                 text: typeof match.action === 'function' ? 'Quick action' : 'Jump to setting',
             }));
 
-            button.addEventListener('click', () => {
-                clearUniversalSearch({ blur: true });
-                revealSearchMatch(match.shellKey, match);
-            });
+            if (duplicateIndex > 1) {
+                button.classList.add('is-duplicate');
+                button.setAttribute('data-sb-search-duplicate', String(duplicateIndex));
+            }
 
             group.appendChild(button);
+        }
+
+        const hiddenInGroup = groupMatches.size - shown;
+        if (hiddenInGroup > 0) {
+            group.appendChild(createUniversalSearchShowAllRow(hiddenInGroup, groupLabel));
         }
 
         results.appendChild(group);
@@ -12860,6 +13074,8 @@ async function renderUniversalSearchResults(query) {
             `No matches for "${trimmedQuery}" yet.`,
             SB_UNIVERSAL_SEARCH_EMPTY_HINT,
         );
+    } else if (!searchState.expandedAll && totalMatches > rows.length) {
+        results.appendChild(createUniversalSearchShowAllRow(totalMatches - rows.length));
     }
 
     const wasVisible = results.classList.contains('is-visible');
