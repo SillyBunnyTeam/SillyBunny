@@ -11,7 +11,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import _ from 'lodash';
 
 import { acquireChatFileLock, acquireChatFileLocks } from '../chat-file-lock.js';
-import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
+import validateAvatarUrlMiddleware, { forbiddenRegExp } from '../middleware/validateFileName.js';
 import { renameChatFile } from '../chat-rename.js';
 import {
     clearChatRecoveryState,
@@ -1199,6 +1199,7 @@ function sendChatLoadResponse(response, target, { allowCreate = false } = {}) {
  * @param {object} [options.recoveryTarget] Exact chat recovery target.
  * @param {boolean} [options.allowShrink] The client is deliberately removing messages, so allow a smaller chat.
  * @param {boolean} [options.persistDerivedMetadata] Persist metadata normally ignored during load-only saves.
+ * @param {string} [options.integrity] Integrity slug to write instead of a fresh one; only for restoring a chat's exact earlier state.
  */
 export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, options = {}) {
     if (!isValidChatSavePayload(chatData)) {
@@ -1213,12 +1214,12 @@ export async function trySaveChat(chatData, filePath, skipIntegrityCheck = false
     }
 }
 
-function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, deferSequenceId = undefined, recoveryTarget = null, allowShrink = false, persistDerivedMetadata = false } = {}) {
+function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handle, cardName, backupDirectory, { deferBackup = false, deferSequenceId = undefined, recoveryTarget = null, allowShrink = false, persistDerivedMetadata = false, integrity = '' } = {}) {
     const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
     const incomingIntegrity = chatData?.[0]?.chat_metadata?.integrity;
     const chatIntegritySlug = doIntegrityCheck && typeof incomingIntegrity === 'string' ? incomingIntegrity : '';
 
-    const nextIntegrity = uuidv4();
+    const nextIntegrity = typeof integrity === 'string' && integrity ? integrity : uuidv4();
     const savedChatData = Array.isArray(chatData)
         ? chatData.map((message, index) => index === 0
             ? { ...message, chat_metadata: { ...(message?.chat_metadata || {}), integrity: nextIntegrity } }
@@ -1420,6 +1421,59 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         logBackupEvent('chat-backup-skipped', { type: 'regular', handle, chat: cardName, reason: 'deferred', ...savedChatSizeDetails });
     }
     return { integrity: unchangedIntegrity ?? nextIntegrity };
+}
+
+/**
+ * SillyBunny: read-modify-write of a chat on the server's own behalf, with the same locking,
+ * integrity, backup and recovery handling as a browser save. The save is checked against the slug
+ * that was read, so a browser save landing in between turns this into a conflict, not an overwrite.
+ * @param {{ profile: { handle: string }, directories: import('../users.js').UserDirectoryList }} user Request user
+ * @param {{ avatarUrl?: string|null, groupChatId?: string|null, fileName?: string }} target Character chat (avatar + file name) or group chat id
+ * @param {(records: object[]) => ({ records: object[], integrity?: string, allowShrink?: boolean }|null)} update Receives the parsed file, header first; returns the records to save (when restoring an earlier state, also the slug that state had and whether it may be shorter), or null to leave the file alone
+ * @returns {Promise<{ status: 'saved', integrity: string, previousIntegrity: string } | { status: 'unchanged'|'missing'|'conflict', reason?: string }>}
+ */
+export async function updateChatRecords(user, { avatarUrl = null, groupChatId = null, fileName = '' }, update) {
+    const isGroup = groupChatId !== null;
+    const ownerName = isGroup ? String(groupChatId) : String(avatarUrl ?? '');
+    if (!ownerName || (!isGroup && forbiddenRegExp.test(ownerName))) {
+        return { status: 'missing', reason: 'invalid-target' };
+    }
+    const cardName = isGroup ? ownerName : ownerName.replace('.png', '');
+    const chatFileName = sanitize(`${isGroup ? ownerName : String(fileName)}.jsonl`);
+    const rootDirectory = isGroup ? user.directories.groupChats : user.directories.chats;
+    const filePath = isGroup ? path.join(rootDirectory, chatFileName) : path.join(rootDirectory, cardName, chatFileName);
+    if (!isPathUnderParent(rootDirectory, filePath)) {
+        return { status: 'missing', reason: 'invalid-target' };
+    }
+    const recoveryTarget = isGroup
+        ? createGroupChatTarget({ groupChatsDirectory: rootDirectory, backupDirectory: user.directories.backups, filename: chatFileName, maxRecoveryStates: maxTotalChatBackups })
+        : createCharacterChatTarget({ chatsDirectory: rootDirectory, backupDirectory: user.directories.backups, owner: cardName, filename: chatFileName, maxRecoveryStates: maxTotalChatBackups });
+
+    const current = readChatJsonlStrict(filePath);
+    if (current.status !== 'ok') {
+        return { status: 'missing', reason: current.status };
+    }
+    const next = update(current.records);
+    if (!next) {
+        return { status: 'unchanged' };
+    }
+    const previousIntegrity = String(/** @type {any} */ (current.records[0])?.chat_metadata?.integrity ?? '');
+    // The check compares against the file as read: a save landing in between is still a conflict.
+    const [header, ...messages] = next.records;
+    const records = [{ ...header, chat_metadata: { ...(/** @type {any} */ (header)?.chat_metadata ?? {}), integrity: previousIntegrity } }, ...messages];
+    try {
+        const result = await trySaveChat(records, filePath, false, user.profile.handle, cardName, user.directories.backups, {
+            recoveryTarget,
+            integrity: next.integrity,
+            allowShrink: next.allowShrink === true,
+        });
+        return { status: 'saved', integrity: result.integrity, previousIntegrity };
+    } catch (error) {
+        if (error instanceof IntegrityMismatchError || error instanceof DestructiveChatSaveError || error instanceof InvalidChatDataError) {
+            return { status: 'conflict', reason: error.message };
+        }
+        throw error;
+    }
 }
 
 router.post('/save', validateAvatarUrlMiddleware, async function (request, response) {

@@ -2,11 +2,20 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
-const { fetchResumable, reconnectStaleGenerations } = await import('../public/scripts/resumable-generation.js');
+const {
+    fetchResumable,
+    reconnectStaleGenerations,
+    registerGenerationCommitPlan,
+    releaseActiveGenerations,
+} = await import('../public/scripts/resumable-generation.js');
+const { decodeCommitPlan } = await import('../public/scripts/generation-commit-plan.js');
 const customRequestSource = readFileSync(new URL('../public/scripts/custom-request.js', import.meta.url), 'utf8');
 
 const RESUME_URL = '/api/resumable-generations/resume';
 const CANCEL_URL = '/api/resumable-generations/cancel';
+const DETACH_URL = '/api/resumable-generations/detach';
+const CLAIM_URL = '/api/resumable-generations/claim';
+const PLAN = Object.freeze({ v: 1, chat: { avatar: 'Seraphina.png' }, file: 'Seraphina - chat', kind: 'append', index: 3, page: 'page-a' });
 const encoder = new TextEncoder();
 
 /**
@@ -193,8 +202,62 @@ test('routes Horde generation requests through fetchResumable', () => {
     expect(hordeSource).not.toContain('fetch(\'/api/horde/generate-text\'');
 });
 
-test('cancels in-flight generations on pagehide for browsers without beforeunload', () => {
-    const source = readFileSync(new URL('../public/scripts/resumable-generation.js', import.meta.url), 'utf8');
-    expect(source).toContain('window.addEventListener(\'beforeunload\', cancelActiveGenerations)');
-    expect(source).toContain('window.addEventListener(\'pagehide\', cancelActiveGenerations)');
+describe('server-owned chat generations', () => {
+    function hangingGeneration() {
+        fetchMock.mockImplementation(async (url, init) => {
+            if (url === '/generate') {
+                return new Response(bodyFrom(['data: a\n\n'], { hang: true, signal: init.signal }), { status: 200 });
+            }
+            return new Response(null, { status: 204 });
+        });
+    }
+
+    test('unloading hands a chat reply to the server and cancels everything else', async () => {
+        hangingGeneration();
+        const chatController = new AbortController();
+        registerGenerationCommitPlan(chatController.signal, PLAN);
+        const chatReply = (await fetchResumable('/generate', { method: 'POST', headers: { 'X-CSRF-Token': 'csrf' }, body: '{}', signal: chatController.signal })).text();
+        const otherReply = (await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}' })).text();
+        chatReply.catch(() => undefined);
+        otherReply.catch(() => undefined);
+        const [chatId, otherId] = callsTo('/generate').map(([, init]) => init.headers['X-Generation-Id']);
+
+        releaseActiveGenerations();
+        // The chat UI's own unload handler stops its stream right after.
+        chatController.abort();
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(callsTo(DETACH_URL).map(([, init]) => JSON.parse(init.body).id)).toEqual([chatId]);
+        expect(callsTo(CANCEL_URL).map(([, init]) => JSON.parse(init.body).id)).toEqual([otherId]);
+        expect(callsTo(DETACH_URL)[0][1].keepalive).toBe(true);
+        expect(callsTo(DETACH_URL)[0][1].headers['X-CSRF-Token']).toBe('csrf');
+    });
+
+    test('sends the plan with the generation request only, and claims the reply before it ends', async () => {
+        const controller = new AbortController();
+        registerGenerationCommitPlan(controller.signal, PLAN);
+        const order = [];
+        fetchMock.mockImplementation(async (url) => {
+            order.push(url);
+            if (url === '/generate') {
+                return new Response(bodyFrom(['data: a\n\n', 'data: [DONE]\n\n']), { status: 200 });
+            }
+            return new Response(JSON.stringify({ state: 'claimed' }), { status: 200 });
+        });
+
+        const response = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal });
+        await expect(response.text()).resolves.toBe('data: a\n\ndata: [DONE]\n\n');
+
+        const [, generateInit] = callsTo('/generate')[0];
+        expect(decodeCommitPlan(generateInit.headers['x-generation-commit'])).toMatchObject({ file: PLAN.file, kind: 'append', index: 3 });
+        const [, claimInit] = callsTo(CLAIM_URL)[0];
+        expect(JSON.parse(claimInit.body)).toEqual({ id: generateInit.headers['X-Generation-Id'] });
+        expect(claimInit.headers['x-generation-commit']).toBeUndefined();
+        expect(order).toEqual(['/generate', CLAIM_URL]);
+
+        // A second request on the same signal is a different reply: it carries no plan.
+        await (await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal })).text();
+        expect(callsTo('/generate')[1][1].headers['x-generation-commit']).toBeUndefined();
+        expect(callsTo(CLAIM_URL)).toHaveLength(1);
+    });
 });

@@ -5,11 +5,20 @@
  * each generation request with an id and, when the connection dies or the page wakes up with a
  * stalled stream, reattaches from the last byte it received. The streaming code above it sees one
  * uninterrupted response. Aborting the request's signal cancels the generation for real.
+ *
+ * A chat generation registered with a commit plan (registerGenerationCommitPlan) is also owned by
+ * the server: when the page unloads it is detached instead of cancelled, and the server writes the
+ * reply into the chat. A page that reads the reply to the end claims it and saves it itself.
  */
+
+import { GENERATION_COMMIT_HEADER, encodeCommitPlan } from './generation-commit-plan.js';
 
 const GENERATION_ID_HEADER = 'X-Generation-Id';
 const RESUME_URL = '/api/resumable-generations/resume';
 const CANCEL_URL = '/api/resumable-generations/cancel';
+const DETACH_URL = '/api/resumable-generations/detach';
+const CLAIM_URL = '/api/resumable-generations/claim';
+const CONTROL_HEADERS_EXCLUDED = new Set([GENERATION_ID_HEADER.toLowerCase(), GENERATION_COMMIT_HEADER]);
 const RESUME_RETRY_DELAYS_MS = Object.freeze([0, 1000, 2000, 5000]);
 const MAX_RESUME_ATTEMPTS = 60;
 /** A stream with no bytes for this long when the page becomes visible again gets reconnected. */
@@ -25,6 +34,23 @@ const activeRequests = new Map();
 function createGenerationId() {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** Identifies this page load, so the server can tell its generations from those of a closed page. */
+export const pageId = createGenerationId();
+
+/** @type {WeakMap<AbortSignal, import('./generation-commit-plan.js').GenerationCommitPlan>} */
+const commitPlans = new WeakMap();
+
+/**
+ * Lets the server write the reply of the next generation request made with this signal.
+ * @param {AbortSignal} signal Signal the request will be made with
+ * @param {import('./generation-commit-plan.js').GenerationCommitPlan|null} plan Where the reply goes
+ */
+export function registerGenerationCommitPlan(signal, plan) {
+    if (signal && plan) {
+        commitPlans.set(signal, plan);
+    }
 }
 
 /**
@@ -95,13 +121,20 @@ class ResumableRequest {
         this.init = init;
         this.outerSignal = init.signal ?? null;
         this.requestHeaders = { ...headersToObject(init.headers), [GENERATION_ID_HEADER]: this.id };
-        // Same CSRF token for the resume/cancel calls, but no generation id: that would register a new one.
+        // One plan per request: a second request on the same signal is not the reply it describes.
+        this.commitPlan = this.outerSignal ? commitPlans.get(this.outerSignal) ?? null : null;
+        if (this.commitPlan) {
+            commitPlans.delete(this.outerSignal);
+            this.requestHeaders[GENERATION_COMMIT_HEADER] = encodeCommitPlan(this.commitPlan);
+        }
+        // Same CSRF token for the control calls, but no generation id: that would register a new one.
         this.controlHeaders = Object.fromEntries(Object.entries(this.requestHeaders)
-            .filter(([name]) => name.toLowerCase() !== GENERATION_ID_HEADER.toLowerCase()));
+            .filter(([name]) => !CONTROL_HEADERS_EXCLUDED.has(name.toLowerCase())));
         this.controlHeaders['Content-Type'] = 'application/json';
         this.received = 0;
         this.lastByteAt = Date.now();
         this.finished = false;
+        this.detached = false;
         /** @type {AbortController|null} */
         this.connection = null;
         this.handleAbort = () => this.cancel();
@@ -183,6 +216,8 @@ class ResumableRequest {
                         continue;
                     }
                     if (result.done) {
+                        // Claim before the caller sees the end, so it never saves a reply the server also wrote.
+                        await this.claim();
                         this.finish();
                         controller.close();
                         return;
@@ -266,7 +301,51 @@ class ResumableRequest {
         }
         this.finish();
         this.connection?.abort(abortError(this.outerSignal));
-        fetch(CANCEL_URL, {
+        if (this.detached) {
+            // The page is unloading and the server owns this reply now.
+            return;
+        }
+        this.control(CANCEL_URL);
+    }
+
+    /**
+     * Hands the generation to the server for good: the page is going away.
+     * @returns {boolean} Whether the server owns the reply
+     */
+    detach() {
+        if (this.finished || !this.commitPlan) {
+            return false;
+        }
+        this.detached = true;
+        this.control(DETACH_URL);
+        return true;
+    }
+
+    /**
+     * Tells the server this page has the whole reply and saves it itself.
+     * @returns {Promise<void>}
+     */
+    async claim() {
+        if (!this.commitPlan) {
+            return;
+        }
+        try {
+            await fetch(CLAIM_URL, {
+                method: 'POST',
+                headers: this.controlHeaders,
+                body: JSON.stringify({ id: this.id }),
+                cache: 'no-store',
+            });
+        } catch (error) {
+            console.warn('Could not claim a finished generation; the server may also write it into the chat.', error);
+        }
+    }
+
+    /**
+     * @param {string} url Control endpoint
+     */
+    control(url) {
+        fetch(url, {
             method: 'POST',
             headers: this.controlHeaders,
             body: JSON.stringify({ id: this.id }),
@@ -306,12 +385,21 @@ export function reconnectStaleGenerations(now = Date.now()) {
 }
 
 /**
- * Cancels every in-flight generation server-side.
+ * The page is unloading: chat replies go to the server, everything else is cancelled.
  */
-export function cancelActiveGenerations() {
+export function releaseActiveGenerations() {
     for (const request of [...activeRequests.values()]) {
-        request.cancel();
+        if (!request.detach()) {
+            request.cancel();
+        }
     }
+}
+
+/**
+ * @returns {string[]} Ids of the generations this page is reading
+ */
+export function getActiveGenerationIds() {
+    return [...activeRequests.keys()];
 }
 
 /**
@@ -336,7 +424,8 @@ if (typeof document !== 'undefined') {
 if (typeof window !== 'undefined') {
     // Desktop browsers fire beforeunload on reload and close. iOS Safari never does, but it does
     // fire pagehide when the tab is actually going away - backgrounding only flips visibility,
-    // which stays silent here so a frozen tab keeps its reply.
-    window.addEventListener('beforeunload', cancelActiveGenerations);
-    window.addEventListener('pagehide', cancelActiveGenerations);
+    // which stays silent here so a frozen tab keeps its reply. Registered before the chat UI's own
+    // unload handler, which stops the stream; detached requests then skip the server-side cancel.
+    window.addEventListener('beforeunload', releaseActiveGenerations);
+    window.addEventListener('pagehide', releaseActiveGenerations);
 }
