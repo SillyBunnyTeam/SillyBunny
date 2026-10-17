@@ -126,16 +126,24 @@ let personaLastLoadedChatId = null;
 /** @type {function(string): void} */
 let navigateToAvatar = () => { };
 
+// SillyBunny: set while the persona editor is mounted; legacy renderers defer to it — see docs/ui-migration.md
+/** @type {{ isOpen: () => boolean, refresh: (reason: 'list'|'states'|'persona', avatarId?: string) => void } | null} */
+let personaEditorAdapter = null;
+
 /**
  * Checks if the Persona Management panel is currently open
  * @returns {boolean}
  */
 export function isPersonaPanelOpen() {
+    // SillyBunny: let the mounted editor own its visibility signal — see docs/ui-migration.md
+    if (personaEditorAdapter) return Boolean(personaEditorAdapter.isOpen());
     const panel = document.getElementById('PersonaManagement');
     return Boolean(panel?.classList.contains('openDrawer') && panel.getClientRects().length > 0);
 }
 
 function switchPersonaGridView() {
+    // SillyBunny: leave layout to the mounted editor — see docs/ui-migration.md
+    if (personaEditorAdapter) return;
     const state = accountStorage.getItem(GRID_STORAGE_KEY) === 'true';
     $('#user_avatar_block').toggleClass('gridView', state);
 }
@@ -566,6 +574,11 @@ export async function getUserAvatars(doRender = true, openPageAt = '') {
 
         // If any persona is missing from the power user settings, we add it
         await addMissingPersonas(allEntities);
+        // SillyBunny: bypass legacy rendering when the editor is mounted — see docs/ui-migration.md
+        if (personaEditorAdapter) {
+            personaEditorAdapter.refresh('list');
+            return allEntities;
+        }
         // Before printing the personas, we check if we should enable/disable search sorting
         verifyPersonaSearchSortRule();
 
@@ -1086,6 +1099,8 @@ function createPersonaChip(text, className = '') {
 }
 
 function updateSelectedPersonaMasthead(cacheBust = false) {
+    // SillyBunny: leave layout to the mounted editor — see docs/ui-migration.md
+    if (personaEditorAdapter) return;
     const name = power_user.personas?.[user_avatar] || name1 || t`[No persona]`;
     const descriptor = power_user.persona_descriptions?.[user_avatar];
     const title = descriptor?.title || '';
@@ -1142,6 +1157,8 @@ function renderPersonaAppendixChips(container, appendices) {
 }
 
 function renderPersonaAppendices() {
+    // SillyBunny: leave layout to the mounted editor — see docs/ui-migration.md
+    if (personaEditorAdapter) return;
     const list = document.getElementById('persona_appendices_list');
     const activeChips = document.getElementById('persona_appendices_active_chips');
 
@@ -2250,6 +2267,11 @@ function getPersonaStates(avatarId) {
  */
 
 function updatePersonaUIStates({ navigateToCurrent = false } = {}) {
+    // SillyBunny: bypass legacy state rendering when the editor is mounted — see docs/ui-migration.md
+    if (personaEditorAdapter) {
+        personaEditorAdapter.refresh('states');
+        return;
+    }
     if (navigateToCurrent) {
         navigateToAvatar(user_avatar);
     }
@@ -3722,6 +3744,208 @@ function registerPersonaSlashCommands() {
     }));
 }
 
+// SillyBunny: targetable persona editor API; inert for legacy callers — see docs/ui-migration.md
+// #region SillyBunny persona editor adapter and data API
+
+export function setPersonaEditorAdapter(adapter) {
+    personaEditorAdapter = adapter ?? null;
+}
+
+export function getPersonaRecord(avatarId) {
+    if (power_user.personas[avatarId] === undefined) return null;
+    const descriptor = power_user.persona_descriptions[avatarId];
+    normalizePersonaAppendices(descriptor);
+    return { avatarId, name: power_user.personas[avatarId], descriptor };
+}
+
+export async function listPersonaAvatars() {
+    try {
+        const avatars = await getUserAvatars(false) ?? [];
+        await addMissingPersonas(avatars);
+        return avatars;
+    } catch {
+        return [];
+    }
+}
+
+export function getPersonaEditorStates(avatarId) {
+    const { default: isDefault, locked } = getPersonaStates(avatarId);
+    return { inUse: avatarId === user_avatar, default: isDefault, locked };
+}
+
+export function getPersonaAppendixScope() {
+    const key = getPersonaAppendixScopeKey();
+    const kind = selected_group ? 'group' : characters[Number(this_chid)]?.avatar ? 'character' : 'default';
+    return { key, kind };
+}
+
+export function projectActivePersona() {
+    const descriptor = power_user.persona_descriptions[user_avatar];
+    const position = descriptor?.position ?? persona_description_positions.IN_PROMPT;
+    // Same deprecated-position migration as setPersonaDescription().
+    power_user.persona_description_position = position === persona_description_positions.AFTER_CHAR
+        ? persona_description_positions.IN_PROMPT
+        : position;
+    power_user.persona_description_depth = descriptor?.depth ?? DEFAULT_DEPTH;
+    power_user.persona_description_role = descriptor?.role ?? DEFAULT_ROLE;
+    power_user.persona_description_lorebook = descriptor?.lorebook ?? '';
+    syncPersonaDescriptionFromDescriptor();
+    $('#persona_lore_button').toggleClass('world_set', !!power_user.persona_description_lorebook);
+}
+
+export async function savePersonaSettingsNow() {
+    try {
+        return Boolean(await saveSettings(0, { returnResult: true }));
+    } catch {
+        return false;
+    }
+}
+
+function getPersonaEditorDescriptor(avatarId) {
+    if (power_user.personas[avatarId] === undefined) return null;
+    return power_user.persona_descriptions[avatarId] ??= {
+        description: '',
+        position: persona_description_positions.IN_PROMPT,
+        depth: DEFAULT_DEPTH,
+        role: DEFAULT_ROLE,
+        lorebook: '',
+        connections: [],
+        title: '',
+        appendices: [],
+        activeAppendices: {},
+    };
+}
+
+export async function usePersona(avatarId) {
+    await setUserAvatar(avatarId);
+    updatePersonaUIStates();
+}
+
+export async function setPersonaDefault(avatarId, enabled) {
+    if (Boolean(enabled) === (power_user.default_persona === avatarId)) return;
+    await toggleDefaultPersona(avatarId, { quiet: true });
+}
+
+export async function setPersonaChatLock(avatarId, enabled) {
+    if (avatarId !== user_avatar) return false;
+    if (enabled) await lockPersona('chat');
+    else await unlockPersona('chat');
+    return true;
+}
+
+export async function setPersonaCharacterConnection(avatarId, enabled) {
+    const connection = getCurrentConnectionObj();
+    if (!connection?.id || power_user.personas[avatarId] === undefined) return { ok: false, unlinked: [] };
+    const descriptor = getPersonaEditorDescriptor(avatarId);
+    const matches = candidate => candidate.type === connection.type && candidate.id === connection.id;
+    const connections = descriptor.connections?.filter(candidate => !matches(candidate)) ?? [];
+    descriptor.connections = enabled ? [...connections, connection] : connections;
+
+    const unlinked = [];
+    if (enabled && !power_user.persona_allow_multi_connections) {
+        for (const [id, otherDescriptor] of Object.entries(power_user.persona_descriptions)) {
+            if (id === avatarId || !otherDescriptor.connections?.some(matches)) continue;
+            otherDescriptor.connections = otherDescriptor.connections.filter(candidate => !matches(candidate));
+            unlinked.push(id);
+        }
+    }
+
+    saveSettingsDebounced();
+    updatePersonaUIStates();
+    if (avatarId === user_avatar) updatePersonaConnectionsAvatarList();
+    if (power_user.persona_show_notifications) {
+        const personaName = power_user.personas[avatarId];
+        if (enabled) {
+            const additional = unlinked.length
+                ? `<br /><br />${t`Unlinked existing persona${unlinked.length > 1 ? 's' : ''}: ${unlinked.map(id => escapeHtml(power_user.personas[id])).join(', ')}`}`
+                : '';
+            if (additional || !isPersonaPanelOpen()) {
+                toastr.success(t`User persona ${escapeHtml(personaName)} is locked to character ${escapeHtml(name2)}${additional}`, t`Persona Locked`, { escapeHtml: false });
+            }
+        } else if (!isPersonaPanelOpen()) {
+            toastr.info(t`Persona ${personaName} is now unlocked from character ${name2}.`, t`Persona Unlocked`);
+        }
+    }
+    return { ok: true, unlinked };
+}
+
+export async function removePersonaConnection(avatarId, connection) {
+    const descriptor = power_user.persona_descriptions[avatarId];
+    if (!descriptor?.connections || !connection) return false;
+    descriptor.connections = descriptor.connections.filter(candidate => !(candidate.type === connection.type && candidate.id === connection.id));
+    saveSettingsDebounced();
+    updatePersonaUIStates();
+    if (avatarId === user_avatar) updatePersonaConnectionsAvatarList();
+    return true;
+}
+
+export async function setPersonaLorebook(avatarId, bookName) {
+    const descriptor = getPersonaEditorDescriptor(avatarId);
+    if (!descriptor) return false;
+    descriptor.lorebook = String(bookName ?? '');
+    if (avatarId === user_avatar) {
+        power_user.persona_description_lorebook = descriptor.lorebook;
+        $('#persona_lore_button').toggleClass('world_set', !!descriptor.lorebook);
+    }
+    saveSettingsDebounced();
+    updatePersonaUIStates();
+    await eventSource.emit(event_types.PERSONA_UPDATED, avatarId);
+    return true;
+}
+
+export async function setPersonaAppendicesActive(avatarId, ids) {
+    await setActivePersonaAppendixIds(avatarId, ids);
+    updatePersonaUIStates();
+}
+
+export async function createPersonaRecord({ name, title = '', description = '' }) {
+    if (typeof name !== 'string' || !name.trim()) return '';
+    const personaName = name.trim();
+    const avatarId = `${Date.now()}-${personaName.replace(/[^a-zA-Z0-9]/g, '')}.png`;
+    try {
+        await initPersona(avatarId, personaName, description, title);
+        await uploadUserAvatar(default_user_avatar, avatarId);
+        updatePersonaUIStates();
+        return avatarId;
+    } catch (error) {
+        console.warn('Could not create persona record', error);
+        return '';
+    }
+}
+
+export async function duplicatePersonaRecord(avatarId) {
+    const duplicated = await duplicatePersona(avatarId, { silent: true });
+    updatePersonaUIStates();
+    return duplicated;
+}
+
+export async function deletePersonaRecord(avatarId) {
+    return deletePersona(avatarId);
+}
+
+export function changePersonaImage(avatarId) {
+    if (!avatarId) return;
+    $('#avatar_upload_overwrite').val(avatarId);
+    $('#avatar_upload_file').trigger('click');
+}
+
+export function getPersonaModelDeps() {
+    return {
+        state: power_user,
+        isActive: id => id === user_avatar,
+        project: projectActivePersona,
+        setUserName,
+        save: savePersonaSettingsNow,
+        emit: (event, payload) => eventSource.emit(event, payload),
+        events: {
+            PERSONA_UPDATED: event_types.PERSONA_UPDATED,
+            PERSONA_RENAMED: event_types.PERSONA_RENAMED,
+        },
+    };
+}
+
+// #endregion
+
 /**
  * Initializes the persona management and all its functionality.
  * This is called during the initialization of the page.
@@ -3864,6 +4088,8 @@ export async function initPersonas() {
             renderPersonaAppendices();
             updateSelectedPersonaMasthead();
         }
+        // SillyBunny: refresh inactive editor records as well as the active one — see docs/ui-migration.md
+        personaEditorAdapter?.refresh('persona', avatarId);
     });
     setPersonaWorkspaceTab('browse');
     setPersonaEditorTab('prompt');
