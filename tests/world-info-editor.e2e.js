@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
+const TARGET_BOOK = `${BOOK}_TARGET`;
 
 test.beforeEach(async ({ page }) => {
     // Browser QA must not change the running instance's saved preferences.
@@ -28,32 +29,41 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-    await page.evaluate(async name => {
+    await page.evaluate(async names => {
         const worldInfo = await import('./scripts/world-info.js');
-        if (worldInfo.world_names.includes(name)) await worldInfo.deleteWorldInfo(name);
+        for (const name of names) {
+            if (worldInfo.world_names.includes(name)) await worldInfo.deleteWorldInfo(name);
+            for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
+        }
         await worldInfo.updateWorldInfoList();
-        if (worldInfo.world_names.includes(name)) throw new Error(`Test lorebook cleanup failed: ${name}`);
-        for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
-    }, BOOK);
+        if (names.some(name => worldInfo.world_names.includes(name))) throw new Error('Test lorebook cleanup failed');
+    }, [BOOK, TARGET_BOOK]);
 });
 
-const readEntries = page => page.evaluate(async name => {
+const readEntries = (page, name = BOOK) => page.evaluate(async name => {
     const { getRequestHeaders } = await import('./script.js');
     const response = await fetch('/api/worldinfo/get', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ name }) });
     return (await response.json()).entries;
-}, BOOK);
+}, name);
 
-async function openBook(page) {
+async function openBook(page, expectedCount = 3) {
     await page.evaluate(async name => {
         const { openWorldInfoEditor } = await import('./scripts/world-info.js');
         openWorldInfoEditor(name);
     }, BOOK);
     const editor = page.locator('#WorldInfo .sb-wi-editor');
-    await expect(editor.locator('.sb-wi-row')).toHaveCount(3);
+    await expect(editor.locator('.sb-wi-row')).toHaveCount(expectedCount);
     return editor;
 }
 
 const row = (editor, title) => editor.locator('.sb-wi-row', { hasText: title });
+
+async function enterSelection(page, editor) {
+    await editor.locator('.sb-wi-book-actions').click();
+    await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+    await expect(editor).toHaveAttribute('data-selection-mode', 'true');
+    await expect(editor.locator('.sb-selection-cancel')).toBeFocused();
+}
 
 async function selectSettings(page, editor) {
     await editor.locator('.sb-wi-book-actions').click();
@@ -226,7 +236,7 @@ test.describe('World Info editor', () => {
         const editor = page.locator('#WorldInfo .sb-wi-editor');
         await expect(editor.locator('.sb-wi-settings-button')).toHaveCount(0);
         await editor.locator('.sb-wi-book-actions').click();
-        await expect(page.locator('.sb-action-menu [aria-disabled="true"]')).toHaveCount(8);
+        await expect(page.locator('.sb-action-menu [aria-disabled="true"]')).toHaveCount(9);
         await page.getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
         const recursive = editor.locator('#world_info_recursive');
         await expect(recursive).toBeVisible();
@@ -359,5 +369,159 @@ test.describe('World Info editor on mobile', () => {
         const expandBounds = await expand.boundingBox();
         expect(expandBounds.width).toBeGreaterThanOrEqual(44);
         expect(expandBounds.height).toBeGreaterThanOrEqual(44);
+    });
+});
+
+test.describe('World Info selection mode', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('menu selection supports row clicks, Space, Ctrl/Cmd+A and Escape focus return', async ({ page }) => {
+        const editor = await openBook(page);
+        await enterSelection(page, editor);
+        await expect(editor.locator('.sb-wi-list-header')).toBeHidden();
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await expect(editor.locator('.sb-selection-action:disabled')).toHaveCount(4);
+        await row(editor, 'Alpha').click();
+        await expect(row(editor, 'Alpha').locator('.sb-selection-check')).toBeChecked();
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+        await row(editor, 'Beta').focus();
+        await page.keyboard.press('Space');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('2 lorum ipsum');
+        await page.keyboard.press('Control+a');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await editor.locator('.sb-selection-select-all').click();
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await page.keyboard.press('Meta+a');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await page.keyboard.press('Escape');
+        await expect(editor).toHaveAttribute('data-selection-mode', 'false');
+        await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
+        await expect(editor.locator('.sb-selection-check')).toHaveCount(0);
+    });
+
+    test('bulk enable/disable commits once and preserves dirty content and list order', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await editor.locator('.sb-wi-entry-textarea').fill('Still an unsaved draft');
+        const before = await editor.locator('.sb-wi-row').evaluateAll(rows => rows.map(row => row.dataset.uid));
+        await enterSelection(page, editor);
+        await row(editor, 'Alpha').click();
+        await row(editor, 'Beta').click();
+        const saves = [];
+        page.on('request', request => {
+            if (request.url().endsWith('/api/worldinfo/edit')) saves.push(request);
+        });
+        await editor.locator('[data-action-id="disable"]').click();
+        await expect.poll(async () => Object.values(await readEntries(page)).every(entry => entry.disable)).toBe(true);
+        expect(saves).toHaveLength(1);
+        expect(await editor.locator('.sb-wi-row').evaluateAll(rows => rows.map(row => row.dataset.uid))).toEqual(before);
+        await expect(editor.locator('.sb-wi-entry-textarea')).toHaveValue('Still an unsaved draft');
+        await expect(editor.locator('.sb-wi-entry-dirty')).toBeVisible();
+        await editor.locator('[data-action-id="enable"]').click();
+        await expect.poll(async () => {
+            const entries = await readEntries(page);
+            return [entries[0].disable, entries[1].disable];
+        }).toEqual([false, false]);
+        expect(saves).toHaveLength(2);
+        await expect(editor.locator('.sb-wi-entry-dirty')).toBeVisible();
+        await editor.locator('.sb-selection-cancel').click();
+        await editor.locator('.sb-wi-entry-cancel').click();
+        await expect(editor.locator('.sb-wi-entry-dirty')).toBeHidden();
+    });
+
+    test('bulk Delete confirms once, commits once and closes a removed open entry', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await enterSelection(page, editor);
+        await row(editor, 'Alpha').click();
+        await row(editor, 'Beta').click();
+        const saves = [];
+        page.on('request', request => {
+            if (request.url().endsWith('/api/worldinfo/edit')) saves.push(request);
+        });
+        await editor.locator('[data-action-id="delete"]').click();
+        const popup = page.locator('dialog.popup[open]');
+        await expect(popup).toContainText('(2)');
+        await popup.locator('.popup-button-ok').click();
+        await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
+        expect(saves).toHaveLength(1);
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+    });
+
+    test('bulk Copy retains sources and selection; bulk Move removes sources and clears selection', async ({ page }) => {
+        await page.evaluate(async name => {
+            const { saveWorldInfo, updateWorldInfoList } = await import('./scripts/world-info.js');
+            if (!await saveWorldInfo(name, { entries: {} }, true)) throw new Error('Could not save target lorebook');
+            await updateWorldInfoList();
+        }, TARGET_BOOK);
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await enterSelection(page, editor);
+        await row(editor, 'Alpha').click();
+        await row(editor, 'Beta').click();
+        const transfer = async label => {
+            await editor.locator('[data-action-id="move"]').click();
+            await page.locator('.sb-picker__option').filter({ hasText: TARGET_BOOK }).click();
+            await page.locator('dialog.popup[open]').getByText(label, { exact: true }).click();
+        };
+        await transfer('Copy');
+        await expect.poll(async () => Object.values(await readEntries(page, TARGET_BOOK)).map(entry => entry.comment).sort()).toEqual(['Alpha', 'Beta']);
+        await expect(editor.locator('.sb-selection-title')).toHaveText('2 lorum ipsum');
+        expect(Object.keys(await readEntries(page))).toHaveLength(3);
+        await expect(editor.locator('.sb-wi-entry')).toBeVisible();
+        await transfer('Move');
+        await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
+        await expect.poll(async () => Object.keys(await readEntries(page, TARGET_BOOK)).length).toBe(4);
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+    });
+
+    test('paging and filtering retain selection and a book change exits it', async ({ page }) => {
+        await page.evaluate(async name => {
+            const { loadWorldInfo, saveWorldInfo } = await import('./scripts/world-info.js');
+            const { accountStorage } = await import('./scripts/util/AccountStorage.js');
+            accountStorage.setItem('WI_PerPage', '10');
+            const data = await loadWorldInfo(name);
+            for (let uid = 3; uid < 12; uid++) data.entries[uid] = { ...data.entries[0], uid, comment: `Extra ${uid}`, displayIndex: uid };
+            await saveWorldInfo(name, data, true);
+        }, BOOK);
+        const editor = await openBook(page, 10);
+        await editor.getByRole('listitem', { name: 'Alpha', exact: true }).click({ button: 'right' });
+        await expect(editor.locator('.sb-selection-title')).toHaveText('1 lorum ipsum');
+        await editor.locator('.sb-list-pagination__next').click();
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(2);
+        await editor.locator('.sb-selection-select-all').click();
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await editor.locator('.sb-wi-search').evaluate(node => { node.value = 'missing'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+        await expect(editor.locator('.sb-wi-list-status')).toHaveText('No results');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await page.evaluate(async () => (await import('./scripts/world-info.js')).openWorldInfoEditor(''));
+        await expect(editor).toHaveAttribute('data-selection-mode', 'false');
+    });
+});
+
+test.describe('World Info selection touch entry', () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    test('long press selects without opening and action targets stay visible and at least 44px', async ({ page }) => {
+        const editor = await openBook(page);
+        await page.locator('#sb-settings-tab-list .sb-settings-tab[data-sb-settings-tab="world-info"]').click();
+        const alpha = row(editor, 'Alpha');
+        await expect(alpha).toBeInViewport();
+        await alpha.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 200 });
+        await expect(editor).toHaveAttribute('data-selection-mode', 'true');
+        await alpha.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1 });
+        await alpha.dispatchEvent('click');
+        await expect(alpha.locator('.sb-selection-check')).toBeChecked();
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+        for (const action of await editor.locator('.sb-selection-action').all()) {
+            await expect(action).toBeInViewport();
+            const box = await action.boundingBox();
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+        await editor.locator('.sb-selection-cancel').click();
+        await expect(alpha).toBeFocused();
     });
 });

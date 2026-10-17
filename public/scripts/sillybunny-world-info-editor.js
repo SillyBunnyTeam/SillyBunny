@@ -14,6 +14,7 @@ import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
+import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createRow } from './sillybunny-editor/rows.js';
 import { openPicker, isPickerOpen } from './sillybunny-editor/picker.js';
@@ -24,7 +25,7 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261018d', id: 'deferred-world-info-editor-css' };
+const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261018e', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -144,6 +145,8 @@ export function mountWorldInfoEditor(container) {
     let renderRevision = 0;
     let dragBook = null;
     let heldOrder = null;
+    let selection = null;
+    let bulkBusy = false;
 
     const listHeader = element('header', 'sb-wi-list-header');
     const bookSwitcher = button(t`Worlds/Lorebooks`, null, trigger => openBookPicker(trigger), 'sb-wi-book-switcher');
@@ -167,6 +170,8 @@ export function mountWorldInfoEditor(container) {
     filterButton.setAttribute('aria-haspopup', 'menu');
     filterButton.setAttribute('aria-expanded', 'false');
     listHeader.append(bookSwitcher, headerSpacer, searchButton, newEntryButton, filterButton, bookActions);
+    const selectionHeader = element('header', 'sb-wi-selection-header');
+    const selectionBar = element('div', 'sb-wi-selection-bar');
     const searchField = element('label', 'sb-wi-search-field');
     searchField.hidden = true;
     const searchInput = element('input', 'sb-wi-search');
@@ -290,6 +295,7 @@ export function mountWorldInfoEditor(container) {
         const action = (label, glyph, id, danger = false) => menuItem(label, glyph, () => clickTransport(id), danger, !state.data);
         menu(trigger, state.name ?? t`World Info`, [
             [menuItem(t`Global Settings`, 'gear', toggleSettings)],
+            [menuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), false, !state.name || !Object.keys(state.data?.entries ?? {}).length)],
             [action(t`Rename World Info`, 'pencil', 'world_popup_name_button'), action(t`Duplicate World Info`, 'copy', 'world_duplicate'), action(t`Export World Info`, 'file-export', 'world_popup_export')],
             [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill empty Memo/Titles with Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply current sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
             [action(t`Delete World Info`, 'trash', 'world_popup_delete', true)],
@@ -327,7 +333,7 @@ export function mountWorldInfoEditor(container) {
         const { name, data } = state;
         heldOrder ??= entries.map(entry => entry.uid);
         const saving = setEnabled(deps, name, data, uid, enabled);
-        rebase(uid, 'disable');
+        for (const target of [uid].flat()) rebase(target, 'disable');
         const result = await saving;
         if (state.data !== data) return;
         if (committed(result)) await refreshWorldInfoEditor(navigation_option.previous, false);
@@ -356,6 +362,46 @@ export function mountWorldInfoEditor(container) {
         await refreshWorldInfoEditor(navigation_option.previous, false);
     }
 
+    function existingSelectedUids(keys = selection.selectedKeys) {
+        return keys.filter(uid => state.data?.entries?.[uid]);
+    }
+
+    // HUMAN: replace — selection count label; no matching count key exists in the locale.
+    const selectionTitle = count => `${count} ${t`lorum ipsum`}`;
+
+    async function bulkAction(action) {
+        if (bulkBusy) return;
+        const uids = existingSelectedUids();
+        if (!uids.length) return;
+        bulkBusy = true;
+        selectionBar.inert = true;
+        selectionBar.setAttribute('aria-busy', 'true');
+        try {
+            return await action(uids);
+        } finally {
+            bulkBusy = false;
+            selectionBar.inert = false;
+            selectionBar.removeAttribute('aria-busy');
+        }
+    }
+
+    async function deleteSelectedEntries(uids) {
+        const { name, data } = state;
+        if (!(await shell.guardLeave()) || state.data !== data) return;
+        // HUMAN: replace — bulk delete confirmation; the selected count remains explicit.
+        if (!await Popup.show.confirm(`${t`lorum ipsum`} (${uids.length})`, t`This action is irreversible!`)) return;
+        if (state.data !== data) return;
+        const targets = existingSelectedUids(uids);
+        const result = await remove(deps, name, data, targets);
+        if (!committed(result) || state.data !== data) return;
+        if (selectedUid() !== null && !data.entries[selectedUid()]) {
+            destroyDetail();
+            shell.deselectNow();
+        }
+        selection.select(existingSelectedUids());
+        await refreshWorldInfoEditor(navigation_option.previous, false);
+    }
+
     async function moveEntryBy(uid, direction) {
         if (searchControl.query || !customSort()) return false;
         const ids = entries.map(entry => entry.uid);
@@ -374,6 +420,7 @@ export function mountWorldInfoEditor(container) {
 
     async function openMovePicker(trigger, uid) {
         const source = state.name;
+        const uids = [uid].flat();
         if (!(await shell.guardLeave())) return;
         if (source !== state.name) return;
         picker = openPicker({
@@ -381,8 +428,11 @@ export function mountWorldInfoEditor(container) {
             title: t`Select Target Lorebook`,
             items: (world_names ?? []).filter(name => name !== source).map(name => ({ value: name, label: name })),
             onSelect: target => run(async () => {
-                if (state.name !== source || !state.data?.entries?.[uid]) return;
-                const prompt = element('p', '', t`Move/Copy '${entryTitle(state.data.entries[uid], t`Untitled entry`)}' to:`);
+                if (state.name !== source) return;
+                const targets = existingSelectedUids(uids);
+                if (!targets.length) return;
+                const title = targets.length === 1 ? entryTitle(state.data.entries[targets[0]], t`Untitled entry`) : selectionTitle(targets.length);
+                const prompt = element('p', '', t`Move/Copy '${title}' to:`);
                 prompt.append(element('strong', '', target));
                 const popup = new Popup(prompt, POPUP_TYPE.CONFIRM, '', {
                     cancelButton: t`Cancel`,
@@ -392,8 +442,23 @@ export function mountWorldInfoEditor(container) {
                 const choice = await popup.show();
                 if (![POPUP_RESULT.CUSTOM1, POPUP_RESULT.CUSTOM2].includes(choice) || state.name !== source) return;
                 if (!(await shell.guardLeave())) return;
+                if (state.name !== source) return;
+                const copy = choice === POPUP_RESULT.CUSTOM2;
                 // moveWorldInfoEntry already calls reloadEditor for the open affected book.
-                await move(deps, source, target, uid, { copy: choice === POPUP_RESULT.CUSTOM2 });
+                const transfer = () => move(deps, source, target, Array.isArray(uid) ? existingSelectedUids(targets) : uid, { copy });
+                const result = Array.isArray(uid) ? await bulkAction(transfer) : await transfer();
+                if (!result?.ok || state.name !== source) return;
+                const affectedDetail = targets.some(target => String(target) === String(selectedUid()));
+                const removedDetail = result.moved === targets.length || !state.data?.entries?.[selectedUid()];
+                if (!copy && affectedDetail && removedDetail) {
+                    destroyDetail();
+                    shell.deselectNow();
+                }
+                if (!copy && selection.isActive) {
+                    selection.select(result.moved === targets.length
+                        ? selection.selectedKeys.filter(key => !targets.includes(key))
+                        : existingSelectedUids());
+                }
             }),
         });
     }
@@ -466,6 +531,7 @@ export function mountWorldInfoEditor(container) {
         const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object');
         const total = allEntries.length;
         const active = allEntries.filter(entry => !entry.disable).length;
+        if (selection?.isActive) selection.select(existingSelectedUids());
         // HUMAN: replace — entry-count and active-count subtitle labels.
         bookSubtitle.textContent = `${total} ${t`lorum ipsum`} · ${active} ${t`lorum ipsum`}`;
         listStatus.hidden = Boolean(state.data && entries.length);
@@ -493,13 +559,15 @@ export function mountWorldInfoEditor(container) {
             signature: entry => JSON.stringify([entry, customSort(), Boolean(searchControl.query)]),
             create: makeEntryRow,
             update: (row, entry) => {
-                row.classList.toggle('is-selected', String(selectedUid()) === String(entry.uid));
+                row.classList.toggle('is-selected', !selection?.isActive && String(selectedUid()) === String(entry.uid));
                 row.classList.toggle('is-disabled', Boolean(entry.disable));
+                for (const control of row.querySelectorAll('.sb-wi-row-enable, .sb-wi-row-menu, .sb-wi-grip')) control.inert = Boolean(selection?.isActive);
             },
         });
         searchControl.report(entries.length, total);
+        selection?.decorate();
         sortable = bindSortable(entryBox, {
-            handle: '.sb-wi-grip', items: '> .sb-wi-row', disabled: !customSort() || Boolean(searchControl.query),
+            handle: '.sb-wi-grip', items: '> .sb-wi-row', disabled: selection?.isActive || !customSort() || Boolean(searchControl.query),
             touch: () => matchMedia('(max-width: 768px)').matches,
             start: () => { dragBook = state; },
             update: () => run(async () => {
@@ -553,16 +621,30 @@ export function mountWorldInfoEditor(container) {
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
-    listContent.append(listHeader, searchField, listBody, pagination.element);
+    listContent.append(listHeader, selectionHeader, searchField, listBody, pagination.element, selectionBar);
     shell.sidebar.append(listContent, searchStatus);
+    selection = createSelectionMode({
+        root: shell.root, list: entryBox, header: selectionHeader, actionBar: selectionBar,
+        rowSelector: '.sb-wi-row', getKey: row => row.dataset.uid, keySourceSelector: '.sb-wi-grip',
+        canEnter: () => Boolean(state.name && Object.keys(state.data?.entries ?? {}).length),
+        title: selectionTitle, selectAllLabel: t`Select All`,
+        actions: [
+            { id: 'enable', label: t`Enable`, icon: 'fa-solid fa-toggle-on', onActivate: () => run(() => bulkAction(uids => setEntryEnabled(uids, true))) },
+            { id: 'disable', label: t`Disable`, icon: 'fa-solid fa-toggle-off', onActivate: () => run(() => bulkAction(uids => setEntryEnabled(uids, false))) },
+            { id: 'move', label: `${t`Move`}/${t`Copy`}`, icon: 'fa-solid fa-arrows-up-down-left-right', onActivate: () => run(() => bulkAction(uids => openMovePicker(selectionBar.querySelector('[data-action-id="move"]'), uids))) },
+            { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: () => run(() => bulkAction(deleteSelectedEntries)) },
+        ],
+        onChange: () => renderList(), onExit: () => renderList(),
+    });
     const unbindRows = bindListKeyboard(listBody, {
         rowSelector: '.sb-wi-row', keySourceSelector: '.sb-wi-grip',
         ignoreSelector: 'button, input, select, textarea, a, label, [role="switch"], [role="button"]',
         onOpen: row => {
+            if (selection.isActive) return;
             run(() => shell.selectItem({ kind: 'entry', uid: rowEntry(row).uid }));
         },
         onMove: (row, direction) => {
-            if (!customSort() || searchControl.query) return false;
+            if (selection.isActive || !customSort() || searchControl.query) return false;
             run(() => moveEntryBy(rowEntry(row).uid, direction));
         },
     });
@@ -607,6 +689,7 @@ export function mountWorldInfoEditor(container) {
         const changedBook = renderedName !== undefined && renderedName !== name;
         if (changedBook || state.data !== data) heldOrder = null;
         if (changedBook) {
+            selection.exit();
             closeOwnedOverlays();
             if (controllerKind === 'entry') {
                 destroyDetail({ keepDraft: entryController()?.isDirty() ?? false });
@@ -661,6 +744,7 @@ export function mountWorldInfoEditor(container) {
         worldInfo.removeEventListener('click', onTransportClick, true);
         unbindRows();
         searchControl.destroy();
+        selection.destroy();
         pagination.destroy();
         sortable?.destroy();
         shell.destroy();

@@ -113,6 +113,7 @@ describe('selection mode', () => {
         expect(actionBar.getAttribute('role')).toBe('toolbar');
         expect(actionBar.getAttribute('aria-label')).toBe('Selection actions');
         expect(actionBar.classList.contains('sb-selection-action-bar')).toBe(true);
+        expect(document.activeElement).toBe(header.querySelector('.sb-selection-cancel'));
     });
 
     test('decoration is idempotent and selected rows expose a checked decorative prefix', () => {
@@ -490,6 +491,62 @@ describe('selection mode', () => {
         expect(rows[0].querySelector('.sb-selection-check')).toBeNull();
         expect(rows[0].hasAttribute('aria-selected')).toBe(false);
         expect(onExit).not.toHaveBeenCalled();
+    });
+});
+
+describe('selection mode consumer contracts', () => {
+    test('canEnter gates programmatic entry and row gestures', () => {
+        jest.useFakeTimers();
+        const { selection, rows } = makeSelection({ canEnter: () => false });
+        selection.enter('a');
+        const context = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+        rows[0].dispatchEvent(context);
+        pointer(rows[0], 'pointerdown');
+        jest.advanceTimersByTime(500);
+        expect(selection.isActive).toBe(false);
+        expect(context.defaultPrevented).toBe(false);
+    });
+
+    test('a supplied trigger receives focus back after Cancel', () => {
+        const { selection, root, header } = makeSelection({ selectAllLabel: 'Select All' });
+        const trigger = document.createElement('button');
+        root.prepend(trigger);
+        selection.enter(null, trigger);
+        expect(header.querySelector('.sb-selection-select-all').textContent).toBe('Select All');
+        header.querySelector('.sb-selection-cancel').click();
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    test.each(['ctrlKey', 'metaKey'])('%s+A adds current-page keys without losing other-page selection', modifier => {
+        const { selection, header, list } = makeSelection();
+        selection.enter('a');
+        list.replaceChildren(createRow('d'), createRow('e'));
+        selection.decorate();
+        const event = keydown(header.querySelector('.sb-selection-cancel'), 'a', { [modifier]: true });
+        expect(event.defaultPrevented).toBe(true);
+        expect(selection.selectedKeys).toEqual(['a', 'd', 'e']);
+    });
+
+    test('the select-all toggle deselects only current-page keys', () => {
+        const { selection, header, list } = makeSelection();
+        selection.enter('a');
+        list.replaceChildren(createRow('d'), createRow('e'));
+        selection.selectAll();
+        header.querySelector('.sb-selection-select-all').click();
+        expect(selection.selectedKeys).toEqual(['a']);
+    });
+
+    test('Ctrl+A leaves text fields and the detail outside selection chrome alone', () => {
+        const { selection, root, header } = makeSelection();
+        const input = document.createElement('input');
+        header.append(input);
+        const detail = document.createElement('textarea');
+        root.append(detail);
+        selection.enter();
+        header.append(input);
+        expect(keydown(input, 'a', { ctrlKey: true }).defaultPrevented).toBe(false);
+        expect(keydown(detail, 'a', { ctrlKey: true }).defaultPrevented).toBe(false);
+        expect(selection.count).toBe(0);
     });
 });
 

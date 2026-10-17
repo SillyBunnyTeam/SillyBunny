@@ -823,6 +823,197 @@ function transportSearch() {
     return document.getElementById('world_info_search');
 }
 
+describe('World Info selection mode', () => {
+    const selected = () => [...container.querySelectorAll('.sb-wi-row.is-selection-selected')].map(row => row.dataset.uid);
+    const count = () => container.querySelector('.sb-selection-title').textContent;
+    const action = async id => {
+        container.querySelector(`.sb-selection-action[data-action-id="${id}"]`).click();
+        await settle();
+    };
+
+    test.each([null, 'Book A'])('Select is disabled without entries (%s)', async name => {
+        await mount({ name, data: name ? book(0) : null });
+        container.querySelector('.sb-wi-book-actions').click();
+        await settle();
+        expect(actionMenu.sections.flatMap(section => section.items).find(item => item.label === 'Select').disabled).toBe(true);
+    });
+
+    test('menu entry swaps chrome, focuses Cancel, toggles rows without opening, and restores the menu trigger', async () => {
+        await mount({ name: 'Book A', data: book(3) });
+        const trigger = container.querySelector('.sb-wi-book-actions');
+        await selectMenuAction('Select');
+        expect(container.querySelector('.sb-wi-editor').dataset.selectionMode).toBe('true');
+        expect(count()).toBe('0 lorum ipsum');
+        expect(document.activeElement).toBe(container.querySelector('.sb-selection-cancel'));
+        await open(0);
+        await open(7);
+        expect(selected()).toEqual(['0', '7']);
+        expect(count()).toBe('2 lorum ipsum');
+        expect(mountEntry).not.toHaveBeenCalled();
+        const first = container.querySelector('.sb-wi-row');
+        first.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+        expect(selected()).toEqual(['7']);
+        expect(first.querySelector('.sb-selection-check').getAttribute('aria-label')).toBe('Select Entry 0');
+        expect(first.querySelector('.sb-wi-row-enable').inert).toBe(true);
+        container.querySelector('.sb-selection-cancel').click();
+        expect(container.querySelector('.sb-wi-editor').dataset.selectionMode).toBe('false');
+        expect(container.querySelector('.sb-selection-check')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    test('secondary click enters with its UID and Escape exits without closing the detail or bubbling', async () => {
+        await mount({ name: 'Book A', data: book(2) });
+        const detail = await open(0);
+        const row = container.querySelector('.sb-wi-row[data-uid="7"]');
+        const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+        row.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+        expect(selected()).toEqual(['7']);
+        const bubble = jest.fn();
+        container.addEventListener('keydown', bubble);
+        container.querySelector('.sb-selection-cancel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(bubble).not.toHaveBeenCalled();
+        expect(detail.destroy).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(row);
+    });
+
+    test('selection survives paging and filtering, selects the current page, prunes deleted UIDs, and exits on a book switch', async () => {
+        const data = book(25);
+        await mount({ name: 'Book A', data });
+        await selectMenuAction('Select');
+        await open(0);
+        container.querySelector('.sb-list-pagination__next').click();
+        await settle();
+        container.querySelector('.sb-selection-cancel').dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true }));
+        expect(count()).toBe('11 lorum ipsum');
+        const input = container.querySelector('.sb-wi-search');
+        input.value = 'Entry 2';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        jest.advanceTimersByTime(300);
+        await settle();
+        expect(count()).toBe('11 lorum ipsum');
+        delete data.entries[0];
+        await render(liveState, navigation.previous);
+        expect(count()).toBe('10 lorum ipsum');
+        await render({ name: 'Book B', data: book(2) });
+        expect(container.querySelector('.sb-wi-editor').dataset.selectionMode).toBe('false');
+        expect(container.querySelector('.sb-selection-title')).toBeNull();
+    });
+
+    test.each([true, false])('bulk enabled=%s saves the tracked book once, holds order, and rebases the dirty open entry', async enabled => {
+        const data = book(3);
+        data.entries[0].disable = enabled;
+        data.entries[7].disable = enabled;
+        displayEntries.mockImplementation(data => Object.values(data.entries).filter(entry => !entry.disable).sort((left, right) => left.uid - right.uid));
+        visibleEntries = null;
+        // Both target entries are deliberately present in the initial filtered result.
+        displayEntries.mockImplementationOnce(() => Object.values(data.entries));
+        await mount({ name: 'Book A', data });
+        const detail = await open(0);
+        dirty = true;
+        await selectMenuAction('Select');
+        await open(0);
+        await open(7);
+        const before = [...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid);
+        await action(enabled ? 'enable' : 'disable');
+        expect(setEnabled).toHaveBeenCalledWith(createWorldInfoDeps(), 'Book A', data, ['0', '7'], enabled);
+        expect(saveWorldInfo).toHaveBeenCalledTimes(1);
+        expect(saveWorldInfo).toHaveBeenCalledWith('Book A', data, true);
+        expect(data.entries[0].disable).toBe(!enabled);
+        expect(data.entries[7].disable).toBe(!enabled);
+        expect(detail.rebaseKey).toHaveBeenCalledTimes(1);
+        expect(detail.rebaseKey).toHaveBeenCalledWith('disable');
+        expect(detail.isDirty()).toBe(true);
+        expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(before);
+        expect(popupShow).not.toHaveBeenCalled();
+    });
+
+    test('bulk Delete confirms the count, saves once, closes the affected detail and clears deleted UIDs', async () => {
+        const data = book(3);
+        deleteEntry.mockImplementation(async (data, uid) => { delete data.entries[uid]; return true; });
+        await mount({ name: 'Book A', data });
+        const detail = await open(0);
+        await selectMenuAction('Select');
+        await open(0);
+        await open(7);
+        await action('delete');
+        expect(confirm).toHaveBeenCalledWith('lorum ipsum (2)', 'This action is irreversible!');
+        expect(deleteEntry.mock.calls).toEqual([[data, '0', { silent: true }], [data, '7', { silent: true }]]);
+        expect(saveWorldInfo).toHaveBeenCalledTimes(1);
+        expect(detail.destroy).toHaveBeenCalled();
+        expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('false');
+        expect(count()).toBe('0 lorum ipsum');
+        expect(container.querySelectorAll('.sb-wi-row')).toHaveLength(1);
+    });
+
+    test('cancelled dirty guard prevents destructive bulk deletion', async () => {
+        await mount({ name: 'Book A', data: book(2) });
+        await open(0);
+        dirty = true;
+        await selectMenuAction('Select');
+        await open(0);
+        await action('delete');
+        expect(popupShow).toHaveBeenCalledTimes(1);
+        expect(confirm).not.toHaveBeenCalled();
+        expect(saveWorldInfo).not.toHaveBeenCalled();
+    });
+
+    test.each([[3, false], [4, true]])('bulk Move/Copy choice %i uses copy=%s and closes detail only for a move', async (choice, copy) => {
+        await mount({ name: 'Book A', data: book(3) });
+        const detail = await open(0);
+        await selectMenuAction('Select');
+        await open(0);
+        await open(7);
+        await action('move');
+        const picker = openPicker.mock.calls.at(-1)[0];
+        popupChoice = choice;
+        picker.onSelect('Book B');
+        await settle();
+        expect(move).toHaveBeenCalledWith(createWorldInfoDeps(), 'Book A', 'Book B', ['0', '7'], { copy });
+        expect(moveEntry.mock.calls).toEqual([['Book A', 'Book B', '0', { deleteOriginal: !copy }], ['Book A', 'Book B', '7', { deleteOriginal: !copy }]]);
+        expect(detail.destroy).toHaveBeenCalledTimes(copy ? 0 : 1);
+        expect(count()).toBe(copy ? '2 lorum ipsum' : '0 lorum ipsum');
+    });
+
+    test('a pending bulk save blocks duplicate actions and marks its toolbar busy', async () => {
+        await mount({ name: 'Book A', data: book(2) });
+        await selectMenuAction('Select');
+        await open(0);
+        let finish;
+        saveWorldInfo.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        await action('disable');
+        const bar = container.querySelector('.sb-wi-selection-bar');
+        expect(bar.inert).toBe(true);
+        expect(bar.getAttribute('aria-busy')).toBe('true');
+        await action('enable');
+        expect(saveWorldInfo).toHaveBeenCalledTimes(1);
+        finish('Book A');
+        await settle();
+        expect(bar.inert).toBe(false);
+        expect(bar.hasAttribute('aria-busy')).toBe(false);
+    });
+
+    test('a partial bulk move retains failed UIDs and a detail that was not removed', async () => {
+        const data = book(3);
+        await mount({ name: 'Book A', data });
+        const detail = await open(0);
+        await selectMenuAction('Select');
+        await open(0);
+        await open(7);
+        await action('move');
+        move.mockImplementationOnce(async () => {
+            delete data.entries[7];
+            return { ok: true, moved: 1 };
+        });
+        popupChoice = 3;
+        openPicker.mock.calls.at(-1)[0].onSelect('Book B');
+        await settle();
+        expect(selected()).toEqual(['0']);
+        expect(count()).toBe('1 lorum ipsum');
+        expect(detail.destroy).not.toHaveBeenCalled();
+    });
+});
+
 describe('page-of-UID lookup', () => {
     test.each([[0, 1], [63, 1], [70, 2], [154, 3], [999, 1], ['70', 2]])('UID %s maps to page %i', (uid, page) => {
         expect(pageForWorldInfoUid(Object.values(book(25).entries), uid, 10)).toBe(page);

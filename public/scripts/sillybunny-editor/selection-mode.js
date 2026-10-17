@@ -38,9 +38,11 @@ function normalizeKeys(keys) {
  * @param {HTMLElement} options.actionBar
  * @param {{ id: string, label: string, icon?: string|Element, danger?: boolean, onActivate: (keys: string[]) => void }[]} [options.actions=[]]
  * @param {(count: number) => string} [options.title]
+ * @param {string} [options.selectAllLabel] Defaults to the existing Select all label.
+ * @param {() => boolean} [options.canEnter] Whether gestures or enter() may start selection.
  * @param {(keys: string[]) => void|null} [options.onChange=null]
  * @param {() => void|null} [options.onExit=null]
- * @returns {{ enter: (initialKey?: string) => void, exit: () => void, toggle: (key: string) => void,
+ * @returns {{ enter: (initialKey?: string, trigger?: HTMLElement) => void, exit: () => void, toggle: (key: string) => void,
  * select: (keys: Iterable<string>) => void, clear: () => void, selectAll: () => void,
  * readonly isActive: boolean, readonly selectedKeys: string[], readonly count: number,
  * decorate: (options?: { prune?: boolean }) => void, destroy: () => void }}
@@ -56,6 +58,8 @@ export function createSelectionMode({
     actionBar,
     actions = [],
     title = count => t`${count} selected`,
+    selectAllLabel = t`Select all`,
+    canEnter = () => true,
     onChange = null,
     onExit = null,
 }) {
@@ -141,7 +145,7 @@ export function createSelectionMode({
         const selectAllButton = document.createElement('button');
         selectAllButton.type = 'button';
         selectAllButton.className = 'menu_button sb-selection-select-all';
-        selectAllButton.textContent = t`Select all`;
+        selectAllButton.textContent = selectAllLabel;
         selectAllButton.addEventListener('click', () => {
             const allRows = rows();
             const allSelected = allRows.length > 0 && allRows.every(row => {
@@ -149,7 +153,8 @@ export function createSelectionMode({
                 return key !== null && selected.has(key);
             });
             if (allSelected) {
-                clear();
+                const pageKeys = new Set(allRows.map(keyFromRow));
+                updateSelection(new Set([...selected].filter(key => !pageKeys.has(key))));
             } else {
                 selectAll();
             }
@@ -211,13 +216,13 @@ export function createSelectionMode({
         }
     }
 
-    function enter(initialKey = null, row = null) {
-        if (active) {
+    function enter(initialKey = null, trigger = null) {
+        if (active || !canEnter()) {
             return;
         }
         stopLongPress();
         const focusedRow = rowFrom(document.activeElement);
-        focusReturn = focusedRow ?? row ?? list;
+        focusReturn = trigger ?? focusedRow ?? (root.contains(document.activeElement) ? document.activeElement : list);
         active = true;
         root.dataset.selectionMode = 'true';
         selected = new Set();
@@ -229,6 +234,7 @@ export function createSelectionMode({
         renderActionBar();
         render();
         emitChange();
+        header.querySelector('.sb-selection-cancel')?.focus({ preventScroll: true });
     }
 
     function exit() {
@@ -296,7 +302,7 @@ export function createSelectionMode({
         if (!active) {
             return;
         }
-        updateSelection(new Set(rows().map(keyFromRow).filter(key => key !== null)));
+        updateSelection(new Set([...selected, ...rows().map(keyFromRow).filter(key => key !== null)]));
     }
 
     function decorate({ prune = false } = {}) {
@@ -333,7 +339,7 @@ export function createSelectionMode({
 
     function handlePointerDown(event) {
         suppressNextClick = false;
-        if (active || event.pointerType !== 'touch') {
+        if (active || event.pointerType !== 'touch' || !canEnter()) {
             return;
         }
         const row = rowFrom(event.target);
@@ -402,7 +408,7 @@ export function createSelectionMode({
 
     function handleContextMenu(event) {
         const row = rowFrom(event.target);
-        if (!row) {
+        if (!row || (!active && !canEnter())) {
             return;
         }
         event.preventDefault();
@@ -413,9 +419,19 @@ export function createSelectionMode({
     }
 
     function handleRootKeydown(event) {
-        if (!active || event.isComposing || event.key !== 'Escape') {
+        if (!active || event.isComposing || event.defaultPrevented) {
             return;
         }
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
+            const target = event.target;
+            if (!(target instanceof Element) || target.closest('input:not(.sb-selection-check), textarea, select, [contenteditable="true"]')
+                || ![list, header, actionBar].some(region => region.contains(target))) return;
+            event.preventDefault();
+            event.stopPropagation();
+            selectAll();
+            return;
+        }
+        if (event.key !== 'Escape') return;
         event.preventDefault();
         event.stopPropagation();
         exit();

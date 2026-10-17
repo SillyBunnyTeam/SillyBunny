@@ -7,6 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const mobileStylesCss = readFileSync(path.join(repoRoot, 'public', 'css', 'mobile-styles.css'), 'utf8').replace(/\r\n/g, '\n');
 const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8').replace(/\r\n/g, '\n');
 const worldInfoCss = readFileSync(path.join(repoRoot, 'public', 'css', 'world-info.css'), 'utf8').replace(/\r\n/g, '\n');
+const worldInfoEditorCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-world-info-editor.css'), 'utf8').replace(/\r\n/g, '\n');
 
 function getRuleBodies(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -67,20 +68,11 @@ describe('mobile character drawer entity row css', () => {
 });
 
 describe('mobile embedded lorebook css', () => {
-    test('lets the character drawer own scrolling after narrower container rules', () => {
-        const selector = '#WorldInfo.sb-shell-embedded-content :is(#world_popup, #world_popup_entries_list)';
-        const rule = getRuleBody(worldInfoCss, selector);
-        const listHeightCap = worldInfoCss.indexOf('max-height: clamp(280px, 40vh, 420px);');
-        const mobileBreakpoint = worldInfoCss.indexOf('@media screen and (max-width: 960px)', listHeightCap);
-        const mobileReset = worldInfoCss.indexOf(selector);
-
-        expect(rule).toContain('width: 100%;');
-        expect(rule).toContain('height: auto;');
-        expect(rule).toContain('max-width: 100%;');
-        expect(rule).toContain('max-height: none;');
-        expect(rule).toContain('overflow: visible;');
-        expect(listHeightCap).toBeGreaterThan(-1);
-        expect(mobileBreakpoint).toBeGreaterThan(listHeightCap);
-        expect(mobileReset).toBeGreaterThan(mobileBreakpoint);
+    test('lets the rebuilt editor own scrolling without legacy container or mobile overrides', () => {
+        expect(worldInfoCss).not.toContain('@container sb-world-info');
+        expect(worldInfoCss).not.toContain('#WorldInfo.sb-shell-embedded-content');
+        expect(worldInfoCss).not.toContain('max-height: clamp(');
+        expect(getRuleBody(worldInfoEditorCss, '.sb-wi-list-body')).toContain('overflow: auto;');
+        expect(getRuleBody(worldInfoEditorCss, '#sb_character_world_info_panel:has(.sb-wi-editor-mounted)')).toContain('overflow: hidden;');
     });
 });
