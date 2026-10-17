@@ -686,6 +686,10 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     'characters:persona': [
         { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
+        // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
+        { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
+        { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
@@ -7589,12 +7593,32 @@ function ensureCharacterWorldInfoPanel() {
     return host;
 }
 
+// SillyBunny: lazy-mount the persona editor only after its deferred styles load — see docs/ui-migration.md
+let personaEditorMountPromise = null;
 function setCharacterPersonaPanelVisible(visible) {
     const host = ensureCharacterPersonaPanel() ?? document.getElementById('sb_character_persona_panel');
+    const content = document.getElementById('PersonaManagement');
 
     if (host instanceof HTMLElement) {
         host.hidden = !visible;
         host.setAttribute('aria-hidden', String(!visible));
+    }
+
+    if (content instanceof HTMLElement) {
+        content.setAttribute('aria-hidden', String(!visible));
+        if (visible && !personaEditorMountPromise) {
+            personaEditorMountPromise = import('./sillybunny-persona-editor.js').then(async module => {
+                await module.loadPersonaEditorStyles(SB_PANEL_STYLESHEETS['characters:persona']);
+                const controller = module.mountPersonaEditor(content);
+                await controller.ready;
+                return controller;
+            });
+            // SillyBunny: observe failures without swallowing the bridge's rejection — see docs/ui-migration.md
+            personaEditorMountPromise.catch(error => {
+                personaEditorMountPromise = null;
+                console.warn('[SillyBunny] Could not mount the persona editor.', error);
+            });
+        }
     }
 }
 
@@ -8325,6 +8349,13 @@ function preloadPanelStylesheets(shellKey, tabId = null) {
 
     if (!stylesheets || !window.SillyBunnyAssets?.loadStylesheetAsync) {
         return;
+    }
+
+    // SillyBunny: persona preloads share mount retry cleanup for failed links — see docs/ui-migration.md
+    if (normalizedKey === 'characters:persona') {
+        return import('./sillybunny-persona-editor.js')
+            .then(module => module.loadPersonaEditorStyles(stylesheets))
+            .catch(error => console.warn('Failed to load panel stylesheet:', normalizedKey, error));
     }
 
     for (const stylesheet of stylesheets) {
@@ -12479,16 +12510,10 @@ function getPersonaSearchEntries(tabState) {
             tabId: tabState.id,
             tabLabel: tabState.label,
             dedupeKey: getSearchEntryDedupeKey(tabState, 'Persona', name, { avatarId }),
-            action: () => {
-                // Activate the persona tab and trigger ST's own persona search
-                openCharacterPanelTab('persona');
-                window.setTimeout(() => {
-                    const searchInput = document.getElementById('persona_search_bar');
-                    if (searchInput instanceof HTMLInputElement) {
-                        searchInput.value = name;
-                        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }, 80);
+            action: async () => {
+                // SillyBunny: open the exact persona without changing the list search — see docs/ui-migration.md
+                const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
+                await openPersonaEditor({ avatarId });
             },
         });
     }
@@ -14759,7 +14784,8 @@ function composePersonaDescriptionFromContext(context, avatarId, activeIds = nul
     for (const appendix of appendices) {
         const description = String(appendix.description ?? '').trim();
         if (activeIdSet.has(appendix.id) && description) {
-            chunks.push(`[${appendix.name}]\n${description}`);
+            // SillyBunny: match persona/Conversation note composition — see docs/ui-migration.md
+            chunks.push(`(${appendix.name})\n${description}`);
         }
     }
 
@@ -15131,22 +15157,12 @@ function renderPersonaPickerAppendixControls(picker, context, avatarId) {
     picker.appendChild(section);
 }
 
-function openPersonaAppendicesManager() {
+async function openPersonaAppendicesManager() {
+    const { currentAvatarId } = getCurrentPersonaSelection();
     closePersonaPicker();
-    openCharacterPanelTab('persona');
-
-    window.setTimeout(() => {
-        document.getElementById('persona_workspace_tab_edit')?.click();
-        document.getElementById('persona_editor_tab_prompt')?.click();
-        const appendicesHeading = document.getElementById('persona_appendices_heading');
-        const addButton = document.getElementById('persona_appendix_add');
-        const appendicesBlock = appendicesHeading?.closest('details');
-        if (appendicesBlock instanceof HTMLDetailsElement) {
-            appendicesBlock.open = true;
-        }
-        scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
-        addButton?.focus({ preventScroll: true });
-    }, 160);
+    // SillyBunny: bridge Manage directly to the active persona's notes — see docs/ui-migration.md
+    const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
+    await openPersonaEditor({ avatarId: currentAvatarId, section: 'notes' });
 }
 
 function positionPersonaPicker(picker, bubble) {
@@ -15445,6 +15461,11 @@ function initAll() {
         openTab(shellKey, tabId) {
             if (shellKey === 'characters') {
                 openCharacterPanelTab(tabId);
+                // SillyBunny: persona bridges await mounting and reveal mobile content — see docs/ui-migration.md
+                if (tabId === 'persona') {
+                    if (isMobileViewport()) setSettingsMobileContentView(true);
+                    return personaEditorMountPromise;
+                }
                 return;
             }
 

@@ -63,9 +63,26 @@ export function createAppendixId(name = 'appendix', now = Date.now()) {
     return `${slug}-${now}`;
 }
 
+function canonicalAppendices(appendices) {
+    const usedIds = new Set();
+    return (Array.isArray(appendices) ? appendices : []).map((appendix, index) => {
+        // Match normalizePersonaAppendices so active projection cannot invalidate rollback receipts.
+        const name = String(appendix?.name || `Scenario Note ${index + 1}`).trim() || `Scenario Note ${index + 1}`;
+        const fallbackId = `${createAppendixId(name)}-${index}`;
+        let id = String(appendix?.id || fallbackId).trim() || fallbackId;
+        while (usedIds.has(id)) id = `${id}-${index}`;
+        usedIds.add(id);
+        return { id, name, description: String(appendix?.description ?? '') };
+    });
+}
+
 export function validateDraft(draft) {
     const errors = String(draft?.name ?? '').trim() ? {} : { name: 'required' };
-    return { ok: !errors.name, errors };
+    for (const [index, appendix] of (draft?.appendices ?? []).entries()) {
+        if (String(appendix?.name ?? '').trim()) continue;
+        (errors.appendices ??= {})[index] = 'required';
+    }
+    return { ok: Object.keys(errors).length === 0, errors };
 }
 
 const sameValue = (before, after) => JSON.stringify(before) === JSON.stringify(after);
@@ -100,6 +117,10 @@ export function applyDraft(state, avatarId, baseline, draft) {
     for (const key of keys) {
         previous[key] = structuredClone(key === 'name' ? state.personas[avatarId] : oldDescriptor?.[key]);
         written[key] = structuredClone(key === 'name' ? draft.name.trim() : draft[key]);
+        if (key === 'appendices') {
+            if (previous[key] !== undefined) previous[key] = canonicalAppendices(previous[key]);
+            written[key] = canonicalAppendices(written[key]);
+        }
     }
 
     for (const key of keys) {

@@ -3919,8 +3919,9 @@ export async function duplicatePersonaRecord(avatarId) {
     return duplicated;
 }
 
-export async function deletePersonaRecord(avatarId) {
-    return deletePersona(avatarId);
+export async function deletePersonaRecord(avatarId, { silent = false } = {}) {
+    // SillyBunny: abandoned editor creations skip the legacy confirmation and notifications.
+    return silent ? deletePersona(avatarId, { silent: true }) : deletePersona(avatarId);
 }
 
 export function changePersonaImage(avatarId) {
@@ -3942,6 +3943,24 @@ export function getPersonaModelDeps() {
             PERSONA_RENAMED: event_types.PERSONA_RENAMED,
         },
     };
+}
+
+// SillyBunny: reuse fuzzy filtering without legacy controls or renderer side effects — see docs/ui-migration.md
+export function getPersonaDisplayAvatars(allIds, query = '') {
+    const ids = personasFilter.applyFilters([...allIds], { tempOverrides: { [FILTER_TYPES.PERSONA_SEARCH]: query } });
+    return ids.sort((left, right) => {
+        if (query) {
+            return personasFilter.getScore(FILTER_TYPES.PERSONA_SEARCH, left) - personasFilter.getScore(FILTER_TYPES.PERSONA_SEARCH, right);
+        }
+        const leftName = String(power_user.personas[left] || left);
+        const rightName = String(power_user.personas[right] || right);
+        return power_user.persona_sort_order === 'asc' ? leftName.localeCompare(rightName) : rightName.localeCompare(leftName);
+    });
+}
+
+// SillyBunny: expose scope-aware selections including the legacy chat fallback — see docs/ui-migration.md
+export function getPersonaActiveAppendixIds(avatarId) {
+    return [...getActivePersonaAppendixIds(avatarId)];
 }
 
 // #endregion

@@ -58,6 +58,17 @@ function depsFor(state, overrides = {}) {
     };
 }
 
+function legacyAppendixNormalizer() {
+    return runInNewContext([
+        ...['createPersonaAppendixId', 'normalizePersonaAppendixSelections', 'normalizePersonaAppendices'].map(functionSource),
+        'normalizePersonaAppendices;',
+    ].join('\n'), {
+        Date: { now: () => 123 },
+        PERSONA_APPENDICES_DEFAULT_SCOPE_KEY: '__default__',
+        PERSONA_APPENDICES_SELECTIONS_KEY: 'activeAppendices',
+    });
+}
+
 describe('persona schema parity', () => {
     test('positions match the legacy enum and role/depth defaults stay fixed', () => {
         const literal = personaSource.match(/export const persona_description_positions = (\{[\s\S]*?^\});/m)[1];
@@ -146,13 +157,44 @@ describe('persona draft boundary', () => {
         expect(model.validateDraft({ name })).toEqual({ ok: false, errors: { name: 'required' } });
     });
 
-    test('name is the only blocking validation', () => {
+    test('optional fields do not block a valid name', () => {
         expect(model.validateDraft({ name: ' Ari ', depth: -999, position: 'unknown', description: '' }))
             .toEqual({ ok: true, errors: {} });
+    });
+
+    test.each(['', ' \n\t', null, undefined])('validation rejects a blank note name %p', name => {
+        expect(model.validateDraft({ name: 'Ari', appendices: [{ name: 'Valid' }, { name }] }))
+            .toEqual({ ok: false, errors: { appendices: { 1: 'required' } } });
     });
 });
 
 describe('persona apply and rollback', () => {
+    test('note receipts canonicalize previous and written notes exactly like the legacy normalizer', () => {
+        const clock = jest.spyOn(Date, 'now').mockReturnValue(123);
+        try {
+            const { state, descriptor, baseline, draft } = fixture();
+            const notes = [
+                { id: ' same ', name: ' First ', description: 1, extra: true },
+                { id: 'same', name: '  ' },
+                { id: 'same-1', name: false, description: null },
+                { id: ' ', name: 0, description: false },
+                null,
+                { name: ' Missing id ' },
+            ];
+            descriptor.appendices = structuredClone(notes);
+            draft.appendices = [...notes, { id: 'same', name: ' Last ' }];
+            const expectedPrevious = legacyAppendixNormalizer()({ appendices: notes });
+            const expectedWritten = legacyAppendixNormalizer()({ appendices: draft.appendices });
+            const applied = model.applyDraft(state, 'ari.png', baseline, draft);
+            expect(applied.previous.appendices).toEqual(expectedPrevious);
+            expect(descriptor.appendices).toEqual(expectedWritten);
+            expect(model.revertDraft(state, 'ari.png', applied)).toEqual(['appendices']);
+            expect(descriptor.appendices).toEqual(expectedPrevious);
+        } finally {
+            clock.mockRestore();
+        }
+    });
+
     test('writes only dirty keys into the live descriptor, preserving unknown and immediate-action keys', () => {
         const { state, descriptor, baseline, draft } = fixture();
         const connections = descriptor.connections;
@@ -338,6 +380,58 @@ describe('persona draft concurrency', () => {
 });
 
 describe('acknowledged persona commits', () => {
+    test('failed active saves fully restore notes after real legacy projection normalization', async () => {
+        const { state, descriptor, baseline, draft } = fixture();
+        const previous = structuredClone(descriptor);
+        const normalize = legacyAppendixNormalizer();
+        const projected = [];
+        draft.appendices = [
+            { id: 'first', name: ' Renamed ', description: 'Changed' },
+            { id: 'first', name: ' Added ', description: 7 },
+        ];
+        const deps = depsFor(state, {
+            isActive: jest.fn(() => true),
+            project: jest.fn(() => {
+                const before = structuredClone(descriptor.appendices);
+                normalize(descriptor);
+                projected.push({ before, after: structuredClone(descriptor.appendices) });
+            }),
+            save: jest.fn(async () => false),
+        });
+        await expect(model.commit(deps, 'ari.png', baseline, draft)).resolves.toEqual({ ok: false, reason: 'save' });
+        expect(descriptor).toEqual(previous);
+        expect(deps.project).toHaveBeenCalledTimes(2);
+        for (const { before, after } of projected) expect(after).toEqual(before);
+        expect(deps.emit).not.toHaveBeenCalled();
+    });
+
+    test('real legacy projection still preserves a concurrent note writer after a failed save', async () => {
+        const { state, descriptor, baseline, draft } = fixture();
+        const normalize = legacyAppendixNormalizer();
+        const later = [{ id: 'later', name: 'Later', description: 'External edit' }];
+        draft.appendices[0].name = ' My edit ';
+        const deps = depsFor(state, {
+            isActive: jest.fn(() => true),
+            project: jest.fn(() => normalize(descriptor)),
+            save: jest.fn(async () => { descriptor.appendices = structuredClone(later); return false; }),
+        });
+        await expect(model.commit(deps, 'ari.png', baseline, draft)).resolves.toEqual({ ok: false, reason: 'save' });
+        expect(descriptor.appendices).toEqual(later);
+    });
+
+    test('invalid note names never apply, save, project, or emit', async () => {
+        const { state, descriptor, baseline, draft } = fixture();
+        const deps = depsFor(state, { isActive: jest.fn(() => true) });
+        draft.appendices[0].name = ' ';
+        await expect(model.commit(deps, 'ari.png', baseline, draft)).resolves.toEqual({
+            ok: false, reason: 'invalid', errors: { appendices: { 0: 'required' } },
+        });
+        expect(descriptor.appendices).toEqual(baseline.appendices);
+        expect(deps.save).not.toHaveBeenCalled();
+        expect(deps.project).not.toHaveBeenCalled();
+        expect(deps.emit).not.toHaveBeenCalled();
+    });
+
     test('invalid names do not apply, save, project, or emit', async () => {
         const { state, baseline, draft } = fixture();
         const deps = depsFor(state);
@@ -743,6 +837,12 @@ describe('targetable persona API', () => {
         expect(api.$.mock.calls).toEqual([['#avatar_upload_overwrite'], ['#avatar_upload_file']]);
         expect(dom.val).toHaveBeenCalledWith('ari.png');
         expect(dom.trigger).toHaveBeenCalledWith('click');
+    });
+
+    test('provisional cleanup can delete silently through the legacy API', async () => {
+        const { api } = createApi();
+        await expect(api.deletePersonaRecord('ari.png', { silent: true })).resolves.toBe(true);
+        expect(api.deletePersona).toHaveBeenCalledWith('ari.png', { silent: true });
     });
 
     test('creation uses the legacy id scheme and default avatar, without activation', async () => {

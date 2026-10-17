@@ -1,0 +1,422 @@
+#PersonaManagement.sb-persona-editor-mounted > :not(.sb-persona-editor) {
+    display: none !important;
+}
+
+/* Match World Info's embedded-drawer reset and Prompt Editor gutters. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-persona-editor-mounted) {
+    padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;
+    overflow: hidden !important;
+    scrollbar-gutter: auto;
+}
+
+#sb_character_persona_panel:has(.sb-persona-editor-mounted) {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#sb_character_persona_panel:has(.sb-persona-editor-mounted) > #persona-management-button,
+#sb_character_persona_panel #PersonaManagement.sb-persona-editor-mounted {
+    display: flex !important;
+    flex: 1 1 0;
+    flex-direction: column;
+    width: 100%;
+    height: 100% !important;
+    min-width: 0;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    container: none;
+}
+
+#PersonaManagement.sb-persona-editor-mounted .sb-persona-editor {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 0;
+}
+
+.sb-persona-list-content {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.sb-persona-list-header,
+.sb-persona-settings-header {
+    display: flex;
+    align-items: center;
+    flex: none;
+    flex-wrap: nowrap;
+    box-sizing: border-box;
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
+    gap: 4px;
+    padding: 6px 8px;
+    min-width: 0;
+    background: transparent;
+}
+
+.sb-persona-list-header {
+    overflow: hidden;
+    gap: 2px;
+    padding-inline: 10px;
+}
+
+.sb-persona-settings-header {
+    border-bottom: var(--sb-headerbar-shade);
+}
+
+.sb-persona-editor :is(button, input, textarea) {
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+#PersonaManagement .sb-persona-editor .menu_button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    flex: none;
+    width: auto;
+    min-height: 38px;
+    margin: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#PersonaManagement .sb-persona-editor .menu_button_icon {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    padding: 0;
+}
+
+.sb-persona-list-header-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.sb-persona-list-titles {
+    flex: 0 1 auto;
+    min-width: 0;
+    padding-inline: 6px;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    text-align: start;
+}
+
+.sb-persona-list-titles > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-persona-list-title {
+    line-height: 1.25;
+}
+
+.sb-persona-list-subtitle {
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--sb-type-body) * 0.75);
+    font-weight: 400;
+}
+
+.sb-persona-search-field {
+    --sb-persona-search-height: 40px;
+    display: flex;
+    align-items: center;
+    flex: none;
+    gap: 8px;
+    height: var(--sb-persona-search-height);
+    margin: 8px;
+    padding-inline: 10px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-flat-hover-bg);
+    color: var(--sb-muted-fg);
+}
+
+.sb-persona-search-field:focus-within {
+    border-color: var(--sb-accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sb-accent) 40%, transparent);
+}
+
+#PersonaManagement .sb-persona-editor .sb-persona-search {
+    flex: 1;
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-family: inherit;
+    font-size: var(--sb-type-control);
+    box-shadow: none;
+}
+
+.sb-persona-list-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: 8px 0 8px 8px;
+}
+
+#sb-settings-page #PersonaManagement .sb-persona-list-heading {
+    margin: 6px 6px 8px;
+    font-size: var(--sb-type-body);
+    font-weight: 700;
+}
+
+#sb-settings-page #PersonaManagement .sb-persona-list-box {
+    display: block;
+    gap: normal;
+    overflow: hidden;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-card);
+    background: color-mix(in srgb, var(--sb-shell-text) 8%, transparent);
+}
+
+:root[data-sb-surface-tone='light'] #sb-settings-page #PersonaManagement .sb-persona-list-box {
+    background: var(--sb-layer-view);
+}
+
+#sb-settings-page #PersonaManagement .sb-persona-editor .sb-persona-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 0;
+    color: inherit;
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 52px;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#sb-settings-page #PersonaManagement .sb-persona-editor .sb-persona-row:not(:last-child) {
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+#PersonaManagement .sb-persona-row-avatar {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.sb-persona-row .ds-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.sb-persona-row :is(.ds-row-label, .ds-row-subtitle) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#sb-settings-page #PersonaManagement .sb-persona-row .ds-row-label {
+    font-size: calc(var(--sb-type-body) * 0.9);
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.sb-persona-row .ds-row-suffix {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+#sb-settings-page #PersonaManagement .sb-persona-row .ds-row-subtitle {
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--sb-type-body) * 0.75);
+    line-height: 1.6;
+}
+
+.sb-persona-row-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
+.sb-persona-row-badges .is-in-use {
+    color: var(--sb-accent);
+}
+
+#PersonaManagement .sb-persona-editor .sb-persona-row.is-selected {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sb-persona-editor .sb-list-pagination {
+    flex: none;
+    padding: 0 12px max(10px, env(safe-area-inset-bottom));
+    font-size: calc(var(--sb-type-body) * 0.75);
+}
+
+.sb-persona-editor[data-open='true'][data-collapsed='false'] .sb-persona-row .ds-row-subtitle {
+    display: none !important;
+}
+
+@container sb-list-editor-sidebar (width < 440px) {
+    #sb-settings-page #PersonaManagement .sb-persona-editor .sb-persona-row {
+        gap: 6px;
+        padding-inline: 4px;
+    }
+
+    .sb-persona-row-badges {
+        gap: 5px;
+    }
+}
+
+@media (hover: hover) {
+    #PersonaManagement .sb-persona-editor :is(.menu_button:not(:disabled), .sb-persona-row):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    #PersonaManagement .sb-persona-editor .sb-persona-row.is-selected:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+#PersonaManagement .sb-persona-editor :is(button, .sb-persona-row):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#PersonaManagement .sb-persona-editor .sb-persona-list-header .menu_button_icon:disabled {
+    background: transparent;
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+    #PersonaManagement .sb-persona-editor .menu_button {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .sb-persona-search-field {
+        --sb-persona-search-height: 44px;
+    }
+}
+
+@media (max-width: 1439px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-persona-editor-mounted) {
+        padding: 14px 14px 9px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-persona-editor-mounted) {
+        padding-bottom: calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-persona-row,
+    #PersonaManagement .sb-persona-editor .menu_button {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sb-persona-row,
+body.reduced-motion #PersonaManagement .sb-persona-editor .menu_button {
+    transition: none;
+}
+
+/* Settings pane follows World Info, including transport restoration in JS. */
+.sb-persona-settings {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: inherit;
+}
+
+.sb-persona-settings-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 4px 6px;
+    overflow: hidden;
+    color: inherit;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-persona-settings-body {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.sb-persona-settings-body > .sb-editor-section {
+    margin: 0 0 24px;
+}
+
+.sb-persona-settings-body > .sb-editor-section:last-child {
+    margin-bottom: 0;
+}
+
+.sb-persona-settings [hidden] {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .sb-persona-settings > .sb-persona-settings-header {
+        padding-inline: 4px;
+    }
+
+    .sb-persona-settings-body {
+        padding-inline: 8px;
+    }
+}

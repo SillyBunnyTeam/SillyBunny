@@ -42,9 +42,7 @@ describe('Scenario Notes disclosure', () => {
         expect(indexHtml).toContain('class="persona-effective-preview-title"');
     });
 
-    test('the Scenario Notes shortcut opens the disclosure before focusing Add', () => {
-        expect(tabsJs).toContain('const appendicesBlock = appendicesHeading?.closest(\'details\');');
-        expect(tabsJs).toContain('appendicesBlock.open = true;');
-        expect(tabsJs).toContain('addButton?.focus({ preventScroll: true });');
+    test('the Scenario Notes shortcut opens the persona editor at the notes section', () => {
+        expect(tabsJs).toContain('await openPersonaEditor({ avatarId: currentAvatarId, section: \'notes\' });');
     });
 });
