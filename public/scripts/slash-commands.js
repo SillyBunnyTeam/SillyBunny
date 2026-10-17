@@ -73,7 +73,8 @@ import { getMessageTimeStamp, isMobile } from './RossAscends-mods.js';
 import { hideChatMessageRange } from './chats.js';
 import { getContext, saveMetadataDebounced } from './extensions.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
-import { findGroupMemberId, groups, is_group_generating, openGroupById, regenerateGroup, resetSelectedGroup, saveGroupChat, selected_group, getGroupMembers } from './group-chats.js';
+// SillyBunny: member commands use pagination-independent action transport — see docs/ui-migration.md
+import { findGroupMemberId, groups, is_group_generating, openGroupById, regenerateGroup, resetSelectedGroup, saveGroupChat, selected_group, getGroupMembers, runGroupMemberActionByChid } from './group-chats.js';
 import { chat_completion_sources, MINIMAX_ENDPOINT, oai_settings, POLLINATIONS_ENDPOINT, promptManager, SILICONFLOW_ENDPOINT, ZAI_ENDPOINT } from './openai.js';
 import { user_avatar } from './personas.js';
 import { addEphemeralStoppingString, chat_styles, context_presets, flushEphemeralStoppingStrings, playMessageSound, power_user } from './power-user.js';
@@ -4859,32 +4860,11 @@ async function unhideMessageCallback(args, value) {
  * Copium for running group actions when the member is offscreen.
  * @param {number} chid - character ID
  * @param {string} action - one of 'enable', 'disable', 'up', 'down', 'view', 'remove'
- * @returns {void}
+ * @returns {Promise<void>}
  */
 function performGroupMemberAction(chid, action) {
-    const memberSelector = `.group_member[data-chid="${chid}"]`;
-    // Do not optimize. Paginator gets recreated on every action
-    const paginationSelector = '#rm_group_members_pagination';
-    const pageSizeSelector = '#rm_group_members_pagination select';
-    let wasOffscreen = false;
-    let paginationValue = null;
-    let pageValue = null;
-
-    if ($(memberSelector).length === 0) {
-        wasOffscreen = true;
-        paginationValue = Number($(pageSizeSelector).val());
-        pageValue = $(paginationSelector).pagination('getCurrentPageNum');
-        $(pageSizeSelector).val($(pageSizeSelector).find('option').last().val()).trigger('change');
-    }
-
-    $(memberSelector).find(`[data-action="${action}"]`).trigger('click');
-
-    if (wasOffscreen) {
-        $(pageSizeSelector).val(paginationValue).trigger('change');
-        if ($(paginationSelector).length) {
-            $(paginationSelector).pagination('go', pageValue);
-        }
-    }
+    // SillyBunny: off-page actions never reconfigure the visible list — see docs/ui-migration.md
+    return runGroupMemberActionByChid(chid, action);
 }
 
 async function disableGroupMemberCallback(_, arg) {
@@ -4900,7 +4880,8 @@ async function disableGroupMemberCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'disable');
+    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    await performGroupMemberAction(chid, 'disable');
     return '';
 }
 
@@ -4917,7 +4898,8 @@ async function enableGroupMemberCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'enable');
+    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    await performGroupMemberAction(chid, 'enable');
     return '';
 }
 
@@ -4934,7 +4916,8 @@ async function moveGroupMemberUpCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'up');
+    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    await performGroupMemberAction(chid, 'up');
     return '';
 }
 
@@ -4951,7 +4934,8 @@ async function moveGroupMemberDownCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'down');
+    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    await performGroupMemberAction(chid, 'down');
     return '';
 }
 
@@ -4973,7 +4957,8 @@ async function peekCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'view');
+    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    await performGroupMemberAction(chid, 'view');
     return '';
 }
 
@@ -4999,7 +4984,8 @@ async function removeGroupMemberCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'remove');
+    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    await performGroupMemberAction(chid, 'remove');
     return '';
 }
 

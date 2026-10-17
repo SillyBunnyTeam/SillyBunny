@@ -115,9 +115,11 @@ test.describe('Persona editor', () => {
         expect(await rows.count()).toBeGreaterThan(0);
         for (const row of await rows.all()) {
             await expect(row).toHaveAccessibleName(/\S/);
-            await expect(row.locator('.sb-persona-row-avatar')).toBeVisible();
-            await expect(row.locator('.sb-persona-row-avatar')).toHaveAttribute('loading', 'lazy');
-            await expect(row.locator('.sb-persona-row-avatar')).toHaveAttribute('src', /\S/);
+            await expect(row.locator('.ds-entity-row__avatar img')).toBeVisible();
+            await expect(row.locator('.ds-entity-row__avatar img')).toHaveAttribute('loading', 'lazy');
+            await expect(row.locator('.ds-entity-row__avatar img')).toHaveAttribute('src', /\S/);
+            await expect(row.locator('.ds-entity-row__title')).toHaveText(/\S/);
+            await expect(row.locator('.ds-entity-row__chevron')).toHaveCount(0);
         }
         const active = rows.filter({ has: page.getByRole('img', { name: 'Current Persona', exact: true }) });
         await expect(active).toHaveAccessibleName(persona.name);

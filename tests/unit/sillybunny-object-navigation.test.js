@@ -133,7 +133,7 @@ describe('object navigation transactions', () => {
         approval.resolve(true);
         await Promise.resolve();
         expect(origin.captureState).toHaveBeenCalledTimes(1);
-        expect(destination.open).toHaveBeenCalledWith(target, { restore: null });
+        expect(destination.open).toHaveBeenCalledWith(target, { restore: null, isCurrent: expect.any(Function) });
         expect(destination.exists.mock.invocationCallOrder[0]).toBeLessThan(origin.captureState.mock.invocationCallOrder[0]);
         expect(origin.captureState.mock.invocationCallOrder[0]).toBeLessThan(destination.open.mock.invocationCallOrder[0]);
         expect(navigation.depth).toBe(0);
@@ -153,7 +153,7 @@ describe('object navigation transactions', () => {
 
         expect(await navigation.navigate(target, { from })).toEqual({ ok: true });
         expect(await navigation.back({ current: target, fallback: jest.fn() })).toEqual({ ok: true });
-        expect(open).toHaveBeenLastCalledWith(from, { restore: null });
+        expect(open).toHaveBeenLastCalledWith(from, { restore: null, isCurrent: expect.any(Function) });
     });
 
     test('re-registration replaces a kind and a stale unregister cannot remove its replacement', async () => {
@@ -178,9 +178,9 @@ describe('object navigation transactions', () => {
         expect(navigation.depth).toBe(2);
 
         await navigation.back({ current: target, fallback: jest.fn() });
-        expect(origin.open).toHaveBeenLastCalledWith({ ...from, id: 'newest' }, { restore: expect.any(Object) });
+        expect(origin.open).toHaveBeenLastCalledWith({ ...from, id: 'newest' }, { restore: expect.any(Object), isCurrent: expect.any(Function) });
         await navigation.back({ current: target, fallback: jest.fn() });
-        expect(origin.open).toHaveBeenLastCalledWith({ ...from, id: 'middle' }, { restore: expect.any(Object) });
+        expect(origin.open).toHaveBeenLastCalledWith({ ...from, id: 'middle' }, { restore: expect.any(Object), isCurrent: expect.any(Function) });
         expect(navigation.depth).toBe(0);
     });
 
@@ -188,6 +188,86 @@ describe('object navigation transactions', () => {
         const { navigation, from, target } = makeNavigation();
         for (let index = 0; index < 10; index++) await navigation.navigate(target, { from });
         expect(navigation.depth).toBe(8);
+    });
+
+    test('resolves a functional origin after approval so Save can replace the create id', async () => {
+        const approval = deferred();
+        const { navigation, confirmLeave, origin, target, state } = makeNavigation();
+        let groupId = 'create';
+        const from = jest.fn(() => ({ kind: 'characters', id: groupId }));
+        confirmLeave.mockReturnValueOnce(approval.promise);
+
+        const result = navigation.navigate(target, { from });
+        expect(from).not.toHaveBeenCalled();
+        groupId = 'saved-group';
+        approval.resolve(true);
+        expect(await result).toEqual({ ok: true });
+        expect(from).toHaveBeenCalledTimes(1);
+        expect(from.mock.invocationCallOrder[0]).toBeLessThan(origin.captureState.mock.invocationCallOrder[0]);
+        expect(await navigation.back({ current: target, fallback: jest.fn() })).toEqual({ ok: true });
+        expect(origin.open).toHaveBeenCalledWith({ kind: 'characters', id: 'saved-group' }, {
+            restore: state,
+            isCurrent: expect.any(Function),
+        });
+    });
+
+    test('does not resolve a functional origin when the guard is cancelled', async () => {
+        const { navigation, confirmLeave, target } = makeNavigation();
+        const from = jest.fn(() => ({ kind: 'characters', id: 'create' }));
+        confirmLeave.mockResolvedValue(false);
+
+        expect(await navigation.navigate(target, { from })).toEqual({ ok: false, reason: 'cancelled' });
+        expect(from).not.toHaveBeenCalled();
+    });
+
+    test('does not resolve a functional origin when its pending guard is superseded', async () => {
+        const approval = deferred();
+        const { navigation, confirmLeave, target, from } = makeNavigation();
+        const origin = jest.fn(() => from);
+        confirmLeave.mockReturnValueOnce(approval.promise);
+        const first = navigation.navigate(target, { from: origin });
+        await navigation.navigate({ ...target, id: 'Bob.png' }, { from });
+        approval.resolve(true);
+
+        expect(await first).toEqual({ ok: false, reason: 'superseded' });
+        expect(origin).not.toHaveBeenCalled();
+    });
+
+    test('invalidates a destination token as soon as a newer navigation starts, before its guard resolves', async () => {
+        const opening = deferred();
+        const approval = deferred();
+        const { navigation, confirmLeave, destination, from, target } = makeNavigation();
+        destination.open.mockReturnValueOnce(opening.promise);
+        const first = navigation.navigate(target, { from });
+        await Promise.resolve();
+        const { isCurrent } = destination.open.mock.calls[0][1];
+        expect(isCurrent()).toBe(true);
+
+        confirmLeave.mockReturnValueOnce(approval.promise);
+        const second = navigation.navigate({ ...target, id: 'Bob.png' }, { from });
+        expect(isCurrent()).toBe(false);
+        approval.resolve(true);
+        expect(await second).toEqual({ ok: true });
+        const newerIsCurrent = destination.open.mock.calls[1][1].isCurrent;
+        expect(newerIsCurrent()).toBe(true);
+        opening.resolve(false);
+        expect(await first).toEqual({ ok: false, reason: 'superseded' });
+        expect(newerIsCurrent()).toBe(true);
+    });
+
+    test('clear invalidates the token passed to an open destination', async () => {
+        const opening = deferred();
+        const { navigation, destination, from, target, notify } = makeNavigation();
+        destination.open.mockReturnValueOnce(opening.promise);
+        const result = navigation.navigate(target, { from });
+        await Promise.resolve();
+        const { isCurrent } = destination.open.mock.calls[0][1];
+        expect(isCurrent()).toBe(true);
+        navigation.clear();
+        expect(isCurrent()).toBe(false);
+        opening.resolve(false);
+        expect(await result).toEqual({ ok: false, reason: 'superseded' });
+        expect(notify).not.toHaveBeenCalled();
     });
 
     test('a newer navigation wins while the previous open is pending', async () => {
@@ -270,7 +350,7 @@ describe('object navigation back', () => {
         const result = navigation.back({ current: { ...target, section: null }, fallback });
         await Promise.resolve();
         expect(navigation.depth).toBe(1);
-        expect(origin.open).toHaveBeenCalledWith(from, { restore: state });
+        expect(origin.open).toHaveBeenCalledWith(from, { restore: state, isCurrent: expect.any(Function) });
         expect(navigation.isRouting).toBe(true);
         pending.resolve(true);
 
@@ -358,6 +438,26 @@ describe('object navigation back', () => {
         expect(await backwards).toEqual({ ok: false, reason: 'superseded' });
         expect(navigation.depth).toBe(2);
         expect(navigation.canGoBack(newerTarget)).toBe(true);
+    });
+
+    test.each(['navigate', 'back', 'clear'])('%s invalidates the token passed to a pending Back destination', async action => {
+        const opening = deferred();
+        const { navigation, from, target, origin } = makeNavigation();
+        await navigation.navigate(target, { from });
+        origin.open.mockReturnValueOnce(opening.promise);
+        const backwards = navigation.back({ current: target, fallback: jest.fn() });
+        await Promise.resolve();
+        const { isCurrent } = origin.open.mock.calls[0][1];
+        expect(isCurrent()).toBe(true);
+
+        let newer;
+        if (action === 'navigate') newer = navigation.navigate({ ...target, id: 'Bob.png' }, { from });
+        else if (action === 'back') newer = navigation.back({ current: target, fallback: jest.fn() });
+        else navigation.clear();
+        expect(isCurrent()).toBe(false);
+        await newer;
+        opening.resolve(false);
+        expect(await backwards).toEqual({ ok: false, reason: 'superseded' });
     });
 });
 

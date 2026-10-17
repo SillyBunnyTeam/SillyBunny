@@ -2,12 +2,20 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 
 const persistenceRequests = new WeakMap();
+const groupDefinitionKeys = [
+    'name', 'members', 'disabled_members', 'member_models', 'avatar_url', 'fav',
+    'activation_strategy', 'generation_mode', 'generation_mode_join_prefix', 'generation_mode_join_suffix',
+    'allow_self_responses', 'hideMutedSprites',
+];
 
 test.beforeEach(async ({ page }) => {
     const requests = [];
     persistenceRequests.set(page, requests);
     page.on('request', request => {
-        if (/\/api\/groups\/(edit|create)$/.test(new URL(request.url()).pathname)) requests.push(request.url());
+        if (!/\/api\/groups\/(edit|create)$/.test(new URL(request.url()).pathname)) return;
+        const body = request.headers()['content-encoding'] === 'gzip'
+            ? gunzipSync(request.postDataBuffer()) : request.postDataBuffer();
+        requests.push(JSON.parse(body.toString()));
     });
     // Keep all browser QA changes local to the editor draft.
     await page.route('**/api/settings/save', route => {
@@ -22,12 +30,46 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-    expect(persistenceRequests.get(page), 'No group persistence before explicit editor Save').toEqual([]);
+    await expectOnlyLiveGroupPayloads(page);
+    await page.evaluate(async () => {
+        const fixtures = window.__sbMemberListFixtures;
+        if (!fixtures) return;
+        const groupChats = await import('/scripts/group-chats.js');
+        const tagsApi = await import('/scripts/tags.js');
+        groupChats.resetSelectedGroup();
+        for (const id of fixtures.groups) {
+            const index = groupChats.groups.findIndex(group => group.id === id);
+            if (index >= 0) groupChats.groups.splice(index, 1);
+        }
+        for (const id of fixtures.tags) {
+            const index = tagsApi.tags.findIndex(tag => tag.id === id);
+            if (index >= 0) tagsApi.tags.splice(index, 1);
+        }
+        for (const [avatar, tags] of fixtures.tagMaps) {
+            if (tags === undefined) delete tagsApi.tag_map[avatar];
+            else tagsApi.tag_map[avatar] = tags;
+        }
+    });
 });
+
+async function expectOnlyLiveGroupPayloads(page) {
+    const { groups, baselines } = await page.evaluate(async () => ({
+        groups: (await import('/scripts/group-chats.js')).groups,
+        baselines: window.__sbMemberListFixtures?.baselines ?? [],
+    }));
+    for (const payload of persistenceRequests.get(page)) {
+        const live = baselines.find(group => group.id === payload.id) ?? groups.find(group => group.id === payload.id);
+        expect(live, 'Persisted payload must refer to a live group, not an unsaved create draft').toBeDefined();
+        for (const key of groupDefinitionKeys) {
+            expect(payload[key], `Only live ${key} may persist before editor Save`).toEqual(live[key]);
+        }
+    }
+}
 
 async function openCreateGroup(page, mobile) {
     await page.goto('/');
     await page.waitForFunction(() => !document.getElementById('preloader'));
+    await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
     await page.locator('#sb-character-toggle').click();
     if (mobile) {
         await page.getByRole('button', { name: 'Back to settings navigation', exact: true }).click();
@@ -70,13 +112,13 @@ async function clickCandidateTarget(candidate, target) {
     await candidate.locator(target).first().click();
 }
 
-async function openFixtureGroup(page, { tagged = false } = {}) {
-    return page.evaluate(async ({ tagged }) => {
+async function openFixtureGroup(page, { tagged = false, tagCount = tagged ? 1 : 0, memberCount = 2, active = false } = {}) {
+    return page.evaluate(async ({ tagCount, memberCount, active }) => {
         const app = await import('/script.js');
         const groupChats = await import('/scripts/group-chats.js');
         const tagsApi = await import('/scripts/tags.js');
         window.__sbTestTags = tagsApi;
-        const members = app.characters.slice(0, 2).map(character => character.avatar);
+        const members = app.characters.slice(0, memberCount).map(character => character.avatar);
         const group = {
             id: 'member-list-qa-motion-fixture',
             name: 'qa-motion-group',
@@ -90,19 +132,31 @@ async function openFixtureGroup(page, { tagged = false } = {}) {
             allow_self_responses: false,
             hideMutedSprites: false,
         };
+        if (active) {
+            group.chat_id = 'member-list-qa-chat';
+            group.chats = [group.chat_id];
+        }
         groupChats.groups.push(group);
+        const fixtures = window.__sbMemberListFixtures ??= { groups: [], baselines: [], tags: [], tagMaps: [] };
+        fixtures.groups.push(group.id);
+        fixtures.baselines.push(structuredClone(group));
         let tagId = null;
-        if (tagged) {
-            const tag = { id: 'member-list-qa-tag', name: 'QA tag', color: 'rgb(90, 160, 220)', color2: 'white' };
+        if (tagCount) fixtures.tagMaps.push([members[0], tagsApi.tag_map[members[0]]]);
+        const tagIds = [];
+        for (let index = 0; index < tagCount; index++) {
+            const tag = { id: `member-list-qa-tag-${index}`, name: `QA tag ${index}`, color: 'rgb(90, 160, 220)', color2: 'white' };
             tagsApi.tags.push(tag);
             tag.color = 'rgb(90, 160, 220)';
-            tagId = tag.id;
-            tagsApi.tag_map[members[0]] = [tag.id];
+            tagId ??= tag.id;
+            tagIds.push(tag.id);
+            fixtures.tags.push(tag.id);
         }
-        groupChats.select_group_chats(group.id, false);
-        if (tagged) tagsApi.printTagFilters(tagsApi.tag_filter_type.group_members_list);
+        if (tagCount) tagsApi.tag_map[members[0]] = tagIds;
+        if (active) await groupChats.openGroupById(group.id, { switchMenu: true });
+        else groupChats.select_group_chats(group.id, false);
+        if (tagCount) tagsApi.printTagFilters(tagsApi.tag_filter_type.group_members_list);
         return { id: group.id, members, tagId };
-    }, { tagged });
+    }, { tagCount, memberCount, active });
 }
 
 async function assertRowsFit(page) {
@@ -159,6 +213,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(page.getByRole('menuitem', { name: 'Move up', exact: true })).toHaveAttribute('aria-disabled', 'true');
         await expect(page.getByRole('menuitem', { name: 'Move down', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
         await expect(page.getByRole('menuitem', { name: 'Remove', exact: true })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: 'View character', exact: true })).toHaveCount(0);
         await expect(page.getByRole('menuitem', { name: 'Speak now', exact: true })).toHaveCount(0);
         await page.getByRole('menuitem', { name: 'Move down', exact: true }).click();
         await expect(page.locator('#rm_group_members .group_member').first()).toHaveAttribute('data-avatar', first.avatar);
@@ -204,7 +259,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(first.row).toHaveCount(0);
         await expect(second.row.locator('.sb-group-member-menu')).toBeFocused();
         await expect(page.locator(`#rm_group_add_members .group_member[data-avatar=${JSON.stringify(first.avatar)}]`)).toBeVisible();
-        await expect(page.locator('#rm_group_members_pagination select')).toHaveCount(1);
+        await expect(page.locator('#rm_group_members_pagination .sb-list-pagination select')).toHaveCount(1);
         await assertRowsFit(page);
     });
 }
@@ -375,6 +430,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
             };
             groupChats.groups.push(group);
             const baseline = structuredClone(group);
+            const fixtures = window.__sbMemberListFixtures ??= { groups: [], baselines: [], tags: [], tagMaps: [] };
+            fixtures.groups.push(group.id);
+            fixtures.baselines.push(baseline);
             // Open only the editor, not a chat that could save user metadata.
             groupChats.select_group_chats(group.id, false);
             return baseline;
@@ -411,7 +469,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(page.locator('#sb_group_editor_dirty')).toBeVisible();
         const readLiveGroup = () => page.evaluate(async id => (await import('/scripts/group-chats.js')).groups.find(group => group.id === id), fixture.id);
         expect(await readLiveGroup()).toEqual(fixture);
-        expect(persistenceRequests.get(page)).toEqual([]);
+        await expectOnlyLiveGroupPayloads(page);
         await page.locator('#sb_group_editor_cancel').click();
         await expect(page.locator('#sb_group_editor_dirty')).toBeHidden();
         await expect(members).toHaveCount(2);
@@ -419,7 +477,30 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(page.locator('#rm_group_members .disabled')).toHaveCount(0);
         await expect(page.locator('#rm_group_members .sb-group-member-model')).toHaveText(['', '']);
         expect(await readLiveGroup()).toEqual(fixture);
-        expect(persistenceRequests.get(page)).toEqual([]);
+        await expectOnlyLiveGroupPayloads(page);
+    });
+}
+
+for (const target of ['own', 'other']) {
+    test(`releasing a member drag over ${target === 'own' ? 'its own' : 'another'} avatar does not open a character`, async ({ page }) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await openCreateGroup(page, false);
+        const first = await addFirstCandidate(page);
+        const second = await addFirstCandidate(page);
+        await page.locator('#rm_group_members').scrollIntoViewIfNeeded();
+        const grip = await second.row.locator('.sb-group-member-grip').boundingBox();
+        const avatar = await (target === 'own' ? second : first).row.locator('.ds-entity-row__avatar').boundingBox();
+        await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(avatar.x + avatar.width / 2, avatar.y + avatar.height / 2, { steps: 12 });
+        await page.mouse.up();
+        // The create draft is dirty, so a stray navigation would surface as the leave prompt.
+        // Let the sortable revert finish before asserting that nothing opened.
+        await expect(page.locator('#rm_group_members .ui-sortable-placeholder')).toHaveCount(0);
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
+        await expect(page.locator('#sb_group_editor_header')).toBeVisible();
+        await expect(page.locator('#right-nav-panel')).toHaveAttribute('data-menu-type', 'group_create');
+        expect(await page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(0);
     });
 }
 
@@ -441,4 +522,130 @@ test('member grips reorder the draft and hide while filtering', async ({ page })
     await expect(first.row.locator('.sb-group-member-grip')).toBeHidden();
     await page.locator('#rm_group_members_filter').fill('');
     await expect(first.row.locator('.sb-group-member-grip')).toBeVisible();
+});
+
+test('member row Enter, Space and pointer activation use object navigation', async ({ page }) => {
+    await openCreateGroup(page, false);
+    const fixture = await openFixtureGroup(page, { tagged: true });
+    await page.evaluate(async () => {
+        const { objectNavigation } = await import('/scripts/sillybunny-editor/object-navigation.js');
+        window.__sbMemberNavigationCalls = [];
+        window.__sbOriginalMemberNavigate = objectNavigation.navigate;
+        objectNavigation.navigate = async (target, options) => {
+            window.__sbMemberNavigationCalls.push({ target, options: { ...options, from: options.from() } });
+            return { ok: true };
+        };
+    });
+    try {
+        const member = page.locator('#rm_group_members .group_member').first();
+        await expect(member.locator('.ds-entity-row__chevron')).toBeVisible();
+        await member.focus();
+        await page.keyboard.press('ArrowDown');
+        await expect(page.locator('#rm_group_members .group_member').last()).toBeFocused();
+        await page.keyboard.press('Home');
+        await expect(member).toBeFocused();
+        await page.keyboard.press('End');
+        await expect(page.locator('#rm_group_members .group_member').last()).toBeFocused();
+        await page.keyboard.press('ArrowUp');
+        await expect(member).toBeFocused();
+        await page.keyboard.press('Enter');
+        await page.keyboard.press('Space');
+        await member.locator('.ch_name').click();
+        await expect.poll(() => page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(3);
+        expect(await page.evaluate(() => window.__sbMemberNavigationCalls[0])).toEqual({
+            target: { kind: 'character-editor', id: fixture.members[0], via: 'group-member' },
+            options: { from: { kind: 'group-editor', id: fixture.id } },
+        });
+        await member.locator('.tag').first().click();
+        await member.locator('.sb-group-member-grip').click();
+        await member.getByRole('switch').uncheck();
+        expect(await page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(3);
+    } finally {
+        await page.evaluate(async () => {
+            const { objectNavigation } = await import('/scripts/sillybunny-editor/object-navigation.js');
+            objectNavigation.navigate = window.__sbOriginalMemberNavigate;
+        });
+    }
+});
+
+test('off-page /member-disable preserves the visible native pagination page', async ({ page }) => {
+    await page.route('**/api/chats/group/info', route => route.fulfill({ json: {} }));
+    await page.route('**/api/chats/group/get', route => route.fulfill({ json: [{ chat_metadata: { tainted: true } }] }));
+    await page.route('**/api/chats/group/save', route => route.fulfill({ json: { result: 'ok' } }));
+    await openCreateGroup(page, false);
+    const count = await page.evaluate(async () => (await import('/script.js')).characters.length);
+    // eslint-disable-next-line playwright/no-skipped-test -- Keep fixtures in memory; never create user character files just to fill a page.
+    test.skip(count < 6, 'Requires six existing test characters for a second page');
+    await openFixtureGroup(page, { memberCount: 6, active: true });
+    const pagination = page.locator('#rm_group_members_pagination .sb-list-pagination');
+    await pagination.getByRole('combobox').selectOption('5');
+    await pagination.getByRole('button', { name: 'Next page', exact: true }).click();
+    const members = page.locator('#rm_group_members .group_member');
+    await expect(members).toHaveCount(1);
+    const visibleBefore = await members.evaluateAll(rows => rows.map(row => row.dataset.avatar));
+    const pageBefore = await pagination.locator('.sb-list-pagination__status').innerText();
+    await page.evaluate(async () => {
+        const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
+        await executeSlashCommandsWithOptions('/member-disable 0');
+    });
+    await expect(pagination.locator('.sb-list-pagination__status')).toHaveText(pageBefore);
+    expect(await members.evaluateAll(rows => rows.map(row => row.dataset.avatar))).toEqual(visibleBefore);
+    await pagination.getByRole('button', { name: 'Previous page', exact: true }).click();
+    await expect(members.first()).toHaveClass(/disabled/);
+});
+
+test('group row tags are capped at three chips plus the overflow count', async ({ page }) => {
+    await openCreateGroup(page, false);
+    const fixture = await openFixtureGroup(page, { tagCount: 5 });
+    const row = page.locator(`#rm_group_members .group_member[data-avatar=${JSON.stringify(fixture.members[0])}]`);
+    await expect(row.locator('.ds-entity-row__tags .tag:not(.sb-tag-overflow):not([hidden])')).toHaveCount(3);
+    await expect(row.locator('.sb-tag-overflow')).toHaveText('+2');
+    await expect(row.locator('.sb-tag-overflow')).toHaveAttribute('aria-label', /QA tag/);
+    await expect(row.locator('.placeholder-expander:visible')).toHaveCount(0);
+});
+
+test('empty groups and filtered lists have distinct status and empty text', async ({ page }) => {
+    await openCreateGroup(page, false);
+    const members = page.locator('#rm_group_members');
+    await expect(members).toHaveAttribute('data-empty-text', 'Group is empty.');
+    await openFixtureGroup(page, { memberCount: 1 });
+    const memberSearch = page.locator('#rm_group_members_filter');
+    await expect(memberSearch).toHaveAccessibleName('Search');
+    await memberSearch.fill('qa-no-such-member-967018');
+    await expect(members.locator('.group_member')).toHaveCount(0);
+    await expect(members).toHaveAttribute('data-empty-text', 'No results');
+    expect(await members.evaluate(node => getComputedStyle(node, '::before').content)).toContain('No results');
+    await expect(page.locator('[data-sb-section="members"] [data-sb-group-list-status]')).toHaveText('No results');
+    await memberSearch.press('Escape');
+    await expect(memberSearch).toBeVisible();
+    await expect(memberSearch).toHaveValue('');
+    await expect(members.locator('.group_member')).toHaveCount(1);
+    const candidateSearch = page.locator('#rm_group_filter');
+    await expect(candidateSearch).toHaveAccessibleName('Search');
+    await candidateSearch.fill('qa-no-such-candidate-967018');
+    await expect(page.locator('#rm_group_add_members .group_member')).toHaveCount(0);
+    await expect(page.locator('#rm_group_add_members')).toHaveAttribute('data-empty-text', 'No results');
+});
+
+test('candidate Add focuses the next row, then the previous row, then search', async ({ page }) => {
+    await openCreateGroup(page, false);
+    const count = await page.evaluate(async () => (await import('/script.js')).characters.length);
+    // eslint-disable-next-line playwright/no-skipped-test -- The test uses existing cards only and keeps three candidates in memory.
+    test.skip(count < 3, 'Requires three existing test characters');
+    await openFixtureGroup(page, { memberCount: count - 3 });
+    const candidates = page.locator('#rm_group_add_members .group_member');
+    await expect(candidates).toHaveCount(3);
+    const firstTwo = await candidates.evaluateAll(rows => rows.slice(0, 2).map(row => row.dataset.avatar));
+    await candidates.first().getByRole('button', { name: 'Add to group', exact: true }).click();
+    await expect(page.locator(`#rm_group_add_members .group_member[data-avatar=${JSON.stringify(firstTwo[1])}]`)).toBeFocused();
+    await page.locator('#rm_group_add_members_pagination .sb-list-pagination__size').selectOption('1000');
+    const previous = await candidates.nth((await candidates.count()) - 2).getAttribute('data-avatar');
+    await candidates.last().getByRole('button', { name: 'Add to group', exact: true }).click();
+    await expect(page.locator(`#rm_group_add_members .group_member[data-avatar=${JSON.stringify(previous)}]`)).toBeFocused();
+    await expect(candidates).toHaveCount(1);
+    await candidates.first().focus();
+    await page.keyboard.press('Enter');
+    await expect(candidates).toHaveCount(0);
+    await expect(page.locator('#rm_group_filter')).toBeFocused();
+    await expect(page.locator('#rm_group_add_members')).toHaveAttribute('data-empty-text', 'No characters available');
 });

@@ -5,11 +5,12 @@ import { confirmActiveEditorLeave } from './navigation.js';
  * @property {string} kind
  * @property {string|null} [id]
  * @property {string|null} [section]
+ * @property {string} [via]
  */
 
 /**
  * @typedef {object} Destination
- * @property {(location: Location, options: { restore?: object|null }) => Promise<boolean>} open
+ * @property {(location: Location, options: { restore?: object|null, isCurrent: () => boolean }) => Promise<boolean>} open
  * @property {(id?: string|null) => boolean} [exists]
  * @property {() => Location|null} [current]
  * @property {() => object|null} [captureState]
@@ -24,10 +25,11 @@ import { confirmActiveEditorLeave } from './navigation.js';
 /**
  * @typedef {object} ObjectNavigation
  * @property {(kind: string, destination: Destination) => () => void} register
- * @property {(target: Location, options: { from: Location }) => Promise<Result>} navigate
+ * @property {(target: Location, options: { from: Location|(() => Location) }) => Promise<Result>} navigate
  * @property {(options: { current: Location, fallback: () => Promise<void>|void }) => Promise<Result>} back
  * @property {(current: Location) => boolean} canGoBack
  * @property {() => void} clear
+ * @property {(notify: (reason: 'missing'|'failed', target: Location) => void) => void} setNotify
  * @property {number} depth
  * @property {boolean} isRouting
  * @property {(selector: string) => () => void} bindTopLevelClear
@@ -64,9 +66,18 @@ export function createObjectNavigation({ confirmLeave, notify = () => {}, maxDep
         };
     }
 
-    /** @returns {Promise<Result>} */
+    /**
+     * @param {Location} target
+     * @param {object} [options]
+     * @param {Location|(() => Location)} [options.from]
+     * @param {object|null} [options.restore]
+     * @param {{ origin: Location & { state: object|null }, target: Location }} [options.entry]
+     * @param {() => Promise<void>|void} [options.fallback]
+     * @returns {Promise<Result>}
+     */
     async function route(target, { from, restore = null, entry, fallback } = {}) {
         const token = ++revision;
+        const isCurrent = () => token === revision;
         routing = true;
         try {
             const approved = await confirmLeave();
@@ -84,8 +95,9 @@ export function createObjectNavigation({ confirmLeave, notify = () => {}, maxDep
                 return { ok: false, reason: 'missing' };
             }
 
-            const state = from ? registry.get(from.kind)?.destination.captureState?.() ?? null : null;
-            const opened = await destination.open(target, { restore });
+            const origin = typeof from === 'function' ? { ...from() } : from;
+            const state = origin ? registry.get(origin.kind)?.destination.captureState?.() ?? null : null;
+            const opened = await destination.open(target, { restore, isCurrent });
             if (token !== revision) return { ok: false, reason: 'superseded' };
             if (!opened) {
                 notify('failed', target);
@@ -95,7 +107,7 @@ export function createObjectNavigation({ confirmLeave, notify = () => {}, maxDep
             if (entry) {
                 stack.pop();
             } else {
-                stack.push({ origin: { ...from, state }, target: { ...target } });
+                stack.push({ origin: { ...origin, state }, target: { ...target } });
                 if (stack.length > maxDepth) stack.splice(0, stack.length - maxDepth);
             }
             return { ok: true };
@@ -110,7 +122,7 @@ export function createObjectNavigation({ confirmLeave, notify = () => {}, maxDep
     }
 
     function navigate(target, { from }) {
-        return route({ ...target }, { from: { ...from } });
+        return route({ ...target }, { from: typeof from === 'function' ? from : { ...from } });
     }
 
     /** @returns {Promise<Result>} */
@@ -131,6 +143,15 @@ export function createObjectNavigation({ confirmLeave, notify = () => {}, maxDep
         stack.length = 0;
     }
 
+    /**
+     * Replaces the notification handler without replacing the navigation singleton.
+     * @param {(reason: 'missing'|'failed', target: Location) => void} handler
+     */
+    function setNotify(handler) {
+        if (typeof handler !== 'function') throw new TypeError('setNotify requires a function.');
+        notify = handler;
+    }
+
     function bindTopLevelClear(selector) {
         const onClick = event => {
             if (routing || !(event.target instanceof Element) || !event.target.closest(selector)) return;
@@ -146,6 +167,7 @@ export function createObjectNavigation({ confirmLeave, notify = () => {}, maxDep
         back,
         canGoBack,
         clear,
+        setNotify,
         get depth() { return stack.length; },
         get isRouting() { return routing; },
         bindTopLevelClear,

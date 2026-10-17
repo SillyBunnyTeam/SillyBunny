@@ -1559,7 +1559,7 @@ describe('chat integrity rotation', () => {
         );
         const openGroupBody = groupChatSource.slice(
             groupChatSource.indexOf('export async function openGroupById(groupId, { switchMenu = true } = {})'),
-            groupChatSource.indexOf('async function openCharacterDefinition(characterSelect)'),
+            groupChatSource.indexOf('async function openCharacterDefinition('),
         );
         const flushForNavigationBody = scriptSource.slice(
             scriptSource.indexOf('export async function flushPendingChatSavesForNavigation()'),

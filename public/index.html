@@ -7353,12 +7353,15 @@
                                     <!-- tags.js reads .rm_tag_controls as the immediate next sibling of
                                          #rm_group_members_header, so the header must stay directly above it. -->
                                     <div id="rm_group_members_header" class="ds-row">
-                                        <input id="rm_group_members_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
+                                        <!-- SillyBunny: label shared list search without changing extension IDs — see docs/ui-migration.md -->
+                                        <input id="rm_group_members_filter" class="text_pole margin0" type="search" aria-label="Search" data-i18n="[placeholder]Search...;[aria-label]Search" placeholder="Search..." />
                                     </div>
                                     <div class="rm_tag_controls ds-tag-filter">
                                         <div class="tags rm_tag_filter"></div>
                                     </div>
                                     <div id="rm_group_members" class="rm_group_members ds-entity-list__rows ds-entity-list__empty" group_empty_text="Group is empty." data-i18n="[group_empty_text]Group is empty."></div>
+                                    <!-- SillyBunny: announce filtered results independently of pagination — see docs/ui-migration.md -->
+                                    <span class="sr-only" role="status" aria-live="polite" data-sb-group-list-status></span>
                                     <div id="rm_group_members_pagination" class="rm_group_members_pagination group_pagination ds-entity-list__footer"></div>
                                 </div>
                             </section>
@@ -7370,12 +7373,15 @@
                                 </header>
                                 <div id="unaddedCharList" name="Unadded Char List" class="ds-pref-group sb-editor-section__body ds-entity-list">
                                     <div id="rm_group_add_members_header" class="ds-row">
-                                        <input id="rm_group_filter" class="text_pole margin0" type="search" data-i18n="[placeholder]Search..." placeholder="Search..." />
+                                        <!-- SillyBunny: label shared list search without changing extension IDs — see docs/ui-migration.md -->
+                                        <input id="rm_group_filter" class="text_pole margin0" type="search" aria-label="Search" data-i18n="[placeholder]Search...;[aria-label]Search" placeholder="Search..." />
                                     </div>
                                     <div class="rm_tag_controls ds-tag-filter">
                                         <div class="tags rm_tag_filter"></div>
                                     </div>
                                     <div id="rm_group_add_members" class="ds-entity-list__rows ds-entity-list__empty" no_characters_text="No characters available" data-i18n="[no_characters_text]No characters available"></div>
+                                    <!-- SillyBunny: announce filtered results independently of pagination — see docs/ui-migration.md -->
+                                    <span class="sr-only" role="status" aria-live="polite" data-sb-group-list-status></span>
                                     <div id="rm_group_add_members_pagination" class="group_pagination ds-entity-list__footer"></div>
                                 </div>
                             </section>
@@ -8641,6 +8647,7 @@
                 <h4 data-i18n="Persona Name:">Persona Name:</h4>
             </div>
         </div>
+        <!-- SillyBunny: retained for extensions; getGroupCharacterBlock now uses createEntityRow — see docs/ui-migration.md -->
         <div id="group_member_template" class="template_element">
             <div class="group_member ds-entity-row">
                 <div class="avatar ds-entity-row__avatar">

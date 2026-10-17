@@ -17,6 +17,10 @@
     border-radius: var(--sb-radius-card);
 }
 
+:root[data-sb-surface-tone='light'] .ds-entity-list {
+    background: var(--sb-layer-view);
+}
+
 .ds-entity-list__rows {
     display: flex;
     flex-direction: column;
@@ -29,11 +33,11 @@
 .ds-entity-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
     min-width: 0;
-    min-height: 56px;
-    padding: 8px 16px;
+    min-height: 52px;
+    padding: 6px 8px;
     border: 0;
     border-bottom: 1px solid var(--sb-shell-border);
     border-radius: 0;
@@ -41,6 +45,14 @@
     color: var(--SmartThemeBodyColor);
     text-align: start;
     box-sizing: border-box;
+    font-family: inherit;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 52px;
+}
+
+/* Sortable caches row geometry at drag start; placeholder sizes would shift the drop targets. */
+.ui-sortable > .ds-entity-row {
+    content-visibility: visible;
 }
 
 .ds-entity-row:last-child {
@@ -85,20 +97,21 @@
 
 .ds-entity-row__title {
     overflow: hidden;
-    font-size: var(--sb-type-control);
-    font-weight: 700;
-    line-height: 1.3;
+    font-size: calc(var(--sb-type-body) * 0.9);
+    font-weight: 600;
+    line-height: 1.6;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .ds-entity-row__subtitle {
-    display: flex;
-    flex-wrap: wrap;
-    column-gap: 8px;
-    font-size: var(--sb-type-meta);
-    line-height: 1.4;
+    display: block;
+    overflow: hidden;
+    font-size: calc(var(--sb-type-body) * 0.75);
+    line-height: 1.6;
     color: var(--sb-muted-fg);
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ds-entity-row__subtitle > * {
@@ -110,6 +123,11 @@
     white-space: nowrap;
 }
 
+.ds-entity-row__subtitle > :not(:empty) + :not(:empty) {
+    margin-inline-start: 8px;
+}
+
+.ds-entity-row__subtitle:empty,
 .ds-entity-row__subtitle > :empty,
 .ds-entity-row__tags:empty,
 .ds-entity-row__badge:empty {
@@ -135,6 +153,12 @@
     min-width: 0;
 }
 
+.ds-entity-row__chevron {
+    flex: 0 0 auto;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
 .ds-entity-row .ds-entity-row__button {
     display: inline-flex;
     align-items: center;
@@ -157,7 +181,12 @@
 }
 
 .ds-entity-row--activatable {
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.ds-entity-row.is-selected {
+    background: var(--sb-flat-selected-bg);
 }
 
 .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text) {
@@ -171,12 +200,15 @@
 }
 
 .ds-entity-row .ds-entity-row__button:focus-visible,
+.ds-entity-row:focus-visible,
+.ds-entity-list__footer :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size):focus-visible,
 .ds-entity-list__footer a:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
 .ds-entity-list__empty:empty::before {
+    content: attr(group_empty_text);
     display: grid;
     place-items: center;
     min-height: 64px;
@@ -186,6 +218,10 @@
     text-align: center;
 }
 
+.ds-entity-list__empty[data-empty-text]:empty::before {
+    content: attr(data-empty-text);
+}
+
 .ds-entity-list__footer {
     padding: 6px 12px;
     border-top: 1px solid var(--sb-shell-border);
@@ -193,6 +229,78 @@
 
 .ds-entity-list__footer:empty {
     display: none;
+}
+
+.ds-entity-list__footer .sb-list-pagination {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
+    font-family: var(--mainFontFamily);
+    font-size: var(--sb-type-meta);
+    box-sizing: border-box;
+}
+
+.ds-entity-list__footer .sb-list-pagination[hidden],
+.ds-entity-list__footer .sb-list-pagination [hidden] {
+    display: none !important;
+}
+
+.ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-meta);
+    line-height: 1;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+.ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):disabled {
+    color: var(--sb-muted-fg);
+    cursor: default;
+}
+
+.ds-entity-list__footer .sb-list-pagination__status {
+    min-width: 0;
+    color: var(--sb-muted-fg);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.ds-entity-list__footer .sb-list-pagination .sb-list-pagination__size {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: 32px;
+    margin: 0;
+    margin-inline-start: auto;
+    padding: 4px var(--sb-select-arrow-space, 34px) 4px 10px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background-color: var(--sb-button-bg);
+    color: var(--SmartThemeBodyColor);
+    font-family: inherit;
+    font-size: inherit;
 }
 
 .ds-entity-list__footer .paginationjs {
@@ -308,9 +416,28 @@
 }
 
 .ds-entity-row .ds-entity-row__tags {
-    max-height: 28px;
+    position: relative;
+    display: flex;
+    flex-wrap: nowrap;
+    flex-basis: auto;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    max-height: none;
     overflow: hidden;
-    align-items: start;
+    align-items: center;
+    white-space: nowrap;
+    opacity: 1;
+}
+
+.ds-entity-row__tags > .tag {
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 12em;
+}
+
+.ds-entity-row__tags [hidden] {
+    display: none !important;
 }
 
 /* Group editor tag filters opt into the Libadwaita control vocabulary. The
@@ -339,6 +466,24 @@
     border-radius: 50%;
     background: var(--sb-tag-color, var(--sb-muted-fg));
     content: '';
+}
+
+.ds-entity-row__tags .tag.sb-tag-overflow {
+    flex: 0 0 auto;
+    color: var(--sb-muted-fg) !important;
+    font-variant-numeric: tabular-nums;
+}
+
+.ds-entity-row__tags .tag.sb-tag-overflow--measure {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: max-content;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.ds-entity-row__tags .sb-tag-overflow::before {
+    display: none;
 }
 
 .ds-tag-filter .tag:not(.actionable).selected,
@@ -463,8 +608,13 @@
 
     .ds-entity-row .ds-entity-row__button:hover,
     .ds-entity-row--activatable:hover,
+    .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):hover,
     .ds-entity-list__footer .paginationjs-pages ul li:not(.disabled) a:hover {
         background: var(--sb-flat-hover-bg);
+    }
+
+    .ds-entity-row.is-selected:hover {
+        background: var(--sb-flat-selected-hover-bg);
     }
     .ds-tag-filter .tag.actionable:hover {
         background: var(--sb-flat-hover-bg) !important;
@@ -488,17 +638,13 @@
 }
 
 @media (pointer: coarse), (max-width: 768px) {
-    .ds-entity-row {
-        padding-inline: 8px;
-        gap: 4px;
-    }
-
     .ds-entity-row__grip {
         flex-basis: 44px;
         min-height: 44px;
     }
 
     .ds-entity-row .ds-entity-row__button,
+    .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next),
     .ds-entity-list__footer .paginationjs-pages ul li a {
         width: 44px;
         min-width: 44px;
@@ -506,7 +652,8 @@
         min-height: 44px;
     }
 
-    .ds-entity-list__footer .paginationjs-size-changer select {
+    .ds-entity-list__footer .paginationjs-size-changer select,
+    .ds-entity-list__footer .sb-list-pagination .sb-list-pagination__size {
         min-height: 44px;
     }
 
@@ -523,6 +670,7 @@
     .ds-tag-chips .tag .tag_remove,
     .ds-entity-row .ds-entity-row__button,
     .ds-entity-row--activatable,
+    .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text),
     .ds-tag-filter .tag {
@@ -531,6 +679,7 @@
 }
 
 body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-entity-row .ds-entity-row__button, .ds-entity-row--activatable,
+    .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text), .ds-tag-filter .tag) {
     transition: none;
@@ -544,13 +693,15 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
 
 /* SB-GroupUtilities owns legacy grid tracks and 18px buttons. These scoped
    flex overrides keep its injected .send_as suffix without inheriting the grid. */
+/* Restates the shared metrics at ID specificity: third-party member-list extensions
+   (e.g. SB-GroupUtilities) compact `#rm_group_members .group_member` with their own gap/padding. */
 :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row {
     display: flex;
     grid-template-columns: none;
+    gap: 10px;
+    min-height: 52px;
+    padding: 6px 8px;
     position: relative;
-    gap: 8px;
-    min-height: 56px;
-    padding: 8px 16px;
     border-radius: 0;
     outline: none;
 }
@@ -664,11 +815,6 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
 }
 
 @media (pointer: coarse), (max-width: 768px) {
-    :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row {
-        gap: 4px;
-        padding-inline: 8px;
-    }
-
     :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button) {
         width: 44px;
         min-width: 44px;
@@ -724,6 +870,10 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
 
 #rm_group_add_members:empty::before {
     content: attr(no_characters_text);
+}
+
+:is(#rm_group_members, #rm_group_add_members, #groupMemberListPopout .rm_group_members)[data-empty-text]:empty::before {
+    content: attr(data-empty-text);
 }
 
 #rm_group_members_header,

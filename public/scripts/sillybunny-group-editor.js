@@ -29,6 +29,7 @@ import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
+import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 
 const DRAFT_KEY_PREFIX = 'sb-group-editor-draft-';
@@ -314,7 +315,10 @@ async function _handleBack(event) {
         event.stopImmediatePropagation();
         return;
     }
-    _closeSafely();
+    await objectNavigation.back({
+        current: { kind: 'group-editor', id: session.context?.mode === 'create' ? 'create' : session.context?.entityId },
+        fallback: _closeSafely,
+    });
 }
 
 function _closeSafely() {
@@ -459,6 +463,7 @@ function _mountMemberSortable() {
         cancel: '.is-filtered .group_member',
         start: () => {
             visibleBefore = _renderedMemberIndices();
+            _swallowDragEndClick(list);
         },
         stop: () => {
             const visibleAfter = _renderedMemberIndices();
@@ -468,6 +473,31 @@ function _mountMemberSortable() {
             callbacks?.reorderMembers(visibleBefore, visibleAfter);
         },
     });
+}
+
+/**
+ * The mouseup that ends a drag is followed by a click on the nearest common
+ * ancestor of the grip and the release point, which is the member row whenever
+ * the drop lands on its avatar or text. jQuery UI only suppresses that click when
+ * both events hit the same element, so swallow it here or the row would open
+ * the member's character editor. Armed at drag start because `stop` waits for
+ * the revert animation, which ends after that click; the click follows the
+ * release in the same task, so the listener is dropped on the next macrotask.
+ * @param {HTMLElement} list
+ */
+function _swallowDragEndClick(list) {
+    const swallow = (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    };
+    const onRelease = () => {
+        window.removeEventListener('mouseup', onRelease, true);
+        window.removeEventListener('touchend', onRelease, true);
+        list.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => list.removeEventListener('click', swallow, { capture: true }), 0);
+    };
+    window.addEventListener('mouseup', onRelease, true);
+    window.addEventListener('touchend', onRelease, true);
 }
 
 /**

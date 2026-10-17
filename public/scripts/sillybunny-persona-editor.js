@@ -15,17 +15,18 @@ import { reconcileRows, rowEntry, bindListKeyboard } from './sillybunny-editor/l
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
-import { createRow } from './sillybunny-editor/rows.js';
+import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { characterTabGuardSelector, registerEditorNavigation } from './sillybunny-editor/navigation.js';
 import { mountPersonaSettings } from './sillybunny-persona-settings.js';
 import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail.js';
 
 const STYLESHEETS = [
+    { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
 ];
 const mountedEditors = new WeakMap();
-const itemKey = item => item.kind === 'persona' ? `persona:${item.avatarId}` : item.kind;
+const itemKey = item => item.kind === 'persona' ? entityKey('persona', item.avatarId) : item.kind;
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -61,6 +62,11 @@ function menuItem(label, glyph, action, danger = false, disabled = false) {
     return { label, icon: `fa-solid fa-${glyph}`, danger, disabled, onSelect: () => run(action) };
 }
 
+/**
+ * Loads the deferred Persona styles, removing failed links so a later mount can retry.
+ * @param {{ href: string, id: string }[]} [stylesheets]
+ * @returns {Promise<void>}
+ */
 export async function loadPersonaEditorStyles(stylesheets = [LIST_EDITOR_STYLESHEET, ...STYLESHEETS]) {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
     if (!loader) return;
@@ -90,6 +96,7 @@ export function mountPersonaEditor(container) {
     if (mountedEditors.has(container)) return mountedEditors.get(container);
 
     const rows = new Map();
+    const entityRows = new WeakMap();
     let allIds = [];
     let entries = [];
     let heldOrder = null;
@@ -129,7 +136,7 @@ export function mountPersonaEditor(container) {
     const listBody = element('div', 'sb-persona-list-body');
     const heading = element('h3', 'sb-persona-list-heading', t`Your Persona`);
     heading.tabIndex = -1;
-    const listBox = element('div', 'sb-persona-list-box ds-pref-group');
+    const listBox = element('div', 'sb-persona-list-box ds-pref-group ds-entity-list');
     listBox.setAttribute('role', 'list');
     const listStatus = element('div', 'sb-persona-list-status');
     listBody.append(heading, listBox, listStatus);
@@ -247,7 +254,7 @@ export function mountPersonaEditor(container) {
 
     function badges(avatarId) {
         const state = getPersonaEditorStates(avatarId);
-        const badges = element('span', 'sb-persona-row-badges');
+        const badges = [];
         for (const [shown, glyph, label, accent] of [
             [state.inUse, 'circle-check', t`Current Persona`, true],
             [state.default, 'crown', t`Default Persona`],
@@ -261,33 +268,26 @@ export function mountPersonaEditor(container) {
             badge.setAttribute('aria-label', label);
             badge.title = label;
             if (accent) badge.classList.add('is-in-use');
-            badges.append(badge);
+            badges.push(badge);
         }
         return badges;
     }
 
     function makePersonaRow(avatarId) {
         const { name, descriptor } = getPersonaRecord(avatarId);
-        const avatar = element('img', 'sb-persona-row-avatar');
-        avatar.loading = 'lazy';
-        avatar.decoding = 'async';
-        avatar.alt = '';
-        avatar.src = getThumbnailUrlForViewport('persona', avatarId, isFirefox());
-        const more = button(t`Actions for ${name}`, 'ellipsis-vertical', trigger => openPersonaMenu(trigger, avatarId), 'sb-persona-row-menu');
+        const more = button(t`Actions for ${name}`, 'ellipsis-vertical', trigger => openPersonaMenu(trigger, avatarId), 'sb-persona-row-menu ds-entity-row__button');
         more.setAttribute('aria-haspopup', 'menu');
         more.setAttribute('aria-expanded', 'false');
-        const row = createRow({
-            label: name,
+        const entity = createEntityRow({
+            key: entityKey('persona', avatarId), label: name,
+            avatar: { src: getThumbnailUrlForViewport('persona', avatarId, isFirefox()), alt: '' },
             subtitle: descriptor?.title || descriptor?.description?.split(/\r?\n/, 1)[0] || '',
-            field: `persona:${avatarId}`, prefix: avatar, suffix: [badges(avatarId), more],
-        }).row;
-        row.classList.add('sb-persona-row', 'ds-entity-row');
-        row.dataset.avatarId = avatarId;
-        row.dataset.avatarRevision = String(avatarRevision);
-        row.tabIndex = 0;
-        row.setAttribute('role', 'listitem');
-        row.setAttribute('aria-label', name);
-        return row;
+            badges: badges(avatarId), suffix: [more], activation: 'activate',
+            compatClasses: { row: ['sb-persona-row'], badge: ['sb-persona-row-badges'] },
+            attributes: { 'data-avatar-id': avatarId, 'data-avatar-revision': String(avatarRevision) },
+        });
+        entityRows.set(entity.row, entity);
+        return entity.row;
     }
 
     function updateDisplayEntries() {
@@ -314,19 +314,25 @@ export function mountPersonaEditor(container) {
             }).element);
         }
         reconcileRows({
-            container: listBox, cache: rows, entries: pagination.slice(entries), key: avatarId => `persona:${avatarId}`,
-            signature: avatarId => {
-                const record = getPersonaRecord(avatarId);
-                return JSON.stringify([record.name, record.descriptor?.title, record.descriptor?.description]);
-            },
+            container: listBox, cache: rows, entries: pagination.slice(entries), key: avatarId => entityKey('persona', avatarId),
+            signature: avatarId => avatarId,
             create: makePersonaRow,
             update: (row, avatarId) => {
-                row.classList.toggle('is-selected', selectedAvatarId() === avatarId);
-                row.querySelector('.sb-persona-row-badges').replaceWith(badges(avatarId));
+                const { name, descriptor } = getPersonaRecord(avatarId);
+                const entity = entityRows.get(row);
+                const changes = {
+                    label: name, badges: badges(avatarId),
+                    subtitle: descriptor?.title || descriptor?.description?.split(/\r?\n/, 1)[0] || '',
+                };
                 if (row.dataset.avatarRevision !== String(avatarRevision)) {
-                    row.querySelector('img').src = getThumbnailUrlForViewport('persona', avatarId, true);
-                    row.dataset.avatarRevision = String(avatarRevision);
+                    changes.avatar = { src: getThumbnailUrlForViewport('persona', avatarId, true), alt: '' };
+                    changes.attributes = { 'data-avatar-revision': String(avatarRevision) };
                 }
+                entity.update(changes);
+                row.classList.toggle('is-selected', selectedAvatarId() === avatarId);
+                const more = entity.slots.suffix.firstElementChild;
+                more.setAttribute('aria-label', t`Actions for ${name}`);
+                more.title = t`Actions for ${name}`;
             },
         });
         searchControl.report(entries.length, allIds.length);

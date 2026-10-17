@@ -1,8 +1,9 @@
 /** @jest-environment jsdom */
-/* eslint-disable playwright/prefer-web-first-assertions -- Jest/jsdom assertions are synchronous. */
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions are synchronous. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 
-const { createEntityRow, ENTITY_ROW_SELECTOR, entityKey, entityRowMotionKey } = await import('../../public/scripts/sillybunny-editor/entity-row.js');
+const { createEntityRow, ENTITY_ROW_SELECTOR, entityKey, entityRowMotionKey, limitTagChips } = await import('../../public/scripts/sillybunny-editor/entity-row.js');
 const { reconcileRows, rowEntry } = await import('../../public/scripts/sillybunny-editor/list-rows.js');
 
 beforeEach(() => {
@@ -422,6 +423,372 @@ describe('createEntityRow', () => {
         expect(container.firstElementChild).toBe(aliceRow);
         expect(cache.has('character:Bob.png')).toBe(false);
         expect(bobRow.parentElement).toBeNull();
+    });
+});
+
+describe('limitTagChips', () => {
+    function tags(names) {
+        const container = makeRow({ tags: true }).slots.tags;
+        for (const name of names) {
+            const chip = node('span');
+            chip.className = 'tag';
+            const label = node('span', name);
+            label.className = 'tag_name';
+            chip.append(label);
+            container.append(chip);
+        }
+        return container;
+    }
+
+    test('keeps three chips and adds an unfocusable count with the hidden tag names', () => {
+        const container = tags(['One', 'Two', 'Three', 'Four', 'Five']);
+        const chips = [...container.children];
+        limitTagChips(container);
+
+        expect(chips.map(chip => chip.hidden)).toEqual([false, false, false, true, true]);
+        const overflow = container.lastElementChild;
+        expect(overflow.matches('span.tag.sb-tag-overflow')).toBe(true);
+        expect(overflow.textContent).toBe('+2');
+        expect(overflow.title).toBe('Four, Five');
+        expect(overflow.getAttribute('aria-label')).toBe('Four, Five');
+        expect(overflow.hasAttribute('tabindex')).toBe(false);
+        expect(overflow.tabIndex).toBe(-1);
+    });
+
+    test.each([0, 1, 3])('has no overflow when %i chips fit', count => {
+        const container = tags(['One', 'Two', 'Three'].slice(0, count));
+        limitTagChips(container);
+
+        expect(container.querySelector('.sb-tag-overflow')).toBeNull();
+        expect([...container.children].every(chip => !chip.hidden)).toBe(true);
+    });
+
+    test('always hides the upstream expander and excludes it from the count', () => {
+        const container = tags(['One', 'Two', 'Three', 'Four']);
+        const expander = node('span', '...');
+        expander.className = 'tag placeholder-expander';
+        container.prepend(expander);
+        limitTagChips(container);
+
+        expect(expander.hidden).toBe(true);
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+1');
+        expect(container.querySelector('.sb-tag-overflow').title).toBe('Four');
+    });
+
+    test('recomputes after removals, additions, renames and a changed limit without accumulating counts', () => {
+        const container = tags(['One', 'Two', 'Three', 'Four', 'Five']);
+        limitTagChips(container);
+        const firstResult = container.innerHTML;
+        limitTagChips(container);
+        expect(container.innerHTML).toBe(firstResult);
+
+        container.firstElementChild.remove();
+        container.querySelector('.tag_name').textContent = 'Renamed';
+        const last = node('span', 'Six');
+        last.className = 'tag';
+        container.append(last);
+        limitTagChips(container, { max: 1 });
+
+        expect(container.querySelectorAll('.sb-tag-overflow')).toHaveLength(1);
+        expect(container.querySelector('.sb-tag-overflow').title).toBe('Three, Four, Five, Six');
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+4');
+        expect(container.firstElementChild.textContent).toBe('Renamed');
+        limitTagChips(container, { max: 5 });
+        expect(container.querySelector('.sb-tag-overflow')).toBeNull();
+        expect([...container.children].every(chip => !chip.hidden)).toBe(true);
+    });
+
+    test('supports a zero limit and treats tag names as plain text', () => {
+        const container = tags(['<img src=x>', ' A & B ']);
+        limitTagChips(container, { max: 0 });
+
+        expect(container.querySelectorAll('.tag[hidden]')).toHaveLength(2);
+        expect(container.lastElementChild.textContent).toBe('+2');
+        expect(container.lastElementChild.title).toBe('<img src=x>, A & B');
+        expect(container.querySelector('img')).toBeNull();
+    });
+
+    test('counts all 60 names despite the upstream 50-chip render limit', () => {
+        const allNames = Array.from({ length: 60 }, (_, index) => `Tag ${index + 1}`);
+        const container = tags(allNames.slice(0, 50));
+        const expander = node('span', '...');
+        expander.className = 'tag placeholder-expander';
+        container.append(expander);
+        limitTagChips(container, { allNames });
+
+        expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(3);
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+57');
+        expect(container.querySelector('.sb-tag-overflow').title).toBe(allNames.slice(3).join(', '));
+        expect(container.querySelector('.sb-tag-overflow').getAttribute('aria-label')).toBe(allNames.slice(3).join(', '));
+        expect(expander.hidden).toBe(true);
+
+        limitTagChips(container, { max: 100, allNames });
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+10');
+        expect(container.querySelector('.sb-tag-overflow').title).toBe(allNames.slice(50).join(', '));
+        limitTagChips(container, { max: 0, allNames });
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+60');
+        expect(container.querySelector('.sb-tag-overflow').title).toBe(allNames.join(', '));
+    });
+
+    test('counts names even when no chips were rendered and does not retain a mutable caller array', () => {
+        const allNames = ['One', 'Two'];
+        const container = tags([]);
+        limitTagChips(container, { allNames });
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+2');
+        expect(container.querySelector('.sb-tag-overflow').title).toBe('One, Two');
+        allNames.push('Three');
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+2');
+        limitTagChips(container, { allNames });
+        expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+3');
+        expect(container.querySelectorAll('.sb-tag-overflow')).toHaveLength(1);
+    });
+
+    test('rejects invalid containers and limits at the boundary', () => {
+        expect(() => limitTagChips(null)).toThrow(TypeError);
+        for (const max of [-1, 1.5, NaN, Infinity, '3']) {
+            expect(() => limitTagChips(tags(['One']), { max })).toThrow(RangeError);
+        }
+        for (const allNames of [null, 'One', [1]]) {
+            expect(() => limitTagChips(tags(['One']), { allNames })).toThrow(TypeError);
+        }
+    });
+
+    describe('width fitting', () => {
+        const targets = new Set();
+        const observe = jest.fn(container => targets.add(container));
+        const unobserve = jest.fn(container => targets.delete(container));
+        let onResize;
+        let widths;
+        let readWidth;
+        const ResizeObserverMock = jest.fn(function (callback) {
+            onResize = callback;
+            this.observe = observe;
+            this.unobserve = unobserve;
+        });
+
+        function resize(containers = [...targets]) {
+            onResize(containers.map(container => ({ target: container, contentRect: { width: widths.get(container) ?? 0 } })));
+        }
+
+        function strip(names, width, chipWidths = []) {
+            const container = tags(names);
+            container.style.columnGap = '6px';
+            widths.set(container, width);
+            [...container.children].forEach((chip, index) => widths.set(chip, chipWidths[index] ?? 40));
+            document.body.append(container.closest('.ds-entity-row'));
+            return container;
+        }
+
+        beforeEach(() => {
+            widths = new WeakMap();
+            observe.mockClear();
+            unobserve.mockClear();
+            globalThis.ResizeObserver = ResizeObserverMock;
+            readWidth = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                const width = this.matches('.sb-tag-overflow--measure')
+                    ? (this.textContent.length > 2 ? 36 : 28)
+                    : widths.get(this) ?? 0;
+                return { width, height: 28, top: 0, left: 0, right: width, bottom: 28 };
+            });
+        });
+
+        afterEach(() => {
+            for (const container of targets) container.closest('.ds-entity-row')?.remove();
+            if (onResize) resize();
+            delete globalThis.ResizeObserver;
+        });
+
+        test('lazily shares one observer and fits leading whole chips with the overflow count', () => {
+            expect(ResizeObserverMock).not.toHaveBeenCalled();
+            const container = strip(['One', 'Two', 'Three', 'Four', 'Five'], 130, [50, 40, 60]);
+            const other = strip(['Other'], 100);
+            limitTagChips(container);
+            limitTagChips(other);
+
+            expect(ResizeObserverMock).toHaveBeenCalledTimes(1);
+            expect(observe.mock.calls).toEqual([[container], [other]]);
+            expect(readWidth).not.toHaveBeenCalled();
+            resize();
+
+            expect([...container.querySelectorAll('.tag:not(.sb-tag-overflow)')].map(chip => chip.hidden)).toEqual([false, false, true, true, true]);
+            const overflow = container.querySelector('.sb-tag-overflow');
+            expect(overflow.textContent).toBe('+3');
+            expect(overflow.title).toBe('Three, Four, Five');
+            expect(overflow.getAttribute('aria-label')).toBe('Three, Four, Five');
+            expect(overflow.hasAttribute('tabindex')).toBe(false);
+            expect(container.querySelectorAll('.sb-tag-overflow')).toHaveLength(1);
+            expect(other.querySelector('.sb-tag-overflow')).toBeNull();
+        });
+
+        test('shows only the total count when the first chip cannot fit', () => {
+            const container = strip(['One', 'Two', 'Three'], 40, [50]);
+            limitTagChips(container);
+            resize();
+
+            expect(container.querySelectorAll('.tag[hidden]')).toHaveLength(3);
+            const overflow = container.querySelector('.sb-tag-overflow');
+            expect(overflow.textContent).toBe('+3');
+            expect(overflow.title).toBe('One, Two, Three');
+            expect(overflow.getAttribute('aria-label')).toBe('One, Two, Three');
+        });
+
+        test('resizes in both directions without exceeding max or repeating work for height-only notifications', () => {
+            const container = strip(['One', 'Two', 'Three', 'Four', 'Five'], 130, [50, 40, 60]);
+            limitTagChips(container);
+            resize();
+            widths.set(container, 100);
+            resize();
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+4');
+            widths.set(container, 1000);
+            resize();
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(3);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+2');
+            readWidth.mockClear();
+            resize();
+            expect(readWidth).not.toHaveBeenCalled();
+        });
+
+        test('removes overflow when all chips fit and restores it when the strip narrows', () => {
+            const container = strip(['One', 'Two'], 96, [50, 40]);
+            limitTagChips(container);
+            resize();
+            expect(container.querySelector('.sb-tag-overflow')).toBeNull();
+            widths.set(container, 95);
+            resize();
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+1');
+            expect(container.querySelector('.sb-tag-overflow').title).toBe('Two');
+        });
+
+        test('uses the actual overflow count width across a digit boundary', () => {
+            const container = strip(Array.from({ length: 12 }, (_, index) => `Tag ${index + 1}`), 146, [30, 30, 40]);
+            limitTagChips(container);
+            resize();
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(3);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+9');
+        });
+
+        test('fits and resizes using all 60 names rather than only the 50 rendered chips', () => {
+            const allNames = Array.from({ length: 60 }, (_, index) => `Tag ${index + 1}`);
+            const container = strip(allNames.slice(0, 50), 130, [50, 40, 60]);
+            limitTagChips(container, { allNames });
+            resize();
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(1);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+59');
+            expect(container.querySelector('.sb-tag-overflow').title).toBe(allNames.slice(1).join(', '));
+
+            widths.set(container, 138);
+            resize();
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+58');
+            expect(container.querySelector('.sb-tag-overflow').getAttribute('aria-label')).toBe(allNames.slice(2).join(', '));
+            widths.set(container, 40);
+            resize();
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+60');
+            expect(container.querySelector('.sb-tag-overflow').title).toBe(allNames.join(', '));
+        });
+
+        test('waits for a content-visibility row to receive a laid-out width', () => {
+            const container = strip(['One', 'Two', 'Three', 'Four'], 0, [50]);
+            container.closest('.ds-entity-row').style.contentVisibility = 'auto';
+            limitTagChips(container);
+            resize();
+            expect(readWidth).not.toHaveBeenCalled();
+            expect(targets.has(container)).toBe(true);
+            widths.set(container, 84);
+            resize();
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(1);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+3');
+        });
+
+        test('re-limiting unobserves and recomputes changed chips even at the same width', () => {
+            const container = strip(['One', 'Two', 'Three', 'Four'], 130, [50, 40, 60]);
+            limitTagChips(container);
+            resize();
+            container.firstElementChild.remove();
+            container.querySelector('.tag_name').textContent = 'Renamed';
+            const added = node('span', 'Added');
+            added.className = 'tag';
+            widths.set(added, 40);
+            container.append(added);
+            limitTagChips(container, { max: 1 });
+            expect(unobserve).toHaveBeenCalledWith(container);
+            expect(observe).toHaveBeenCalledTimes(2);
+            resize();
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(1);
+            expect(container.firstElementChild.textContent).toBe('Renamed');
+            expect(container.querySelector('.sb-tag-overflow').title).toBe('Three, Four, Added');
+            expect(container.querySelectorAll('.sb-tag-overflow')).toHaveLength(1);
+        });
+
+        test('releases disconnected strips before measurement and allows a fresh observation', () => {
+            const container = strip(['One', 'Two', 'Three', 'Four'], 84, [50]);
+            limitTagChips(container);
+            const row = container.closest('.ds-entity-row');
+            row.remove();
+            resize();
+            expect(unobserve).toHaveBeenCalledWith(container);
+            expect(targets.has(container)).toBe(false);
+            expect(readWidth).not.toHaveBeenCalled();
+
+            document.body.append(row);
+            resize([container]);
+            expect(readWidth).not.toHaveBeenCalled();
+            limitTagChips(container);
+            resize();
+            expect(targets.has(container)).toBe(true);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+3');
+        });
+
+        test('empty re-limits and fit:false release previous observation and keep fixed-max behavior', () => {
+            const container = strip(['One', 'Two', 'Three', 'Four'], 10);
+            limitTagChips(container);
+            resize();
+            limitTagChips(container, { max: 2, fit: false });
+            expect(targets.has(container)).toBe(false);
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(2);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+2');
+            limitTagChips(container);
+            container.replaceChildren();
+            limitTagChips(container);
+            expect(targets.has(container)).toBe(false);
+            expect(container.children).toHaveLength(0);
+        });
+
+        test('falls back to fixed max without ResizeObserver, even after an observer was previously available', () => {
+            delete globalThis.ResizeObserver;
+            const container = strip(['One', 'Two', 'Three', 'Four'], 1);
+            limitTagChips(container);
+            expect(observe).not.toHaveBeenCalled();
+            expect(readWidth).not.toHaveBeenCalled();
+            expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(3);
+            expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+1');
+        });
+
+        test('batches width reads for every strip before writing final hidden states', () => {
+            const first = strip(['One', 'Two', 'Three'], 84, [50]);
+            const second = strip(['A', 'B', 'C'], 84, [50]);
+            limitTagChips(first);
+            limitTagChips(second);
+            const operations = [];
+            const hiddenSetter = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden').set;
+            jest.spyOn(HTMLElement.prototype, 'hidden', 'set').mockImplementation(function (value) {
+                operations.push('write');
+                hiddenSetter.call(this, value);
+            });
+            const measureWidth = readWidth.getMockImplementation();
+            readWidth.mockImplementation(function () {
+                operations.push('read');
+                return measureWidth.call(this);
+            });
+            resize();
+
+            const firstRead = operations.indexOf('read');
+            const lastRead = operations.lastIndexOf('read');
+            expect(firstRead).toBeGreaterThan(0);
+            expect(operations.slice(firstRead, lastRead + 1).every(operation => operation === 'read')).toBe(true);
+            expect(operations.slice(lastRead + 1).every(operation => operation === 'write')).toBe(true);
+            expect(first.querySelector('.sb-tag-overflow').textContent).toBe('+2');
+            expect(second.querySelector('.sb-tag-overflow').textContent).toBe('+2');
+        });
     });
 });
 

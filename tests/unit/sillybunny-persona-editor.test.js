@@ -94,15 +94,17 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-persona-detail.j
     mountPersonaDetail: mountDetail, personaDraftKey: draftKey,
 }), { virtual: true });
 
-const { mountPersonaEditor, openPersonaEditor, preservePersonaOrder } = await import('../../public/scripts/sillybunny-persona-editor.js');
+const { mountPersonaEditor, openPersonaEditor, preservePersonaOrder, loadPersonaEditorStyles } = await import('../../public/scripts/sillybunny-persona-editor.js');
 const { mountPersonaSettings } = await import('../../public/scripts/sillybunny-persona-settings.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
+const performanceLoaderSource = readFileSync(new URL('../../public/scripts/performance-loader.js', import.meta.url), 'utf8');
 const tabsSource = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
 ];
@@ -126,6 +128,24 @@ async function personaTabMount(stylesheets = personaStylesheets) {
     await module.link(() => { throw new Error('Unexpected static import in persona mount.'); });
     await module.evaluate();
     return module.namespace;
+}
+
+async function activateDeferredStylesheet({ href }) {
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.setAttribute('as', 'style');
+    link.href = href;
+    link.setAttribute('data-sb-deferred-style', '');
+    link.dataset.sbMedia = 'all';
+    document.head.append(link);
+    const loaderWindow = { requestIdleCallback: jest.fn() };
+    const module = new SourceTextModule(performanceLoaderSource, {
+        context: createContext({ document, window: loaderWindow }),
+    });
+    await module.link(() => { throw new Error('Unexpected static import in performance loader.'); });
+    await module.evaluate();
+    loaderWindow.SillyBunnyLoadStylesheet();
+    return { link, activate: loaderWindow.SillyBunnyLoadStylesheet };
 }
 
 function personas(count = 3) {
@@ -225,20 +245,21 @@ describe('Persona editor shell', () => {
         expect(() => mountPersonaEditor(document.createElement('div'))).toThrow('#PersonaManagement');
     });
 
-    test('the editor waits for shared, list and detail stylesheets before reveal', async () => {
+    test('the editor waits for shared shell, entity row, list and detail stylesheets before reveal', async () => {
         personas();
         const resolvers = [];
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(() => new Promise(resolve => resolvers.push(resolve)));
         mounted = mountPersonaEditor(container);
         await settle();
-        expect(resolvers).toHaveLength(3);
+        expect(resolvers).toHaveLength(4);
         expect(container.classList.contains('sb-persona-editor-mounted')).toBe(false);
         expect(adapter.isOpen()).toBe(false);
         resolvers[0]();
         resolvers[1]();
+        resolvers[2]();
         await settle();
         expect(container.querySelector('.sb-persona-editor').hidden).toBe(true);
-        resolvers[2]();
+        resolvers[3]();
         await mounted.ready;
         expect(adapter.isOpen()).toBe(true);
     });
@@ -320,6 +341,118 @@ describe('Persona editor shell', () => {
         }
         await mounted.ready;
         expect(container.querySelector('.sb-persona-editor').hidden).toBe(false);
+    });
+
+    test.each(['preload', 'stylesheet'])('adopts the existing entity-row %s and waits for it without making another link', async rel => {
+        personas();
+        const stylesheet = personaStylesheets.find(({ id }) => id === 'deferred-entity-list-css');
+        const existing = document.createElement('link');
+        existing.rel = rel;
+        existing.setAttribute('as', 'style');
+        existing.href = stylesheet.href;
+        existing.setAttribute('data-sb-deferred-style', '');
+        existing.dataset.sbMedia = 'all';
+        document.head.append(existing);
+        for (const { id, href } of personaStylesheets.filter(({ id }) => id !== stylesheet.id)) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.id = id;
+            link.href = href;
+            document.head.append(link);
+        }
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
+        mounted = mountPersonaEditor(container);
+        await settle();
+
+        expect(document.getElementById(stylesheet.id)).toBe(existing);
+        expect(existing.rel).toBe('stylesheet');
+        expect(existing.dataset.sbStyleActivated ?? 'false').toBe(rel === 'preload' ? 'true' : 'false');
+        expect(document.querySelectorAll(`link[href="${stylesheet.href}"]`)).toHaveLength(1);
+        for (const { id } of personaStylesheets.filter(({ id }) => id !== stylesheet.id)) {
+            document.getElementById(id).dispatchEvent(new Event('load'));
+        }
+        await settle();
+        expect(container.querySelector('.sb-persona-editor').hidden).toBe(true);
+        existing.dispatchEvent(new Event('load'));
+        await mounted.ready;
+        expect(container.querySelector('.sb-persona-editor').hidden).toBe(false);
+        expect(existing.media === '' || existing.media === 'all').toBe(true);
+    });
+
+    test('a failed adopted preload is removed and a fresh stylesheet can load on retry', async () => {
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261016a&retry-test=adopted', id: 'deferred-entity-list-css' };
+        const existing = document.createElement('link');
+        existing.rel = 'preload';
+        existing.setAttribute('as', 'style');
+        existing.href = stylesheet.href;
+        existing.setAttribute('data-sb-deferred-style', '');
+        document.head.append(existing);
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
+        const loading = loadPersonaEditorStyles([stylesheet]);
+        const failure = new Event('error');
+        existing.dispatchEvent(failure);
+        await expect(loading).rejects.toBe(failure);
+        expect(existing.isConnected).toBe(false);
+
+        const retrying = loadPersonaEditorStyles([stylesheet]);
+        const retry = document.getElementById(stylesheet.id);
+        expect(retry).not.toBe(existing);
+        expect(retry.rel).toBe('stylesheet');
+        retry.dispatchEvent(new Event('load'));
+        await retrying;
+        await loadPersonaEditorStyles([stylesheet]);
+        expect(document.querySelectorAll(`link[href="${stylesheet.href}"]`)).toHaveLength(1);
+    });
+
+    test('a deferred stylesheet that failed before Persona subscribed is replaced and loaded', async () => {
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261016a&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
+        const { link, activate } = await activateDeferredStylesheet(stylesheet);
+        expect(link.dataset.sbStyleState).toBe('loading');
+        link.dispatchEvent(new Event('error'));
+        expect(link.dataset.sbStyleState).toBe('error');
+        activate();
+        expect(link.dataset.sbStyleState).toBe('error');
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
+        const loading = loadPersonaEditorStyles([stylesheet]);
+        const replacement = document.getElementById(stylesheet.id);
+        expect(replacement).not.toBe(link);
+        expect(link.isConnected).toBe(false);
+        expect(replacement.dataset.sbStyleState).toBe('loading');
+        expect(document.querySelectorAll(`link[href="${stylesheet.href}"]`)).toHaveLength(1);
+        replacement.dispatchEvent(new Event('load'));
+        await loading;
+        expect(replacement.dataset.sbStyleState).toBe('loaded');
+        expect(replacement.media).toBe('all');
+    });
+
+    test('a failed-before-subscribe stylesheet gets only one replacement and a second failure rejects', async () => {
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261016a&retry-test=failed-twice', id: 'deferred-entity-list-css' };
+        const { link } = await activateDeferredStylesheet(stylesheet);
+        link.dispatchEvent(new Event('error'));
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
+        const loading = loadPersonaEditorStyles([stylesheet]);
+        const replacement = document.getElementById(stylesheet.id);
+        const failure = new Event('error');
+        replacement.dispatchEvent(failure);
+        await expect(loading).rejects.toBe(failure);
+        expect(replacement.dataset.sbStyleState).toBe('error');
+        expect(replacement.isConnected).toBe(false);
+        expect(document.querySelectorAll(`link[href="${stylesheet.href}"]`)).toHaveLength(0);
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledTimes(1);
+    });
+
+    test('a deferred stylesheet loaded before Persona subscribed resolves without another load event', async () => {
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261016a&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
+        const { link, activate } = await activateDeferredStylesheet(stylesheet);
+        link.dispatchEvent(new Event('load'));
+        expect(link.dataset.sbStyleState).toBe('loaded');
+        activate();
+        expect(link.dataset.sbStyleState).toBe('loaded');
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
+        await loadPersonaEditorStyles([stylesheet]);
+        expect(document.getElementById(stylesheet.id)).toBe(link);
+        expect(link.dataset.loaded).toBe('true');
+        expect(document.querySelectorAll(`link[href="${stylesheet.href}"]`)).toHaveLength(1);
     });
 
     test('the tab mount rejects readiness failures, warns and clears its cached promise for retry', async () => {
@@ -411,15 +544,21 @@ describe('Persona editor shell', () => {
         const row = container.querySelector('.sb-persona-row');
         expect(container.querySelector('.sb-persona-list-heading').textContent).toBe('Your Persona');
         expect(row.parentNode.matches('.ds-pref-group[role="list"]')).toBe(true);
+        expect(row.matches('.ds-entity-row.ds-entity-row--activatable')).toBe(true);
+        expect(row.dataset.sbListKey).toBe(`persona:${avatarIds[0]}`);
         expect(row.getAttribute('role')).toBe('listitem');
         expect(row.tabIndex).toBe(0);
         const avatar = row.querySelector('img');
-        expect(avatar.loading).toBe('lazy');
-        expect(avatar.decoding).toBe('async');
+        expect(avatar.getAttribute('loading')).toBe('lazy');
+        expect(avatar.getAttribute('decoding')).toBe('async');
         expect(avatar.alt).toBe('');
         expect(thumbnail).toHaveBeenCalledWith('persona', avatarIds[0], false);
-        expect(row.querySelector('.ds-row-subtitle').textContent).toBe('A title');
-        expect(container.querySelectorAll('.ds-row-subtitle')[1].textContent).toBe('First line');
+        expect(row.querySelector('.ds-entity-row__title').textContent).toBe(records[avatarIds[0]].name);
+        expect(row.querySelector('.ds-entity-row__subtitle').textContent).toBe('A title');
+        expect(container.querySelectorAll('.ds-entity-row__subtitle')[1].textContent).toBe('First line');
+        expect(row.querySelector('.ds-entity-row__chevron')).toBeNull();
+        expect(row.querySelector('.sb-persona-row-badges').parentElement).toBe(row);
+        expect(row.querySelector('.ds-entity-row__suffix').children).toHaveLength(1);
         expect([...row.querySelectorAll('.sb-persona-row-badges i')].map(badge => [badge.getAttribute('aria-label'), badge.title])).toEqual([
             ['Current Persona', 'Current Persona'], ['Default Persona', 'Default Persona'],
             ['Persona is locked to the current chat', 'Persona is locked to the current chat'],
@@ -435,6 +574,26 @@ describe('Persona editor shell', () => {
         expect(mountDetail).toHaveBeenLastCalledWith(expect.objectContaining({ avatarId: avatarIds[1], mode: 'edit' }));
         expect(container.querySelector('.sb-persona-row.is-selected').dataset.sbListKey).toBe('persona:avatar-1.png');
         expect(document.activeElement).toBe(detail.focusTarget());
+    });
+
+    test.each(['Enter', ' '])('shared rows retain arrow navigation and %s activation without using the persona', async key => {
+        await mount();
+        const rows = [...container.querySelectorAll('.sb-persona-row')];
+        rows[0].focus();
+        rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(rows[1]);
+        rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(rows[2]);
+        rows[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(rows[0]);
+        const more = rows[0].querySelector('.sb-persona-row-menu');
+        more.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        await settle();
+        expect(mountDetail).not.toHaveBeenCalled();
+        rows[0].dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        await settle();
+        expect(mountDetail).toHaveBeenLastCalledWith(expect.objectContaining({ avatarId: avatarIds[0] }));
+        expect(usePersona).not.toHaveBeenCalled();
     });
 
     test('row menus expose Use, Duplicate and destructive Delete without opening the detail', async () => {
@@ -516,11 +675,23 @@ describe('Persona editor shell', () => {
 
     test('persona refresh updates a row and forwards changes without remounting the dirty detail', async () => {
         await mount();
+        const row = container.querySelector('.sb-persona-row');
+        const avatar = row.querySelector('img');
+        const menu = row.querySelector('.sb-persona-row-menu');
         const detail = await open();
         dirty = true;
         records[avatarIds[0]].name = 'Updated name';
+        records[avatarIds[0]].descriptor.title = 'Updated title';
         await adapter.refresh('persona', avatarIds[0]);
-        expect(container.querySelector('.sb-persona-row .ds-row-label').textContent).toBe('Updated name');
+        expect(container.querySelector('.sb-persona-row')).toBe(row);
+        expect(row.querySelector('img')).toBe(avatar);
+        expect(row.querySelector('.sb-persona-row-menu')).toBe(menu);
+        expect(menu.getAttribute('aria-label')).toBe('Actions for Updated name');
+        expect(menu.title).toBe('Actions for Updated name');
+        expect(row.querySelector('.ds-entity-row__title').textContent).toBe('Updated name');
+        expect(row.querySelector('.ds-entity-row__subtitle').textContent).toBe('Updated title');
+        expect(row.getAttribute('aria-label')).toBe('Updated name');
+        expect(row.classList.contains('is-selected')).toBe(true);
         expect(detail.refresh).toHaveBeenLastCalledWith('persona', avatarIds[0]);
         expect(detail.destroy).not.toHaveBeenCalled();
         expect(mountDetail).toHaveBeenCalledTimes(1);

@@ -38,6 +38,8 @@ import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
+import { objectNavigation } from './sillybunny-editor/object-navigation.js';
+import './sillybunny-characters-navigation.js';
 import { mountEditorPreviews } from './sillybunny-editor/preview.js';
 import { animateHeightFrom, animateIn, animateListChange, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, prefersReducedMotion } from './sillybunny-motion.js';
 
@@ -366,7 +368,10 @@ async function _handleBack(event) {
         event.stopImmediatePropagation();
         return;
     }
-    _closeSafely();
+    await objectNavigation.back({
+        current: { kind: 'character-editor', id: characters[this_chid]?.avatar ?? null },
+        fallback: _closeSafely,
+    });
 }
 
 function _closeSafely() {

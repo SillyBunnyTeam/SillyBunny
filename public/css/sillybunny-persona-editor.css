@@ -203,77 +203,12 @@
     background: var(--sb-layer-view);
 }
 
-#sb-settings-page #PersonaManagement .sb-persona-editor .sb-persona-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 52px;
-    padding: 6px 8px;
-    border: 0;
-    border-radius: 0;
-    color: inherit;
-    font-family: inherit;
-    text-align: start;
-    cursor: pointer;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 52px;
-    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
-}
-
-#sb-settings-page #PersonaManagement .sb-persona-editor .sb-persona-row:not(:last-child) {
-    border-bottom: 1px solid var(--sb-shell-border);
-}
-
-#PersonaManagement .sb-persona-row-avatar {
-    flex: none;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.sb-persona-row .ds-row-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.sb-persona-row :is(.ds-row-label, .ds-row-subtitle) {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#sb-settings-page #PersonaManagement .sb-persona-row .ds-row-label {
-    font-size: calc(var(--sb-type-body) * 0.9);
-    font-weight: 600;
-    line-height: 1.6;
-}
-
-.sb-persona-row .ds-row-suffix {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-#sb-settings-page #PersonaManagement .sb-persona-row .ds-row-subtitle {
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--sb-type-body) * 0.75);
-    line-height: 1.6;
-}
-
 .sb-persona-row-badges {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    padding: 0;
+    background: transparent;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
 }
@@ -282,42 +217,29 @@
     color: var(--sb-accent);
 }
 
-#PersonaManagement .sb-persona-editor .sb-persona-row.is-selected {
-    background: var(--sb-flat-selected-bg);
-}
-
 .sb-persona-editor .sb-list-pagination {
     flex: none;
     padding: 0 12px max(10px, env(safe-area-inset-bottom));
     font-size: calc(var(--sb-type-body) * 0.75);
 }
 
-.sb-persona-editor[data-open='true'][data-collapsed='false'] .sb-persona-row .ds-row-subtitle {
+.sb-persona-editor[data-open='true'][data-collapsed='false'] .sb-persona-row .ds-entity-row__subtitle {
     display: none !important;
 }
 
 @container sb-list-editor-sidebar (width < 440px) {
-    #sb-settings-page #PersonaManagement .sb-persona-editor .sb-persona-row {
-        gap: 6px;
-        padding-inline: 4px;
-    }
-
     .sb-persona-row-badges {
         gap: 5px;
     }
 }
 
 @media (hover: hover) {
-    #PersonaManagement .sb-persona-editor :is(.menu_button:not(:disabled), .sb-persona-row):hover {
+    #PersonaManagement .sb-persona-editor .menu_button:not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
-    }
-
-    #PersonaManagement .sb-persona-editor .sb-persona-row.is-selected:hover {
-        background: var(--sb-flat-selected-hover-bg);
     }
 }
 
-#PersonaManagement .sb-persona-editor :is(button, .sb-persona-row):focus-visible {
+#PersonaManagement .sb-persona-editor button:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -328,7 +250,7 @@
     cursor: not-allowed;
 }
 
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 768px) {
     #PersonaManagement .sb-persona-editor .menu_button {
         min-width: 44px;
         min-height: 44px;
@@ -352,13 +274,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sb-persona-row,
     #PersonaManagement .sb-persona-editor .menu_button {
         transition: none;
     }
 }
 
-body.reduced-motion .sb-persona-row,
 body.reduced-motion #PersonaManagement .sb-persona-editor .menu_button {
     transition: none;
 }

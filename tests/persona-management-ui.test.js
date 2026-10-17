@@ -29,6 +29,13 @@ describe('legacy persona layout retirement', () => {
         expect(tabsJs).not.toContain('deferred-personas-css');
     });
 
+    test('keeps the shared entity-row stylesheet deferred and includes it in the Persona preload gate', () => {
+        const personaStyles = tabsJs.split('\'characters:persona\': [')[1].split('],')[0];
+        expect(personaStyles).toContain('{ href: \'css/sillybunny-entity-list.css?v=20261016a\', id: \'deferred-entity-list-css\' }');
+        expect(indexHtml).toMatch(/<link rel="preload" as="style" href="css\/sillybunny-entity-list\.css\?v=20261016a" data-sb-deferred-style/);
+        expect(indexHtml).not.toMatch(/<link rel="stylesheet"[^>]*href="css\/sillybunny-entity-list\.css/);
+    });
+
     test('removes SillyBunny-only legacy layout IDs and quick actions', () => {
         expect(indexHtml).not.toMatch(/id="persona_(?:workspace_|editor_(?:tab|panel)_|selected_|appendi(?:x|ces)_|effective_description_preview|to_character_button|management_list_scroller)/);
         expect(indexHtml).not.toMatch(/persona_quick_(?:rename|delete)/);
