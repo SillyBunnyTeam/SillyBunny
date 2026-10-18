@@ -16,14 +16,13 @@ import {
 import { FILTER_TYPES, FILTER_STATES, DEFAULT_FILTER_STATE, isFilterState, FilterHelper } from './filters.js';
 
 import { groupCandidatesFilter, groupMembersFilter, groups, selected_group } from './group-chats.js';
-import { download, onlyUnique, parseJsonFile, uuidv4, getSortableDelay, flashHighlight, equalsIgnoreCaseAndAccents, includesIgnoreCaseAndAccents, removeFromArray, getFreeName, debounce, findChar, escapeHtml } from './utils.js';
+import { download, onlyUnique, parseJsonFile, uuidv4, flashHighlight, equalsIgnoreCaseAndAccents, includesIgnoreCaseAndAccents, removeFromArray, getFreeName, findChar, escapeHtml } from './utils.js';
 import { power_user } from './power-user.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { isMobile } from './RossAscends-mods.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
-import { debounce_timeout } from './constants.js';
 import { INTERACTABLE_CONTROL_CLASS } from './keyboard.js';
 import { commonEnumProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { renderTemplateAsync } from './templates.js';
@@ -32,6 +31,8 @@ import { accountStorage } from './util/AccountStorage.js';
 import { enumTypes, SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
 // SillyBunny: editor tag chips opt into local add/remove motion without changing legacy lists.
 import { animateHeightFrom, animateIn, fadeOutAndRemove } from './sillybunny-motion.js';
+// SillyBunny: share the dialog lifecycle and chip colour updates — see docs/ui-migration.md
+import { openTagManager, refreshTagManager, updateTagColors } from './sillybunny-tag-manager.js';
 
 export {
     TAG_FOLDER_TYPES,
@@ -1238,6 +1239,9 @@ function newTag(tagName) {
  */
 function printTagList(element, { tags = undefined, addTag = undefined, forEntityOrKey = undefined, empty = true, sort = true, tagActionSelector = undefined, tagOptions = {}, inactiveTags = [] } = {}) {
     const $element = (typeof element === 'string') ? $(element) : element;
+    // SillyBunny: editor chips use the same neutral-pill/dot model as entity lists — see docs/ui-migration.md
+    $element.filter('#tagList, #groupTagList').addClass('ds-tag-chips');
+    refreshTagManager();
     const key = forEntityOrKey !== undefined ? getTagKeyForEntity(forEntityOrKey) : getTagKey();
     let printableTags = tags ? (typeof tags === 'function' ? tags() : tags) : getTagsList(key, sort);
 
@@ -1592,6 +1596,8 @@ function runTagFilters(listElement) {
 }
 
 function printTagFilters(type = tag_filter_type.character) {
+    // SillyBunny: slash commands, imports and bulk edits reconcile the open manager — see docs/ui-migration.md
+    refreshTagManager();
     removeMissingTagFilters();
 
     let FILTER_SELECTOR;
@@ -1801,56 +1807,42 @@ export function createTagInput(inputSelector, listSelector, tagListOptions = {})
 }
 
 async function onViewTagsListClick() {
-    const html = $(document.createElement('div'));
-    html.attr('id', 'tag_view_list');
-    html.append(await renderTemplateAsync('tagManagement', { bogus_folders: power_user.bogus_folders }));
-
-    const tagContainer = $('<div class="tag_view_list_tags ui-sortable"></div>');
-    html.append(tagContainer);
-
-    const $sortModeSelect = html.find('#tag_sort_mode_select');
-    $sortModeSelect.val(power_user.tag_sort_mode);
-    $sortModeSelect.on('change', function () {
-        const newMode = $(this).val().toString();
-        power_user.tag_sort_mode = newMode;
-        saveSettingsDebounced();
-        printViewTagList(tagContainer);
+    // SillyBunny: one opener retains upstream actions and live data identities — see docs/ui-migration.md
+    await openTagManager({
+        getState: () => ({ tags, tagMap: tag_map, characters, groups, settings: power_user }),
+        folderTypes: TAG_FOLDER_TYPES,
+        sort: sortTags,
+        create: createNewTag,
+        commit: commitTagManagement,
+        rename: (tag, name) => {
+            tag.name = name;
+            $(`.tag[id="${tag.id}"] .tag_name`).text(name);
+            applyCharacterTagsToMessageDivs();
+        },
+        actions: {
+            backup: onTagsBackupClick,
+            restore: onBackupRestoreClick,
+            prune: onTagsPruneClick,
+            delete: async row => {
+                await onTagDeleteClick.call(row);
+                refreshTagManagementFilters();
+            },
+            folder: row => onTagAsFolderClick.call(row),
+            color: (event, property) => onTagColorize(event, (tag, color) => tag[property] = color, property === 'color' ? 'background-color' : 'color'),
+        },
     });
-
-    printViewTagList(tagContainer);
-    makeTagListDraggable(tagContainer);
-
-    await callGenericPopup(html, POPUP_TYPE.TEXT, null, { allowVerticalScrolling: true, wide: true, large: true });
 }
 
-function makeTagListDraggable(tagContainer) {
-    const onTagsSort = () => {
-        tagContainer.find('.tag_view_item').each(function (i, tagElement) {
-            const id = $(tagElement).attr('id');
-            const tag = tags.find(x => x.id === id);
+// SillyBunny: live tag actions refresh all filter transports (and their observed menus) — see docs/ui-migration.md
+function refreshTagManagementFilters() {
+    for (const type of new Set(Object.values(tag_filter_type))) printTagFilters(type);
+}
 
-            // Update the sort order
-            tag.sort_order = i;
-        });
-
-        // If tags were dragged manually, we have to disable auto sorting
-        if (power_user.tag_sort_mode !== tag_sort_mode.MANUAL) {
-            power_user.tag_sort_mode = tag_sort_mode.MANUAL;
-            $('#tag_sort_mode_select').val(tag_sort_mode.MANUAL);
-            toastr.info('Switched to Manual sorting mode.');
-        }
-
-        // If the order of tags in display has changed, we need to redraw some UI elements. Do it debounced so it doesn't block and you can drag multiple tags.
-        printCharactersDebounced();
-        saveSettingsDebounced();
-    };
-
-    // @ts-ignore
-    $(tagContainer).sortable({
-        delay: getSortableDelay(),
-        stop: () => onTagsSort(),
-        handle: '.drag-handle',
-    });
+// SillyBunny: immediate actions retain upstream persistence and reprint timing — see docs/ui-migration.md
+function commitTagManagement() {
+    saveSettingsDebounced();
+    printCharactersDebounced();
+    refreshTagManagementFilters();
 }
 
 /**
@@ -2265,6 +2257,8 @@ async function onTagDeleteClick() {
 }
 
 function onTagRenameInput() {
+    // SillyBunny: the new validated input commits on Enter/blur, never per keystroke — see docs/ui-migration.md
+    if (this.dataset.sbRename) return;
     const id = $(this).closest('.tag_view_item').attr('id');
     const newName = $(this).text();
     const tag = tags.find(x => x.id === id);
@@ -2284,26 +2278,33 @@ function onTagRenameInput() {
  * @param {string} cssProperty - The CSS property to apply the color to
  */
 function onTagColorize(evt, setColor, cssProperty) {
-    const isDefaultColor = $(evt.target).data('default-color') === evt.detail.rgba;
+    // SillyBunny: picker initialization is not an edit; normalize equivalent CSS colours — see docs/ui-migration.md
+    const normalizeColor = value => {
+        const probe = document.createElement('span');
+        probe.style.color = value;
+        return probe.style.color;
+    };
+    const defaultColor = $(evt.target).data('default-color');
+    const isDefaultColor = normalizeColor(defaultColor) === normalizeColor(evt.detail.rgba);
     $(evt.target).closest('.tag_view_color_picker').find('.link_icon').toggle(!isDefaultColor);
 
     const id = $(evt.target).closest('.tag_view_item').attr('id');
+    const tag = tags.find(x => x.id === id);
     let newColor = evt.detail.rgba;
     if (isDefaultColor) newColor = '';
 
-    $(evt.target).closest('.tag_view_item').find('.tag_view_name').css(cssProperty, newColor);
-    const tag = tags.find(x => x.id === id);
+    // SillyBunny: the neutral name field is not a colour preview; dots carry tag colour — see docs/ui-migration.md
+    if ($(evt.target).closest('.sb-tag-manager').length) {
+        const property = cssProperty === 'background-color' ? 'color' : 'color2';
+        if (normalizeColor(tag[property] || defaultColor) === normalizeColor(newColor || defaultColor)) return;
+    } else {
+        $(evt.target).closest('.tag_view_item').find('.tag_view_name').css(cssProperty, newColor);
+    }
     setColor(tag, newColor);
-    saveSettingsDebounced();
-
-    // Debounce redrawing color of the tag in other elements
-    debouncedTagColoring(tag.id, cssProperty, newColor);
+    // SillyBunny: F6 updates chip tokens immediately before filter/list reprints — see docs/ui-migration.md
+    updateTagColors(tag);
+    commitTagManagement();
 }
-
-const debouncedTagColoring = debounce((tagId, cssProperty, newColor) => {
-    $(`.tag[id="${tagId}"]`).css(cssProperty, newColor);
-    $(`.bogus_folder_select[tagid="${tagId}"] .avatar`).css(cssProperty, newColor);
-}, debounce_timeout.quick);
 
 function onTagListHintClick() {
     const tagControls = $(this).closest('.ds-tag-filter')[0];
@@ -2383,6 +2384,12 @@ function copyTags(data) {
  * @param {boolean} empty Whether to empty the container before printing
  */
 function printViewTagList(tagContainer, empty = true) {
+    // SillyBunny: restore/prune keep pending rename fields and scroll when reconciling — see docs/ui-migration.md
+    if (tagContainer.closest('.sb-tag-manager').length) {
+        refreshTagManager();
+        refreshTagManagementFilters();
+        return;
+    }
     if (empty) tagContainer.empty();
     const everything = Object.values(tag_map).flat();
     const counts = new Map(tags.map(tag => [tag.id, everything.filter(x => x === tag.id).length]));
@@ -2910,6 +2917,8 @@ export function initTags() {
     eventSource.makeFirst(event_types.CHAT_CHANGED, () => selected_group ? applyTagsOnGroupSelect() : applyTagsOnCharacterSelect());
 
     $(document).on('focusout', '#tag_view_list .tag_view_name', (evt) => {
+        // SillyBunny: the new manager owns validation, reconciliation and focus — see docs/ui-migration.md
+        if (evt.target.dataset.sbRename) return;
         // Reorder/reprint tags, but only if the name actually has changed
         if (!$(evt.target).is('[dirty]')) return;
 

@@ -437,6 +437,7 @@ describe('view-scoped upstream tag persistence', () => {
         const tags = Array.from({ length: 60 }, (_, index) => ({ id: `tag-${index}`, filter_state: 'UNDEFINED' }));
         const appendTagToList = jest.fn();
         const context = loadSourceFunctions('scripts/tags.js', ['printTagList', 'determineTagFilterState'], {
+            refreshTagManager: jest.fn(),
             getTagKey: () => null,
             expanded_tags_cache: [],
             getFilterHelper: () => helper,
