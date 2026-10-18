@@ -18,6 +18,21 @@
     padding: 0 !important;
 }
 
+#right-nav-panel.openDrawer #rm_ch_create_block {
+    padding-inline-end: 0;
+    scrollbar-gutter: auto;
+    overflow: hidden;
+}
+
+.sb-editor-sheet .text_pole::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
+}
+
+.sb-editor-sheet .ds-pref-group {
+    border-radius: var(--sb-radius-card);
+}
+
 /* Framed like the Prompt Editor box; the header bar sits on the sidebar tone so it
    reads against the page, matching the Characters/Groups list headers. */
 #form_create.sb-editor-sheet,
@@ -91,6 +106,7 @@
 }
 
 .sb-editor-header {
+    position: -webkit-sticky;
     position: sticky;
     top: 0;
     z-index: 50;
@@ -513,6 +529,7 @@
     color: var(--sb-input-placeholder, color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent));
     line-height: 1.4;
     margin-top: 2px;
+    opacity: 1;
 }
 
 .ds-field-hint {
@@ -1241,8 +1258,8 @@ body.reduced-motion :is(
     #sb_group_editor_toolbar {
         max-height: 6rem;
         overflow: hidden;
-        transition: max-height 200ms ease, min-height 200ms ease, padding 200ms ease,
-            border-width 200ms ease, opacity 150ms ease, visibility 0s linear 0s;
+        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast), padding var(--sb-transition-fast),
+            border-width var(--sb-transition-fast), opacity var(--sb-transition-fast), visibility 0s linear 0s;
     }
 
     :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
@@ -1253,8 +1270,8 @@ body.reduced-motion :is(
         border-width: 0;
         visibility: hidden;
         opacity: 0;
-        transition: max-height 200ms ease, min-height 200ms ease, padding 200ms ease,
-            border-width 200ms ease, opacity 150ms ease, visibility 0s linear 200ms;
+        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast), padding var(--sb-transition-fast),
+            border-width var(--sb-transition-fast), opacity var(--sb-transition-fast), visibility 0s linear var(--sb-duration-fast);
     }
 
     @media (prefers-reduced-motion: reduce) {

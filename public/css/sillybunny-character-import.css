@@ -28,7 +28,7 @@
     margin: 0;
     min-width: 0;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    border-radius: var(--sb-radius-lg);
+    border-radius: var(--sb-radius-card);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     overflow: hidden;
 }

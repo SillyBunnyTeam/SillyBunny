@@ -2143,7 +2143,7 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: var(--sb-radius-lg, 22px);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
     background: color-mix(in srgb, var(--sb-shell-surface) 78%, transparent);
-    color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 72%, var(--SmartThemeBodyColor));
+    color: var(--sb-muted-fg);
     font-size: calc(var(--mainFontSize) * 1.7);
 }
 

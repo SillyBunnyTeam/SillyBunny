@@ -16,7 +16,8 @@
     --sb-radius-button: 14px;
     --sb-shell-control-radius: 999px;
     /* Motion: libadwaita-aligned timing and easing */
-    --sb-transition-fast: 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --sb-duration-fast: 200ms;
+    --sb-transition-fast: var(--sb-duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --sb-transition: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
     --sb-transition-slow: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
     --sb-ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -959,6 +960,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 
 .sb-segmented-control--compact .sb-boolean-radio-option > input:checked + span {
     background: var(--sb-flat-selected-bg);
+    color: var(--SmartThemeBodyColor);
 }
 
 .sb-segmented-control--compact .sb-boolean-radio-option > input:focus-visible + span {
@@ -966,9 +968,11 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-boolean-radio-option:hover > input[type="radio"]:not(:checked) + span {
-    border-color: color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    background: var(--sb-button-hover);
+@media (hover: hover) {
+    .sb-boolean-radio-option:hover > input[type="radio"]:not(:checked) + span {
+        border-color: color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
+        background: var(--sb-button-hover);
+    }
 }
 
 .floating_prompt_radio_group label {
@@ -1101,7 +1105,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 .menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
 .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
     transform: scale(0.97);
-    transition: transform 100ms var(--sb-ease-out);
+    transition: transform var(--sb-transition-fast);
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not([aria-current='false']):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
@@ -1241,8 +1245,17 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     text-shadow: none;
 }
 
-.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+@media (hover: hover) {
+    .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
+        border-color: transparent;
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
+    }
+}
+
+.menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
 .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active,
 .menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
@@ -2777,12 +2790,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .select2-container--default .select2-dropdown {
-    background-color: #11151c;
-    background-image: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, black 2%)
-    );
+    background-color: var(--sb-layer-popover);
+    background-image: none;
     border-radius: var(--sb-radius-button);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
     box-shadow: 0 18px 32px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent);
@@ -2795,8 +2804,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
    scrollbars and cuts the option list off mid-row. */
 
 .select2-container--default .select2-results__options {
-    background-color: #11151c;
-    background-image: linear-gradient(var(--SmartThemeBlurTintColor), var(--SmartThemeBlurTintColor));
+    background-color: var(--sb-layer-popover);
+    background-image: none;
 }
 
 .select2-container--default .select2-results__option--selectable {
@@ -2806,11 +2815,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .select2-container--default .select2-results__option--selected {
-    background-color: #11151c;
-    background-image: linear-gradient(
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, var(--SmartThemeBlurTintColor) 82%),
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, var(--SmartThemeBlurTintColor) 82%)
-    );
+    background-color: var(--sb-flat-selected-bg);
+    background-image: none;
 }
 
 .select2-container--default .select2-selection--single {
@@ -2846,23 +2852,16 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .select2-container--default .select2-results__option--highlighted[aria-selected] {
-    background-color: #11151c;
-    background-image: linear-gradient(
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--SmartThemeBlurTintColor) 72%),
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--SmartThemeBlurTintColor) 72%)
-    );
+    background-color: var(--sb-flat-selected-hover-bg);
+    background-image: none;
     color: var(--SmartThemeBodyColor);
     opacity: 1;
 }
 
 .select2-dropdown:has(:is(#select2-world_info-results, #select2-world_editor_select-results)) {
     left: 0;
-    background-color: #11151c;
-    background-image: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, black 2%)
-    );
+    background-color: var(--sb-layer-popover);
+    background-image: none;
     pointer-events: auto;
 }
 
@@ -2870,12 +2869,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     box-sizing: border-box;
     min-width: min(260px, calc(100vw - 24px));
     max-width: calc(100vw - 24px);
-    background-color: #11151c;
-    background-image: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 94%, var(--SmartThemeBodyColor) 6%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 98%, black 2%)
-    );
+    background-color: var(--sb-layer-popover);
+    background-image: none;
     pointer-events: auto;
 }
 
@@ -2886,8 +2881,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     max-height: min(320px, 42vh);
     overflow-x: hidden;
     overflow-y: auto;
-    background-color: #11151c;
-    background-image: linear-gradient(var(--SmartThemeBlurTintColor), var(--SmartThemeBlurTintColor));
+    background-color: var(--sb-layer-popover);
+    background-image: none;
 }
 
 :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option,
@@ -2904,20 +2899,14 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--selected,
 .sb-world-info-select2-dropdown .select2-results__option--selected {
-    background-color: #11151c;
-    background-image: linear-gradient(
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, var(--SmartThemeBlurTintColor) 82%),
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, var(--SmartThemeBlurTintColor) 82%)
-    );
+    background-color: var(--sb-flat-selected-bg);
+    background-image: none;
 }
 
 :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--highlighted[aria-selected],
 .sb-world-info-select2-dropdown .select2-results__option--highlighted[aria-selected] {
-    background-color: #11151c;
-    background-image: linear-gradient(
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--SmartThemeBlurTintColor) 72%),
-        color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--SmartThemeBlurTintColor) 72%)
-    );
+    background-color: var(--sb-flat-selected-hover-bg);
+    background-image: none;
     color: var(--SmartThemeBodyColor);
     opacity: 1;
 }

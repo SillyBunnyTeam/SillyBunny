@@ -221,6 +221,11 @@
     box-shadow: var(--sb-entry-focus-ring);
 }
 
+.sb-character-list .text_pole::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
+}
+
 .sb-character-list__search-status {
     position: absolute;
     width: 1px;

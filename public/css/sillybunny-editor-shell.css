@@ -113,6 +113,15 @@
 
 /* --- Detail pane --- */
 
+.sb-list-editor .ds-pref-group {
+    border-radius: var(--sb-radius-card);
+}
+
+.sb-list-editor .text_pole::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
+}
+
 .sb-list-editor__detail {
     container-type: inline-size;
     container-name: sb-list-editor-detail;
@@ -203,6 +212,11 @@ body.reduced-motion .sb-list-editor__divider::before {
 .ds-row.ds-button-row:focus-visible,
 .ds-row-entry input:focus-visible,
 .sb-status-page .sb-status-page__action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#sb-settings-page :is(#WorldInfo, #PersonaManagement, #sb_character_import_panel) :is(.ds-row--activatable, .ds-button-row, .editor_maximize, .sb-wi-property-summary, .sb-persona-property-summary):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -943,9 +957,4 @@ body.reduced-motion [data-selection-mode='true'] button.menu_button:is(.sb-selec
 
 .menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action, .sb-status-page__action) {
     white-space: nowrap;
-}
-
-#sb-settings-page :is(#WorldInfo, #PersonaManagement, #sb_character_import_panel) :is(.ds-row--activatable, .ds-button-row, .editor_maximize, .sb-wi-property-summary, .sb-persona-property-summary):focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
 }
