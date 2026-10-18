@@ -341,8 +341,14 @@ export function mountEditorChrome(config) {
     return {
         render,
         scheduleOverflow,
-        /** Reveal the header and toolbar; call when a session opens. */
-        reset: showChrome,
+        /**
+         * Reveal the header and toolbar; call when a session opens.
+         * @param {{ scrollToTop?: boolean }} [options] Start a different entity at the top of the shared sheet.
+         */
+        reset({ scrollToTop = false } = {}) {
+            if (scrollToTop) content.scrollTop = 0;
+            showChrome();
+        },
         dispose,
     };
 }

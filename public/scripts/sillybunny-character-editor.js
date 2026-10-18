@@ -312,6 +312,7 @@ export function addGroupGreeting() {
 
 /** @param {{ mode: 'edit'|'create', entityId: string, chid: number|null }} context */
 function _openSession(context) {
+    const previous = session.context;
     previews?.reset();
     _syncRoleSegment();
     session.open(context);
@@ -319,7 +320,7 @@ function _openSession(context) {
     _syncTokenReadout();
     _syncFavoritePressed();
     chrome?.scheduleOverflow();
-    chrome?.reset();
+    chrome?.reset({ scrollToTop: previous?.mode !== context.mode || previous?.entityId !== context.entityId });
 }
 
 /** @param {unknown} list */

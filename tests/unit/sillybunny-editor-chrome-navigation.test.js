@@ -94,6 +94,20 @@ describe('mountEditorChrome header-only mode', () => {
         expect(observe).not.toHaveBeenCalled();
     });
 
+    test('reset reveals hidden chrome and scrolls to the top only on request', () => {
+        makeMedia();
+        const { chrome, header, content } = makeChrome();
+        header.classList.add('sb-editor-chrome-hidden');
+        content.scrollTop = 240;
+        chrome.reset();
+        expect(header.classList.contains('sb-editor-chrome-hidden')).toBe(false);
+        expect(content.scrollTop).toBe(240);
+        header.classList.add('sb-editor-chrome-hidden');
+        chrome.reset({ scrollToTop: true });
+        expect(header.classList.contains('sb-editor-chrome-hidden')).toBe(false);
+        expect(content.scrollTop).toBe(0);
+    });
+
     test('wires back, cancel and save', () => {
         makeMedia();
         const { controls, handlers } = makeChrome();

@@ -276,9 +276,10 @@ export function notifyGroupEditorChanged(options) {
 
 /** @param {{ mode: 'create'|'edit', entityId: string }} context */
 function _openSession(context) {
+    const previous = session.context;
     session.open(context);
     chrome?.scheduleOverflow();
-    chrome?.reset();
+    chrome?.reset({ scrollToTop: previous?.mode !== context.mode || previous?.entityId !== context.entityId });
 }
 
 function _refreshChrome() {
