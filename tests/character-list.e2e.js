@@ -792,6 +792,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const groups = listRows(page, 'groups');
         const groupPicker = await openTagPicker(page);
         await groupPicker.search.fill('alpha');
+        await expect(groupPicker.picker.getByRole('option')).toHaveCount(1);
         const groupOption = groupPicker.picker.getByRole('option', { name: /^QA list alpha/ });
         await groupOption.click();
         await expect(groupOption).toHaveAttribute('aria-selected', 'true');

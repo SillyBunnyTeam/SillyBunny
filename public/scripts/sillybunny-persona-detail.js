@@ -12,7 +12,7 @@ import {
     changePersonaImage, convertPersonaToCharacter,
 } from './personas.js';
 import * as model from './sillybunny-persona-model.js';
-import { createRow, createSwitchRow, createEntryRow, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup } from './sillybunny-editor/rows.js';
+import { createRow, createSwitchRow, createEntryRow, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
@@ -428,7 +428,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         for (const [id, view] of noteViews) {
             if (ids.has(id)) continue;
             $(view.textarea).off('.sbPersonaDetail');
-            view.expander.row.remove();
+            view.expander.destroy();
             noteViews.delete(id);
         }
         for (const [index, note] of draft.appendices.entries()) {
@@ -1029,6 +1029,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             window.removeEventListener('pagehide', flushDraft);
             document.removeEventListener('pointerdown', onPointerdown);
             root.removeEventListener('keydown', onKeydown, true);
+            releaseRowIds(root);
             root.remove();
         },
     };

@@ -77,6 +77,7 @@ function setBooks(names, selected = []) {
 }
 
 beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
     jest.clearAllMocks();
     settingsListeners.clear();
     document.body.innerHTML = `<div id="legacy">${legacyHtml}</div><div id="sb-settings-page"><div class="sb-settings-mounted-shell"><div class="sb-list-editor sb-wi-editor" data-collapsed="false"><div id="detail"></div></div></div></div>`;
@@ -95,6 +96,7 @@ afterEach(() => {
     controller?.destroy();
     controller = null;
     document.body.replaceChildren();
+    jest.useRealTimers();
 });
 
 describe('World Info settings transport adoption', () => {
@@ -296,6 +298,39 @@ describe('mutually exclusive activation settings', () => {
 });
 
 describe('active books', () => {
+    test('search waits for a 300ms pause, clears immediately and drops pending work on destroy', async () => {
+        mount();
+        await Promise.resolve();
+        const search = controller.focusTarget();
+        const firstRow = book(0).closest('.ds-row');
+        const observer = new MutationObserver(() => {});
+        observer.observe(firstRow, { attributes: true });
+        search.value = 'a';
+        change(search, 'input');
+        jest.advanceTimersByTime(200);
+        search.value = 'Beta';
+        change(search, 'input');
+        jest.advanceTimersByTime(299);
+        expect(observer.takeRecords()).toHaveLength(0);
+        jest.advanceTimersByTime(1);
+        expect(firstRow.hidden).toBe(true);
+        search.value = 'missing';
+        change(search, 'input');
+        search.value = '';
+        change(search, 'input');
+        expect(firstRow.hidden).toBe(false);
+        observer.takeRecords();
+        jest.advanceTimersByTime(300);
+        expect(observer.takeRecords()).toHaveLength(0);
+        search.value = 'missing';
+        change(search, 'input');
+        controller.destroy();
+        expect(jest.getTimerCount()).toBe(0);
+        jest.advanceTimersByTime(300);
+        expect(firstRow.hidden).toBe(false);
+        observer.disconnect();
+    });
+
     test('reflects option.selected rather than its default selected attribute', () => {
         select.options[0].setAttribute('selected', '');
         select.options[0].selected = false;
@@ -347,12 +382,14 @@ describe('active books', () => {
         const search = controller.focusTarget();
         search.value = '  bEt  ';
         change(search, 'input');
+        jest.advanceTimersByTime(300);
         expect(book(0).closest('.ds-row').hidden).toBe(true);
         expect(book(1).closest('.ds-row').hidden).toBe(false);
         expect(book(2).closest('.ds-row').hidden).toBe(true);
         expect(book(1).checked).toBe(true);
         search.value = 'missing';
         change(search, 'input');
+        jest.advanceTimersByTime(300);
         expect(host.querySelector('.sb-wi-settings-empty').hidden).toBe(false);
         expect(host.querySelector('.sb-wi-settings-empty .sb-status-page__title').textContent).toBe('No results');
         search.value = '';

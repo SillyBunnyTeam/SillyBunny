@@ -88,6 +88,7 @@ await jest.unstable_mockModule('../../public/scripts/personas.js', () => ({
     deletePersonaRecord, changePersonaImage, convertPersonaToCharacter,
 }));
 const { mountPersonaDetail, personaDraftKey } = await import('../../public/scripts/sillybunny-persona-detail.js');
+const { createEntryRow } = await import('../../public/scripts/sillybunny-editor/rows.js');
 const { objectNavigation } = await import('../../public/scripts/sillybunny-editor/object-navigation.js');
 const { registerEditorNavigation } = await import('../../public/scripts/sillybunny-editor/navigation.js');
 const navigate = jest.spyOn(objectNavigation, 'navigate');
@@ -137,6 +138,33 @@ test('ordinary metadata/state refreshes keep avatar URLs stable; overwrites inva
     jest.advanceTimersByTime(1);
     controller.refresh('persona', 'first.png');
     expect(image.getAttribute('src')).toBe(overwritten);
+});
+
+test('destroy releases row reservations owned by the Persona detail', () => {
+    const { host, controller } = mount();
+    const marker = createEntryRow({ label: 'Marker', field: 'marker' });
+    const nextId = `sb-row-${Number(marker.control.id.split('-').at(-1)) + 1}`;
+    const reserved = createEntryRow({ label: 'Reserved', field: 'reserved', id: nextId });
+    host.firstElementChild.append(reserved.row);
+    controller.destroy();
+    const next = createEntryRow({ label: 'Next', field: 'next' });
+    expect(next.control.id).toBe(nextId);
+    marker.destroy();
+    next.destroy();
+});
+
+test('deleting a scenario note releases its row reservations before the editor closes', () => {
+    const { host } = mount();
+    const marker = createEntryRow({ label: 'Marker', field: 'marker' });
+    const nextId = `sb-row-${Number(marker.control.id.split('-').at(-1)) + 1}`;
+    const reserved = createEntryRow({ label: 'Reserved', field: 'reserved', id: nextId });
+    const note = host.querySelector('[data-sb-editor-field="appendix"]');
+    note.append(reserved.row);
+    note.querySelector('[data-sb-editor-field="appendix-delete"]').click();
+    const next = createEntryRow({ label: 'Next', field: 'next' });
+    expect(next.control.id).toBe(nextId);
+    marker.destroy();
+    next.destroy();
 });
 
 function field(host, id) {

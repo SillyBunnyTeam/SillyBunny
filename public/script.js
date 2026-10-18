@@ -15174,11 +15174,11 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#character_world').val(characters[chid].data?.extensions?.world || '');
     $('#creator_notes_textarea').val(characters[chid].data?.creator_notes || characters[chid].creatorcomment);
     $('#creator_notes_spoiler').html(formatCreatorNotes(characters[chid].data?.creator_notes || characters[chid].creatorcomment, characters[chid].avatar));
-    $('#character_version_textarea').val(characters[chid].data?.character_version || '');
     $('#system_prompt_textarea').val(characters[chid].data?.system_prompt || '');
     $('#post_history_instructions_textarea').val(characters[chid].data?.post_history_instructions || '');
     $('#tags_textarea').val(Array.isArray(characters[chid].data?.tags) ? characters[chid].data.tags.join(', ') : '');
     $('#creator_textarea').val(characters[chid].data?.creator);
+    // SillyBunny: populate the version once with the other metadata — see docs/ui-migration.md.
     $('#character_version_textarea').val(characters[chid].data?.character_version || '');
     $('#personality_textarea').val(characters[chid].personality);
     $('#firstmessage_textarea').val(characters[chid].first_mes);
@@ -15207,7 +15207,7 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     // SillyBunny: controller renders greetings and opens edit session (Step 3b)
     loadCharacterEditorGreetings(chid, 'edit');
     openCharacterEditorSession(chid);
-    focusUiSurface(document.getElementById('right-nav-panel'));
+    // SillyBunny: select_rm_create already schedules this surface's focus — see docs/ui-migration.md.
 
     $('#name_div').removeClass('displayNone');
     $('#name_div').addClass('displayBlock');

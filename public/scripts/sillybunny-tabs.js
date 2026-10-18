@@ -15815,7 +15815,10 @@ function getSettingsPage() {
 }
 
 function clearSettingsAnimationState() {
-    getSettingsPage()?.classList.remove('sb-settings-page--opening');
+    const page = getSettingsPage();
+    if (page?.classList.contains('sb-settings-page--opening')) {
+        page.classList.remove('sb-settings-page--opening');
+    }
     if (sbSettingsState.pageAnimation) {
         sbSettingsState.pageAnimation.onfinish = null;
         sbSettingsState.pageAnimation.cancel();

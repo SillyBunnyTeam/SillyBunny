@@ -1,6 +1,8 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use parameterized synchronous DOM assertions. */
 import { jest, describe, test, expect } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import {
     createRow,
     createSwitchRow,
@@ -51,6 +53,42 @@ const controlFactories = [
 ];
 
 describe('shared row behavior', () => {
+    test('destroying nested rows releases generated, explicit, heading and description reservations', () => {
+        const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8');
+        const api = runInNewContext(`${source.replaceAll('export ', '')}\n({ createEntryRow, createRow, createPrefGroup, createExpanderRow, reservationCount: () => reservedIds.size });`, { document });
+        for (let index = 0; index < 50; index++) {
+            const entry = api.createEntryRow({ label: 'Entry', field: 'entry', subtitle: 'Description' });
+            const explicit = api.createRow({ label: 'Row', field: 'row', id: `explicit-${index}`, subtitle: 'Description', activatable: true });
+            const expander = api.createExpanderRow({ label: 'Expander', field: 'expander', children: [entry, explicit] });
+            const group = api.createPrefGroup({ title: 'Group', subtitle: 'Description', field: 'group', rows: [expander] });
+            document.body.append(group.section);
+            expect(api.reservationCount()).toBe(6);
+            entry.control.removeAttribute('id');
+            group.destroy();
+            group.destroy();
+            entry.destroy();
+            expect(group.section.isConnected).toBe(false);
+            expect(api.reservationCount()).toBe(0);
+        }
+    });
+
+    test('destroying one row cannot release an id still owned by another detached control', () => {
+        const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8');
+        const api = runInNewContext(`${source.replaceAll('export ', '')}\n({ createEntryRow, reservationCount: () => reservedIds.size });`, { document });
+        const first = api.createEntryRow({ label: 'First', field: 'first', id: 'sb-row-1' });
+        const adopted = input('text');
+        adopted.id = 'sb-row-1';
+        const second = api.createEntryRow({ label: 'Second', field: 'second', input: adopted });
+        expect(api.reservationCount()).toBe(1);
+        first.destroy();
+        expect(api.reservationCount()).toBe(1);
+        const generated = api.createEntryRow({ label: 'Generated', field: 'generated' });
+        expect(generated.control.id).toBe('sb-row-2');
+        second.destroy();
+        generated.destroy();
+        expect(api.reservationCount()).toBe(0);
+    });
+
     test.each(controlFactories)('%s labels and descriptions are associated with the control', (_name, factory) => {
         const row = factory({ label: 'Translated label', subtitle: 'Helpful description', field: 'field-key' });
         expect(row.row.dataset.sbEditorField).toBe('field-key');

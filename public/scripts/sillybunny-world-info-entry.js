@@ -5,7 +5,7 @@ import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import * as model from './sillybunny-world-info-model.js';
-import { createRow, createSwitchRow, createComboRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup } from './sillybunny-editor/rows.js';
+import { createRow, createSwitchRow, createComboRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { createChipEntry } from './sillybunny-editor/chip-entry.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
@@ -820,6 +820,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             window.removeEventListener('pagehide', flushDraft);
             document.removeEventListener('pointerdown', onPointerdown);
             root.removeEventListener('keydown', onKeydown, true);
+            releaseRowIds(root);
             root.remove();
         },
     };

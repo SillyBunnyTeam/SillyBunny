@@ -1,20 +1,42 @@
 /** Shared boxed-list row factories. Labels arrive translated; adopted controls retain their identity. */
 
 let nextRowId = 0;
-const reservedIds = new Set();
+const reservedIds = new Map();
+const idReservations = new WeakMap();
+
+function releaseId(node) {
+    const id = idReservations.get(node);
+    if (!id) return;
+    const owners = reservedIds.get(id);
+    if (owners === 1) reservedIds.delete(id);
+    else reservedIds.set(id, owners - 1);
+    idReservations.delete(node);
+}
+
+function reserveId(node) {
+    if (idReservations.get(node) === node.id) return;
+    releaseId(node);
+    idReservations.set(node, node.id);
+    reservedIds.set(node.id, (reservedIds.get(node.id) ?? 0) + 1);
+}
+
+/** Releases this subtree's reservations even if an adopted control's ID has since changed. */
+export function releaseRowIds(root) {
+    releaseId(root);
+    root.querySelectorAll('*').forEach(releaseId);
+}
 
 function uniqueId() {
     let id;
     do {
         id = `sb-row-${++nextRowId}`;
     } while (reservedIds.has(id) || document.getElementById(id));
-    reservedIds.add(id);
     return id;
 }
 
 function ensureId(control, id) {
     if (!control.id) control.id = id || uniqueId();
-    reservedIds.add(control.id);
+    reserveId(control);
 }
 
 function element(tag, className, text) {
@@ -28,12 +50,12 @@ function markField(row, field, id) {
     row.dataset.sbEditorField = field;
     if (id) {
         row.id = id;
-        reservedIds.add(id);
+        reserveId(row);
     }
 }
 
 function associateDescription(control, description) {
-    description.id = uniqueId();
+    ensureId(description);
     const ids = new Set((control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean));
     ids.add(description.id);
     control.setAttribute('aria-describedby', [...ids].join(' '));
@@ -65,6 +87,10 @@ function rowController(row, control = null) {
         },
         setVisible(visible) {
             row.hidden = !visible;
+        },
+        destroy() {
+            releaseRowIds(row);
+            row.remove();
         },
     };
     controller.setDisabled(control?.disabled ?? false);
@@ -422,7 +448,7 @@ export function createPrefGroup({ title, subtitle, field, id, rows = [], headerS
         const header = element('div', 'ds-pref-group-header');
         if (title) {
             const heading = element('h3', 'ds-pref-group-heading', title);
-            heading.id = uniqueId();
+            ensureId(heading);
             group.setAttribute('aria-labelledby', heading.id);
             header.append(heading);
         }

@@ -10,6 +10,7 @@ let mounted;
 let menu;
 let resize;
 let navigationGeneration;
+let translationPrefix = '';
 const navigationDestinations = new Map();
 const pages = { characters: 1, groups: 1 };
 const sizes = { characters: 10, groups: 10 };
@@ -46,7 +47,7 @@ const setListSort = jest.fn();
 const template = html => { const element = document.createElement('div'); element.innerHTML = html; return element; };
 
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
-    t: (strings, ...values) => strings.reduce((out, string, index) => out + string + (values[index] ?? ''), ''),
+    t: (strings, ...values) => translationPrefix + strings.reduce((out, string, index) => out + string + (values[index] ?? ''), ''),
 }));
 await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
@@ -67,7 +68,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
 }));
 await jest.unstable_mockModule('../../public/script.js', () => ({
     setCharacterListRenderer: value => { renderer = value; }, printCharacters,
-    getCharacterRowData: (item, id) => ({ ...item, id, chid: id, avatarUrl: `/thumb/${item.avatar}` }),
+    getCharacterRowData: (item, id) => ({ ...item, id, chid: id, avatarUrl: item.avatarUrl ?? `/thumb/${item.avatar}` }),
     getGroupRowData: group => ({ ...group, memberCountText: '2 characters', memberNamesText: 'One, Two' }),
     entitiesFilter: { setFilterData, clearFuzzySearchCaches: jest.fn() },
     getBackBlock: () => template('<span class="ch_name">Go back</span>'),
@@ -132,6 +133,7 @@ beforeEach(() => {
     mounted = null;
     menu = null;
     navigationGeneration = 0;
+    translationPrefix = '';
     pages.characters = pages.groups = 1;
     sizes.characters = sizes.groups = 10;
     Object.assign(power_user, { charListGrid: false, show_tag_filters: true, bogus_folders: false });
@@ -172,6 +174,51 @@ afterEach(() => {
 });
 
 describe('shared Characters/Groups list', () => {
+    test.each(['characters', 'groups'])('unchanged %s rows do not rewrite presentation, but state and real changes refresh', async view => {
+        model.view = view;
+        if (view === 'groups') model.entities = [{ type: 'group', id: 'g', item: { id: 'g', name: 'Name' } }];
+        Object.assign(model.entities[0].item, { avatarTitle: 'Avatar', nameTitle: 'Name title' });
+        await mount();
+        const row = rows()[0];
+        const avatar = row.querySelector('.ds-entity-row__avatar');
+        const title = row.querySelector('.ds-entity-row__title');
+        const more = row.querySelector('.ds-entity-row__suffix').lastElementChild;
+        // Tooltip extensions remove title attributes after consuming them.
+        for (const element of [avatar, title, more]) element.removeAttribute('title');
+        const mutations = [];
+        const observer = new MutationObserver(records => mutations.push(...records));
+        observer.observe(row, { subtree: true, attributes: true, attributeFilter: ['title', 'aria-label', 'src', 'alt'] });
+        model.entities[0].item.active = true;
+        await mounted.render(model);
+        expect([...mutations, ...observer.takeRecords()]).toHaveLength(0);
+        expect(row.getAttribute('aria-current')).toBe('true');
+        Object.assign(model.entities[0].item, { name: 'Renamed', avatarTitle: 'New avatar', nameTitle: 'Renamed title', favorite: true });
+        await mounted.render(model);
+        expect(rows()[0]).toBe(row);
+        expect(avatar.title).toBe('New avatar');
+        expect(title.title).toBe('Renamed title');
+        expect(title.textContent).toContain('Renamed');
+        expect(more.getAttribute('aria-label')).toBe('Actions for Renamed');
+        expect(row.classList.contains('is_fav')).toBe(true);
+        expect(row.querySelector('.ch_fav').value).toBe('true');
+        translationPrefix = 'translated:';
+        await mounted.render(model);
+        expect(more.title).toBe('translated:Actions for Renamed');
+        expect(more.getAttribute('aria-label')).toBe(more.title);
+        observer.disconnect();
+    });
+
+    test('a changed avatar URL refreshes a retained character row', async () => {
+        await mount();
+        const row = rows()[0];
+        model.entities[0].item.avatarUrl = '/new-avatar.png';
+        model.entities[0].item.name = 'Renamed avatar';
+        await mounted.render(model);
+        expect(rows()[0]).toBe(row);
+        expect(row.querySelector('img').getAttribute('src')).toBe('/new-avatar.png');
+        expect(row.querySelector('img').alt).toBe('Renamed avatar');
+    });
+
     test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
         await mount();
         const row = rows()[0];

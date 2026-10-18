@@ -54,6 +54,7 @@ const { openPicker, closePicker, isPickerOpen } = await import('../../public/scr
 let cleanups;
 
 beforeEach(() => {
+    jest.useFakeTimers();
     closePicker({ animate: false });
     jest.clearAllMocks();
     document.body.replaceChildren();
@@ -73,6 +74,7 @@ afterEach(() => {
     closePicker({ animate: false });
     for (const cleanup of cleanups.reverse()) cleanup();
     jest.restoreAllMocks();
+    jest.useRealTimers();
     document.body.replaceChildren();
 });
 
@@ -101,9 +103,10 @@ function keydown(target, key, options = {}) {
     return event;
 }
 
-function filter(input, value) {
+function filter(input, value, { settle = true } = {}) {
     input.value = value;
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (settle) jest.advanceTimersByTime(300);
 }
 
 describe('searchable picker', () => {
@@ -483,5 +486,63 @@ describe('multi-toggle picker', () => {
         picker.close();
         picker.refresh([]);
         expect(picker.isOpen).toBe(false);
+    });
+});
+
+describe('picker search scheduling', () => {
+    test.each([false, true])('search coalesces a burst for 300ms and Clear cancels pending work (mobile=%s)', mobile => {
+        window.matchMedia.mockReturnValue({ matches: mobile });
+        const { input, list } = makePicker();
+        const replace = jest.spyOn(list, 'replaceChildren');
+        filter(input, 'a', { settle: false });
+        jest.advanceTimersByTime(200);
+        filter(input, 'Alpha', { settle: false });
+        jest.advanceTimersByTime(299);
+        expect(input.value).toBe('Alpha');
+        expect(replace).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(replace).toHaveBeenCalledTimes(1);
+        expect(list.querySelectorAll('[role="option"]')).toHaveLength(1);
+        filter(input, 'missing', { settle: false });
+        filter(input, '', { settle: false });
+        expect(list.querySelectorAll('[role="option"]')).toHaveLength(3);
+        expect(replace).toHaveBeenCalledTimes(2);
+        jest.advanceTimersByTime(300);
+        expect(replace).toHaveBeenCalledTimes(2);
+    });
+
+    test.each([false, true])('closing cancels pending search and cannot render into a replacement picker (mobile=%s)', mobile => {
+        window.matchMedia.mockReturnValue({ matches: mobile });
+        const first = makePicker();
+        const replace = jest.spyOn(first.list, 'replaceChildren');
+        filter(first.input, 'missing', { settle: false });
+        first.picker.close();
+        expect(jest.getTimerCount()).toBe(0);
+        const second = makePicker();
+        const positionCalls = mockPositionPopover.mock.calls.length;
+        jest.advanceTimersByTime(300);
+        expect(replace).not.toHaveBeenCalled();
+        expect(second.list.querySelectorAll('[role="option"]')).toHaveLength(3);
+        expect(mockPositionPopover).toHaveBeenCalledTimes(positionCalls);
+    });
+
+    test('replacing or refreshing a picker cancels its queued search', () => {
+        const first = makePicker();
+        filter(first.input, 'Alpha', { settle: false });
+        first.picker.refresh();
+        expect(jest.getTimerCount()).toBe(0);
+        expect(first.list.querySelectorAll('[role="option"]')).toHaveLength(1);
+        filter(first.input, 'missing', { settle: false });
+        const second = makePicker();
+        expect(jest.getTimerCount()).toBe(0);
+        expect(first.picker.isOpen).toBe(false);
+        expect(second.picker.isOpen).toBe(true);
+    });
+
+    test('Enter applies pending filtering before choosing a value', () => {
+        const { input, onSelect } = makePicker();
+        filter(input, 'Beta', { settle: false });
+        keydown(input, 'Enter');
+        expect(onSelect).toHaveBeenCalledWith('b');
     });
 });

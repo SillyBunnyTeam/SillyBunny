@@ -1,7 +1,7 @@
 import { eventSource, event_types } from './events.js';
 import { t } from './i18n.js';
 import { world_names } from './world-info.js';
-import { createPrefGroup, createRow } from './sillybunny-editor/rows.js';
+import { createPrefGroup, createRow, releaseRowIds } from './sillybunny-editor/rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 const PRESENTATION_ATTRIBUTES = ['class', 'role', 'aria-checked', 'aria-labelledby', 'aria-describedby', 'disabled'];
@@ -104,6 +104,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
     const originalDisabled = new Map(origins.map(({ control, disabled }) => [control, disabled]));
     const listeners = [];
     let destroyed = false;
+    let searchTimer = 0;
     const listen = (target, type, handler, disposers = listeners) => {
         target.addEventListener(type, handler);
         disposers.push(() => target.removeEventListener(type, handler));
@@ -144,6 +145,8 @@ export function mountWorldInfoSettings({ host, onClose }) {
     const bookRows = new Map();
 
     function filterBooks() {
+        clearTimeout(searchTimer);
+        searchTimer = 0;
         const query = search.value.trim().toLocaleLowerCase();
         let shown = 0;
         for (const { row, name } of bookRows.values()) {
@@ -243,7 +246,16 @@ export function mountWorldInfoSettings({ host, onClose }) {
         switchRows.forEach(row => row.refresh());
     }
 
-    listen(search, 'input', filterBooks);
+    listen(search, 'input', () => {
+        clearTimeout(searchTimer);
+        if (!search.value) {
+            filterBooks();
+            return;
+        }
+        searchTimer = setTimeout(() => {
+            if (!destroyed) filterBooks();
+        }, 300);
+    });
     listen(activeSelect, 'change', refreshSettings);
     listen(minimum.range, 'input', refreshDependencies);
     listen(recursion.range, 'input', refreshDependencies);
@@ -264,6 +276,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
         destroy() {
             if (destroyed) return;
             destroyed = true;
+            clearTimeout(searchTimer);
             observer.disconnect();
             eventSource.removeListener(event_types.WORLDINFO_SETTINGS_UPDATED, refreshSettings);
             listeners.forEach(dispose => dispose());
@@ -276,6 +289,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
                 parent.insertBefore(control, next?.parentNode === parent ? next : null);
             }
             bookRows.clear();
+            releaseRowIds(root);
             root.remove();
         },
     };

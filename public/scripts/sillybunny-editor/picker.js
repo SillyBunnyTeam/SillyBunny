@@ -198,6 +198,8 @@ function buildPickerContent(state, body) {
 }
 
 function renderOptions(state) {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = 0;
     const listScrollTop = state.list.scrollTop;
     const surfaceScrollTop = state.surface?.scrollTop ?? 0;
     const query = state.input.value.toLocaleLowerCase();
@@ -283,6 +285,9 @@ function handlePickerKeydown(event) {
     if (event.target !== state.input) {
         return;
     }
+    if (state.searchTimer && ['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter'].includes(event.key)) {
+        applyPickerSearch(state);
+    }
     if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault();
         event.stopPropagation();
@@ -300,13 +305,22 @@ function handlePickerKeydown(event) {
     }
 }
 
+function applyPickerSearch(state) {
+    if (activePicker !== state) return;
+    state.activeIndex = 0;
+    renderOptions(state);
+    handleResize();
+}
+
 function handlePickerInput(event) {
-    if (activePicker?.input !== event.currentTarget) {
+    const state = activePicker;
+    if (state?.input !== event.currentTarget) return;
+    clearTimeout(state.searchTimer);
+    if (!state.input.value) {
+        applyPickerSearch(state);
         return;
     }
-    activePicker.activeIndex = 0;
-    renderOptions(activePicker);
-    handleResize();
+    state.searchTimer = setTimeout(() => applyPickerSearch(state), 300);
 }
 
 function handleOutsidePointerDown(event) {
@@ -349,6 +363,7 @@ function finishClose() {
         return;
     }
     activePicker = null;
+    clearTimeout(state.searchTimer);
     state.removeContentListeners?.();
     window.removeEventListener('resize', handleResize);
     document.removeEventListener('pointerdown', handleOutsidePointerDown, true);
@@ -421,6 +436,7 @@ export function openPicker({
         list: null,
         filtered: [],
         activeIndex: 0,
+        searchTimer: 0,
         surface: null,
         kind: isMobileLayout() ? 'sheet' : 'popover',
     };

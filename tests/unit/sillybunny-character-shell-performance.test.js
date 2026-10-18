@@ -20,6 +20,75 @@ const settle = async () => { for (let count = 0; count < 10; count++) await Prom
 beforeEach(() => { document.body.replaceChildren(); });
 
 describe('Characters tab shell', () => {
+    test.each([true, false])('animation cleanup only mutates a real opening class (%s)', opening => {
+        document.body.innerHTML = `<div id="sb-settings-page" class="${opening ? 'sb-settings-page--opening' : ''}"></div>`;
+        const page = document.getElementById('sb-settings-page');
+        const observer = new MutationObserver(() => {});
+        observer.observe(page, { attributes: true, attributeFilter: ['class'] });
+        const animation = { onfinish: jest.fn(), cancel: jest.fn() };
+        const state = { pageAnimation: animation, closeTimer: 42 };
+        const clearTimeout = jest.fn();
+        const clear = runInNewContext(`${section(tabs, 'function getSettingsPage(', 'function animateSettingsPage(')} clearSettingsAnimationState;`, {
+            document, sbSettingsState: state, clearTimeout,
+        });
+        clear();
+        expect(observer.takeRecords()).toHaveLength(opening ? 1 : 0);
+        expect(page.classList.contains('sb-settings-page--opening')).toBe(false);
+        expect(animation.onfinish).toBeNull();
+        expect(animation.cancel).toHaveBeenCalledTimes(1);
+        expect(state.pageAnimation).toBeNull();
+        expect(clearTimeout).toHaveBeenCalledWith(42);
+        expect(state.closeTimer).toBe(0);
+        clear();
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
+    });
+
+    test.each([
+        ['edit', true], ['edit', false], ['create', true], ['create', false],
+    ])('%s mode schedules one focus and writes version once (switchMenu=%s)', (mode, switchMenu) => {
+        document.body.innerHTML = '<form id="send_form"><input></form><div id="right-nav-panel" tabindex="-1"></div>';
+        const writes = [];
+        const chain = new Proxy({}, { get: (_target, method) => (...args) => {
+            writes.push([method, ...args]);
+            return chain;
+        } });
+        const dollar = selector => new Proxy(chain, { get: (target, method) => (...args) => {
+            writes.push([selector, method, ...args]);
+            return target;
+        } });
+        const frames = [];
+        const context = {
+            document, $: dollar, characters: [{ name: 'Name', avatar: 'avatar.png', data: { character_version: 'v2' } }],
+            selected_group: null, selected_button: '', create_save: { character_version: 'v2' }, default_avatar: '/default.png',
+            setMenuType: jest.fn(), selectRightMenuWithAnimation: jest.fn(), HTMLElement,
+            window: { requestAnimationFrame: callback => frames.push(callback) },
+            beginCharacterEditorLoad: jest.fn(), formatCreatorNotes: () => '',
+            depth_prompt_depth_default: 4, depth_prompt_role_default: 'system', talkativeness_default: 0.5,
+            timestampToMoment: () => ({ toISOString: () => '' }), updateFavButtonState: jest.fn(), getThumbnailUrl: () => '/avatar.png',
+            setWorldInfoButtonClass: jest.fn(), checkEmbeddedWorld: jest.fn(), loadCharacterEditorGreetings: jest.fn(),
+            openCharacterEditorSession: jest.fn(), openCharacterEditorCreateSession: jest.fn(), isExternalMediaAllowed: () => true, getCharacterSource: () => '',
+            eventSource: { emit: jest.fn() }, event_types: {}, saveSettingsDebounced: jest.fn(),
+        };
+        const api = runInNewContext(`
+            ${section(script, 'function focusUiSurface(', 'function scheduleUiSurfaceFocus(')}
+            ${section(script, 'export function select_selected_character(', 'function select_rm_characters(').replace('export ', '')}
+            ({ select_selected_character, select_rm_create });
+        `, context);
+        const chatInput = document.querySelector('#send_form input');
+        chatInput.focus();
+        if (mode === 'edit') api.select_selected_character(0, { switchMenu });
+        else api.select_rm_create({ switchMenu });
+        expect(document.activeElement).not.toBe(chatInput);
+        expect(frames).toHaveLength(1);
+        frames[0]();
+        expect(document.activeElement).toBe(document.getElementById('right-nav-panel'));
+        expect(writes.filter(([selector, method]) => selector === '#character_version_textarea' && method === 'val')).toEqual([
+            ['#character_version_textarea', 'val', 'v2'],
+        ]);
+        expect(context.setMenuType.mock.calls).toEqual(switchMenu ? [[mode === 'edit' ? 'character_edit' : 'create']] : []);
+    });
+
     test.each([true, false])('right-menu opacity is immediate only when shell hosted (%s)', hosted => {
         document.body.innerHTML = `<div id="right-nav-panel" class="${hosted ? 'sb-settings-mounted-shell' : ''}"><div id="rm_characters_block" class="right_menu"></div><div id="rm_ch_create_block" class="right_menu"></div></div>`;
         const raf = jest.fn();
