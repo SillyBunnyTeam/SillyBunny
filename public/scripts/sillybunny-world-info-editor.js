@@ -169,6 +169,10 @@ export function mountWorldInfoEditor(container) {
     let sortable = null;
     let picker = null;
     let destroyed = false;
+    let initialized = false;
+    let preparingReveal = false;
+    let pendingBook = null;
+    let listDirty = false;
     let internalPaging = false;
     let renderRevision = 0;
     let shownRevision = 0;
@@ -577,7 +581,16 @@ export function mountWorldInfoEditor(container) {
 
     function renderList() {
         if (!shell || destroyed) return;
-        if (shell.isNavigating || shell.pointerActive) { shell.deferRefresh(); return; }
+        if (initialized && !preparingReveal && !isOpen()) {
+            listDirty = true;
+            return;
+        }
+        if (shell.isNavigating || shell.pointerActive) {
+            listDirty = true;
+            shell.deferRefresh();
+            return;
+        }
+        listDirty = false;
         bookLabel.textContent = state.name || t`--- Pick to Edit ---`;
         for (const control of [newEntryButton, searchButton, filterButton]) control.disabled = !state.data;
         bookSubtitle.hidden = !state.data;
@@ -736,8 +749,16 @@ export function mountWorldInfoEditor(container) {
         guardSelector: characterTabGuardSelector('world-info'), escape: false,
     });
 
+    function isOpen() {
+        return !destroyed && !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"], [inert]');
+    }
+
     async function renderBook({ name, data, navigation = navigation_option.none }) {
         if (destroyed) return;
+        if (initialized && !preparingReveal && !isOpen()) {
+            pendingBook = { name, data, navigation };
+            return;
+        }
         const revision = ++renderRevision;
         const changedBook = renderedName !== undefined && renderedName !== name;
         if (changedBook || state.data !== data) heldOrder = null;
@@ -785,12 +806,26 @@ export function mountWorldInfoEditor(container) {
 
     const adapter = {
         render: renderBook,
+        isOpen: () => !initialized || preparingReveal || isOpen(),
         captureState: () => controller.captureState(),
         restoreState: (snapshot, isCurrent) => controller.restoreState(snapshot, isCurrent),
     };
 
     const controller = {
         ready: null,
+        async prepareReveal() {
+            if (destroyed || !pendingBook && !listDirty) return;
+            preparingReveal = true;
+            try {
+                if (pendingBook) {
+                    const { navigation } = pendingBook;
+                    pendingBook = null;
+                    await refreshWorldInfoEditor(navigation, false);
+                }
+                if (listDirty) shell.refresh();
+            } finally { preparingReveal = false; }
+        },
+        onReveal: () => shell.layout(),
         get renderRevision() { return renderRevision; },
         current: () => state.name ? { kind: 'world-info', id: state.name } : null,
         whenBookShown(name, { isCurrent = () => true, timeout = 5000, afterRender = -1 } = {}) {
@@ -855,6 +890,7 @@ export function mountWorldInfoEditor(container) {
         if (destroyed) return;
         worldInfo.classList.add('sb-wi-editor-mounted');
         shell.root.hidden = false;
+        initialized = true;
         shell.scheduleLayout();
         renderList();
     }).catch(error => {

@@ -312,7 +312,7 @@ describe('upstream main-list renderer boundary', () => {
         expect(model.entities.find(entity => entity.type === 'tag').entities).toHaveLength(2);
         expect(model).toMatchObject({ view: 'characters', sourceCount: 2, hasAnyFilter: false, folderOpen: true, fullRefresh: true });
         expect(context.resetListPage).toHaveBeenCalledWith('characters');
-        expect(context.printTagFilters).toHaveBeenCalledTimes(6);
+        expect(context.printTagFilters).toHaveBeenCalledTimes(2);
         expect(context.applyTagsOnCharacterSelect).toHaveBeenCalledTimes(2);
         expect(context.applyTagsOnGroupSelect).toHaveBeenCalledTimes(2);
         expect(context.favsToHotswap).toHaveBeenCalledTimes(2);

@@ -85,6 +85,7 @@ let editorTitle = '';
 let tokenMirrorObserver = null;
 let tokenMirrorScheduled = false;
 const relatedRows = new Map();
+let relatedLinksDirty = true;
 
 // Session-local greeting drafts (A.2.3). Rows edit these, never the entity, so
 // Cancel/Discard can revert and unrelated autosaves cannot persist half-edits.
@@ -631,6 +632,12 @@ function _bindRelatedLinks() {
         });
     }, { capture: true });
     _renderRelatedLinks();
+    const panel = document.getElementById('right-nav-panel');
+    if (panel) {
+        new MutationObserver(() => {
+            if (relatedLinksDirty && _isEditorVisible()) _renderRelatedLinks();
+        }).observe(panel, { attributes: true, attributeFilter: ['class', 'data-menu-type', 'aria-hidden'] });
+    }
 }
 
 function _relatedEntries(character) {
@@ -658,6 +665,11 @@ function _relatedEntries(character) {
 }
 
 function _renderRelatedLinks() {
+    if (!_isEditorVisible()) {
+        relatedLinksDirty = true;
+        return;
+    }
+    relatedLinksDirty = false;
     const section = document.getElementById('sb_character_related');
     const container = document.getElementById('sb_character_related_rows');
     if (!section || !container) return;

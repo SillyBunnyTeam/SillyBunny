@@ -812,7 +812,7 @@ export function cancelCharacterSaveDebounced() {
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.
  * Use this function instead of a direct `printCharacters()` whenever the reprinting of the character list is not the primary focus.
  *
- * The printing will also always reprint all filter options of the global list, to keep them up to date.
+ * SillyBunny: synchronizes changed filter presentations without rebuilding unchanged contexts.
  */
 export const printCharactersDebounced = debounce(() => { printCharacters(false); }, DEFAULT_PRINT_TIMEOUT);
 
@@ -1359,9 +1359,10 @@ export function resultCheckStatus() {
  * @param {number} id The ID of the character to switch to.
  * @param {object} [options] Options for the switch.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
+ * @param {() => void} [options.onAccepted] SillyBunny navigation acceptance after pending saves are flushed.
  * @returns {Promise<boolean>} A promise that resolves to true when the character was selected.
  */
-export async function selectCharacterById(id, { switchMenu = true } = {}) {
+export async function selectCharacterById(id, { switchMenu = true, onAccepted } = {}) {
     if (characters[id] === undefined) {
         return false;
     }
@@ -1380,6 +1381,8 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
             return false;
         }
 
+        // SillyBunny: dismiss navigation after saves, before loading the next chat — see docs/ui-migration.md.
+        onAccepted?.();
         cancelCharacterSaveDebounced();
         setCharacterId(undefined);
         setCharacterName('');
@@ -1401,6 +1404,11 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         return true;
     } else {
         //if clicked on character that was already selected
+        // SillyBunny: opt-in acceptance also flushes saves for the current chat — see docs/ui-migration.md.
+        if (onAccepted) {
+            if (!await flushPendingChatSavesForNavigation()) return false;
+            onAccepted();
+        }
         switchMenu && (selected_button = 'character_edit');
         await unshallowCharacter(this_chid);
         select_selected_character(this_chid, { switchMenu });
@@ -1618,7 +1626,8 @@ export async function printCharacters(fullRefresh = false) {
     const storageKey = 'Characters_PerPage';
     const listId = '#rm_print_characters_block';
 
-    let currentScrollTop = $(listId).scrollTop();
+    // SillyBunny: the shared renderer owns its scroll box; avoid a hidden legacy layout read — see docs/ui-migration.md.
+    let currentScrollTop = characterListRenderer ? 0 : $(listId).scrollTop();
 
     if (fullRefresh) {
         saveCharactersPage = 0;
@@ -1632,10 +1641,9 @@ export async function printCharacters(fullRefresh = false) {
     // Before printing the personas, we check if we should enable/disable search sorting
     verifyCharactersSearchSortRule();
 
-    // We are actually always reprinting filters, as it "doesn't hurt", and this way they are always up to date
+    // SillyBunny: changed filter presentations are cached per root — see docs/ui-migration.md.
     printTagFilters(tag_filter_type.character);
-    printTagFilters(tag_filter_type.group_members_list);
-    printTagFilters(tag_filter_type.group_candidates_list);
+    // SillyBunny: applyTagsOnGroupSelect owns its two filter contexts — see docs/ui-migration.md.
 
     // We are also always reprinting the lists on character/group edit window, as these ones doesn't get updated otherwise
     applyTagsOnCharacterSelect();
@@ -1671,7 +1679,7 @@ export async function printCharacters(fullRefresh = false) {
             fullRefresh,
             pageLoaded: () => eventSource.emit(event_types.CHARACTER_PAGE_LOADED),
         });
-        favsToHotswap();
+        favsToHotswap({ onlyIfVisible: true });
         updatePersonaConnectionsAvatarList();
         return;
     }
@@ -1741,7 +1749,7 @@ export async function printCharacters(fullRefresh = false) {
         },
     });
 
-    favsToHotswap();
+    favsToHotswap({ onlyIfVisible: true });
     updatePersonaConnectionsAvatarList();
 }
 
@@ -12215,6 +12223,8 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
 
         // Focus on the textarea if not already focused on a visible text input
         delay(debounce_timeout.short).then(() => {
+            // SillyBunny: delayed chat autofocus must not steal shell navigation or restored list focus — see docs/ui-migration.md.
+            if (document.documentElement.dataset.sbSettingsOpen === 'true') return;
             if ($(document.activeElement).is('input:visible, textarea:visible')) {
                 return;
             }
@@ -14796,7 +14806,9 @@ export function selectRightMenuWithAnimation(selectedMenuId) {
         'rm_characters_block': 'flex',
     };
     const normalizedSelectedMenuId = selectedMenuId?.replace('#', '') || '';
-    const shouldAnimate = !isMobile() && animation_duration > 0;
+    // SillyBunny: page-hosted tabs switch atomically; retain legacy drawer motion — see docs/ui-migration.md
+    const shellHosted = document.getElementById('right-nav-panel')?.classList.contains('sb-settings-mounted-shell');
+    const shouldAnimate = !shellHosted && !isMobile() && animation_duration > 0;
 
     $('#result_info').toggle(normalizedSelectedMenuId === 'rm_ch_create_block');
     document.querySelectorAll('#right-nav-panel .right_menu').forEach((menu) => {

@@ -46,6 +46,7 @@ import {
     chat_metadata,
     updateChatMetadata,
     getThumbnailUrl,
+    getThumbnailUrlForViewport,
     setMenuType,
     menu_type,
     select_selected_character,
@@ -1787,7 +1788,8 @@ function getGroupAvatar(group) {
         for (const member of group.members) {
             const charIndex = characters.findIndex(x => x.avatar === member);
             if (charIndex !== -1 && characters[charIndex].avatar !== 'none') {
-                const avatar = getThumbnailUrl('avatar', characters[charIndex].avatar);
+                // SillyBunny: collages use viewport-sized thumbnails too — see docs/ui-migration.md.
+                const avatar = getThumbnailUrlForViewport('avatar', characters[charIndex].avatar);
                 memberAvatars.push(avatar);
             }
             if (memberAvatars.length === 4) {
@@ -2678,13 +2680,10 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
     // group, so the member lists must filter against it rather than groups[].
     const thisGroup = getEditedGroup();
 
-    // Create index map for O(1) lookups when mapping characters to their array indices
-    // (separate from memberIndexMap used later for sorting members by their group order)
-    const characterIndexMap = new Map(characters.map((char, index) => [char, index]));
-
-    const results = characters
-        .filter((x) => isGroupMember(thisGroup, x.avatar) == onlyMembers)
-        .map((x) => ({ item: x, id: characterIndexMap.get(x), type: 'character' }));
+    // SillyBunny: one membership lookup per character; no repeated member scans — see docs/ui-migration.md.
+    const memberAvatars = new Set(thisGroup?.members ?? editorDraft?.members ?? []);
+    const results = characters.flatMap((item, id) => memberAvatars.has(item.avatar) === onlyMembers
+        ? [{ item, id, type: 'character' }] : []);
 
     // Early return for candidates (non-members)
     if (!onlyMembers) {
@@ -2739,7 +2738,8 @@ function printGroupCandidates({ animate = false } = {}) {
     const pagination = getGroupListPagination(false);
     if (!rows || !pagination) return;
     const candidates = getGroupCharacters({ doFilter: true });
-    const total = getGroupCharacters().length;
+    const memberAvatars = new Set(getEditedGroup()?.members ?? editorDraft?.members ?? []);
+    const total = characters.reduce((count, character) => count + Number(!memberAvatars.has(character.avatar)), 0);
     pagination.setTotal(candidates.length);
     rows.dataset.emptyText = total ? t`No results` : t`No characters available`;
     const render = () => {
@@ -2846,7 +2846,7 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
     const entity = createEntityRow({
         key: entityKey('character', character.avatar),
         label: character.name,
-        avatar: { src: getThumbnailUrl('avatar', character.avatar), alt: '' },
+        avatar: { src: getThumbnailUrlForViewport('avatar', character.avatar), alt: '' },
         grip,
         tags: true,
         subtitle: [aux, modelLabel],
@@ -2904,7 +2904,7 @@ function updateGroupCharacterBlock(row, character, { draftIndex = -1, grip = fal
     queueBadge.textContent = queuePosition ? String(queuePosition) : '';
     entity.update({
         label: character.name,
-        avatar: { src: getThumbnailUrl('avatar', character.avatar), alt: '' },
+        avatar: { src: getThumbnailUrlForViewport('avatar', character.avatar), alt: '' },
         subtitle: [aux, modelLabel],
         badges: [queueBadge],
         grip,
@@ -3657,9 +3657,10 @@ function updateFavButtonState(state) {
  * @param {string} groupId ID of the group to open
  * @param {object} options Open options
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the group editor
+ * @param {() => void} [options.onAccepted] SillyBunny navigation acceptance after pending saves are flushed.
  * @returns {Promise<boolean>} Whether the group was opened
  */
-export async function openGroupById(groupId, { switchMenu = true } = {}) {
+export async function openGroupById(groupId, { switchMenu = true, onAccepted } = {}) {
     if (!groups.find(x => x.id === groupId)) {
         console.log('Group not found', groupId);
         return false;
@@ -3674,6 +3675,11 @@ export async function openGroupById(groupId, { switchMenu = true } = {}) {
     }
 
     if (selected_group === groupId) {
+        // SillyBunny: opt-in acceptance preserves save-before-dismissal order — see docs/ui-migration.md.
+        if (onAccepted) {
+            if (!await flushPendingChatSavesForNavigation()) return false;
+            onAccepted();
+        }
         syncCharacterMenuActiveEntity();
         return true;
     }
@@ -3682,6 +3688,8 @@ export async function openGroupById(groupId, { switchMenu = true } = {}) {
         return false;
     }
 
+    // SillyBunny: notify the list before fetching or printing the new chat — see docs/ui-migration.md.
+    onAccepted?.();
     groupChatQueueOrder = new Map();
     setCharacterId(undefined);
     setCharacterName('');

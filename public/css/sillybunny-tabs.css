@@ -1214,7 +1214,8 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-proxy-button i {
     font-size: var(--sb-proxy-icon-size);
-    transition: transform var(--sb-transition-fast), color var(--sb-transition-fast);
+    color: inherit;
+    transition: transform var(--sb-transition-fast);
 }
 
 .sb-proxy-button span {
@@ -5907,7 +5908,7 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     font-weight: 600;
     text-align: left;
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+    transition: none;
 }
 
 @media (pointer: coarse) {
@@ -6212,7 +6213,7 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
    persistent state indicator, not just an action trigger. */
 
 .sb-proxy-button.openDrawer:not(.sb-proxy-button-icon-only),
-.sb-proxy-button.sb-settings-active:not(.sb-proxy-button-icon-only) {
+.sb-proxy-button.sb-settings-active {
     color: var(--color-primary, var(--sb-accent));
 }
 

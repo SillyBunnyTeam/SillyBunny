@@ -61,6 +61,7 @@ describe('group rows on the shared factory', () => {
                 { avatar: 'bob.png', name: 'Bob' },
             ],
             getThumbnailUrl: (type, avatar) => `/thumb/${avatar}`,
+            getThumbnailUrlForViewport: (type, avatar) => `/thumb/${avatar}`,
             getGroupMemberModel: () => 'test-model',
             power_user: {},
             groupChatQueueOrder: new Map([['alice.png', 2]]),
@@ -152,7 +153,7 @@ describe('group rows on the shared factory', () => {
         context.editorDraft.members.unshift('missing.png');
         context.characters.reverse();
         context.getGroupMemberModel = () => 'new-model';
-        context.getThumbnailUrl = () => '/thumb/new-revision';
+        context.getThumbnailUrlForViewport = () => '/thumb/new-revision';
         context.groupChatQueueOrder.set(character.avatar, 1);
         context.getTagsList = () => [{ id: 'new-tag', name: 'New tag' }];
         context.api.printGroupMembers();

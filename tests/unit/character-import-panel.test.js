@@ -13,7 +13,9 @@ await jest.unstable_mockModule('../../public/scripts/extensions.js', () => ({ ex
 const emit = jest.fn();
 await jest.unstable_mockModule('../../public/scripts/events.js', () => ({ eventSource: { emit }, event_types: { OPEN_CHARACTER_LIBRARY: 'library' } }));
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: (parts, ...values) => parts.reduce((text, part, index) => text + part + (values[index] ?? ''), '') }));
-await jest.unstable_mockModule('../../public/scripts/templates.js', () => ({ renderTemplateAsync: async () => '<div class="sources_list"><span>Supported sources:</span><ul><li><span>Chub</span><br>Example</li></ul></div>' }));
+const providerMarkup = '<div class="sources_list"><span>Supported sources:</span><ul><li><span>Chub</span><br>Example</li></ul></div>';
+const renderTemplateAsync = jest.fn(async () => providerMarkup);
+await jest.unstable_mockModule('../../public/scripts/templates.js', () => ({ renderTemplateAsync }));
 const navigate = jest.fn();
 const register = jest.fn();
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { navigate, register } }));
@@ -33,6 +35,36 @@ beforeEach(() => {
 const character = { kind: 'character', id: 'card.png', name: 'Card', ok: true, error: null };
 
 describe('Import tab', () => {
+    test('ready waits for provider labels before revealing content', async () => {
+        let finish;
+        renderTemplateAsync.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const controller = mountCharacterImport(host);
+        expect(host.querySelector('#sb_character_import_content').hidden).toBe(true);
+        expect(host.dataset.mounted).toBeUndefined();
+        await tick();
+        expect(host.querySelector('#sb_character_import_content').hidden).toBe(true);
+        finish(providerMarkup);
+        await controller.ready;
+        expect(host.querySelector('#sb_character_import_content').hidden).toBe(false);
+        expect(host.querySelector('.sb-import-source-botbooru')).not.toBeNull();
+        expect(host.dataset.mounted).toBe('true');
+    });
+
+    test('failed readiness releases the mount and removes old host drop listeners before retry', async () => {
+        renderTemplateAsync.mockRejectedValueOnce(new Error('Provider labels unavailable'));
+        const failed = mountCharacterImport(host);
+        await expect(failed.ready).rejects.toThrow('Provider labels unavailable');
+        expect(host.querySelector('#sb_character_import_content').hidden).toBe(true);
+        const retry = mountCharacterImport(host);
+        expect(retry).not.toBe(failed);
+        await retry.ready;
+        const drop = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(drop, 'dataTransfer', { value: { files: [new File(['{}'], 'retry.json')] } });
+        host.dispatchEvent(drop);
+        await tick();
+        expect(runCharacterImport).toHaveBeenCalledTimes(1);
+    });
+
     test('shows loading, then partial results safely, and always uses stay', async () => {
         let finish;
         runCharacterImport.mockImplementation(() => new Promise(resolve => { finish = resolve; }));

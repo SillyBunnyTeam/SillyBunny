@@ -362,9 +362,11 @@ async function RA_autoloadchat() {
     }
 }
 
-export async function favsToHotswap() {
-    const entities = getEntitiesList({ doFilter: false });
+export async function favsToHotswap({ onlyIfVisible = false } = {}) {
     const container = $('#right-nav-panel .hotswap');
+    // SillyBunny: skip the retired strip during list prints, retain explicit API rebuilding — see docs/ui-migration.md.
+    if (onlyIfVisible && !container.is(':visible')) return;
+    const entities = getEntitiesList({ doFilter: false });
 
     // The bar scrolls sideways and avatars are lazy-loaded thumbnails, so the old
     // fits-on-one-screen cap of 25 no longer applies; this is just a sanity bound.

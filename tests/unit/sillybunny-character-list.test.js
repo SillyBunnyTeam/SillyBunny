@@ -9,6 +9,8 @@ let model;
 let mounted;
 let menu;
 let resize;
+let navigationGeneration;
+const navigationDestinations = new Map();
 const pages = { characters: 1, groups: 1 };
 const sizes = { characters: 10, groups: 10 };
 const power_user = { charListGrid: false, show_tag_filters: true, bogus_folders: false };
@@ -50,7 +52,13 @@ await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ po
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     openActionMenu: jest.fn(options => { menu = menu?.trigger === options.trigger ? null : options; }),
 }));
-await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { navigate } }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: {
+    navigate, register: (kind, destination) => navigationDestinations.set(kind, destination), setNotify: jest.fn(), bindTopLevelClear: jest.fn(),
+} }));
+await jest.unstable_mockModule('../../public/scripts/world-info.js', () => ({
+    world_names: [], openWorldInfoEditor: jest.fn(), getWorldInfoEditorState: jest.fn(),
+    captureWorldInfoEditorListState: jest.fn(), restoreWorldInfoEditorListState: jest.fn(),
+}));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
     animateListChange: jest.fn((_rows, update) => update()),
     play, stopMotion: jest.fn(), animateOut: jest.fn((_node, _frames, done) => done()), MOTION_SLOW: 0,
@@ -67,10 +75,13 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
     getEmptyBlock: async () => template('<p>No characters found</p>'),
     toggleCharacterFavoriteById, duplicateCharacter, deleteCharacterById,
     characterGroupOverlay, characters: characterLibrary, selectCharacterById,
+    this_chid: 0,
 }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
     toggleGroupFavoriteById, deleteGroupById, groups: groupLibrary, openGroupById,
     getGroupAvatarElement: () => template('<img src="/group.png">'),
+    groupEditorTargetExists: jest.fn(), canPeekGroupMember: jest.fn(), openGroupMemberDefinition: jest.fn(),
+    openGroupEditor: jest.fn(), captureGroupEditorListState: jest.fn(), restoreGroupEditorListState: jest.fn(),
 }));
 await jest.unstable_mockModule('../../public/scripts/tags.js', () => ({
     getTagBlock: item => template(`<span class="ch_name">${item.name}</span><span class="bogus_folder_counter">3 characters</span>`),
@@ -84,24 +95,32 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-s
     getListSortOptions: () => [{ field: 'name', order: 'asc', label: 'Name (A-Z)' }, { field: 'name', order: 'desc', label: 'Name (Z-A)' }],
 }));
 
-const { mountCharacterList, getMountedCharacterList } = await import('../../public/scripts/sillybunny-character-list.js');
+const { mountCharacterList, getMountedCharacterList, prepareCharacterListRestore } = await import('../../public/scripts/sillybunny-character-list.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
+await import('../../public/scripts/sillybunny-characters-navigation.js');
 const characters = count => Array.from({ length: count }, (_, id) => ({ type: 'character', id, item: { name: `Name ${id}`, avatar: `${id}.png` } }));
 const settle = async () => { for (let index = 0; index < 40; index++) await Promise.resolve(); };
 const rows = () => [...document.querySelectorAll('#rm_print_characters_block > .ds-entity-row')];
 const button = id => document.querySelector(`[data-action-id="${id}"]`);
 const action = label => menu.sections.flatMap(section => section.items).find(item => item.label === label);
-async function mount() { mounted = await mountCharacterList(); return mounted; }
+async function mount() {
+    mounted = await mountCharacterList(undefined, { getNavigationGeneration: () => navigationGeneration });
+    jest.spyOn(mounted.section, 'getClientRects').mockReturnValue([{}]);
+    resize();
+    return mounted;
+}
 
 beforeEach(() => {
     jest.clearAllMocks();
     play.mockReset().mockImplementation((_row, _frames, options) => { options.onEnd?.(); });
-    selectCharacterById.mockReset().mockImplementation(async id => {
+    selectCharacterById.mockReset().mockImplementation(async (id, { onAccepted } = {}) => {
+        onAccepted?.();
         model.entities.forEach(entity => { entity.item.active = entity.type === 'character' && Number(entity.id) === id; });
         await eventSource.emit(event_types.CHAT_CHANGED);
         return true;
     });
-    openGroupById.mockReset().mockImplementation(async id => {
+    openGroupById.mockReset().mockImplementation(async (id, { onAccepted } = {}) => {
+        onAccepted?.();
         model.entities.forEach(entity => { entity.item.active = entity.type === 'group' && entity.item.id === id; });
         await eventSource.emit(event_types.CHAT_CHANGED);
         return true;
@@ -112,6 +131,7 @@ beforeEach(() => {
     stateRenderer = null;
     mounted = null;
     menu = null;
+    navigationGeneration = 0;
     pages.characters = pages.groups = 1;
     sizes.characters = sizes.groups = 10;
     Object.assign(power_user, { charListGrid: false, show_tag_filters: true, bogus_folders: false });
@@ -123,8 +143,20 @@ beforeEach(() => {
         <div id="rm_print_characters_block"></div></div><button id="rm_button_create"></button><button id="rm_button_group_chats"></button>`;
     document.getElementById('charListGridToggle').onclick = () => { power_user.charListGrid = !power_user.charListGrid; document.body.classList.toggle('charListGrid', power_user.charListGrid); };
     globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn(async () => {}) };
-    globalThis.SillyBunnyShell = { openTab: jest.fn(), closeCharacters: jest.fn() };
-    globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} unobserve() {} };
+    globalThis.SillyBunnyShell = {
+        openTab: jest.fn(async () => {
+            navigationGeneration++;
+            await Promise.resolve();
+            await mounted.revealActiveEntity();
+        }),
+        closeCharacters: jest.fn(() => navigationGeneration++),
+    };
+    globalThis.ResizeObserver = class {
+        constructor(callback) { this.callback = callback; }
+        observe(element) { if (element.matches('.sb-character-list__header')) resize = this.callback; }
+        disconnect() {}
+        unobserve() {}
+    };
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callback(); return 1; });
 });
 
@@ -229,6 +261,8 @@ describe('shared Characters/Groups list', () => {
             const activation = jest.fn();
             row.addEventListener('click', activation);
             for (const key of ['Enter', ' ']) {
+                mounted.section.hidden = false;
+                resize();
                 row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
                 await settle();
             }
@@ -237,6 +271,8 @@ describe('shared Characters/Groups list', () => {
             const edit = row.querySelector('button');
             edit.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
             expect(selectCharacterById).toHaveBeenCalledTimes(2);
+            mounted.section.hidden = false;
+            resize();
             row.focus();
             row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
             expect(document.activeElement).toBe(rows()[1]);
@@ -377,16 +413,17 @@ describe('shared Characters/Groups list', () => {
             const width = widths.get(child) ?? 0;
             jest.spyOn(child, 'getBoundingClientRect').mockReturnValue({ width });
         });
-        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 375 });
-        resize();
+        const measure = available => resize([
+            { target: header, contentRect: { width: available - 16 } },
+            ...[...widths].map(([target, width]) => ({ target, contentRect: { width } })),
+        ]);
+        measure(375);
         expect(button('sort').hidden).toBe(false);
         expect(button('search').hidden).toBe(false);
-        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 320 });
-        resize();
+        measure(320);
         expect(button('sort').hidden).toBe(true);
         expect(button('search').hidden).toBe(false);
-        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 270 });
-        resize();
+        measure(270);
         expect(button('search').hidden).toBe(true);
         expect(button('new').hidden).toBe(false);
         button('more').click();
@@ -394,14 +431,61 @@ describe('shared Characters/Groups list', () => {
         expect(action('Tags as Folders').checked).toBe(false);
         expect(action('Sort')).toBeDefined();
         expect(action('Search')).toBeDefined();
-        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 375 });
-        resize();
+        measure(375);
         expect(button('sort').hidden).toBe(false);
         expect(button('search').hidden).toBe(false);
-        extensions.getBoundingClientRect.mockReturnValue({ width: 120 });
-        resize();
+        widths.set(extensions, 120);
+        measure(375);
         expect(button('sort').hidden).toBe(true);
         expect(button('search').hidden).toBe(true);
+    });
+
+    test('late extension buttons retain their intrinsic width when the slot flex-shrinks', async () => {
+        const observe = jest.spyOn(globalThis.ResizeObserver.prototype, 'observe');
+        const unobserve = jest.spyOn(globalThis.ResizeObserver.prototype, 'unobserve');
+        const extensions = document.getElementById('rm_buttons_container');
+        extensions.style.marginInlineStart = '2px';
+        await mount();
+        const header = document.querySelector('.sb-list-header');
+        resize([
+            { target: header, contentRect: { width: 326 } },
+            { target: header.querySelector('.sb-list-header__titles'), borderBoxSize: [{ inlineSize: 104 }] },
+            ...[...header.querySelectorAll('button')].map(target => ({ target, borderBoxSize: [{ inlineSize: 44 }] })),
+            { target: extensions, borderBoxSize: [{ inlineSize: 4 }] },
+        ]);
+        expect(button('sort').hidden).toBe(false);
+        const archive = document.createElement('button');
+        archive.title = 'Chat Archive';
+        extensions.append(archive);
+        await settle();
+        expect(observe).toHaveBeenCalledWith(archive, { box: 'border-box' });
+        const styles = jest.spyOn(window, 'getComputedStyle');
+        const bounds = jest.spyOn(Element.prototype, 'getBoundingClientRect');
+        resize([
+            { target: extensions, borderBoxSize: [{ inlineSize: 20 }] },
+            { target: archive, borderBoxSize: [{ inlineSize: 40 }] },
+        ]);
+        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(false);
+        resize([{ target: extensions, borderBoxSize: [{ inlineSize: 40 }] }]);
+        expect(button('sort').hidden).toBe(true);
+        resize([{ target: archive, borderBoxSize: [{ inlineSize: 84 }] }]);
+        expect(button('search').hidden).toBe(true);
+        resize([
+            { target: extensions, borderBoxSize: [{ inlineSize: 4 }] },
+            { target: archive, borderBoxSize: [{ inlineSize: 0 }] },
+        ]);
+        expect(button('sort').hidden).toBe(false);
+        expect(button('search').hidden).toBe(false);
+        resize([{ target: archive, borderBoxSize: [{ inlineSize: 40 }] }]);
+        expect(button('sort').hidden).toBe(true);
+        archive.remove();
+        await settle();
+        expect(unobserve).toHaveBeenCalledWith(archive);
+        resize([{ target: extensions, borderBoxSize: [{ inlineSize: 4 }] }]);
+        expect(button('sort').hidden).toBe(false);
+        expect(styles).not.toHaveBeenCalled();
+        expect(bounds).not.toHaveBeenCalled();
     });
 
     test('empty library and no-results status actions reuse existing copy and transports', async () => {
@@ -464,22 +548,195 @@ async function enterSelection() {
 }
 
 describe('chat activation and current entity', () => {
-    test.each(['characters', 'groups'])('%s waits for successful selection and the background motion before closing the shell', async view => {
+    test.each([
+        ['characters', false], ['characters', true], ['groups', false], ['groups', true],
+    ])('%s failure (rejection: %s) after a newer shell generation never reopens or restores focus', async (view, rejects) => {
+        model.view = view;
+        if (view === 'groups') model.entities = [{ type: 'group', id: 'g', item: groupLibrary[0] }];
+        await mount();
+        let fail;
+        const select = view === 'groups' ? openGroupById : selectCharacterById;
+        select.mockImplementationOnce((_id, { onAccepted }) => {
+            onAccepted();
+            return new Promise((resolve, reject) => { fail = () => rejects ? reject(new Error('load failed')) : resolve(false); });
+        });
+        globalThis.toastr = { error: jest.fn() };
+        rows()[0].click();
+        await settle();
+        expect(mounted.section.hidden).toBe(true);
+        const newerDestination = document.getElementById('rm_button_create');
+        newerDestination.focus();
+        navigationGeneration++;
+        printCharacters.mockClear();
+        fail();
+        await settle();
+        expect(globalThis.SillyBunnyShell.openTab).not.toHaveBeenCalled();
+        expect(printCharacters).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(newerDestination);
+        expect(globalThis.toastr.error.mock.calls).toEqual(rejects ? [['load failed']] : []);
+    });
+
+    test.each(['characters', 'groups'])('%s Back uses the real navigation adapter and prints only the restored final state', async view => {
+        model.view = view;
+        if (view === 'groups') model.entities = groupLibrary.map(item => ({ type: 'group', id: item.id, item }));
+        else model.entities = characters(26);
+        await mount();
+        const snapshot = { query: 'saved', page: view === 'groups' ? 1 : 2, scrollTop: 42, focusKey: view === 'groups' ? 'group:g' : 'character:10.png' };
+        const kind = view === 'groups' ? 'group-list' : 'character-list';
+        printCharacters.mockClear();
+        let printedState;
+        printCharacters.mockImplementationOnce(async () => {
+            printedState = mounted.captureState();
+            await renderer.render(model);
+        });
+        expect(await navigationDestinations.get(kind).open({ kind }, { restore: snapshot, isCurrent: () => true })).toBe(true);
+        expect(printCharacters).toHaveBeenCalledTimes(1);
+        expect(printedState).toMatchObject({ query: snapshot.query, page: snapshot.page });
+        expect(mounted.captureState()).toEqual(snapshot);
+    });
+
+    test('a newer reveal discards a stale queued restore without suppressing its own print', async () => {
+        await mount();
+        const cancelRestore = prepareCharacterListRestore('characters', { query: 'stale', page: 2 }, () => false);
+        printCharacters.mockClear();
+        await mounted.revealActiveEntity();
+        expect(printCharacters).toHaveBeenCalledTimes(1);
+        expect(mounted.captureState()).toMatchObject({ query: '', page: 1 });
+        cancelRestore();
+    });
+
+    test('navigation during recovery layout prevents deferred focus restoration', async () => {
+        await mount();
+        let focusFrame;
+        window.requestAnimationFrame.mockImplementation(callback => { focusFrame = callback; return 1; });
+        selectCharacterById.mockImplementationOnce(async (_id, { onAccepted }) => { onAccepted(); return false; });
+        rows()[1].click();
+        await settle();
+        expect(focusFrame).toEqual(expect.any(Function));
+        const destinationFocus = document.getElementById('rm_button_create');
+        destinationFocus.focus();
+        navigationGeneration++;
+        focusFrame();
+        await settle();
+        expect(document.activeElement).toBe(destinationFocus);
+    });
+
+    test.each(['false', 'reject'])('an accepted load returning %s reopens its own dismissal with keyed row focus', async outcome => {
+        await mount();
+        const row = rows()[1];
+        selectCharacterById.mockImplementationOnce(async (_id, { onAccepted }) => {
+            onAccepted();
+            resize();
+            if (outcome === 'reject') throw new Error('load failed');
+            return false;
+        });
+        globalThis.toastr = { error: jest.fn() };
+        row.click();
+        await settle();
+        expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
+        expect(globalThis.SillyBunnyShell.openTab).toHaveBeenCalledWith('characters', 'characters');
+        expect(mounted.section.hidden).toBe(false);
+        expect(document.activeElement).toBe(row);
+        expect(row.classList.contains('is-activating-entity')).toBe(false);
+    });
+
+    test('hidden lists defer active-row events until the next reveal', async () => {
+        await mount();
+        mounted.section.hidden = true;
+        resize();
+        model.entities[1].item.active = true;
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        await mounted.render(model);
+        expect(rows()[1].hasAttribute('aria-current')).toBe(false);
+        mounted.section.hidden = false;
+        resize();
+        expect(rows()[1].getAttribute('aria-current')).toBe('true');
+        expect(rows()[1].querySelector('.sb-character-list__active-dot').getAttribute('aria-hidden')).toBe('true');
+    });
+
+    test('unchanged presentation retains subtitle, badges and tag nodes; state-only changes keep the signature', async () => {
+        model.entities[0].item.tags = ['Tag'];
+        model.entities[0].item.favorite = true;
+        await mount();
+        const row = rows()[0];
+        const subtitle = row.querySelector('.character_version');
+        const badge = row.querySelector('.ch_fav_icon');
+        const tag = row.querySelector('.tag');
+        model.entities[0].item.active = true;
+        await mounted.render(model);
+        expect(row.querySelector('.character_version')).toBe(subtitle);
+        expect(row.querySelector('.ch_fav_icon')).toBe(badge);
+        expect(row.querySelector('.tag')).toBe(tag);
+        expect(row.getAttribute('aria-current')).toBe('true');
+    });
+
+    test('view switches, initial reveals, hidden lists and large pages bypass FLIP', async () => {
+        const { animateListChange } = await import('../../public/scripts/sillybunny-motion.js');
+        await mount();
+        expect(animateListChange).not.toHaveBeenCalled();
+        await mounted.revealActiveEntity();
+        expect(animateListChange).not.toHaveBeenCalled();
+        model.view = 'groups';
+        model.entities = [{ type: 'group', id: 'g', item: groupLibrary[0] }];
+        await mounted.render(model);
+        expect(animateListChange).not.toHaveBeenCalled();
+        mounted.section.hidden = true;
+        resize();
+        await mounted.render(model);
+        expect(animateListChange).not.toHaveBeenCalled();
+        mounted.section.hidden = false;
+        resize();
+        model.view = 'characters';
+        model.entities = characters(100);
+        sizes.characters = 100;
+        await mounted.render(model);
+        await mounted.render(model);
+        expect(animateListChange).not.toHaveBeenCalled();
+    });
+
+    test('shell mounting and revealing print exactly once, including an off-page active entity', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        model.entities[24].item.active = true;
+        mounted = await mountCharacterList(undefined, { render: false });
+        expect(printCharacters).not.toHaveBeenCalled();
+        await mounted.revealActiveEntity();
+        expect(printCharacters).toHaveBeenCalledTimes(1);
+        expect(mounted.captureState().page).toBe(3);
+    });
+
+    test('cached ResizeObserver measurements do not read layout or computed style on each render', async () => {
+        await mount();
+        const header = document.querySelector('.sb-list-header');
+        resize([{ target: header, contentRect: { width: 320 } }]);
+        const styles = jest.spyOn(window, 'getComputedStyle');
+        const bounds = jest.spyOn(header, 'getBoundingClientRect');
+        await mounted.render(model);
+        await mounted.render(model);
+        expect(styles).not.toHaveBeenCalled();
+        expect(bounds).not.toHaveBeenCalled();
+    });
+
+    test.each(['characters', 'groups'])('%s closes on acceptance before chat loading completes, without highlight motion', async view => {
         model.view = view;
         if (view === 'groups') model.entities = [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group' } }];
         await mount();
         const row = rows()[0];
         let finish;
-        play.mockImplementation((_row, _frames, options) => { finish = options.onEnd; });
+        const select = view === 'groups' ? openGroupById : selectCharacterById;
+        select.mockImplementationOnce((_id, { onAccepted }) => {
+            onAccepted();
+            onAccepted();
+            return new Promise(resolve => { finish = resolve; });
+        });
         row.querySelector('.ch_name').click();
         await settle();
-        const select = view === 'groups' ? openGroupById : selectCharacterById;
-        expect(select).toHaveBeenCalledWith(view === 'groups' ? 'g' : 0, { switchMenu: false });
-        expect(row.getAttribute('aria-current')).toBe('true');
-        expect(row.classList.contains('is-selected')).toBe(true);
-        expect(play).toHaveBeenCalledWith(row, expect.arrayContaining([{ backgroundColor: 'var(--sb-flat-selected-bg)' }]), expect.objectContaining({ duration: 200 }));
-        expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
-        finish();
+        expect(select).toHaveBeenCalledWith(view === 'groups' ? 'g' : 0, { switchMenu: false, onAccepted: expect.any(Function) });
+        expect(mounted.section.hidden).toBe(true);
+        expect(play).not.toHaveBeenCalled();
+        expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
+        resize();
+        finish(true);
         await settle();
         expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
         expect(row.classList.contains('is-activating-entity')).toBe(false);
@@ -525,6 +782,7 @@ describe('chat activation and current entity', () => {
         await settle();
         expect(selectCharacterById).toHaveBeenCalledTimes(1);
         expect(rows()[0].getAttribute('aria-current')).toBe('true');
+        expect(mounted.section.hidden).toBe(false);
         expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
     });
 
@@ -542,7 +800,7 @@ describe('chat activation and current entity', () => {
         await mount();
         rows()[0].click();
         await settle();
-        expect(rows()[0].getAttribute('aria-current')).toBe('true');
+        expect(mounted.section.hidden).toBe(true);
         expect(play).not.toHaveBeenCalled();
         expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
         delete window.matchMedia;
@@ -594,7 +852,9 @@ describe('chat activation and current entity', () => {
         model.entities[2].item.active = true;
         const focus = button('more');
         focus.focus();
-        jest.spyOn(mounted.section, 'getClientRects').mockReturnValue([{}]);
+        mounted.section.hidden = true;
+        resize();
+        mounted.section.hidden = false;
         resize();
         resize();
         expect(row.scrollIntoView).toHaveBeenCalledTimes(1);

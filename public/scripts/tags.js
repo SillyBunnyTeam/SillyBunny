@@ -135,10 +135,13 @@ function getVisibleAvatarsForGroupContext(type, currentGroup) {
     switch (type) {
         case tag_filter_type.group_members_list:
             return currentGroup.members;
-        case tag_filter_type.group_candidates_list:
+        case tag_filter_type.group_candidates_list: {
+            // SillyBunny: candidate membership is linear in the library size — see docs/ui-migration.md.
+            const memberAvatars = new Set(currentGroup.members);
             return characters
-                .filter(c => !currentGroup.members.includes(c.avatar))
+                .filter(c => !memberAvatars.has(c.avatar))
                 .map(c => c.avatar);
+        }
         default:
             console.warn('getVisibleAvatarsForGroupContext got invalid type, expected 1 or 2, got ', type);
             return [];
@@ -1595,6 +1598,9 @@ function runTagFilters(listElement) {
     filterHelper.setFilterData(FILTER_TYPES.TAG, { excluded: excludedTagIds, selected: tagIds });
 }
 
+// SillyBunny: cache presentation per live filter root, not per print request — see docs/ui-migration.md.
+const filterPresentations = new WeakMap();
+
 function printTagFilters(type = tag_filter_type.character) {
     // SillyBunny: slash commands, imports and bulk edits reconcile the open manager — see docs/ui-migration.md
     refreshTagManager();
@@ -1616,6 +1622,19 @@ function printTagFilters(type = tag_filter_type.character) {
             break;
     }
 
+    const root = $(FILTER_SELECTOR)[0];
+    if (!root) return;
+    const helper = getFilterHelper($(root));
+    const currentGroup = selected_group ? groups.find(group => group.id == selected_group) : null;
+    const signature = JSON.stringify([
+        tags.map(tag => Object.fromEntries(Object.entries(tag).filter(([key]) => key !== 'filter_state'))),
+        Object.entries(tag_map).filter(([, ids]) => ids?.length),
+        isGroupContext(type) ? null : mainListFilterStoragePrefix, power_user.bogus_folders, power_user.tag_sort_mode,
+        getTagFilterVisibility(type), [FILTER_TYPES.TAG, FILTER_TYPES.FAV, FILTER_TYPES.FOLDER, FILTER_TYPES.GROUP].map(type => helper.getFilterData(type)),
+        isGroupContext(type) ? getVisibleAvatarsForGroupContext(type, currentGroup) : null,
+    ]);
+    if (root.childElementCount && filterPresentations.get(root) === signature) return;
+    filterPresentations.set(root, signature);
     $(FILTER_SELECTOR).empty();
 
     // Print all action tags. (Rework 'Folder' button to some kind of onboarding if no folders are enabled yet)
@@ -1644,18 +1663,15 @@ function printTagFilters(type = tag_filter_type.character) {
 
         if (visibleAvatars.length > 0) {
             // Get tags that are assigned to at least one visible character
-            const activeCharacterTagIds = visibleAvatars
-                .map(avatar => tag_map[avatar] || [])
-                .flat()
-                .filter(onlyUnique);
+            const activeCharacterTagIds = new Set(visibleAvatars.flatMap(avatar => tag_map[avatar] || []));
 
             // Show all tags that exist in the tag_map
-            const allCharacterTagIds = Object.values(tag_map).flat().filter(onlyUnique);
-            tagsToDisplay = tags.filter(x => allCharacterTagIds.includes(x.id)).sort(compareTagsForSort);
+            const allCharacterTagIds = new Set(Object.values(tag_map).flat());
+            tagsToDisplay = tags.filter(x => allCharacterTagIds.has(x.id)).sort(compareTagsForSort);
 
             // Mark tags that are not in the active set as inactive
             inactiveTags = tagsToDisplay
-                .filter(x => !activeCharacterTagIds.includes(x.id))
+                .filter(x => !activeCharacterTagIds.has(x.id))
                 .map(x => x.id);
         } else {
             // No group selected, show no tags
@@ -1663,8 +1679,8 @@ function printTagFilters(type = tag_filter_type.character) {
         }
     } else {
         // For main character list, show all tags as before
-        const characterTagIds = Object.values(tag_map).flat();
-        tagsToDisplay = tags.filter(x => characterTagIds.includes(x.id)).sort(compareTagsForSort);
+        const characterTagIds = new Set(Object.values(tag_map).flat());
+        tagsToDisplay = tags.filter(x => characterTagIds.has(x.id)).sort(compareTagsForSort);
     }
 
     printTagList($(FILTER_SELECTOR), { empty: false, tags: tagsToDisplay, tagOptions: { isFilter: true, isGeneralList: true }, inactiveTags: inactiveTags });
@@ -1774,6 +1790,9 @@ export function applyTagsOnCharacterSelect(chid = null) {
 }
 
 export function applyTagsOnGroupSelect(groupId = null) {
+    // SillyBunny: rebuild each context once, including create-mode drafts — see docs/ui-migration.md.
+    printTagFilters(tag_filter_type.group_candidates_list);
+    printTagFilters(tag_filter_type.group_members_list);
     // If we are in create window, we explicitly have to tell the system to print for the new group, not the one selected in the background
     if (menu_type === 'group_create') {
         const currentTagIds = $('#groupTagList').find('.tag').map((_, el) => $(el).attr('id')).get();
@@ -1784,8 +1803,6 @@ export function applyTagsOnGroupSelect(groupId = null) {
 
     groupId = groupId ?? (selected_group ? Number(selected_group) : undefined);
     printTagList($('#groupTagList'), { forEntityOrKey: groupId, tagOptions: { removable: true } });
-    printTagFilters(tag_filter_type.group_candidates_list);
-    printTagFilters(tag_filter_type.group_members_list);
 }
 
 /**

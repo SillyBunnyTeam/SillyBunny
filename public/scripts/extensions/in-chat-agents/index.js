@@ -2083,6 +2083,7 @@ function closeBulkEditPopup() {
 }
 
 function getScrollContainer(element) {
+    if (!isAgentPanelVisible(element)) return null;
     let current = element instanceof HTMLElement ? element : null;
 
     while (current) {
@@ -2327,8 +2328,24 @@ function updateAgentTokenCounter() {
     tokenCounter.classList.toggle('is-empty', tokenCount <= 0);
 }
 
+let agentListDirty = true;
+
+function isAgentPanelVisible(element) {
+    if (!(element instanceof HTMLElement) || !element.isConnected) return false;
+    if (element.closest('[hidden], [aria-hidden="true"], [inert], .closedDrawer, .sb-subpage-store, dialog:not([open]), .sb-shell-panel:not(.sb-shell-panel-active), .sb-settings-mounted-shell:not(.sb-settings-active-root)')) return false;
+    for (let node = element; node; node = node.parentElement) {
+        if (node.style.display === 'none') return false;
+    }
+    return true;
+}
+
 function renderAgentList() {
     const container = $('#ica--agentList');
+    if (!isAgentPanelVisible(container[0])) {
+        agentListDirty = true;
+        return;
+    }
+    agentListDirty = false;
     const scrollState = captureAgentListScrollState(container[0]);
     container.empty();
     updateCancelGenerationButton();
@@ -5242,6 +5259,7 @@ function openPathfinderExtensionsDrawer(host) {
 
     globalThis.setTimeout(() => {
         if (!host?.isConnected) return;
+        refreshPathfinderSettings();
         scrollElementIntoNearestPanelScroller(host, { block: 'start' });
         host?.querySelector('input, button, select, textarea')?.focus?.({ preventScroll: true });
     }, 100);
@@ -6148,10 +6166,21 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     // Refresh profiles when chat changes (profiles may have been added/removed)
     const refreshProfileUi = () => {
+        if (!isAgentPanelVisible(document.getElementById('ica--agentList'))) {
+            agentListDirty = true;
+            return;
+        }
         refreshConnectionProfileUi();
         populateGlobalNotificationToggle();
         populateGlobalExecutionModeDropdown();
     };
+    const agentListElement = document.getElementById('ica--agentList');
+    if (agentListElement) {
+        const observer = new IntersectionObserver(entries => {
+            if (agentListDirty && entries.some(entry => entry.isIntersecting)) refreshProfileUi();
+        });
+        observer.observe(agentListElement);
+    }
 
     eventSource.on(event_types.CHAT_CHANGED, refreshProfileUi);
 
@@ -6226,6 +6255,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     document.addEventListener('sb:shell-tab-activated', (event) => {
         if (event.detail?.tabId === 'agents') {
             syncToolAgentRegistrations();
+            if (agentListDirty) refreshProfileUi();
             updateAgentTokenCounter();
         }
     });

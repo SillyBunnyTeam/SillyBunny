@@ -128,20 +128,19 @@ function listDestination(view, kind) {
             if (!isCurrent()) return false;
             const shell = globalThis.SillyBunnyShell;
             if (typeof shell?.openTab !== 'function') return false;
-            const opened = await shell.openTab('characters', view);
-            if (opened === false || !isCurrent()) return false;
             const list = await import('./sillybunny-character-list.js');
             if (!isCurrent()) return false;
-            await list.mountCharacterList();
-            if (!isCurrent()) return false;
-            const state = await import('./sillybunny-character-list-state.js');
-            if (!isCurrent()) return false;
-            if (state.getCharacterListView() !== view) await state.switchCharacterListView(view);
-            if (!isCurrent()) return false;
-            await list.restoreCharacterListState(restore, isCurrent);
-            if (!isCurrent()) return false;
-            if (target.focusAvatar) return revealCharacterListRow(list, target.focusAvatar, isCurrent);
-            return isCurrent();
+            const cancelRestore = restore ? list.prepareCharacterListRestore(view, restore, isCurrent) : () => {};
+            try {
+                const opened = await shell.openTab('characters', view);
+                if (opened === false || !isCurrent()) return false;
+                await list.mountCharacterList();
+                if (!isCurrent()) return false;
+                if (target.focusAvatar) return revealCharacterListRow(list, target.focusAvatar, isCurrent);
+                return isCurrent();
+            } finally {
+                cancelRestore();
+            }
         },
         captureState: () => globalThis.SillyBunnyCharacterListController?.captureState?.() ?? null,
         current: () => ({ kind }),

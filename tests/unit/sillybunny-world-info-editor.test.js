@@ -82,8 +82,9 @@ Popup.show = { confirm };
 await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     Popup, POPUP_TYPE: { CONFIRM: 1 }, POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CUSTOM1: 3, CUSTOM2: 4 },
 }));
+const play = jest.fn((_node, _frames, options) => { options?.onEnd?.(); return { cancel() {} }; });
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    play: jest.fn((_node, _frames, options) => { options?.onEnd?.(); return { cancel() {} }; }),
+    play,
     stopMotion: jest.fn(), prefersReducedMotion: () => true,
     animateOut: jest.fn((_node, _frames, hide) => hide()),
     SPRING_NAVIGATION: {}, MOTION_FAST: 0, MOTION_SLOW: 0,
@@ -119,7 +120,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/navigatio
 
 let dirty;
 let entryControllers;
-const mountEntry = jest.fn(({ host }) => {
+const mountEntry = jest.fn(({ host, requestClose }) => {
     const input = document.createElement('input');
     host.append(input);
     const controller = {
@@ -127,6 +128,7 @@ const mountEntry = jest.fn(({ host }) => {
         save: jest.fn(async () => { dirty = false; return true; }),
         discard: jest.fn(() => { dirty = false; }),
         sync: jest.fn(), rebaseKey: jest.fn(), destroy: jest.fn(), focusTarget: () => input,
+        requestClose,
     };
     entryControllers.push(controller);
     return controller;
@@ -186,6 +188,50 @@ function currentPage() {
     return container.querySelector('.sb-list-pagination__status').textContent;
 }
 
+test('hidden books defer filtering and DOM work until the next prepared reveal', async () => {
+    await mount({ name: 'Book A', data: book(2) });
+    const panel = document.getElementById('sb_character_world_info_panel');
+    panel.hidden = true;
+    const before = container.innerHTML;
+    displayEntries.mockClear();
+    await render({ name: 'Book B', data: book(3) });
+    await render({ name: 'Book B', data: book(4) });
+    expect(adapter.isOpen()).toBe(false);
+    expect(container.innerHTML).toBe(before);
+    expect(displayEntries).not.toHaveBeenCalled();
+    await mounted.prepareReveal();
+    expect(container.querySelector('.sb-wi-book-name').textContent).toBe('Book B');
+    expect(container.querySelectorAll('.sb-wi-row')).toHaveLength(4);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await mounted.prepareReveal();
+    expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+test.each(['hidden', 'aria-hidden'])('an entry close transition completing while %s refreshes selection on the next reveal without a book update', async attribute => {
+    await mount({ name: 'Book A', data: book(2) });
+    const entry = await open();
+    const row = container.querySelector('[data-sb-list-key="entry:0"]');
+    expect(row.classList.contains('is-selected')).toBe(true);
+    const completions = [];
+    play.mockImplementation((_node, _frames, options) => {
+        completions.push(options.onEnd);
+        return { cancel() {} };
+    });
+    await entry.requestClose();
+    expect(completions).toHaveLength(2);
+    expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('false');
+    const panel = document.getElementById('sb_character_world_info_panel');
+    panel.setAttribute(attribute, attribute === 'aria-hidden' ? 'true' : '');
+    const before = row.outerHTML;
+    completions.forEach(complete => complete());
+    expect(row.outerHTML).toBe(before);
+    expect(row.classList.contains('is-selected')).toBe(true);
+    refresh.mockClear();
+    await mounted.prepareReveal();
+    expect(row.classList.contains('is-selected')).toBe(false);
+    expect(refresh).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -222,6 +268,7 @@ beforeEach(() => {
     jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
     globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn().mockResolvedValue() };
     displayEntries.mockImplementation(defaultDisplayEntries);
+    play.mockImplementation((_node, _frames, options) => { options?.onEnd?.(); return { cancel() {} }; });
 });
 
 afterEach(() => {

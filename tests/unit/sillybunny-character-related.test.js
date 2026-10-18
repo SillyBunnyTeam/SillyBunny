@@ -75,12 +75,12 @@ beforeEach(() => {
         'persona.png': { connections: [{ type: 'character', id: 'Alice.png' }] },
         'missing.png': { connections: [{ type: 'character', id: 'Alice.png' }] },
     };
-    document.body.innerHTML = `<form id="form_create">
+    document.body.innerHTML = `<div id="right-nav-panel" class="openDrawer" data-menu-type="character_edit"><form id="form_create">
         <input id="character_name_pole"><div id="sb_character_related" hidden>
         <h3 id="sb_character_section_related"></h3><div id="sb_character_related_rows"></div></div>
         <button type="button" id="world_button"></button>
         <select id="char-management-dropdown"><option id="set_character_world" value="world">Link</option></select>
-    </form>`;
+    </form></div>`;
     global.$ = target => {
         const node = typeof target === 'string' ? document.querySelector(target) : target;
         return {

@@ -15,6 +15,8 @@ const restoreGroupEditorListState = jest.fn();
 const confirmActiveEditorLeave = jest.fn();
 const mountCharacterList = jest.fn();
 const restoreCharacterListState = jest.fn();
+const cancelListRestore = jest.fn();
+const prepareCharacterListRestore = jest.fn(() => cancelListRestore);
 const switchCharacterListView = jest.fn();
 let activeListView;
 const world_names = ['Book A'];
@@ -31,7 +33,7 @@ await jest.unstable_mockModule('../../public/scripts/world-info.js', () => ({
 await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-persona-editor.js', () => ({ openPersonaEditor }));
 
-await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list.js', () => ({ mountCharacterList, restoreCharacterListState }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list.js', () => ({ mountCharacterList, restoreCharacterListState, prepareCharacterListRestore }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-state.js', () => ({
     getCharacterListView: () => activeListView,
     switchCharacterListView,
@@ -87,7 +89,7 @@ beforeEach(() => {
     mountCharacterList.mockResolvedValue({});
     restoreCharacterListState.mockResolvedValue(undefined);
     switchCharacterListView.mockImplementation(async view => { activeListView = view; });
-    window.SillyBunnyShell = { openTab: jest.fn(async () => true) };
+    window.SillyBunnyShell = { openTab: jest.fn(async (_shell, view) => { activeListView = view; return true; }) };
     window.SillyBunnyCharacterListController = { captureState: jest.fn(() => ({ query: 'Alice', page: 2, scrollTop: 80, focusKey: 'character:Alice.png' })) };
     selectCharacterById.mockImplementation(async () => { showCharacterEditor(); return true; });
     openGroupMemberDefinition.mockImplementation(async () => { showCharacterEditor(); return true; });
@@ -145,7 +147,7 @@ describe('character and group editor destinations', () => {
     test.each([
         ['characters', 'character-list', characterList],
         ['groups', 'group-list', groupList],
-    ])('%s list waits for the shell and mount before restoring its snapshot', async (view, kind, destination) => {
+    ])('%s list supplies the restore snapshot before shell activation', async (view, kind, destination) => {
         const pending = deferred();
         window.SillyBunnyShell.openTab.mockReturnValueOnce(pending.promise);
         const snapshot = destination.captureState();
@@ -155,9 +157,10 @@ describe('character and group editor destinations', () => {
         expect(await result).toBe(true);
         expect(window.SillyBunnyShell.openTab).toHaveBeenCalledWith('characters', view);
         expect(mountCharacterList).toHaveBeenCalledTimes(1);
-        expect(activeListView).toBe(view);
-        expect(restoreCharacterListState).toHaveBeenCalledWith(snapshot, currentRoute.isCurrent);
-        expect(mountCharacterList.mock.invocationCallOrder[0]).toBeLessThan(restoreCharacterListState.mock.invocationCallOrder[0]);
+        expect(prepareCharacterListRestore).toHaveBeenCalledWith(view, snapshot, currentRoute.isCurrent);
+        expect(prepareCharacterListRestore.mock.invocationCallOrder[0]).toBeLessThan(window.SillyBunnyShell.openTab.mock.invocationCallOrder[0]);
+        expect(restoreCharacterListState).not.toHaveBeenCalled();
+        expect(cancelListRestore).toHaveBeenCalledTimes(1);
     });
 
     test.each([characterList, groupList])('a superseded list destination never mounts or restores', async destination => {

@@ -72,6 +72,7 @@ import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSetting
 import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
+import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import { initCharacterEditor } from './sillybunny-character-editor.js';
@@ -7410,8 +7411,13 @@ function hasActiveCharacterChat(context = getSillyTavernContext()) {
 }
 
 async function setCharacterListEntityView(view) {
-    const state = await import('./sillybunny-character-list-state.js');
-    await state.switchCharacterListView(view);
+    const [state, script] = await Promise.all([
+        import('./sillybunny-character-list-state.js'),
+        import('../script.js'),
+    ]);
+    // SillyBunny: replace Back's upstream menu state without its extra render — see docs/ui-migration.md.
+    script.setMenuType('characters');
+    await state.switchCharacterListView(view, { render: false });
 }
 
 function syncCharacterListControls(view) {
@@ -7475,19 +7481,23 @@ async function revealCharacterListView(view, revision) {
     await setCharacterListEntityView(normalizedView);
     if (revision !== characterListViewRevision) return false;
 
-    const backButton = document.getElementById('rm_button_back');
-
-    if (backButton instanceof HTMLElement) {
-        backButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        setCharacterPanelMenuType(panel, normalizedView);
-        syncCharacterListControls(normalizedView);
-        syncCharacterShellTabs(normalizedView);
-        // SillyBunny: reveal the current chat after the upstream full-refresh scroll reset — see docs/ui-migration.md.
-        await listController.revealActiveEntity(() => revision === characterListViewRevision);
-        return true;
+    // SillyBunny: list navigation has one render and no synthetic upstream Back refresh — see docs/ui-migration.md.
+    for (const id of ['result_info', 'rm_PinAndTabs', 'rm_ch_create_block', 'rm_group_chats_block']) {
+        const element = document.getElementById(id);
+        if (!(element instanceof HTMLElement)) continue;
+        element.classList.remove('sb-active-right-menu');
+        element.style.display = 'none';
+        element.style.visibility = 'hidden';
+        element.style.pointerEvents = 'none';
     }
-
-    resetCharacterPanelView();
+    const list = document.getElementById('rm_characters_block');
+    if (list instanceof HTMLElement) {
+        list.classList.add('sb-active-right-menu');
+        list.style.display = 'flex';
+        list.style.opacity = '1';
+        list.style.visibility = 'visible';
+        list.style.pointerEvents = 'auto';
+    }
     setCharacterPanelMenuType(panel, normalizedView);
     syncCharacterListControls(normalizedView);
     syncCharacterShellTabs(normalizedView);
@@ -7612,17 +7622,75 @@ function ensureCharacterWorldInfoPanel() {
     }
 
     drawer.querySelector('#WI_panel_pin_div')?.classList.add('sb-shell-hidden-control');
-    preloadPanelStylesheets('characters', 'world-info');
     return host;
 }
 
 // SillyBunny: lazy-mount the persona editor only after its deferred styles load — see docs/ui-migration.md
 let personaEditorMountPromise = null;
 let characterListMountPromise = null;
+let characterPanelRevealPromise = null;
+const deferredCharacterPanels = new WeakMap();
+
+function hideDeferredCharacterPanel(host, content = host, { preserveLayout = false } = {}) {
+    if (!(host instanceof HTMLElement)) return;
+    const state = deferredCharacterPanels.get(host);
+    if (state) {
+        state.requested = false;
+        state.revision++;
+        state.status.element.hidden = true;
+    }
+    if (!preserveLayout) host.hidden = true;
+    host.setAttribute('aria-hidden', 'true');
+    content?.setAttribute('aria-hidden', 'true');
+}
+
+function revealDeferredCharacterPanel(host, content, mount) {
+    if (!(host instanceof HTMLElement)) return Promise.resolve(false);
+    let state = deferredCharacterPanels.get(host);
+    if (!state) {
+        const status = createStatusPage({ icon: 'hourglass', title: t`Loading...` });
+        // Use already-loaded empty-page chrome so deferred editor CSS cannot restyle loading mid-flight.
+        status.element.className = 'sb-character-editor-empty sb-character-panel-loading';
+        status.element.querySelector('i')?.remove();
+        status.element.querySelector('h3')?.removeAttribute('class');
+        status.element.hidden = true;
+        host.after(status.element);
+        state = { status, revision: 0, requested: false, reveal: null };
+        deferredCharacterPanels.set(host, state);
+    }
+    if (state.requested) return state.reveal;
+    hideDeferredCharacterPanel(host, content);
+    state.requested = true;
+    const revision = ++state.revision;
+    state.status.update({ icon: 'hourglass', title: t`Loading...` });
+    state.status.element.hidden = false;
+    const isCurrent = () => state.requested && state.revision === revision;
+    state.reveal = (async () => {
+        const controller = await mount();
+        await controller?.ready;
+        if (!controller || !isCurrent()) return false;
+        await controller.prepareReveal?.();
+        if (!isCurrent()) return false;
+        state.status.element.hidden = true;
+        host.hidden = false;
+        host.setAttribute('aria-hidden', 'false');
+        content?.setAttribute('aria-hidden', 'false');
+        controller.onReveal?.();
+        return controller;
+    })().catch(error => {
+        if (isCurrent()) {
+            state.requested = false;
+            state.status.update({ icon: 'triangle-exclamation', title: t`Error` });
+        }
+        throw error;
+    });
+    state.reveal.catch(error => console.warn('[SillyBunny] Could not reveal the character panel.', error));
+    return state.reveal;
+}
 
 async function mountCharacterListController() {
     characterListMountPromise ??= import('./sillybunny-character-list.js')
-        .then(module => module.mountCharacterList())
+        .then(module => module.mountCharacterList(undefined, { render: false, getNavigationGeneration: getCharacterListNavigationGeneration }))
         .catch(error => {
             characterListMountPromise = null;
             console.warn('[SillyBunny] Could not mount the character list.', error);
@@ -7630,79 +7698,69 @@ async function mountCharacterListController() {
         });
     return characterListMountPromise;
 }
+
+function getCharacterListNavigationGeneration() {
+    // SillyBunny: authoritative page and character-tab revisions exclude close-animation cleanup — see docs/ui-migration.md.
+    return `${sbSettingsState.closeGen}:${characterListViewRevision}`;
+}
 function setCharacterPersonaPanelVisible(visible) {
-    const host = ensureCharacterPersonaPanel() ?? document.getElementById('sb_character_persona_panel');
+    const host = visible ? ensureCharacterPersonaPanel() : document.getElementById('sb_character_persona_panel');
     const content = document.getElementById('PersonaManagement');
-
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
-    }
-
-    if (content instanceof HTMLElement) {
-        content.setAttribute('aria-hidden', String(!visible));
-        if (visible && !personaEditorMountPromise) {
-            personaEditorMountPromise = import('./sillybunny-persona-editor.js').then(async module => {
-                await module.loadPersonaEditorStyles(SB_PANEL_STYLESHEETS['characters:persona']);
-                const controller = module.mountPersonaEditor(content);
-                await controller.ready;
-                return controller;
-            });
-            // SillyBunny: observe failures without swallowing the bridge's rejection — see docs/ui-migration.md
-            personaEditorMountPromise.catch(error => {
-                personaEditorMountPromise = null;
-                console.warn('[SillyBunny] Could not mount the persona editor.', error);
-            });
-        }
-    }
+    if (!visible) return hideDeferredCharacterPanel(host, content);
+    characterPanelRevealPromise = revealDeferredCharacterPanel(host, content, () => {
+        personaEditorMountPromise ??= import('./sillybunny-persona-editor.js').then(async module => {
+            await module.loadPersonaEditorStyles(SB_PANEL_STYLESHEETS['characters:persona']);
+            const controller = module.mountPersonaEditor(content);
+            await controller.ready;
+            return controller;
+        }).catch(error => {
+            personaEditorMountPromise = null;
+            throw error;
+        });
+        return personaEditorMountPromise;
+    });
+    return characterPanelRevealPromise;
 }
 
 let characterImportMountPromise = null;
 function setCharacterImportPanelVisible(visible) {
     const host = document.getElementById('sb_character_import_panel');
-
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
-        if (visible && !characterImportMountPromise) {
-            characterImportMountPromise = import('./sillybunny-character-import.js').then(async module => {
-                await module.loadCharacterImportStyles(SB_PANEL_STYLESHEETS['characters:import']);
-                return module.mountCharacterImport(host);
-            }).catch(error => {
-                characterImportMountPromise = null;
-                const loading = host.querySelector('#sb_character_import_loading');
-                if (loading) loading.textContent = t`Error`;
-                console.warn('[SillyBunny] Could not mount Import.', error);
-            });
-        }
-        if (visible) void characterImportMountPromise?.then(controller => controller?.refreshLibrary());
-    }
+    if (!visible) return hideDeferredCharacterPanel(host);
+    characterPanelRevealPromise = revealDeferredCharacterPanel(host, host, () => {
+        characterImportMountPromise ??= import('./sillybunny-character-import.js').then(async module => {
+            await module.loadCharacterImportStyles(SB_PANEL_STYLESHEETS['characters:import']);
+            const controller = module.mountCharacterImport(host);
+            await controller.ready;
+            return controller;
+        }).catch(error => {
+            characterImportMountPromise = null;
+            throw error;
+        });
+        return characterImportMountPromise;
+    });
+    return characterPanelRevealPromise;
 }
 
 // SillyBunny: defer the rebuilt editor and its styles until this tab is first requested.
 let worldInfoEditorMountPromise = null;
-function setCharacterWorldInfoPanelVisible(visible) {
-    const host = ensureCharacterWorldInfoPanel() ?? document.getElementById('sb_character_world_info_panel');
+function setCharacterWorldInfoPanelVisible(visible, { preserveLayout = false } = {}) {
+    const host = visible ? ensureCharacterWorldInfoPanel() : document.getElementById('sb_character_world_info_panel');
     const content = document.getElementById('WorldInfo');
-
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
-    }
-
-    if (content instanceof HTMLElement) {
-        content.setAttribute('aria-hidden', String(!visible));
-        if (visible && !worldInfoEditorMountPromise) {
-            worldInfoEditorMountPromise = import('./sillybunny-world-info-editor.js').then(async module => {
-                await Promise.all(SB_PANEL_STYLESHEETS['characters:world-info'].map(stylesheet =>
-                    window.SillyBunnyAssets?.loadStylesheetAsync(stylesheet.href, { id: stylesheet.id })));
-                return module.mountWorldInfoEditor(content);
-            }).catch(error => {
-                worldInfoEditorMountPromise = null;
-                console.warn('[SillyBunny] Could not mount the World Info editor.', error);
-            });
-        }
-    }
+    if (!visible) return hideDeferredCharacterPanel(host, content, { preserveLayout });
+    characterPanelRevealPromise = revealDeferredCharacterPanel(host, content, () => {
+        worldInfoEditorMountPromise ??= import('./sillybunny-world-info-editor.js').then(async module => {
+            await Promise.all(SB_PANEL_STYLESHEETS['characters:world-info'].map(stylesheet =>
+                window.SillyBunnyAssets?.loadStylesheetAsync(stylesheet.href, { id: stylesheet.id })));
+            const controller = module.mountWorldInfoEditor(content);
+            await controller.ready;
+            return controller;
+        }).catch(error => {
+            worldInfoEditorMountPromise = null;
+            throw error;
+        });
+        return worldInfoEditorMountPromise;
+    });
+    return characterPanelRevealPromise;
 }
 
 function setCharacterPanelMenuType(panel, menuType) {
@@ -8153,53 +8211,6 @@ async function showActiveCharacterEditor() {
     return true;
 }
 
-function resetCharacterPanelView() {
-    const panel = getCharacterPanel();
-    const listButton = document.getElementById('rm_button_characters');
-    const selectedTitle = document.querySelector('#rm_button_selected_ch h2');
-
-    if (selectedTitle instanceof HTMLElement) {
-        selectedTitle.textContent = '';
-    }
-
-    setCharacterEditorEmptyState(false);
-    setCharacterPersonaPanelVisible(false);
-    setCharacterImportPanelVisible(false);
-    setCharacterWorldInfoPanelVisible(false);
-
-    if (listButton instanceof HTMLElement) {
-        listButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        setCharacterPanelMenuType(panel, 'characters');
-        syncCharacterListControls('characters');
-        syncCharacterShellTabs('characters');
-        return;
-    }
-
-    setCharacterPanelMenuType(panel, 'characters');
-
-    const infoPanel = document.getElementById('result_info');
-    const characterEditor = document.getElementById('rm_ch_create_block');
-    const characterList = document.getElementById('rm_characters_block');
-
-    if (infoPanel instanceof HTMLElement) {
-        infoPanel.style.display = 'none';
-    }
-
-    if (characterEditor instanceof HTMLElement) {
-        characterEditor.style.display = 'none';
-        characterEditor.style.visibility = 'hidden';
-        characterEditor.style.pointerEvents = 'none';
-    }
-
-    if (characterList instanceof HTMLElement) {
-        characterList.style.display = 'flex';
-        characterList.style.visibility = 'visible';
-        characterList.style.pointerEvents = 'auto';
-    }
-
-    syncCharacterShellTabs('characters');
-}
-
 function syncCharacterDrawerStateFromDom({ force = false } = {}) {
     const panel = getCharacterPanel();
 
@@ -8507,9 +8518,17 @@ async function returnToLandingPage() {
 }
 
 function syncProxyButtonState(proxyButton, sourceIcon) {
-    if (!(proxyButton instanceof HTMLElement) || !(sourceIcon instanceof HTMLElement)) {
+    if (!(proxyButton instanceof HTMLElement)) {
         return;
     }
+
+    // SillyBunny: the page synchronously owns this button; keep drawer state for legacy consumers — see docs/ui-migration.md
+    if (proxyButton.id === 'sb-character-toggle' && getCharacterPanel()?.classList.contains('sb-settings-mounted-shell')) {
+        proxyButton.classList.remove('is-open', 'is-pinned', 'is-current');
+        proxyButton.setAttribute('aria-expanded', String(proxyButton.classList.contains('sb-settings-active')));
+        return;
+    }
+    if (!(sourceIcon instanceof HTMLElement)) return;
 
     const isOpen = sourceIcon.classList.contains('openIcon');
     const isPinned = sourceIcon.classList.contains('drawerPinnedOpen');
@@ -15670,10 +15689,10 @@ function initAll() {
         openTab(shellKey, tabId) {
             if (shellKey === 'characters') {
                 openCharacterPanelTab(tabId);
-                // SillyBunny: persona bridges await mounting and reveal mobile content — see docs/ui-migration.md
-                if (tabId === 'persona') {
+                // SillyBunny: bridges await the atomic reveal, not just module mounting — see docs/ui-migration.md
+                if (['persona', 'world-info', 'import'].includes(tabId)) {
                     if (isMobileViewport()) setSettingsMobileContentView(true);
-                    return personaEditorMountPromise;
+                    return characterPanelRevealPromise;
                 }
                 if (tabId === 'characters' || tabId === 'groups') {
                     if (isMobileViewport()) setSettingsMobileContentView(true);
@@ -16223,6 +16242,11 @@ function deactivateSettingsPageRoot(shellKey) {
     if (shellKey !== 'characters') {
         const shellState = getShellState(shellKey);
         shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
+    } else {
+        setCharacterPersonaPanelVisible(false);
+        setCharacterImportPanelVisible(false);
+        // SillyBunny: upstream WI probes require layout in the closed page; aria-hidden still suspends adapter work — see docs/ui-migration.md
+        setCharacterWorldInfoPanelVisible(false, { preserveLayout: true });
     }
 
     setRootClassState(root, {
@@ -16294,6 +16318,12 @@ function syncSettingsPageActiveButton() {
             (cluster.key === 'characters' && sbSettingsState.activeShell === 'characters')
         );
         leadButton.classList.toggle('sb-settings-active', isActive);
+        if (cluster.key === 'characters') {
+            leadButton.classList.remove('is-open', 'is-pinned', 'is-current');
+            leadButton.setAttribute('aria-expanded', String(isActive));
+            if (isActive) leadButton.setAttribute('aria-current', 'page');
+            else leadButton.removeAttribute('aria-current');
+        }
     }
 }
 

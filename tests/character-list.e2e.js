@@ -85,6 +85,7 @@ async function showView(page, view) {
     await page.evaluate(async view => { await window.SillyBunnyShell.openTab('characters', view); }, view);
     await expect(list(page)).toBeVisible();
     await expect(list(page)).toHaveAttribute('data-view', view);
+    await expect.poll(() => page.evaluate(async () => (await import('/script.js')).menu_type)).toBe('characters');
 }
 
 async function prepareList(page, viewport) {
@@ -188,6 +189,7 @@ async function readSort(page, view) {
 async function waitForChatActivation(page) {
     await expect(page.locator('#sb-settings-page')).toBeHidden();
     await expect(page.locator('#chat')).toBeVisible();
+    await expect(page.locator('.is-activating-entity')).toHaveCount(0);
 }
 
 async function expectEditorBackRestoration(page, view) {
@@ -208,11 +210,24 @@ async function expectEditorBackRestoration(page, view) {
             window.__sbCharacterListOrigin = window.SillyBunnyCharacterListController.captureState();
         }, { capture: true, once: true });
     });
+    if (view === 'characters') await page.evaluate(async () => {
+        const { debounce_timeout } = await import('/scripts/constants.js');
+        const schedule = window.setTimeout;
+        window.setTimeout = (callback, delay, ...args) => {
+            if (delay === debounce_timeout.short && /at getChat \(/.test(new Error().stack)) {
+                window.setTimeout = schedule;
+                window.__sbDelayedComposerFocus = () => callback(...args);
+                return schedule(() => {}, 0);
+            }
+            return schedule(callback, delay, ...args);
+        };
+    });
     await row.getByRole('button', { name: 'Edit', exact: true }).click();
     const editor = view === 'groups' ? '#sb_group_editor_header' : '#sb_character_editor_header';
     const back = view === 'groups' ? '#sb_group_editor_back' : '#sb_character_editor_back';
     await expect(page.locator(editor)).toBeVisible();
     await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(1);
+    if (view === 'characters') await page.waitForFunction(() => typeof window.__sbDelayedComposerFocus === 'function');
     const origin = await page.evaluate(() => window.__sbCharacterListOrigin);
     expect(origin.page).toBe(2);
     expect(origin.focusKey).toBe(key);
@@ -220,6 +235,12 @@ async function expectEditorBackRestoration(page, view) {
     await page.locator(back).click();
     await expect(list(page)).toBeVisible();
     await expect(list(page)).toHaveAttribute('data-view', view);
+    await expect(list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`)).toBeFocused();
+    if (view === 'characters') await page.evaluate(async () => {
+        window.__sbDelayedComposerFocus();
+        delete window.__sbDelayedComposerFocus;
+        await new Promise(requestAnimationFrame);
+    });
     await expect(list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`)).toBeFocused();
     await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState())).toEqual(origin);
 }
@@ -352,6 +373,28 @@ async function enterSelection(page) {
     await expect(list(page).locator('.sb-selection-cancel')).toBeFocused();
 }
 
+for (const width of [375, 390, 430, 768]) {
+    test(`header controls and Chat Archive fit within the list at ${width}px`, async ({ page }) => {
+        await prepareList(page, { width, height: 844 });
+        const header = list(page).locator('.sb-character-list__header');
+        await expect(header.locator('#sbca_drawer_button')).toBeVisible();
+        await expect.poll(() => header.evaluate(element => {
+            const bounds = element.getBoundingClientRect();
+            return [...element.querySelectorAll('button, .menu_button, [role="button"]')]
+                .filter(control => control.getClientRects().length && getComputedStyle(control).visibility !== 'hidden')
+                .filter(control => {
+                    const rect = control.getBoundingClientRect();
+                    return rect.left < bounds.left - 0.5 || rect.right > bounds.right + 0.5;
+                })
+                .map(control => control.getAttribute('aria-label') || control.title);
+        })).toEqual([]);
+        await expect(header.locator('[data-action-id="sort"]')).toBeVisible({ visible: width > 390 });
+        await header.locator('[data-action-id="more"]').click();
+        await expect(page.getByRole('menuitem', { name: 'Sort', exact: true })).toBeVisible({ visible: width <= 390 });
+        await page.keyboard.press('Escape');
+    });
+}
+
 async function chatState(page) {
     return page.evaluate(async () => {
         const app = await import('/script.js');
@@ -371,12 +414,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await row.evaluate(element => { window.__sbActivationRow = element; });
             await row.locator('.ch_name').click();
             await waitForChatActivation(page);
-            await expect(row).toHaveAttribute('aria-current', 'true');
-            await expect(row).toHaveClass(/is-selected/);
             await list(page).locator('.sb-character-list__box').evaluate(box => { box.scrollTop = 0; });
             await showView(page, view);
             const current = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
             await expect(current).toHaveAttribute('aria-current', 'true');
+            await expect(current).toHaveClass(/is-selected/);
+            await expect(current.locator('.sb-character-list__active-dot')).toBeVisible();
+            await expect(current.locator('.sb-character-list__active-dot')).toHaveAttribute('aria-hidden', 'true');
             await expect(current).toBeInViewport();
             expect(await current.evaluate(element => element === window.__sbActivationRow)).toBe(true);
             await expect(current).not.toBeFocused();
@@ -421,6 +465,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await row.locator('.ch_name').click();
             await expect.poll(() => page.evaluate(() => document.querySelector('.is-activating-entity') === null)).toBe(true);
             await expect(page.locator('#sb-settings-page')).toBeVisible();
+            await expect(row).toBeFocused();
             await page.unroute(endpoint);
             // Restore the original fixture handler removed by unroute, never allow a live chat write.
             await page.route(endpoint, route => route.fulfill({ json: view === 'groups' ? [
@@ -436,6 +481,120 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = false; });
             await other.locator('.ch_name').click();
             await waitForChatActivation(page);
+        });
+
+        for (const [shell, tab] of [['left', 'connections'], ['right', 'appearance'], ['characters', 'world-info']]) {
+            test(`${view} delayed failure preserves newer ${shell}/${tab} navigation at ${viewport.width}px`, async ({ page }) => {
+                await prepareList(page, viewport);
+                await showView(page, view);
+                let release;
+                let requested = false;
+                const gate = new Promise(resolve => { release = resolve; });
+                const endpoint = { groups: '**/api/chats/group/get', characters: '**/api/chats/get' }[view];
+                await page.route(endpoint, async route => {
+                    requested = true;
+                    await gate;
+                    await route.fulfill({ status: 500, json: {} });
+                });
+                await listRows(page, view).last().locator('.ch_name').click();
+                await expect(list(page)).toBeHidden();
+                await expect.poll(() => requested).toBe(true);
+                await page.evaluate(async ({ shell, tab }) => {
+                    await window.SillyBunnyShell.openTab(shell, tab);
+                    window.__sbFailureReopens = 0;
+                    const openTab = window.SillyBunnyShell.openTab;
+                    window.SillyBunnyShell.openTab = (...args) => {
+                        window.__sbFailureReopens++;
+                        return openTab(...args);
+                    };
+                }, { shell, tab });
+                const selected = page.locator(`#sb-settings-tab-list [data-sb-settings-tab="${tab}"]`);
+                await expect(selected).toHaveAttribute('aria-selected', 'true');
+                const destinationFocus = page.locator('#sb-settings-page button:visible').first();
+                await destinationFocus.focus();
+                try {
+                    release();
+                    await expect(page.locator('.is-activating-entity')).toHaveCount(0);
+                    await expect(selected).toHaveAttribute('aria-selected', 'true');
+                    await expect(destinationFocus).toBeFocused();
+                    await expect(list(page)).toBeHidden();
+                    expect(await page.evaluate(() => window.__sbFailureReopens)).toBe(0);
+                } finally {
+                    release();
+                }
+            });
+        }
+
+        test(`${view} acceptance hides the list before a delayed chat fetch and keeps larger avatars at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await showView(page, view);
+            const row = listRows(page, view).last();
+            const key = await row.getAttribute('data-sb-list-key');
+            await expect(row.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('width', '40px');
+            await expect(row.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('height', '40px');
+            let release;
+            let requested = false;
+            let completed = false;
+            const gate = new Promise(resolve => { release = resolve; });
+            const endpoint = { groups: '**/api/chats/group/get', characters: '**/api/chats/get' }[view];
+            await page.route(endpoint, async route => {
+                requested = true;
+                await gate;
+                completed = true;
+                await route.fulfill({ json: view === 'groups' ? [
+                    { chat_metadata: { tainted: true } },
+                    { name: 'QA group', is_user: false, mes: 'QA chat', send_date: '2026-10-18' },
+                ] : [] });
+            });
+            await row.evaluate(element => {
+                element.addEventListener('click', () => {
+                    const start = performance.now();
+                    const section = element.closest('.sb-character-list');
+                    const observer = new MutationObserver(() => {
+                        if (!section.hidden) return;
+                        window.__sbAcceptedHideMs = performance.now() - start;
+                        observer.disconnect();
+                    });
+                    observer.observe(section, { attributes: true, attributeFilter: ['hidden'] });
+                }, { capture: true, once: true });
+            });
+            try {
+                await row.locator('.ch_name').click();
+                await expect(list(page)).toBeHidden();
+                await expect.poll(() => requested).toBe(true);
+                expect(completed).toBe(false);
+                expect(await page.evaluate(() => window.__sbAcceptedHideMs)).toBeLessThan(100);
+            } finally {
+                release();
+            }
+            await waitForChatActivation(page);
+            await showView(page, view);
+            const current = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await expect(current).toHaveAttribute('aria-current', 'true');
+            const dot = current.locator('.sb-character-list__active-dot');
+            await expect(dot).toBeVisible();
+            await expect(dot).toHaveCSS('width', '8px');
+            await expect(dot).toHaveCSS('height', '8px');
+            await chooseSortItem(page, 'Grid');
+            await expect(dot).toHaveCSS('position', 'absolute');
+            await expect(current.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('width', viewport.width === 390 ? '88px' : '116px');
+            for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+                await page.evaluate(theme => window.$('#themes').val(theme).trigger('change'), theme);
+                await expect(dot).toBeVisible();
+                const accent = await dot.evaluate(element => {
+                    const probe = document.createElement('span');
+                    probe.style.backgroundColor = 'var(--sb-accent)';
+                    element.append(probe);
+                    const color = getComputedStyle(probe).backgroundColor;
+                    probe.remove();
+                    return color;
+                });
+                await expect(dot).toHaveCSS('background-color', accent);
+            }
+            await page.emulateMedia({ forcedColors: 'active' });
+            await expect(dot).toBeVisible();
+            await expect(dot).toHaveCSS('forced-color-adjust', 'none');
+            await expect(dot).toHaveCSS('outline-width', '1px');
         });
     }
 

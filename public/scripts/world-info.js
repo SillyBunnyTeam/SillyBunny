@@ -2527,6 +2527,11 @@ function clearEntryList($list) {
 async function displayWorldEntries(name, data, navigation = navigation_option.none, flashOnNav = true) {
     updateEditor = async (navigation, flashOnNav = true) => await displayWorldEntries(name, data, navigation, flashOnNav);
 
+    // SillyBunny: hidden adapters retain the latest book, deferring transport and row work until reveal — see docs/ui-migration.md
+    if (worldInfoEditorAdapter?.isOpen?.() === false) {
+        return worldInfoEditorAdapter.render({ name, data, navigation, flashOnNav });
+    }
+
     const worldEntriesList = $('#world_popup_entries_list');
     const requestedUid = typeof navigation === 'number' && Number(navigation) >= 0 ? Number(navigation) : null;
     clearEntryList(worldEntriesList);

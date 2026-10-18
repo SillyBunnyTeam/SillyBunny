@@ -3,7 +3,7 @@
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests assert DOM synchronously. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import { createContext, SourceTextModule } from 'node:vm';
+import { createContext, runInNewContext, SourceTextModule } from 'node:vm';
 
 let adapter;
 let records;
@@ -99,9 +99,11 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-persona-detail.j
 const { mountPersonaEditor, openPersonaEditor, preservePersonaOrder, loadPersonaEditorStyles } = await import('../../public/scripts/sillybunny-persona-editor.js');
 const { mountPersonaSettings } = await import('../../public/scripts/sillybunny-persona-settings.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
+const { createStatusPage } = await import('../../public/scripts/sillybunny-editor/status-page.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
 const performanceLoaderSource = readFileSync(new URL('../../public/scripts/performance-loader.js', import.meta.url), 'utf8');
 const tabsSource = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
+const personasSource = readFileSync(new URL('../../public/scripts/personas.js', import.meta.url), 'utf8');
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
@@ -113,6 +115,17 @@ const personaStylesheets = [
 let container;
 let mounted;
 
+function subscribeLegacyPersonaChatStates() {
+    // Exercise the real legacy registration and its adapter boundary, not a stand-in handler.
+    const update = personasSource.match(/^function updatePersonaUIStates\([\s\S]*?^}/m)?.[0];
+    const registration = personasSource.match(/^\s*eventSource.on\(event_types.CHAT_CHANGED, updatePersonaUIStates\);/m)?.[0];
+    if (!update || !registration) throw new Error('Persona chat-state subscription is missing.');
+    const handler = runInNewContext(`${update}\n${registration}\nupdatePersonaUIStates;`, {
+        eventSource, event_types, get personaEditorAdapter() { return adapter; },
+    });
+    return () => eventSource.removeListener(event_types.CHAT_CHANGED, handler);
+}
+
 async function personaTabMount(stylesheets = personaStylesheets) {
     // Execute the real lazy-mount/preload seam without bootstrapping the unrelated application shell.
     const module = new SourceTextModule(`
@@ -122,9 +135,9 @@ async function personaTabMount(stylesheets = personaStylesheets) {
         ${personaMountSource}
         ${preloadSource}
         export { setCharacterPersonaPanelVisible, preloadPanelStylesheets };
-        export const mountPromise = () => personaEditorMountPromise;
+        export const mountPromise = () => personaEditorMountPromise && characterPanelRevealPromise;
     `, {
-        context: createContext({ document, window, HTMLElement, console }),
+        context: createContext({ document, window, HTMLElement, console, createStatusPage, t: strings => strings.join('') }),
         importModuleDynamically: () => import('../../public/scripts/sillybunny-persona-editor.js'),
     });
     await module.link(() => { throw new Error('Unexpected static import in persona mount.'); });
@@ -467,7 +480,7 @@ describe('Persona editor shell', () => {
         const failedMount = tab.mountPromise();
         await expect(failedMount).rejects.toBe(failure);
         expect(tab.mountPromise()).toBeNull();
-        expect(warning).toHaveBeenCalledWith('[SillyBunny] Could not mount the persona editor.', failure);
+        expect(warning).toHaveBeenCalledWith('[SillyBunny] Could not reveal the character panel.', failure);
         expect(adapter).toBeNull();
         tab.setCharacterPersonaPanelVisible(false);
         tab.setCharacterPersonaPanelVisible(true);
@@ -699,6 +712,59 @@ describe('Persona editor shell', () => {
         expect(mountDetail).toHaveBeenCalledTimes(1);
     });
 
+    test('hidden updates do no row/detail work and coalesce into the next prepared reveal', async () => {
+        await mount();
+        const detail = await open();
+        const panel = document.getElementById('sb_character_persona_panel');
+        panel.hidden = true;
+        const before = container.innerHTML;
+        records[avatarIds[0]].name = 'Changed while hidden';
+        detail.refresh.mockClear();
+        listAvatars.mockClear();
+        await Promise.all([adapter.refresh('persona', avatarIds[0]), adapter.refresh('states'), adapter.refresh('states')]);
+        expect(container.innerHTML).toBe(before);
+        expect(detail.refresh).not.toHaveBeenCalled();
+        expect(listAvatars).not.toHaveBeenCalled();
+        await mounted.prepareReveal();
+        expect(container.querySelector('.ds-entity-row__title').textContent).toBe('Changed while hidden');
+        expect(detail.refresh).toHaveBeenCalledTimes(1);
+        await mounted.prepareReveal();
+        expect(detail.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('visible duplicate adapter notifications share one refresh', async () => {
+        await mount();
+        const detail = await open();
+        detail.refresh.mockClear();
+        await Promise.all([adapter.refresh('persona', avatarIds[0]), adapter.refresh('persona', avatarIds[0]), adapter.refresh('states')]);
+        expect(detail.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('an avatar notification cannot mask a simultaneous record deletion', async () => {
+        await mount();
+        const id = avatarIds[0];
+        delete records[id];
+        await Promise.all([adapter.refresh('avatar', id), adapter.refresh('persona', id)]);
+        expect(rowIds()).not.toContain(id);
+    });
+
+    test('notifications arriving during hidden preparation are applied before reveal', async () => {
+        await mount();
+        const detail = await open();
+        document.getElementById('sb_character_persona_panel').hidden = true;
+        let finish;
+        listAvatars.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        await adapter.refresh('list');
+        const preparing = mounted.prepareReveal();
+        await adapter.refresh('persona', avatarIds[0]);
+        finish([...avatarIds]);
+        await preparing;
+        const calls = detail.refresh.mock.calls.length;
+        await mounted.prepareReveal();
+        expect(detail.refresh).toHaveBeenCalledTimes(calls);
+        expect(detail.refresh).toHaveBeenLastCalledWith('persona', avatarIds[0]);
+    });
+
     test('a list refresh reloads overwritten avatar images without replacing their rows', async () => {
         await mount();
         const row = container.querySelector('.sb-persona-row');
@@ -829,7 +895,9 @@ describe('Persona editor shell', () => {
         const detail = await open();
         await eventSource.emit(event_types.PERSONA_RENAMED, { avatarId: avatarIds[0] });
         expect(detail.refresh).toHaveBeenLastCalledWith('persona', avatarIds[0]);
-        await eventSource.emit(event_types.CHAT_CHANGED, 'chat');
+        const unsubscribe = subscribeLegacyPersonaChatStates();
+        try { await eventSource.emit(event_types.CHAT_CHANGED, 'chat'); } finally { unsubscribe(); }
+        expect(detail.refresh).toHaveBeenCalledTimes(2);
         expect(detail.refresh).toHaveBeenLastCalledWith('states', undefined);
         await eventSource.emit(event_types.PERSONA_CREATED, { avatarId: 'created.png' });
         expect(listAvatars).toHaveBeenCalledTimes(2);
@@ -840,6 +908,35 @@ describe('Persona editor shell', () => {
         expect(rowIds()).not.toContain(avatarIds[0]);
         expect(detail.refresh).toHaveBeenLastCalledWith('persona', avatarIds[0]);
         expect(detail.destroy).not.toHaveBeenCalled();
+    });
+
+    test('real CHAT_CHANGED forwarding refreshes once when visible and defers/coalesces hidden events until reveal', async () => {
+        await mount();
+        const detail = await open();
+        const unsubscribe = subscribeLegacyPersonaChatStates();
+        try {
+            detail.refresh.mockClear();
+            await eventSource.emit(event_types.CHAT_CHANGED, 'visible-chat');
+            await settle();
+            expect(detail.refresh).toHaveBeenCalledTimes(1);
+            expect(detail.refresh).toHaveBeenLastCalledWith('states', undefined);
+            const panel = document.getElementById('sb_character_persona_panel');
+            panel.hidden = true;
+            const before = container.innerHTML;
+            detail.refresh.mockClear();
+            await eventSource.emit(event_types.CHAT_CHANGED, 'hidden-chat-1');
+            await eventSource.emit(event_types.CHAT_CHANGED, 'hidden-chat-2');
+            await settle();
+            expect(detail.refresh).not.toHaveBeenCalled();
+            expect(container.innerHTML).toBe(before);
+            await mounted.prepareReveal();
+            panel.hidden = false;
+            mounted.onReveal();
+            expect(detail.refresh).toHaveBeenCalledTimes(1);
+            expect(detail.refresh).toHaveBeenLastCalledWith('states', undefined);
+            await mounted.prepareReveal();
+            expect(detail.refresh).toHaveBeenCalledTimes(1);
+        } finally { unsubscribe(); }
     });
 
     test('duplicate opens its returned ID; delete closes the removed selection without a second guard', async () => {

@@ -95,6 +95,7 @@ function loadPersonaAvatarHelpers({ mobile, messages, fetchMock = jest.fn(async 
         'HTMLImageElement',
         'fetch',
         'initialUserAvatar',
+        'personaEditorAdapter',
         `let user_avatar = initialUserAvatar;\n${body}`,
     );
 
@@ -115,6 +116,7 @@ function loadPersonaAvatarHelpers({ mobile, messages, fetchMock = jest.fn(async 
         FakeImage,
         fetchMock,
         'First.png',
+        null,
     );
 }
 

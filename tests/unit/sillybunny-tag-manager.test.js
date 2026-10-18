@@ -236,6 +236,7 @@ describe('tag manager interactions', () => {
     test('row menu routes delete and colour actions, and manual moves are keyboard alternatives', async () => {
         mount();
         const row = manager.root.querySelector('[id="alpha"]');
+        expect(manager.root.querySelectorAll('toolcool-color-picker')).toHaveLength(0);
         row.querySelector('.sb-tag-manager__row-menu').click();
         let items = menuOptions.sections.flatMap(section => section.items);
         expect(items.find(item => item.label === 'Move up').disabled).toBe(true);
@@ -248,6 +249,7 @@ describe('tag manager interactions', () => {
         items[0].onSelect();
         await settle();
         const picker = row.querySelector('toolcool-color-picker');
+        expect(manager.root.querySelectorAll('toolcool-color-picker')).toHaveLength(1);
         expect(picker.parentElement.hidden).toBe(false);
         picker.dispatchEvent(new CustomEvent('change', { detail: { rgba: 'red' } }));
         expect(adapter.actions.color).toHaveBeenCalledWith(expect.any(CustomEvent), 'color');
@@ -363,11 +365,17 @@ describe('tag manager interactions', () => {
         document.head.querySelectorAll('link').forEach(link => link.remove());
     });
 
-    test('the singleton reprint entry refreshes an open manager', async () => {
+    test('the singleton reprint entry coalesces refreshes of an open manager', async () => {
         const opening = openTagManager(adapter);
         await settle();
+        const sort = jest.spyOn(adapter, 'sort');
         state.tags.push({ id: 'external', name: 'External' });
         refreshTagManager();
+        refreshTagManager();
+        refreshTagManager();
+        expect(sort).not.toHaveBeenCalled();
+        await settle();
+        expect(sort).toHaveBeenCalledTimes(1);
         expect(document.querySelector('[id="external"]')).not.toBeNull();
         document.querySelector('.sb-tag-manager__close').click();
         await opening;

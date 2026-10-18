@@ -316,7 +316,7 @@ test.describe('World Info editor on mobile', () => {
 
     test('opens an entry and returns to the list', async ({ page }) => {
         const editor = await openBook(page);
-        await page.locator('#sb-settings-tab-list .sb-settings-tab[data-sb-settings-tab="world-info"]').click().catch(() => {});
+        await expect(editor).toBeVisible();
         await row(editor, 'Beta').click();
         const back = editor.locator('.sb-wi-entry .sb-wi-detail-back');
         await expect(back).toBeVisible();
@@ -533,7 +533,7 @@ test.describe('World Info selection touch entry', () => {
 
     test('long press selects without opening and action targets stay visible and at least 44px', async ({ page }) => {
         const editor = await openBook(page);
-        await page.locator('#sb-settings-tab-list .sb-settings-tab[data-sb-settings-tab="world-info"]').click();
+        await expect(editor).toBeVisible();
         const alpha = row(editor, 'Alpha');
         await expect(alpha).toBeInViewport();
         await alpha.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 200 });

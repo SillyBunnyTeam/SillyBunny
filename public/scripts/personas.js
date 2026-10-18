@@ -422,6 +422,8 @@ async function refreshPersonaAvatar(avatarId) {
     ]);
 
     reloadPersonaAvatar(avatarId, true);
+    // SillyBunny: invalidate editor images only for an actual avatar overwrite — see docs/ui-migration.md
+    personaEditorAdapter?.refresh('avatar', avatarId);
 }
 
 /**

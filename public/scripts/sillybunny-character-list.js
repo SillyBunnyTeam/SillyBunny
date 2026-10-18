@@ -12,17 +12,29 @@ import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { eventSource, event_types } from './events.js';
-import { animateListChange, play, stopMotion, prefersReducedMotion, MOTION_FAST, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
+import { animateListChange, stopMotion } from './sillybunny-motion.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261018c', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261018d', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();
 const mountingLists = new WeakMap();
 const rowFactories = new WeakMap();
+const rowPresentations = new WeakMap();
+const pendingListRestores = new Map();
+
+/** Supplies a route's snapshot before shell activation renders the list. */
+export function prepareCharacterListRestore(view, snapshot, isCurrent = () => true) {
+    if (!['characters', 'groups'].includes(view)) throw new TypeError(`Invalid character list view: ${view}`);
+    const request = { snapshot, isCurrent };
+    pendingListRestores.set(view, request);
+    return () => {
+        if (pendingListRestores.get(view) === request) pendingListRestores.delete(view);
+    };
+}
 
 let scriptModulePromise;
 let groupModulePromise;
@@ -362,12 +374,31 @@ function createRowEntry(entry, actionHandlers) {
     const favoriteInput = node('input', 'ch_fav');
     favoriteInput.type = 'hidden';
     row.append(favoriteInput);
+    const indicator = node('span', 'sb-character-list__active-dot');
+    indicator.setAttribute('aria-hidden', 'true');
+    row.append(indicator);
     return row;
 }
 
-function updateRow(row, entry, dependencies) {
+function updateRow(row, entry, dependencies, visible) {
     const factory = rowFactories.get(row);
-    factory.update(rowOptions(entry));
+    const tagKey = entry.kind === 'group' ? entry.data?.id ?? entry.item.id : entry.data?.avatar ?? entry.item.avatar;
+    const tags = dependencies.tags.getTagsList?.(tagKey) ?? entry.data?.tags ?? [];
+    const presentation = Object.fromEntries(Object.entries(entry.data ?? {}).filter(([key]) => key !== 'active' && key !== 'isActive'));
+    const tagPresentation = tags.map(tag => typeof tag === 'string' ? tag : Object.fromEntries(Object.entries(tag).filter(([key]) => key !== 'filter_state')));
+    const signature = JSON.stringify([
+        entry.kind, entry.label ?? entry.item.name, presentation, tagPresentation,
+        entry.item?.folder_type, entry.folderClasses, entry.subtitle?.map(part => part.textContent),
+        entry.kind === 'tag' ? entry.avatar?.outerHTML : null,
+        entry.kind === 'group' ? [...(entry.avatar?.querySelectorAll('img') ?? [])].map(image => image.getAttribute('src')) : null,
+    ]);
+    const changed = rowPresentations.get(row) !== signature;
+    if (changed) {
+        const indicator = row.querySelector('.sb-character-list__active-dot');
+        factory.update(rowOptions(entry));
+        if (indicator) factory.slots.title.prepend(indicator);
+        rowPresentations.set(row, signature);
+    }
     if (entry.kind === 'character' || entry.kind === 'group') {
         const { data } = entry;
         if (factory.slots.avatar) factory.slots.avatar.title = textValue(data.avatarTitle);
@@ -375,12 +406,11 @@ function updateRow(row, entry, dependencies) {
         const more = factory.slots.suffix.lastElementChild;
         more.title = t`Actions for ${entry.label}`;
         more.setAttribute('aria-label', more.title);
-        setActiveState(row, entry.active);
+        if (visible) setActiveState(row, entry.active);
         row.classList.toggle('is_fav', entry.favorite);
         const favoriteInput = row.querySelector('.ch_fav');
         if (favoriteInput instanceof HTMLInputElement) favoriteInput.value = textValue(valueFrom(entry.data, entry.item, 'fav', 'favorite'));
-        if (entry.kind === 'character') rowTags(row, entry.data.avatar ?? entry.item.avatar, entry.data, dependencies.tags);
-        if (entry.kind === 'group') rowTags(row, entry.data.id ?? entry.item.id, entry.data, dependencies.tags);
+        if (changed) rowTags(row, tagKey, entry.data, dependencies.tags);
     }
 }
 
@@ -490,7 +520,15 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let listVisible = false;
     let visibilityObserver;
     let preserveRestoredScroll = false;
-    let filteredEntities = [];
+    let revealActiveOnRender = false;
+    const headerWidths = new Map();
+    let headerWidth = 0;
+    let headerGap = 0;
+    let extensionSlot;
+    let extensionItems = new Set();
+    let extensionGap = 0;
+    let extensionInsets = 0;
+    let extensionMargin = 0;
 
     const menu = (trigger, title, sections) => openActionMenu({ trigger, title, sections, onClose: () => trigger.setAttribute('aria-expanded', 'false') });
     function refresh() {
@@ -510,7 +548,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         }
         selection?.decorate();
         for (const row of rowsContainer.querySelectorAll('.ds-entity-row')) {
-            row.classList.toggle('is-selected', !active && Boolean(rowEntry(row)?.active));
+            if (listVisible) row.classList.toggle('is-selected', !active && Boolean(rowEntry(row)?.active));
             for (const control of row.querySelectorAll('.ds-entity-row__suffix')) control.inert = active;
             if (row.matches('.bogus_folder_select')) {
                 row.inert = active;
@@ -526,7 +564,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     }
 
     function syncActiveRows() {
-        if (destroyed) return;
+        if (destroyed || !listVisible) return;
         for (const { row } of state.rows.values()) {
             const entry = rowEntry(row);
             if (entry.kind !== 'character' && entry.kind !== 'group') continue;
@@ -550,7 +588,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (visible === listVisible) return;
         listVisible = visible;
         if (!visible) {
-            cancelActivation();
+            if (!pendingActivation?.dismissed) cancelActivation();
             return;
         }
         syncActiveRows();
@@ -563,51 +601,76 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     /** Reveals the current chat after shell mounting; editor Back restores its own origin instead. */
     async function revealActiveEntity(isCurrent = () => true) {
-        // Character reveal queues a delayed upstream full refresh; finish that same path before scrolling.
-        await dataModules.script.printCharacters(state.view === 'characters');
-        if (destroyed || !isCurrent()) return;
-        if (!preserveRestoredScroll && !selection.isActive) {
-            const index = filteredEntities.findIndex(entity => {
-                if (entity.type === 'tag') return false;
-                const data = entity.type === 'group'
-                    ? dataModules.script.getGroupRowData(entity.item)
-                    : dataModules.script.getCharacterRowData(entity.item, entity.id);
-                return Boolean(data.active ?? data.isActive);
-            });
-            const page = Math.floor(index / pagination.pageSize) + 1;
-            if (index >= 0 && page !== pagination.page) {
-                await writePagination(state.view, page, pagination.pageSize);
-                if (destroyed || !isCurrent()) return;
-                await refresh();
-            }
+        const view = dataModules.state.getCharacterListView();
+        const requestedRestore = pendingListRestores.get(view);
+        pendingListRestores.delete(view);
+        const restore = requestedRestore?.isCurrent() ? requestedRestore : null;
+        const generation = dependencies.getNavigationGeneration();
+        const isRevealCurrent = () => !destroyed && isCurrent() && (!restore || restore.isCurrent())
+            && dependencies.getNavigationGeneration() === generation;
+        if (!isRevealCurrent()) return;
+        if (restore) await applyRestoreSnapshot(restore.snapshot, view);
+        if (!isRevealCurrent()) return;
+        revealActiveOnRender = !restore && !preserveRestoredScroll;
+        try {
+            await dataModules.script.printCharacters(false);
+        } finally {
+            revealActiveOnRender = false;
         }
-        if (destroyed || !isCurrent()) return;
+        if (!isRevealCurrent()) return;
+        section.hidden = false;
+        syncListVisibility();
         syncActiveRows();
+        if (restore) await finishRestoreSnapshot(restore.snapshot, isRevealCurrent);
+        if (!isRevealCurrent()) return;
         if (!preserveRestoredScroll && !selection.isActive) scrollToActiveRow();
         preserveRestoredScroll = false;
     }
 
     async function activateChat(row, entry) {
         if (pendingActivation || destroyed || selection.isActive) return;
-        const activation = { row, view: state.view };
+        const activation = {
+            row, view: state.view, dismissed: false, snapshot: captureState(), generation: dependencies.getNavigationGeneration(),
+        };
         pendingActivation = activation;
-        const backgroundColor = getComputedStyle(row).backgroundColor;
         row.classList.add('is-activating-entity');
+        const onAccepted = () => {
+            if (pendingActivation !== activation || destroyed || selection.isActive || activation.dismissed
+                || dependencies.getNavigationGeneration() !== activation.generation) return;
+            // The shell also uses pinnedOpen for layout; only the user's pin prevents dismissal.
+            if (document.getElementById('rm_button_panel_pin')?.checked) return;
+            activation.dismissed = true;
+            section.hidden = true;
+            globalThis.SillyBunnyShell?.closeCharacters?.();
+            activation.generation = dependencies.getNavigationGeneration();
+        };
+        const reopen = async () => {
+            const isRecoveryCurrent = () => pendingActivation === activation && !destroyed
+                && dependencies.getNavigationGeneration() === activation.generation;
+            if (!activation.dismissed || !isRecoveryCurrent()) return;
+            const cancelRestore = prepareCharacterListRestore(activation.view, { ...activation.snapshot, focusKey: entry.key }, isRecoveryCurrent);
+            try {
+                const opening = globalThis.SillyBunnyShell?.openTab?.('characters', activation.view);
+                // The recovery itself synchronously advances the shell generation.
+                activation.generation = dependencies.getNavigationGeneration();
+                await opening;
+            } finally {
+                cancelRestore();
+            }
+        };
         try {
             const selected = entry.kind === 'group'
-                ? await dataModules.groups.openGroupById(String(entry.data.id ?? entry.item.id), { switchMenu: false })
-                : await dataModules.script.selectCharacterById(Number(entry.data.chid ?? entry.entity.id), { switchMenu: false });
-            if (!selected || pendingActivation !== activation || destroyed || selection.isActive || state.view !== activation.view) return;
+                ? await dataModules.groups.openGroupById(String(entry.data.id ?? entry.item.id), { switchMenu: false, onAccepted })
+                : await dataModules.script.selectCharacterById(Number(entry.data.chid ?? entry.entity.id), { switchMenu: false, onAccepted });
+            if (!selected) {
+                await reopen();
+                return;
+            }
+            if (pendingActivation !== activation || destroyed || selection.isActive || state.view !== activation.view) return;
             syncActiveRows();
-            if (!rowEntry(row)?.active) return;
-            if (!prefersReducedMotion()) await new Promise(resolve => play(row, [
-                { backgroundColor },
-                { backgroundColor: 'var(--sb-flat-selected-bg)' },
-            ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_CUBIC, onEnd: resolve }));
-            if (pendingActivation !== activation || destroyed || selection.isActive || !rowEntry(row)?.active) return;
-            // The settings shell also uses pinnedOpen for layout, independently of the user's pin.
-            const pinned = document.getElementById('rm_button_panel_pin')?.checked;
-            if (!pinned) globalThis.SillyBunnyShell?.closeCharacters?.();
+        } catch (error) {
+            await reopen();
+            throw error;
         } finally {
             row.classList.remove('is-activating-entity');
             if (pendingActivation === activation) pendingActivation = null;
@@ -798,7 +861,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             { id: 'more', label: t`More...`, icon: 'ellipsis-vertical', menu: true, onActivate: openListMenu },
         ];
         header = createListHeader({ title: t`Characters`, actions, className: 'sb-character-list__header' });
-        const extensionSlot = document.getElementById('rm_buttons_container');
+        extensionSlot = document.getElementById('rm_buttons_container');
         if (extensionSlot) {
             extensionSlot.classList.add('sb-character-list__extension-slot');
             header.element.append(extensionSlot);
@@ -839,7 +902,6 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             switchingView = false;
         }
         state.view = view;
-        filteredEntities = model.entities;
         const idsByKey = selectionIdsByKey();
         state.selectableKeys = model.entities.filter(entity => entity.type !== 'tag')
             .map(entity => view === 'groups'
@@ -859,7 +921,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         header?.setSubtitle(`${model.sourceCount} ${noun}`);
         setOverflow();
         const pageSize = Number(dataModules.state.getListPageSize?.(state.view)) || pagination.pageSize;
-        const page = Number(dataModules.state.getListPage?.(state.view)) || 1;
+        let page = Number(dataModules.state.getListPage?.(state.view)) || 1;
+        if (revealActiveOnRender && !selection.isActive) {
+            const index = model.entities.findIndex(entity => {
+                if (entity.type === 'tag') return false;
+                const data = entity.type === 'group'
+                    ? dataModules.script.getGroupRowData(entity.item)
+                    : dataModules.script.getCharacterRowData(entity.item, entity.id);
+                return Boolean(data.active ?? data.isActive);
+            });
+            if (index >= 0) page = Math.floor(index / pageSize) + 1;
+        }
         if (paginationView !== state.view || pagination.pageSize !== pageSize) {
             pagination.destroy();
             pagination = createPagination(state.view);
@@ -891,9 +963,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             key: entry => entry.key,
             signature: entry => entry.kind,
             create: entry => createRowEntry(entry, { edit: openEditor, menu: openRowMenu }),
-            update: (row, entry) => updateRow(row, entry, dataModules),
+            update: (row, entry) => updateRow(row, entry, dataModules, listVisible),
         });
-        if (Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
+        if (listVisible && !viewChanged && !revealActiveOnRender && state.rows.size > 0 && pageEntries.length <= 50 && Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
         else updateRows();
         decorateSelection();
         box.scrollTop = model.fullRefresh ? 0 : scrollTop;
@@ -914,61 +986,80 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         };
     }
 
-    async function restoreState(snapshot, isCurrent = () => true) {
-        if (!snapshot || !isCurrent()) return;
-        preserveRestoredScroll = !listVisible;
+    async function applyRestoreSnapshot(snapshot, view = state.view) {
+        preserveRestoredScroll = true;
         if (snapshot.query !== undefined) {
             const query = String(snapshot.query);
             search.setQuery(query, { notify: false });
             dataModules.script.entitiesFilter?.setFilterData?.('search', query, true);
             dataModules.script.entitiesFilter?.clearFuzzySearchCaches?.();
         }
-        if (Number.isInteger(snapshot.page) && snapshot.page > 0) await writePagination(state.view, snapshot.page, pagination.pageSize);
-        if (!isCurrent()) return;
-        await dataModules.script.printCharacters?.(false);
-        if (!isCurrent()) return;
-        box.scrollTop = Number(snapshot.scrollTop) || 0;
-        if (snapshot.focusKey) {
-            requestAnimationFrame(() => {
-                if (!isCurrent() || destroyed) return;
-                [...rowsContainer.querySelectorAll('[data-sb-list-key]')]
-                    .find(row => row.dataset.sbListKey === snapshot.focusKey)?.focus({ preventScroll: true });
-            });
+        if (Number.isInteger(snapshot.page) && snapshot.page > 0) {
+            const size = dataModules.state.getListPageSize(view);
+            await writePagination(view, snapshot.page, size);
         }
     }
 
+    async function restoreState(snapshot, isCurrent = () => true) {
+        if (!snapshot || !isCurrent()) return;
+        await applyRestoreSnapshot(snapshot);
+        if (!isCurrent()) return;
+        await dataModules.script.printCharacters?.(false);
+        if (!isCurrent()) return;
+        await finishRestoreSnapshot(snapshot, isCurrent);
+    }
+
+    async function finishRestoreSnapshot(snapshot, isCurrent) {
+        if (!isCurrent()) return;
+        box.scrollTop = Number(snapshot.scrollTop) || 0;
+        if (snapshot.focusKey) {
+            await new Promise(resolve => requestAnimationFrame(() => {
+                if (isCurrent() && !destroyed) {
+                    [...rowsContainer.querySelectorAll('[data-sb-list-key]')]
+                        .find(row => row.dataset.sbListKey === snapshot.focusKey)?.focus({ preventScroll: true });
+                }
+                resolve();
+            }));
+        }
+    }
+
+    function headerItemWidth(item) {
+        const allocatedWidth = headerWidths.get(item) ?? 0;
+        if (item !== extensionSlot) return allocatedWidth;
+        // A flex-shrunk slot can be narrower than its controls; reserve their observed border boxes instead.
+        const widths = [...extensionItems].map(child => headerWidths.get(child) ?? 0).filter(width => width > 0);
+        const intrinsicWidth = widths.reduce((sum, width) => sum + width, 0)
+            + Math.max(0, widths.length - 1) * extensionGap + extensionInsets;
+        return Math.max(allocatedWidth, intrinsicWidth) + extensionMargin;
+    }
+
+    function observeExtensionItems() {
+        const previous = extensionItems;
+        extensionItems = new Set(extensionSlot.children);
+        for (const child of previous) {
+            if (extensionItems.has(child)) continue;
+            resizeObserver?.unobserve(child);
+            headerWidths.delete(child);
+        }
+        for (const child of extensionItems) {
+            if (!previous.has(child)) resizeObserver?.observe(child, { box: 'border-box' });
+        }
+        setOverflow();
+    }
+
     function setOverflow() {
-        if (!header?.element) return;
+        if (!header?.element || !headerWidth) return;
         const element = header.element;
-        const available = element.clientWidth;
-        if (!available) return;
-        const titles = element.querySelector('.sb-list-header__titles');
-        const extensions = element.querySelector('.sb-character-list__extension-slot');
-        const measured = [titles, extensions].filter(Boolean);
-        const savedFlex = measured.map(child => child.style.flex);
-        header.setOverflowed([]);
-        // Measure uncompressed content so the flex spacer and truncated title cannot hide a collision.
-        measured.forEach(child => { child.style.flex = '0 0 auto'; });
-        const styles = getComputedStyle(element);
-        const pixels = value => Number.parseFloat(value) || 0;
-        const gap = pixels(styles.columnGap);
-        const children = [...element.children].filter(child => getComputedStyle(child).display !== 'none');
-        const widths = new Map(children.map(child => {
-            const childStyle = getComputedStyle(child);
-            const width = child.matches('.sb-list-header__spacer') ? 0 : child.getBoundingClientRect().width;
-            return [child, width + pixels(childStyle.marginLeft) + pixels(childStyle.marginRight)];
-        }));
-        let required = pixels(styles.paddingLeft) + pixels(styles.paddingRight)
-            + [...widths.values()].reduce((sum, width) => sum + width, 0) + gap * Math.max(0, children.length - 1);
+        const children = [...element.children].filter(child => !child.matches('.sb-list-header__spacer'));
+        let required = children.reduce((sum, child) => sum + headerItemWidth(child), 0) + headerGap * children.length;
         const candidates = children.filter(child => child.hasAttribute('data-overflow-priority'))
             .sort((first, second) => Number(first.dataset.overflowPriority) - Number(second.dataset.overflowPriority));
         const wanted = [];
         for (const button of candidates) {
-            if (required <= available) break;
+            if (required <= headerWidth) break;
             wanted.push(button.dataset.actionId);
-            required -= widths.get(button) + gap;
+            required -= (headerWidths.get(button) ?? 0) + headerGap;
         }
-        measured.forEach((child, index) => { child.style.flex = savedFlex[index]; });
         overflowed = new Set(wanted);
         header.setOverflowed(wanted);
     }
@@ -1026,19 +1117,39 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 return false;
             },
         });
-        resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { setOverflow(); syncListVisibility(); }) : null;
-        resizeObserver?.observe(header.element);
+        const measuredGap = Number.parseFloat(getComputedStyle(header.element).columnGap);
+        headerGap = Number.isFinite(measuredGap) ? measuredGap : 4;
+        if (extensionSlot) {
+            const style = getComputedStyle(extensionSlot);
+            const pixels = value => Number.parseFloat(value) || 0;
+            extensionGap = pixels(style.columnGap);
+            extensionInsets = pixels(style.paddingInlineStart) + pixels(style.paddingInlineEnd)
+                + pixels(style.borderInlineStartWidth) + pixels(style.borderInlineEndWidth);
+            extensionMargin = pixels(style.marginInlineStart) + pixels(style.marginInlineEnd);
+        }
+        resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver((entries = []) => {
+            for (const entry of entries) {
+                if (entry.target === header.element) headerWidth = entry.contentRect.width;
+                else {
+                    const width = entry.borderBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+                    if (width > 0 || extensionItems.has(entry.target)) headerWidths.set(entry.target, width);
+                }
+            }
+            setOverflow();
+            syncListVisibility();
+        }) : null;
+        resizeObserver?.observe(header.element, { box: 'border-box' });
         resizeObserver?.observe(section);
+        for (const child of header.element.children) resizeObserver?.observe(child, { box: 'border-box' });
         visibilityObserver = new MutationObserver(syncListVisibility);
         for (const ancestor of [document.documentElement, section.closest('#right-nav-panel'), section.closest('#sb-settings-page')].filter(Boolean)) {
             visibilityObserver.observe(ancestor, { attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'class', 'data-sb-settings-open'] });
         }
         const activeEvents = [event_types.CHAT_CHANGED, event_types.CHAT_LOADED, event_types.GROUP_UPDATED].filter(Boolean);
         activeEvents.forEach(event => eventSource.on(event, syncActiveRows));
-        const extensionSlot = header.element.querySelector('.sb-character-list__extension-slot');
         if (extensionSlot) {
-            resizeObserver?.observe(extensionSlot);
-            extensionObserver = new MutationObserver(setOverflow);
+            observeExtensionItems();
+            extensionObserver = new MutationObserver(observeExtensionItems);
             extensionObserver.observe(extensionSlot, { childList: true, subtree: true, characterData: true });
         }
         setOverflow();
@@ -1089,7 +1200,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
  * @param {HTMLElement} [container] Existing #rm_characters_block host.
  * @returns {Promise<{ section: HTMLElement, render: (model: object) => Promise<void>|void, captureState: () => object, restoreState: (state: object) => Promise<void>, revealActiveEntity: (isCurrent?: () => boolean) => Promise<void>, destroy: () => void }>}
  */
-export async function mountCharacterList(container = document.getElementById('rm_characters_block')) {
+export async function mountCharacterList(container = document.getElementById('rm_characters_block'), { render = true, getNavigationGeneration = () => 0 } = {}) {
     if (!(container instanceof HTMLElement)) throw new TypeError('Character list requires an HTMLElement host.');
     if (mountedLists.has(container)) return mountedLists.get(container);
     if (mountingLists.has(container)) return mountingLists.get(container);
@@ -1122,7 +1233,7 @@ export async function mountCharacterList(container = document.getElementById('rm
         try {
             await loadCharacterListStyles();
             const [script, groups, state, tags] = await Promise.all([loadScriptModule(), loadGroupModule(), loadStateModule(), loadTagModule()]);
-            const controller = createCharacterListController(container, { script, groups, state, tags }, restoreDOM);
+            const controller = createCharacterListController(container, { script, groups, state, tags, getNavigationGeneration }, restoreDOM);
             mounted = controller.mount();
             for (const { element, style } of originalChildren) {
                 if (!mounted.section.contains(element)) continue;
@@ -1131,7 +1242,7 @@ export async function mountCharacterList(container = document.getElementById('rm
             }
             state.registerCharacterListStateRenderer?.(mounted.refresh);
             script.setCharacterListRenderer({ render: mounted.render });
-            await script.printCharacters?.(false);
+            if (render) await script.printCharacters?.(false);
             section.remove();
             mountedLists.set(container, mounted);
             globalThis.SillyBunnyCharacterListController = mounted;

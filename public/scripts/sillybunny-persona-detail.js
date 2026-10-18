@@ -927,7 +927,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             refreshStates();
             return;
         }
-        avatarCacheStamp = String(Date.now());
+        if (reason === 'avatar') avatarCacheStamp = String(Date.now());
         const record = getPersonaRecord(currentId);
         missing = !record;
         if (missing) {

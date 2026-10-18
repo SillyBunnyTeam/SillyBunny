@@ -109,6 +109,10 @@ export function mountPersonaEditor(container) {
     let internalPaging = false;
     let listRevision = 0;
     let avatarRevision = 0;
+    let initialized = false;
+    let preparingReveal = false;
+    let pendingRefresh = null;
+    let refreshPromise = null;
 
     const listHeader = element('header', 'sb-persona-list-header');
     const titles = element('div', 'sb-persona-list-titles');
@@ -301,6 +305,10 @@ export function mountPersonaEditor(container) {
 
     function renderList() {
         if (!shell || destroyed) return;
+        if (initialized && !preparingReveal && !isOpen()) {
+            pendingRefresh ??= { reason: 'states', avatarId: undefined };
+            return;
+        }
         if (shell.isNavigating || shell.pointerActive) { shell.deferRefresh(); return; }
         // HUMAN: replace — Persona-count subtitle.
         subtitle.textContent = `${allIds.length} ${t`lorum ipsum`}`;
@@ -409,7 +417,9 @@ export function mountPersonaEditor(container) {
         }
     };
     shell.root.addEventListener('keydown', onEscape);
-    const isOpen = () => !destroyed && !shell.root.hidden && !shell.root.closest('[hidden], [aria-hidden="true"], [inert]');
+    function isOpen() {
+        return !destroyed && !shell.root.hidden && !shell.root.closest('[hidden], [aria-hidden="true"], [inert]');
+    }
     const unregister = registerEditorNavigation({
         session: {
             isOpen: () => Boolean(detailController()), isDirty: () => detailController()?.isDirty() ?? false,
@@ -421,23 +431,62 @@ export function mountPersonaEditor(container) {
         guardSelector: characterTabGuardSelector('persona'), escape: false,
     });
 
-    async function refresh(reason, avatarId) {
+    async function applyRefresh(reason, avatarId) {
         if (destroyed) return;
         heldOrder ??= [...entries];
         if (reason === 'list') {
             const revision = ++listRevision;
             const avatars = await listPersonaAvatars();
             if (destroyed || revision !== listRevision) return;
+            if (initialized && !preparingReveal && !isOpen()) {
+                void refresh('list', avatarId);
+                return;
+            }
             allIds = avatars;
             avatarRevision++;
             updateDisplayEntries();
-        } else if (reason === 'persona') {
+        } else if (reason === 'persona' || reason === 'avatar') {
+            if (reason === 'avatar') avatarRevision++;
             allIds = allIds.filter(id => getPersonaRecord(id));
             entries = entries.filter(id => getPersonaRecord(id));
             pagination.setTotal(entries.length);
         }
-        activeController?.refresh(reason === 'list' ? 'persona' : reason, avatarId);
+        activeController?.refresh(reason === 'list' ? 'avatar' : reason, avatarId);
         shell.refresh();
+    }
+
+    function refresh(reason, avatarId) {
+        if (destroyed) return Promise.resolve();
+        const priority = { states: 0, persona: 1, avatar: 2, list: 3 };
+        const previous = pendingRefresh;
+        pendingRefresh = {
+            reason: previous && priority[previous.reason] > priority[reason] ? previous.reason : reason,
+            avatarId: previous && previous.avatarId !== avatarId ? undefined : avatarId,
+        };
+        if (!initialized || !isOpen()) return Promise.resolve();
+        refreshPromise ??= Promise.resolve().then(async () => {
+            while (isOpen() && pendingRefresh) {
+                const next = pendingRefresh;
+                pendingRefresh = null;
+                await applyRefresh(next.reason, next.avatarId);
+            }
+        }).finally(() => {
+            refreshPromise = null;
+            if (pendingRefresh && isOpen()) return refresh(pendingRefresh.reason, pendingRefresh.avatarId);
+        });
+        return refreshPromise;
+    }
+
+    async function prepareReveal() {
+        if (destroyed || !pendingRefresh) return;
+        preparingReveal = true;
+        try {
+            while (!destroyed && pendingRefresh) {
+                const next = pendingRefresh;
+                pendingRefresh = null;
+                await applyRefresh(next.reason, next.avatarId);
+            }
+        } finally { preparingReveal = false; }
     }
 
     const subscriptions = [];
@@ -447,10 +496,11 @@ export function mountPersonaEditor(container) {
         subscriptions.push(() => eventSource.removeListener(type, handler));
     };
     const avatarFrom = payload => typeof payload === 'string' ? payload : payload?.avatarId;
-    for (const type of [event_types.PERSONA_UPDATED, event_types.PERSONA_RENAMED]) {
+    // The legacy adapter forwards PERSONA_UPDATED and chat state once; do not subscribe twice.
+    for (const type of [event_types.PERSONA_RENAMED]) {
         subscribe(type, payload => refresh('persona', avatarFrom(payload)));
     }
-    for (const type of [event_types.PERSONA_CHANGED, event_types.CHAT_CHANGED]) subscribe(type, () => refresh('states'));
+    subscribe(event_types.PERSONA_CHANGED, () => refresh('states'));
     subscribe(event_types.PERSONA_CREATED, payload => refresh('list', avatarFrom(payload)));
     subscribe(event_types.PERSONA_DELETED, payload => {
         const avatarId = avatarFrom(payload);
@@ -464,6 +514,8 @@ export function mountPersonaEditor(container) {
     const controller = {
         ready: null,
         selectPersona,
+        prepareReveal,
+        onReveal: () => shell.layout(),
         destroy() {
             if (destroyed) return;
             destroyed = true;
@@ -489,10 +541,11 @@ export function mountPersonaEditor(container) {
         if (destroyed) return;
         await setPersonaEditorAdapter({ isOpen, refresh });
         if (destroyed) return;
-        await Promise.all([refresh('list'), loadPersonaEditorStyles()]);
+        await Promise.all([applyRefresh('list'), loadPersonaEditorStyles()]);
         if (destroyed) return;
         container.classList.add('sb-persona-editor-mounted');
         shell.root.hidden = false;
+        initialized = true;
         shell.scheduleLayout();
         renderList();
     }).catch(error => {

@@ -110,7 +110,7 @@ export function registerCharacterListStateRenderer(renderer) {
  * Switches the main list's view, saving the outgoing view's state and restoring the incoming one.
  * @param {'characters'|'groups'} view
  */
-export async function switchCharacterListView(view) {
+export async function switchCharacterListView(view, { render = true } = {}) {
     assertView(view);
     const revision = ++switchRevision;
     const { script, tags } = await getScriptAndTags();
@@ -155,7 +155,7 @@ export async function switchCharacterListView(view) {
     if (revision !== switchRevision) {
         return;
     }
-    await script.printCharacters(false);
+    if (render) await script.printCharacters(false);
 }
 
 /**

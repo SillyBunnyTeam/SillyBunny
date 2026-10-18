@@ -73,7 +73,7 @@ export async function loadCharacterImportStyles(stylesheets) {
 /**
  * Mounts the Import tab without changing the hidden upstream import transports.
  * @param {HTMLElement} host
- * @returns {{run: (input: object) => Promise<void>, refreshLibrary: () => void}}
+ * @returns {{run: (input: object) => Promise<void>, refreshLibrary: () => void, prepareReveal: () => void, ready: Promise<void>}}
  */
 export function mountCharacterImport(host) {
     if (!(host instanceof HTMLElement)) throw new TypeError('Import requires an HTMLElement.');
@@ -85,6 +85,7 @@ export function mountCharacterImport(host) {
     if (!content) throw new Error('Import content host is missing.');
     let busy = false;
     let returnFocus = null;
+    const hostListeners = new AbortController();
     const { section: fileSection, group: fileGroup } = section(t`Import from file`, 'file');
     fileGroup.classList.add('sb-import-fields');
     const zone = element('div', 'sb-import-drop');
@@ -128,7 +129,7 @@ export function mountCharacterImport(host) {
                 const urls = (event.dataTransfer?.getData('text/uri-list') || '').split(/\r?\n/).filter(url => url && !url.startsWith('#'));
                 if (urls.length) void run({ urls });
             }
-        });
+        }, { signal: hostListeners.signal });
     }
     fileGroup.append(zone, choose, formats, picker);
 
@@ -246,11 +247,11 @@ export function mountCharacterImport(host) {
         },
         captureState: () => ({ scrollTop: scroller()?.scrollTop ?? 0 }),
     });
-    const controller = { run, refreshLibrary };
+    const controller = { run, refreshLibrary, prepareReveal: refreshLibrary, ready: null };
     mounted.set(host, controller);
     refreshLibrary();
     // Reuse upstream provider labels, omitting examples to keep this a subtitle rather than another popup.
-    void renderTemplateAsync('importCharacters').then(html => {
+    controller.ready = renderTemplateAsync('importCharacters').then(html => {
         const template = document.createElement('template');
         template.innerHTML = html;
         const list = template.content.querySelector('.sources_list');
@@ -265,9 +266,15 @@ export function mountCharacterImport(host) {
         }
         const botbooru = element('span', 'sb-import-source-botbooru', t`lorum ipsum`); // HUMAN: replace — Botbooru character source label
         sources.append(document.createTextNode('; '), botbooru);
-    }).catch(error => globalThis.toastr?.error(error.message));
-    host.querySelector('#sb_character_import_loading')?.setAttribute('hidden', '');
-    content.hidden = false;
-    host.dataset.mounted = 'true';
+    }).then(() => {
+        host.querySelector('#sb_character_import_loading')?.setAttribute('hidden', '');
+        content.hidden = false;
+        host.dataset.mounted = 'true';
+    }).catch(error => {
+        hostListeners.abort();
+        mounted.delete(host);
+        throw error;
+    });
+    controller.ready.catch(error => globalThis.toastr?.error(error.message));
     return controller;
 }

@@ -124,6 +124,21 @@ function mount(options = {}) {
     return { host, controller, ...callbacks };
 }
 
+test('ordinary metadata/state refreshes keep avatar URLs stable; overwrites invalidate once', () => {
+    const { host, controller } = mount();
+    const image = host.querySelector('img');
+    const original = image.getAttribute('src');
+    controller.refresh('persona', 'first.png');
+    controller.refresh('states');
+    expect(image.getAttribute('src')).toBe(original);
+    controller.refresh('avatar', 'first.png');
+    expect(image.getAttribute('src')).not.toBe(original);
+    const overwritten = image.getAttribute('src');
+    jest.advanceTimersByTime(1);
+    controller.refresh('persona', 'first.png');
+    expect(image.getAttribute('src')).toBe(overwritten);
+});
+
 function field(host, id) {
     const row = host.querySelector(`[data-sb-editor-field="${id}"]`);
     return row?.matches('input, textarea') ? row : row?.querySelector('input, textarea, select, button');

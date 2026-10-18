@@ -16,6 +16,7 @@ const STYLESHEETS = [
 ];
 let activeManager = null;
 let opening = null;
+let refreshQueued = false;
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -108,7 +109,12 @@ export async function loadTagManagerStyles() {
 
 /** Reconciles an open dialog from upstream reprint paths without resetting its fields or scroller. */
 export function refreshTagManager() {
-    activeManager?.refresh();
+    if (!activeManager || refreshQueued) return;
+    refreshQueued = true;
+    queueMicrotask(() => {
+        refreshQueued = false;
+        activeManager?.refresh();
+    });
 }
 
 /** Opens the single tag-management surface, preserving the upstream await-until-closed contract. */
@@ -367,7 +373,24 @@ export function createTagManager(adapter) {
 
     function showColor(tag, property) {
         const entry = controls.get(tag.id);
-        const picker = entry.pickers[property];
+        let picker = entry.pickers[property];
+        if (!picker) {
+            const wrapper = element('div', 'tag_view_color_picker');
+            wrapper.dataset.value = property;
+            picker = element('toolcool-color-picker');
+            const defaultColor = property === 'color' ? 'rgba(0, 0, 0, 0.5)' : getState().settings.main_text_color;
+            picker.id = `${tag.id}-tag-${property}`;
+            picker.setAttribute('color', tag[property] || defaultColor);
+            picker.setAttribute('data-default-color', defaultColor);
+            // HUMAN: replace — Background/text colour picker accessible label.
+            picker.setAttribute('aria-label', t`lorum ipsum`);
+            picker.addEventListener('change', event => actions.color(event, property));
+            const reset = button(t`Link to theme color`, 'link', () => picker.color = defaultColor);
+            const dismiss = button(t`Close`, 'xmark', () => entry.colors.hidden = true);
+            wrapper.append(picker, reset, dismiss);
+            entry.colors.append(wrapper);
+            entry.pickers[property] = picker;
+        }
         const color = tag[property] || picker.getAttribute('data-default-color');
         if (picker.getAttribute('color') !== color) picker.setAttribute('color', color);
         entry.colors.hidden = false;
@@ -415,23 +438,6 @@ export function createTagManager(adapter) {
         const colors = element('div', 'sb-tag-manager__colors');
         colors.hidden = true;
         const pickers = {};
-        for (const property of ['color', 'color2']) {
-            const wrapper = element('div', 'tag_view_color_picker');
-            wrapper.dataset.value = property;
-            const picker = element('toolcool-color-picker');
-            const defaultColor = property === 'color' ? 'rgba(0, 0, 0, 0.5)' : getState().settings.main_text_color;
-            picker.id = `${tag.id}-tag-${property}`;
-            picker.setAttribute('color', tag[property] || defaultColor);
-            picker.setAttribute('data-default-color', defaultColor);
-            // HUMAN: replace — Background/text colour picker accessible label.
-            picker.setAttribute('aria-label', t`lorum ipsum`);
-            picker.addEventListener('change', event => actions.color(event, property));
-            const reset = button(t`Link to theme color`, 'link', () => picker.color = defaultColor);
-            const dismiss = button(t`Close`, 'xmark', () => colors.hidden = true);
-            wrapper.append(picker, reset, dismiss);
-            colors.append(wrapper);
-            pickers[property] = picker;
-        }
         row.append(colors);
         controls.set(tag.id, { entity, input, error, folder, colors, pickers, countValue });
         input.addEventListener('blur', () => {
@@ -489,7 +495,8 @@ export function createTagManager(adapter) {
                     updateTagColors(tag, row);
                 },
             });
-            for (const id of controls.keys()) if (!state.tags.some(tag => tag.id === id)) controls.delete(id);
+            const liveIds = new Set(state.tags.map(tag => tag.id));
+            for (const id of controls.keys()) if (!liveIds.has(id)) controls.delete(id);
             if (focused?.isConnected) {
                 if (pendingField) focused.value = pendingField.value;
                 if (document.activeElement !== focused) focused.focus({ preventScroll: true });
