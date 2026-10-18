@@ -9,6 +9,11 @@ import {
 } from './group-chats.js';
 import { t } from './i18n.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
+import {
+    world_names, openWorldInfoEditor, getWorldInfoEditorState,
+    captureWorldInfoEditorListState, restoreWorldInfoEditorListState,
+} from './world-info.js';
+import { power_user } from './power-user.js';
 
 const EDITOR_READY_TIMEOUT = 5000;
 const EDITOR_READY_INTERVAL = 50;
@@ -53,7 +58,11 @@ objectNavigation.register('character-editor', {
         const index = characters.findIndex(character => character?.avatar === target.id);
         if (index < 0) return false;
 
-        const opened = target.via === 'group-member' && canPeekGroupMember(target.id)
+        const peek = target.via === 'group-member' && canPeekGroupMember(target.id);
+        if (restore && !peek && characters[this_chid]?.avatar !== target.id) {
+            return listDestination('characters', 'character-list').open({ focusAvatar: target.id }, { isCurrent });
+        }
+        const opened = peek
             ? await openGroupMemberDefinition(target.id, { isCurrent })
             : await selectCharacterById(index, { switchMenu: true });
         if (!isCurrent() || !opened) return false;
@@ -89,6 +98,29 @@ objectNavigation.setNotify((reason, target) => {
 
 objectNavigation.bindTopLevelClear('[data-sb-character-tab], [data-sb-settings-tab]');
 
+async function revealCharacterListRow(list, avatar, isCurrent) {
+    const snapshot = {
+        query: characters.find(character => character?.avatar === avatar)?.name ?? '',
+        page: 1, focusKey: `character:${avatar}`,
+    };
+    document.querySelector('#rm_characters_block .clearAllFilters')?.click();
+    while (isCurrent()) {
+        await list.restoreCharacterListState(snapshot, isCurrent);
+        if (!isCurrent()) return false;
+        const row = [...document.querySelectorAll('.sb-character-list [data-sb-list-key]')]
+            .find(row => row.dataset.sbListKey === snapshot.focusKey);
+        if (row) {
+            row.scrollIntoView?.({ block: 'nearest' });
+            row.focus({ preventScroll: true });
+            return true;
+        }
+        const next = document.querySelector('.sb-character-list .sb-list-pagination__next');
+        if (!next || next.disabled || snapshot.page >= characters.length) return false;
+        snapshot.page++;
+    }
+    return false;
+}
+
 function listDestination(view, kind) {
     return {
         exists: () => true,
@@ -99,6 +131,7 @@ function listDestination(view, kind) {
             const opened = await shell.openTab('characters', view);
             if (opened === false || !isCurrent()) return false;
             const list = await import('./sillybunny-character-list.js');
+            if (!isCurrent()) return false;
             await list.mountCharacterList();
             if (!isCurrent()) return false;
             const state = await import('./sillybunny-character-list-state.js');
@@ -106,6 +139,8 @@ function listDestination(view, kind) {
             if (state.getCharacterListView() !== view) await state.switchCharacterListView(view);
             if (!isCurrent()) return false;
             await list.restoreCharacterListState(restore, isCurrent);
+            if (!isCurrent()) return false;
+            if (target.focusAvatar) return revealCharacterListRow(list, target.focusAvatar, isCurrent);
             return isCurrent();
         },
         captureState: () => globalThis.SillyBunnyCharacterListController?.captureState?.() ?? null,
@@ -115,3 +150,42 @@ function listDestination(view, kind) {
 
 objectNavigation.register('character-list', listDestination('characters', 'character-list'));
 objectNavigation.register('group-list', listDestination('groups', 'group-list'));
+
+objectNavigation.register('world-info', {
+    exists: name => world_names.includes(name),
+    async open(target, { restore = null, isCurrent }) {
+        if (!isCurrent()) return false;
+        const opened = await openWorldInfoEditor(target.id, { isCurrent });
+        if (!opened || !isCurrent()) return false;
+        if (restore && !await restoreWorldInfoEditorListState(restore, isCurrent)) return false;
+        return isCurrent();
+    },
+    captureState: () => captureWorldInfoEditorListState(),
+    current: () => {
+        const { name } = getWorldInfoEditorState();
+        return name ? { kind: 'world-info', id: name } : null;
+    },
+});
+
+function personaDetailScroller() {
+    return document.querySelector('#PersonaManagement .sb-persona-entry-body');
+}
+
+objectNavigation.register('persona-editor', {
+    exists: avatarId => Object.hasOwn(power_user.personas ?? {}, avatarId),
+    async open(target, { restore = null, isCurrent }) {
+        if (!isCurrent()) return false;
+        const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
+        if (!isCurrent()) return false;
+        const opened = await openPersonaEditor({ avatarId: target.id, section: target.section, isCurrent });
+        if (!opened || !isCurrent()) return false;
+        const scroller = personaDetailScroller();
+        if (restore && scroller) scroller.scrollTop = restore.scrollTop;
+        return isCurrent();
+    },
+    captureState: () => ({ scrollTop: personaDetailScroller()?.scrollTop ?? 0 }),
+    current: () => {
+        const id = document.querySelector('#PersonaManagement .sb-persona-editor')?.getAttribute('data-persona-avatar-id');
+        return id ? { kind: 'persona-editor', id } : null;
+    },
+});

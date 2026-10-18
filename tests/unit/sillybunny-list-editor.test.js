@@ -301,6 +301,28 @@ describe('createListEditor', () => {
     });
 
     describe('selectItem', () => {
+        for (const choice of [POPUP_RESULT.AFFIRMATIVE, 2]) {
+            test(`transaction cancellation during the leave guard ignores late choice ${choice} and preserves detail`, async () => {
+                const config = makeConfig();
+                const editor = createListEditor(config);
+                const original = { id: 'original' };
+                await editor.selectItem(original);
+                config.isDirty.mockReturnValue(true);
+                let approve;
+                let current = true;
+                mockPopupShow.mockImplementationOnce(() => new Promise(resolve => { approve = resolve; }));
+                const selecting = editor.selectItem({ id: 'cancelled' }, { isCurrent: () => current });
+                current = false;
+                approve(choice);
+                expect(await selecting).toBe(false);
+                expect(editor.selectedItem).toBe(original);
+                expect(config.renderDetail).toHaveBeenCalledTimes(1);
+                expect(config.onSave).not.toHaveBeenCalled();
+                expect(config.onDiscard).not.toHaveBeenCalled();
+                editor.destroy();
+            });
+        }
+
         test('opens detail pane and calls renderDetail', async () => {
             const config = makeConfig();
             const editor = createListEditor(config);

@@ -255,8 +255,10 @@ export function createListEditor(config) {
     /**
      * Resolves true when it is safe to leave the open item (clean, saved, or discarded).
      * Consumers call this before any navigation the shell does not own (book switch, paging).
+     * @param {() => boolean} [isCurrent] Navigation transaction currency.
      */
-    async function allowLeave() {
+    async function allowLeave(isCurrent = () => true) {
+        if (!isCurrent()) return false;
         if (!isDirty()) return true;
         if (busy) return false;
         busy = true;
@@ -277,7 +279,11 @@ export function createListEditor(config) {
         } finally {
             busy = false;
         }
-        if (result === POPUP_RESULT.AFFIRMATIVE) return Boolean(await onSave());
+        if (!isCurrent()) return false;
+        if (result === POPUP_RESULT.AFFIRMATIVE) {
+            const saved = await onSave();
+            return isCurrent() && Boolean(saved);
+        }
         if (result !== 2) return false;
         onDiscard();
         return true;
@@ -287,14 +293,16 @@ export function createListEditor(config) {
 
     /**
      * @param {unknown} item
-     * @param {{ guard?: boolean, force?: boolean }} [options] `guard: false` skips the leave guard
+     * @param {{ guard?: boolean, force?: boolean, isCurrent?: () => boolean }} [options] `guard: false` skips the leave guard
      *   (the caller already ran it); `force` re-renders when the same key is already open.
      * @returns {Promise<boolean>} Whether this selection is now displayed.
      */
-    async function selectItem(item, { guard = true, force = false } = {}) {
+    async function selectItem(item, { guard = true, force = false, isCurrent: requestIsCurrent = () => true } = {}) {
+        if (!requestIsCurrent()) return false;
         const key = getKey(item);
         if (isOpen && Object.is(key, selectedKey) && !force) return true;
-        if (guard && !(await allowLeave())) return false;
+        if (guard && !(await allowLeave(requestIsCurrent))) return false;
+        if (!requestIsCurrent()) return false;
         cancelTransition();
         const wasOpen = isOpen;
         const startWidth = sidebar.getBoundingClientRect().width;
@@ -305,7 +313,7 @@ export function createListEditor(config) {
         returnKey = key;
         root.dataset.open = 'true';
         detail.replaceChildren();
-        const isCurrent = () => token === renderToken;
+        const isCurrent = () => token === renderToken && requestIsCurrent();
         try {
             const pending = renderDetail(detail, item, { isCurrent });
             if (pending && typeof pending.then === 'function') await pending;

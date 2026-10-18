@@ -14,6 +14,14 @@ let liveState;
 let query;
 let visibleEntries;
 const worldNames = ['Book A', 'Book B'];
+const characters = [];
+const world_info = {};
+const power_user = {};
+const navigate = jest.fn();
+const back = jest.fn();
+await jest.unstable_mockModule('../../public/script.js', () => ({ characters }));
+await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { navigate, back } }));
 const saveWorldInfo = jest.fn(async name => name);
 const setOriginal = jest.fn();
 const deleteOriginal = jest.fn();
@@ -50,6 +58,7 @@ await jest.unstable_mockModule('../../public/scripts/world-info.js', () => ({
     SORT_ORDER_KEY: 'world_info_sort_order',
     worldInfoFilter: { setFilterData },
     world_names: worldNames,
+    world_info,
 }));
 await jest.unstable_mockModule('../../public/scripts/filters.js', () => ({ FILTER_TYPES: { WORLD_INFO_SEARCH: 'world_info_search' } }));
 const navigation = { none: -2000, previous: -1000 };
@@ -128,7 +137,7 @@ const settingsController = { destroy: jest.fn(), focusTarget: () => null };
 const mountSettings = jest.fn(() => settingsController);
 await jest.unstable_mockModule('../../public/scripts/sillybunny-world-info-settings.js', () => ({ mountWorldInfoSettings: mountSettings }), { virtual: true });
 
-const { mountWorldInfoEditor, createWorldInfoDeps, pageForWorldInfoUid, preserveWorldInfoEntryOrder } = await import('../../public/scripts/sillybunny-world-info-editor.js');
+const { mountWorldInfoEditor, createWorldInfoDeps, pageForWorldInfoUid, preserveWorldInfoEntryOrder, collectWorldInfoUsers } = await import('../../public/scripts/sillybunny-world-info-editor.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
 let mounted;
 let container;
@@ -189,6 +198,10 @@ beforeEach(() => {
     entryControllers = [];
     mounted = null;
     actionMenu = null;
+    characters.splice(0);
+    world_info.charLore = [];
+    power_user.personas = {};
+    power_user.persona_descriptions = {};
     saveWorldInfo.mockImplementation(async name => name);
     isActionMenuOpen.mockImplementation(trigger => Boolean(actionMenu) && (!trigger || actionMenu.trigger === trigger));
     isPickerOpen.mockImplementation(() => false);
@@ -220,6 +233,104 @@ afterEach(() => {
 });
 
 describe('World Info shell', () => {
+    test('ready and whenBookShown wait for the mounted shell and loaded matching book', async () => {
+        await mount();
+        await mounted.ready;
+        const shown = jest.fn();
+        const waiting = mounted.whenBookShown('Book A').then(shown);
+        await render({ name: 'Book A', data: null });
+        await jest.advanceTimersByTimeAsync(50);
+        expect(shown).not.toHaveBeenCalled();
+        await render({ name: 'Book A', data: book() });
+        await jest.advanceTimersByTimeAsync(50);
+        await waiting;
+        expect(shown).toHaveBeenCalledWith(true);
+    });
+
+    test.each(['timeout', 'superseded', 'destroyed'])('whenBookShown resolves false when %s', async reason => {
+        await mount();
+        let current = true;
+        const waiting = mounted.whenBookShown('Book B', { isCurrent: () => current, timeout: 100 });
+        if (reason === 'superseded') current = false;
+        if (reason === 'destroyed') mounted.destroy();
+        await jest.advanceTimersByTimeAsync(100);
+        expect(await waiting).toBe(false);
+    });
+
+    test('same-book opens wait for their own render instead of accepting the previous loaded page', async () => {
+        await mount({ name: 'Book A', data: book() });
+        const done = jest.fn();
+        const waiting = mounted.whenBookShown('Book A', { afterRender: mounted.renderRevision }).then(done);
+        await jest.advanceTimersByTimeAsync(50);
+        expect(done).not.toHaveBeenCalled();
+        await render(liveState);
+        await jest.advanceTimersByTimeAsync(50);
+        await waiting;
+        expect(done).toHaveBeenCalledWith(true);
+    });
+
+    test('captures and restores the same book query, page and list scroll', async () => {
+        await mount({ name: 'Book A', data: book(25) });
+        const snapshot = { name: 'Book A', query: 'Entry', searchOpen: true, page: 2, scrollTop: 123 };
+        expect(await adapter.restoreState(snapshot, () => true)).toBe(true);
+        expect(adapter.captureState()).toEqual(snapshot);
+        expect(currentPage()).toBe('Page 2 of 3');
+        expect(transportSearch().value).toBe('Entry');
+        expect(await adapter.restoreState({ ...snapshot, name: 'Book B' }, () => true)).toBe(false);
+        expect(await adapter.restoreState({ ...snapshot, query: 'stale' }, () => false)).toBe(false);
+        expect(adapter.captureState()).toEqual(snapshot);
+    });
+
+    test('Used by collects primary, extra and persona links with stable ids and primary precedence', () => {
+        const characterList = [
+            { avatar: 'both.png', name: 'Both', data: { extensions: { world: 'Book A' } } },
+            { avatar: 'extra.png', name: 'Extra' },
+            { avatar: 'other.png', name: 'Other' },
+        ];
+        const links = [{ name: 'both.png', extraBooks: ['Book A'] }, { name: 'extra.png', extraBooks: ['Book A'] }];
+        expect(collectWorldInfoUsers('Book A', characterList, links, { 'both.png': 'Persona', 'unlinked.png': 'Unlinked' }, { 'both.png': { lorebook: 'Book A' } })).toEqual([
+            { value: 'character:both.png', label: 'Both', relation: 'primary', target: { kind: 'character-editor', id: 'both.png', via: 'world-info' } },
+            { value: 'character:extra.png', label: 'Extra', relation: 'extra', target: { kind: 'character-editor', id: 'extra.png', via: 'world-info' } },
+            { value: 'persona:both.png', label: 'Persona', relation: 'persona', target: { kind: 'persona-editor', id: 'both.png' } },
+        ]);
+        expect(collectWorldInfoUsers(null, characterList, links, {}, {})).toEqual([]);
+        // Upstream stores charLore names without the avatar extension (getCharaFilename).
+        expect(collectWorldInfoUsers('Book B', [{ avatar: 'Upstream Card.png', name: 'Upstream', data: {} }], [{ name: 'Upstream Card', extraBooks: ['Book B'] }], {}, {}))
+            .toEqual([{ value: 'character:Upstream Card.png', label: 'Upstream', relation: 'extra', target: { kind: 'character-editor', id: 'Upstream Card.png', via: 'world-info' } }]);
+    });
+
+    test('Used by opens a single picker and navigates with the current book as origin', async () => {
+        characters.push({ avatar: 'alice.png', name: 'Alice', data: { extensions: { world: 'Book A' } } });
+        power_user.personas = { 'persona.png': 'Persona' };
+        power_user.persona_descriptions = { 'persona.png': { lorebook: 'Book A' } };
+        await mount({ name: 'Book A', data: book() });
+        await selectMenuAction('lorum ipsum');
+        const picker = openPicker.mock.calls.at(-1)[0];
+        expect(picker.multiple).toBeUndefined();
+        expect(picker.items.map(item => [item.value, item.subtitle])).toEqual([
+            ['character:alice.png', 'Primary Lorebook · lorum ipsum'], ['persona:persona.png', 'Persona'],
+        ]);
+        picker.onSelect('persona:persona.png');
+        await settle();
+        expect(navigate).toHaveBeenCalledWith({ kind: 'persona-editor', id: 'persona.png' }, { from: { kind: 'world-info', id: 'Book A' } });
+        picker.onSelect('character:alice.png');
+        await settle();
+        expect(navigate).toHaveBeenLastCalledWith({ kind: 'character-editor', id: 'alice.png', via: 'world-info' }, { from: { kind: 'world-info', id: 'Book A' } });
+        await render({ name: 'Book B', data: book() });
+        navigate.mockClear();
+        picker.onSelect('persona:persona.png');
+        await settle();
+        expect(navigate).not.toHaveBeenCalled();
+    });
+
+    test('an unused book gets an empty picker and WI has no origin Back button', async () => {
+        await mount({ name: 'Book A', data: book() });
+        await selectMenuAction('lorum ipsum');
+        expect(openPicker).toHaveBeenCalledWith(expect.objectContaining({ items: [], emptyText: 'No results' }));
+        expect(container.querySelector('.sb-wi-origin-back')).toBeNull();
+        expect(back).not.toHaveBeenCalled();
+    });
+
     test('exports persistence dependencies without wrapping or cloning their tracked data', () => {
         expect(createWorldInfoDeps()).toEqual({ saveWorldInfo, setOriginal, deleteOriginal, createEntry, duplicateEntry, deleteEntry, moveEntry });
     });

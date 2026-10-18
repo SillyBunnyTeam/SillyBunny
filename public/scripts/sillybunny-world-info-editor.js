@@ -1,8 +1,10 @@
 import {
     createWorldInfoEntry, deleteWIOriginalDataValue, deleteWorldInfoEntry, duplicateWorldInfoEntry,
     getWorldInfoDisplayEntries, getWorldInfoEditorState, moveWorldInfoEntry, refreshWorldInfoEditor,
-    saveWorldInfo, setWIOriginalDataValue, setWorldInfoEditorAdapter, SORT_ORDER_KEY, worldInfoFilter, world_names,
+    saveWorldInfo, setWIOriginalDataValue, setWorldInfoEditorAdapter, SORT_ORDER_KEY, worldInfoFilter, world_names, world_info,
 } from './world-info.js';
+import { characters } from '../script.js';
+import { power_user } from './power-user.js';
 import { FILTER_TYPES } from './filters.js';
 import { navigation_option } from './utils.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -19,6 +21,7 @@ import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createRow } from './sillybunny-editor/rows.js';
 import { openPicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { characterTabGuardSelector, registerEditorNavigation } from './sillybunny-editor/navigation.js';
+import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import {
     duplicate, move, remove, reorder, setEnabled, entryBadge, entryKeyPreview, entryStrategy, entryTitle,
 } from './sillybunny-world-info-model.js';
@@ -28,6 +31,31 @@ import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-
 const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261018e', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
+
+/** Collects stable, deduplicated character/persona links for a book without changing saved data. */
+export function collectWorldInfoUsers(name, characterList, charLore, personas, descriptions) {
+    if (!name) return [];
+    const extraAvatars = new Set((charLore ?? []).filter(link => link.extraBooks?.includes(name)).map(link => link.name));
+    const users = new Map();
+    for (const character of characterList) {
+        if (!character?.avatar) continue;
+        const primary = character.data?.extensions?.world === name;
+        // Upstream keys charLore by getCharaFilename() (no extension); accept the full avatar too.
+        const extra = extraAvatars.has(character.avatar) || extraAvatars.has(character.avatar.replace(/\.[^/.]+$/, ''));
+        if (!primary && !extra) continue;
+        const value = `character:${character.avatar}`;
+        users.set(value, {
+            value, label: character.name, relation: primary ? 'primary' : 'extra',
+            target: { kind: 'character-editor', id: character.avatar, via: 'world-info' },
+        });
+    }
+    for (const [avatarId, label] of Object.entries(personas ?? {})) {
+        if (descriptions?.[avatarId]?.lorebook !== name) continue;
+        const value = `persona:${avatarId}`;
+        users.set(value, { value, label, relation: 'persona', target: { kind: 'persona-editor', id: avatarId } });
+    }
+    return [...users.values()];
+}
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -143,6 +171,7 @@ export function mountWorldInfoEditor(container) {
     let destroyed = false;
     let internalPaging = false;
     let renderRevision = 0;
+    let shownRevision = 0;
     let dragBook = null;
     let heldOrder = null;
     let selection = null;
@@ -295,11 +324,35 @@ export function mountWorldInfoEditor(container) {
         const action = (label, glyph, id, danger = false) => menuItem(label, glyph, () => clickTransport(id), danger, !state.data);
         menu(trigger, state.name ?? t`World Info`, [
             [menuItem(t`Global Settings`, 'gear', toggleSettings)],
+            [menuItem(t`lorum ipsum`, 'link', () => openUsedByPicker(trigger), false, !state.name)], // HUMAN: replace — Used by book action.
             [menuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), false, !state.name || !Object.keys(state.data?.entries ?? {}).length)],
             [action(t`Rename World Info`, 'pencil', 'world_popup_name_button'), action(t`Duplicate World Info`, 'copy', 'world_duplicate'), action(t`Export World Info`, 'file-export', 'world_popup_export')],
             [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill empty Memo/Titles with Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply current sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
             [action(t`Delete World Info`, 'trash', 'world_popup_delete', true)],
         ]);
+    }
+
+    function openUsedByPicker(trigger) {
+        const name = state.name;
+        if (!name) return;
+        const users = collectWorldInfoUsers(name, characters, world_info.charLore, power_user.personas, power_user.persona_descriptions);
+        const relations = { primary: t`Primary Lorebook`, extra: t`Additional Lorebooks`, persona: t`Persona` };
+        picker = openPicker({
+            trigger,
+            title: t`lorum ipsum`, // HUMAN: replace — Used by picker title.
+            emptyText: t`No results`,
+            items: users.map(user => ({
+                value: user.value, label: user.label,
+                icon: user.relation === 'persona' ? 'fa-solid fa-user' : 'fa-solid fa-address-card',
+                subtitle: user.relation === 'persona' ? relations.persona
+                    : `${relations[user.relation]} · ${t`lorum ipsum`}`, // HUMAN: replace — opens this character's chat.
+            })),
+            onSelect: value => run(() => {
+                if (state.name !== name) return;
+                const user = users.find(user => user.value === value);
+                if (user) return objectNavigation.navigate(user.target, { from: { kind: 'world-info', id: name } });
+            }),
+        });
     }
 
     function openFilterMenu(trigger) {
@@ -683,7 +736,7 @@ export function mountWorldInfoEditor(container) {
         guardSelector: characterTabGuardSelector('world-info'), escape: false,
     });
 
-    const adapter = { render: async ({ name, data, navigation = navigation_option.none }) => {
+    async function renderBook({ name, data, navigation = navigation_option.none }) {
         if (destroyed) return;
         const revision = ++renderRevision;
         const changedBook = renderedName !== undefined && renderedName !== name;
@@ -727,32 +780,74 @@ export function mountWorldInfoEditor(container) {
         if (revision !== renderRevision || destroyed) return;
         if (!data && controllerKind === 'entry') { destroyDetail(); shell.deselectNow(); }
         shell.refresh();
-    } };
+        shownRevision = revision;
+    }
 
-    const controller = { destroy() {
-        if (destroyed) return;
-        destroyed = true;
-        renderRevision++;
-        closeOwnedOverlays();
-        destroyDetail({ keepDraft: entryController()?.isDirty() ?? false });
-        setWorldInfoEditorAdapter(null);
-        unregister();
-        eventSource.removeListener(event_types.WORLDINFO_RENAMED, onBookRenamed);
-        eventSource.removeListener(event_types.WORLDINFO_DELETED, onBookDeleted);
-        shell.root.removeEventListener('keydown', onEscape);
-        worldInfo.removeEventListener('change', onTransportChange, true);
-        worldInfo.removeEventListener('click', onTransportClick, true);
-        unbindRows();
-        searchControl.destroy();
-        selection.destroy();
-        pagination.destroy();
-        sortable?.destroy();
-        shell.destroy();
-        worldInfo.classList.remove('sb-wi-editor-mounted');
-        mountedEditors.delete(container);
-    } };
+    const adapter = {
+        render: renderBook,
+        captureState: () => controller.captureState(),
+        restoreState: (snapshot, isCurrent) => controller.restoreState(snapshot, isCurrent),
+    };
+
+    const controller = {
+        ready: null,
+        get renderRevision() { return renderRevision; },
+        current: () => state.name ? { kind: 'world-info', id: state.name } : null,
+        whenBookShown(name, { isCurrent = () => true, timeout = 5000, afterRender = -1 } = {}) {
+            const deadline = Date.now() + timeout;
+            return new Promise(resolve => {
+                const check = () => {
+                    if (destroyed || !isCurrent()) return resolve(false);
+                    const visible = !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"], [inert]');
+                    const rendered = shownRevision > afterRender && shownRevision === renderRevision;
+                    if (visible && rendered && state.name === name && state.data && bookLabel.textContent === name) return resolve(true);
+                    if (Date.now() >= deadline) return resolve(false);
+                    setTimeout(check, 50);
+                };
+                check();
+            });
+        },
+        captureState: () => ({ name: state.name, query: searchControl.query, searchOpen: searchControl.isOpen, page: pagination.page, scrollTop: listBody.scrollTop }),
+        async restoreState(snapshot, isCurrent = () => true) {
+            if (!snapshot || destroyed || !isCurrent() || snapshot.name !== state.name) return false;
+            searchControl.setQuery(snapshot.query, { notify: false });
+            searchField.hidden = !snapshot.searchOpen;
+            searchButton.setAttribute('aria-expanded', String(snapshot.searchOpen));
+            if (transport('world_info_search')) transport('world_info_search').value = snapshot.query;
+            worldInfoFilter.setFilterData(FILTER_TYPES.WORLD_INFO_SEARCH, snapshot.query, true);
+            heldOrder = null;
+            updateDisplayEntries();
+            await pagination.goTo(snapshot.page);
+            if (destroyed || !isCurrent()) return false;
+            renderList();
+            listBody.scrollTop = snapshot.scrollTop;
+            return true;
+        },
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            renderRevision++;
+            closeOwnedOverlays();
+            destroyDetail({ keepDraft: entryController()?.isDirty() ?? false });
+            setWorldInfoEditorAdapter(null);
+            unregister();
+            eventSource.removeListener(event_types.WORLDINFO_RENAMED, onBookRenamed);
+            eventSource.removeListener(event_types.WORLDINFO_DELETED, onBookDeleted);
+            shell.root.removeEventListener('keydown', onEscape);
+            worldInfo.removeEventListener('change', onTransportChange, true);
+            worldInfo.removeEventListener('click', onTransportClick, true);
+            unbindRows();
+            searchControl.destroy();
+            selection.destroy();
+            pagination.destroy();
+            sortable?.destroy();
+            shell.destroy();
+            worldInfo.classList.remove('sb-wi-editor-mounted');
+            mountedEditors.delete(container);
+        },
+    };
     mountedEditors.set(container, controller);
-    Promise.all([
+    controller.ready = Promise.all([
         Promise.resolve().then(() => { if (!destroyed) return setWorldInfoEditorAdapter(adapter); }),
         loadListEditorStyles(),
         globalThis.SillyBunnyAssets?.loadStylesheetAsync?.(STYLESHEET.href, { id: STYLESHEET.id }) ?? Promise.resolve(),
@@ -762,6 +857,10 @@ export function mountWorldInfoEditor(container) {
         shell.root.hidden = false;
         shell.scheduleLayout();
         renderList();
-    }).catch(error => globalThis.toastr?.error(error.message));
+    }).catch(error => {
+        controller.destroy();
+        throw error;
+    });
+    controller.ready.catch(error => globalThis.toastr?.error(error.message));
     return controller;
 }

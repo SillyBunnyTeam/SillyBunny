@@ -1,4 +1,11 @@
 import { gunzipSync } from 'node:zlib';
+import { appendFileSync } from 'node:fs';
+import { test } from '@playwright/test';
+
+function auditSettings(titlePath, event) {
+    if (!process.env.SILLYBUNNY_SETTINGS_AUDIT) return;
+    appendFileSync(process.env.SILLYBUNNY_SETTINGS_AUDIT, `${JSON.stringify({ test: titlePath, ...event })}\n`);
+}
 
 function readPayload(request) {
     const buffer = request.headers()['content-encoding'] === 'gzip'
@@ -13,6 +20,18 @@ export async function showToasts(page) {
 
 /** Installs browser-QA safety defaults; a test may override a route with its in-memory fixture. */
 export async function protectMaintainerServer(page) {
+    const titlePath = test.info().titlePath;
+    // Context fallback also protects popups and requests made while a page's routes are being removed.
+    await page.context().route('**/api/settings/save', route => {
+        auditSettings(titlePath, { kind: 'context-stub', method: route.request().method() });
+        const payload = readPayload(route.request());
+        return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
+    });
+    page.on('response', async response => {
+        if (new URL(response.url()).pathname !== '/api/settings/save') return;
+        const server = await response.serverAddr().catch(() => null);
+        auditSettings(titlePath, { kind: 'settings-response', server, status: response.status() });
+    });
     await page.route('**/api/settings/save', route => {
         const payload = readPayload(route.request());
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });

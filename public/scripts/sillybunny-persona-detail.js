@@ -3,7 +3,7 @@ import { groups, getGroupAvatar } from './group-chats.js';
 import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
 import { getTokenCountAsync } from './tokenizers.js';
-import { world_names, openWorldInfoEditor } from './world-info.js';
+import { world_names } from './world-info.js';
 import {
     getPersonaRecord, getPersonaModelDeps, getPersonaEditorStates, getPersonaAppendixScope,
     getPersonaActiveAppendixIds, getCurrentConnectionObj, usePersona, setPersonaDefault,
@@ -16,7 +16,9 @@ import { createRow, createSwitchRow, createEntryRow, createPropertyRow, createEx
 import { openPicker } from './sillybunny-editor/picker.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
-import { confirmEditorLeave } from './sillybunny-editor/navigation.js';
+import { objectNavigation } from './sillybunny-editor/object-navigation.js';
+import { createEntityRow } from './sillybunny-editor/entity-row.js';
+import { bindListKeyboard, reconcileRows, rowEntry } from './sillybunny-editor/list-rows.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
 import { animateIn, stopMotion, MOTION_FAST } from './sillybunny-motion.js';
@@ -99,7 +101,9 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     let sheetBackdrop = null;
     let sheetController = null;
     let picker = null;
-    let connectionsFingerprint = '';
+    const connectionRows = new Map();
+    const connectionViews = new WeakMap();
+    let nextConnectionId = 0;
     let nextNoteId = 0;
     let avatarCacheStamp = '';
     const propertyViews = [];
@@ -235,6 +239,17 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     const chatLock = createSwitchRow({ label: t`Persona is locked to the current chat`, subtitle: t`lorum ipsum`, field: 'chatLock', onChange: enabled => { void runImmediate(() => setPersonaChatLock(currentId, enabled)); } });
     const characterConnection = createSwitchRow({ label: t`Persona is locked to the current character`, field: 'characterConnection', onChange: enabled => { void runImmediate(() => setPersonaCharacterConnection(currentId, enabled)); } });
     const connectionList = element('div', 'sb-persona-connections');
+    connectionList.setAttribute('role', 'list');
+    connectionList.setAttribute('aria-label', t`Connections`);
+    const unbindConnections = bindListKeyboard(connectionList, {
+        onOpen: row => {
+            const connection = rowEntry(row);
+            if (row.getAttribute('aria-disabled') === 'true') return false;
+            void navigateRelated(connection.type === 'character'
+                ? { kind: 'character-editor', id: connection.id, via: 'persona' }
+                : { kind: 'group-editor', id: String(connection.id) }, 'connections');
+        },
+    });
     const connectionSection = createPrefGroup({ title: t`Connections`, field: 'section-connections', rows: [chatLock, characterConnection, connectionList] });
     connectionSection.section.dataset.sbSection = 'connections';
     body.append(connectionSection.section);
@@ -439,10 +454,11 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
 
     function refreshConnections(record, disabled) {
         const connections = record?.descriptor?.connections ?? [];
-        const fingerprint = model.fingerprint(connections.map(connection => ({ ...connection, name: connectionName(connection) })));
-        if (fingerprint !== connectionsFingerprint) {
-            connectionsFingerprint = fingerprint;
-            connectionList.replaceChildren(...connections.map(connection => {
+        reconcileRows({
+            container: connectionList, cache: connectionRows, entries: connections,
+            key: connection => `${connection.type}:${connection.id}`,
+            signature: connection => `${connection.type}:${connection.id}`,
+            create: connection => {
                 let avatar;
                 if (connection.type === 'group') avatar = getGroupAvatar(groups.find(group => String(group.id) === String(connection.id)))[0];
                 else {
@@ -453,11 +469,30 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
                     avatar.decoding = 'async';
                 }
                 const remove = iconButton(t`Remove`, 'xmark', 'sb-persona-connection-remove');
-                remove.addEventListener('click', () => { void runImmediate(() => removePersonaConnection(currentId, connection)); });
-                const row = createRow({ label: connectionName(connection), field: 'connection', prefix: avatar, suffix: remove });
-                return row.row;
-            }));
-        }
+                remove.addEventListener('click', event => {
+                    event.stopPropagation();
+                    void runImmediate(() => removePersonaConnection(currentId, connection));
+                });
+                // HUMAN: replace — opens this character's chat.
+                const subtitle = connection.type === 'character' ? t`lorum ipsum` : null;
+                const view = createEntityRow({
+                    key: `${connection.type}:${connection.id}`, label: connectionName(connection), subtitle,
+                    avatar, suffix: [remove], activation: 'navigate',
+                    attributes: { 'data-sb-editor-field': 'connection' },
+                });
+                if (view.slots.subtitle) {
+                    view.slots.subtitle.id = `${instanceId}-connection-${++nextConnectionId}`;
+                    view.row.setAttribute('aria-describedby', view.slots.subtitle.id);
+                }
+                connectionViews.set(view.row, view);
+                return view.row;
+            },
+            update: (row, connection) => {
+                connectionViews.get(row).update({ label: connectionName(connection) });
+                row.setAttribute('aria-disabled', String(disabled));
+                row.tabIndex = disabled ? -1 : 0;
+            },
+        });
         connectionList.hidden = !connections.length;
         for (const button of connectionList.querySelectorAll('button')) button.disabled = disabled;
     }
@@ -521,10 +556,14 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     }
 
     async function openLinkedLorebook() {
-        if (destroyed || immediateBusy || session.getState().saving || rescueSave) return;
-        if (!await confirmEditorLeave({ session, isActive: () => !destroyed, close: requestClose, afterDiscard: resetDiscardedState }) || destroyed) return;
         const bookName = getPersonaRecord(currentId)?.descriptor?.lorebook;
-        if (bookName) openWorldInfoEditor(bookName);
+        if (bookName) await navigateRelated({ kind: 'world-info', id: bookName }, 'lorebook');
+    }
+
+    async function navigateRelated(target, section) {
+        if (destroyed || immediateBusy || session.getState().saving || rescueSave) return;
+        if (!currentId || missing) return;
+        return objectNavigation.navigate(target, { from: { kind: 'persona-editor', id: currentId, section } });
     }
 
     async function runImmediate(action) {
@@ -976,6 +1015,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             clearTimeout(tokenTimer);
             tokenRequest++;
             chrome.dispose();
+            unbindConnections();
             picker?.close();
             closeDropdown();
             sheetController?.close({ animate: false, restoreFocus: false });

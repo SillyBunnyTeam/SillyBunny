@@ -75,6 +75,8 @@ const isPickerOpen = jest.fn(() => false);
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ isPickerOpen }));
 const unregister = jest.fn();
 const registerNavigation = jest.fn(() => unregister);
+const back = jest.fn(({ fallback }) => fallback());
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { back } }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/navigation.js', () => ({
     registerEditorNavigation: registerNavigation, characterTabGuardSelector: tab => `guard-${tab}`,
 }));
@@ -872,7 +874,60 @@ describe('Persona editor shell', () => {
         dirty = true;
         expect(await openPersonaEditor({ avatarId: 'avatar-12.png' })).toBe(false);
         expect(mountDetail).toHaveBeenCalledTimes(1);
+        expect(details[0].discard).not.toHaveBeenCalled();
         expect(container.querySelector('.sb-list-pagination__status').textContent).toBe('Page 1 of 3');
+    });
+
+    test('Persona Back uses origin navigation with a normal list-close fallback', async () => {
+        await mount();
+        await open();
+        const { requestClose } = mountDetail.mock.calls.at(-1)[0];
+        await requestClose();
+        expect(back).toHaveBeenCalledWith({ current: { kind: 'persona-editor', id: avatarIds[0] }, fallback: expect.any(Function) });
+        expect(container.querySelector('.sb-persona-editor').dataset.open).toBe('false');
+    });
+
+    test('superseded Persona routes never select an avatar after a delayed shell mount', async () => {
+        await mount();
+        let resolveRoute;
+        let current = true;
+        globalThis.SillyBunnyShell.openTab.mockImplementationOnce(() => new Promise(resolve => { resolveRoute = resolve; }));
+        const opening = openPersonaEditor({ avatarId: avatarIds[1], isCurrent: () => current });
+        current = false;
+        resolveRoute(mounted);
+        expect(await opening).toBe(false);
+        expect(mountDetail).not.toHaveBeenCalled();
+    });
+
+    test.each(['route', 'ready'])('a stalled Persona %s times out and its late completion cannot select an avatar', async phase => {
+        await mount();
+        let finish;
+        const pending = new Promise(resolve => { finish = resolve; });
+        if (phase === 'route') globalThis.SillyBunnyShell.openTab.mockReturnValueOnce(pending);
+        else mounted.ready = pending;
+        const opening = openPersonaEditor({ avatarId: avatarIds[1] });
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(await opening).toBe(false);
+        finish(phase === 'route' ? mounted : undefined);
+        await settle();
+        expect(mountDetail).not.toHaveBeenCalled();
+    });
+
+    test('a selection superseded during its dirty guard never replaces detail or changes page', async () => {
+        await mount(15);
+        await open();
+        dirty = true;
+        let approve;
+        let current = true;
+        popupShow.mockImplementationOnce(() => new Promise(resolve => { approve = resolve; }));
+        const selecting = mounted.selectPersona('avatar-12.png', 'notes', () => current);
+        await settle();
+        current = false;
+        approve(2);
+        expect(await selecting).toBe(false);
+        expect(mountDetail).toHaveBeenCalledTimes(1);
+        expect(container.querySelector('.sb-list-pagination__status').textContent).toBe('Page 1 of 3');
+        expect(details[0].scrollToSection).not.toHaveBeenCalled();
     });
 
     test('openPersonaEditor awaits the route mount and its deferred stylesheet gate', async () => {

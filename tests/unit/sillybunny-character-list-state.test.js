@@ -855,6 +855,7 @@ describe('id-based list actions', () => {
             previews: null,
             _syncRoleSegment: jest.fn(),
             _syncTokenReadout: jest.fn(),
+            _renderRelatedLinks: jest.fn(),
             _renderAlternateGreetings: jest.fn(),
             _renderGroupGreetings: jest.fn(),
             dismissDraftRecoveryToast: jest.fn(),

@@ -17,6 +17,19 @@ const mountCharacterList = jest.fn();
 const restoreCharacterListState = jest.fn();
 const switchCharacterListView = jest.fn();
 let activeListView;
+const world_names = ['Book A'];
+const power_user = { personas: { 'persona.png': 'Persona' } };
+const openWorldInfoEditor = jest.fn();
+const captureWorldInfoEditorListState = jest.fn();
+const restoreWorldInfoEditorListState = jest.fn();
+const openPersonaEditor = jest.fn();
+await jest.unstable_mockModule('../../public/scripts/world-info.js', () => ({
+    world_names, openWorldInfoEditor,
+    getWorldInfoEditorState: () => ({ name: 'Book A' }),
+    captureWorldInfoEditorListState, restoreWorldInfoEditorListState,
+}));
+await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-persona-editor.js', () => ({ openPersonaEditor }));
 
 await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list.js', () => ({ mountCharacterList, restoreCharacterListState }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-state.js', () => ({
@@ -48,6 +61,8 @@ const characterEditor = registrations.find(([kind]) => kind === 'character-edito
 const groupEditor = registrations.find(([kind]) => kind === 'group-editor')[1];
 const characterList = registrations.find(([kind]) => kind === 'character-list')[1];
 const groupList = registrations.find(([kind]) => kind === 'group-list')[1];
+const worldInfo = registrations.find(([kind]) => kind === 'world-info')[1];
+const personaEditor = registrations.find(([kind]) => kind === 'persona-editor')[1];
 const from = { kind: 'group-editor', id: 'qa-group' };
 const target = { kind: 'character-editor', id: 'Alice.png', via: 'group-member' };
 const currentRoute = { isCurrent: () => true };
@@ -55,12 +70,17 @@ const currentRoute = { isCurrent: () => true };
 beforeEach(() => {
     jest.clearAllMocks();
     objectNavigation.clear();
+    characters[0] = { avatar: 'Bob.png' };
     characters[1] = { avatar: 'Alice.png' };
     groups.splice(1);
     groupEditorTargetExists.mockImplementation(id => id === 'create' || groups.some(group => group.id === id));
     confirmActiveEditorLeave.mockResolvedValue(true);
     canPeekGroupMember.mockReturnValue(true);
     openGroupEditor.mockResolvedValue(true);
+    openWorldInfoEditor.mockResolvedValue(true);
+    openPersonaEditor.mockResolvedValue(true);
+    captureWorldInfoEditorListState.mockReturnValue({ name: 'Book A', page: 2, query: 'entry', scrollTop: 88 });
+    restoreWorldInfoEditorListState.mockResolvedValue(true);
     captureGroupEditorListState.mockReturnValue({ scrollTop: 240, membersPage: 2, focusedMemberAvatar: 'Alice.png' });
     restoreGroupEditorListState.mockResolvedValue(undefined);
     activeListView = 'characters';
@@ -80,6 +100,7 @@ beforeEach(() => {
                 <form id="form_create"><div class="sb-editor-sheet__content"></div></form>
             </div>
         </div>
+        <div id="PersonaManagement"><div class="sb-persona-editor" data-persona-avatar-id="persona.png"><div class="sb-persona-entry-body"></div></div></div>
         <div id="sb-settings-tab-list"><button data-sb-settings-tab="editor" aria-selected="false"></button></div>`;
     jest.spyOn(document.getElementById('rm_ch_create_block'), 'getClientRects').mockReturnValue([{}]);
 });
@@ -108,7 +129,7 @@ function deferred() {
 
 describe('character and group editor destinations', () => {
     test('registers both editor and list destinations and binds top-level clearing once', () => {
-        expect(registrations.map(([kind]) => kind)).toEqual(['character-editor', 'group-editor', 'character-list', 'group-list']);
+        expect(registrations.map(([kind]) => kind)).toEqual(['character-editor', 'group-editor', 'character-list', 'group-list', 'world-info', 'persona-editor']);
         expect(bindings).toEqual([['[data-sb-character-tab], [data-sb-settings-tab]']]);
         expect(characterEditor.exists('Alice.png')).toBe(true);
         expect(characterEditor.exists('deleted.png')).toBe(false);
@@ -406,6 +427,108 @@ describe('character and group editor destinations', () => {
         expect(openGroupMemberDefinition).not.toHaveBeenCalled();
         expect(selectCharacterById).not.toHaveBeenCalled();
         expect(objectNavigation.depth).toBe(0);
+    });
+});
+
+describe('World Info and Persona destinations', () => {
+    test('Back to an inactive character presents its list row without switching chat', async () => {
+        characters[0].name = 'Bob';
+        const list = document.createElement('div');
+        list.className = 'sb-character-list';
+        const row = document.createElement('div');
+        row.dataset.sbListKey = 'character:Bob.png';
+        row.tabIndex = 0;
+        row.scrollIntoView = jest.fn();
+        list.append(row);
+        document.body.append(list);
+        expect(await characterEditor.open({ kind: 'character-editor', id: 'Bob.png' }, { restore: { scrollTop: 12 }, ...currentRoute })).toBe(true);
+        expect(selectCharacterById).not.toHaveBeenCalled();
+        expect(openGroupMemberDefinition).not.toHaveBeenCalled();
+        expect(window.SillyBunnyShell.openTab).toHaveBeenCalledWith('characters', 'characters');
+        expect(restoreCharacterListState).toHaveBeenLastCalledWith({ query: 'Bob', page: 1, focusKey: 'character:Bob.png' }, currentRoute.isCurrent);
+        expect(row).toBe(document.activeElement);
+        expect(row.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    });
+
+    test('inactive-character Back clears hiding filters and finds the stable avatar beyond duplicate names on page one', async () => {
+        characters[0].name = characters[1].name = 'Duplicate';
+        document.body.insertAdjacentHTML('beforeend', '<div id="rm_characters_block"><button class="clearAllFilters"></button></div><div class="sb-character-list"><button class="sb-list-pagination__next"></button></div>');
+        const clear = jest.fn();
+        document.querySelector('.clearAllFilters').addEventListener('click', clear);
+        restoreCharacterListState.mockImplementation(async snapshot => {
+            if (snapshot?.page !== 2) return;
+            const row = document.createElement('div');
+            row.dataset.sbListKey = 'character:Bob.png';
+            row.tabIndex = 0;
+            document.querySelector('.sb-character-list').append(row);
+        });
+        expect(await characterEditor.open({ kind: 'character-editor', id: 'Bob.png' }, { restore: {}, ...currentRoute })).toBe(true);
+        expect(clear).toHaveBeenCalledTimes(1);
+        expect(restoreCharacterListState).toHaveBeenLastCalledWith({ query: 'Duplicate', page: 2, focusKey: 'character:Bob.png' }, currentRoute.isCurrent);
+        expect(selectCharacterById).not.toHaveBeenCalled();
+        expect(document.activeElement.dataset.sbListKey).toBe('character:Bob.png');
+    });
+
+    test('existence uses book names and own persona avatar keys, not display names', () => {
+        expect(worldInfo.exists('Book A')).toBe(true);
+        expect(worldInfo.exists('missing')).toBe(false);
+        expect(personaEditor.exists('persona.png')).toBe(true);
+        expect(personaEditor.exists('Persona')).toBe(false);
+        expect(personaEditor.exists('toString')).toBe(false);
+        expect(worldInfo.current()).toEqual({ kind: 'world-info', id: 'Book A' });
+        expect(personaEditor.current()).toEqual({ kind: 'persona-editor', id: 'persona.png' });
+    });
+
+    test('WI awaits loaded book readiness before restoring the captured list state', async () => {
+        const pending = deferred();
+        const snapshot = worldInfo.captureState();
+        openWorldInfoEditor.mockReturnValueOnce(pending.promise);
+        const opened = worldInfo.open({ kind: 'world-info', id: 'Book A' }, { restore: snapshot, ...currentRoute });
+        expect(restoreWorldInfoEditorListState).not.toHaveBeenCalled();
+        pending.resolve(true);
+        expect(await opened).toBe(true);
+        expect(openWorldInfoEditor).toHaveBeenCalledWith('Book A', currentRoute);
+        expect(restoreWorldInfoEditorListState).toHaveBeenCalledWith(snapshot, currentRoute.isCurrent);
+    });
+
+    test('Persona awaits selection and section readiness before restoring detail scroll', async () => {
+        const scroller = document.querySelector('.sb-persona-entry-body');
+        scroller.scrollTop = 72;
+        expect(personaEditor.captureState()).toEqual({ scrollTop: 72 });
+        const pending = deferred();
+        openPersonaEditor.mockReturnValueOnce(pending.promise);
+        const opened = personaEditor.open({ kind: 'persona-editor', id: 'persona.png', section: 'connections' }, { restore: { scrollTop: 240 }, ...currentRoute });
+        await Promise.resolve();
+        expect(scroller.scrollTop).toBe(72);
+        pending.resolve(true);
+        expect(await opened).toBe(true);
+        expect(openPersonaEditor).toHaveBeenCalledWith({ avatarId: 'persona.png', section: 'connections', isCurrent: currentRoute.isCurrent });
+        expect(scroller.scrollTop).toBe(240);
+    });
+
+    test.each([worldInfo, personaEditor])('a stale or refused destination never restores presentation', async destination => {
+        expect(await destination.open({}, { isCurrent: () => false })).toBe(false);
+        expect(openWorldInfoEditor).not.toHaveBeenCalled();
+        expect(openPersonaEditor).not.toHaveBeenCalled();
+        openWorldInfoEditor.mockResolvedValue(false);
+        openPersonaEditor.mockResolvedValue(false);
+        expect(await destination.open({ id: 'Book A' }, { ...currentRoute, restore: { scrollTop: 99 } })).toBe(false);
+        expect(restoreWorldInfoEditorListState).not.toHaveBeenCalled();
+        expect(document.querySelector('.sb-persona-entry-body').scrollTop).toBe(0);
+    });
+
+    test.each([worldInfo, personaEditor])('supersession after readiness does not restore stale presentation', async destination => {
+        const pending = deferred();
+        let current = true;
+        openWorldInfoEditor.mockReturnValueOnce(pending.promise);
+        openPersonaEditor.mockReturnValueOnce(pending.promise);
+        const opened = destination.open({ id: 'Book A' }, { isCurrent: () => current, restore: { scrollTop: 99 } });
+        await Promise.resolve();
+        current = false;
+        pending.resolve(true);
+        expect(await opened).toBe(false);
+        expect(restoreWorldInfoEditorListState).not.toHaveBeenCalled();
+        expect(document.querySelector('.sb-persona-entry-body').scrollTop).toBe(0);
     });
 });
 

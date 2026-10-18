@@ -88,6 +88,15 @@ await jest.unstable_mockModule('../../public/scripts/personas.js', () => ({
     deletePersonaRecord, changePersonaImage, convertPersonaToCharacter,
 }));
 const { mountPersonaDetail, personaDraftKey } = await import('../../public/scripts/sillybunny-persona-detail.js');
+const { objectNavigation } = await import('../../public/scripts/sillybunny-editor/object-navigation.js');
+const { registerEditorNavigation } = await import('../../public/scripts/sillybunny-editor/navigation.js');
+const navigate = jest.spyOn(objectNavigation, 'navigate');
+const openCharacter = jest.fn(async () => true);
+const openGroup = jest.fn(async () => true);
+objectNavigation.register('world-info', { open: async target => { openWorldInfoEditor(target.id); return true; } });
+objectNavigation.register('character-editor', { open: openCharacter });
+objectNavigation.register('group-editor', { open: openGroup });
+objectNavigation.register('persona-editor', { open: async () => true });
 const model = await import('../../public/scripts/sillybunny-persona-model.js');
 const mounted = [];
 let recoveryActions;
@@ -105,6 +114,12 @@ function mount(options = {}) {
     document.body.append(host);
     const callbacks = { requestClose: jest.fn(), onSaved: jest.fn(), onStateChange: jest.fn() };
     const controller = mountPersonaDetail({ host, avatarId: 'first.png', ...callbacks, ...options });
+    const unregister = registerEditorNavigation({
+        session: { isOpen: () => true, isDirty: controller.isDirty, save: controller.save, discard: controller.discard, flushDraft: () => {} },
+        isActive: () => host.isConnected, close: callbacks.requestClose, escape: false,
+    });
+    const destroy = controller.destroy;
+    controller.destroy = (...args) => { unregister(); destroy(...args); };
     mounted.push(controller);
     return { host, controller, ...callbacks };
 }
@@ -150,6 +165,7 @@ async function settle() {
 beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    objectNavigation.clear();
     popupShow.mockReset();
     document.body.replaceChildren();
     localStorage.clear();
@@ -411,6 +427,7 @@ describe('Scenario notes and immediate state', () => {
         host.querySelector('.sb-persona-connection-remove').click();
         await settle();
         expect(removePersonaConnection).toHaveBeenCalledWith('first.png', currentConnection);
+        expect(navigate).not.toHaveBeenCalled();
         expect(controller.isDirty()).toBe(true);
         controller.discard();
         expect(defaultId).toBe('first.png');
@@ -444,6 +461,9 @@ describe('Scenario notes and immediate state', () => {
         host.querySelector('[data-sb-editor-field="lorebook-open"]').click();
         await settle();
         expect(openWorldInfoEditor).toHaveBeenCalledWith('Book B');
+        expect(navigate).toHaveBeenCalledWith({ kind: 'world-info', id: 'Book B' }, {
+            from: { kind: 'persona-editor', id: 'first.png', section: 'lorebook' },
+        });
     });
 
     test.each([
@@ -473,6 +493,52 @@ describe('Scenario notes and immediate state', () => {
         await settle();
         expect(openWorldInfoEditor).not.toHaveBeenCalled();
         expect(controller.isDirty()).toBe(true);
+    });
+
+    test.each(['click', 'Enter', ' '])('character connection %s navigates with a chat-switch notice and stable origin', async activation => {
+        state.persona_descriptions['first.png'].connections = [{ type: 'character', id: 'alice.png' }];
+        const { host } = mount();
+        const row = host.querySelector('[data-sb-editor-field="connection"]');
+        expect(row.querySelector('.ds-entity-row__subtitle').textContent).toBe('lorum ipsum');
+        expect(row.querySelector('.ds-entity-row__chevron')).not.toBeNull();
+        if (activation === 'click') row.querySelector('.ds-entity-row__title').click();
+        else keydown(row, activation);
+        await settle();
+        expect(navigate).toHaveBeenCalledWith({ kind: 'character-editor', id: 'alice.png', via: 'persona' }, {
+            from: { kind: 'persona-editor', id: 'first.png', section: 'connections' },
+        });
+        expect(openCharacter).toHaveBeenCalledTimes(1);
+        expect(removePersonaConnection).not.toHaveBeenCalled();
+    });
+
+    test('group connection routes without a chat-switch notice; remove key events never navigate', async () => {
+        state.persona_descriptions['first.png'].connections = [{ type: 'group', id: 'group-1' }];
+        const { host, controller } = mount();
+        const row = host.querySelector('[data-sb-editor-field="connection"]');
+        expect(row.querySelector('.ds-entity-row__subtitle')).toBeNull();
+        keydown(row.querySelector('button'), 'Enter');
+        keydown(row.querySelector('button'), ' ');
+        expect(navigate).not.toHaveBeenCalled();
+        row.click();
+        await settle();
+        expect(navigate).toHaveBeenCalledWith({ kind: 'group-editor', id: 'group-1' }, {
+            from: { kind: 'persona-editor', id: 'first.png', section: 'connections' },
+        });
+        controller.refresh('states');
+        expect(host.querySelector('[data-sb-editor-field="connection"]')).toBe(row);
+    });
+
+    test('connection navigation uses the shared leave guard and Cancel keeps the draft and origin', async () => {
+        state.persona_descriptions['first.png'].connections = [{ type: 'character', id: 'alice.png' }];
+        popupShow.mockResolvedValueOnce(0);
+        const { host, controller } = mount();
+        edit(host, 'description', 'Unsaved changes');
+        host.querySelector('[data-sb-editor-field="connection"]').click();
+        await settle();
+        expect(popupShow).toHaveBeenCalledTimes(1);
+        expect(openCharacter).not.toHaveBeenCalled();
+        expect(controller.isDirty()).toBe(true);
+        expect(objectNavigation.depth).toBe(0);
     });
 
     test('detail menu matches rare actions, hides Sync when inactive, and confirmed Delete closes cleanly', async () => {

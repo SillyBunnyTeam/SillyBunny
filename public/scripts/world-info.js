@@ -2064,9 +2064,12 @@ function registerWorldInfoSlashCommands() {
  * Loads the given world into the World Editor.
  *
  * @param {string} name - The name of the world
+ * @param {{ isCurrent?: () => boolean }} [options] SillyBunny navigation transaction currency.
  * @return {Promise<void>} A promise that resolves when the world editor is loaded
  */
-export async function showWorldEditor(name) {
+export async function showWorldEditor(name, { isCurrent = () => true } = {}) {
+    // SillyBunny: a timed-out or superseded link cannot commit delayed book data — see docs/ui-migration.md.
+    if (!isCurrent()) return;
     const loadId = ++worldInfoEditorLoadId;
     if (!name) {
         await hideWorldEditor();
@@ -2074,7 +2077,7 @@ export async function showWorldEditor(name) {
     }
 
     let wiData = await loadWorldInfo(name);
-    if (loadId !== worldInfoEditorLoadId) {
+    if (loadId !== worldInfoEditorLoadId || !isCurrent()) {
         return;
     }
     if (wiData && worldInfoEditor?.name === name) {
@@ -2105,6 +2108,16 @@ export function setWorldInfoEditorAdapter(adapter) {
 /** SillyBunny: the book open in the editor; `data` is the tracked object that saves must use. */
 export function getWorldInfoEditorState() {
     return worldInfoEditor ? { name: worldInfoEditor.name, data: worldInfoEditor.data } : { name: null, data: null };
+}
+
+/** SillyBunny: captures mounted WI presentation without eagerly importing its editor — see docs/ui-migration.md. */
+export function captureWorldInfoEditorListState() {
+    return worldInfoEditorAdapter?.captureState?.() ?? null;
+}
+
+/** SillyBunny: restores mounted WI presentation for an active navigation transaction — see docs/ui-migration.md. */
+export function restoreWorldInfoEditorListState(state, isCurrent) {
+    return worldInfoEditorAdapter?.restoreState?.(state, isCurrent) ?? false;
 }
 
 /** SillyBunny: re-runs the editor render for the open book (legacy `updateEditor`). */
@@ -2211,8 +2224,8 @@ async function hideWorldEditor() {
 function openWorldInfoCharacterPanelTab() {
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell);
     if (sillyBunnyShell?.openTab) {
-        sillyBunnyShell.openTab('characters', 'world-info');
-        return;
+        // SillyBunny: let object links await the shell route — see docs/ui-migration.md.
+        return sillyBunnyShell.openTab('characters', 'world-info');
     }
 
     if (!$('#WorldInfo').is(':visible')) {
@@ -6889,12 +6902,48 @@ export async function importWorldInfo(file) {
 /**
  * Forces the world info editor to open on a specific world.
  * @param {string} worldName The name of the world to open
+ * @param {{ isCurrent?: () => boolean }} [options] Navigation transaction currency.
+ * @returns {Promise<boolean>} True only after the mounted editor shows the loaded book.
  */
-export function openWorldInfoEditor(worldName) {
-    console.log(`Opening lorebook for ${worldName}`);
-    openWorldInfoCharacterPanelTab();
-    const index = world_names.indexOf(worldName);
-    $('#world_editor_select').val(index).trigger('change');
+export async function openWorldInfoEditor(worldName, { isCurrent = () => true } = {}) {
+    // SillyBunny: await book readiness and reject missing links — see docs/ui-migration.md.
+    if (!isCurrent()) return false;
+    if (!world_names.includes(worldName)) {
+        toastr.warning(t`-- World Info not found --`);
+        return false;
+    }
+    let expired = false;
+    let timer;
+    const current = () => !expired && isCurrent();
+    const opening = async () => {
+        const routed = await openWorldInfoCharacterPanelTab();
+        if (routed === false || !current()) return false;
+        const { mountWorldInfoEditor } = await import('./sillybunny-world-info-editor.js');
+        if (!current()) return false;
+        const container = document.getElementById('WorldInfo');
+        if (!container) return false;
+        const controller = mountWorldInfoEditor(container);
+        await controller.ready;
+        if (!current()) return false;
+        const index = world_names.indexOf(worldName);
+        if (index < 0) return false;
+        const afterRender = controller.renderRevision;
+        $('#world_editor_select').val(index).trigger('change', [{ isCurrent: current }]);
+        return controller.whenBookShown(worldName, { isCurrent: current, afterRender });
+    };
+    try {
+        return await Promise.race([
+            opening(),
+            new Promise(resolve => {
+                timer = setTimeout(() => { expired = true; resolve(false); }, 5000);
+            }),
+        ]);
+    } catch {
+        return false;
+    } finally {
+        expired = true;
+        clearTimeout(timer);
+    }
 }
 
 /**
@@ -7173,7 +7222,9 @@ export function initWorldInfo() {
         }
     });
 
-    $('#world_editor_select').on('change', async () => {
+    // SillyBunny: preserve legacy change transports while propagating link cancellation — see docs/ui-migration.md.
+    $('#world_editor_select').on('change', async (_event, { isCurrent = () => true } = {}) => {
+        if (!isCurrent()) return;
         cancelDebounce(debouncedWorldInfoSearch);
         $('#world_info_search').val('');
         worldInfoFilter.setFilterData(FILTER_TYPES.WORLD_INFO_SEARCH, '', true);
@@ -7183,7 +7234,7 @@ export function initWorldInfo() {
             await hideWorldEditor();
         } else {
             const worldName = world_names[selectedIndex];
-            showWorldEditor(worldName);
+            showWorldEditor(worldName, { isCurrent });
         }
     });
 

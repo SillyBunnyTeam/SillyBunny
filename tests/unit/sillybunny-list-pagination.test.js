@@ -23,6 +23,19 @@ function makePagination(options = {}) {
 }
 
 describe('createListPagination', () => {
+    test('a transaction expired during its guard cannot mutate the page or notify', async () => {
+        let approve;
+        let current = true;
+        const onChange = jest.fn();
+        const pagination = makePagination({ guard: () => new Promise(resolve => { approve = resolve; }), onChange });
+        pagination.setTotal(10);
+        const paging = pagination.goTo(2, { isCurrent: () => current });
+        current = false;
+        approve(true);
+        await paging;
+        expect(pagination.page).toBe(1);
+        expect(onChange).not.toHaveBeenCalled();
+    });
     test('computes totals, pages, hidden state, and live status', () => {
         const pagination = makePagination();
         expect(pagination.element.hidden).toBe(true);

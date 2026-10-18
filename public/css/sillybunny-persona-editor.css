@@ -2,6 +2,19 @@
     display: none !important;
 }
 
+#sb-settings-page .sb-persona-entry .ds-pref-group > .sb-persona-connections {
+    padding: 0;
+}
+
+.sb-persona-connections > .ds-entity-row {
+    border-bottom: 1px solid var(--sb-shell-border);
+    border-radius: 0;
+}
+
+.sb-persona-connections > .ds-entity-row:last-child {
+    border-bottom: 0;
+}
+
 /* Match World Info's embedded-drawer reset and Prompt Editor gutters. */
 #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-persona-editor-mounted) {
     padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;

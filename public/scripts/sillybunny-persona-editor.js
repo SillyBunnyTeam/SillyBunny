@@ -17,6 +17,7 @@ import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { characterTabGuardSelector, registerEditorNavigation } from './sillybunny-editor/navigation.js';
+import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { mountPersonaSettings } from './sillybunny-persona-settings.js';
 import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail.js';
 
@@ -180,6 +181,7 @@ export function mountPersonaEditor(container) {
         if (shell) {
             shell.root.dataset.dirty = 'false';
             shell.root.dataset.saving = 'false';
+            delete shell.root.dataset.personaAvatarId;
         }
     }
 
@@ -338,22 +340,25 @@ export function mountPersonaEditor(container) {
         searchControl.report(entries.length, allIds.length);
     }
 
-    async function goToPage(page) {
+    async function goToPage(page, isCurrent = () => true) {
         internalPaging = true;
-        try { await pagination.goTo(page); } finally { internalPaging = false; }
+        try { await pagination.goTo(page, { isCurrent }); } finally { internalPaging = false; }
     }
 
-    async function selectPersona(avatarId, section) {
-        if (destroyed || !getPersonaRecord(avatarId)) return false;
-        if (!(await shell.selectItem({ kind: 'persona', avatarId })) || destroyed) return false;
+    async function selectPersona(avatarId, section, isCurrent = () => true) {
+        if (destroyed || !isCurrent() || !getPersonaRecord(avatarId)) return false;
+        if (!(await shell.selectItem({ kind: 'persona', avatarId }, { isCurrent })) || destroyed) return false;
+        if (destroyed || !isCurrent()) return false;
         const index = entries.indexOf(avatarId);
-        if (index >= 0) await goToPage(pagination.pageOf(index));
+        if (index >= 0) await goToPage(pagination.pageOf(index), isCurrent);
+        if (destroyed || !isCurrent()) return false;
         if (section && selectedAvatarId() === avatarId) detailController()?.scrollToSection(section);
         return true;
     }
 
     function renderDetail(detail, item) {
         destroyDetail();
+        if (item.kind === 'persona') shell.root.dataset.personaAvatarId = item.avatarId;
         controllerKind = item.kind;
         if (item.kind === 'settings') {
             activeController = mountPersonaSettings({ host: detail, onClose: () => shell.deselectItem() });
@@ -362,7 +367,9 @@ export function mountPersonaEditor(container) {
         activeController = mountPersonaDetail({
             host: detail, avatarId: item.kind === 'create' ? null : item.avatarId,
             mode: item.kind === 'create' ? 'create' : 'edit',
-            requestClose: () => shell.deselectItem(),
+            requestClose: () => objectNavigation.back({
+                current: { kind: 'persona-editor', id: selectedAvatarId() }, fallback: () => shell.deselectItem(),
+            }),
             onSaved: ({ avatarId, created }) => run(async () => {
                 await refresh(created ? 'list' : 'persona', avatarId);
                 if (created && activeController && shell.selectedItem === item) await selectPersona(avatarId);
@@ -496,14 +503,33 @@ export function mountPersonaEditor(container) {
     return controller;
 }
 
-export async function openPersonaEditor({ avatarId, section } = {}) {
+/** Routes to Persona, waits for its mounted controller, then selects a stable avatar. */
+export async function openPersonaEditor({ avatarId, section, isCurrent = () => true } = {}) {
+    if (!isCurrent()) return false;
     const route = globalThis.SillyBunnyShell?.openTab;
     if (!route) throw new Error('The Characters shell is not ready.');
-    // openTab delegates to the shell's existing openCharacterPanelTab route.
-    const routedController = await route('characters', 'persona');
-    const container = document.getElementById('PersonaManagement');
-    const controller = routedController ?? mountPersonaEditor(container);
-    await controller.ready;
-    if (!avatarId) return true;
-    return controller.selectPersona(avatarId, section);
+    let expired = false;
+    let timer;
+    const current = () => !expired && isCurrent();
+    const opening = async () => {
+        const routedController = await route('characters', 'persona');
+        if (routedController === false || !current()) return false;
+        const container = document.getElementById('PersonaManagement');
+        const controller = routedController ?? mountPersonaEditor(container);
+        await controller.ready;
+        if (!current()) return false;
+        if (!avatarId) return true;
+        return controller.selectPersona(avatarId, section, current);
+    };
+    try {
+        return await Promise.race([
+            opening(),
+            new Promise(resolve => {
+                timer = setTimeout(() => { expired = true; resolve(false); }, 5000);
+            }),
+        ]);
+    } finally {
+        expired = true;
+        clearTimeout(timer);
+    }
 }
