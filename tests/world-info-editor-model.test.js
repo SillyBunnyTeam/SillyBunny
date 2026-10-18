@@ -510,6 +510,225 @@ describe('draft rebasing and external change detection', () => {
 });
 
 describe('persistence operations', () => {
+    test('bulk delete rollback preserves imported/native ID collisions and original entry identities', async () => {
+        const data = importedBook();
+        data.originalData.entries[0].id = 3;
+        data.originalData.entries[1].id = 0;
+        const before = structuredClone(data);
+        const first = data.originalData.entries[0];
+        const second = data.originalData.entries[1];
+        const legacy = createLegacyHelpers();
+        const deps = createDeps({
+            deleteOriginal: legacy.deleteWIOriginalDataValue,
+            deleteEntry: async (book, uid) => { delete book.entries[uid]; return true; },
+            saveWorldInfo: jest.fn().mockResolvedValue(null),
+        });
+        expect((await model.remove(deps, 'Lore', data, [0, 3])).ok).toBe(false);
+        expect(data).toEqual(before);
+        expect(data.originalData.entries[0]).toBe(first);
+        expect(data.originalData.entries[1]).toBe(second);
+    });
+
+    test.each(['toggle', 'reorder', 'delete', 'duplicate'])('failed %s is absent from a later unrelated save, including imported data', async action => {
+        const legacy = createLegacyHelpers();
+        const data = importedBook();
+        data.entries[0].displayIndex = 0;
+        data.entries[3].displayIndex = 1;
+        data.originalData.entries[0].enabled = true;
+        data.originalData.entries[0].extensions.display_index = 0;
+        data.originalData.entries[1].extensions.display_index = 1;
+        const before = structuredClone(data);
+        const deps = createDeps({
+            setOriginal: legacy.setWIOriginalDataValue,
+            deleteOriginal: legacy.deleteWIOriginalDataValue,
+            deleteEntry: async (book, uid) => { delete book.entries[uid]; return true; },
+            duplicateEntry: book => {
+                const entry = { ...structuredClone(book.entries[0]), uid: 1 };
+                book.entries[1] = entry;
+                book.originalDataUidMap[1] = book.originalData.entries.length;
+                book.originalData.entries.push({ id: 10, comment: entry.comment });
+                return entry;
+            },
+            saveWorldInfo: jest.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue('Lore'),
+        });
+        const operations = {
+            toggle: () => model.setEnabled(deps, 'Lore', data, 0, false),
+            reorder: () => model.reorder(deps, 'Lore', data, [3, 0]),
+            delete: () => model.remove(deps, 'Lore', data, [0, 3]),
+            duplicate: () => model.duplicate(deps, 'Lore', data, 0),
+        };
+        expect((await operations[action]()).ok).toBe(false);
+        expect(data).toEqual(before);
+        applyField(data, 3, 'content', 'Unrelated saved edit', deps.setOriginal);
+        expect((await model.commit(deps, 'Lore', data)).ok).toBe(true);
+        before.entries[3].content = 'Unrelated saved edit';
+        before.originalData.entries[1].content = 'Unrelated saved edit';
+        expect(data).toEqual(before);
+    });
+
+    test('rollback preserves newer field writers and replacement entries', async () => {
+        const legacy = createLegacyHelpers();
+        const data = importedBook();
+        let reject;
+        const deps = createDeps({
+            setOriginal: legacy.setWIOriginalDataValue,
+            saveWorldInfo: jest.fn(() => new Promise((_resolve, fail) => { reject = fail; })),
+        });
+        const saving = model.setEnabled(deps, 'Lore', data, [0, 3], false);
+        data.entries[0].disable = false;
+        deps.setOriginal(data, 0, 'enabled', true);
+        const replacement = { uid: 3, disable: true, content: 'New writer' };
+        data.entries[3] = replacement;
+        reject(new Error('Offline'));
+        expect((await saving).ok).toBe(false);
+        expect(data.entries[0].disable).toBe(false);
+        expect(data.originalData.entries[0].enabled).toBe(true);
+        expect(data.entries[3]).toBe(replacement);
+    });
+
+    test('a newer acknowledged switch owns even the same value while unrelated keys can still roll back', async () => {
+        const data = importedBook();
+        const legacy = createLegacyHelpers();
+        let reject;
+        const deps = createDeps({
+            setOriginal: legacy.setWIOriginalDataValue,
+            saveWorldInfo: jest.fn().mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }))
+                .mockResolvedValue('Lore'),
+        });
+        const failing = model.setEnabled(deps, 'Lore', data, [0, 3], false);
+        expect((await model.setEnabled(deps, 'Lore', data, 0, false)).ok).toBe(true);
+        reject(new Error('Offline'));
+        expect((await failing).ok).toBe(false);
+        expect(data.entries[0].disable).toBe(true);
+        expect(data.originalData.entries[0].enabled).toBe(false);
+        expect(data.entries[3]).not.toHaveProperty('disable');
+    });
+
+    test('failed reorder removes only its newly created imported path beside a newer extension writer', async () => {
+        const data = importedBook();
+        delete data.originalData.entries[0].extensions;
+        const legacy = createLegacyHelpers();
+        let reject;
+        const deps = createDeps({
+            setOriginal: legacy.setWIOriginalDataValue,
+            saveWorldInfo: () => new Promise((_resolve, fail) => { reject = fail; }),
+        });
+        const saving = model.reorder(deps, 'Lore', data, [0, 3]);
+        legacy.setWIOriginalDataValue(data, 0, 'extensions.newer', 'preserved');
+        reject(new Error('Offline'));
+        expect((await saving).ok).toBe(false);
+        expect(data.entries[0]).not.toHaveProperty('displayIndex');
+        expect(data.originalData.entries[0].extensions).toEqual({ newer: 'preserved' });
+    });
+
+    test.each([true, false])('successive failed switches release ownership in either completion order (newest first=%s)', async newestFirst => {
+        const data = importedBook();
+        data.originalData.entries[0].enabled = true;
+        const legacy = createLegacyHelpers();
+        const failures = [];
+        const deps = createDeps({
+            setOriginal: legacy.setWIOriginalDataValue,
+            saveWorldInfo: () => new Promise((_resolve, reject) => failures.push(reject)),
+        });
+        const first = model.setEnabled(deps, 'Lore', data, 0, false);
+        const second = model.setEnabled(deps, 'Lore', data, 0, true);
+        failures[newestFirst ? 1 : 0](new Error('Offline'));
+        await (newestFirst ? second : first);
+        failures[newestFirst ? 0 : 1](new Error('Offline'));
+        await (newestFirst ? first : second);
+        expect(data.entries[0].disable).toBe(false);
+        expect(data.originalData.entries[0].enabled).toBe(true);
+    });
+
+    test.each(['delete', 'duplicate'])('failed %s preserves a newer entry writer and consistent imported UID mappings', async action => {
+        const data = importedBook();
+        const legacy = createLegacyHelpers();
+        let reject;
+        const deps = createDeps({
+            deleteOriginal: legacy.deleteWIOriginalDataValue,
+            deleteEntry: async (book, uid) => { delete book.entries[uid]; return true; },
+            duplicateEntry: book => {
+                const entry = { uid: 1, content: 'Copy' };
+                book.entries[1] = entry;
+                book.originalDataUidMap[1] = book.originalData.entries.length;
+                book.originalData.entries.push({ id: 10, content: 'Copy' });
+                return entry;
+            },
+            saveWorldInfo: () => new Promise((_resolve, fail) => { reject = fail; }),
+        });
+        const saving = action === 'delete' ? model.remove(deps, 'Lore', data, 0) : model.duplicate(deps, 'Lore', data, 0);
+        for (let index = 0; index < 10; index++) await Promise.resolve();
+        const uid = action === 'delete' ? 0 : 1;
+        if (action === 'delete') {
+            data.entries[uid] = { uid, content: 'Replacement' };
+            data.originalDataUidMap[uid] = data.originalData.entries.length;
+            data.originalData.entries.push({ id: 11, content: 'Replacement' });
+        } else {
+            data.entries[uid].content = 'Replacement';
+            legacy.setWIOriginalDataValue(data, uid, 'content', 'Replacement');
+        }
+        reject(new Error('Offline'));
+        expect((await saving).ok).toBe(false);
+        expect(data.entries[uid].content).toBe('Replacement');
+        expect(data.originalData.entries[data.originalDataUidMap[uid]].content).toBe('Replacement');
+        expect(data.originalData.entries[data.originalDataUidMap[3]].id).toBe(9);
+    });
+
+    test.each([true, false])('failed transfer target rolls back copy=%s before an unrelated successful save', async copy => {
+        const source = importedBook();
+        const target = importedBook();
+        const beforeSource = structuredClone(source);
+        const beforeTarget = structuredClone(target);
+        const legacy = createLegacyHelpers();
+        const saveWorldInfo = jest.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue('Archive');
+        const move = vm.runInNewContext(`${functionSource('moveWorldInfoEntry')}\nmoveWorldInfoEntry;`, {
+            world_names: ['Lore', 'Archive'],
+            loadWorldInfo: async name => name === 'Lore' ? source : target,
+            structuredClone, captureWorldInfoMutation: model.captureWorldInfoMutation,
+            getWIOriginalDataIndex: legacy.getWIOriginalDataIndex,
+            deleteWIOriginalDataValue: legacy.deleteWIOriginalDataValue,
+            getFreeWorldEntryUid: () => 1,
+            appendWIOriginalDataEntry: (book, entry) => {
+                book.originalDataUidMap[entry.uid] = book.originalData.entries.length;
+                book.originalData.entries.push({ id: 10, content: entry.content });
+            },
+            saveWorldInfo, toastr: { error() {} }, console: { error() {} },
+            t: (strings, ...values) => strings.reduce((out, part, index) => out + part + (values[index] ?? ''), ''),
+        });
+        expect(await move('Lore', 'Archive', 0, { deleteOriginal: !copy })).toBe(false);
+        expect(source).toEqual(beforeSource);
+        expect(target).toEqual(beforeTarget);
+        applyField(target, 3, 'content', 'Unrelated edit', legacy.setWIOriginalDataValue);
+        expect((await model.commit({ saveWorldInfo }, 'Archive', target)).ok).toBe(true);
+        expect(target.entries[1]).toBeUndefined();
+        expect(target.originalData.entries).toHaveLength(2);
+    });
+
+    test('failed move source restores only its deletion after the target copy was acknowledged', async () => {
+        const source = importedBook();
+        const target = importedBook();
+        const before = structuredClone(source);
+        const legacy = createLegacyHelpers();
+        const move = vm.runInNewContext(`${functionSource('moveWorldInfoEntry')}\nmoveWorldInfoEntry;`, {
+            world_names: ['Lore', 'Archive'], loadWorldInfo: async name => name === 'Lore' ? source : target,
+            structuredClone, captureWorldInfoMutation: model.captureWorldInfoMutation,
+            getWIOriginalDataIndex: legacy.getWIOriginalDataIndex,
+            deleteWIOriginalDataValue: legacy.deleteWIOriginalDataValue,
+            getFreeWorldEntryUid: () => 1,
+            appendWIOriginalDataEntry: (book, entry) => {
+                book.originalDataUidMap[entry.uid] = book.originalData.entries.length;
+                book.originalData.entries.push({ id: 10, content: entry.content });
+            },
+            saveWorldInfo: jest.fn().mockResolvedValueOnce('Archive').mockResolvedValueOnce(null),
+            toastr: { error() {} }, console: { error() {} },
+            t: (strings, ...values) => strings.reduce((out, part, index) => out + part + (values[index] ?? ''), ''),
+        });
+        expect(await move('Lore', 'Archive', 0)).toBe(false);
+        expect(source).toEqual(before);
+        expect(target.entries[1].content).toBe(source.entries[0].content);
+        expect(target.originalDataUidMap[1]).toBe(2);
+    });
+
     test.each([
         ['Lore', { ok: true, name: 'Lore' }],
         ['Lore 2', { ok: true, name: 'Lore 2' }],

@@ -233,6 +233,8 @@ test.each(['hidden', 'aria-hidden'])('an entry close transition completing while
 });
 
 beforeEach(() => {
+    globalThis.structuredClone ??= value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    globalThis.toastr = { error: jest.fn() };
     jest.clearAllMocks();
     jest.useFakeTimers();
     adapter = null;
@@ -638,6 +640,42 @@ describe('World Info shell', () => {
         expect(refresh).toHaveBeenCalledWith(navigation.previous, false);
         expect(detail.destroy).not.toHaveBeenCalled();
         expect(detail.isDirty()).toBe(true);
+    });
+
+    test('failed toggle restores its switch and only rebases the detail after rollback', async () => {
+        const data = book(2);
+        await mount({ name: 'Book A', data });
+        const detail = await open(0);
+        let reject;
+        saveWorldInfo.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+        container.querySelector('.sb-wi-row[data-uid="0"] input').click();
+        await settle();
+        expect(data.entries[0].disable).toBe(true);
+        expect(detail.rebaseKey).not.toHaveBeenCalled();
+        reject(new Error('Offline'));
+        await settle();
+        expect(data.entries[0].disable).toBe(false);
+        expect(container.querySelector('.sb-wi-row[data-uid="0"] input').checked).toBe(true);
+        expect(detail.rebaseKey).toHaveBeenCalledWith('disable');
+        expect(detail.sync).toHaveBeenLastCalledWith({ name: 'Book A', data });
+        expect(detail.destroy).not.toHaveBeenCalled();
+        expect(globalThis.toastr.error).toHaveBeenCalledWith('World Info Save Failed');
+    });
+
+    test('failed reorder restores held row order and the affected detail baseline', async () => {
+        const data = book(3);
+        document.getElementById('world_info_sort_order').value = '13';
+        displayEntries.mockImplementation(data => Object.values(data.entries).sort((left, right) => left.displayIndex - right.displayIndex));
+        await mount({ name: 'Book A', data });
+        const detail = await open(0);
+        // A switch establishes held order before a later reorder attempt.
+        container.querySelector('.sb-wi-row[data-uid="0"] input').click();
+        await settle();
+        saveWorldInfo.mockRejectedValueOnce(new Error('Offline'));
+        await selectMenuAction('Move down', '.sb-wi-row[data-uid="0"] .sb-wi-row-menu');
+        expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(['0', '7', '14']);
+        expect([data.entries[0].displayIndex, data.entries[7].displayIndex]).toEqual([0, 1]);
+        expect(detail.rebaseKey).toHaveBeenCalledWith('displayIndex');
     });
 
     test('enabling a different row never rebases the open draft', async () => {

@@ -614,15 +614,160 @@ export async function commit(deps, name, data) {
 
 const entriesOf = (data, uids) => uids.map(uid => [uid, data?.entries?.[uid]]).filter(([, entry]) => entry);
 
+function originalEntryState(data, uid) {
+    const originals = data.originalData?.entries;
+    const mapped = data.originalDataUidMap?.[uid];
+    const index = Number.isInteger(mapped) && originals?.[mapped]
+        ? mapped : originals?.findIndex(entry => String(entry.id ?? entry.uid) === String(uid)) ?? -1;
+    const entry = originals?.[index];
+    return { originals, index, entry, snapshot: entry && structuredClone(entry), mapped: hasOwn(data.originalDataUidMap, uid) };
+}
+
+const mutationKeyOwners = new WeakMap();
+const mutationEntryOwners = new WeakMap();
+
+function revertOwnedValues(live, previous, submitted, owns = () => true, prefix = '') {
+    for (const key of new Set([...Object.keys(previous), ...Object.keys(submitted)])) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (!owns(path)) continue;
+        if (sameValue(previous[key], submitted[key])) continue;
+        if (sameValue(live[key], submitted[key])) {
+            if (hasOwn(previous, key)) live[key] = structuredClone(previous[key]);
+            else delete live[key];
+        } else if (live[key] && submitted[key]
+            && !Array.isArray(live[key]) && typeof live[key] === 'object'
+            && (previous[key] === undefined || (!Array.isArray(previous[key]) && previous[key] && typeof previous[key] === 'object'))
+            && !Array.isArray(submitted[key]) && typeof submitted[key] === 'object') {
+            revertOwnedValues(live[key], previous[key] ?? {}, submitted[key], owns, path);
+            if (!hasOwn(previous, key) && !Object.keys(live[key]).length) delete live[key];
+        }
+    }
+}
+
+/** In-memory compare-and-revert receipt; tracked book and entry identities are never replaced. */
+export function captureWorldInfoMutation(data, uids, nativeKeys = null) {
+    const owner = { failed: false, previousValues: new WeakMap() };
+    const capture = uid => {
+        const entry = data.entries[uid];
+        return { entry, snapshot: entry && structuredClone(entry), original: originalEntryState(data, uid) };
+    };
+    const before = new Map([...new Set(uids.map(String))].map(uid => [uid, capture(uid)]));
+    let submitted;
+    return {
+        created(uid) {
+            before.set(String(uid), { entry: undefined, original: {} });
+        },
+        capture() {
+            submitted = new Map([...before.keys()].map(uid => [uid, capture(uid)]));
+            for (const [uid, written] of submitted) {
+                if (!written.entry) continue;
+                const owners = mutationKeyOwners.get(written.entry) ?? new Map();
+                written.previousKeyOwners = new Map(owners);
+                written.previousEntryOwner = mutationEntryOwners.get(written.entry);
+                owner.previousValues.set(written.entry, { previous: before.get(uid), owners: written.previousKeyOwners });
+                const keys = nativeKeys ?? Object.keys(written.snapshot).filter(key => !sameValue(before.get(uid).snapshot?.[key], written.snapshot[key]));
+                for (const key of keys) owners.set(key, owner);
+                mutationKeyOwners.set(written.entry, owners);
+                mutationEntryOwners.set(written.entry, owner);
+            }
+        },
+        acknowledge() {
+            owner.previousValues = null;
+        },
+        rollback() {
+            if (!submitted) throw new Error('World Info mutation has no submitted snapshot.');
+            owner.failed = true;
+            // One restored imported ID can match another native UID; compare all owners before undoing any.
+            const current = new Map([...before.keys()].map(uid => [uid, capture(uid)]));
+            for (const [uid, previous] of before) {
+                const written = submitted.get(uid);
+                const { entry: live, original } = current.get(uid);
+                if (live !== written.entry) continue;
+                if (!previous.entry) {
+                    if (!live || !sameValue(live, written.snapshot)) continue;
+                    if (mutationEntryOwners.get(live) !== owner) continue;
+                    if (original.entry !== written.original.entry || !sameValue(original.snapshot, written.original.snapshot)) continue;
+                    delete data.entries[uid];
+                    if (original.entry && original.entry !== previous.original.entry) {
+                        const index = original.originals.indexOf(original.entry);
+                        original.originals.splice(index, 1);
+                        if (data.originalDataUidMap) {
+                            delete data.originalDataUidMap[uid];
+                            for (const key of Object.keys(data.originalDataUidMap)) {
+                                if (data.originalDataUidMap[key] > index) data.originalDataUidMap[key]--;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (live) {
+                    const owners = mutationKeyOwners.get(live);
+                    for (const key of owners.keys()) {
+                        if (owners.get(key) !== owner) continue;
+                        let baseline = previous;
+                        let previousOwner = written.previousKeyOwners.get(key);
+                        // A later failure must not restore an earlier operation that has also failed.
+                        while (previousOwner?.failed) {
+                            const earlier = previousOwner.previousValues?.get(live);
+                            if (!earlier?.previous.entry) break;
+                            baseline = earlier.previous;
+                            previousOwner = earlier.owners.get(key);
+                        }
+                        revertOwnedValues(live, baseline.snapshot, written.snapshot, path => path === key || path.startsWith(`${key}.`));
+                        if (original.entry && original.entry === written.original.entry) {
+                            const originalPath = key === 'disable' ? 'enabled' : ORIGINAL_PATHS[key];
+                            const ownsOriginal = path => originalPath && (path === originalPath || originalPath.startsWith(`${path}.`) || path.startsWith(`${originalPath}.`));
+                            revertOwnedValues(original.entry, baseline.original.snapshot ?? {}, written.original.snapshot ?? {}, ownsOriginal);
+                        }
+                        if (previousOwner) owners.set(key, previousOwner);
+                        else owners.delete(key);
+                    }
+                    if (mutationEntryOwners.get(live) === owner) {
+                        if (written.previousEntryOwner) mutationEntryOwners.set(live, written.previousEntryOwner);
+                        else mutationEntryOwners.delete(live);
+                    }
+                    continue;
+                }
+                if (original.entry !== written.original.entry || original.mapped !== written.original.mapped
+                    || data.originalData?.entries !== previous.original.originals) continue;
+                data.entries[uid] = previous.entry;
+                if (!previous.original.entry) continue;
+                const existingIndex = previous.original.originals.indexOf(previous.original.entry);
+                if (existingIndex >= 0) {
+                    if (previous.original.mapped && data.originalDataUidMap) data.originalDataUidMap[uid] = existingIndex;
+                    continue;
+                }
+                const index = Math.min(previous.original.index, previous.original.originals.length);
+                previous.original.originals.splice(index, 0, previous.original.entry);
+                if (data.originalDataUidMap) {
+                    for (const key of Object.keys(data.originalDataUidMap)) {
+                        if (data.originalDataUidMap[key] >= index) data.originalDataUidMap[key]++;
+                    }
+                    if (previous.original.mapped) data.originalDataUidMap[uid] = index;
+                }
+            }
+        },
+    };
+}
+
+async function commitMutation(deps, name, data, receipt) {
+    receipt.capture();
+    const result = await commit(deps, name, data);
+    if (result.ok) receipt.acknowledge();
+    else receipt.rollback();
+    return result;
+}
+
 /** Row and bulk enable switch (D1). */
 export async function setEnabled(deps, name, data, uids, enabled) {
     const targets = entriesOf(data, [uids].flat());
     if (!targets.length) return { ok: false, name: null };
+    const receipt = captureWorldInfoMutation(data, targets.map(([uid]) => uid), ['disable']);
     for (const [uid, entry] of targets) {
         entry.disable = !enabled;
         mirrorKeys(data, uid, ['disable'], deps.setOriginal);
     }
-    return commit(deps, name, data);
+    return commitMutation(deps, name, data, receipt);
 }
 
 /**
@@ -632,12 +777,13 @@ export async function setEnabled(deps, name, data, uids, enabled) {
 export async function reorder(deps, name, data, orderedUids) {
     const targets = entriesOf(data, orderedUids);
     if (!targets.length) return { ok: false, name: null };
+    const receipt = captureWorldInfoMutation(data, targets.map(([uid]) => uid), ['displayIndex']);
     const start = Math.min(...targets.map(([uid, entry]) => Number.isFinite(entry.displayIndex) ? entry.displayIndex : Number(uid)));
     targets.forEach(([uid, entry], index) => {
         entry.displayIndex = start + index;
         mirrorKeys(data, uid, ['displayIndex'], deps.setOriginal);
     });
-    return commit(deps, name, data);
+    return commitMutation(deps, name, data, receipt);
 }
 
 /** @returns {Promise<{ ok: boolean, name: string|null, entry?: object }>} */
@@ -651,9 +797,11 @@ export async function createEntry(deps, name, data, fields = {}) {
 }
 
 export async function duplicate(deps, name, data, uid) {
+    const receipt = captureWorldInfoMutation(data, []);
     const entry = deps.duplicateEntry(data, uid);
     if (!entry) return { ok: false, name: null };
-    return { ...await commit(deps, name, data), entry };
+    receipt.created(entry.uid);
+    return { ...await commitMutation(deps, name, data, receipt), entry };
 }
 
 /**
@@ -661,6 +809,7 @@ export async function duplicate(deps, name, data, uid) {
  * their originalData records.
  */
 export async function remove(deps, name, data, uids) {
+    const receipt = captureWorldInfoMutation(data, [uids].flat());
     let removed = 0;
     for (const uid of [uids].flat()) {
         if (await deps.deleteEntry(data, uid, { silent: true }) === true) {
@@ -669,7 +818,7 @@ export async function remove(deps, name, data, uids) {
         }
     }
     if (!removed) return { ok: false, name: null, removed };
-    return { ...await commit(deps, name, data), removed };
+    return { ...await commitMutation(deps, name, data, receipt), removed };
 }
 
 /** Move or copy entries; `moveWorldInfoEntry` loads and saves both books itself. */

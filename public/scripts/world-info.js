@@ -26,6 +26,8 @@ import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from
 import { escapeCharacterBookRegex, getFreeCharacterBookEntryId, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
 import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
 import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
+// SillyBunny: failed transfers must not leak optimistic entries into later saves — see docs/ui-migration.md
+import { captureWorldInfoMutation } from './sillybunny-world-info-model.js';
 
 // SillyBunny divergence: World Info is integrated with the fork shell and auxiliary lorebook sources while retaining upstream scan helpers.
 export const world_info_insertion_strategy = {
@@ -7042,6 +7044,11 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
 
     const entryUidString = String(uid);
 
+    // SillyBunny: each book rolls back only its own uncommitted mutation — see docs/ui-migration.md
+    let sourceMutation;
+    let targetMutation;
+    let sourceCommitted = false;
+    let targetCommitted = false;
     try {
         const sourceData = await loadWorldInfo(sourceName);
         const targetData = await loadWorldInfo(targetName);
@@ -7080,20 +7087,27 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
         const maxDisplayIndex = Object.values(targetData.entries).reduce((max, entry) => Math.max(max, entry.displayIndex ?? -1), -1);
         entryToMove.displayIndex = maxDisplayIndex + 1;
 
+        targetMutation = captureWorldInfoMutation(targetData, [newUid]);
         targetData.entries[newUid] = entryToMove;
         appendWIOriginalDataEntry(targetData, entryToMove, sourceOriginalEntry ?? undefined);
+        targetMutation.capture();
+
+        const targetSaved = await saveWorldInfo(targetName, targetData, true);
+        if (!targetSaved) throw new Error(t`World Info Save Failed`);
+        targetCommitted = true;
+        targetMutation.acknowledge();
 
         if (deleteOriginal) {
+            sourceMutation = captureWorldInfoMutation(sourceData, [entryUidString]);
             delete sourceData.entries[entryUidString];
             // Remove from originalData if it exists
             deleteWIOriginalDataValue(sourceData, entryUidString);
-            console.debug(`[WI Move] Removed entry UID ${entryUidString} from source '${sourceName}'.`);
+            sourceMutation.capture();
+            const sourceSaved = await saveWorldInfo(sourceName, sourceData, true);
+            if (!sourceSaved) throw new Error(t`World Info Save Failed`);
+            sourceCommitted = true;
+            sourceMutation.acknowledge();
         }
-
-        await saveWorldInfo(targetName, targetData, true);
-        console.debug(`[WI Move] Saved target lorebook '${targetName}'.`);
-        await saveWorldInfo(sourceName, sourceData, true);
-        console.debug(`[WI Move] Saved source lorebook '${sourceName}'.`);
 
         console.log(`[WI Move] ${entryToMove.comment} ${deleteOriginal ? 'moved' : 'copied'} successfully to '${targetName}'.`);
 
@@ -7112,6 +7126,8 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
 
         return true;
     } catch (error) {
+        if (!sourceCommitted) sourceMutation?.rollback();
+        if (!targetCommitted) targetMutation?.rollback();
         toastr.error(t`An unexpected error occurred while moving the entry: ${error.message}`);
         console.error('[WI Move] Unexpected error:', error);
         return false;

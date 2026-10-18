@@ -387,6 +387,19 @@ describe('explicit save and drafts', () => {
         expect(harness.onStateChange).toHaveBeenCalledWith({ dirty: true, saving: true });
     });
 
+    test('a failed list toggle rebases to rolled-back data before an unrelated detail save', async () => {
+        const { controller, host, data, deps } = mount();
+        edit(host, 'content', 'Unrelated detail edit');
+        deps.saveWorldInfo.mockRejectedValueOnce(new Error('Offline'));
+        expect((await model.setEnabled(deps, 'My book', data, 0, false)).ok).toBe(false);
+        controller.rebaseKey('disable');
+        controller.sync({ name: 'My book', data });
+        expect(controller.isDirty()).toBe(true);
+        expect(await controller.save()).toBe(true);
+        expect(data.entries[0]).toMatchObject({ content: 'Unrelated detail edit', disable: false });
+        expect(controller.isDirty()).toBe(false);
+    });
+
     test.each([null, new Error('failure')])('failed persistence (%s) keeps dirty and reports an error', async failure => {
         const saveWorldInfo = jest.fn(async () => { if (failure instanceof Error) throw failure; return failure; });
         const { host, controller, onSaved } = mount({ deps: { saveWorldInfo } });

@@ -390,10 +390,21 @@ export function mountWorldInfoEditor(container) {
         const { name, data } = state;
         heldOrder ??= entries.map(entry => entry.uid);
         const saving = setEnabled(deps, name, data, uid, enabled);
-        for (const target of [uid].flat()) rebase(target, 'disable');
         const result = await saving;
         if (state.data !== data) return;
-        if (committed(result)) await refreshWorldInfoEditor(navigation_option.previous, false);
+        for (const target of [uid].flat()) rebase(target, 'disable');
+        await finishListMutation(data, result);
+    }
+
+    async function finishListMutation(data, result, navigation = navigation_option.previous) {
+        if (state.data !== data || destroyed) return;
+        if (committed(result)) {
+            await refreshWorldInfoEditor(navigation, false);
+            return;
+        }
+        updateDisplayEntries();
+        entryController()?.sync({ name: state.name, data });
+        shell.refresh();
     }
 
     async function duplicateEntry(uid) {
@@ -401,7 +412,7 @@ export function mountWorldInfoEditor(container) {
         if (!(await shell.guardLeave())) return;
         if (state.data !== data) return;
         const result = await duplicate(deps, name, data, uid);
-        if (committed(result) && state.data === data) await refreshWorldInfoEditor(result.entry.uid, false);
+        await finishListMutation(data, result, result.entry?.uid);
     }
 
     async function deleteEntry(uid) {
@@ -411,7 +422,7 @@ export function mountWorldInfoEditor(container) {
         if (!await Popup.show.confirm(t`Delete world info entry with UID: ${uid}?`, t`This action is irreversible!`)) return;
         if (state.data !== data) return;
         const result = await remove(deps, name, data, uid);
-        if (!committed(result) || state.data !== data) return;
+        if (!result.ok || state.data !== data) return finishListMutation(data, result);
         if (String(selectedUid()) === String(uid)) {
             destroyDetail();
             shell.deselectNow();
@@ -450,7 +461,7 @@ export function mountWorldInfoEditor(container) {
         if (state.data !== data) return;
         const targets = existingSelectedUids(uids);
         const result = await remove(deps, name, data, targets);
-        if (!committed(result) || state.data !== data) return;
+        if (!result.ok || state.data !== data) return finishListMutation(data, result);
         if (selectedUid() !== null && !data.entries[selectedUid()]) {
             destroyDetail();
             shell.deselectNow();
@@ -466,12 +477,16 @@ export function mountWorldInfoEditor(container) {
         const target = index + direction;
         if (index < 0 || target < 0 || target >= ids.length) return false;
         [ids[index], ids[target]] = [ids[target], ids[index]];
-        if (heldOrder) heldOrder = [...ids];
+        const previousOrder = heldOrder;
+        const submittedOrder = heldOrder ? [...ids] : null;
+        heldOrder = submittedOrder;
         const { name, data } = state;
         const saving = reorder(deps, name, data, ids);
-        rebase(uid, 'displayIndex');
         const result = await saving;
-        if (committed(result) && state.data === data) await refreshWorldInfoEditor(navigation_option.previous, false);
+        if (state.data !== data) return false;
+        if (!result.ok && heldOrder === submittedOrder) heldOrder = previousOrder;
+        if (selectedUid() !== null && ids.some(uid => String(uid) === String(selectedUid()))) rebase(selectedUid(), 'displayIndex');
+        await finishListMutation(data, result);
         return true;
     }
 
@@ -627,6 +642,7 @@ export function mountWorldInfoEditor(container) {
             update: (row, entry) => {
                 row.classList.toggle('is-selected', !selection?.isActive && String(selectedUid()) === String(entry.uid));
                 row.classList.toggle('is-disabled', Boolean(entry.disable));
+                row.querySelector('.sb-wi-row-enable input').checked = !entry.disable;
                 for (const control of row.querySelectorAll('.sb-wi-row-enable, .sb-wi-row-menu, .sb-wi-grip')) control.inert = Boolean(selection?.isActive);
             },
         });
@@ -639,16 +655,20 @@ export function mountWorldInfoEditor(container) {
             update: () => run(async () => {
                 if (dragBook !== state) return;
                 const ids = [...entryBox.children].map(row => row.dataset.uid);
+                const previousOrder = heldOrder;
                 if (heldOrder) {
                     const pageIds = new Set(pagination.slice(entries).map(entry => String(entry.uid)));
                     let next = 0;
                     heldOrder = heldOrder.map(uid => pageIds.has(String(uid)) ? ids[next++] : uid);
                 }
+                const submittedOrder = heldOrder;
                 const { name, data } = state;
                 const saving = reorder(deps, name, data, ids);
-                if (selectedUid() !== null) rebase(selectedUid(), 'displayIndex');
                 const result = await saving;
-                if (committed(result) && state.data === data) await refreshWorldInfoEditor(navigation_option.previous, false);
+                if (state.data !== data) return;
+                if (!result.ok && heldOrder === submittedOrder) heldOrder = previousOrder;
+                if (selectedUid() !== null) rebase(selectedUid(), 'displayIndex');
+                await finishListMutation(data, result);
             }),
             stop: () => requestAnimationFrame(() => shell.flushRefresh()),
         });
