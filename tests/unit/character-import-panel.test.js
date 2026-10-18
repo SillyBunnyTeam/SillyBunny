@@ -121,7 +121,7 @@ describe('Import tab', () => {
         await tick();
         expect(host.querySelector('.ds-pref-group h3')).toBeNull();
         expect(host.querySelectorAll('.sb-import-section > header > h3')).toHaveLength(3);
-        expect(host.querySelector('.sb-import-source-botbooru').textContent).toBe('lorum ipsum');
+        expect(host.querySelector('.sb-import-source-botbooru').textContent).toBe('BotBooru');
         const img = host.querySelector('.ds-entity-row img');
         expect(img.getAttribute('src')).toBe('/thumbnail?file=card.png');
         img.dispatchEvent(new Event('error'));

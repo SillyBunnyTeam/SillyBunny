@@ -409,10 +409,10 @@ describe('character and group editor destinations', () => {
 
     test('warns for missing destinations and reports failed opens as errors', async () => {
         expect(await objectNavigation.navigate({ ...target, id: 'deleted.png' }, { from })).toEqual({ ok: false, reason: 'missing' });
-        expect(window.toastr.warning).toHaveBeenCalledWith('lorum ipsum');
+        expect(window.toastr.warning).toHaveBeenCalledWith('This item is no longer available.');
         openGroupMemberDefinition.mockResolvedValue(false);
         expect(await objectNavigation.navigate(target, { from })).toEqual({ ok: false, reason: 'failed' });
-        expect(window.toastr.error).toHaveBeenCalledWith('lorum ipsum');
+        expect(window.toastr.error).toHaveBeenCalledWith('This item could not be opened.');
     });
 
     test.each(['data-sb-character-tab', 'data-sb-settings-tab'])('%s clicks clear the origin so Back uses the list fallback', async attribute => {

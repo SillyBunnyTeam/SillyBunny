@@ -561,7 +561,7 @@ describe('Scenario notes and immediate state', () => {
         edit(host, 'description', 'Unsaved');
         host.querySelector('.sb-persona-entry-more').click();
         const items = openActionMenu.mock.calls.at(-1)[0].sections[0].items;
-        expect(items.map(item => item.label)).toEqual(['lorum ipsum', 'Change Persona Image', 'Create Character Card from Persona', 'Click to set user name for all messages', 'Duplicate Persona', 'Delete Persona']);
+        expect(items.map(item => item.label)).toEqual(['Use this persona', 'Change Persona Image', 'Create Character Card from Persona', 'Click to set user name for all messages', 'Duplicate Persona', 'Delete Persona']);
         expect(items[0].disabled).toBe(true);
         expect(items.at(-1).danger).toBe(true);
         items[1].onSelect();

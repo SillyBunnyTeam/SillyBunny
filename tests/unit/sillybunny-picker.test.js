@@ -447,7 +447,7 @@ describe('multi-toggle picker', () => {
             expect(option.getAttribute('aria-selected')).toBe(String(expected === 'selected'));
             expect(Boolean(option.querySelector('.fa-check'))).toBe(expected === 'selected');
             expect(Boolean(option.querySelector('.fa-minus'))).toBe(expected === 'excluded');
-            expect(option.querySelector('.sr-only')?.textContent ?? null).toBe(expected === 'excluded' ? 'lorum ipsum' : null);
+            expect(option.querySelector('.sr-only')?.textContent ?? null).toBe(expected === 'excluded' ? 'Not selected.' : null);
         }
         expect(onSelect.mock.calls).toEqual([['b'], ['b'], ['b']]);
     });

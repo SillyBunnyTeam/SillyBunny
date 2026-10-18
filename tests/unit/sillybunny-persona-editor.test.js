@@ -616,10 +616,10 @@ describe('Persona editor shell', () => {
         container.querySelector('.sb-persona-row-menu').click();
         await settle();
         const actions = actionMenu.sections.flatMap(section => section.items);
-        expect(actions.map(({ label }) => label)).toEqual(['lorum ipsum', 'Duplicate', 'Delete']);
+        expect(actions.map(({ label }) => label)).toEqual(['Use this persona', 'Duplicate', 'Delete']);
         expect(actions.at(-1).danger).toBe(true);
         expect(mountDetail).not.toHaveBeenCalled();
-        await menuAction('lorum ipsum', '.sb-persona-row-menu');
+        await menuAction('Use this persona', '.sb-persona-row-menu');
         expect(usePersona).toHaveBeenCalledWith(avatarIds[0]);
         container.querySelector('.sb-persona-row-menu').click();
         await settle();
@@ -666,7 +666,7 @@ describe('Persona editor shell', () => {
         await mount();
         container.querySelector('.sb-persona-sort-button').click();
         await settle();
-        expect(actionMenu.sections[0].title).toBe('lorum ipsum');
+        expect(actionMenu.sections[0].title).toBe('Sort type');
         expect(actionMenu.sections[0].items.map(({ checked }) => checked)).toEqual([true, false]);
         await menuAction('Z-A', '.sb-persona-sort-button');
         expect(power_user.persona_sort_order).toBe('desc');
