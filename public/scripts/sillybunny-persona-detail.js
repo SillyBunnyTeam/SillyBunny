@@ -194,11 +194,11 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     const title = createEntryRow({ label: t`Persona Title (optional, display only)`, field: 'title', value: draft.title, onInput: value => writeField('title', value) });
     const inUse = createPropertyRow({ label: t`Current Persona`, field: 'inUse', value: draft.name });
     // HUMAN: replace — Use this persona (also used by the detail action menu).
-    const useLabel = t`lorum ipsum`;
+    const useLabel = t`Use this persona`;
     const use = createButtonRow({ label: useLabel, field: 'use', icon: 'circle-check', onActivate: () => { void runImmediate(() => usePersona(currentId)); } });
     const defaultPersona = createSwitchRow({ label: t`Default Persona`, field: 'default', onChange: enabled => { void runImmediate(() => setPersonaDefault(currentId, enabled)); } });
     // HUMAN: replace — Identity section heading.
-    const identitySection = createPrefGroup({ title: t`lorum ipsum`, field: 'section-identity', rows: [identityAvatar, title, inUse, use, defaultPersona] });
+    const identitySection = createPrefGroup({ title: t`Identity`, field: 'section-identity', rows: [identityAvatar, title, inUse, use, defaultPersona] });
     identitySection.section.dataset.sbSection = 'identity';
     body.append(identitySection.section);
 
@@ -236,7 +236,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     body.append(notesSection.section);
 
     // HUMAN: replace — chat lock requires the persona in use.
-    const chatLock = createSwitchRow({ label: t`Persona is locked to the current chat`, subtitle: t`lorum ipsum`, field: 'chatLock', onChange: enabled => { void runImmediate(() => setPersonaChatLock(currentId, enabled)); } });
+    const chatLock = createSwitchRow({ label: t`Persona is locked to the current chat`, subtitle: t`Prevents persona changes in this chat`, field: 'chatLock', onChange: enabled => { void runImmediate(() => setPersonaChatLock(currentId, enabled)); } });
     const characterConnection = createSwitchRow({ label: t`Persona is locked to the current character`, field: 'characterConnection', onChange: enabled => { void runImmediate(() => setPersonaCharacterConnection(currentId, enabled)); } });
     const connectionList = element('div', 'sb-persona-connections');
     connectionList.setAttribute('role', 'list');

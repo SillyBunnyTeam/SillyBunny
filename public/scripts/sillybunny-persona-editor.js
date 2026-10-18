@@ -123,7 +123,7 @@ export function mountPersonaEditor(container) {
     const searchButton = button(t`Search`, 'magnifying-glass', () => searchControl.toggle());
     const newButton = button(t`New`, 'plus', () => shell.selectItem({ kind: 'create' }), 'sb-persona-new');
     // HUMAN: replace — Sort control label.
-    const sortButton = button(t`lorum ipsum`, 'arrow-down-wide-short', trigger => openSortMenu(trigger), 'sb-persona-sort-button');
+    const sortButton = button(t`Sort`, 'arrow-down-wide-short', trigger => openSortMenu(trigger), 'sb-persona-sort-button');
     const listMenu = button(t`Persona Management`, 'ellipsis-vertical', trigger => openListMenu(trigger), 'sb-persona-list-menu');
     for (const control of [sortButton, listMenu]) {
         control.setAttribute('aria-haspopup', 'menu');
@@ -216,7 +216,7 @@ export function mountPersonaEditor(container) {
     function openSortMenu(trigger) {
         menu(trigger, sortButton.getAttribute('aria-label'), [{
             // HUMAN: replace — Sort by section title.
-            title: t`lorum ipsum`,
+            title: t`Sort type`,
             items: [['asc', t`A-Z`], ['desc', t`Z-A`]].map(([order, label]) => ({
                 ...menuItem(label, power_user.persona_sort_order === order ? 'check' : 'circle', () => {
                     power_user.persona_sort_order = order;
@@ -252,7 +252,7 @@ export function mountPersonaEditor(container) {
         if (!record) return;
         menu(trigger, record.name, [
             // HUMAN: replace — Use this persona action.
-            [menuItem(t`lorum ipsum`, 'circle-check', () => usePersona(avatarId), false, getPersonaEditorStates(avatarId).inUse)],
+            [menuItem(t`Use this persona`, 'circle-check', () => usePersona(avatarId), false, getPersonaEditorStates(avatarId).inUse)],
             [menuItem(t`Duplicate`, 'copy', () => duplicatePersona(avatarId))],
             [menuItem(t`Delete`, 'trash', () => deletePersona(avatarId), true)],
         ]);
@@ -311,7 +311,7 @@ export function mountPersonaEditor(container) {
         }
         if (shell.isNavigating || shell.pointerActive) { shell.deferRefresh(); return; }
         // HUMAN: replace — Persona-count subtitle.
-        subtitle.textContent = `${allIds.length} ${t`lorum ipsum`}`;
+        subtitle.textContent = `${allIds.length} ${t`personas available`}`;
         listStatus.hidden = entries.length > 0;
         heading.hidden = !listStatus.hidden;
         listBox.hidden = !listStatus.hidden;
@@ -319,7 +319,7 @@ export function mountPersonaEditor(container) {
             listStatus.replaceChildren(createStatusPage({
                 icon: allIds.length ? 'magnifying-glass' : 'user',
                 // HUMAN: replace — Empty persona library title.
-                title: allIds.length ? t`No results` : t`lorum ipsum`, compact: true,
+                title: allIds.length ? t`No results` : t`No personas available`, compact: true,
                 actions: allIds.length ? [] : [{ label: t`New`, primary: true, onActivate: () => run(() => shell.selectItem({ kind: 'create' })) }],
             }).element);
         }
