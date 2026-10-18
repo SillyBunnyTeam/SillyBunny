@@ -93,7 +93,7 @@ export function mountCharacterImport(host) {
     zone.tabIndex = 0;
     zone.setAttribute('role', 'button');
     zone.setAttribute('aria-label', t`Import Character from File`);
-    zone.append(element('i', 'fa-solid fa-file-import'), element('span', '', t`lorum ipsum`)); // HUMAN: replace — drop files instruction
+    zone.append(element('i', 'fa-solid fa-file-import'), element('span', '', t`Drop the associated character file here, or click to browse for it.`));
     zone.firstChild.setAttribute('aria-hidden', 'true');
     const picker = document.createElement('input');
     picker.type = 'file';
@@ -158,7 +158,7 @@ export function mountCharacterImport(host) {
         onActivate: () => { void eventSource.emit(event_types.OPEN_CHARACTER_LIBRARY, false); },
     }).row);
 
-    const { section: resultsSection, group: resultsGroup } = section(t`lorum ipsum`, 'results'); // HUMAN: replace — import results heading
+    const { section: resultsSection, group: resultsGroup } = section(t`Results.`, 'results');
     resultsSection.id = 'sb_character_import_results';
     resultsSection.hidden = true;
     const summary = element('div', 'sb-import-summary');
@@ -192,7 +192,7 @@ export function mountCharacterImport(host) {
         const status = element('span', 'sb-import-result-status');
         const glyph = element('i', `fa-solid fa-${result.ok ? 'circle-check' : 'triangle-exclamation'}`);
         glyph.setAttribute('aria-hidden', 'true');
-        const message = result.ok ? t`lorum ipsum` : result.error; // HUMAN: replace — imported successfully status
+        const message = result.ok ? t`Imported!` : result.error;
         status.append(glyph, document.createTextNode(message));
         const { row, slots } = createEntityRow({
             key: `import-result:${index}`, label: result.name, subtitle: status,
@@ -264,7 +264,7 @@ export function mountCharacterImport(host) {
                 sources.append(node.cloneNode(true));
             }
         }
-        const botbooru = element('span', 'sb-import-source-botbooru', t`lorum ipsum`); // HUMAN: replace — Botbooru character source label
+        const botbooru = element('span', 'sb-import-source-botbooru', t`BotBooru`);
         sources.append(document.createTextNode('; '), botbooru);
     }).then(() => {
         host.querySelector('#sb_character_import_loading')?.setAttribute('hidden', '');
