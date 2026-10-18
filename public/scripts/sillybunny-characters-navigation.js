@@ -90,9 +90,9 @@ objectNavigation.register('group-editor', {
 
 objectNavigation.setNotify((reason, target) => {
     if (reason === 'missing') {
-        toastr.warning(t`lorum ipsum`); // HUMAN: replace — missing navigation destination
+        toastr.warning(t`This item is no longer available.`);
     } else if (reason === 'failed') {
-        toastr.error(t`lorum ipsum`); // HUMAN: replace — failed navigation destination
+        toastr.error(t`This item could not be opened.`);
     }
 });
 

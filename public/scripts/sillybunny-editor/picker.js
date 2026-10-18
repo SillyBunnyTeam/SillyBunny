@@ -142,7 +142,7 @@ function createOption(item, selected, id, onClick, { multiple = false, state = n
         minus.classList.add('sb-picker__check', 'sb-picker__excluded');
         const label = document.createElement('span');
         label.className = 'sr-only';
-        label.textContent = t`lorum ipsum`; // HUMAN: replace — excluded option state label.
+        label.textContent = t`Not selected.`;
         option.append(minus, label);
     }
     option.addEventListener('click', onClick);
