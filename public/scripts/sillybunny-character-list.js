@@ -11,12 +11,13 @@ import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { animateListChange } from './sillybunny-motion.js';
+import { eventSource, event_types } from './events.js';
+import { animateListChange, play, stopMotion, prefersReducedMotion, MOTION_FAST, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261018c', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();
@@ -108,6 +109,8 @@ function isFavorite(value) {
 function setActiveState(row, active) {
     row.classList.toggle('is-active-entity', Boolean(active));
     row.classList.toggle('is-selected', Boolean(active));
+    if (active) row.setAttribute('aria-current', 'true');
+    else row.removeAttribute('aria-current');
 }
 
 function makeBadge(glyph, className, label) {
@@ -483,6 +486,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let selectionActive = false;
     let bulkBusy = false;
     let switchingView = false;
+    let pendingActivation = null;
+    let listVisible = false;
+    let visibilityObserver;
+    let preserveRestoredScroll = false;
+    let filteredEntities = [];
 
     const menu = (trigger, title, sections) => openActionMenu({ trigger, title, sections, onClose: () => trigger.setAttribute('aria-expanded', 'false') });
     function refresh() {
@@ -494,7 +502,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const active = Boolean(selection?.isActive);
         if (active !== selectionActive) {
             selectionActive = active;
-            if (active) closeTagPicker();
+            if (active) {
+                closeTagPicker();
+                cancelActivation();
+            }
             run(() => overlay.notifySharedSelectionState(active ? 'select' : 'browse'));
         }
         selection?.decorate();
@@ -512,6 +523,95 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     function closeTagPicker() {
         const trigger = filters.querySelector('.sb-tag-filter-menu-button');
         if (trigger && isPickerOpen(trigger)) closePicker({ animate: false, restoreFocus: false });
+    }
+
+    function syncActiveRows() {
+        if (destroyed) return;
+        for (const { row } of state.rows.values()) {
+            const entry = rowEntry(row);
+            if (entry.kind !== 'character' && entry.kind !== 'group') continue;
+            const data = entry.kind === 'group'
+                ? dataModules.script.getGroupRowData(entry.item)
+                : dataModules.script.getCharacterRowData(entry.item, entry.entity.id);
+            entry.active = Boolean(data.active ?? data.isActive);
+            setActiveState(row, entry.active);
+        }
+        decorateSelection();
+    }
+
+    function cancelActivation() {
+        const activation = pendingActivation;
+        pendingActivation = null;
+        if (activation) stopMotion(activation.row);
+    }
+
+    function syncListVisibility() {
+        const visible = !section.closest('[hidden], [aria-hidden="true"]') && section.getClientRects().length > 0;
+        if (visible === listVisible) return;
+        listVisible = visible;
+        if (!visible) {
+            cancelActivation();
+            return;
+        }
+        syncActiveRows();
+        if (!preserveRestoredScroll) scrollToActiveRow();
+    }
+
+    function scrollToActiveRow() {
+        rowsContainer.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
+    }
+
+    /** Reveals the current chat after shell mounting; editor Back restores its own origin instead. */
+    async function revealActiveEntity(isCurrent = () => true) {
+        // Character reveal queues a delayed upstream full refresh; finish that same path before scrolling.
+        await dataModules.script.printCharacters(state.view === 'characters');
+        if (destroyed || !isCurrent()) return;
+        if (!preserveRestoredScroll && !selection.isActive) {
+            const index = filteredEntities.findIndex(entity => {
+                if (entity.type === 'tag') return false;
+                const data = entity.type === 'group'
+                    ? dataModules.script.getGroupRowData(entity.item)
+                    : dataModules.script.getCharacterRowData(entity.item, entity.id);
+                return Boolean(data.active ?? data.isActive);
+            });
+            const page = Math.floor(index / pagination.pageSize) + 1;
+            if (index >= 0 && page !== pagination.page) {
+                await writePagination(state.view, page, pagination.pageSize);
+                if (destroyed || !isCurrent()) return;
+                await refresh();
+            }
+        }
+        if (destroyed || !isCurrent()) return;
+        syncActiveRows();
+        if (!preserveRestoredScroll && !selection.isActive) scrollToActiveRow();
+        preserveRestoredScroll = false;
+    }
+
+    async function activateChat(row, entry) {
+        if (pendingActivation || destroyed || selection.isActive) return;
+        const activation = { row, view: state.view };
+        pendingActivation = activation;
+        const backgroundColor = getComputedStyle(row).backgroundColor;
+        row.classList.add('is-activating-entity');
+        try {
+            const selected = entry.kind === 'group'
+                ? await dataModules.groups.openGroupById(String(entry.data.id ?? entry.item.id), { switchMenu: false })
+                : await dataModules.script.selectCharacterById(Number(entry.data.chid ?? entry.entity.id), { switchMenu: false });
+            if (!selected || pendingActivation !== activation || destroyed || selection.isActive || state.view !== activation.view) return;
+            syncActiveRows();
+            if (!rowEntry(row)?.active) return;
+            if (!prefersReducedMotion()) await new Promise(resolve => play(row, [
+                { backgroundColor },
+                { backgroundColor: 'var(--sb-flat-selected-bg)' },
+            ], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_CUBIC, onEnd: resolve }));
+            if (pendingActivation !== activation || destroyed || selection.isActive || !rowEntry(row)?.active) return;
+            // The settings shell also uses pinnedOpen for layout, independently of the user's pin.
+            const pinned = document.getElementById('rm_button_panel_pin')?.checked;
+            if (!pinned) globalThis.SillyBunnyShell?.closeCharacters?.();
+        } finally {
+            row.classList.remove('is-activating-entity');
+            if (pendingActivation === activation) pendingActivation = null;
+        }
     }
 
     function selectionIdsByKey() {
@@ -731,6 +831,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const view = model.view === 'groups' ? 'groups' : 'characters';
         const viewChanged = state.view !== model.view;
         if (viewChanged) {
+            cancelActivation();
             closeTagPicker();
             switchingView = true;
             selection.exit();
@@ -738,6 +839,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             switchingView = false;
         }
         state.view = view;
+        filteredEntities = model.entities;
         const idsByKey = selectionIdsByKey();
         state.selectableKeys = model.entities.filter(entity => entity.type !== 'tag')
             .map(entity => view === 'groups'
@@ -798,6 +900,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         state.lastQuery = search?.query ?? '';
         search?.report(modelCount(model), model.sourceCount);
         await renderStatus(model, revision);
+        if (revision === renderRevision) syncListVisibility();
         if (revision === renderRevision) model.pageLoaded?.();
     }
 
@@ -813,6 +916,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     async function restoreState(snapshot, isCurrent = () => true) {
         if (!snapshot || !isCurrent()) return;
+        preserveRestoredScroll = !listVisible;
         if (snapshot.query !== undefined) {
             const query = String(snapshot.query);
             search.setQuery(query, { notify: false });
@@ -904,6 +1008,14 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             rowSelector: '.ds-entity-row--activatable:not([aria-disabled="true"])',
             onOpen: (row, event) => {
                 if (selection.isActive) return true;
+                const entry = rowEntry(row);
+                if (entry?.kind === 'character' || entry?.kind === 'group') {
+                    // Keep the upstream selection guards, but own completion instead of its mobile-only delegated close.
+                    event.preventDefault();
+                    event.stopPropagation();
+                    run(() => activateChat(row, entry));
+                    return true;
+                }
                 if (event instanceof KeyboardEvent) {
                     if (event.key === 'Enter') return false;
                     if (event.key === ' ') {
@@ -914,8 +1026,15 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 return false;
             },
         });
-        resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(setOverflow) : null;
+        resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { setOverflow(); syncListVisibility(); }) : null;
         resizeObserver?.observe(header.element);
+        resizeObserver?.observe(section);
+        visibilityObserver = new MutationObserver(syncListVisibility);
+        for (const ancestor of [document.documentElement, section.closest('#right-nav-panel'), section.closest('#sb-settings-page')].filter(Boolean)) {
+            visibilityObserver.observe(ancestor, { attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'class', 'data-sb-settings-open'] });
+        }
+        const activeEvents = [event_types.CHAT_CHANGED, event_types.CHAT_LOADED, event_types.GROUP_UPDATED].filter(Boolean);
+        activeEvents.forEach(event => eventSource.on(event, syncActiveRows));
         const extensionSlot = header.element.querySelector('.sb-character-list__extension-slot');
         if (extensionSlot) {
             resizeObserver?.observe(extensionSlot);
@@ -932,13 +1051,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             refresh,
             captureState,
             restoreState,
+            revealActiveEntity,
             destroy() {
                 if (destroyed) return;
                 destroyed = true;
+                cancelActivation();
                 renderRevision++;
                 unbindKeyboard();
                 resizeObserver?.disconnect();
                 extensionObserver?.disconnect();
+                visibilityObserver.disconnect();
+                activeEvents.forEach(event => eventSource.removeListener(event, syncActiveRows));
                 tagMenu.destroy();
                 search.destroy();
                 selection.exit();
@@ -964,7 +1087,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 /**
  * Mounts the shared Characters/Groups list controller.
  * @param {HTMLElement} [container] Existing #rm_characters_block host.
- * @returns {Promise<{ section: HTMLElement, render: (model: object) => Promise<void>|void, captureState: () => object, restoreState: (state: object) => Promise<void>, destroy: () => void }>}
+ * @returns {Promise<{ section: HTMLElement, render: (model: object) => Promise<void>|void, captureState: () => object, restoreState: (state: object) => Promise<void>, revealActiveEntity: (isCurrent?: () => boolean) => Promise<void>, destroy: () => void }>}
  */
 export async function mountCharacterList(container = document.getElementById('rm_characters_block')) {
     if (!(container instanceof HTMLElement)) throw new TypeError('Character list requires an HTMLElement host.');

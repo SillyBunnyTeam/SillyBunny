@@ -694,12 +694,12 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018c', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018c', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
@@ -7475,7 +7475,7 @@ async function revealCharacterListView(view, revision) {
     setCharacterPanelMenuType(panel, normalizedView);
 
     syncCharacterListControls(normalizedView);
-    await mountCharacterListController();
+    const listController = await mountCharacterListController();
     if (revision !== characterListViewRevision) return false;
     await setCharacterListEntityView(normalizedView);
     if (revision !== characterListViewRevision) return false;
@@ -7487,6 +7487,8 @@ async function revealCharacterListView(view, revision) {
         setCharacterPanelMenuType(panel, normalizedView);
         syncCharacterListControls(normalizedView);
         syncCharacterShellTabs(normalizedView);
+        // SillyBunny: reveal the current chat after the upstream full-refresh scroll reset — see docs/ui-migration.md.
+        await listController.revealActiveEntity(() => revision === characterListViewRevision);
         return true;
     }
 
@@ -7494,6 +7496,7 @@ async function revealCharacterListView(view, revision) {
     setCharacterPanelMenuType(panel, normalizedView);
     syncCharacterListControls(normalizedView);
     syncCharacterShellTabs(normalizedView);
+    await listController.revealActiveEntity(() => revision === characterListViewRevision);
     return true;
 }
 

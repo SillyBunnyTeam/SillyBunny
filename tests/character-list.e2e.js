@@ -93,7 +93,6 @@ async function prepareList(page, viewport) {
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
-    await page.locator('#sb-character-toggle').click();
     await showView(page, 'characters');
     await page.evaluate(async () => {
         const app = await import('/script.js');
@@ -186,9 +185,9 @@ async function readSort(page, view) {
     return page.evaluate(async view => (await import('/scripts/sillybunny-character-list-state.js')).getListSort(view), view);
 }
 
-async function waitForChatActivation(page, viewport) {
-    // Mobile chat activation closes settings asynchronously, after updating the active ID.
-    if (viewport.width <= 768) await expect(page.locator('#sb-settings-page')).toBeHidden();
+async function waitForChatActivation(page) {
+    await expect(page.locator('#sb-settings-page')).toBeHidden();
+    await expect(page.locator('#chat')).toBeVisible();
 }
 
 async function expectEditorBackRestoration(page, view) {
@@ -233,7 +232,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         await character.locator('.ch_name').click();
         await expect.poll(() => page.evaluate(async () => Number((await import('/script.js')).this_chid))).toBe(chid);
         await expect(page.locator('#sb_character_editor_header')).toBeHidden();
-        await waitForChatActivation(page, viewport);
+        await waitForChatActivation(page);
         await expectEditorBackRestoration(page, 'characters');
 
         await showView(page, 'groups');
@@ -242,7 +241,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         await group.locator('.ch_name').click();
         await expect.poll(() => page.evaluate(async () => (await import('/scripts/group-chats.js')).selected_group)).toBe(groupId);
         await expect(page.locator('#sb_group_editor_header')).toBeHidden();
-        await waitForChatActivation(page, viewport);
+        await waitForChatActivation(page);
         await expectEditorBackRestoration(page, 'groups');
     });
 
@@ -362,6 +361,84 @@ async function chatState(page) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    for (const view of ['characters', 'groups']) {
+        test(`${view} activation closes the shell and reopening reveals the current row at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await showView(page, view);
+            await pageSize(page).selectOption('50');
+            const row = listRows(page, view).last();
+            const key = await row.getAttribute('data-sb-list-key');
+            await row.evaluate(element => { window.__sbActivationRow = element; });
+            await row.locator('.ch_name').click();
+            await waitForChatActivation(page);
+            await expect(row).toHaveAttribute('aria-current', 'true');
+            await expect(row).toHaveClass(/is-selected/);
+            await list(page).locator('.sb-character-list__box').evaluate(box => { box.scrollTop = 0; });
+            await showView(page, view);
+            const current = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await expect(current).toHaveAttribute('aria-current', 'true');
+            await expect(current).toBeInViewport();
+            expect(await current.evaluate(element => element === window.__sbActivationRow)).toBe(true);
+            await expect(current).not.toBeFocused();
+            await expect.poll(() => list(page).locator('.sb-character-list__box').evaluate(box => box.scrollTop)).toBeGreaterThan(0);
+            for (const gesture of ['Enter', ' ']) {
+                await current.focus();
+                await page.keyboard.press(gesture);
+                await waitForChatActivation(page);
+                await showView(page, view);
+            }
+            await pageSize(page).selectOption('10');
+            await page.evaluate(() => window.SillyBunnyShell.closeCharacters());
+            await waitForChatActivation(page);
+            await showView(page, view);
+            await expect(list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`)).toBeInViewport();
+            await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(3);
+            await chooseSortItem(page, 'Grid');
+            await expect(list(page).locator('[aria-current="true"]')).toHaveCSS('background-color', await list(page).evaluate(element => {
+                const probe = document.createElement('span');
+                probe.style.backgroundColor = 'var(--sb-flat-selected-bg)';
+                element.append(probe);
+                const color = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return color;
+            }));
+        });
+
+        test(`${view} refusal, failed loading, and pinning keep the list open at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await showView(page, view);
+            const before = await chatState(page);
+            await page.evaluate(async () => (await import('/script.js')).setSendButtonState(true));
+            const row = listRows(page, view).last();
+            await row.locator('.ch_name').click();
+            await expect(page.locator('#sb-settings-page')).toBeVisible();
+            expect(await chatState(page)).toEqual(before);
+            await expect(row).not.toHaveAttribute('aria-current', 'true');
+            await page.evaluate(async () => (await import('/script.js')).setSendButtonState(false));
+
+            const endpoint = { characters: '**/api/chats/get', groups: '**/api/chats/group/get' }[view];
+            await page.route(endpoint, route => route.fulfill({ status: 500, json: {} }));
+            await row.locator('.ch_name').click();
+            await expect.poll(() => page.evaluate(() => document.querySelector('.is-activating-entity') === null)).toBe(true);
+            await expect(page.locator('#sb-settings-page')).toBeVisible();
+            await page.unroute(endpoint);
+            // Restore the original fixture handler removed by unroute, never allow a live chat write.
+            await page.route(endpoint, route => route.fulfill({ json: view === 'groups' ? [
+                { chat_metadata: { tainted: true } },
+                { name: 'QA group', is_user: false, mes: 'QA chat', send_date: '2026-10-18' },
+            ] : [] }));
+            await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = true; });
+            const other = listRows(page, view).first();
+            await other.locator('.ch_name').click();
+            await expect(other).toHaveAttribute('aria-current', 'true');
+            await expect(other).not.toHaveClass(/is-activating-entity/);
+            await expect(page.locator('#sb-settings-page')).toBeVisible();
+            await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = false; });
+            await other.locator('.ch_name').click();
+            await waitForChatActivation(page);
+        });
+    }
+
     test(`tag filter menu cycles states and filters both list views at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
         await pageSize(page).selectOption('50');

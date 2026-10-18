@@ -43,7 +43,7 @@ await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ po
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: jest.fn() }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: {} }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-state.js', () => ({ getListPage: () => 1, getListPageSize: () => 10 }));
-await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({ animateListChange: (_rows, update) => update(), play() {}, stopMotion() {}, animateOut() {}, MOTION_SLOW: 0 }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({ animateListChange: (_rows, update) => update(), play() {}, stopMotion() {}, animateOut() {}, MOTION_SLOW: 0, MOTION_FAST: 200, MOTION_EASE_OUT_CUBIC: 'ease-out', prefersReducedMotion: () => true }));
 const { BulkEditOverlay } = await import('../../public/scripts/BulkEditOverlay.js');
 const { initBulkEdit } = await import('../../public/scripts/bulk-edit.js');
 const { mountCharacterList } = await import('../../public/scripts/sillybunny-character-list.js');

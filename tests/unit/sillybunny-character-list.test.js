@@ -20,6 +20,9 @@ const deleteCharacterById = jest.fn();
 const duplicateCharacter = jest.fn();
 const deleteGroupById = jest.fn();
 const navigate = jest.fn();
+const selectCharacterById = jest.fn();
+const openGroupById = jest.fn();
+const play = jest.fn();
 const destroyTagMenu = jest.fn();
 const attachTagFilterMenu = jest.fn(() => ({ refresh: jest.fn(), destroy: destroyTagMenu }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/tag-filter-menu.js', () => ({ attachTagFilterMenu }));
@@ -50,7 +53,9 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js',
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { navigate } }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
     animateListChange: jest.fn((_rows, update) => update()),
-    play: jest.fn(), stopMotion: jest.fn(), animateOut: jest.fn((_node, _frames, done) => done()), MOTION_SLOW: 0,
+    play, stopMotion: jest.fn(), animateOut: jest.fn((_node, _frames, done) => done()), MOTION_SLOW: 0,
+    MOTION_FAST: 200, MOTION_EASE_OUT_CUBIC: 'cubic-bezier(0.33, 1, 0.68, 1)',
+    prefersReducedMotion: () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.body.classList.contains('reduced-motion'),
 }));
 await jest.unstable_mockModule('../../public/script.js', () => ({
     setCharacterListRenderer: value => { renderer = value; }, printCharacters,
@@ -61,10 +66,10 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
     getHiddenBlock: async count => template(`<p>${count} hidden</p>`),
     getEmptyBlock: async () => template('<p>No characters found</p>'),
     toggleCharacterFavoriteById, duplicateCharacter, deleteCharacterById,
-    characterGroupOverlay, characters: characterLibrary,
+    characterGroupOverlay, characters: characterLibrary, selectCharacterById,
 }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
-    toggleGroupFavoriteById, deleteGroupById, groups: groupLibrary,
+    toggleGroupFavoriteById, deleteGroupById, groups: groupLibrary, openGroupById,
     getGroupAvatarElement: () => template('<img src="/group.png">'),
 }));
 await jest.unstable_mockModule('../../public/scripts/tags.js', () => ({
@@ -80,6 +85,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-s
 }));
 
 const { mountCharacterList, getMountedCharacterList } = await import('../../public/scripts/sillybunny-character-list.js');
+const { eventSource, event_types } = await import('../../public/scripts/events.js');
 const characters = count => Array.from({ length: count }, (_, id) => ({ type: 'character', id, item: { name: `Name ${id}`, avatar: `${id}.png` } }));
 const settle = async () => { for (let index = 0; index < 40; index++) await Promise.resolve(); };
 const rows = () => [...document.querySelectorAll('#rm_print_characters_block > .ds-entity-row')];
@@ -89,6 +95,17 @@ async function mount() { mounted = await mountCharacterList(); return mounted; }
 
 beforeEach(() => {
     jest.clearAllMocks();
+    play.mockReset().mockImplementation((_row, _frames, options) => { options.onEnd?.(); });
+    selectCharacterById.mockReset().mockImplementation(async id => {
+        model.entities.forEach(entity => { entity.item.active = entity.type === 'character' && Number(entity.id) === id; });
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        return true;
+    });
+    openGroupById.mockReset().mockImplementation(async id => {
+        model.entities.forEach(entity => { entity.item.active = entity.type === 'group' && entity.item.id === id; });
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        return true;
+    });
     runBulkAction.mockReset().mockResolvedValue(undefined);
     characterLibrary.splice(0, characterLibrary.length, ...Array.from({ length: 40 }, (_, id) => ({ name: `Name ${id}`, avatar: `${id}.png` })));
     renderer = null;
@@ -106,7 +123,7 @@ beforeEach(() => {
         <div id="rm_print_characters_block"></div></div><button id="rm_button_create"></button><button id="rm_button_group_chats"></button>`;
     document.getElementById('charListGridToggle').onclick = () => { power_user.charListGrid = !power_user.charListGrid; document.body.classList.toggle('charListGrid', power_user.charListGrid); };
     globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn(async () => {}) };
-    globalThis.SillyBunnyShell = { openTab: jest.fn() };
+    globalThis.SillyBunnyShell = { openTab: jest.fn(), closeCharacters: jest.fn() };
     globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} unobserve() {} };
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callback(); return 1; });
 });
@@ -211,11 +228,15 @@ describe('shared Characters/Groups list', () => {
             const row = rows()[0];
             const activation = jest.fn();
             row.addEventListener('click', activation);
-            for (const key of ['Enter', ' ']) row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-            expect(activation).toHaveBeenCalledTimes(2);
+            for (const key of ['Enter', ' ']) {
+                row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+                await settle();
+            }
+            expect(selectCharacterById).toHaveBeenCalledTimes(2);
+            expect(activation).not.toHaveBeenCalled();
             const edit = row.querySelector('button');
             edit.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-            expect(activation).toHaveBeenCalledTimes(2);
+            expect(selectCharacterById).toHaveBeenCalledTimes(2);
             row.focus();
             row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
             expect(document.activeElement).toBe(rows()[1]);
@@ -441,6 +462,164 @@ async function enterSelection() {
     action('Select').onSelect();
     await settle();
 }
+
+describe('chat activation and current entity', () => {
+    test.each(['characters', 'groups'])('%s waits for successful selection and the background motion before closing the shell', async view => {
+        model.view = view;
+        if (view === 'groups') model.entities = [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group' } }];
+        await mount();
+        const row = rows()[0];
+        let finish;
+        play.mockImplementation((_row, _frames, options) => { finish = options.onEnd; });
+        row.querySelector('.ch_name').click();
+        await settle();
+        const select = view === 'groups' ? openGroupById : selectCharacterById;
+        expect(select).toHaveBeenCalledWith(view === 'groups' ? 'g' : 0, { switchMenu: false });
+        expect(row.getAttribute('aria-current')).toBe('true');
+        expect(row.classList.contains('is-selected')).toBe(true);
+        expect(play).toHaveBeenCalledWith(row, expect.arrayContaining([{ backgroundColor: 'var(--sb-flat-selected-bg)' }]), expect.objectContaining({ duration: 200 }));
+        expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
+        finish();
+        await settle();
+        expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
+        expect(row.classList.contains('is-activating-entity')).toBe(false);
+    });
+
+    test.each([
+        ['characters', 'refused'], ['characters', 'failed'], ['characters', 'cancelled guard'],
+        ['groups', 'refused'], ['groups', 'failed'], ['groups', 'cancelled guard'],
+    ])('%s %s selection leaves the menu open', async (view, outcome) => {
+        model.view = view;
+        if (view === 'groups') model.entities = [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group' } }];
+        await mount();
+        const select = view === 'groups' ? openGroupById : selectCharacterById;
+        select.mockReset();
+        if (outcome === 'failed') select.mockRejectedValue(new Error('load failed'));
+        else select.mockResolvedValue(false);
+        globalThis.toastr = { error: jest.fn() };
+        rows()[0].click();
+        await settle();
+        expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
+        expect(play).not.toHaveBeenCalled();
+        expect(rows()[0].hasAttribute('aria-current')).toBe(false);
+    });
+
+    test('entering selection while chat loading cancels deferred dismissal', async () => {
+        let finish;
+        selectCharacterById.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        await mount();
+        rows()[0].click();
+        await settle();
+        await enterSelection();
+        finish(true);
+        await settle();
+        expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
+        expect(play).not.toHaveBeenCalled();
+    });
+
+    test('the user pin keeps a successful chat activation open', async () => {
+        document.body.insertAdjacentHTML('beforeend', '<input type="checkbox" id="rm_button_panel_pin"><div id="right-nav-panel"></div>');
+        document.getElementById('rm_button_panel_pin').checked = true;
+        await mount();
+        rows()[0].click();
+        await settle();
+        expect(selectCharacterById).toHaveBeenCalledTimes(1);
+        expect(rows()[0].getAttribute('aria-current')).toBe('true');
+        expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
+    });
+
+    test('the shell layout pinnedOpen class alone is not a user pin', async () => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="right-nav-panel" class="pinnedOpen"></div>');
+        await mount();
+        rows()[0].click();
+        await settle();
+        expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['media', 'body'])('%s reduced motion commits and closes instantly without playing motion', async source => {
+        window.matchMedia = jest.fn(() => ({ matches: source === 'media' }));
+        document.body.classList.toggle('reduced-motion', source === 'body');
+        await mount();
+        rows()[0].click();
+        await settle();
+        expect(rows()[0].getAttribute('aria-current')).toBe('true');
+        expect(play).not.toHaveBeenCalled();
+        expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
+        delete window.matchMedia;
+    });
+
+    test('chat and group events update retained rows without rendering or affecting checkboxes', async () => {
+        await mount();
+        const original = rows();
+        model.entities[1].item.active = true;
+        printCharacters.mockClear();
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        expect(rows()).toEqual(original);
+        expect(original[1].getAttribute('aria-current')).toBe('true');
+        expect(printCharacters).not.toHaveBeenCalled();
+        model.entities[1].item.active = false;
+        model.entities[2].item.active = true;
+        await eventSource.emit(event_types.GROUP_UPDATED);
+        expect(original[1].hasAttribute('aria-current')).toBe(false);
+        expect(original[2].getAttribute('aria-current')).toBe('true');
+        await enterSelection();
+        original[0].click();
+        expect(original[0].querySelector('.sb-selection-check').checked).toBe(true);
+        expect(original[2].getAttribute('aria-current')).toBe('true');
+        expect(selectCharacterById).not.toHaveBeenCalled();
+        expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
+    });
+
+    test('folder and Back activation still reaches the upstream drilldown without selecting a chat', async () => {
+        model.folderOpen = true;
+        model.entities.push({ type: 'tag', id: 'folder', item: { name: 'Folder' } });
+        await mount();
+        const drilldown = jest.fn();
+        document.addEventListener('click', drilldown);
+        try {
+            document.querySelector('[tagid="folder"]').click();
+            document.querySelector('[tagid="back"]').click();
+            expect(drilldown).toHaveBeenCalledTimes(2);
+            expect(selectCharacterById).not.toHaveBeenCalled();
+            expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
+        } finally {
+            document.removeEventListener('click', drilldown);
+        }
+    });
+
+    test('first reveal scrolls to the current row without focus theft or repeated scrolling', async () => {
+        await mount();
+        const row = rows()[2];
+        row.scrollIntoView = jest.fn();
+        model.entities[2].item.active = true;
+        const focus = button('more');
+        focus.focus();
+        jest.spyOn(mounted.section, 'getClientRects').mockReturnValue([{}]);
+        resize();
+        resize();
+        expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
+        expect(document.activeElement).toBe(focus);
+        mounted.section.hidden = true;
+        resize();
+        mounted.section.hidden = false;
+        resize();
+        expect(row.scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+
+    test('reveal opens the page containing the current chat, but editor Back keeps its saved origin', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        model.entities[24].item.active = true;
+        await mount();
+        await mounted.revealActiveEntity();
+        expect(mounted.captureState().page).toBe(3);
+        expect(document.getElementById('CharID24').getAttribute('aria-current')).toBe('true');
+        await mounted.restoreState({ query: '', page: 1, scrollTop: 15, focusKey: null });
+        await mounted.revealActiveEntity();
+        expect(mounted.captureState().page).toBe(1);
+        expect(mounted.captureState().scrollTop).toBe(15);
+    });
+});
 
 describe('Characters/Groups shared selection mode', () => {
     test('row capture toggles without starting a chat; controls and folders are inert', async () => {

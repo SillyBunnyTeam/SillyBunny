@@ -1057,7 +1057,7 @@ async function validateGroup(group, { trustActiveChat = false } = {}) {
  * @param {object} options - Load options.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the group editor.
  * @param {boolean} [options.newlyCreated=false] Whether the active group chat was created before loading.
- * @returns {Promise<void>} A promise that resolves when the chat messages have been loaded.
+ * @returns {Promise<boolean>} Whether the chat messages were loaded.
  */
 export async function getGroupChat(groupId, reload = false, { switchMenu = true, newlyCreated = false } = {}) {
     incrementChatGeneration();
@@ -1065,7 +1065,7 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     const group = groups.find((x) => x.id === groupId);
     if (!group) {
         console.warn('Group not found', groupId);
-        return;
+        return false;
     }
 
     // Run validation before any loading
@@ -1089,7 +1089,8 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     } catch (error) {
         console.error(error);
         toastr.error(t`Could not load chat data. Try reloading the page.`);
-        return;
+        // SillyBunny: callers must distinguish a failed load from a successful selection — see docs/ui-migration.md.
+        return false;
     }
     const metadata = data?.[0]?.chat_metadata ?? {};
 
@@ -1134,6 +1135,7 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
     if (freshChat) await eventSource.emit(event_types.GROUP_CHAT_CREATED);
     if (freshGroupGreetingMessageId !== -1) await emitGroupGreetingMessageEvents(freshGroupGreetingMessageId);
+    return true;
 }
 
 /**
@@ -3689,7 +3691,8 @@ export async function openGroupById(groupId, { switchMenu = true } = {}) {
     selected_group = groupId;
     setEditedMessageId(undefined);
     updateChatMetadata({}, true);
-    await getGroupChat(groupId, false, { switchMenu });
+    // SillyBunny: do not dismiss the list when the selected group's chat could not load — see docs/ui-migration.md.
+    if (!await getGroupChat(groupId, false, { switchMenu })) return false;
     syncCharacterMenuActiveEntity();
     return true;
 }

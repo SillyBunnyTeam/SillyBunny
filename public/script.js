@@ -1392,7 +1392,8 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         }
         setCharacterId(id);
         chat_metadata = {};
-        await getChat({ switchMenu });
+        // SillyBunny: selection must report a failed load before the list dismisses its shell — see docs/ui-migration.md.
+        if (!await getChat({ switchMenu })) return false;
         window.dispatchEvent(new CustomEvent('sb:roleplay-character-selected', {
             detail: { avatar: characters[this_chid]?.avatar || '' },
         }));
