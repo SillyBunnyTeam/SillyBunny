@@ -455,24 +455,36 @@ export function mountPersonaEditor(container) {
         shell.refresh();
     }
 
-    function refresh(reason, avatarId) {
-        if (destroyed) return Promise.resolve();
+    function queueRefresh(reason, avatarId) {
         const priority = { states: 0, persona: 1, avatar: 2, list: 3 };
         const previous = pendingRefresh;
         pendingRefresh = {
             reason: previous && priority[previous.reason] > priority[reason] ? previous.reason : reason,
             avatarId: previous && previous.avatarId !== avatarId ? undefined : avatarId,
         };
+    }
+
+    async function applyPendingRefresh() {
+        const next = pendingRefresh;
+        pendingRefresh = null;
+        try {
+            await applyRefresh(next.reason, next.avatarId);
+        } catch (error) {
+            if (!destroyed) queueRefresh(next.reason, next.avatarId);
+            throw error;
+        }
+    }
+
+    function refresh(reason, avatarId) {
+        if (destroyed) return Promise.resolve();
+        queueRefresh(reason, avatarId);
         if (!initialized || !isOpen()) return Promise.resolve();
         refreshPromise ??= Promise.resolve().then(async () => {
             while (isOpen() && pendingRefresh) {
-                const next = pendingRefresh;
-                pendingRefresh = null;
-                await applyRefresh(next.reason, next.avatarId);
+                await applyPendingRefresh();
             }
         }).finally(() => {
             refreshPromise = null;
-            if (pendingRefresh && isOpen()) return refresh(pendingRefresh.reason, pendingRefresh.avatarId);
         });
         return refreshPromise;
     }
@@ -482,9 +494,7 @@ export function mountPersonaEditor(container) {
         preparingReveal = true;
         try {
             while (!destroyed && pendingRefresh) {
-                const next = pendingRefresh;
-                pendingRefresh = null;
-                await applyRefresh(next.reason, next.avatarId);
+                await applyPendingRefresh();
             }
         } finally { preparingReveal = false; }
     }

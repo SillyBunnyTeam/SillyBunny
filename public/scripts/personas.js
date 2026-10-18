@@ -517,9 +517,11 @@ async function addMissingPersonas(avatarsList) {
  * Gets a list of user avatars.
  * @param {boolean} doRender Whether to render the list
  * @param {string} openPageAt Item to be opened at
+ * @param {object} [options] SillyBunny list-readiness options.
+ * @param {boolean} [options.strict=false] Reject malformed avatar lists without changing legacy callers.
  * @returns {Promise<string[]>} List of avatar file names
  */
-export async function getUserAvatars(doRender = true, openPageAt = '') {
+export async function getUserAvatars(doRender = true, openPageAt = '', { strict = false } = {}) {
     const response = await fetch('/api/avatars/get', {
         method: 'POST',
         headers: getRequestHeaders({ omitContentType: true }),
@@ -528,6 +530,8 @@ export async function getUserAvatars(doRender = true, openPageAt = '') {
         const allEntities = await response.json();
 
         if (!Array.isArray(allEntities)) {
+            // SillyBunny: the rebuilt list must distinguish malformed data from an empty library — see docs/ui-migration.md
+            if (strict) throw new Error(t`Error`);
             return [];
         }
 
@@ -3367,13 +3371,11 @@ export function getPersonaRecord(avatarId) {
 }
 
 export async function listPersonaAvatars() {
-    try {
-        const avatars = await getUserAvatars(false) ?? [];
-        await addMissingPersonas(avatars);
-        return avatars;
-    } catch {
-        return [];
-    }
+    // SillyBunny: list readiness must reject failed legacy fetches so reopening retries — see docs/ui-migration.md
+    const avatars = await getUserAvatars(false, '', { strict: true });
+    if (!Array.isArray(avatars)) throw new Error(t`Error`);
+    await addMissingPersonas(avatars);
+    return avatars;
 }
 
 export function getPersonaEditorStates(avatarId) {

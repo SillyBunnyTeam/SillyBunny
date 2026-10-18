@@ -245,6 +245,55 @@ afterEach(() => {
 });
 
 describe('Persona editor shell', () => {
+    function realAvatarList(fetch) {
+        return runInNewContext(`
+            ${personasSource.match(/^export async function getUserAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}
+            ${personasSource.match(/^export async function listPersonaAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}
+            listPersonaAvatars;
+        `, { fetch, getRequestHeaders: () => ({}), addMissingPersonas: async () => {}, t: strings => strings.join('') });
+    }
+
+    test('real HTTP list failure rejects first readiness and reopening fetches successfully', async () => {
+        personas();
+        const fetch = jest.fn().mockResolvedValueOnce({ ok: false })
+            .mockResolvedValue({ ok: true, json: async () => [...avatarIds] });
+        listAvatars.mockImplementation(realAvatarList(fetch));
+        mounted = mountPersonaEditor(container);
+        await expect(mounted.ready).rejects.toThrow();
+        expect(container.querySelector('.sb-persona-editor')).toBeNull();
+        mounted = mountPersonaEditor(container);
+        await mounted.ready;
+        expect(rowIds()).toEqual(avatarIds);
+        expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('real refresh failure preserves rows and the next reveal retries the list', async () => {
+        personas();
+        const fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => [...avatarIds] });
+        listAvatars.mockImplementation(realAvatarList(fetch));
+        mounted = mountPersonaEditor(container);
+        await mounted.ready;
+        const row = container.querySelector('.sb-persona-row');
+        fetch.mockResolvedValueOnce({ ok: false });
+        await expect(adapter.refresh('list')).rejects.toThrow();
+        expect(rowIds()).toEqual(avatarIds);
+        expect(container.querySelector('.sb-persona-row')).toBe(row);
+        await settle();
+        expect(fetch).toHaveBeenCalledTimes(2);
+        await mounted.prepareReveal();
+        expect(fetch).toHaveBeenCalledTimes(3);
+        expect(rowIds()).toEqual(avatarIds);
+    });
+
+    test('malformed JSON lists reject the strict editor API while legacy avatar callers keep empty-success', async () => {
+        const fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ invalid: true }) });
+        await expect(realAvatarList(fetch)()).rejects.toThrow('Error');
+        const legacy = runInNewContext(`${personasSource.match(/^export async function getUserAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}\ngetUserAvatars;`, {
+            fetch, getRequestHeaders: () => ({}),
+        });
+        await expect(legacy(false)).resolves.toEqual([]);
+    });
+
     test('mount is idempotent and hides only the legacy layout after styles resolve', async () => {
         await mount();
         expect(mountPersonaEditor(container)).toBe(mounted);

@@ -118,6 +118,7 @@ import {
     discardGroupEditorForEntity,
     // SillyBunny: cloned member filters share the searchable tag menu — see docs/ui-migration.md.
     attachGroupTagFilterMenus,
+    prepareGroupEditorReveal,
 } from './sillybunny-group-editor.js';
 
 export {
@@ -178,6 +179,8 @@ const EDITABLE_KEYS = [
 
 /** @type {GroupDraft|null} */
 let editorDraft = null;
+// SillyBunny: group routes share deferred-style readiness, including failed-link retries — see docs/ui-migration.md
+let groupEditorReady = Promise.resolve(true);
 
 /**
  * True when the current group has a custom avatar that can be reverted to the
@@ -2458,8 +2461,10 @@ async function modifyGroupMember(groupId, groupMember, isDelete) {
             }
         }
     }
+}
 
-    // SillyBunny: data changes synchronously; only the resulting list paint is animated.
+// SillyBunny: reconciliation also runs after failed member hydration — see docs/ui-migration.md
+function refreshGroupMemberLists() {
     printGroupCandidates({ animate: true });
     printGroupMembers({ animate: true });
 
@@ -3090,9 +3095,12 @@ function toggleHiddenControls(group, generationMode = null) {
  * @param {boolean} skipAnimation If true, skips the animation when selecting the group
  */
 function select_group_chats(groupId, skipAnimation) {
-    // SillyBunny: the member-list styles are a deferred stylesheet (frontend budget);
-    // it is preloaded, so activating it here applies before the rows paint.
-    window.SillyBunnyLoadStylesheet?.();
+    // SillyBunny: gate every native open path, not only shell navigation — see docs/ui-migration.md
+    groupEditorReady = prepareGroupEditorReveal(document.getElementById('rm_group_chats_block'),
+        () => ['group_edit', 'group_create'].includes(menu_type)).catch(error => {
+        reportGroupEditorError(error);
+        return false;
+    });
     const loadResult = beginGroupEditorLoad(groupId ?? null);
     openGroupId = groupId;
     const group = openGroupId && groups.find((x) => x.id == openGroupId);
@@ -3173,6 +3181,7 @@ function select_group_chats(groupId, skipAnimation) {
     } else {
         openGroupEditorCreateSession();
     }
+    return groupEditorReady;
 }
 
 /**
@@ -3293,17 +3302,44 @@ async function restoreGroupAvatar() {
     if (editorDraft === draft && isGroupEditorOwner(groupId)) rebaseGroupEditor(savedSnapshot);
 }
 
-async function onGroupActionClick(event) {
+function onGroupActionClick(event) {
     event.stopPropagation();
     const action = $(this).data('action');
     const member = $(this).closest('.group_member');
-    await runGroupMemberAction(action, member);
+    return runGroupEditorAction(() => runGroupMemberAction(action, member));
+}
+
+// SillyBunny: DOM callbacks consume errors; awaited command APIs still reject — see docs/ui-migration.md
+function reportGroupEditorError(error) {
+    console.error(error);
+    toastr.error(error?.message || t`Error`);
+}
+
+function runGroupEditorAction(action) {
+    return Promise.resolve().then(action).catch(reportGroupEditorError);
 }
 
 // SillyBunny: delegated clicks, switches and menus use one action path, including
 // detached rows whose jQuery data store was not copied by the popout.
 async function runGroupMemberAction(action, member) {
     const focus = captureGroupMemberFocus(member);
+    try {
+        await applyGroupMemberAction(action, member);
+    } finally {
+        if (focus.draft === editorDraft && focus.groupId === openGroupId) {
+            if (action === 'add' || action === 'remove') refreshGroupMemberLists();
+            await eventSource.emit(event_types.GROUP_UPDATED);
+            if (['add', 'up', 'down', 'remove', 'enable', 'disable'].includes(action)) {
+                restoreGroupMemberFocus(focus, {
+                    removed: action === 'remove' || action === 'add',
+                    control: action === 'add' ? '' : action === 'enable' || action === 'disable' ? '.sb-group-member-switch' : '.sb-group-member-menu',
+                });
+            }
+        }
+    }
+}
+
+async function applyGroupMemberAction(action, member) {
     if (action === 'remove') {
         await modifyGroupMember(openGroupId, member, true);
     }
@@ -3347,17 +3383,8 @@ async function runGroupMemberAction(action, member) {
     if (action === 'speak') {
         const chid = Number(member.attr('data-chid'));
         if (Number.isInteger(chid)) {
-            Generate('normal', { force_chid: chid });
+            Generate('normal', { force_chid: chid }).catch(reportGroupEditorError);
         }
-    }
-
-    await eventSource.emit(event_types.GROUP_UPDATED);
-    // SillyBunny: adding returns focus to the next candidate, not the moved row — see docs/ui-migration.md
-    if (['add', 'up', 'down', 'remove', 'enable', 'disable'].includes(action)) {
-        restoreGroupMemberFocus(focus, {
-            removed: action === 'remove' || action === 'add',
-            control: action === 'add' ? '' : action === 'enable' || action === 'disable' ? '.sb-group-member-switch' : '.sb-group-member-menu',
-        });
     }
 }
 
@@ -3426,19 +3453,21 @@ function bindGroupListKeyboard(container, onlyMembers) {
         onOpen: (row, event) => {
             if (!onlyMembers) {
                 if (event.type === 'click' && !isGroupCandidateRowClick(event)) return false;
-                return runGroupMemberAction('add', $(row));
+                return runGroupEditorAction(() => runGroupMemberAction('add', $(row)));
             }
             row.focus({ preventScroll: true });
-            return objectNavigation.navigate({ kind: 'character-editor', id: row.dataset.avatar, via: 'group-member' }, {
+            return runGroupEditorAction(() => objectNavigation.navigate({ kind: 'character-editor', id: row.dataset.avatar, via: 'group-member' }, {
                 // SillyBunny: a leave-guard Save may turn a create draft into a persisted group — see docs/ui-migration.md
                 from: () => ({ kind: 'group-editor', id: openGroupId ?? 'create' }),
-            });
+            }));
         },
     });
 }
 
-async function onGroupMemberSwitchChange() {
-    await runGroupMemberAction(this.checked ? 'enable' : 'disable', $(this).closest('.group_member'));
+function onGroupMemberSwitchChange() {
+    const action = this.checked ? 'enable' : 'disable';
+    const member = $(this).closest('.group_member');
+    return runGroupEditorAction(() => runGroupMemberAction(action, member));
 }
 
 function onGroupMemberMenuClick(event) {
@@ -3453,13 +3482,13 @@ function onGroupMemberMenuClick(event) {
     const actionItem = (label, icon, action, extra = {}) => ({
         label,
         icon: `fa-solid fa-${icon}`,
-        onSelect: () => void runGroupMemberAction(action, member),
+        onSelect: () => runGroupEditorAction(() => runGroupMemberAction(action, member)),
         ...extra,
     });
     const actions = [];
     if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
     // SillyBunny: the member row opens its character editor; the menu stays action-only — see docs/ui-migration.md
-    actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => void editGroupMemberModel(member) });
+    actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
     openActionMenu({
         trigger: this,
         title: member.find('.ch_name').text(),
@@ -3784,10 +3813,11 @@ export async function openGroupEditor(groupId, { switchChat = false, isCurrent }
     // SillyBunny: Back restores only presentation, even if another chat is selected — see docs/ui-migration.md
     if (isCurrent?.() === false || !groupEditorTargetExists(groupId)) return false;
     if (groupId === 'create' || !switchChat) {
-        select_group_chats(groupId === 'create' ? null : groupId, false);
+        if (await select_group_chats(groupId === 'create' ? null : groupId, false) === false) return false;
     } else {
         const opened = await openGroupById(groupId, { switchMenu: true });
         if (isCurrent?.() === false || !opened) return false;
+        if (await groupEditorReady === false) return false;
     }
     const deadline = Date.now() + 2000;
     while (Date.now() < deadline) {

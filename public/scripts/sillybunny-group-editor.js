@@ -30,6 +30,34 @@ import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } fr
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
+import { LIST_EDITOR_STYLESHEET } from './sillybunny-editor/list-shell.js';
+import { loadStylesheetAsync } from './dynamic-styles.js';
+
+const GROUP_EDITOR_STYLESHEETS = [
+    LIST_EDITOR_STYLESHEET,
+    { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+    { href: 'css/rm-groups.css', id: 'deferred-rm-groups-css' },
+];
+const groupEditorReveals = new WeakMap();
+
+/** Keeps native group controls inert until all deferred member-list styles are ready. */
+export async function prepareGroupEditorReveal(root, isCurrent) {
+    if (!root) return false;
+    const request = {};
+    groupEditorReveals.set(root, request);
+    root.style.visibility = 'hidden';
+    root.inert = true;
+    root.setAttribute('aria-busy', 'true');
+    try {
+        await Promise.all(GROUP_EDITOR_STYLESHEETS.map(({ href, id }) => loadStylesheetAsync(href, { id })));
+        if (groupEditorReveals.get(root) !== request || !isCurrent()) return false;
+        root.style.removeProperty('visibility');
+        root.inert = false;
+        return true;
+    } finally {
+        if (groupEditorReveals.get(root) === request) root.removeAttribute('aria-busy');
+    }
+}
 
 const DRAFT_KEY_PREFIX = 'sb-group-editor-draft-';
 const NEW_GROUP_DRAFT_KEY = 'new-group';

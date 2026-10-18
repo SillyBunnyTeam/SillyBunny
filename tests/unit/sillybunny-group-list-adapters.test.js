@@ -9,6 +9,7 @@ await import('../../public/lib/jquery-3.5.1.min.js');
 const $ = window.jQuery;
 const { createEntityRow, entityKey, limitTagChips } = await import('../../public/scripts/sillybunny-editor/entity-row.js');
 const { bindListKeyboard, reconcileRows } = await import('../../public/scripts/sillybunny-editor/list-rows.js');
+const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
 const source = readFileSync(new URL('../../public/scripts/group-chats.js', import.meta.url), 'utf8');
 const declarations = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }).body.map(node => node.declaration ?? node);
 
@@ -33,7 +34,12 @@ function rowCollection(rows) {
 
 beforeEach(() => {
     document.body.innerHTML = '';
+    document.head.querySelectorAll('link').forEach(link => link.remove());
 });
+
+async function settle() {
+    for (let index = 0; index < 30; index++) await Promise.resolve();
+}
 
 describe('group rows on the shared factory', () => {
     function setup() {
@@ -222,10 +228,10 @@ describe('group rows on the shared factory', () => {
 });
 
 describe('group row keyboard and pointer bindings', () => {
-    test('member rows navigate with via; nested tags, grips and controls do not', () => {
+    test('member rows navigate with via; nested tags, grips and controls do not', async () => {
         document.body.innerHTML = '<div id="rm_group_members"><div class="group_member" data-avatar="alice.png" tabindex="0"><span class="ch_name">Alice</span><span class="tag">Tag</span><div class="sb-group-member-grip"></div><label><input type="checkbox"></label><button></button></div><div class="group_member" tabindex="0"></div></div>';
         const navigate = jest.fn(async () => ({ ok: true }));
-        const context = loadFunctions(['bindGroupListKeyboard'], {
+        const context = loadFunctions(['bindGroupListKeyboard', 'runGroupEditorAction', 'reportGroupEditorError'], {
             bindListKeyboard,
             objectNavigation: { navigate },
             openGroupId: 'group-1',
@@ -241,6 +247,7 @@ describe('group row keyboard and pointer bindings', () => {
         row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
         row.querySelector('.ch_name').click();
+        await settle();
         expect(navigate).toHaveBeenCalledTimes(3);
         expect(navigate).toHaveBeenCalledWith({ kind: 'character-editor', id: 'alice.png', via: 'group-member' }, {
             from: expect.any(Function),
@@ -258,10 +265,10 @@ describe('group row keyboard and pointer bindings', () => {
         expect(navigate).toHaveBeenCalledTimes(3);
     });
 
-    test('candidate background, static tags and Enter add, but the Add control is left to its transport', () => {
+    test('candidate background, static tags and Enter add, but the Add control is left to its transport', async () => {
         document.body.innerHTML = '<div id="rm_group_add_members"><div class="group_member" data-avatar="alice.png" tabindex="0"><span class="ch_name">Alice</span><span class="tag" role="button">Tag</span><button class="right_menu_button" data-action="add"></button></div></div>';
         const runGroupMemberAction = jest.fn(async () => {});
-        const context = loadFunctions(['bindGroupListKeyboard', 'isGroupCandidateRowClick'], {
+        const context = loadFunctions(['bindGroupListKeyboard', 'isGroupCandidateRowClick', 'runGroupEditorAction', 'reportGroupEditorError'], {
             $,
             bindListKeyboard,
             runGroupMemberAction,
@@ -273,8 +280,57 @@ describe('group row keyboard and pointer bindings', () => {
         row.querySelector('.tag').click();
         row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         row.querySelector('button').click();
+        await settle();
         expect(runGroupMemberAction).toHaveBeenCalledTimes(3);
         expect(runGroupMemberAction.mock.calls.every(([action, member]) => action === 'add' && member[0] === row)).toBe(true);
+    });
+
+    test.each(['click', 'Enter'])('candidate %s catches real hydration rejection and reconciles the mutated draft', async activation => {
+        document.body.innerHTML = '<div id="rm_group_add_members"><div class="group_member" data-avatar="bob.png" tabindex="0"></div></div>';
+        const failure = new Error('Offline');
+        const context = loadFunctions([
+            'bindGroupListKeyboard', 'isGroupCandidateRowClick', 'runGroupEditorAction', 'reportGroupEditorError',
+            'runGroupMemberAction', 'applyGroupMemberAction', 'modifyGroupMember', 'refreshGroupMemberLists',
+        ], {
+            $, bindListKeyboard, editorDraft: { members: [] }, openGroupId: 'group-1',
+            captureGroupMemberFocus: () => ({ draft: context.editorDraft, groupId: 'group-1' }),
+            restoreGroupMemberFocus: jest.fn(),
+            _applyMemberActionToEditor: (_action, id) => { context.editorDraft.members.push(id); return { owned: true, changed: true }; },
+            unshallowGroupMembers: jest.fn().mockRejectedValue(failure),
+            printGroupCandidates: jest.fn(), printGroupMembers: jest.fn(), printTagFilters: jest.fn(),
+            tag_filter_type: {}, getGroupCharacters: () => context.editorDraft.members,
+            eventSource: { emit: jest.fn(async () => {}) }, event_types: { GROUP_UPDATED: 'updated' },
+            console: { error: jest.fn() }, toastr: { error: jest.fn() },
+        });
+        context.api.bindGroupListKeyboard(document.getElementById('rm_group_add_members'), false);
+        const row = document.querySelector('.group_member');
+        if (activation === 'click') row.click();
+        else row.dispatchEvent(new KeyboardEvent('keydown', { key: activation, bubbles: true }));
+        await settle();
+        expect(context.toastr.error).toHaveBeenCalledWith('Offline');
+        expect(context.console.error).toHaveBeenCalledWith(failure);
+        expect(context.editorDraft.members).toEqual(['bob.png']);
+        expect(context.printGroupCandidates).toHaveBeenCalled();
+        expect(context.printGroupMembers).toHaveBeenCalled();
+        expect(context.restoreGroupMemberFocus).toHaveBeenCalled();
+        expect(context.eventSource.emit).toHaveBeenCalledWith('updated');
+        await expect(context.api.runGroupMemberAction('add', $(row))).rejects.toBe(failure);
+    });
+
+    test('member menu actions and model override catch asynchronous failures', async () => {
+        document.body.innerHTML = '<div class="group_member" data-avatar="alice.png"><span class="ch_name">Alice</span><button></button></div>';
+        const failure = new Error('Offline');
+        const context = loadFunctions(['onGroupMemberMenuClick', 'runGroupEditorAction', 'reportGroupEditorError'], {
+            $, openGroupId: 'group-1', getEditedGroup: () => ({ members: ['alice.png', 'bob.png'] }),
+            openActionMenu: jest.fn(), runGroupMemberAction: jest.fn().mockRejectedValue(failure),
+            editGroupMemberModel: jest.fn().mockRejectedValue(failure),
+            console: { error: jest.fn() }, toastr: { error: jest.fn() },
+            t: strings => strings.join(''),
+        });
+        context.api.onGroupMemberMenuClick.call(document.querySelector('button'), { preventDefault() {}, stopPropagation() {} });
+        const items = context.openActionMenu.mock.calls[0][0].sections.flatMap(section => section.items);
+        for (const item of items.filter(item => !item.disabled)) await item.onSelect();
+        expect(context.toastr.error).toHaveBeenCalledTimes(4);
     });
 });
 
@@ -457,6 +513,7 @@ describe('group-editor opening boundary', () => {
             select_group_chats: jest.fn(),
             openGroupById: jest.fn(async () => true),
             captureGroupEditorSave: jest.fn(() => ({ context: { mode: 'edit' } })),
+            groupEditorReady: Promise.resolve(true),
             ...overrides,
         });
     }
@@ -543,6 +600,51 @@ describe('group-editor opening boundary', () => {
         finishSwitch(true);
         await expect(opened).resolves.toBe(false);
         expect(context.select_group_chats).not.toHaveBeenCalled();
+    });
+});
+
+describe('native group stylesheet readiness', () => {
+    test('an errored sheet prevents reveal and reopening retries the actual deferred dependencies', async () => {
+        document.body.innerHTML = '<div id="rm_group_chats_block"></div>';
+        const root = document.getElementById('rm_group_chats_block');
+        root.getClientRects = () => [{}];
+        const editorSource = readFileSync(new URL('../../public/scripts/sillybunny-group-editor.js', import.meta.url), 'utf8');
+        const shellSource = readFileSync(new URL('../../public/scripts/sillybunny-editor/list-shell.js', import.meta.url), 'utf8');
+        const reveal = editorSource.match(/^export async function prepareGroupEditorReveal\([\s\S]*?^}/m)[0].replace('export ', '');
+        const sheets = editorSource.match(/^const GROUP_EDITOR_STYLESHEETS = \[[\s\S]*?^\];/m)[0];
+        const shellSheet = shellSource.match(/^export const LIST_EDITOR_STYLESHEET = .*;/m)[0].replace('export ', '');
+        const prepare = vm.runInNewContext(`${shellSheet}\n${sheets}\nconst groupEditorReveals = new WeakMap();\n${reveal}\nprepareGroupEditorReveal;`, { loadStylesheetAsync });
+        const context = loadFunctions(['select_group_chats', 'openGroupEditor', 'groupEditorTargetExists', 'reportGroupEditorError'], {
+            $, prepareGroupEditorReveal: prepare, menu_type: 'group_edit', groupEditorReady: null,
+            beginGroupEditorLoad: () => 'reconciled', openGroupId: 'group-1', groups: [{ id: 'group-1' }], editorDraft: {},
+            reconcileEditorDraft() {}, setMenuType() {}, selectRightMenuWithAnimation() {},
+            writeGroupEditorFields() {}, applyTagsOnGroupSelect() {}, printGroupCandidates() {}, printGroupMembers() {},
+            updateGroupSubmitState() {}, updateGroupAvatar() {}, updateFavButtonState() {}, updateGroupHeaderTitle() {},
+            CSS: { supports: () => true }, updateGroupSpeakerControls() {},
+            eventSource: { emit() {} }, openGroupEditorSession() {},
+            console: { error: jest.fn() }, toastr: { error: jest.fn() }, t: strings => strings.join(''),
+        });
+        const opening = context.api.openGroupEditor('group-1');
+        expect(root.style.visibility).toBe('hidden');
+        expect(root.inert).toBe(true);
+        const ids = ['deferred-editor-shell-css', 'deferred-entity-list-css', 'deferred-rm-groups-css'];
+        const failed = document.getElementById(ids[1]);
+        document.getElementById(ids[0]).dispatchEvent(new Event('load'));
+        document.getElementById(ids[2]).dispatchEvent(new Event('load'));
+        failed.dispatchEvent(new Event('error'));
+        await expect(opening).resolves.toBe(false);
+        expect(root.style.visibility).toBe('hidden');
+        expect(context.toastr.error).toHaveBeenCalledTimes(1);
+        const reopening = context.api.openGroupEditor('group-1');
+        const retry = document.getElementById(ids[1]);
+        expect(retry).not.toBe(failed);
+        expect(failed.isConnected).toBe(false);
+        expect(root.style.visibility).toBe('hidden');
+        retry.dispatchEvent(new Event('load'));
+        await expect(reopening).resolves.toBe(true);
+        expect(root.inert).toBe(false);
+        expect(root.style.visibility).toBe('');
+        expect(document.head.querySelectorAll('link')).toHaveLength(3);
     });
 });
 

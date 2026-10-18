@@ -608,6 +608,7 @@ function createApi(overrides = {}, legacyFunctions = []) {
         $: jest.fn(() => dom),
         console: { warn: jest.fn() },
         personaEditorAdapter: null,
+        t: strings => strings.join(''),
         ...overrides,
     };
     const start = personaSource.indexOf('// #region SillyBunny persona editor adapter and data API');
@@ -647,18 +648,25 @@ describe('targetable persona API', () => {
     test('listing fetches without rendering and applies missing-persona initialization', async () => {
         const { api } = createApi();
         await expect(api.listPersonaAvatars()).resolves.toEqual(['ari.png']);
-        expect(api.getUserAvatars).toHaveBeenCalledWith(false);
+        expect(api.getUserAvatars).toHaveBeenCalledWith(false, '', { strict: true });
         expect(api.addMissingPersonas).toHaveBeenCalledWith(['ari.png']);
     });
 
-    test.each([undefined, []])('listing handles a failed or empty response %p', async value => {
-        const { api } = createApi({ getUserAvatars: jest.fn(async () => value) });
+    test('listing accepts a genuinely empty library', async () => {
+        const { api } = createApi({ getUserAvatars: jest.fn(async () => []) });
         await expect(api.listPersonaAvatars()).resolves.toEqual([]);
     });
 
+    test.each([undefined, null, {}])('listing rejects a failed response %p instead of caching an empty library', async value => {
+        const { api } = createApi({ getUserAvatars: jest.fn(async () => value) });
+        await expect(api.listPersonaAvatars()).rejects.toThrow();
+        expect(api.addMissingPersonas).not.toHaveBeenCalled();
+    });
+
     test('listing handles fetch rejection', async () => {
-        const { api } = createApi({ getUserAvatars: jest.fn().mockRejectedValue(new Error('Offline')) });
-        await expect(api.listPersonaAvatars()).resolves.toEqual([]);
+        const error = new Error('Offline');
+        const { api } = createApi({ getUserAvatars: jest.fn().mockRejectedValue(error) });
+        await expect(api.listPersonaAvatars()).rejects.toBe(error);
     });
 
     test('states wrap the legacy state and add in-use without exposing another schema', () => {
