@@ -804,21 +804,6 @@ export function initRossMods() {
 
     $('#api_button').on('click', () => checkStatusDebounced());
 
-    // Mouse wheel scrolls the favorites hotswap bar sideways.
-    // Native listener because jQuery cannot register non-passive wheel handlers.
-    const hotswapBar = document.querySelector('#HotSwapWrapper .hotswap');
-    hotswapBar?.addEventListener('wheel', (event) => {
-        if (event.ctrlKey || event.metaKey) return;
-        if (hotswapBar.scrollWidth <= hotswapBar.clientWidth) return;
-        // Leave trackpad horizontal swipes to native handling
-        if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-        event.preventDefault();
-        // deltaMode 1 = lines (Firefox); convert to roughly one avatar per line
-        const step = event.deltaMode === 1 ? event.deltaY * 34 : event.deltaY;
-        // 'instant' so rapid wheel ticks accumulate instead of restarting a smooth animation
-        hotswapBar.scrollTo({ left: hotswapBar.scrollLeft + step, behavior: 'instant' });
-    }, { passive: false });
-
     //toggle pin class when lock toggle clicked
     $(RPanelPin).on('click', function () {
         accountStorage.setItem('NavLockOn', $(RPanelPin).prop('checked'));

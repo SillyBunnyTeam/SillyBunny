@@ -6740,7 +6740,8 @@
                         </button>
                     </div>
                 </div>
-                <div id="CharListButtonAndHotSwaps" class="flex-container flexnowrap">
+                <!-- SillyBunny: keep upstream favourites and pin markup as hidden transports — see docs/ui-migration.md. -->
+                <div id="CharListButtonAndHotSwaps" class="flex-container flexnowrap" hidden aria-hidden="true">
                     <div class="flexFlowColumn flex-container">
                         <div id="rm_button_panel_pin_div" class="alignitemsflexstart" title="Locked = Character Management panel will stay open" data-i18n="[title]Locked = Character Management panel will stay open">
                             <input type="checkbox" id="rm_button_panel_pin">
@@ -6752,7 +6753,6 @@
                         <div class="right_menu_button fa-solid fa-list-ul" id="rm_button_characters" title="Select/Create Characters" data-i18n="[title]Select/Create Characters"></div>
                     </div>
                     <div id="HotSwapWrapper" class="alignitemscenter flex-container margin0auto wide100p">
-                        <span class="sb-character-favorites-label" data-i18n="Favorites">Favorites</span>
                         <div class="hotswap avatars_inline scroll-reset-container expander" data-i18n="[no_favs]Favorite characters to add them to HotSwaps" no_favs="Favorite characters to add them to HotSwaps">
                         </div>
                     </div>

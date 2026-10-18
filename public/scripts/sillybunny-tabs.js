@@ -7450,11 +7450,6 @@ function syncCharacterListControls(view) {
     }
 }
 
-function ensureCharacterListToolbarLayout() {
-    // SillyBunny: the shared character-list controller owns the visible toolbar and
-    // re-homes only its search, filters, extension slot, and bulk transports.
-}
-
 let characterListViewPromise = null;
 let characterListViewRevision = 0;
 
@@ -14171,7 +14166,6 @@ function closeMobileNav() {
 
 function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
-    ensureCharacterListToolbarLayout();
     bindCharacterDrawerEscapeHandler();
     bindCreatorNotesFullscreen();
 

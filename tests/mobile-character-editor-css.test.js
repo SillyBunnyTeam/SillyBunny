@@ -8,6 +8,7 @@ const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillyb
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8').replace(/\r\n/g, '\n');
 const styleCss = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
 const characterEditorCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-editor.css'), 'utf8').replace(/\r\n/g, '\n');
+const listCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-list.css'), 'utf8').replace(/\r\n/g, '\n');
 
 function getRuleBody(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -15,14 +16,6 @@ function getRuleBody(cssSource, selector) {
     const match = matches.at(-1);
 
     return match?.groups?.body ?? '';
-}
-
-function getLastRuleIndex(cssSource, selector) {
-    const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const matches = [...cssSource.matchAll(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'gs'))];
-    const match = matches.at(-1);
-
-    return match?.index ?? -1;
 }
 
 describe('mobile character editor css', () => {
@@ -70,11 +63,9 @@ describe('mobile character editor css', () => {
         expect(tagDropdownSelectRule).toContain('max-width: 100%;');
     });
 
-    test('keeps the parked mode toggle and close button clear of the editor sub-tabs on mobile', () => {
-        const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) > #CharListButtonAndHotSwaps');
-
-        // The generic band rule is `min-height: 34px !important`; the toggle sits at top 8px with a 44px touch target.
-        expect(editorBandRule).toContain('min-height: 54px !important;');
+    test('keeps the retired hotswap band hidden instead of reserving editor space', () => {
+        expect(getRuleBody(tabsCss, '#right-nav-panel > #CharListButtonAndHotSwaps')).toContain('display: none !important;');
+        expect(mobileShellCss).not.toContain('#CharListButtonAndHotSwaps');
     });
 
     test('drops the retired editor sub-tab and spoiler-panel rules', () => {
@@ -87,19 +78,9 @@ describe('mobile character editor css', () => {
     });
 
     test('keeps the desktop editor shell from reintroducing refactor padding and wrapper collapse', () => {
-        // The legacy .sb-character-editor-controls-row grid was removed in the Commit 2
-        // field-sheet rebuild; its selectors must not reappear in tabs.css.
-        const desktopCreateButtonSelector = '#right-nav-panel .sb-character-create-bar #rm_button_create,\n#right-nav-panel .sb-character-create-bar #rm_button_group_chats';
-        const desktopCreateButtonRule = getRuleBody(tabsCss, desktopCreateButtonSelector);
-        const unlayeredGuardIndex = tabsCss.indexOf('/* Unlayered fork cascade guards');
-        const desktopCreateButtonIndex = getLastRuleIndex(tabsCss, desktopCreateButtonSelector);
-
         expect(tabsCss).not.toContain('.sb-character-editor-controls-row');
-        expect(desktopCreateButtonIndex).toBeGreaterThan(unlayeredGuardIndex);
-        expect(desktopCreateButtonRule).toContain('inline-size: auto;');
-        expect(desktopCreateButtonRule).toContain('min-inline-size: max-content;');
-        expect(desktopCreateButtonRule).toContain('max-inline-size: none;');
-        expect(desktopCreateButtonRule).toContain('padding: 0 var(--sb-shell-space-lg) !important;');
-        expect(desktopCreateButtonRule).toContain('aspect-ratio: auto;');
+        expect(tabsCss).not.toContain('.sb-character-create-bar');
+        expect(listCss).toContain('.sb-character-list .sb-list-header__button');
+        expect(characterEditorCss).toMatch(/\.sb-editor-toolbar\s*\{[^}]*display:\s*flex;/);
     });
 });

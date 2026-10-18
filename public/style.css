@@ -3460,11 +3460,7 @@ select option[disabled]:not(:checked) {
 }
 
 #charListFixedTop {
-    padding: 0 5px 5px;
-}
-
-#CharListButtonAndHotSwaps {
-    margin-top: 0 !important;
+    padding: 5px;
 }
 
 #form_character_search_form {

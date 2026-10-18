@@ -923,16 +923,6 @@ body:not(.movingUI) .drawer-content.maximized {
     top: var(--sb-topbar-layout-offset) !important;
 }
 
-#CharListButtonAndHotSwaps {
-    align-items: center;
-    gap: 8px;
-}
-
-#HotSwapWrapper {
-    min-width: 0;
-    flex: 1 1 auto;
-}
-
 #movingDivs > .drawer-content {
     max-height: calc(100dvh - calc(var(--sb-topbar-layout-offset) + var(--bottomFormBlockSize))) !important;
 }
@@ -1676,7 +1666,6 @@ body:not(.movingUI) .drawer-content.maximized {
     background: var(--sb-layer-view);
 }
 
-#right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows),
 #right-nav-panel.openDrawer #rm_ch_create_block {
     box-sizing: border-box;
     scrollbar-gutter: stable;
@@ -2111,219 +2100,8 @@ body:not(.movingUI) .drawer-content.maximized {
     border: 0 !important;
 }
 
-#right-nav-panel:not([data-menu-type="groups"]) #rm_button_group_chats,
-#right-nav-panel[data-menu-type="groups"] #rm_button_create,
-#right-nav-panel[data-menu-type="groups"]:has(#bulkEditButton.bulk_edit_overlay_active) .sb-character-create-bar #rm_button_group_chats {
-    display: none !important;
-}
-
 /* SillyBunny: favorites are reached through the shared list filters on every tab. */
-#right-nav-panel.openDrawer > #CharListButtonAndHotSwaps {
-    display: none !important;
-}
-
-#right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
-    display: contents;
-}
-
-#right-nav-panel #CharListButtonAndHotSwaps {
-    /* Reserve space for the favorites label, gap, and avatar strip together. */
-    flex: 0 0 auto;
-    min-height: 70px;
-    max-height: none;
-    padding: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline);
-    box-sizing: border-box;
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
-    overflow: hidden;
-}
-
-#right-nav-panel #HotSwapWrapper {
-    /* Deliberate two-row layout (label divider, then avatar strip); previously
-       the strip only ended up below the label as a flex-wrap accident */
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-    margin: 0 !important;
-    padding: 0 !important;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#right-nav-panel #HotSwapWrapper .hotswap {
-    min-width: 0;
-    /* Shrink-to-fit so a short row centers under the label; overflowing rows
-       clamp to full width and scroll */
-    flex: 0 0 auto;
-    align-self: center;
-    max-width: 100%;
-    column-gap: 5px;
-    max-height: 36px;
-    margin: 0;
-    padding: 1px 2px;
-    align-items: center;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    /* Wheel-driven sideways scroll; a visible scrollbar would eat the 36px row,
-       and smooth behavior makes rapid wheel ticks overwrite each other */
-    scrollbar-width: none;
-    scroll-behavior: auto;
-}
-
-#right-nav-panel #HotSwapWrapper .hotswap::-webkit-scrollbar {
-    display: none;
-}
-
-#right-nav-panel #HotSwapWrapper .hotswap > small {
-    width: 100%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-}
-
-#right-nav-panel #HotSwapWrapper .hotswap > small > span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-}
-
-#right-nav-panel #HotSwapWrapper .hotswap > .avatar {
-    flex: 0 0 34px !important;
-    box-sizing: border-box;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-#right-nav-panel #HotSwapWrapper .hotswap .avatar,
-#right-nav-panel #HotSwapWrapper .hotswap .avatar img {
-    width: 34px !important;
-    min-width: 34px !important;
-    max-width: 34px !important;
-    height: 34px !important;
-    min-height: 34px !important;
-    max-height: 34px !important;
-}
-
-body.big-avatars #right-nav-panel #HotSwapWrapper .hotswap > .avatar,
-body.charListGrid #right-nav-panel #HotSwapWrapper .hotswap > .avatar,
-body #right-nav-panel #HotSwapWrapper .hotswap > :is(.avatar, .character_select, .group_select) {
-    width: 34px !important;
-    min-width: 34px !important;
-    max-width: 34px !important;
-    height: 34px !important;
-    min-height: 34px !important;
-    max-height: 34px !important;
-    flex: 0 0 34px !important;
-}
-
-#right-nav-panel .sb-character-create-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: var(--sb-shell-space-sm);
-    margin: var(--sb-shell-space-sm) var(--sb-shell-panel-padding-inline) 0;
-    padding: var(--sb-shell-space-sm);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    border-radius: var(--sb-radius-md, 16px);
-    background: color-mix(in srgb, var(--sb-shell-surface) 76%, transparent);
-}
-
-#right-nav-panel .sb-character-create-bar #rm_button_bar {
-    flex: 0 0 auto;
-    min-width: 0;
-    width: auto !important;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-}
-
-#right-nav-panel .sb-character-create-bar #character_sort_order {
-    flex: 0 0 auto;
-    width: auto !important;
-    min-width: 9.75em;
-    max-width: 11em;
-    height: 40px;
-    border-radius: var(--sb-radius-button, 14px);
-}
-
-#right-nav-panel .sb-character-create-bar #rm_button_search {
-    flex: 0 0 40px;
-    width: 40px;
-    min-width: 40px;
-    max-width: 40px;
-    height: 40px;
-    min-height: 40px;
-    max-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0;
-    border-radius: var(--sb-radius-button, 14px);
-}
-
-#right-nav-panel .sb-character-create-bar #rm_button_create,
-#right-nav-panel .sb-character-create-bar #rm_button_group_chats {
-    width: auto;
-    min-width: max-content;
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    aspect-ratio: auto;
-    border-radius: var(--sb-radius-button, 14px);
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, var(--sb-shell-surface) 86%);
-}
-
-#right-nav-panel .sb-character-create-bar #rm_button_group_chats {
-    margin: 0;
-}
-
-#right-nav-panel .sb-character-create-bar #rm_button_create::after {
-    content: 'Create New Character';
-    font-family: var(--mainFontFamily);
-    font-size: var(--sb-type-caption);
-    font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-compact);
-}
-
-#right-nav-panel .sb-character-create-bar #rm_button_group_chats::after {
-    content: 'Create New Chat Group';
-    font-family: var(--mainFontFamily);
-    font-size: var(--sb-type-caption);
-    font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-compact);
-}
-
-#right-nav-panel .sb-character-create-bar #rm_print_characters_pagination {
-    flex: 0 1 auto;
-    margin-left: auto !important;
-    justify-content: flex-start;
-    padding: 0;
-}
-
-#right-nav-panel .sb-character-create-bar .paginationjs {
-    justify-content: flex-start;
-}
-
-#right-nav-panel .sb-character-create-bar .paginationjs-nav {
-    white-space: nowrap;
-}
-
-#right-nav-panel[data-menu-type="groups"] .sb-character-create-bar {
-    justify-content: flex-start;
-}
-
-#right-nav-panel[data-menu-type="groups"] .sb-character-create-bar #rm_button_create {
-    display: none !important;
-}
-
-#right-nav-panel:not([data-menu-type="groups"]) .sb-character-create-bar #rm_button_group_chats {
+#right-nav-panel > #CharListButtonAndHotSwaps {
     display: none !important;
 }
 
@@ -5593,112 +5371,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     font-size: var(--sb-type-body);
 }
 
-#rm_print_characters_block:not(.sb-character-list__rows) {
-    --sb-character-list-avatar-height: var(--sb-character-list-avatar-size);
-}
-
-body.big-avatars #rm_print_characters_block:not(.sb-character-list__rows) {
-    --sb-character-list-avatar-height: calc(var(--sb-character-list-avatar-size) * var(--big-avatar-height-factor) / var(--big-avatar-width-factor));
-}
-
-@media screen and (min-width: 1001px) {
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) {
-        --sb-character-list-avatar-size: 88px;
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr));
-        gap: 10px;
-        align-content: flex-start;
-        justify-content: stretch;
-        overflow-x: hidden;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
-        display: flex !important;
-        flex-direction: column !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        justify-content: flex-start;
-        position: relative;
-        width: 100%;
-        max-width: none;
-        min-width: 0;
-        height: auto !important;
-        min-height: 160px;
-        padding: 12px 10px;
-        box-sizing: border-box;
-        border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-        border-radius: 12px;
-        background: var(--sb-card-bg);
-        overflow: hidden;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
-        width: var(--sb-character-list-avatar-size) !important;
-        min-width: var(--sb-character-list-avatar-size) !important;
-        max-width: var(--sb-character-list-avatar-size) !important;
-        height: var(--sb-character-list-avatar-height) !important;
-        min-height: var(--sb-character-list-avatar-height) !important;
-        max-height: var(--sb-character-list-avatar-height) !important;
-        flex: 0 0 var(--sb-character-list-avatar-height) !important;
-        margin: 0 auto 8px !important;
-        overflow: hidden;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar:not(.avatar_collage) img {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        height: 100% !important;
-        min-height: 100% !important;
-        max-height: 100% !important;
-        object-fit: cover;
-        object-position: center;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
-        display: flex !important;
-        flex-direction: column !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        justify-content: flex-start;
-        width: 100%;
-        max-width: none;
-        min-width: 0;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) :is(.character_name_block, .group_name_block) {
-        display: flex !important;
-        flex-direction: column !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        width: 100%;
-        max-width: none;
-        min-width: 0;
-        gap: 2px;
-        margin: 0;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) :is(.ch_name, .group_select_counter, .bogus_folder_counter) {
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-        margin: 0;
-        overflow: visible;
-        overflow-wrap: anywhere;
-        text-align: center;
-        text-overflow: clip;
-        white-space: normal;
-    }
-
-    body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows).bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
-        position: absolute !important;
-        top: 8px !important;
-        left: 8px !important;
-        margin: 0 !important;
-        z-index: 2;
-    }
-}
-
 @media screen and (max-width: 1100px) {
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
@@ -5994,12 +5666,6 @@ body.big-avatars #rm_print_characters_block:not(.sb-character-list__rows) {
     flex: 0 0 auto !important;
 }
 
-/* Keep shell card avatars inside their cards even when custom themes scale global .avatar nodes. */
-body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.sb-character-list__rows):not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.avatar, .missing-avatar) {
-    scale: 1 !important;
-    transform: none !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
     .sb-proxy-button,
 .sb-shell-header,
@@ -6039,46 +5705,6 @@ body.reduced-motion .sb-persona-option {
 
 body.reduced-motion .sb-shell-main {
     animation: none !important;
-}
-
-/* Unlayered fork cascade guards for upstream rules that beat layered shell layout rules. */
-/* Must beat unlayered public/css/sillybunny-theme.css icon-only button sizing. */
-#right-nav-panel .sb-character-create-bar #rm_button_create,
-#right-nav-panel .sb-character-create-bar #rm_button_group_chats {
-    width: auto;
-    inline-size: auto;
-    min-width: max-content;
-    min-inline-size: max-content;
-    max-width: none;
-    max-inline-size: none;
-    height: auto;
-    block-size: auto;
-    min-height: 44px;
-    max-height: none;
-    max-block-size: none;
-    padding: 0 var(--sb-shell-space-lg) !important;
-    aspect-ratio: auto;
-    flex: 0 0 auto;
-}
-
-/* Below the laptop breakpoint the character shell is ~600px wide, which cannot fit the labelled
-   create button, sort/search cluster, and pagination on one line; go icon-only so the wrapped
-   bar stays at two rows. The padding above is an important declaration (it beats the theme's
-   icon-button squaring), so it is shrunk through its token rather than another one. */
-@media screen and (max-width: 1180px) {
-    #right-nav-panel .sb-character-create-bar #rm_button_create,
-    #right-nav-panel .sb-character-create-bar #rm_button_group_chats {
-        --sb-shell-space-lg: 0px;
-        width: 44px;
-        inline-size: 44px;
-        min-width: 44px;
-        min-inline-size: 44px;
-    }
-
-    #right-nav-panel .sb-character-create-bar #rm_button_create::after,
-    #right-nav-panel .sb-character-create-bar #rm_button_group_chats::after {
-        content: none;
-    }
 }
 
 /* ── Phase 1: settings page (feat/v1.9.0-ui-overhaul) ──────────────────── */
