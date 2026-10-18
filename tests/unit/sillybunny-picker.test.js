@@ -427,3 +427,61 @@ describe('picker review regressions', () => {
         expect(picker.isOpen).toBe(true);
     });
 });
+
+describe('multi-toggle picker', () => {
+    test('cycles live states without closing, moving focus, or changing query and active index', () => {
+        let state = null;
+        const onSelect = jest.fn(() => { state = state === null ? 'selected' : state === 'selected' ? 'excluded' : null; });
+        const { picker, list, input } = makePicker({ multiple: true, getItemState: () => state, onSelect });
+        expect(list.closest('.sb-picker').classList.contains('sb-picker--multiple')).toBe(true);
+        expect(list.getAttribute('aria-multiselectable')).toBe('true');
+        filter(input, 'book');
+        keydown(input, 'ArrowDown');
+        for (const expected of ['selected', 'excluded', null]) {
+            keydown(input, 'Enter');
+            expect(picker.isOpen).toBe(true);
+            expect(document.activeElement).toBe(input);
+            expect(input.value).toBe('book');
+            expect(document.getElementById(input.getAttribute('aria-activedescendant')).textContent).toContain('Beta');
+            const option = list.children[1];
+            expect(option.getAttribute('aria-selected')).toBe(String(expected === 'selected'));
+            expect(Boolean(option.querySelector('.fa-check'))).toBe(expected === 'selected');
+            expect(Boolean(option.querySelector('.fa-minus'))).toBe(expected === 'excluded');
+            expect(option.querySelector('.sr-only')?.textContent ?? null).toBe(expected === 'excluded' ? 'lorum ipsum' : null);
+        }
+        expect(onSelect.mock.calls).toEqual([['b'], ['b'], ['b']]);
+    });
+
+    test('muted options remain selectable and pointer down preserves combobox focus', () => {
+        const { picker, list, input, onSelect } = makePicker({ multiple: true, items: [{ value: 'a', label: 'Alpha', muted: true }] });
+        const option = list.firstElementChild;
+        expect(option.classList.contains('is-muted')).toBe(true);
+        const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        option.dispatchEvent(down);
+        expect(down.defaultPrevented).toBe(true);
+        option.click();
+        expect(onSelect).toHaveBeenCalledWith('a');
+        expect(picker.isOpen).toBe(true);
+        expect(document.activeElement).toBe(input);
+    });
+
+    test('refresh replaces items in place, preserving query, input and active index', () => {
+        const { picker, input, list } = makePicker({ multiple: true });
+        filter(input, 'a');
+        keydown(input, 'ArrowDown');
+        list.scrollTop = 30;
+        list.closest('.sb-picker').scrollTop = 20;
+        picker.refresh([{ value: 'x', label: 'Delta' }, { value: 'y', label: 'Zeta' }]);
+        expect(input.value).toBe('a');
+        expect(document.activeElement).toBe(input);
+        expect(list.children).toHaveLength(2);
+        expect(list.scrollTop).toBe(30);
+        expect(list.closest('.sb-picker').scrollTop).toBe(20);
+        expect(document.getElementById(input.getAttribute('aria-activedescendant')).textContent).toBe('Zeta');
+        picker.refresh();
+        expect(list.children).toHaveLength(2);
+        picker.close();
+        picker.refresh([]);
+        expect(picker.isOpen).toBe(false);
+    });
+});

@@ -6,6 +6,8 @@ import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globa
 await import('../../public/lib/jquery-3.5.1.min.js');
 const $ = window.jQuery;
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/tag-filter-menu.js', () => ({ attachTagFilterMenu: () => ({ refresh() {}, destroy() {} }) }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ closePicker() {}, isPickerOpen: () => false }));
 let overlay;
 let renderer;
 const groups = [{ id: '01', name: 'Group', chats: ['chat-01'] }];

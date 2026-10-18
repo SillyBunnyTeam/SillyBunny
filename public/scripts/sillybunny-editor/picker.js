@@ -103,13 +103,18 @@ function createSeparator() {
     return separator;
 }
 
-function createOption(item, selected, id, onClick) {
+function createOption(item, selected, id, onClick, { multiple = false, state = null } = {}) {
     const option = document.createElement('li');
     option.id = id;
     option.className = 'sb-picker__option';
     option.setAttribute('role', 'option');
     option.setAttribute('aria-selected', String(selected));
     option.tabIndex = -1;
+    if (multiple) {
+        option.classList.toggle('is-muted', Boolean(item.muted));
+        // Keep pointer activation from moving the combobox's virtual focus onto a replaced option.
+        option.addEventListener('mousedown', event => event.preventDefault());
+    }
     if (item.icon) {
         option.append(createIcon(item.icon));
     }
@@ -132,6 +137,14 @@ function createOption(item, selected, id, onClick) {
         check.classList.add('sb-picker__check');
         option.append(check);
     }
+    if (multiple && state === 'excluded') {
+        const minus = createIcon('fa-solid fa-minus');
+        minus.classList.add('sb-picker__check', 'sb-picker__excluded');
+        const label = document.createElement('span');
+        label.className = 'sr-only';
+        label.textContent = t`lorum ipsum`; // HUMAN: replace — excluded option state label.
+        option.append(minus, label);
+    }
     option.addEventListener('click', onClick);
     return option;
 }
@@ -150,6 +163,7 @@ function buildPickerContent(state, body) {
     const list = document.createElement('ul');
     list.className = 'sb-picker__list';
     list.setAttribute('role', 'listbox');
+    if (state.multiple) list.setAttribute('aria-multiselectable', 'true');
     list.id = createId('sb-picker-list');
     list.setAttribute('aria-label', state.title);
     input.setAttribute('aria-controls', list.id);
@@ -184,6 +198,8 @@ function buildPickerContent(state, body) {
 }
 
 function renderOptions(state) {
+    const listScrollTop = state.list.scrollTop;
+    const surfaceScrollTop = state.surface?.scrollTop ?? 0;
     const query = state.input.value.toLocaleLowerCase();
     state.filtered = state.items.filter(item => {
         const haystack = `${item.label} ${item.subtitle ?? ''}`.toLocaleLowerCase();
@@ -205,15 +221,21 @@ function renderOptions(state) {
     }
 
     state.filtered.forEach((item, index) => {
-        const option = createOption(item, Object.is(item.value, state.selected), createId('sb-picker-option'), () => {
+        const itemState = state.multiple ? state.getItemState?.(item.value) : null;
+        const selected = state.multiple ? itemState === 'selected' : Object.is(item.value, state.selected);
+        const option = createOption(item, selected, createId('sb-picker-option'), () => {
             selectPickerItem(state, item.value);
-        });
+        }, { multiple: state.multiple, state: itemState });
         option.classList.toggle('is-active', index === state.activeIndex);
         state.list.append(option);
     });
     const active = state.list.children[state.activeIndex];
     if (active) {
         state.input.setAttribute('aria-activedescendant', active.id);
+    }
+    if (state.multiple) {
+        state.list.scrollTop = listScrollTop;
+        if (state.surface) state.surface.scrollTop = surfaceScrollTop;
     }
 }
 
@@ -225,7 +247,8 @@ function selectPickerItem(state, value) {
         state.onSelect?.(value);
     } finally {
         if (activePicker === state) {
-            closePicker({ restoreFocus: true });
+            if (state.multiple) renderOptions(state);
+            else closePicker({ restoreFocus: true });
         }
     }
 }
@@ -303,6 +326,7 @@ function handleResize() {
     if (!state || state.kind !== 'popover') {
         return;
     }
+    const scrollTop = state.surface.scrollTop;
     if (state.matchTriggerWidth) {
         const bounds = state.bounds?.getBoundingClientRect();
         const available = bounds?.width > 0
@@ -316,6 +340,7 @@ function handleResize() {
         state.origin = positionPopover(state.surface, state.trigger, null, state.bounds);
     }
     state.surface.style.transformOrigin = state.origin;
+    if (state.multiple) state.surface.scrollTop = scrollTop;
 }
 
 function finishClose() {
@@ -340,8 +365,10 @@ function finishClose() {
  * @param {object} options
  * @param {HTMLElement} options.trigger
  * @param {string} options.title
- * @param {{ value: unknown, label: string, subtitle?: string, icon?: string|Element }[]} options.items
+ * @param {{ value: unknown, label: string, subtitle?: string, icon?: string|Element, muted?: boolean }[]} options.items
  * @param {unknown} [options.selected=null]
+ * @param {boolean} [options.multiple=false] Toggle values without closing or changing search focus.
+ * @param {(value: unknown) => 'selected'|'excluded'|null} [options.getItemState=null]
  * @param {(value: unknown) => void} options.onSelect
  * @param {{ label: string, icon?: string|Element, onSelect: () => void }[]} [options.footer=[]]
  * @param {string} [options.searchLabel]
@@ -349,13 +376,15 @@ function finishClose() {
  * @param {Element|null} [options.bounds=null]
  * @param {boolean} [options.matchTriggerWidth=false] Desktop: match the trigger up to 560px and align inline-start.
  * @param {() => void|null} [options.onClose=null]
- * @returns {{ close: () => void, readonly isOpen: boolean }}
+ * @returns {{ close: () => void, refresh: (items?: object[]) => void, readonly isOpen: boolean }}
  */
 export function openPicker({
     trigger,
     title,
     items,
     selected = null,
+    multiple = false,
+    getItemState = null,
     onSelect,
     footer = [],
     searchLabel = t`Search`,
@@ -369,7 +398,7 @@ export function openPicker({
     }
     if (activePicker?.trigger === trigger) {
         closePicker({ restoreFocus: true });
-        return { close: () => {}, get isOpen() { return false; } };
+        return { close: () => {}, refresh: () => {}, get isOpen() { return false; } };
     }
     closePicker({ animate: false, restoreFocus: false });
 
@@ -378,6 +407,8 @@ export function openPicker({
         title,
         items: [...items],
         selected,
+        multiple,
+        getItemState,
         onSelect,
         footer: [...footer],
         searchLabel,
@@ -413,6 +444,7 @@ export function openPicker({
     } else {
         const popover = document.createElement('div');
         popover.className = 'sb-action-popover sb-picker';
+        if (multiple) popover.classList.add('sb-picker--multiple');
         popover.tabIndex = -1;
         popover.setAttribute('role', 'dialog');
         popover.setAttribute('aria-label', title);
@@ -452,6 +484,13 @@ export function openPicker({
             if (activePicker === state) {
                 closePicker({ restoreFocus: true });
             }
+        },
+        refresh: (items = state.items) => {
+            if (activePicker !== state) return;
+            if (!Array.isArray(items)) throw new TypeError('Picker items must be an array.');
+            state.items = [...items];
+            renderOptions(state);
+            handleResize();
         },
         get isOpen() { return activePicker === state; },
     };

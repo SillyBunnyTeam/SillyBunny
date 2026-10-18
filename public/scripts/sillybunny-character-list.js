@@ -8,12 +8,14 @@ import { reconcileRows, bindListKeyboard, rowEntry } from './sillybunny-editor/l
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
+import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
+import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { animateListChange } from './sillybunny-motion.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
-    { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
@@ -443,6 +445,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     filters.classList.add('ds-tag-filter');
     const filterRow = node('div', 'sb-character-list__filters');
     filterRow.append(filters);
+    const tagMenu = attachTagFilterMenu(filters);
     const box = node('div', 'ds-entity-list sb-character-list__box');
     const overlay = dependencies.script.characterGroupOverlay;
     overlay.setLegacyRowSelectionEnabled(false);
@@ -491,6 +494,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const active = Boolean(selection?.isActive);
         if (active !== selectionActive) {
             selectionActive = active;
+            if (active) closeTagPicker();
             run(() => overlay.notifySharedSelectionState(active ? 'select' : 'browse'));
         }
         selection?.decorate();
@@ -503,6 +507,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 else row.removeAttribute('aria-disabled');
             }
         }
+    }
+
+    function closeTagPicker() {
+        const trigger = filters.querySelector('.sb-tag-filter-menu-button');
+        if (trigger && isPickerOpen(trigger)) closePicker({ animate: false, restoreFocus: false });
     }
 
     function selectionIdsByKey() {
@@ -624,7 +633,6 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         sections.push({ items: [makeMenuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !state.selectableKeys.length })] });
         sections.push({ items: [
             makeMenuItem(t`Manage tags`, 'tags', () => filter('.manageTags')?.click()),
-            makeMenuItem(t`Show Tag List`, 'tag', () => filter('.showTagList')?.click(), { checked: Boolean(power_user.show_tag_filters) }),
             makeMenuItem(t`Tags as Folders`, 'folder', () => clickTransport('#bogus_folders'), { checked: Boolean(power_user.bogus_folders) }),
             makeMenuItem(t`Clear all filters`, 'filter-circle-xmark', () => filter('.clearAllFilters')?.click()),
         ] });
@@ -723,6 +731,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const view = model.view === 'groups' ? 'groups' : 'characters';
         const viewChanged = state.view !== model.view;
         if (viewChanged) {
+            closeTagPicker();
             switchingView = true;
             selection.exit();
             selection.destroy();
@@ -930,6 +939,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 unbindKeyboard();
                 resizeObserver?.disconnect();
                 extensionObserver?.disconnect();
+                tagMenu.destroy();
                 search.destroy();
                 selection.exit();
                 selection.destroy();

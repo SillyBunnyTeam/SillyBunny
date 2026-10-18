@@ -21,7 +21,7 @@ import { mountPersonaSettings } from './sillybunny-persona-settings.js';
 import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-entity-list.css?v=20261016a', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
 ];

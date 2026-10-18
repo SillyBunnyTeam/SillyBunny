@@ -2,7 +2,7 @@ import { play, stopMotion, prefersReducedMotion, SPRING_NAVIGATION, MOTION_FAST 
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../popup.js';
 import { t } from '../i18n.js';
 
-export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261018a', id: 'deferred-editor-shell-css' };
+export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' };
 
 /**
  * Loads the deferred shell stylesheet. Consumers await it before revealing the shell.

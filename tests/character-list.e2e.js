@@ -8,6 +8,27 @@ const pageSize = page => list(page).getByRole('combobox', { name: 'Items per pag
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
+    const characters = Array.from({ length: 28 }, (_, index) => {
+        const name = `QA character ${String(index).padStart(2, '0')}`;
+        const data = {
+            name, description: '', personality: '', scenario: '', first_mes: 'QA greeting', mes_example: '',
+            creator_notes: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [],
+            tags: [], creator: '', character_version: '', extensions: { fav: false, talkativeness: 0.5 },
+        };
+        return {
+            ...data, avatar: `qa-list-character-${index}.png`, chat: `qa-list-character-chat-${index}`,
+            create_date: `2026-10-${String(index + 1).padStart(2, '0')}`, date_added: index + 1,
+            spec: 'chara_card_v2', spec_version: '2.0', data,
+        };
+    });
+    await page.route('**/api/characters/all', route => route.fulfill({ json: characters }));
+    await page.route('**/api/characters/get', route => {
+        const body = route.request().postDataBuffer();
+        const payload = JSON.parse((route.request().headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString());
+        return route.fulfill({ json: characters.find(character => character.avatar === payload.avatar_url) });
+    });
+    await page.route('**/api/characters/chats', route => route.fulfill({ json: {} }));
+    await page.route('**/api/chats/get', route => route.fulfill({ json: [] }));
     await page.route('**/api/settings/save', route => {
         const request = route.request();
         const body = request.headers()['content-encoding'] === 'gzip'
@@ -35,6 +56,7 @@ test.afterEach(async ({ page }) => {
         if (!window.__sbCharacterListOriginalGroups) return;
         document.getElementById('sb_group_editor_cancel')?.click();
         const groups = await import('/scripts/group-chats.js');
+        const tags = await import('/scripts/tags.js');
         const { objectNavigation } = await import('/scripts/sillybunny-editor/object-navigation.js');
         const { getCurrentUserHandle } = await import('/scripts/user.js');
         objectNavigation.clear();
@@ -43,7 +65,19 @@ test.afterEach(async ({ page }) => {
             localStorage.removeItem(`sb-group-editor-draft-${getCurrentUserHandle() || 'default'}-${group.id}`);
         }
         groups.groups.splice(0, groups.groups.length, ...window.__sbCharacterListOriginalGroups);
+        const tagFixtures = window.__sbCharacterListTagFixtures;
+        if (tagFixtures) {
+            for (const tagId of tagFixtures.ids) {
+                const index = tags.tags.findIndex(tag => tag.id === tagId);
+                if (index >= 0) tags.tags.splice(index, 1);
+            }
+            for (const [key, value] of tagFixtures.maps) {
+                if (value === undefined) delete tags.tag_map[key];
+                else tags.tag_map[key] = value;
+            }
+        }
         delete window.__sbCharacterListOriginalGroups;
+        delete window.__sbCharacterListTagFixtures;
     });
 });
 
@@ -64,9 +98,10 @@ async function prepareList(page, viewport) {
     await page.evaluate(async () => {
         const app = await import('/script.js');
         const groupChats = await import('/scripts/group-chats.js');
+        const tagsApi = await import('/scripts/tags.js');
         const state = await import('/scripts/sillybunny-character-list-state.js');
         const { power_user } = await import('/scripts/power-user.js');
-        if (app.characters.length < 16) throw new Error('Character list QA requires sixteen existing test characters; no cards are created.');
+        if (app.characters.length !== 28) throw new Error('Character list QA fixtures did not load.');
         window.__sbCharacterListOriginalGroups = structuredClone(groupChats.groups);
         const members = app.characters.slice(0, 2).map(character => character.avatar);
         const fixtures = Array.from({ length: 28 }, (_, index) => ({
@@ -78,6 +113,22 @@ async function prepareList(page, viewport) {
             hideMutedSprites: false, fav: index === 0,
         }));
         groupChats.groups.splice(0, groupChats.groups.length, ...fixtures);
+        const tagDefinitions = [
+            { id: 'qa-list-tag-alpha', name: 'QA list alpha', color: 'rgb(90, 160, 220)', color2: 'white' },
+            { id: 'qa-list-tag-beta', name: 'QA list beta', color: 'rgb(220, 150, 90)', color2: 'white' },
+        ];
+        const taggedAvatars = app.characters.slice(0, 3).map(character => character.avatar);
+        const taggedGroups = fixtures.slice(0, 1).map(group => group.id);
+        const tagMapKeys = [...taggedAvatars, ...taggedGroups];
+        window.__sbCharacterListTagFixtures = {
+            ids: tagDefinitions.map(tag => tag.id),
+            maps: tagMapKeys.map(key => [key, tagsApi.tag_map[key]]),
+        };
+        tagsApi.tags.push(...tagDefinitions);
+        tagsApi.tag_map[taggedAvatars[0]] = [tagDefinitions[0].id];
+        tagsApi.tag_map[taggedAvatars[1]] = [tagDefinitions[1].id];
+        tagsApi.tag_map[taggedAvatars[2]] = [tagDefinitions[0].id];
+        tagsApi.tag_map[taggedGroups[0]] = [tagDefinitions[0].id];
         power_user.bogus_folders = false;
         power_user.show_tag_filters = true;
         power_user.charListGrid = false;
@@ -93,9 +144,20 @@ async function prepareList(page, viewport) {
             await state.setListPage(view, 1);
             await state.setListSort(view, { field: 'name', order: 'asc' });
             await app.printCharacters(false);
+            tagsApi.printTagFilters(tagsApi.tag_filter_type.character);
         }
     });
     await showView(page, 'characters');
+}
+
+async function openTagPicker(page) {
+    const controls = list(page).locator('.rm_tag_controls');
+    const button = controls.locator('.sb-tag-filter-menu-button');
+    await expect(button).toBeVisible();
+    await button.click();
+    const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+    await expect(picker).toBeVisible();
+    return { button, picker, search: picker.locator('.sb-picker__search') };
 }
 
 async function openHeaderMenu(page, action) {
@@ -300,6 +362,54 @@ async function chatState(page) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`tag filter menu cycles states and filters both list views at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await pageSize(page).selectOption('50');
+        const characterTotal = await listRows(page, 'characters').count();
+        const { button, picker, search } = await openTagPicker(page);
+        await expect(search).toBeFocused();
+        const labels = await page.evaluate(() => [...document.querySelectorAll('.sb-character-list .rm_tag_filter .tag:not(.actionable) .tag_name')].map(tag => tag.textContent));
+        await expect(picker.locator('.sb-picker__label')).toHaveText(labels);
+        await expect(picker).toHaveClass(viewport.width === 390 ? /sb-picker-sheet/ : /sb-picker/);
+        await expect(picker.getByRole('listbox')).toHaveAttribute('aria-multiselectable', 'true');
+        await search.fill('alpha');
+        await expect(picker.getByRole('option')).toHaveCount(1);
+        const option = picker.getByRole('option', { name: /^QA list alpha/ });
+        await expect(option).toBeVisible();
+        await option.click();
+        await expect(option).toHaveAttribute('aria-selected', 'true');
+        await expect(picker.locator('.fa-check')).toBeVisible();
+        await expect(search).toBeFocused();
+        await expect(button.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+        await expect(listRows(page, 'characters')).toHaveCount(2);
+
+        await option.click();
+        await expect(option).toHaveAttribute('aria-selected', 'false');
+        await expect(option.locator('.fa-minus')).toBeVisible();
+        await expect(search).toBeFocused();
+        await expect(listRows(page, 'characters')).toHaveCount(characterTotal - 2);
+
+        await option.click();
+        await expect(option.locator('.fa-minus')).toHaveCount(0);
+        await expect(button.locator('.sb-tag-filter-menu-count')).toBeHidden();
+        await expect(listRows(page, 'characters')).toHaveCount(characterTotal);
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+        await expect(button).toBeFocused();
+
+        await showView(page, 'groups');
+        const groups = listRows(page, 'groups');
+        const groupPicker = await openTagPicker(page);
+        await groupPicker.search.fill('alpha');
+        const groupOption = groupPicker.picker.getByRole('option', { name: /^QA list alpha/ });
+        await groupOption.click();
+        await expect(groupOption).toHaveAttribute('aria-selected', 'true');
+        await expect(groups).toHaveCount(1);
+        await expect(groupPicker.search).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(groupPicker.button).toBeFocused();
+    });
+
     test(`selection gestures, ranges and all filtered pages preserve the chat at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
         const before = await chatState(page);

@@ -5,6 +5,8 @@ import { jest, describe, expect, test, afterEach } from '@jest/globals';
 let renderer;
 let menu;
 let mounted;
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/tag-filter-menu.js', () => ({ attachTagFilterMenu: () => ({ refresh() {}, destroy() {} }) }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/picker.js', () => ({ closePicker() {}, isPickerOpen: () => false }));
 const groups = [{ id: '0012', name: 'First' }, { id: 'group-2', name: 'Second' }];
 const overlay = { legacyRowSelectionEnabled: true, runBulkAction: jest.fn(async () => {}), notifySharedSelectionState: jest.fn(async () => {}) };
 overlay.setLegacyRowSelectionEnabled = jest.fn(enabled => { overlay.legacyRowSelectionEnabled = enabled; });

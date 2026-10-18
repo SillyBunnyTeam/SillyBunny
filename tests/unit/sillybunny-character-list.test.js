@@ -20,6 +20,10 @@ const deleteCharacterById = jest.fn();
 const duplicateCharacter = jest.fn();
 const deleteGroupById = jest.fn();
 const navigate = jest.fn();
+const destroyTagMenu = jest.fn();
+const attachTagFilterMenu = jest.fn(() => ({ refresh: jest.fn(), destroy: destroyTagMenu }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/tag-filter-menu.js', () => ({ attachTagFilterMenu }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ closePicker: jest.fn(), isPickerOpen: () => false }));
 const runBulkAction = jest.fn();
 const characterGroupOverlay = {
     legacyRowSelectionEnabled: true,
@@ -122,7 +126,8 @@ describe('shared Characters/Groups list', () => {
     test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
         await mount();
         const row = rows()[0];
-        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261018a', { id: 'deferred-editor-shell-css' });
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261018b', { id: 'deferred-editor-shell-css' });
+        expect(attachTagFilterMenu).toHaveBeenCalledWith(document.querySelector('.rm_tag_controls'));
         expect(row.id).toBe('CharID0');
         expect(row.getAttribute('data-chid')).toBe('0');
         expect(row.getAttribute('chid')).toBe('0');
@@ -296,6 +301,7 @@ describe('shared Characters/Groups list', () => {
         expect(mounted.section.dataset.selectionMode).toBe('true');
         expect(document.querySelector('.bulk_select_checkbox')).toBeNull();
         mounted.destroy();
+        expect(destroyTagMenu).toHaveBeenCalledTimes(1);
         expect(characterGroupOverlay.setLegacyRowSelectionEnabled).toHaveBeenLastCalledWith(true);
     });
 
@@ -363,7 +369,7 @@ describe('shared Characters/Groups list', () => {
         expect(button('search').hidden).toBe(true);
         expect(button('new').hidden).toBe(false);
         button('more').click();
-        expect(action('Show Tag List').checked).toBe(true);
+        expect(action('Show Tag List')).toBeUndefined();
         expect(action('Tags as Folders').checked).toBe(false);
         expect(action('Sort')).toBeDefined();
         expect(action('Search')).toBeDefined();

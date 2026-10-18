@@ -268,6 +268,51 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
     });
 }
 
+test('candidate and cloned member tag menus use their live upstream filters', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openCreateGroup(page, false);
+    await openFixtureGroup(page, { tagged: true, active: true });
+    await page.evaluate(async () => window.__sbTestTags.printTagFilters(window.__sbTestTags.tag_filter_type.group_candidates_list));
+    const candidateButton = page.locator('#rm_group_add_members_header + .rm_tag_controls .sb-tag-filter-menu-button');
+    await candidateButton.click();
+    const picker = page.locator('.sb-picker:visible');
+    const candidateTag = picker.getByRole('option', { name: /^QA tag 0/ });
+    await expect(candidateTag).toHaveClass(/is-muted/);
+    await candidateTag.click();
+    await expect(candidateTag).toHaveAttribute('aria-selected', 'true');
+    await expect(picker.locator('.sb-picker__search')).toBeFocused();
+    await expect(candidateButton.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+    await expect(page.locator('#rm_group_add_members .group_member')).toHaveCount(0);
+    await picker.getByRole('button', { name: 'Clear all filters', exact: true }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(candidateButton.locator('.sb-tag-filter-menu-count')).toBeHidden();
+
+    await page.locator('#groupCurrentMemberPopoutButton').click();
+    const popout = page.locator('#groupMemberListPopout');
+    // Upstream rebuilds (member add/remove) must render only into the original controls; the clone is synced from them.
+    await expect(page.locator('[id="rm_group_members_header"]')).toHaveCount(1);
+    await page.evaluate(async () => window.__sbTestTags.printTagFilters(window.__sbTestTags.tag_filter_type.group_members_list));
+    const liveTagCount = await page.locator('#currentGroupMembers .rm_tag_filter .tag').count();
+    await expect(popout.locator('.rm_tag_filter .tag')).toHaveCount(liveTagCount);
+    const clonedButton = popout.locator('.sb-tag-filter-menu-button');
+    await clonedButton.click();
+    const clonedTag = picker.getByRole('option', { name: /^QA tag 0/ });
+    await clonedTag.click();
+    await expect(clonedTag).toHaveAttribute('aria-selected', 'true');
+    await expect(picker.locator('.sb-picker__search')).toBeFocused();
+    await expect(clonedButton.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+    await expect(page.locator('#currentGroupMembers .sb-tag-filter-menu-count')).toHaveText('1');
+    await expect(page.locator('#rm_group_members .group_member')).toHaveCount(1);
+    await clonedTag.click();
+    await expect(clonedTag.locator('.fa-minus')).toBeVisible();
+    await clonedTag.click();
+    await expect(clonedButton.locator('.sb-tag-filter-menu-count')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(clonedButton).toBeFocused();
+    await page.locator('#groupMemberListPopoutClose').click();
+    await expect(popout).toHaveCount(0);
+});
+
 test('cloned member popout keeps delegated switches and action menus', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openCreateGroup(page, false);
@@ -363,33 +408,40 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
     test(`group tag filters expose Libadwaita states and screenshots at ${viewport.name}`, async ({ page }) => {
         await page.setViewportSize(viewport);
         await openCreateGroup(page, viewport.width <= 768);
-        const fixture = await openFixtureGroup(page, { tagged: true });
+        await openFixtureGroup(page, { tagged: true, active: true });
         const controls = page.locator('#currentGroupMembers .ds-tag-filter');
-        await controls.locator('.showTagList').click();
-        await page.evaluate(({ tagId }) => {
-            const tagsApi = window.__sbTestTags;
-            tagsApi.printTagList('#rm_group_members_header ~ .rm_tag_controls .rm_tag_filter', {
-                empty: false,
-                tags: tagsApi.tags.filter(tag => tag.id === tagId),
-                tagOptions: { isFilter: true, isGeneralList: true },
-            });
-            document.querySelector('#rm_group_members_header ~ .rm_tag_controls .rm_tag_filter .tag:not(.actionable)').style.display = 'flex';
-        }, fixture);
-        const namedTag = controls.locator('.tag:not(.actionable)').first();
-        await expect(namedTag).toHaveCount(1);
+        const tagButton = controls.locator('.sb-tag-filter-menu-button');
+        await expect(tagButton).toBeVisible();
+        await tagButton.click();
+        const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+        const search = picker.locator('.sb-picker__search');
+        const namedTag = picker.getByRole('option', { name: /^QA tag 0/ });
+        await expect(namedTag).toBeVisible();
         const rowTag = page.locator('#rm_group_members .ds-tag-chips .tag').first();
         await expect(rowTag).toHaveCount(1);
-        await expect.poll(() => namedTag.evaluate(element => getComputedStyle(element).getPropertyValue('--sb-tag-color').trim())).toBe('rgb(90, 160, 220)');
+        await expect(namedTag.locator('.sb-tag-filter-menu-dot')).toHaveCSS('background-color', 'rgb(90, 160, 220)');
         await expect.poll(() => rowTag.evaluate(element => getComputedStyle(element).getPropertyValue('--sb-tag-color').trim())).toBe('rgb(90, 160, 220)');
 
-        await controls.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-off.png` });
+        await picker.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-off.png` });
         await page.locator('#rm_group_members').screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-row-chips.png` });
         await namedTag.click();
-        await expect.poll(() => namedTag.evaluate(element => element.getAnimations().length)).toBe(0);
-        await controls.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-selected.png` });
+        await expect(namedTag).toHaveAttribute('aria-selected', 'true');
+        await expect(namedTag).toBeInViewport();
+        await expect(namedTag.locator('.fa-check')).toBeVisible();
+        await expect(search).toBeFocused();
+        await expect(tagButton.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+        await picker.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-selected.png` });
         await namedTag.click();
-        await expect.poll(() => namedTag.evaluate(element => element.getAnimations().length)).toBe(0);
-        await controls.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-excluded.png` });
+        await expect(namedTag).toHaveAttribute('aria-selected', 'false');
+        await expect(namedTag).toBeInViewport();
+        await expect(namedTag.locator('.fa-minus')).toBeVisible();
+        await expect(search).toBeFocused();
+        await picker.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-excluded.png` });
+        await namedTag.click();
+        await expect(namedTag.locator('.fa-minus')).toHaveCount(0);
+        await expect(tagButton.locator('.sb-tag-filter-menu-count')).toBeHidden();
+        await page.keyboard.press('Escape');
+        await expect(tagButton).toBeFocused();
 
         const favorites = controls.locator('.filterByFavorites');
         await favorites.evaluate(element => {

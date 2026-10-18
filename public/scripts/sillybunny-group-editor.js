@@ -31,6 +31,7 @@ import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } 
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
+import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 
 const DRAFT_KEY_PREFIX = 'sb-group-editor-draft-';
 const NEW_GROUP_DRAFT_KEY = 'new-group';
@@ -92,7 +93,49 @@ export function initGroupEditor(config) {
     callbacks = config;
     _mountChrome();
     _mountMemberSortable();
+    attachGroupTagFilterMenus(document.getElementById('rm_group_chats_block'));
     registerEditorNavigation(navigation);
+}
+
+/**
+ * Attaches the shared tag menu to member/candidate controls, including the upstream popout clone.
+ * @param {HTMLElement} root
+ * @returns {{ destroy: () => void }}
+ */
+export function attachGroupTagFilterMenus(root) {
+    const cleanups = [];
+    for (const controls of root?.querySelectorAll('.rm_tag_controls.ds-tag-filter') ?? []) {
+        if (root.id === 'groupMemberListPopout') {
+            // tags.js renders into every `#rm_group_members_header ~ .rm_tag_controls`; renaming the
+            // cloned header keeps upstream rendering on the original so the clone is only synced from it.
+            const clonedHeader = root.querySelector('#rm_group_members_header');
+            if (clonedHeader) {
+                clonedHeader.removeAttribute('id');
+                clonedHeader.dataset.sbPopoutHeader = 'rm_group_members_header';
+            }
+            const source = document.querySelector('#currentGroupMembers .rm_tag_filter');
+            const target = controls.querySelector('.rm_tag_filter');
+            if (source && target) {
+                const sync = () => target.replaceChildren(...[...source.children].map(tag => tag.cloneNode(true)));
+                sync();
+                // Upstream HTML clones have no tag handlers; forward to the original live transports.
+                const forward = event => {
+                    const tag = event.target.closest?.('.tag');
+                    if (!tag || !target.contains(tag)) return;
+                    event.stopImmediatePropagation();
+                    [...source.querySelectorAll('.tag')].find(original => original.id === tag.id)?.click();
+                    sync();
+                };
+                target.addEventListener('click', forward);
+                const observer = new MutationObserver(sync);
+                observer.observe(source, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+                cleanups.push(() => { observer.disconnect(); target.removeEventListener('click', forward); });
+            }
+        }
+        const menu = attachTagFilterMenu(controls);
+        cleanups.push(() => menu.destroy());
+    }
+    return { destroy: () => cleanups.forEach(cleanup => cleanup()) };
 }
 
 /**

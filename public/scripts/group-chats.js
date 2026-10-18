@@ -115,6 +115,8 @@ import {
     initGroupEditor,
     // SillyBunny: deletion must retire a hidden editor session and backup — see docs/ui-migration.md
     discardGroupEditorForEntity,
+    // SillyBunny: cloned member filters share the searchable tag menu — see docs/ui-migration.md.
+    attachGroupTagFilterMenus,
 } from './sillybunny-group-editor.js';
 
 export {
@@ -4317,11 +4319,15 @@ function doCurMemberListPopout() {
         newElement.find('.group_pagination').empty();
 
         $('#movingDivs').append(newElement);
+        // SillyBunny: the HTML clone needs native menu bindings and live tag transports — see docs/ui-migration.md.
+        const tagMenus = attachGroupTagFilterMenus(newElement[0]);
+        newElement.data('sb-tag-menus', tagMenus);
         // SillyBunny: cloned controls need their own native listeners — see docs/ui-migration.md
         const popoutInput = newElement.find('[id="rm_group_members_filter"]')[0];
         mountGroupListSearch(popoutInput, true);
         bindGroupListKeyboard(newElement.find('.rm_group_members')[0], true);
         const removePopout = () => {
+            tagMenus.destroy();
             groupListSearches.get(popoutInput)?.destroy();
             groupListSearches.delete(popoutInput);
             newElement.remove();
@@ -4339,6 +4345,8 @@ function doCurMemberListPopout() {
         const popout = $('#groupMemberListPopout');
         const input = popout.find('[id="rm_group_members_filter"]')[0];
         popout.fadeOut(animation_duration, () => {
+            // SillyBunny: release cloned filter observers and any open picker — see docs/ui-migration.md.
+            popout.data('sb-tag-menus')?.destroy();
             groupListSearches.get(input)?.destroy();
             groupListSearches.delete(input);
             popout.remove();

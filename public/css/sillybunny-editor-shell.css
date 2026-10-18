@@ -625,6 +625,15 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     overflow: hidden;
 }
 
+/* A filtered list can make the anchor bounds shorter than the search and footer together. */
+.sb-action-popover.sb-picker--multiple {
+    overflow-y: auto;
+}
+
+.sb-picker--multiple .sb-picker__list {
+    flex-shrink: 0;
+}
+
 .sb-picker__search {
     display: block;
     flex: none;
@@ -682,6 +691,15 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     flex: none;
     margin-inline-start: auto;
     color: var(--sb-accent);
+}
+
+.sb-picker__excluded {
+    color: var(--sb-color-danger);
+}
+
+.sb-picker__option.is-muted .sb-picker__option-text {
+    color: var(--sb-muted-fg);
+    opacity: 0.7;
 }
 
 .sb-picker__option-text {

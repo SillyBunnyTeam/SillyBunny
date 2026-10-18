@@ -597,7 +597,95 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
+[data-sb-tag-menu='true'] .rm_tag_filter .tag:not(.actionable),
+[data-sb-tag-menu='true'] .showTagList {
+    display: none !important;
+}
+
+.rm_tag_controls[data-sb-tag-menu='true'] {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 2px;
+}
+
+[data-sb-tag-menu='true'] .rm_tag_filter {
+    flex: 0 0 auto;
+    gap: 2px;
+}
+
+.ds-tag-filter .sb-tag-filter-menu-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.ds-tag-filter .sb-tag-filter-menu-button[hidden],
+.sb-tag-filter-menu-count[hidden] {
+    display: none !important;
+}
+
+.ds-tag-filter .sb-tag-filter-menu-button.is-active,
+.ds-tag-filter .sb-tag-filter-menu-button[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
+    color: var(--sb-accent);
+}
+
+.ds-tag-filter .sb-tag-filter-menu-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.ds-tag-filter .sb-tag-filter-menu-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-tag-filter-menu-count {
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-end: 2px;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-inline-size: 16px;
+    block-size: 16px;
+    padding-inline: 4px;
+    border-radius: 999px;
+    background: var(--sb-accent);
+    color: var(--sb-on-solid-accent, var(--SmartThemeBodyColor));
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.sb-tag-filter-menu-dot {
+    flex: 0 0 8px;
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: 50%;
+    background: var(--sb-muted-fg);
+}
+
 @media (hover: hover) {
+    .ds-tag-filter .sb-tag-filter-menu-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
     .ds-tag-chips .tag:hover {
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
         border-color: var(--sb-shell-border);
@@ -658,7 +746,8 @@
         min-height: 44px;
     }
 
-    .ds-tag-filter .tag.actionable {
+    .ds-tag-filter .tag.actionable,
+    .ds-tag-filter .sb-tag-filter-menu-button {
         width: 44px;
         min-width: 44px;
         height: 44px;
@@ -674,7 +763,8 @@
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text),
-    .ds-tag-filter .tag {
+    .ds-tag-filter .tag,
+    .ds-tag-filter .sb-tag-filter-menu-button {
         transition: none;
     }
 }
@@ -682,7 +772,7 @@
 body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-entity-row .ds-entity-row__button, .ds-entity-row--activatable,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
-    .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text), .ds-tag-filter .tag) {
+    .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text), .ds-tag-filter .tag, .ds-tag-filter .sb-tag-filter-menu-button) {
     transition: none;
 }
 
@@ -878,11 +968,13 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
 }
 
 #rm_group_members_header,
-#rm_group_add_members_header {
+#rm_group_add_members_header,
+[data-sb-popout-header='rm_group_members_header'] {
     padding: 8px 12px;
 }
 
 #rm_group_members_header input,
-#rm_group_add_members_header input {
+#rm_group_add_members_header input,
+[data-sb-popout-header='rm_group_members_header'] input {
     width: 100%;
 }
