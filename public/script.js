@@ -359,6 +359,8 @@ import {
     loadCharacterEditorGreetings,
     openCharacterEditorSession,
     openCharacterEditorCreateSession,
+    // SillyBunny: scope every form save to its submitted editor values — see docs/ui-migration.md
+    captureCharacterEditorSave,
     markCharacterEditorSaved,
     getCharacterEditorAlternateGreetings,
     getCharacterEditorGroupGreetings,
@@ -2004,7 +2006,8 @@ export function getCharacterSource(chId = this_chid) {
     return '';
 }
 
-export async function getCharacters() {
+// SillyBunny: receipt-owned creation refreshes the library without replacing live editor values — see docs/ui-migration.md
+export async function getCharacters({ preserveEditor = false } = {}) {
     const response = await fetch('/api/characters/all', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -2024,7 +2027,7 @@ export async function getCharacters() {
             const newCharacterId = characters.findIndex(x => x.avatar === previousAvatar);
             if (newCharacterId >= 0) {
                 setCharacterId(newCharacterId);
-                await selectCharacterById(newCharacterId, { switchMenu: false });
+                if (!preserveEditor) await selectCharacterById(newCharacterId, { switchMenu: false });
             } else {
                 await Popup.show.text(t`ERROR: The active character is no longer available.`, t`The page will be refreshed to prevent data loss. Press "OK" to continue.`);
                 return location.reload();
@@ -16083,8 +16086,9 @@ function openAlternateGreetings() {
 /**
  * Creates or edits a character based on the form data.
  * @param {Event} [e] Event that triggered the function call.
+ * @param {import('./scripts/sillybunny-editor/session.js').EditorSaveReceipt} [saveReceipt]
  */
-export async function createOrEditCharacter(e) {
+export async function createOrEditCharacter(e, saveReceipt) {
     if (!settingsReady) {
         console.warn('Settings not ready, aborting character creation/editing.');
         return;
@@ -16092,7 +16096,24 @@ export async function createOrEditCharacter(e) {
 
     $('#rm_info_avatar').html('');
     const formData = new FormData(/** @type {HTMLFormElement} */($('#form_create').get(0)));
-    formData.set('fav', String(fav_ch_checked));
+    // SillyBunny: capture external callers too, before any conversion/confirmation awaits — see docs/ui-migration.md
+    const creating = $('#form_create').attr('actiontype') === 'createcharacter';
+    const submittedAvatar = creating ? null : String(formData.get('avatar_url') ?? '');
+    saveReceipt ??= captureCharacterEditorSave(submittedAvatar);
+    if (saveReceipt && !saveReceipt.isCurrent()) return;
+    if (saveReceipt) {
+        for (const [id, value] of Object.entries(saveReceipt.snapshot)) {
+            const field = document.getElementById(id);
+            if (field?.name) formData.set(field.name, value);
+        }
+    }
+    formData.set('fav', String(saveReceipt?.snapshot._fav ?? fav_ch_checked));
+    formData.delete('alternate_greetings');
+    for (const value of saveReceipt?.snapshot._alt ?? getSubmittedAlternateGreetings(submittedAvatar)) {
+        formData.append('alternate_greetings', value);
+    }
+    formData.set('group_only_greetings', JSON.stringify(saveReceipt?.snapshot._grp ?? getCharacterEditorGroupGreetings(submittedAvatar)));
+    if (creating) formData.set('extensions', JSON.stringify(create_save.extensions));
     const isNewChat = e instanceof CustomEvent && e.type === 'newChat';
 
     const rawFile = formData.get('avatar');
@@ -16103,8 +16124,8 @@ export async function createOrEditCharacter(e) {
 
     const headers = getRequestHeaders({ omitContentType: true });
 
-    if ($('#form_create').attr('actiontype') == 'createcharacter') {
-        if (String($('#character_name_pole').val()).length === 0) {
+    if (creating) {
+        if (String(formData.get('ch_name') ?? '').length === 0) {
             toastr.error(t`Name is required`);
             return;
         }
@@ -16120,16 +16141,6 @@ export async function createOrEditCharacter(e) {
                 url += `?crop=${encodeURIComponent(JSON.stringify(crop_data))}`;
             }
 
-            formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings(null)) {
-                formData.append('alternate_greetings', value);
-            }
-            // SillyBunny: group-only greetings (Step 3b)
-            formData.delete('group_only_greetings');
-            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings(null)));
-
-            formData.append('extensions', JSON.stringify(create_save.extensions));
-
             const fetchResult = await fetch(url, {
                 method: 'POST',
                 headers: headers,
@@ -16142,6 +16153,13 @@ export async function createOrEditCharacter(e) {
             }
 
             const avatarId = await fetchResult.text();
+            // SillyBunny: refresh without reopening the old card or clearing a successor's form/draft — see docs/ui-migration.md
+            if (!saveReceipt || saveReceipt.isCurrent()) createTagMapFromList('#tagList', avatarId);
+            await getCharacters({ preserveEditor: Boolean(saveReceipt) });
+            if (saveReceipt) {
+                await getOneCharacter(avatarId);
+                if (!saveReceipt.isCurrent()) return;
+            }
 
             const fields = [
                 { id: '#character_name_pole', callback: value => create_save.name = value },
@@ -16168,7 +16186,8 @@ export async function createOrEditCharacter(e) {
 
             fields.forEach(field => {
                 const fieldValue = field.defaultValue !== undefined ? field.defaultValue : '';
-                $(field.id).val(fieldValue);
+                // SillyBunny: preserve live post-submit edits while clearing the create scratchpad — see docs/ui-migration.md
+                if (!saveReceipt) $(field.id).val(fieldValue);
                 field.callback && field.callback(fieldValue);
             });
 
@@ -16193,12 +16212,10 @@ export async function createOrEditCharacter(e) {
             }
 
             console.log(`new avatar id: ${avatarId}`);
-            createTagMapFromList('#tagList', avatarId);
-            await getCharacters();
 
+            // SillyBunny: re-key the submitted baseline before any list navigation — see docs/ui-migration.md
+            markCharacterEditorSaved(saveReceipt, avatarId);
             select_rm_info('char_create', avatarId, oldSelectedChar);
-            // SillyBunny: clear new-character draft after successful create (Step 3b)
-            markCharacterEditorSaved();
 
             crop_data = undefined;
         } catch (error) {
@@ -16212,16 +16229,6 @@ export async function createOrEditCharacter(e) {
             if (crop_data != undefined) {
                 url += `?crop=${encodeURIComponent(JSON.stringify(crop_data))}`;
             }
-
-            // SillyBunny: submit the drafts only when they belong to the card being saved.
-            const greetingsAvatar = String(formData.get('avatar_url') ?? '');
-            formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings(greetingsAvatar)) {
-                formData.append('alternate_greetings', value);
-            }
-            // SillyBunny: group-only greetings (Step 3b)
-            formData.delete('group_only_greetings');
-            formData.set('group_only_greetings', JSON.stringify(getCharacterEditorGroupGreetings(greetingsAvatar)));
 
             const editedAvatar = String(formData.get('avatar_url') ?? '');
             const editedCharacter = characters.find(character => character?.avatar === editedAvatar) ?? characters[this_chid];
@@ -16256,14 +16263,17 @@ export async function createOrEditCharacter(e) {
             await getOneCharacter(formData.get('avatar_url'));
             favsToHotswap(); // Update fav state
 
-            $('#add_avatar_button').replaceWith(
-                $('#add_avatar_button').val('').clone(true),
-            );
-            $('#create_button').attr('value', 'Save');
-            crop_data = undefined;
-            // SillyBunny: recapture baseline after successful edit (Step 3b)
-            markCharacterEditorSaved();
-            await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: this_chid, character: characters[this_chid] } });
+            // SillyBunny: late acknowledgements cannot reset a successor's editor controls — see docs/ui-migration.md
+            if (!saveReceipt || saveReceipt.isCurrent()) {
+                $('#add_avatar_button').replaceWith(
+                    $('#add_avatar_button').val('').clone(true),
+                );
+                $('#create_button').attr('value', 'Save');
+                crop_data = undefined;
+            }
+            markCharacterEditorSaved(saveReceipt);
+            const editedChid = characters.findIndex(character => character.avatar === submittedAvatar);
+            await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: editedChid, character: characters[editedChid] } }, saveReceipt);
 
             // Recreate the chat if it hasn't been used at least once (i.e. with continue).
             const message = getFirstMessage();

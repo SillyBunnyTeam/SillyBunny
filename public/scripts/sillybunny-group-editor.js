@@ -18,10 +18,8 @@
 //   beginGroupEditorLoad()              — suspend the session before fields are written
 //   openGroupEditorSession(groupId)     — open an edit session (call after fields load)
 //   openGroupEditorCreateSession()      — open a create session
-//   markGroupEditorSaved(newGroupId?)   — recapture the baseline after a save
 //   isGroupEditorOwner(groupId)         — true when this session owns the group
 //   notifyGroupEditorChanged(options)   — report an edit instead of calling editGroup()
-//   getGroupEditorTitle()               — current header title
 
 import { t } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
@@ -205,20 +203,6 @@ export function openGroupEditorCreateSession() {
     _openSession({ mode: 'create', entityId: NEW_GROUP_DRAFT_KEY });
 }
 
-/**
- * Recapture the baseline after a successful save. Pass the new group ID when
- * transitioning from create to edit.
- * @param {string} [newGroupId]
- */
-export function markGroupEditorSaved(newGroupId) {
-    if (newGroupId && session.context?.mode === 'create') {
-        editorTitle = callbacks?.getGroupName(newGroupId) ?? editorTitle;
-        session.markSaved({ entityId: newGroupId, mode: 'edit' });
-    } else {
-        session.markSaved();
-    }
-}
-
 export function captureGroupEditorSave() {
     return session.captureSaveReceipt();
 }
@@ -256,11 +240,6 @@ export function discardGroupEditorForEntity(groupId) {
  */
 export function notifyGroupEditorChanged(options) {
     session.changed(options);
-}
-
-/** @returns {string} the title currently shown in the header. */
-export function getGroupEditorTitle() {
-    return editorTitle;
 }
 
 // ============================================================

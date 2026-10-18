@@ -784,15 +784,18 @@ describe('id-based list actions', () => {
         localStorage.clear();
         document.body.innerHTML = `
             <form id="form_create" actiontype="editcharacter">
-                <input id="character_name_pole" name="name" value="Alice">
+                <input id="character_name_pole" name="ch_name" value="Alice">
                 <input name="avatar_url" value="alice.png">
+                <input id="selected_chat_pole" name="chat" type="hidden" value="Alice chat">
+                <input id="create_date_pole" name="create_date" type="hidden" value="Old creation date">
+                <input id="character_json_data" name="json_data" type="hidden" value="Old card data">
                 <input id="fav_checkbox" type="checkbox">
                 <button id="favorite_button" type="button" class="fav_off"></button>
             </form>
         `;
         const script = loadSourceFunctions('script.js', [
             'getCharacterForListAction', 'toggleCharacterFavoriteById', 'deleteCharacterById',
-            'deleteCharacter', 'updateFavButtonState', 'createOrEditCharacter',
+            'deleteCharacter', 'updateFavButtonState', 'createOrEditCharacter', 'queueCharacterSave',
         ], {
             characters: [{ name: 'Alice', avatar: 'alice.png', fav: false, data: { extensions: { fav: false } } }],
             this_chid: 0,
@@ -802,6 +805,17 @@ describe('id-based list actions', () => {
             File,
             CustomEvent,
             crop_data: undefined,
+            characterSavePromise: Promise.resolve(),
+            create_save: { extensions: {}, extra_books: [] },
+            is_group_generating: false,
+            is_send_press: false,
+            talkativeness_default: 0.5,
+            depth_prompt_depth_default: 4,
+            depth_prompt_role_default: 'system',
+            getCharacters: jest.fn(async () => {
+                script.characters.push({ name: 'Created', avatar: 'created.png', chat: 'Created chat', create_date: '2026-10-19T00:00:00.000Z', json_data: '{"name":"Created"}' });
+            }),
+            createTagMapFromList: jest.fn(),
             getSubmittedAlternateGreetings: () => [],
             getCharacterEditorGroupGreetings: () => [],
             getCharacterDefinitionFormValues: () => ({}),
@@ -834,16 +848,21 @@ describe('id-based list actions', () => {
                 document.getElementById('character_name_pole').value = snapshot.character_name_pole;
                 script.api.updateFavButtonState(snapshot._fav);
             },
-            persist: () => script.api.createOrEditCharacter(),
+            persist: receipt => editor.api._persist(receipt),
             prefix: 'sb-editor-draft-',
         });
         editor = loadSourceFunctions('scripts/sillybunny-character-editor.js', [
             'openCharacterEditorSession', '_openSession', '_handleBack', '_captureSnapshot',
             '_syncFavoritePressed', 'syncCharacterEditorFavorite', 'discardCharacterEditorForEntity',
+            'markCharacterEditorSaved', '_handleExternalSave',
+            'captureCharacterEditorSave', '_persist', 'openCharacterEditorCreateSession',
         ], {
             session,
             drafts,
             characters: script.characters,
+            createOrEditCharacter: (...args) => script.api.createOrEditCharacter(...args),
+            NEW_CHAR_DRAFT_KEY: 'new-character',
+            t,
             this_chid: 0,
             SNAPSHOT_FIELDS: ['character_name_pole'],
             draftAlt: [],
@@ -867,7 +886,11 @@ describe('id-based list actions', () => {
         });
         script.syncCharacterEditorFavorite = editor.api.syncCharacterEditorFavorite;
         script.discardCharacterEditorForEntity = editor.api.discardCharacterEditorForEntity;
-        script.markCharacterEditorSaved = session.markSaved;
+        script.markCharacterEditorSaved = editor.api.markCharacterEditorSaved;
+        script.captureCharacterEditorSave = editor.api.captureCharacterEditorSave;
+        script.eventSource.emit.mockImplementation(async (type, ...args) => {
+            if (type === 'edited') editor.api._handleExternalSave(...args);
+        });
         editor.api.openCharacterEditorSession(0);
         return { script, editor, session, drafts };
     }
@@ -904,6 +927,228 @@ describe('id-based list actions', () => {
         session.discard();
         expect(document.getElementById('character_name_pole').value).toBe('Alice');
         expect(script.fav_ch_checked).toBe(true);
+        session.close();
+    });
+
+    test('character Save acknowledges V1 without cleaning V2 typed during the request', async () => {
+        const { script, session, drafts } = characterEditorSetup();
+        let finish;
+        script.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        document.getElementById('character_name_pole').value = 'V1';
+        const saving = session.save();
+        await Promise.resolve();
+        expect(script.fetch.mock.calls[0][1].body.get('ch_name')).toBe('V1');
+        document.getElementById('character_name_pole').value = 'V2';
+        session.flushDraft();
+        finish({ ok: true });
+
+        expect(await saving).toBe(false);
+        expect(session.readBaseline().character_name_pole).toBe('V1');
+        expect(drafts.read('alice.png').snapshot.character_name_pole).toBe('V2');
+        session.close();
+    });
+
+    test('the character persist callback submits its receipt even if typing precedes dispatch', async () => {
+        const { script, editor, session, drafts } = characterEditorSetup();
+        document.getElementById('character_name_pole').value = 'V1';
+        editor.draftAlt = ['Submitted alternate'];
+        editor.draftGrp = ['Submitted group greeting'];
+        const saving = session.save();
+        document.getElementById('character_name_pole').value = 'V2';
+        editor.draftAlt.push('Later alternate');
+        editor.draftGrp.push('Later group greeting');
+
+        expect(await saving).toBe(false);
+        const body = script.fetch.mock.calls[0][1].body;
+        expect(body.get('ch_name')).toBe('V1');
+        expect(body.getAll('alternate_greetings')).toEqual(['Submitted alternate']);
+        expect(JSON.parse(body.get('group_only_greetings'))).toEqual(['Submitted group greeting']);
+        expect(session.readBaseline()).toMatchObject({ character_name_pole: 'V1', _alt: ['Submitted alternate'], _grp: ['Submitted group greeting'] });
+        expect(drafts.read('alice.png').snapshot).toMatchObject({ character_name_pole: 'V2', _alt: ['Submitted alternate', 'Later alternate'] });
+        session.close();
+    });
+
+    test('avatar conversion cannot mix later form values or greetings into a submitted snapshot', async () => {
+        const { script, editor, session, drafts } = characterEditorSetup();
+        const avatar = document.createElement('input');
+        avatar.type = 'file';
+        avatar.name = 'avatar';
+        document.getElementById('form_create').append(avatar);
+        let finishConversion;
+        script.ensureImageFormatSupported = jest.fn(file => new Promise(resolve => { finishConversion = () => resolve(file); }));
+        document.getElementById('character_name_pole').value = 'V1';
+        editor.draftAlt = ['V1 greeting'];
+        const saving = session.save();
+        await Promise.resolve();
+        expect(script.ensureImageFormatSupported).toHaveBeenCalled();
+        document.getElementById('character_name_pole').value = 'V2';
+        editor.draftAlt.push('V2 greeting');
+        finishConversion();
+
+        expect(await saving).toBe(false);
+        expect(script.fetch.mock.calls[0][1].body.get('ch_name')).toBe('V1');
+        expect(script.fetch.mock.calls[0][1].body.getAll('alternate_greetings')).toEqual(['V1 greeting']);
+        expect(session.readBaseline()._alt).toEqual(['V1 greeting']);
+        expect(drafts.read('alice.png').snapshot._alt).toEqual(['V1 greeting', 'V2 greeting']);
+        session.close();
+    });
+
+    test('character create re-keys its submitted baseline and later edits to the returned avatar', async () => {
+        const { script, editor, session, drafts } = characterEditorSetup();
+        session.suspend();
+        document.getElementById('form_create').setAttribute('actiontype', 'createcharacter');
+        document.getElementById('character_name_pole').value = 'V1';
+        editor.draftOwner = 'new-character';
+        editor.api.openCharacterEditorCreateSession();
+        let finish;
+        script.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const saving = session.save();
+        await Promise.resolve();
+        document.getElementById('character_name_pole').value = 'V2';
+        session.flushDraft();
+        finish({ ok: true, text: async () => 'created.png' });
+
+        expect(await saving).toBe(false);
+        expect(script.toastr.error).not.toHaveBeenCalled();
+        expect(script.getCharacters).toHaveBeenCalledWith({ preserveEditor: true });
+        expect(script.getOneCharacter).toHaveBeenCalledWith('created.png');
+        expect(session.context).toMatchObject({ mode: 'edit', entityId: 'created.png', chid: 1 });
+        expect(session.readBaseline().character_name_pole).toBe('V1');
+        expect(drafts.read('new-character')).toBeNull();
+        expect(drafts.read('created.png').snapshot.character_name_pole).toBe('V2');
+        // eslint-disable-next-line playwright/prefer-web-first-assertions -- This is a synchronous jsdom form, not a Playwright locator.
+        expect(document.getElementById('form_create').getAttribute('actiontype')).toBe('editcharacter');
+        expect(document.querySelector('[name="avatar_url"]').value).toBe('created.png');
+        expect(editor.draftOwner).toBe('created.png');
+        await session.save();
+        expect(script.fetch.mock.calls.at(-1)[0]).toBe('/api/characters/edit');
+        expect(script.fetch.mock.calls.at(-1)[1].body.get('avatar_url')).toBe('created.png');
+        expect(script.fetch.mock.calls.at(-1)[1].body.get('chat')).toBe('Created chat');
+        expect(script.fetch.mock.calls.at(-1)[1].body.get('create_date')).toBe('2026-10-19T00:00:00.000Z');
+        expect(script.fetch.mock.calls.at(-1)[1].body.get('json_data')).toBe('{"name":"Created"}');
+        expect(session.isDirty()).toBe(false);
+        session.close();
+    });
+
+    test.each([false, true])('library refresh preserves an editor only when requested (%s)', async preserveEditor => {
+        const context = loadSourceFunctions('script.js', ['getCharacters'], {
+            characters: [{ name: 'Alice', avatar: 'alice.png' }],
+            this_chid: 0,
+            fetch: async () => ({ ok: true, json: async () => [{ name: 'Alice', avatar: 'alice.png' }] }),
+            getRequestHeaders: () => ({}),
+            DOMPurify: { sanitize: value => value },
+            setCharacterId: jest.fn(),
+            selectCharacterById: jest.fn(),
+            getGroups: jest.fn(),
+            printCharacters: jest.fn(),
+        });
+        await context.api.getCharacters(preserveEditor ? { preserveEditor: true } : undefined);
+        expect(context.setCharacterId).toHaveBeenCalledWith(0);
+        expect(context.selectCharacterById).toHaveBeenCalledTimes(preserveEditor ? 0 : 1);
+        expect(context.printCharacters).toHaveBeenCalledWith(true);
+    });
+
+    test.each(['createOrEditCharacter', 'queueCharacterSave'])('external %s rebases only its submitted form and preserves later typing', async entry => {
+        const { script, session, drafts } = characterEditorSetup();
+        let finish;
+        script.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        document.getElementById('character_name_pole').value = 'External V1';
+        const saving = script.api[entry]();
+        await Promise.resolve();
+        await Promise.resolve();
+        document.getElementById('character_name_pole').value = 'Later V2';
+        finish({ ok: true });
+        await saving;
+
+        expect(session.readBaseline().character_name_pole).toBe('External V1');
+        expect(session.isDirty()).toBe(true);
+        expect(drafts.read('alice.png').snapshot.character_name_pole).toBe('Later V2');
+        await script.api[entry]();
+        expect(session.isDirty()).toBe(false);
+        expect(drafts.read('alice.png')).toBeNull();
+        session.close();
+    });
+
+    test('legacy external notifications rebase only the matching character', () => {
+        const { editor, session } = characterEditorSetup();
+        document.getElementById('character_name_pole').value = 'Externally saved';
+        editor.api._handleExternalSave({ detail: { character: { avatar: 'bob.png' } } });
+        expect(session.readBaseline().character_name_pole).toBe('Alice');
+        editor.api._handleExternalSave({ detail: { character: { avatar: 'alice.png' } } });
+        expect(session.readBaseline().character_name_pole).toBe('Externally saved');
+        expect(session.isDirty()).toBe(false);
+        session.close();
+    });
+
+    test.each(['Alice', 'Bob'])('a late character acknowledgement and event leave a replacement %s editor untouched', async name => {
+        const { script, editor, session, drafts } = characterEditorSetup();
+        let finish;
+        script.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        document.getElementById('character_name_pole').value = 'V1';
+        const saving = session.save();
+        await Promise.resolve();
+        session.discard();
+        session.suspend();
+        script.characters.push({ name: 'Bob', avatar: 'bob.png' });
+        const chid = name === 'Alice' ? 0 : 1;
+        const avatar = script.characters[chid].avatar;
+        script.this_chid = editor.this_chid = chid;
+        document.getElementById('character_name_pole').value = name;
+        document.querySelector('[name="avatar_url"]').value = avatar;
+        editor.api.openCharacterEditorSession(chid);
+        document.getElementById('character_name_pole').value = `${name} pending`;
+        session.flushDraft();
+        const backup = localStorage.getItem(`sb-editor-draft-default-${avatar}`);
+        finish({ ok: true });
+
+        expect(await saving).toBe(false);
+        expect(session.readBaseline().character_name_pole).toBe(name);
+        expect(localStorage.getItem(`sb-editor-draft-default-${avatar}`)).toBe(backup);
+        expect(drafts.read('alice.png')?.snapshot.character_name_pole ?? null).toBe(name === 'Alice' ? 'Alice pending' : null);
+        session.close();
+    });
+
+    test.each(['request', 'refresh'])('a create acknowledged after replacement during %s cannot reset the successor', async phase => {
+        const { script, editor, session, drafts } = characterEditorSetup();
+        session.suspend();
+        document.getElementById('form_create').setAttribute('actiontype', 'createcharacter');
+        document.getElementById('character_name_pole').value = 'V1';
+        editor.api.openCharacterEditorCreateSession();
+        let finish;
+        let started;
+        const pending = new Promise(resolve => { finish = resolve; });
+        const dispatched = new Promise(resolve => { started = resolve; });
+        script.fetch.mockImplementationOnce(async () => {
+            if (phase === 'request') { started(); await pending; }
+            return { ok: true, text: async () => 'created.png' };
+        });
+        script.getOneCharacter.mockImplementationOnce(async () => {
+            if (phase === 'refresh') { started(); await pending; }
+        });
+        const saving = session.save();
+        await dispatched;
+        session.discard();
+        session.suspend();
+        script.characters.push({ name: 'Bob', avatar: 'bob.png' });
+        const chid = script.characters.findIndex(character => character.avatar === 'bob.png');
+        script.this_chid = editor.this_chid = chid;
+        document.getElementById('form_create').setAttribute('actiontype', 'editcharacter');
+        document.getElementById('character_name_pole').value = 'Bob';
+        document.querySelector('[name="avatar_url"]').value = 'bob.png';
+        editor.api.openCharacterEditorSession(chid);
+        document.getElementById('character_name_pole').value = 'Bob pending';
+        session.flushDraft();
+        const backup = localStorage.getItem('sb-editor-draft-default-bob.png');
+        finish();
+
+        expect(await saving).toBe(false);
+        expect(script.toastr.error).not.toHaveBeenCalled();
+        expect(session.context.entityId).toBe('bob.png');
+        expect(session.readBaseline().character_name_pole).toBe('Bob');
+        expect(document.getElementById('character_name_pole').value).toBe('Bob pending');
+        expect(localStorage.getItem('sb-editor-draft-default-bob.png')).toBe(backup);
+        expect(drafts.read('new-character')).toBeNull();
+        expect(script.select_rm_info).not.toHaveBeenCalled();
         session.close();
     });
 

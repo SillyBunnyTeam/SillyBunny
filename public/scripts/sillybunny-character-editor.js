@@ -11,7 +11,8 @@
 //   loadCharacterEditorGreetings(chid, mode) — render greeting lists after fields are loaded
 //   openCharacterEditorSession(chid)    — open edit session (call after fields are written)
 //   openCharacterEditorCreateSession()  — open create session
-//   markCharacterEditorSaved()          — recapture baseline after a successful save
+//   captureCharacterEditorSave(avatar)  — capture the owning session's submitted values
+//   markCharacterEditorSaved(receipt, avatar?) — acknowledge only those submitted values
 //   getCharacterEditorAlternateGreetings(avatar) — alternate greetings to submit for a save
 //   getCharacterEditorGroupGreetings(avatar)     — group-only greetings to submit for a save
 //   addAlternateGreeting()              — add a new alternate greeting row
@@ -60,9 +61,7 @@ const drafts = createEditorDraftStore({
 const session = createEditorSession({
     captureSnapshot: _captureSnapshot,
     restoreSnapshot: _restoreSnapshot,
-    // script.js calls markCharacterEditorSaved() on success, which moves the
-    // baseline; a failed or user-aborted save leaves the editor dirty.
-    persist: () => createOrEditCharacter(),
+    persist: _persist,
     drafts,
     onStateChange: _renderChrome,
     offerDraft: (draft, actions) => showDraftRecoveryToast(draft, actions, `character:${session.context.entityId}`),
@@ -179,12 +178,44 @@ export function openCharacterEditorCreateSession() {
     _openSession({ mode: 'create', entityId: NEW_CHAR_DRAFT_KEY, chid: null });
 }
 
+/** @param {string|null} avatar  Null for create; otherwise the submitted avatar. */
+export function captureCharacterEditorSave(avatar) {
+    const context = session.context;
+    if (!context) return null;
+    if (avatar === null ? context.mode !== 'create' : context.mode !== 'edit' || context.entityId !== avatar) return null;
+    return session.captureSaveReceipt();
+}
+
 /**
- * Recapture baseline after a successful createOrEditCharacter call.
- * Removes the stored draft for this session.
+ * @param {import('./sillybunny-editor/session.js').EditorSaveReceipt|null} receipt
+ * @param {string} [newAvatar]  The identity returned by a successful create.
  */
-export function markCharacterEditorSaved() {
-    session.markSaved();
+export function markCharacterEditorSaved(receipt, newAvatar) {
+    if (!receipt?.isCurrent()) return false;
+    if (receipt.context.mode !== 'create' || !newAvatar) return receipt.markSaved();
+
+    const chid = characters.findIndex(character => character.avatar === newAvatar);
+    if (chid < 0) throw new Error(`Created character not found: ${newAvatar}`);
+    draftOwner = newAvatar;
+    editorTitle = document.getElementById('character_name_pole')?.value ?? characters[chid].name;
+    document.getElementById('form_create')?.setAttribute('actiontype', 'editcharacter');
+    const avatarField = document.querySelector('#form_create [name="avatar_url"]');
+    if (avatarField) avatarField.value = newAvatar;
+    // Subsequent edits must not submit hidden chat/card metadata from the old selection.
+    for (const [id, value] of [
+        ['selected_chat_pole', characters[chid].chat],
+        ['create_date_pole', characters[chid].create_date],
+        ['character_json_data', characters[chid].json_data],
+    ]) {
+        const field = document.getElementById(id);
+        if (field) field.value = value ?? '';
+    }
+    return receipt.markSaved({ mode: 'edit', entityId: newAvatar, chid });
+}
+
+/** @param {import('./sillybunny-editor/session.js').EditorSaveReceipt} receipt */
+function _persist(receipt) {
+    return createOrEditCharacter(undefined, receipt);
 }
 
 /** Reconciles an acknowledged live favorite change without saving other editor fields. */
@@ -947,12 +978,13 @@ function _bindFieldDirtyListeners() {
 // External save handler
 // ============================================================
 
-function _handleExternalSave() {
-    // Avatar change, world link, export etc. all call saveCharacterDebounced which fires this event.
-    // Recapture baseline so the dirty indicator reflects the new saved state.
+function _handleExternalSave(event, receipt) {
+    // Form saves already acknowledge their receipt, including avatar/world/export saves.
+    // Only legacy external notifications need to adopt the current form here.
+    if (receipt) return;
     const context = session.context;
     if (!context || context.mode !== 'edit') return;
-    if (context.chid !== this_chid) return;
+    if (event?.detail?.character?.avatar !== context.entityId) return;
     session.rebase();
 }
 

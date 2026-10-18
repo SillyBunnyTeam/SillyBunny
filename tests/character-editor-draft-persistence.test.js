@@ -188,6 +188,7 @@ describe('editor session dirty tracking and draft backup', () => {
         expect(session.isDirty()).toBe(false);
         state.name = 'B';
         expect(session.isDirty()).toBe(true);
+        session.close();
     });
 
     test('discard reverts to baseline and removes draft', () => {
@@ -205,6 +206,7 @@ describe('editor session dirty tracking and draft backup', () => {
         session.discard();
         expect(state.name).toBe('A');
         expect(removed).toEqual(['test']);
+        session.close();
     });
 
     test('session ignores stale recovery-toast restore after entityId changed', () => {
@@ -226,6 +228,7 @@ describe('editor session dirty tracking and draft backup', () => {
         session.markSaved({ entityId: 'entity2', mode: 'edit' });
         offered.restore();
         expect(state.name).toBe('A');
+        session.close();
     });
 
     test('periodic draft writes snapshot to storage', async () => {

@@ -1292,11 +1292,6 @@ export function getMountedCharacterList(container = document.getElementById('rm_
     return container instanceof HTMLElement ? mountedLists.get(container) ?? null : null;
 }
 
-/** Returns the active list destination state. @returns {object|null} */
-export function captureCharacterListState() {
-    return getMountedCharacterList()?.captureState() ?? null;
-}
-
 /** Restores state captured from a list destination. @param {object|null} state @param {() => boolean} [isCurrent] @returns {Promise<void>} */
 export async function restoreCharacterListState(state, isCurrent) {
     const mounted = getMountedCharacterList();
