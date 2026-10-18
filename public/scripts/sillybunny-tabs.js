@@ -15815,6 +15815,7 @@ function getSettingsPage() {
 }
 
 function clearSettingsAnimationState() {
+    getSettingsPage()?.classList.remove('sb-settings-page--opening');
     if (sbSettingsState.pageAnimation) {
         sbSettingsState.pageAnimation.onfinish = null;
         sbSettingsState.pageAnimation.cancel();
@@ -15828,28 +15829,25 @@ function clearSettingsAnimationState() {
 }
 
 function animateSettingsPage(page, direction, onFinish) {
-    if (typeof page.animate !== 'function') {
+    if (prefersReducedMotion() || typeof page.animate !== 'function') {
         onFinish();
         return;
     }
 
-    const reducedMotion = prefersReducedMotion();
     const isOpening = direction === 'in';
     const animation = page.animate(
-        reducedMotion
-            ? [{ opacity: isOpening ? 0 : 1 }, { opacity: isOpening ? 1 : 0 }]
-            : [
-                {
-                    opacity: isOpening ? 0 : 1,
-                    transform: isOpening ? 'scale(0.96)' : 'scale(1)',
-                },
-                {
-                    opacity: isOpening ? 1 : 0,
-                    transform: isOpening ? 'scale(1)' : 'scale(0.97)',
-                },
-            ],
+        [
+            {
+                opacity: isOpening ? 0 : 1,
+                transform: isOpening ? 'scale(0.96)' : 'scale(1)',
+            },
+            {
+                opacity: isOpening ? 1 : 0,
+                transform: isOpening ? 'scale(1)' : 'scale(0.97)',
+            },
+        ],
         {
-            duration: reducedMotion ? (isOpening ? 200 : 150) : (isOpening ? 250 : 200),
+            duration: isOpening ? 250 : 200,
             easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
             fill: 'forwards',
         },
@@ -15938,6 +15936,7 @@ function openSettingsPage(shellKey, tabId = null) {
     sbSettingsState.activeShell = shellKey;
     sbSettingsState.closeGen++;
     clearSettingsAnimationState();
+    if (!wasOpen) page.classList.add('sb-settings-page--opening');
 
     if (previousShell && previousShell !== shellKey) {
         deactivateSettingsPageRoot(previousShell);
@@ -15971,7 +15970,7 @@ function openSettingsPage(shellKey, tabId = null) {
     }
 
     page.hidden = false;
-    animateSettingsPage(page, 'in', () => {});
+    animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
 
     if (isMobileViewport()) {
         document.querySelector('.sb-settings-tab')?.focus({ preventScroll: true });

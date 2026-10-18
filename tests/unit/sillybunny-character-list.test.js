@@ -389,6 +389,32 @@ describe('shared Characters/Groups list', () => {
         expect(upstream).toHaveBeenCalledTimes(2);
     });
 
+    test.each([0, 3])('first reveal waits for render, measured header and a row layout turn (%s rows)', async count => {
+        const frames = [];
+        window.requestAnimationFrame.mockImplementation(callback => { frames.push(callback); return frames.length; });
+        model.entities = characters(count);
+        model.sourceCount = count;
+        await mount();
+        expect(mounted.section.classList.contains('sb-character-list--preparing')).toBe(true);
+        expect(frames).toHaveLength(0);
+        const header = document.querySelector('.sb-list-header');
+        const styles = jest.spyOn(window, 'getComputedStyle');
+        resize([
+            { target: header, contentRect: { width: 300 } },
+            { target: header.querySelector('.sb-list-header__titles'), borderBoxSize: [{ inlineSize: 96 }] },
+            ...[...header.querySelectorAll('button')].map(target => ({ target, borderBoxSize: [{ inlineSize: 44 }] })),
+            { target: document.getElementById('rm_buttons_container'), borderBoxSize: [{ inlineSize: 40 }] },
+        ]);
+        expect(button('sort').hidden).toBe(true);
+        expect(frames).toHaveLength(1);
+        frames[0]();
+        expect(mounted.section.classList.contains('sb-character-list--preparing')).toBe(true);
+        frames[1]();
+        expect(mounted.section.classList.contains('sb-character-list--preparing')).toBe(false);
+        expect(button('sort').hidden).toBe(true);
+        expect(styles).not.toHaveBeenCalled();
+    });
+
     test('header actions, menus, overflow order and grid use existing transports', async () => {
         await mount();
         const create = jest.fn();
@@ -514,8 +540,8 @@ describe('shared Characters/Groups list', () => {
         const first = mountCharacterList();
         const second = mountCharacterList();
         expect(renderer).toBeNull();
-        expect(document.getElementById('charListFixedTop').style.display).toBe('none');
-        expect(document.querySelector('.sb-character-list--loading')).not.toBeNull();
+        expect(document.getElementById('charListFixedTop').hasAttribute('style')).toBe(false);
+        expect(document.querySelector('.sb-character-list')).toBeNull();
         releaseStyles();
         [mounted] = await Promise.all([first, second]);
         expect(await second).toBe(mounted);

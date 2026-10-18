@@ -53,6 +53,11 @@
     display: none !important;
 }
 
+.sb-character-list--preparing {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .sb-character-list--loading {
     align-items: center;
     justify-content: center;

@@ -9029,6 +9029,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
         transform: translateX(0);
     }
 
+    /* Initial pane placement belongs to the page reveal, not in-page push navigation. */
+    #sb-settings-page:is([hidden], .sb-settings-page--opening) :is(#sb-settings-sidebar, #sb-settings-content),
+    body.reduced-motion :is(#sb-settings-sidebar, #sb-settings-content) {
+        transition: none;
+    }
+
     @media (prefers-reduced-motion: reduce) {
         #sb-settings-sidebar,
         #sb-settings-content {

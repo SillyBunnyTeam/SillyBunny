@@ -523,6 +523,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let revealActiveOnRender = false;
     const headerWidths = new Map();
     let headerWidth = 0;
+    let firstRenderComplete = false;
+    let firstRevealFrame = 0;
     let headerGap = 0;
     let extensionSlot;
     let extensionItems = new Set();
@@ -972,6 +974,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         state.lastQuery = search?.query ?? '';
         search?.report(modelCount(model), model.sourceCount);
         await renderStatus(model, revision);
+        if (revision === renderRevision) {
+            firstRenderComplete = true;
+            finishFirstReveal();
+        }
         if (revision === renderRevision) syncListVisibility();
         if (revision === renderRevision) model.pageLoaded?.();
     }
@@ -1064,7 +1070,22 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         header.setOverflowed(wanted);
     }
 
+    function finishFirstReveal() {
+        if (!firstRenderComplete || firstRevealFrame || !section.classList.contains('sb-character-list--preparing')) return;
+        if (resizeObserver && !headerWidth) return;
+        // Allow a rendering turn for auto-contained rows, even when they do not resize their parent.
+        firstRevealFrame = requestAnimationFrame(() => {
+            firstRevealFrame = requestAnimationFrame(() => {
+                firstRevealFrame = 0;
+                if (destroyed) return;
+                setOverflow();
+                section.classList.remove('sb-character-list--preparing');
+            });
+        });
+    }
+
     function mount() {
+        section.classList.add('sb-character-list--preparing');
         const headerElement = createHeader();
         section.append(headerElement, selectionHeader, searchField, filterRow, box, status);
         if (transport) {
@@ -1117,7 +1138,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 return false;
             },
         });
-        const measuredGap = Number.parseFloat(getComputedStyle(header.element).columnGap);
+        const headerStyle = getComputedStyle(header.element);
+        const measuredGap = Number.parseFloat(headerStyle.columnGap);
         headerGap = Number.isFinite(measuredGap) ? measuredGap : 4;
         if (extensionSlot) {
             const style = getComputedStyle(extensionSlot);
@@ -1136,6 +1158,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 }
             }
             setOverflow();
+            finishFirstReveal();
             syncListVisibility();
         }) : null;
         resizeObserver?.observe(header.element, { box: 'border-box' });
@@ -1168,6 +1191,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 destroyed = true;
                 cancelActivation();
                 renderRevision++;
+                cancelAnimationFrame(firstRevealFrame);
                 unbindKeyboard();
                 resizeObserver?.disconnect();
                 extensionObserver?.disconnect();
@@ -1205,6 +1229,7 @@ export async function mountCharacterList(container = document.getElementById('rm
     if (mountedLists.has(container)) return mountedLists.get(container);
     if (mountingLists.has(container)) return mountingLists.get(container);
     const promise = (async () => {
+        await loadCharacterListStyles();
         const originalChildren = [...container.children].map(element => ({ element, style: element.getAttribute('style') }));
         const engineSelectors = ['#character_search_bar', '#charListFixedTop > .rm_tag_controls', '#rm_print_characters_block', '#rm_print_characters_pagination', '#rm_buttons_container'];
         const engines = engineSelectors.map(selector => container.querySelector(selector)).filter(Boolean).map(element => {
@@ -1231,9 +1256,9 @@ export async function mountCharacterList(container = document.getElementById('rm
         container.append(section);
         let mounted;
         try {
-            await loadCharacterListStyles();
             const [script, groups, state, tags] = await Promise.all([loadScriptModule(), loadGroupModule(), loadStateModule(), loadTagModule()]);
             const controller = createCharacterListController(container, { script, groups, state, tags, getNavigationGeneration }, restoreDOM);
+            section.remove();
             mounted = controller.mount();
             for (const { element, style } of originalChildren) {
                 if (!mounted.section.contains(element)) continue;

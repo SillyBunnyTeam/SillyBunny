@@ -88,6 +88,102 @@ async function showView(page, view) {
     await expect.poll(() => page.evaluate(async () => (await import('/script.js')).menu_type)).toBe('characters');
 }
 
+for (const { label, width, reducedMotion, appReducedMotion = false } of [
+    { label: 'mobile', width: 390, reducedMotion: 'no-preference' },
+    { label: 'desktop', width: 1440, reducedMotion: 'no-preference' },
+    { label: 'mobile reduced motion', width: 390, reducedMotion: 'reduce' },
+    { label: 'mobile app reduced motion', width: 390, reducedMotion: 'no-preference', appReducedMotion: true },
+]) {
+    const motionExpected = reducedMotion !== 'reduce' && !appReducedMotion;
+    test.describe(`Characters first open on ${label}`, () => {
+        test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390, reducedMotion });
+
+        test('first visible frames have settled panes, header actions and single-line rows', async ({ page }) => {
+            await page.emulateMedia({ reducedMotion });
+            await page.goto('/');
+            await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+            await page.waitForFunction(() => !document.getElementById('preloader'));
+            await page.evaluate(async appReducedMotion => {
+                const app = await import('/script.js');
+                const { power_user } = await import('/scripts/power-user.js');
+                const tags = await import('/scripts/tags.js');
+                power_user.bogus_folders = false;
+                power_user.charListGrid = false;
+                document.body.classList.remove('charListGrid');
+                document.body.classList.toggle('reduced-motion', appReducedMotion);
+                for (const type of ['fav', 'folder', 'group']) app.entitiesFilter.setFilterData(type, 'UNDEFINED', true);
+                app.entitiesFilter.setFilterData('tag', { selected: [], excluded: [] }, true);
+                app.entitiesFilter.setFilterData('search', '', true);
+                document.getElementById('character_search_bar').value = '';
+                const definitions = Array.from({ length: 5 }, (_, index) => ({ id: `qa-first-open-${index}`, name: `QA long first-open tag ${index}` }));
+                tags.tags.push(...definitions);
+                // Alternate tagged and untagged rows: both must have real, stable first-paint geometry.
+                for (const [index, character] of app.characters.entries()) {
+                    tags.tag_map[character.avatar] = index % 2 ? [] : definitions.map(tag => tag.id);
+                }
+                window.__sbFirstOpenFrames = [];
+                window.__sbFirstOpenDone = new Promise(resolve => {
+                    const start = performance.now();
+                    const sample = () => {
+                        const page = document.getElementById('sb-settings-page');
+                        const panes = ['sb-settings-sidebar', 'sb-settings-content'].map(id => document.getElementById(id));
+                        const animations = page.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running');
+                        const section = document.querySelector('.sb-character-list[data-mounted="true"]');
+                        const scale = new DOMMatrixReadOnly(getComputedStyle(page).transform).a;
+                        const visible = !page.hidden && section && !section.closest('[hidden]') && getComputedStyle(section).visibility === 'visible' && Number(getComputedStyle(section).opacity) > 0;
+                        const rect = element => {
+                            const box = element.getBoundingClientRect();
+                            const origin = page.getBoundingClientRect();
+                            return { x: (box.x - origin.x) / scale, width: box.width / scale, height: box.height / scale };
+                        };
+                        window.__sbFirstOpenFrames.push({
+                            visible, scale,
+                            reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+                            pageMotion: animations.some(animation => animation.effect?.target === page),
+                            paneMotion: animations.some(animation => panes.includes(animation.effect?.target) && animation.transitionProperty === 'transform'),
+                            list: visible ? rect(section) : null,
+                            buttons: visible ? [...section.querySelectorAll('.sb-character-list__header button')].filter(button => button.getClientRects().length).length : null,
+                            rows: visible ? [...section.querySelectorAll('.ds-entity-row')].slice(0, 2).map(rect) : [],
+                            strips: visible ? [...section.querySelectorAll('.ds-entity-row__tags')].slice(0, 2).map(strip => ({ wrap: getComputedStyle(strip).flexWrap, overflow: getComputedStyle(strip).overflowX })) : [],
+                            styled: visible ? ['deferred-entity-list-css', 'deferred-editor-shell-css', 'deferred-character-list-css'].every(id => Boolean(document.getElementById(id)?.sheet)) : null,
+                        });
+                        if (performance.now() - start < 1600) requestAnimationFrame(sample);
+                        else resolve();
+                    };
+                    requestAnimationFrame(sample);
+                });
+            }, appReducedMotion);
+            await page.locator('#sb-character-toggle').click();
+            await page.evaluate(() => window.__sbFirstOpenDone);
+            const frames = await page.evaluate(() => window.__sbFirstOpenFrames);
+            await test.info().attach('first-open-frames', { body: JSON.stringify(frames), contentType: 'application/json' });
+            const visible = frames.filter(frame => frame.visible);
+            expect(visible.length).toBeGreaterThan(2);
+            expect(visible.every(frame => frame.rows.length === 2)).toBe(true);
+            expect(frames.some(frame => frame.paneMotion)).toBe(false);
+            expect(frames.every(frame => frame.reduced === (reducedMotion === 'reduce'))).toBe(true);
+            expect(frames.some(frame => frame.pageMotion)).toBe(motionExpected);
+            expect(new Set(visible.map(frame => frame.buttons)).size).toBe(1);
+            expect(visible.every(frame => frame.styled)).toBe(true);
+            expect(visible.every(frame => frame.strips.every(strip => strip.wrap === 'nowrap' && strip.overflow === 'hidden'))).toBe(true);
+            const spread = values => Math.max(...values) - Math.min(...values);
+            for (const property of ['x', 'width', 'height']) {
+                expect(spread(visible.map(frame => frame.list[property]))).toBeLessThan(1);
+            }
+            for (const index of [0, 1]) expect(spread(visible.map(frame => frame.rows[index].height))).toBeLessThan(1);
+            expect(frames.every(frame => motionExpected || frame.scale === 1)).toBe(true);
+            // eslint-disable-next-line playwright/no-conditional-in-test -- Only the mobile, animated parameter has pane push navigation.
+            if (width === 390 && motionExpected) {
+                // Pane push navigation still belongs to a deliberate in-page Back/tab change.
+                await page.locator('#sb-settings-back').click();
+                await expect(page.locator('#sb-settings-page')).not.toHaveClass(/sb-settings-page--content/); // eslint-disable-line playwright/no-conditional-expect
+                await page.getByRole('tab', { name: 'Characters', exact: true }).click();
+                await expect(page.locator('#sb-settings-page')).toHaveClass(/sb-settings-page--content/); // eslint-disable-line playwright/no-conditional-expect
+            }
+        });
+    });
+}
+
 async function prepareList(page, viewport) {
     await page.setViewportSize(viewport);
     await page.goto('/');
