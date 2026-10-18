@@ -43,7 +43,7 @@ import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
 import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
-import { addLanguagesToDropdown } from './i18n.js';
+import { addLanguagesToDropdown, t } from './i18n.js';
 import { syncUserControls } from './user.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
@@ -700,6 +700,11 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-list.css?v=20261018b', id: 'deferred-character-list-css' },
+    ],
+    'characters:import': [
+        { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-character-import.css?v=20261018a', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
@@ -7654,12 +7659,25 @@ function setCharacterPersonaPanelVisible(visible) {
     }
 }
 
+let characterImportMountPromise = null;
 function setCharacterImportPanelVisible(visible) {
     const host = document.getElementById('sb_character_import_panel');
 
     if (host instanceof HTMLElement) {
         host.hidden = !visible;
         host.setAttribute('aria-hidden', String(!visible));
+        if (visible && !characterImportMountPromise) {
+            characterImportMountPromise = import('./sillybunny-character-import.js').then(async module => {
+                await module.loadCharacterImportStyles(SB_PANEL_STYLESHEETS['characters:import']);
+                return module.mountCharacterImport(host);
+            }).catch(error => {
+                characterImportMountPromise = null;
+                const loading = host.querySelector('#sb_character_import_loading');
+                if (loading) loading.textContent = t`Error`;
+                console.warn('[SillyBunny] Could not mount Import.', error);
+            });
+        }
+        if (visible) void characterImportMountPromise?.then(controller => controller?.refreshLibrary());
     }
 }
 
@@ -14202,22 +14220,6 @@ function injectCharacterDrawerControls() {
     if (importTab instanceof HTMLButtonElement && importTab.dataset.sbBound !== 'true') {
         importTab.dataset.sbBound = 'true';
         importTab.addEventListener('click', () => openCharacterImportTab());
-    }
-
-    const importFileAction = document.getElementById('sb_character_import_file_action');
-    if (importFileAction instanceof HTMLButtonElement && importFileAction.dataset.sbBound !== 'true') {
-        importFileAction.dataset.sbBound = 'true';
-        importFileAction.addEventListener('click', () => {
-            document.getElementById('character_import_button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        });
-    }
-
-    const importUrlAction = document.getElementById('sb_character_import_url_action');
-    if (importUrlAction instanceof HTMLButtonElement && importUrlAction.dataset.sbBound !== 'true') {
-        importUrlAction.dataset.sbBound = 'true';
-        importUrlAction.addEventListener('click', () => {
-            document.getElementById('external_import_button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        });
     }
 
     if (document.documentElement.dataset.sbCharacterImportPreserveBound !== 'true') {

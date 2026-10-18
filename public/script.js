@@ -66,6 +66,8 @@ import {
     initWorldInfo,
     charUpdatePrimaryWorld,
     charSetAuxWorlds,
+    // SillyBunny: reuse the upstream lorebook import/conversion path — see docs/ui-migration.md.
+    importWorldInfo,
 } from './scripts/world-info.js';
 import { buildWorldInfoScanChat, substituteWorldInfoGreeting } from './scripts/world-info-scan-chat.js';
 
@@ -16832,38 +16834,91 @@ export async function swipe_right(event = null, { source, repeated, message } = 
  * @returns {Promise<void>}
  */
 export async function processDroppedFiles(files, data = new Map()) {
-    const allowedMimeTypes = [
-        'application/json',
-        'image/png',
-        'application/yaml',
-        'application/x-yaml',
-        'text/yaml',
-        'text/x-yaml',
-    ];
+    // SillyBunny: legacy drops, Assets, welcome and replacements retain select-last — see docs/ui-migration.md.
+    await runCharacterImport({ files, data, source: 'drop', policy: 'select-last' });
+}
 
-    const allowedExtensions = [
-        'charx',
-        'byaf',
-    ];
+// SillyBunny: one result-bearing operation for the Import tab and upstream transports — see docs/ui-migration.md.
+/**
+ * @typedef {{ kind: string, id: string|null, name: string, ok: boolean, error: string|null }} CharacterImportResult
+ */
+/**
+ * Imports immediately; only callers explicitly choosing stay suppress character selection.
+ * @param {object} input
+ * @param {Iterable<File>} [input.files=[]]
+ * @param {string[]} [input.urls=[]]
+ * @param {Map<File, string>} [input.data]
+ * @param {'picker'|'drop'} [input.source='picker'] Preserve the stricter upstream drop MIME gate.
+ * @param {'select-last'|'stay'} [input.policy='select-last']
+ * @returns {Promise<CharacterImportResult[]>}
+ */
+export async function runCharacterImport({ files = [], urls = [], data = new Map(), source = 'picker', policy = 'select-last' } = {}) {
+    if (!['stay', 'select-last'].includes(policy)) throw new TypeError(`Unknown import policy: ${policy}`);
+    if (!['picker', 'drop'].includes(source)) throw new TypeError(`Unknown import source: ${source}`);
+    const results = [];
+    const avatars = [];
+    const mimeTypes = ['application/json', 'image/png', 'application/yaml', 'application/x-yaml', 'text/yaml', 'text/x-yaml'];
+    const failed = (name, error, kind = 'character') => ({ kind, id: null, name, ok: false, error: String(error?.message ?? error) });
 
-    const avatarFileNames = [];
-    for (const file of files) {
+    async function importFile(file, preservedName, gate) {
         const extension = file.name.split('.').pop().toLowerCase();
-        if (allowedMimeTypes.some(x => file.type.startsWith(x)) || allowedExtensions.includes(extension)) {
-            const preservedName = data instanceof Map && data.get(file);
-            const avatarFileName = await importCharacter(file, { preserveFileName: preservedName });
-            if (avatarFileName !== undefined) {
-                avatarFileNames.push(avatarFileName);
-            }
-        } else {
-            toastr.warning(t`Unsupported file type: ` + file.name);
+        if (gate === 'drop' && !mimeTypes.some(type => file.type.startsWith(type)) && !['charx', 'byaf'].includes(extension)) {
+            const error = t`Unsupported file type: ` + file.name;
+            toastr.warning(error);
+            results.push(failed(file.name, error));
+            return;
+        }
+        try {
+            const avatar = await importCharacter(file, { preserveFileName: preservedName, throwOnError: true });
+            if (!avatar) throw new Error(t`Could not import character`);
+            avatars.push(avatar);
+            results.push({ kind: 'character', id: avatar, name: avatar.replace(/\.png$/i, ''), ok: true, error: null });
+        } catch (error) {
+            // SillyBunny: legacy callers must observe aborted imports, not report success — see docs/ui-migration.md.
+            if (policy === 'select-last' && error.name === 'CharacterImportPreconditionError') throw error;
+            results.push(failed(file.name, error));
         }
     }
 
-    if (avatarFileNames.length > 0) {
-        await importCharactersTags(avatarFileNames);
-        await selectImportedChar(avatarFileNames[avatarFileNames.length - 1]);
+    for (const file of files) await importFile(file, data instanceof Map ? data.get(file) : '', source);
+    for (const url of urls) {
+        let kind = 'character';
+        try {
+            const response = await fetch(isValidUrl(url) ? '/api/content/importURL' : '/api/content/importUUID', {
+                method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ url }),
+            });
+            if (!response.ok) throw new Error(await response.text() || response.statusText || `HTTP ${response.status}`);
+            kind = response.headers.get('X-Custom-Content-Type');
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i);
+            let name = (match?.[1] || match?.[2] || url.split('/').filter(Boolean).pop() || 'file').replace(/^"|"$/g, '');
+            try { name = decodeURIComponent(name); } catch { /* Upstream accepts literal non-URI filenames. */ }
+            const blob = await response.blob();
+            const file = new File([blob], name, { type: blob.type });
+            if (kind === 'character') {
+                await importFile(file, '', 'drop');
+                continue;
+            }
+            if (kind !== 'lorebook') throw new Error(t`Unknown content type`);
+            // SillyBunny: the transport owns its result; unrelated WI updates cannot satisfy this import — see docs/ui-migration.md.
+            const imported = await importWorldInfo(file, { returnResult: true });
+            if (!imported.ok) throw new Error(imported.error);
+            results.push({ kind, id: imported.name, name: imported.name, ok: true, error: null });
+        } catch (error) {
+            if (policy === 'select-last' && error.name === 'CharacterImportPreconditionError') throw error;
+            results.push(failed(url, error, kind || 'unknown'));
+        }
     }
+    if (avatars.length) {
+        await importCharactersTags(avatars);
+        for (const result of results) {
+            if (result.ok && result.kind === 'character') {
+                result.name = characters.find(character => character.avatar === result.id)?.name ?? result.name;
+            }
+        }
+        if (policy === 'select-last') await selectImportedChar(avatars[avatars.length - 1]);
+    }
+    return results;
 }
 
 /**
@@ -16903,12 +16958,16 @@ async function selectImportedChar(charId) {
  * @param {object} [options] - Options
  * @param {string} [options.preserveFileName] Whether to preserve original file name
  * @param {Boolean} [options.importTags=false] Whether to import tags
+ * @param {boolean} [options.throwOnError=false] SillyBunny result-bearing imports retain the server error.
  * @returns {Promise<string>}
  */
-async function importCharacter(file, { preserveFileName = '', importTags = false } = {}) {
+async function importCharacter(file, { preserveFileName = '', importTags = false, throwOnError = false } = {}) {
     if (is_group_generating || is_send_press) {
         toastr.error(t`Cannot import characters while generating. Stop the request and try again.`, t`Import aborted`);
-        throw new Error('Cannot import character while generating');
+        // SillyBunny: identify precondition failures independently of transport errors — see docs/ui-migration.md.
+        const error = new Error('Cannot import character while generating');
+        error.name = 'CharacterImportPreconditionError';
+        throw error;
     }
 
     const ext = file.name.match(/\.(\w+)$/);
@@ -16935,13 +16994,18 @@ async function importCharacter(file, { preserveFileName = '', importTags = false
         });
 
         if (!result.ok) {
-            throw new Error(`Failed to import character: ${result.statusText}`);
+            // SillyBunny: keep the server's useful error in result rows — see docs/ui-migration.md.
+            const message = await result.text();
+            let detail;
+            try { detail = JSON.parse(message).error; } catch { /* Error responses may be plain text. */ }
+            throw new Error(String(detail || message || result.statusText));
         }
 
         const data = await result.json();
 
         if (data.error) {
-            throw new Error(`Server returned an error: ${data.error}`);
+            // SillyBunny: expose the original server message, not a presentation prefix — see docs/ui-migration.md.
+            throw new Error(String(data.error));
         }
 
         if (data.file_name !== undefined) {
@@ -16968,6 +17032,8 @@ async function importCharacter(file, { preserveFileName = '', importTags = false
     } catch (error) {
         console.error('Error importing character', error);
         toastr.error(t`The file is likely invalid or corrupted.`, t`Could not import character`);
+        // SillyBunny: legacy callers still swallow failures; the operation returns a failed item — see docs/ui-migration.md.
+        if (throwOnError) throw error;
     }
 }
 
@@ -18627,21 +18693,12 @@ jQuery(async function () {
             return;
         }
 
-        const avatarFileNames = [];
-        for (const file of e.target.files) {
-            const avatarFileName = await importCharacter(file);
-            if (avatarFileName !== undefined) {
-                avatarFileNames.push(avatarFileName);
-            }
+        // SillyBunny: the hidden upstream picker remains select-last, unlike the Import panel — see docs/ui-migration.md.
+        try {
+            await runCharacterImport({ files: e.target.files, policy: 'select-last' });
+        } finally {
+            e.target.value = '';
         }
-
-        if (avatarFileNames.length > 0) {
-            await importCharactersTags(avatarFileNames);
-            await selectImportedChar(avatarFileNames[avatarFileNames.length - 1]);
-        }
-
-        // Clear the file input value to allow re-uploading the same file
-        e.target.value = '';
     });
 
     $('#export_button').on('click', function () {

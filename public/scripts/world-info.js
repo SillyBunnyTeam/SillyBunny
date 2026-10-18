@@ -6786,10 +6786,14 @@ export function onWorldInfoChange(args, text) {
 /**
  * Imports world info from a file.
  * @param {File} file File to import
+ * @param {{ returnResult?: boolean }} [options] SillyBunny: opt in to the canonical result without changing legacy returns.
+ * @returns {Promise<void|false|{ok: boolean, name: string|null, error: string|null}>}
  */
-export async function importWorldInfo(file) {
+export async function importWorldInfo(file, { returnResult = false } = {}) {
+    // SillyBunny: result-bearing imports report their own outcome, not global WI events — see docs/ui-migration.md.
+    const failed = error => ({ ok: false, name: null, error: String(error?.message ?? error) });
     if (!file) {
-        return;
+        return returnResult ? failed(t`Failed to import World Info`) : undefined;
     }
 
     const formData = new FormData();
@@ -6807,7 +6811,7 @@ export async function importWorldInfo(file) {
 
         if (jsonData === undefined || jsonData === null) {
             toastr.error(t`File is not valid: ${file.name}`);
-            return;
+            return returnResult ? failed(t`File is not valid: ${file.name}`) : undefined;
         }
 
         const isNativeWorldInfo = jsonData.entries && typeof jsonData.entries === 'object' && !Array.isArray(jsonData.entries);
@@ -6832,13 +6836,13 @@ export async function importWorldInfo(file) {
         }
     } catch (error) {
         toastr.error(`Error parsing file: ${error}`);
-        return;
+        return returnResult ? failed(error) : undefined;
     }
 
     const worldName = file.name.substr(0, file.name.lastIndexOf('.'));
     const sanitizedWorldName = await getCanonicalWorldInfoName(worldName);
     if (!sanitizedWorldName) {
-        return false;
+        return returnResult ? failed(t`Failed to import World Info`) : false;
     }
     const existingWorldName = findMatchingLorebookName(world_names, sanitizedWorldName);
     const persistedWorldName = existingWorldName ?? sanitizedWorldName;
@@ -6847,13 +6851,15 @@ export async function importWorldInfo(file) {
         actionName: 'Import',
     });
     if (!allowed) {
-        return false;
+        return returnResult ? failed(t`Failed to import World Info`) : false;
     }
     formData.set('name', persistedWorldName);
     const releaseSaveBlock = blockWorldInfoSaves(persistedWorldName);
     let saveTarget = persistedWorldName;
     let importedName;
     let importedData;
+    // SillyBunny: preserve server detail for the opt-in result only — see docs/ui-migration.md.
+    let importError = null;
 
     try {
         await settleWorldInfoSave(persistedWorldName);
@@ -6865,11 +6871,18 @@ export async function importWorldInfo(file) {
         });
 
         if (!result.ok) {
+            if (returnResult) {
+                const message = await result.text();
+                let detail;
+                try { detail = JSON.parse(message).error; } catch { /* Error bodies may be plain text. */ }
+                throw new Error(String(detail || message || result.statusText));
+            }
             throw new Error(`Failed to import world info: ${result.statusText}`);
         }
         saveTarget = null;
 
         const data = await result.json();
+        if (returnResult && (!data.name || data.error)) throw new Error(String(data.error || t`Failed to import World Info`));
 
         if (data.name) {
             importedName = data.name;
@@ -6889,6 +6902,7 @@ export async function importWorldInfo(file) {
             toastr.success(t`World Info "${data.name}" imported successfully!`);
         }
     } catch (error) {
+        importError = String(error?.message ?? error);
         console.error('Error importing world info:', error);
         toastr.error(t`Failed to import World Info`);
     } finally {
@@ -6897,6 +6911,10 @@ export async function importWorldInfo(file) {
     if (importedName) {
         await eventSource.emit(event_types.WORLDINFO_UPDATED, importedName, importedData, { replaced: true });
     }
+    // SillyBunny: default callers still receive undefined on success/transport failure — see docs/ui-migration.md.
+    if (returnResult) return importError ? failed(importError) : {
+        ok: Boolean(importedName), name: importedName ?? null, error: importedName ? null : t`Failed to import World Info`,
+    };
 }
 
 /**

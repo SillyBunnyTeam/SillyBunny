@@ -6808,26 +6808,9 @@
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
                     <div id="sb_character_import_panel" class="sb-character-import-panel" hidden>
-                        <div class="sb-character-import-intro">
-                            <h3 data-i18n="Import a character card">Import a character card</h3>
-                            <p data-i18n="Upload a character card to SillyBunny using your method of choice.">Upload a character card to SillyBunny using your method of choice.</p>
-                        </div>
-                        <div class="sb-character-import-actions">
-                            <button id="sb_character_import_file_action" class="sb-character-import-action" type="button">
-                                <i class="fa-solid fa-file-import" aria-hidden="true"></i>
-                                <span>
-                                    <strong data-i18n="Import from file">Import from file</strong>
-                                    <small data-i18n="Upload PNG, JSON, YAML, CHARX, or BYAF character files.">Upload PNG, JSON, YAML, CHARX, or BYAF character files.</small>
-                                </span>
-                            </button>
-                            <button id="sb_character_import_url_action" class="sb-character-import-action" type="button">
-                                <i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i>
-                                <span>
-                                    <strong data-i18n="Import from URL">Import from URL</strong>
-                                    <small data-i18n="Paste one or more links to character cards or supported external content.">Paste one or more links to character cards or supported external content.</small>
-                                </span>
-                            </button>
-                        </div>
+                        <!-- SillyBunny: keep the rebuilt Import surface hidden until deferred styles resolve; upstream transports remain unchanged — see docs/ui-migration.md. -->
+                        <div id="sb_character_import_loading" role="status" data-i18n="Loading...">Loading...</div>
+                        <div id="sb_character_import_content" hidden></div>
                     </div>
                     <!-- SillyBunny: runtime reparents the upstream #WI-SP-button/#WorldInfo node here so World Info behaves as a right Characters tab without duplicating IDs. This differs from upstream so the route stays compatible with saved shortcuts and existing selectors. -->
                     <div id="sb_character_world_info_panel" class="sb-character-world-info-panel" role="tabpanel" aria-labelledby="sb_character_tab_world_info" aria-hidden="true" hidden></div>
