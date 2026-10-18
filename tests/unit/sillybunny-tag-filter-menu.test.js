@@ -35,6 +35,16 @@ afterEach(() => {
 });
 
 describe('tag filter menu', () => {
+    test('names first-render and rebuilt icon actions even after tooltip extraction', async () => {
+        controls.querySelector('.filterByFavorites').innerHTML = '<span class="tag_name fa-solid fa-star" data-sttt--title="Show only favorites"></span>';
+        menu = attachTagFilterMenu(controls);
+        expect(controls.querySelector('.filterByFavorites').getAttribute('aria-label')).toBe('Show only favorites');
+        expect(controls.querySelector('.filterByFavorites .tag_name').getAttribute('aria-hidden')).toBe('true');
+        controls.querySelector('.rm_tag_filter').innerHTML = '<span class="tag actionable"><span class="tag_name fa-solid fa-folder" title="Show only folders"></span></span>';
+        await settle();
+        expect(controls.querySelector('.tag.actionable').getAttribute('aria-label')).toBe('Show only folders');
+    });
+
     test('places its button outside the replaceable filter, survives rebuilding and restores DOM', async () => {
         const original = controls.innerHTML;
         menu = attachTagFilterMenu(controls);

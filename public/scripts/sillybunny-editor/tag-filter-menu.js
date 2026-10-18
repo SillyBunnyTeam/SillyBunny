@@ -61,6 +61,13 @@ export function attachTagFilterMenu(controls, { title = t`Show Tag List` } = {})
 
     function refresh() {
         if (destroyed) return;
+        // Initial transports can render before this surface acquires its SillyBunny scope.
+        for (const action of filter.querySelectorAll('.tag.actionable')) {
+            const glyph = action.querySelector('.tag_name');
+            const label = glyph?.getAttribute('title') ?? glyph?.getAttribute('data-sttt--title');
+            if (label) action.setAttribute('aria-label', label);
+            glyph?.setAttribute('aria-hidden', 'true');
+        }
         const currentTags = tags();
         const count = currentTags.filter(tag => tag.matches('.selected, .excluded')).length;
         badge.textContent = String(count);

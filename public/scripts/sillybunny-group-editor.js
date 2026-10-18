@@ -80,7 +80,7 @@ const session = createEditorSession({
 const navigation = {
     session,
     isActive: _isEditorVisible,
-    close: _closeSafely,
+    close: _navigateBack,
     afterDiscard: _syncDomFromDraft,
 };
 
@@ -376,7 +376,11 @@ async function _handleBack(event) {
         event.stopImmediatePropagation();
         return;
     }
-    await objectNavigation.back({
+    await _navigateBack();
+}
+
+function _navigateBack() {
+    return objectNavigation.back({
         current: { kind: 'group-editor', id: session.context?.mode === 'create' ? 'create' : session.context?.entityId },
         fallback: _closeSafely,
     });

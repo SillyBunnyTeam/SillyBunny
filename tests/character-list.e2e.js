@@ -342,6 +342,65 @@ async function expectEditorBackRestoration(page, view) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 375, height: 812 }]) {
+    test(`editor avatar and tag removal are native keyboard controls at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true }).click();
+        await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(1);
+        const avatar = page.locator('#avatar_div_div');
+        await expect(avatar).toHaveRole('button');
+        await expect(avatar).toHaveAccessibleName('Change Persona Image');
+        await avatar.focus();
+        await expect(avatar).toBeFocused();
+        const chooserEvent = page.waitForEvent('filechooser');
+        await avatar.press('Enter');
+        const chooser = await chooserEvent;
+        await chooser.setFiles([]);
+        const tags = page.locator('#tagList > .tag');
+        const count = await tags.count();
+        expect(count).toBeGreaterThan(0);
+        const remove = tags.first().getByRole('button', { name: 'Remove', exact: true });
+        await expect(remove).toBeVisible();
+        const size = await remove.boundingBox();
+        const minimum = { 1440: 16, 768: 44, 375: 44 }[viewport.width];
+        expect(size.width).toBeGreaterThanOrEqual(minimum);
+        expect(size.height).toBeGreaterThanOrEqual(minimum);
+        await remove.focus();
+        await page.keyboard.press('Enter');
+        await expect(tags).toHaveCount(count - 1);
+    });
+
+    test(`keyboard chat, pencil and clean Escape restore the origin at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        for (const { view, prefix } of [
+            { view: 'characters', prefix: 'sb_character_editor' },
+            { view: 'groups', prefix: 'sb_group_editor' },
+        ]) {
+            await showView(page, view);
+            const row = listRows(page, view).first();
+            const key = await row.getAttribute('data-sb-list-key');
+            await row.focus();
+            await page.keyboard.press('Enter');
+            await waitForChatActivation(page);
+            await showView(page, view);
+            const origin = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await origin.focus();
+            await page.keyboard.press('Tab');
+            await expect(origin.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
+            await page.keyboard.press('Enter');
+            await expect(page.locator(`#${prefix}_header`)).toBeVisible();
+            await expect(page.locator(`#${prefix}_save`)).toBeDisabled();
+            await page.locator(`#${prefix}_back`).focus();
+            await page.keyboard.press('Control+s');
+            await page.keyboard.press('Escape');
+            await expect(page.locator(`#${prefix}_header`)).toBeHidden();
+            await expect(origin).toBeFocused();
+            await expect(list(page)).toBeVisible();
+            await page.keyboard.press('Escape');
+            await expect(page.locator('#sb-settings-page')).toBeHidden();
+            await expect(page.locator('#sb-character-toggle')).toBeFocused();
+        }
+    });
+
     test(`shared lists activate chats and pencil/Back preserves the origin at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
         const character = listRows(page, 'characters').first();

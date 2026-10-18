@@ -133,7 +133,8 @@ function activeEditor() {
 }
 
 function isPopupOpen() {
-    return Boolean(document.querySelector('dialog.popup[open]'));
+    // Any open dialog owns Escape: popups, the tag manager and the colour picker are all native dialogs.
+    return Boolean(document.querySelector('dialog[open]'));
 }
 
 /**
@@ -162,17 +163,16 @@ function bindDocumentGuards() {
         void editor.session.save();
     }, { capture: true });
 
-    // Escape is guarded from inside fields too: while editing, focus is almost
-    // always in a field. A clean editor lets Escape fall through to the shell.
+    // Escape follows Back, including its origin focus, from fields as well.
     document.addEventListener('keydown', async (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
         if (isInlineEditorEvent(event)) return;
+        // Group searches own Escape to clear their query.
+        if (event.target instanceof Element && event.target.matches('#rm_group_members_filter, #rm_group_filter')) return;
         const editor = activeEditor();
         if (!editor || editor.escape === false) return;
         // Open overlays own Escape; check them before the dirty snapshot, which serialises every field.
         if (isPopupOpen() || isActionMenuOpen() || isPickerOpen()) return;
-        if (!editor.session.isDirty()) return;
-
         event.preventDefault();
         event.stopPropagation();
         if (await confirmEditorLeave(editor)) editor.close();

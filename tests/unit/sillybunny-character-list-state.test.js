@@ -570,7 +570,7 @@ describe('id-based list actions', () => {
             prefix: 'sb-group-editor-draft-',
         });
         const editor = loadSourceFunctions('scripts/sillybunny-group-editor.js', [
-            'openGroupEditorSession', '_openSession', '_handleBack', 'isGroupEditorOwner',
+            'openGroupEditorSession', '_openSession', '_handleBack', '_navigateBack', 'isGroupEditorOwner',
             'readGroupEditorBaseline', 'captureGroupEditorSave', 'discardGroupEditorForEntity',
         ], {
             session,
@@ -852,7 +852,7 @@ describe('id-based list actions', () => {
             prefix: 'sb-editor-draft-',
         });
         editor = loadSourceFunctions('scripts/sillybunny-character-editor.js', [
-            'openCharacterEditorSession', '_openSession', '_handleBack', '_captureSnapshot',
+            'openCharacterEditorSession', '_openSession', '_handleBack', '_navigateBack', '_captureSnapshot',
             '_syncFavoritePressed', 'syncCharacterEditorFavorite', 'discardCharacterEditorForEntity',
             'markCharacterEditorSaved', '_handleExternalSave',
             'captureCharacterEditorSave', '_persist', 'openCharacterEditorCreateSession',

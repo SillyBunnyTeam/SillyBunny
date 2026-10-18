@@ -70,7 +70,7 @@ const session = createEditorSession({
 const navigation = {
     session,
     isActive: _isEditorVisible,
-    close: _closeSafely,
+    close: _navigateBack,
 };
 
 /** @type {ReturnType<typeof mountEditorChrome>|null} */
@@ -443,7 +443,11 @@ async function _handleBack(event) {
         event.stopImmediatePropagation();
         return;
     }
-    await objectNavigation.back({
+    await _navigateBack();
+}
+
+function _navigateBack() {
+    return objectNavigation.back({
         current: { kind: 'character-editor', id: characters[this_chid]?.avatar ?? null },
         fallback: _closeSafely,
     });

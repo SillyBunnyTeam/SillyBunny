@@ -66,6 +66,23 @@ export function mountEditorChrome(config) {
     const { signal } = abort;
     const chromeParts = [header, toolbar].filter(Boolean);
 
+    // Tooltip extensions move title elsewhere; action names must survive that move.
+    for (const control of root.querySelectorAll('.sb-editor-icon-button, .editor_maximize, .sb-editor-tokens__warning')) {
+        if (!control.hasAttribute('aria-label')) {
+            const title = control.getAttribute('title') ?? control.getAttribute('data-sttt--title');
+            if (title) control.setAttribute('aria-label', title.split('\n')[0]);
+        }
+        for (const glyph of control.querySelectorAll('.fa-solid')) glyph.setAttribute('aria-hidden', 'true');
+    }
+    for (const link of root.querySelectorAll('.ds-field-header > .notes-link')) {
+        const label = link.parentElement.querySelector('label');
+        if (label) link.setAttribute('aria-label', label.textContent.trim());
+        for (const glyph of link.children) glyph.setAttribute('aria-hidden', 'true');
+    }
+    for (const button of root.querySelectorAll('[data-sb-avatar-input]')) {
+        button.addEventListener('click', () => document.getElementById(button.dataset.sbAvatarInput)?.click(), { signal });
+    }
+
     /** @type {Array<{ label: string, icon: string, element: HTMLElement }>} */
     let collapsed = [];
     /** @type {ChromeState|null} */
@@ -153,6 +170,7 @@ export function mountEditorChrome(config) {
         input.className = 'sb-editor-title-input';
         input.autocomplete = 'off';
         input.spellcheck = false;
+        input.setAttribute('aria-label', t`Rename`);
 
         // Swapping the input out of the DOM fires blur, so Enter/Escape would
         // otherwise commit a second time and Escape would end up saving.

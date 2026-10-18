@@ -107,7 +107,7 @@
 
 @media (pointer: coarse) {
     .sb-list-editor__divider::after {
-        width: 24px;
+        width: 44px;
     }
 }
 
@@ -250,6 +250,12 @@ body.reduced-motion .sb-list-editor__divider::before {
 .ds-row-entry input::placeholder {
     color: var(--sb-input-placeholder);
     opacity: 1;
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+    .sb-list-editor .ds-row-entry input {
+        min-height: 44px;
+    }
 }
 
 .ds-row-property {
@@ -937,4 +943,9 @@ body.reduced-motion [data-selection-mode='true'] button.menu_button:is(.sb-selec
 
 .menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action, .sb-status-page__action) {
     white-space: nowrap;
+}
+
+#sb-settings-page :is(#WorldInfo, #PersonaManagement, #sb_character_import_panel) :is(.ds-row--activatable, .ds-button-row, .editor_maximize, .sb-wi-property-summary, .sb-persona-property-summary):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }

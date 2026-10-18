@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+/* eslint-disable playwright/prefer-web-first-assertions -- Jest/jsdom assertions are synchronous. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 
 const popupShow = jest.fn();
@@ -104,6 +105,51 @@ describe('mountEditorChrome header-only mode', () => {
         expect(handlers.onBack).toHaveBeenCalledTimes(1);
         expect(handlers.onCancel).toHaveBeenCalledTimes(1);
         expect(handlers.onSave).toHaveBeenCalledTimes(1);
+    });
+
+    test('names retained icon actions after tooltip extraction and forwards the avatar picker', () => {
+        makeMedia();
+        const { root } = makeChrome();
+        root.innerHTML += '<div class="sb-editor-icon-button" data-sttt--title="Connected Personas"><i class="fa-solid fa-face-smile"></i></div>'
+            + '<div class="ds-field-header"><label>Description</label><a class="notes-link"><span class="fa-solid fa-question"></span></a></div>'
+            + '<button data-sb-avatar-input="avatar-input"></button><input id="avatar-input" type="file" hidden>';
+        const input = root.querySelector('#avatar-input');
+        const click = jest.spyOn(input, 'click').mockImplementation(() => {});
+        const chrome = mountEditorChrome({
+            root, header: document.createElement('header'), content: document.createElement('div'),
+            controls: { back: document.createElement('button'), cancel: document.createElement('button'), save: document.createElement('button'), title: document.createElement('span'), dirty: document.createElement('span') },
+            onBack() {}, onCancel() {}, onSave() {},
+        });
+        expect(root.querySelector('.sb-editor-icon-button').getAttribute('aria-label')).toBe('Connected Personas');
+        expect(root.querySelector('.notes-link').getAttribute('aria-label')).toBe('Description');
+        expect([...root.querySelectorAll('.fa-solid')].every(icon => icon.getAttribute('aria-hidden') === 'true')).toBe(true);
+        root.querySelector('button[data-sb-avatar-input]').click();
+        expect(click).toHaveBeenCalledTimes(1);
+        chrome.dispose();
+    });
+
+    test('inline rename has a name and Escape cancels without leaving', () => {
+        makeMedia();
+        const titleButton = document.createElement('button');
+        titleButton.id = 'editor_title_button';
+        const title = document.createElement('span');
+        titleButton.append(title);
+        document.body.append(titleButton);
+        const commit = jest.fn();
+        const chrome = mountEditorChrome({
+            root: document.body, header: document.createElement('header'), content: document.createElement('div'),
+            controls: { back: document.createElement('button'), cancel: document.createElement('button'), save: document.createElement('button'), title, titleButton, dirty: document.createElement('span') },
+            rename: { getValue: () => 'Alice', commit }, onBack() {}, onCancel() {}, onSave() {},
+        });
+        chrome.render({ mode: 'edit', title: 'Alice', dirty: false });
+        titleButton.click();
+        const input = document.querySelector('.sb-editor-title-input');
+        expect(input.getAttribute('aria-label')).toBe('Rename');
+        input.value = 'Abandoned';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(commit).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(titleButton);
+        chrome.dispose();
     });
 });
 
@@ -236,6 +282,21 @@ describe('editor navigation guards', () => {
         expect(popupShow).toHaveBeenCalled();
     });
 
+    test('clean Escape consumes the event and follows the registered Back route', async () => {
+        const close = jest.fn();
+        register({ session: makeSession(false), isActive: () => true, close });
+        const bubble = jest.fn();
+        document.body.addEventListener('keydown', bubble, { once: true });
+        const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        document.body.dispatchEvent(event);
+        await Promise.resolve();
+        expect(event.defaultPrevented).toBe(true);
+        expect(bubble).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledTimes(1);
+        expect(popupShow).not.toHaveBeenCalled();
+        document.body.removeEventListener('keydown', bubble);
+    });
+
     test('an open picker owns Escape before the dirty check runs', () => {
         const session = makeSession(true);
         const isDirty = jest.spyOn(session, 'isDirty');
@@ -246,6 +307,38 @@ describe('editor navigation guards', () => {
         expect(event.defaultPrevented).toBe(false);
         expect(isDirty).not.toHaveBeenCalled();
         expect(popupShow).not.toHaveBeenCalled();
+    });
+
+    test.each(['popup', 'tag-manager', 'action-menu', 'inline-rename'])('a %s owns clean Escape', async owner => {
+        const close = jest.fn();
+        register({ session: makeSession(false), isActive: () => true, close });
+        const field = document.createElement('input');
+        document.body.append(field);
+        if (owner === 'popup') document.body.insertAdjacentHTML('beforeend', '<dialog class="popup" open></dialog>');
+        if (owner === 'tag-manager') {
+            document.body.insertAdjacentHTML('beforeend', '<dialog class="sb-tag-manager-host" open></dialog>');
+            document.querySelector('.sb-tag-manager-host').append(field);
+        }
+        if (owner === 'action-menu') actionMenu.isActionMenuOpen.mockReturnValue(true);
+        if (owner === 'inline-rename') field.className = 'sb-editor-title-input';
+        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        await Promise.resolve();
+        expect(close).not.toHaveBeenCalled();
+        expect(popupShow).not.toHaveBeenCalled();
+    });
+
+    test('group search receives Escape before editor navigation', async () => {
+        const close = jest.fn();
+        register({ session: makeSession(false), isActive: () => true, close });
+        const field = document.createElement('input');
+        field.id = 'rm_group_members_filter';
+        const clear = jest.fn();
+        field.addEventListener('keydown', clear);
+        document.body.append(field);
+        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        await Promise.resolve();
+        expect(clear).toHaveBeenCalledTimes(1);
+        expect(close).not.toHaveBeenCalled();
     });
 
     test('escape: false leaves a dirty Escape to the editor shell', () => {

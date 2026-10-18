@@ -595,7 +595,11 @@
 .sb-editor-title-input:focus,
 #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):focus-visible,
 .sb-editor-tokens__warning:focus-visible,
-.ds-row-button:focus-visible {
+.ds-row-button:focus-visible,
+#right-nav-panel .sb-editor-sheet .editor_maximize:focus-visible,
+#sb-settings-page #right-nav-panel .ds-pref-group > .ds-row-button:focus-visible,
+#right-nav-panel [data-sb-avatar-input]:focus-visible,
+#right-nav-panel :is(#tagList, #groupTagList) .tag_remove:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -668,6 +672,9 @@
 
 .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
     display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
     width: 88px;
     height: 88px;
     border-radius: var(--sb-radius-card, 12px);
@@ -1098,7 +1105,44 @@ body.reduced-motion :is(
 
 /* Touch targets. DESIGN.md requires 44px for coarse pointers; the toolbar and
    header are the primary hit areas in this editor. */
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 768px) {
+    #right-nav-panel {
+        --sb-tag-remove-size: 44px;
+    }
+
+    #right-nav-panel .ds-field-header > .notes-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    #right-nav-panel #form_create :is(#creator_textarea, #character_version_textarea) {
+        min-height: 44px;
+    }
+
+    #right-nav-panel #talkativeness_slider {
+        height: 44px;
+        background: transparent;
+    }
+
+    #right-nav-panel #talkativeness_slider::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    }
+
+    #right-nav-panel #talkativeness_slider::-webkit-slider-thumb {
+        margin-top: -7px;
+    }
+
+    #right-nav-panel #talkativeness_slider::-moz-range-track {
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    }
+
     .sb-editor-icon-button {
         width: 44px;
         min-width: 44px;
@@ -1150,8 +1194,10 @@ body.reduced-motion :is(
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: var(--sb-tag-remove-size, 16px);
+    height: var(--sb-tag-remove-size, 16px);
+    padding: 0;
+    border: 0;
     border-radius: 50%;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
     color: var(--SmartThemeBodyColor);

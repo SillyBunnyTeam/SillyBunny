@@ -228,8 +228,8 @@
 }
 
 .sb-wi-search-field:focus-within {
-    border-color: var(--sb-accent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sb-accent) 40%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    box-shadow: var(--sb-entry-focus-ring);
 }
 
 #WorldInfo .sb-wi-editor .sb-wi-search {

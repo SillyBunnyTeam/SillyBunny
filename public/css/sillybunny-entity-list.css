@@ -400,12 +400,15 @@
     white-space: nowrap;
 }
 
-.ds-tag-chips .tag .tag_remove {
+.ds-tag-chips .tag .tag_remove,
+.sb-character-list .rm_tag_bogus_drilldown .tag_remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: var(--sb-tag-remove-size, 16px);
+    height: var(--sb-tag-remove-size, 16px);
+    padding: 0;
+    border: 0;
     border-radius: 50%;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
     color: var(--SmartThemeBodyColor);
@@ -414,6 +417,11 @@
     line-height: 1;
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
     flex-shrink: 0;
+}
+
+.sb-character-list .rm_tag_bogus_drilldown .tag_remove:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .ds-entity-row .ds-entity-row__tags {

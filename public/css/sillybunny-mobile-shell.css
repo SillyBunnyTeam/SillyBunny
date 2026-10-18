@@ -501,9 +501,9 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     /* Metadata tab - single-line creator/version, taller notes/tags */
     #right-nav-panel #creator_textarea,
     #right-nav-panel #character_version_textarea {
-        min-height: 34px !important;
-        height: 34px !important;
-        max-height: 34px !important;
+        min-height: 44px !important;
+        height: 44px !important;
+        max-height: 44px !important;
         line-height: 1.25 !important;
         padding-block: 6px !important;
         resize: none !important;

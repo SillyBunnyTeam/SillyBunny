@@ -250,7 +250,7 @@
     display: none;
 }
 
-.sb-tag-manager :is(button, input):focus-visible {
+#tag_view_list.sb-tag-manager :is(button, input):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }

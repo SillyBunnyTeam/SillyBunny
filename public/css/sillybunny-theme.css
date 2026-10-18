@@ -962,6 +962,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 }
 
 .sb-segmented-control--compact .sb-boolean-radio-option > input:focus-visible + span {
+    outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 

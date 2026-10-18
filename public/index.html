@@ -6903,10 +6903,11 @@
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="avatar-and-name-block" class="sb-character-essentials">
                                             <div id="avatar_div" class="sb-character-essentials__avatar">
-                                                <label id="avatar_div_div" class="add_avatar avatar" for="add_avatar_button" title="Click to select a new avatar for this character" data-i18n="[title]Click to select a new avatar for this character">
+                                                <!-- SillyBunny: keyboard-operable picker keeps the upstream input/handlers — see docs/ui-migration.md. -->
+                                                <button type="button" id="avatar_div_div" class="add_avatar avatar" data-sb-avatar-input="add_avatar_button" title="Click to select a new avatar for this character" aria-label="Change Persona Image" data-i18n="[title]Click to select a new avatar for this character;[aria-label]Change Persona Image">
                                                     <img id="avatar_load_preview" src="img/ai4.png" alt="avatar">
-                                                    <input hidden type="file" id="add_avatar_button" name="avatar" accept="image/*">
-                                                </label>
+                                                </button>
+                                                <input hidden type="file" id="add_avatar_button" name="avatar" accept="image/*">
                                             </div>
                                             <div class="sb-character-essentials__fields">
                                                 <div id="name_div" class="ds-field">
@@ -7302,14 +7303,15 @@
                                 <div class="ds-pref-group sb-editor-section__body">
                                     <div id="group-metadata-controls" class="sb-character-essentials">
                                         <div class="sb-character-essentials__avatar">
-                                            <label id="group_avatar_div" class="add_avatar avatar" for="group_avatar_button" title="Click to select a new avatar for this group" data-i18n="[title]Click to select a new avatar for this group">
+                                            <!-- SillyBunny: keyboard-operable picker keeps the upstream input/handlers — see docs/ui-migration.md. -->
+                                            <button type="button" id="group_avatar_div" class="add_avatar avatar" data-sb-avatar-input="group_avatar_button" title="Click to select a new avatar for this group" aria-label="Change Persona Image" data-i18n="[title]Click to select a new avatar for this group;[aria-label]Change Persona Image">
                                                 <div id="group_avatar_preview">
                                                     <div class="avatar">
                                                         <img src="img/ai4.png" alt="avatar">
                                                     </div>
                                                 </div>
-                                                <input hidden type="file" id="group_avatar_button" name="avatar" accept="image/png, image/jpeg, image/jpg, image/gif, image/bmp">
-                                            </label>
+                                            </button>
+                                            <input hidden type="file" id="group_avatar_button" name="avatar" accept="image/png, image/jpeg, image/jpg, image/gif, image/bmp">
                                         </div>
                                         <div class="sb-character-essentials__fields">
                                             <div id="rm_group_top_bar" class="ds-field">

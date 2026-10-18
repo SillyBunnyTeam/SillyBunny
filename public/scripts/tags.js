@@ -1368,7 +1368,14 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     tagElement.css('color', tag.color2);
 
     tagElement.find('.tag_name').text(tag.name);
-    const removeButton = tagElement.find('.tag_remove');
+    let removeButton = tagElement.find('.tag_remove');
+    // SillyBunny: keep tag-removal transports keyboard-operable on migrated surfaces — see docs/ui-migration.md.
+    if (removable && listElement[0]?.closest('.sb-editor-sheet, .sb-character-list')) {
+        const button = $('<button type="button" class="tag_remove"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>');
+        button.attr('aria-label', t`Remove`);
+        removeButton.replaceWith(button);
+        removeButton = button;
+    }
     removable ? removeButton.show() : removeButton.hide();
     if (removable && removeAction) {
         tagElement.attr('custom-remove-action', String(true));
