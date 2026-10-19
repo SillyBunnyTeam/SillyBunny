@@ -2,9 +2,9 @@
 
 ## Vision
 
-SillyBunny is a distraction-free environment for roleplay and conversational AI, built on a single principle: **simple by default, powerful when needed.**
+SillyBunny is a distraction-free environment built for roleplay and conversational AI, based on a primary principle: **simple by default, powerful when needed.**
 
-The main content surrounding a character card is the primary focus. Every UI decision defers to it. Powerful configuration and customisation are readily available to the end user; they simply stay out of the way until the user chooses to access them.
+The main content surrounding a character card and its interactions is the primary focus. Distractions are kept to a minimum so the user can focus purely on what's important - their roleplay and/or story. Powerful configuration and customisation are readily available to the end user; they simply stay out of the way in easy-to-navigate menus until the user specifically requests them.
 
 ---
 
@@ -12,16 +12,18 @@ The main content surrounding a character card is the primary focus. Every UI dec
 
 SillyBunny embodies two distinct design philosophies:
 
-**Simple and Intuitive**: SillyBunny prioritizes simplicity and user focus by default, teaching a user through consistent effort. This means anticipating user mistakes, and eliminating unnecessary interruptions. There should be one primary action per view, and progressive disclosure. This provides a welcoming and intuitive environment for the user while remaining distraction-free.
+**Simple and Intuitive**: SillyBunny prioritizes simplicity and a focused experience, teaching a user muscle memory through consistent effort. This means anticipating user mistakes, having a consistent design flow that can be memorised, and eliminating unnecessary interruptions. There should be at most one suggested or destructive action per view, and progressive disclosure. This provides a welcoming and intuitive environment for the user while remaining distraction-free.
 
-**Highly Malleable** — If a user wishes to, they can delve into vast configuration that's just an easy click away. This allows for maximum flexibility and malleability for the power user, without removing established features. Configuration exists only if the user requests it.
+**Powerful when called for** — If a user wishes to, they can delve into vast configuration that's just an easy click away. This allows for maximum flexibility and malleability for the power user, without removing established features. Configuration exists only if the user requests it. Upstream compatibility with the vast SillyTavern extension ecosystem allows a user further customisation and featuresets that are outside the main experience.
+
+Interface patterns follow the [GNOME Human Interface Guidelines](https://developer.gnome.org/hig/guidelines.html). DESIGN.md holds the detailed rules and records every place SillyBunny deviates from them.
 
 ---
 
 ## Core Principles
 
 ### 1. Main content is the focus
-The main interactive window must remain uninterrupted during active use. There should be no permanent panels, and no persistent left-over configuration competing for the user's attention. The shell recedes while the user is interacting with the main window.
+The main interactive window must remain uninterrupted during active use. Configuration panels, extra toolbars, and left-over configuration never compete for the user's attention unless the user opens them. Navigation sidebars and split views follow the GNOME HIG. The shell recedes while the user is interacting with the main window.
 
 ### 2. Progressive disclosure
 The default state is minimal, themeable, and legible. Complexity is layered across four defined navigation levels (see below). Each layer reveals the next only on deliberate user input.
@@ -36,7 +38,7 @@ All configuration must be discoverable on intent. Every power feature must have 
 All gestures, placements, and patterns throughout the app should remain consistent with both desktop and mobile. Touch-first affordances must not degrade the desktop experience, and vice versa.
 
 ### 6. Distraction-free environment
-The shell is a neutral and distraction-free environment. UI identity is expressed through typography, spacing, SillyBunny branding, and encouraging wording — not through visual noise or decorative motion. The end user can customise this default shell (colours, CSS, layout) as they see fit.
+The shell is a neutral and distraction-free environment. UI identity is expressed through typography, spacing, SillyBunny branding, and encouraging wording in onboarding, tutorials, and the built-in assistants — not through visual noise or decorative motion. Controls and settings use short, neutral wording, as the GNOME HIG asks. The end user can customise this default shell (colours, CSS, layout) as they see fit.
 
 ### 7. Respect the user's setup
 Non-destructive and reversible. SillyTavern-compatible config, extensions, presets, and character data must survive by default.
@@ -44,25 +46,27 @@ Non-destructive and reversible. SillyTavern-compatible config, extensions, prese
 ---
 
 ## Navigation layout
-**Layer 1:** The main chat window, where configuration is hidden from the user. The main content takes up the majority of the screen. A bottom bar exists for quick and easy access to interface with the main window.
+**Layer 1:** The main chat window, where configuration is hidden from the user. The main content takes up the majority of the screen. A bottom bar exists for quick and easy access to interface with the main window, no matter the selected mode.
 
 **Layer 2:** Top bar, always visible. Navigation buttons, accessible through buttons located in a top bar element. They are in order:
 Left:
-- Workspace - for interfacing with the connected model backend and configuration. Settings here should be tied to a global preset option.
+- Backend - for interfacing with the connected model backend and configuration. Settings here should be tied to a global preset option.
 - Customize - for changing the graphical shell and SillyBunny configuration. User-created extensions also reside here. Settings here are independent of each other.
-- Quick access button for whatever the user requests. Default is quick accessing agents.
+- Global search - allows the user to scour for any setting, character, or chat without needing to hunt through menus.
+- User configurable quick access buttons.
 
 Middle:
-- Customisable title button.
+- Title display - defaults to showing the current character name.
 
 Right:
-- Second quick access button. Default is global search.
+- User configurable quick access buttons.
+- Mode switcher - allows the user to switch between the different interaction modes for their character cards. This toggle affects the main output's current goal.
 - Home - for accessing the program's home menu, launchpad guidance, and tutorials.
 - Characters - for interfacing with the character cards to be used in the program.
 
-**Layer 3:** Header tabs per sub-category with config pop-down, allowing the user to specify what in the category they want to modify.
+**Layer 3:** A full-screen settings panel that corresponds to the chosen top bar button. The view is consistent across all buttons, with a settings-specific search, header and title descriptions, and a sidebar of organised sub-tabs for each category. On mobile, the sidebar becomes a list that opens each sub-tab as its own page with a Back button.
 
-**Layer 4:** Sub-category content. All options for that category, with a maximum of one collapsible section.
+**Layer 4:** Main settings content that takes up most of the settings panel. The focus shifts here when a specific sub-tab is selected from the settings panel.
 
 ---
 
@@ -70,9 +74,9 @@ Right:
 
 These are explicit violations of the principles above. Any contribution that introduces one should be revised before merge.
 
-**UI creep** — Persistent panels, sidebars, or toolbars in the primary viewport during active use. Any config element that was not explicitly opened by the user should not be shown.
+**UI creep** — Configuration panels, extra toolbars, or utility panes in the primary viewport during active use. Any config element that was not explicitly opened by the user should not be shown. Navigation sidebars and split views that follow the GNOME HIG are not UI creep.
 
-**Nested menu spiral** — Sub-menus that spawn further sub-menus. There should be no further sub-menu beyond the single collapsible allowed per sub-category at layer 4. If something cannot fit within four layers, a different solution must be found.
+**Nested menu spiral** — Sub-menus that spawn further sub-menus, or pages nested more than one level deep below a view (GNOME HIG Menus and Navigation). If something cannot fit within four layers, a different solution must be found.
 
 **Configuration sprawl** — Presenting a wall of options to a new or returning user. Options should only appear because the user explicitly seeks them out.
 
@@ -123,6 +127,10 @@ Accessibility is a baseline expectation, not an afterthought. Any contribution t
 **Mobile and WebKit parity** — Mobile compatibility, including iOS WebKit, is a first-class concern. Avoid hover-only affordances, fragile fixed-position layering, unsafe viewport assumptions, and scroll/focus patterns known to misbehave on Safari.
 
 **Purposeful, reducible motion** — Motion should be purposeful, lightweight, and respect reduced-motion settings.
+
+**Colour is never the only signal** — Information carried by colour is also carried by text, an icon, or shape.
+
+**HIG accessibility checks** — Test with a high-contrast or forced-colours mode, large text, the keyboard alone, a screen reader, and an on-screen keyboard, as the GNOME HIG asks.
 
 ---
 
