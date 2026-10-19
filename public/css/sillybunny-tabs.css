@@ -8108,6 +8108,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     margin: 0;
     padding: 12px 16px 4px;
     text-align: start;
+    /* Drop the global boxed h3 / #user-settings-block h4 fill; a sub-heading is text inside the group. */
+    border: 0;
+    border-radius: 0;
+    background: none;
 }
 
 /* A group is one boxed list, so the rows inside it are not boxes of their own. `#ThemeTogglesSection
@@ -8422,6 +8426,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > .sb-settings-category-title {
     margin: 0;
     padding: 0;
+    /* Formatting group titles are h3s; drop the theme's boxed h3 treatment (sillybunny-theme.css). */
+    border: 0;
+    border-radius: 0;
+    background: none;
     justify-content: flex-start;
     text-align: start;
     font-size: var(--sb-type-body);
