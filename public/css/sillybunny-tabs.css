@@ -9850,48 +9850,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-radius: var(--sb-radius-lg, 16px);
 }
 
-/* One pill holds the list's controls, so the search field and its category filter read as one
-   preference group rather than two loose fields above the cards. */
-.sb-shell-panel[data-sb-panel='agents'] .ica--filter {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px;
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-}
-
-.sb-shell-panel[data-sb-panel='agents'] .ica--filter #ica--search,
-.sb-shell-panel[data-sb-panel='agents'] .ica--filter #ica--categoryFilter {
-    min-height: var(--sb-control-min-height);
-    margin: 0;
-}
-
-.sb-shell-panel[data-sb-panel='agents'] .ica--filter #ica--categoryFilter {
-    width: auto;
-    min-width: 120px;
-}
-
-/* The tab strip is the list's own segmented control; the cards below it are pills, so the strip
-   sits on the row spacing rather than touching them. */
-.sb-shell-panel[data-sb-panel='agents'] .ica--agent-tabs {
-    gap: 6px;
-    padding-bottom: 0;
-}
-
-.sb-shell-panel[data-sb-panel='agents'] .ica--agent-tab {
-    min-height: 32px;
-    padding: 4px 14px;
-    font-size: var(--sb-type-control);
-}
-
-/* Cards take the shell's own radius, so a card edge matches a pill edge beside it. */
-.sb-shell-panel[data-sb-panel='agents'] .ica--agent-card,
-.sb-shell-panel[data-sb-panel='agents'] .ica--quick-section {
-    border-radius: var(--sb-radius-lg, 16px);
-}
-
 @media screen and (max-width: 768px) {
     .sb-subpage-host {
         padding: 0;

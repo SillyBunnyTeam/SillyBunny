@@ -1,8 +1,7 @@
 import { DiffMatchPatch } from '../../../lib.js';
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../popup.js';
-import { accountStorage } from '../../util/AccountStorage.js';
-import { download, escapeHtml, escapeRegex, getSortableDelay } from '../../utils.js';
+import { download, escapeHtml, escapeRegex } from '../../utils.js';
 import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getCurrentChatId, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveChatDebounced, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
 import { is_group_generating } from '../../group-chats.js';
@@ -44,7 +43,6 @@ import {
     getCompanionConfig,
     loadBuiltinGroups,
     loadCustomGroups,
-    agentMatchesListTab,
     applyCompanionContextAccessDefaults,
     applyCompanionPanelDisplayDefault,
     applyTrackerCompanionAutoLoopDefaults,
@@ -67,7 +65,6 @@ import {
     getAgentGenerationCancelRevision,
     getPromptTransformHistoryForMessage,
     refreshRegexSnapshotsForAgent,
-    runAgentOnMessage,
     runAgentOnTarget,
     runTrackerFixOnMessage,
     syncToolAgentRegistrations,
@@ -87,7 +84,6 @@ import { getPathfinderToolDefinitions } from './pathfinder/tool-definitions.js';
 import { buildFallbackPromptText, extractProfileResponseText } from './llm-utils.js';
 import { appendHelperPrefillMessages } from '../helper-prefill.js';
 import {
-    buildConnectionProfileNameMap,
     getConnectionManagerRequestService,
     populateConnectionProfileSelect,
 } from './profile-utils.js';
@@ -95,13 +91,13 @@ import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
-import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
+import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility, isConversationModeActive } from './companion/companion-panel.js';
 import { attachTextareaFullscreen } from './textarea-fullscreen.js';
 import { t } from '../../i18n.js';
+import { confirmDestructiveAction } from '../../sillybunny-delete-confirm.js';
 import {
     buildAgentFromTemplate as buildCatalogueAgentFromTemplate,
     buildUpdatedAgentFromTemplate as buildCatalogueUpdatedAgentFromTemplate,
-    buildAgentFromSnapshot,
     ensureDefaultBundledAgents as ensureCatalogueDefaultBundledAgents,
     findSourceTemplateForAgent as findCatalogueSourceTemplateForAgent,
     getAgentOrderValue,
@@ -109,8 +105,6 @@ import {
     getTemplateVersionValue,
     getAgentsWithTemplateUpdates as getCatalogueAgentsWithTemplateUpdates,
     getDefaultBundledTemplates as getCatalogueDefaultBundledTemplates,
-    hasTemplateUpdate as hasCatalogueTemplateUpdate,
-    hasIdenticalAgent,
     hasMatchingAgentSnapshot as hasCatalogueMatchingAgentSnapshot,
     HIDDEN_TEMPLATE_BROWSER_IDS,
     isBundledRegexPostDefaultTemplate,
@@ -119,27 +113,25 @@ import {
     REMOVED_BUNDLED_TEMPLATE_IDS,
     resetBundledAgents,
     shouldUseTrackerPromptPassDefaults,
+    listAgentEntries,
+    materialise,
+    duplicate,
+    restoreDefault,
+    turnOnGroup,
 } from './catalogue.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
-
-let collapsedCategories = new Set();
-let templateBrowserSearchValue = '';
 
 /** Built-in templates loaded from JSON files. */
 let templates = [];
 let templateRegexBundles = {};
 let autoSeededTemplateIds = new Set();
 
-/** Whether the agent list is in multi-select mode. */
-let selectModeActive = false;
-/** Set of agent IDs currently selected in select mode. */
-const selectedAgentIds = new Set();
-let suppressCardClickUntil = 0;
 let pathfinderExtensionsMountPromise = null;
 let pathfinderExtensionsMountRevision = 0;
 let fixTrackersRunning = false;
+let refreshAgentsPanels = () => {};
 
 const REMOVED_BUNDLED_GROUP_IDS = new Set([
     'grp-pura-director',
@@ -435,11 +427,6 @@ const REGEX_PLACEMENT_LABELS = {
     [AGENT_REGEX_PLACEMENT.REASONING]: 'Reasoning',
 };
 
-const AGENT_PHASE_LABELS = {
-    pre: 'pre',
-    post: 'post',
-    both: 'pre + post',
-};
 const DEFAULT_PRE_PROCESS = {
     mode: 'inject',
     interceptTiming: 'pre-generation',
@@ -480,6 +467,294 @@ function getCatalogueContext() {
     };
 }
 
+function getAgentListEntries() {
+    return listAgentEntries({ agents: getAgents(), templates, regexBundles: templateRegexBundles });
+}
+
+function currentAgentListEntry(entry) {
+    const current = getAgentListEntries().find(value => value.key === entry.key);
+    if (!current) throw new Error(`Agent entry no longer exists: ${entry.key}`);
+    return current;
+}
+
+async function setAgentListEntryEnabled(entry, enabled) {
+    entry = currentAgentListEntry(entry);
+    if (entry.kind === 'agent-template') {
+        if (!enabled) return null;
+        const saved = await materialise(entry.template.id, { enable: true }, getCatalogueContext());
+        refreshRegexSnapshotsForAgent(saved.id);
+        syncToolAgentRegistrations();
+        renderAgentList();
+        return saved;
+    }
+    const agent = structuredClone(entry.agent);
+    const settings = getGlobalSettings();
+    const previousScopeState = {
+        enabledAgentIdsByChatType: structuredClone(settings.enabledAgentIdsByChatType),
+        scopedEnabledAgentIdsInitialized: settings.scopedEnabledAgentIdsInitialized,
+    };
+    if (getGlobalSettings().separateRecentChats) initializeScopedAgentEnableState();
+    setAgentEnabledForCurrentScope(agent, enabled);
+    let saved;
+    try {
+        saved = await saveAgent(agent);
+    } catch (error) {
+        Object.assign(settings, previousScopeState);
+        throw error;
+    }
+    persistExtensionState();
+    refreshRegexSnapshotsForAgent(saved.id);
+    syncToolAgentRegistrations();
+    renderAgentList();
+    return saved;
+}
+
+async function openAgentListEntry(entry) {
+    if (!entry) return openEditor();
+    entry = currentAgentListEntry(entry);
+    if (entry.kind === 'agent') return openEditor(entry.agent.id);
+    const defaults = createDefaultAgent();
+    const draft = { ...defaults, ...structuredClone(entry.agent) };
+    // Catalogue previews are intentionally partial; the legacy editor expects complete nested defaults.
+    for (const field of ['injection', 'conditions', 'preProcess', 'postProcess', 'companion', 'settings']) {
+        draft[field] = { ...defaults[field], ...draft[field] };
+    }
+    return openEditor(null, { draft, materialiseTemplateId: entry.template.id });
+}
+
+async function performAgentListAction(entry, action) {
+    const allowedActions = new Set(['pin', 'unpin', 'preview-prompt', 'preview-feedback', 'export', 'duplicate', 'apply-target', 'apply-last', 'run-last', 'convert-companion', 'convert-inline', 'update', 'restore-default', 'delete']);
+    if (!allowedActions.has(action)) throw new Error(`Unknown agent action: ${action}`);
+    entry = currentAgentListEntry(entry);
+    if (entry.kind === 'agent-template' && ['update', 'restore-default', 'delete'].includes(action)) {
+        throw new Error(`Agent action requires a saved entry: ${action}`);
+    }
+    if (action === 'preview-prompt') return previewPreGenerationPrompt(entry.agent);
+    if (action === 'preview-feedback') return previewCompanionFeedbackPrompt(entry.agent);
+    if (action === 'export') {
+        const data = entry.kind === 'agent' ? exportAgent(entry.agent.id) : entry.agent;
+        download(JSON.stringify(data, null, 2), `${entry.agent.name}.json`, 'application/json');
+        return;
+    }
+    if (action === 'duplicate') {
+        const saved = await duplicate(entry.key, getCatalogueContext());
+        renderAgentList();
+        return saved;
+    }
+    // Q51: target selection must finish before an unused entry becomes a saved, disabled agent.
+    let targets;
+    if (action === 'apply-target') {
+        targets = await pickManualAgentRunTargets(entry.agent);
+        if (!targets?.length) return;
+    } else if (action === 'apply-last' || action === 'run-last') {
+        const messageIndex = getLastAssistantMessageIndex();
+        if (messageIndex < 0) {
+            toastr.warning('No assistant reply yet to manually apply this agent to.');
+            return;
+        }
+        targets = [{ kind: 'message', messageIndex }];
+    }
+    let agent = structuredClone(entry.agent);
+    if (entry.kind === 'agent-template') {
+        const edits = {};
+        if (action === 'pin' || action === 'unpin') edits.favorite = action === 'pin';
+        if (action === 'convert-companion' || action === 'convert-inline') {
+            convertAgentExecution(agent, action === 'convert-companion' ? 'companion' : 'inline');
+            lockBundledAgentCustomization(agent);
+            Object.assign(edits, agent);
+        }
+        agent = await materialise(entry.template.id, { edits }, getCatalogueContext());
+    } else if (action === 'pin' || action === 'unpin') {
+        agent.favorite = action === 'pin';
+        agent = await saveAgent(agent);
+    } else if (action === 'convert-companion' || action === 'convert-inline') {
+        await applyAgentExecutionConversion(agent, action === 'convert-companion' ? 'companion' : 'inline');
+    } else if (action === 'update') {
+        await updateAgentFromSourceTemplate(agent);
+    } else if (action === 'restore-default') {
+        agent = await restoreDefault(agent.id, getCatalogueContext());
+    } else if (action === 'delete') {
+        await deleteAgent(agent.id);
+    }
+    if (targets) await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
+    refreshRegexSnapshotsForAgent(agent.id);
+    syncToolAgentRegistrations();
+    renderAgentList();
+    return action === 'delete' ? null : agent;
+}
+
+async function fixTrackersFromList() {
+    if (showFixTrackersUnavailableToast()) return;
+    const inlineMessageIndex = getLastAssistantMessageIndex();
+    const companionMessageIndex = getLatestValidCompanionMessageIndex();
+    const messageIndex = Math.max(inlineMessageIndex, companionMessageIndex);
+    if (messageIndex < 0) {
+        toastr.warning('No assistant reply yet to fix trackers on.');
+        return;
+    }
+    await runTrackerFixFromButton(messageIndex, null, { inlineMessageIndex, companionMessageIndex });
+}
+
+async function convertTrackersFromList() {
+    const inlineTrackers = getAgents().filter(agent => agent.category === 'tracker' && !isCompanionAgent(agent) && !isPathfinderAgent(agent));
+    if (!inlineTrackers.length) {
+        toastr.info('Every tracker already runs as a companion.');
+        return;
+    }
+    const result = await new Popup(`Convert ${inlineTrackers.length} tracker agent(s) to companion execution? They will run automatically on their own model and show in the Tracker panel.`, POPUP_TYPE.CONFIRM).show();
+    if (result !== POPUP_RESULT.AFFIRMATIVE) return;
+    for (const agent of inlineTrackers) {
+        if (!convertAgentExecution(agent, 'companion')) continue;
+        lockBundledAgentCustomization(agent);
+        await saveAgent(agent);
+        refreshRegexSnapshotsForAgent(agent.id);
+    }
+    syncToolAgentRegistrations();
+    renderAgentList();
+}
+
+async function registerAgentListUi(settingsStore) {
+    const ui = await import('./ui/agent-list.js');
+    refreshAgentsPanels = ui.refreshAgentsPanels;
+    ui.registerAgentsPanelAdapter({
+        categories: AGENT_CATEGORIES,
+        subcategories: AGENT_SUBCATEGORIES,
+        settingsFooter: settingsStore.querySelector('[data-sb-agent-global-settings]'),
+        importFile: settingsStore.querySelector('#ica--importFile'),
+        getEntries: getAgentListEntries,
+        state: () => ({ enabled: areAgentsGloballyEnabled(), running: isAgentGenerationActive(), fixRunning: fixTrackersRunning,
+            enabledKeys: new Set(getAgents().filter(isAgentEnabledForCurrentScope).map(agent => `agent:${agent.id}`)),
+            updates: getAgentsWithTemplateUpdates().filter(agent => !isPathfinderAgent(agent)).length,
+            tokens: getInChatAgentTokenUsage(), conversationMode: isConversationModeActive() }),
+        setGlobalEnabled: enabled => {
+            setGlobalSettings({ enabled });
+            if (!enabled) cancelPathfinderSummary();
+            persistExtensionState();
+            syncToolAgentRegistrations();
+            renderAgentList();
+        },
+        stop: () => { cancelAgentGeneration(); refreshGenerationUi(); },
+        openEditor: openAgentListEntry,
+        newCompanion: autoOpenCompanionMaker => openEditor(null, { draft: buildCompanionDraftAgent(), autoOpenCompanionMaker }),
+        setEnabled: setAgentListEntryEnabled,
+        perform: performAgentListAction,
+        bulk: performAgentBulkAction,
+        editProperties: editAgentListProperties,
+        reorder: async ids => { await reorderAgentsIntoOrderSlots(ids); renderAgentList(); refreshCompanionPanel(); },
+        updateAll: updateAllAgentsFromSourceTemplates,
+        fixTrackers: fixTrackersFromList,
+        convertTrackers: convertTrackersFromList,
+        exportAll: handleExportAll,
+        openCompanions: openCompanionDashboard,
+        getGroups,
+        turnOnGroup: async group => { await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList(); },
+        deleteGroup,
+        createGroup: createCustomGroup,
+    });
+}
+
+async function performAgentBulkAction(keys, action, { properties = {}, onSaved = () => {} } = {}) {
+    const entries = new Map(getAgentListEntries().map(entry => [entry.key, entry]));
+    let eligible = 0;
+    let changed = 0;
+    try {
+        for (const key of new Set(keys)) {
+            const entry = entries.get(key);
+            if (!entry) continue;
+            if (action === 'delete') {
+                if (entry.kind !== 'agent') continue;
+                await deleteAgent(entry.agent.id);
+                changed++;
+                continue;
+            }
+            if (action === 'on' || action === 'off') {
+                const enabled = action === 'on';
+                if ((entry.kind === 'agent' && isAgentEnabledForCurrentScope(entry.agent)) === enabled) continue;
+                const saved = await setAgentListEntryEnabled(entry, enabled);
+                if (saved) { changed++; onSaved(key, saved); }
+                continue;
+            }
+            const agent = structuredClone(entry.agent);
+            agent.injection ??= {};
+            agent.conditions ??= {};
+            agent.postProcess ??= {};
+            let dirty = false;
+            if (action === 'companion-outputs') {
+                if (isCompanionAgent(agent) || isToolAgent(agent) || !['post', 'both'].includes(agent.phase)) continue;
+                eligible++;
+                if (agent.conditions.runOnCompanionOutputs) continue;
+                agent.conditions.runOnCompanionOutputs = true;
+                dirty = true;
+            } else if (action === 'convert-companion') {
+                dirty = convertAgentExecution(agent, 'companion');
+            } else if (action === 'properties' || action === 'role-system' || action === 'role-user') {
+                const values = action === 'properties' ? properties : { role: action === 'role-system' ? '0' : '1' };
+                const fields = [
+                    ['role', agent.injection, 'role', Number],
+                    ['phase', agent, 'phase', String],
+                    ['promptMode', agent.postProcess, 'promptTransformMode', String],
+                    ['promptEnabled', agent.postProcess, 'promptTransformEnabled', value => value === 'true'],
+                    ['ppEnabled', agent.postProcess, 'enabled', value => value === 'true'],
+                    ['scan', agent.injection, 'scan', value => value === 'true'],
+                ];
+                for (const [field, target, property, parse] of fields) {
+                    if (values[field] === undefined || values[field] === '') continue;
+                    const value = parse(values[field]);
+                    const current = typeof value === 'boolean' ? Boolean(target[property]) : target[property];
+                    if (current === value) continue;
+                    target[property] = value;
+                    dirty = true;
+                }
+            } else {
+                throw new Error(`Unknown agent bulk action: ${action}`);
+            }
+            if (!dirty) continue;
+            lockBundledAgentCustomization(agent);
+            const saved = entry.kind === 'agent-template'
+                ? await materialise(entry.template.id, { edits: agent }, getCatalogueContext())
+                : await saveAgent(agent);
+            refreshRegexSnapshotsForAgent(saved.id);
+            changed++;
+            onSaved(key, saved);
+        }
+        if (action === 'companion-outputs') {
+            if (changed) toastr.success(`Enabled ${changed} selected post-generation agent(s) on companion outputs.`);
+            else if (eligible) toastr.info('Selected post-generation agents are already enabled on companion outputs.');
+            else toastr.warning('No selected post-generation agents can run on companion outputs.');
+        }
+        return changed;
+    } finally {
+        syncToolAgentRegistrations();
+        renderAgentList();
+    }
+}
+
+async function editAgentListProperties(keys, options) {
+    const content = document.getElementById('ica--bulkEditPopup');
+    if (!content) throw new Error('Agent bulk-edit content is unavailable');
+    const marker = document.createComment('Agent bulk-edit origin');
+    content.before(marker);
+    const fields = ['role', 'phase', 'promptMode', 'promptEnabled', 'ppEnabled', 'scan'];
+    for (const field of fields) content.querySelector(`#ica--bulkEdit-${field}`).value = '';
+    content.style.display = '';
+    try {
+        const result = await new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton: t`Apply`, cancelButton: t`Cancel`, wide: true }).show();
+        if (result !== POPUP_RESULT.AFFIRMATIVE) return false;
+        const properties = Object.fromEntries(fields.map(field => [field, content.querySelector(`#ica--bulkEdit-${field}`).value]));
+        if (fields.every(field => properties[field] === '')) {
+            toastr.info('No properties selected to change.');
+            return false;
+        }
+        const changed = await performAgentBulkAction(keys, 'properties', { ...options, properties });
+        if (changed) toastr.success(`Updated ${changed} agent(s).`);
+        else toastr.info('No agents needed updating.');
+        return true;
+    } finally {
+        content.style.display = 'none';
+        marker.replaceWith(content);
+    }
+}
+
 function restoreAutoSeededTemplateIds(savedState) {
     const rawIds = Array.isArray(savedState?.autoSeededTemplateIds) ? savedState.autoSeededTemplateIds : [];
     autoSeededTemplateIds = new Set(
@@ -487,11 +762,6 @@ function restoreAutoSeededTemplateIds(savedState) {
             .map(id => String(id ?? '').trim())
             .filter(Boolean),
     );
-}
-
-function stopEvent(event) {
-    event.preventDefault();
-    event.stopPropagation();
 }
 
 function getLastAssistantMessageIndex() {
@@ -675,7 +945,7 @@ function showFixTrackersUnavailableToast() {
 }
 
 function updateCancelGenerationButton() {
-    $('#ica--cancelGeneration').toggle(isAgentGenerationActive());
+    refreshAgentsPanels();
 }
 
 function updateAgentGenerationSendControls(active = isAgentGenerationActive()) {
@@ -695,23 +965,8 @@ function refreshGenerationUi(active = isAgentGenerationActive()) {
     updateAgentGenerationSendControls(active);
 }
 
-function updateGlobalAgentToggle() {
-    const enabled = areAgentsGloballyEnabled();
-    const button = $('#ica--globalEnabled');
-    button.toggleClass('active', enabled);
-    button.attr('aria-pressed', String(enabled));
-    button.attr('title', enabled
-        ? 'Agents are enabled. Click to disable all In-Chat Agents.'
-        : 'Agents are disabled. Click to re-enable In-Chat Agents.');
-    button.find('span').text(enabled ? 'Agents On' : 'Agents Off');
-}
-
 function populateSeparateRecentChatsToggle() {
     $('#ica--separateRecentChats').prop('checked', Boolean(getGlobalSettings().separateRecentChats));
-}
-
-function sortAgentsByOrder(agentList = []) {
-    return [...agentList].sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0));
 }
 
 async function toggleAgentEnabled(agent) {
@@ -723,12 +978,6 @@ async function toggleAgentEnabled(agent) {
     syncToolAgentRegistrations();
     renderAgentList();
     updateCompanionButtonVisibility();
-}
-
-async function toggleAgentFavorite(agent) {
-    agent.favorite = !agent.favorite;
-    await saveAgent(agent);
-    renderAgentList();
 }
 
 const TRACKER_COMPANION_AUTO_LOOP_VERSION = 4;
@@ -865,10 +1114,6 @@ async function applyAgentExecutionConversion(agent, targetExecution) {
     return true;
 }
 
-function findTemplateById(templateId) {
-    return templates.find(template => template.id === templateId);
-}
-
 function findTemplateForAgent(agent) {
     return findTemplateForAgentSnapshot(agent, templates);
 }
@@ -877,27 +1122,8 @@ function findSourceTemplateForAgent(agent) {
     return findCatalogueSourceTemplateForAgent(agent, templates);
 }
 
-function buildAgentOrderPill(agent) {
-    return `<span class="ica--card-pill ica--card-pill--order" title="Lower numbers run earlier when Append Agents Execution is set to Sequential."><i class="fa-solid fa-sort-numeric-down fa-xs"></i> Order ${escapeHtml(getAgentOrderValue(agent))}</span>`;
-}
-
-function hasTemplateUpdate(agent) {
-    return hasCatalogueTemplateUpdate(agent, templates);
-}
-
 function getAgentsWithTemplateUpdates() {
     return getCatalogueAgentsWithTemplateUpdates(getAgents(), templates);
-}
-
-function buildAgentVersionPill(agent) {
-    const agentVersion = getAgentVersionValue(agent);
-
-    if (hasTemplateUpdate(agent)) {
-        const templateVersion = getTemplateVersionValue(findSourceTemplateForAgent(agent));
-        return `<button type="button" class="ica--card-pill ica--card-pill--version ica--card-pill--version-update" title="A newer template is available.">v${escapeHtml(agentVersion)} &rarr; v${escapeHtml(templateVersion)}</button>`;
-    }
-
-    return `<span class="ica--card-pill ica--card-pill--version">v${escapeHtml(agentVersion)}</span>`;
 }
 
 function mergeTemplateDefaults(template) {
@@ -908,10 +1134,6 @@ function getDefaultBundledTemplates() {
     return getCatalogueDefaultBundledTemplates(templates);
 }
 
-function getVisibleTemplateBrowserTemplates() {
-    return templates.filter(template => !HIDDEN_TEMPLATE_BROWSER_IDS.has(String(template?.id ?? '').trim()));
-}
-
 function getVisibleInChatAgents(agentList = getAgents()) {
     return agentList.filter(agent => !isPathfinderAgent(agent));
 }
@@ -920,75 +1142,9 @@ function getTemplateRegexCount(template) {
     return Array.isArray(template?.regexScripts) ? template.regexScripts.length : 0;
 }
 
-const TEMPLATE_BROWSER_CATEGORY_LABELS = {
-    tracker: 'Trackers',
-    randomizer: 'Randomizers',
-    content: 'Content',
-    companion: 'Companions',
-    tool: 'Tools',
-};
-
-function getTemplateBrowserCategoryOrder(templateList = templates) {
-    // SillyBunny: 'custom' stays in AGENT_CATEGORIES as a fallback for user/saved
-    // agents even though no bundled templates ship in that category anymore.
-    // Former custom-category templates (HTML Toggle, Friction Mode, NPC Profile
-    // Cards, etc.) have been reclassified into content and tracker.
-    return Object.keys(AGENT_CATEGORIES)
-        .filter(category => templateList.some(template => template.category === category));
-}
-
-function getTemplateCategoryLabel(category) {
-    return TEMPLATE_BROWSER_CATEGORY_LABELS[category] ?? AGENT_CATEGORIES[category]?.label ?? 'Custom';
-}
-
-function getTemplateSubcategoryInfo(subcategory) {
-    const normalizedSubcategory = String(subcategory ?? '').trim();
-    return normalizedSubcategory ? AGENT_SUBCATEGORIES[normalizedSubcategory] ?? null : null;
-}
-
-function getTemplateSubcategoryLabel(template) {
-    const subcategoryInfo = getTemplateSubcategoryInfo(template?.subcategory);
-    return subcategoryInfo?.label ?? String(template?.subcategory ?? '').trim();
-}
-
-function getTemplateSubcategoriesForCategory(category) {
-    return Object.entries(AGENT_SUBCATEGORIES)
-        .filter(([, subcategory]) => subcategory.category === category);
-}
-
-function sortTemplatesByName(templateList = []) {
-    return [...templateList].sort((a, b) => String(a?.name ?? '').localeCompare(String(b?.name ?? '')));
-}
-
-function getTemplateSearchHaystack(template) {
-    const categoryLabel = getTemplateCategoryLabel(template?.category);
-    const subcategoryLabel = getTemplateSubcategoryLabel(template);
-    const tags = Array.isArray(template?.tags) ? template.tags.join(' ') : '';
-
-    return [
-        template?.name,
-        template?.description,
-        tags,
-        categoryLabel,
-        subcategoryLabel,
-    ].join(' ').toLowerCase();
-}
-
-function filterTemplates(templateList = templates, { searchTerm = '', category = '' } = {}) {
-    const normalizedSearchTerm = String(searchTerm ?? '').trim().toLowerCase();
-    const normalizedCategory = String(category ?? '').trim();
-
-    return templateList.filter(template => {
-        if (normalizedCategory && template.category !== normalizedCategory) {
-            return false;
-        }
-
-        if (!normalizedSearchTerm) {
-            return true;
-        }
-
-        return getTemplateSearchHaystack(template).includes(normalizedSearchTerm);
-    });
+function buildRegexTemplateLabel(regexCount) {
+    if (regexCount <= 0) return '';
+    return regexCount === 1 ? '1 regex' : `${regexCount} regex`;
 }
 
 function describeRegexPlacements(regexScript) {
@@ -1010,22 +1166,6 @@ function describeRegexScript(regexScript) {
     return `${placements} • ${toggles}`;
 }
 
-function buildRegexTemplateLabel(regexCount) {
-    if (regexCount <= 0) {
-        return '';
-    }
-
-    return regexCount === 1 ? '1 regex' : `${regexCount} regex`;
-}
-
-function hasPromptTransform(agent) {
-    return Boolean(
-        agent?.postProcess?.promptTransformEnabled &&
-        ['post', 'both'].includes(String(agent?.phase ?? '')) &&
-        String(agent?.prompt ?? '').trim(),
-    );
-}
-
 function getAgentPreProcess(agent) {
     return {
         ...DEFAULT_PRE_PROCESS,
@@ -1045,48 +1185,6 @@ function isPostMainGenerationInterceptAgent(agent) {
         isPreGenerationInterceptAgent(agent) &&
         getAgentPreProcess(agent).interceptTiming === 'post-main-generation',
     );
-}
-
-function canPreviewPreGenerationPrompt(agent) {
-    return Boolean(
-        !isPathfinderAgent(agent) &&
-        !isCompanionAgent(agent) &&
-        ['pre', 'both'].includes(String(agent?.phase ?? '')) &&
-        String(agent?.prompt ?? '').trim(),
-    );
-}
-
-function getPromptTransformLabel(agent) {
-    return getPromptTransformMode(agent) === 'append' ? 'prompt append' : 'prompt rewrite';
-}
-
-function getCompanionTriggerLabel(companion) {
-    return companion.trigger === 'manual' ? 'manual' : 'auto';
-}
-
-function getCompanionDisplayLabel(companion) {
-    return companion.displayMode === 'hidden' ? 'hidden' : 'card';
-}
-
-function buildCompanionCardPill(agent) {
-    if (!isCompanionAgent(agent)) {
-        return '';
-    }
-
-    const companion = getCompanionConfig(agent);
-    const labels = [
-        getCompanionTriggerLabel(companion),
-        getCompanionDisplayLabel(companion),
-    ];
-    return `<span class="ica--card-pill ica--card-pill--companion"><i class="fa-solid fa-user-astronaut fa-xs"></i> companion ${escapeHtml(labels.join(' / '))}</span>`;
-}
-
-function getAgentCardPhaseLabel(agent) {
-    if (isCompanionAgent(agent)) {
-        return 'side';
-    }
-
-    return AGENT_PHASE_LABELS[agent?.phase] || agent?.phase || '';
 }
 
 function buildCompanionFeedbackPreviewText(agent) {
@@ -1225,54 +1323,9 @@ async function updateAllAgentsFromSourceTemplates() {
     toastr.success(`Updated ${updated} agent(s) to their latest templates.`);
 }
 
-function updateUpdateAllButtonVisibility() {
-    const outdatedCount = getAgentsWithTemplateUpdates().length;
-    const button = $('#ica--updateAllAgents');
-    button.toggle(outdatedCount > 0);
-    button.find('span').text(`Update All (${outdatedCount})`);
-    button.attr('title', `Update ${outdatedCount} agent(s) whose bundled template has a newer version`);
-}
-
 globalThis.SillyBunnyAgents = Object.assign(globalThis.SillyBunnyAgents || {}, {
     getEnabledAgents,
 });
-
-async function confirmDuplicateAgentAddition(agent, existingAgents = getAgents()) {
-    if (hasIdenticalAgent(agent, existingAgents)) {
-        const result = await new Popup(
-            'An identical agent is already active. Add anyway?',
-            POPUP_TYPE.CONFIRM,
-            'Duplicate agent',
-            {
-                okButton: 'Add Agent',
-                cancelButton: 'Cancel',
-            },
-        ).show();
-
-        return result === POPUP_RESULT.AFFIRMATIVE;
-    }
-
-    const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
-    const hasSameTemplateAgent = sourceTemplateId && existingAgents.some(existingAgent =>
-        String(existingAgent?.sourceTemplateId ?? '').trim() === sourceTemplateId,
-    );
-    if (!hasSameTemplateAgent) {
-        return true;
-    }
-
-    const agentName = String(agent?.name ?? 'this template').trim() || 'this template';
-    const result = await new Popup(
-        `You already have a "${escapeHtml(agentName)}" agent installed. Add another copy?`,
-        POPUP_TYPE.CONFIRM,
-        'Duplicate agent',
-        {
-            okButton: 'Add Another',
-            cancelButton: 'Cancel',
-        },
-    ).show();
-
-    return result === POPUP_RESULT.AFFIRMATIVE;
-}
 
 function shouldMigratePathfinderAgentTools(agent, template) {
     if (!template) {
@@ -1742,234 +1795,6 @@ function hasMatchingAgentSnapshot(snapshot, existingAgents = getAgents()) {
 
 // ===================== Panel Rendering =====================
 
-async function reorderAgentsInGroup(orderedIds) {
-    const normalizedOrderedIds = Array.from(new Set(
-        orderedIds
-            .map(id => String(id ?? '').trim())
-            .filter(Boolean),
-    ));
-
-    const firstAgent = normalizedOrderedIds.length > 0 ? getAgentById(normalizedOrderedIds[0]) : null;
-    if (!firstAgent) {
-        renderAgentList();
-        return;
-    }
-
-    const targetCategory = String(firstAgent.category ?? '').trim();
-    const categoryIds = getAgents()
-        .sort((a, b) => Number(a?.injection?.order ?? 0) - Number(b?.injection?.order ?? 0))
-        .filter(agent => String(agent?.category ?? '').trim() === targetCategory)
-        .map(agent => agent.id);
-
-    // Filtered-out category members are not draggable; they keep their relative order below the visible set.
-    const visibleIdSet = new Set(normalizedOrderedIds);
-    const reorderedCategoryIds = [
-        ...normalizedOrderedIds.filter(id => categoryIds.includes(id)),
-        ...categoryIds.filter(id => !visibleIdSet.has(id)),
-    ];
-
-    await reorderAgentsIntoOrderSlots(reorderedCategoryIds);
-    renderAgentList();
-    refreshCompanionPanel();
-}
-
-function isTouchSortableDevice() {
-    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches
-        || window.matchMedia?.('(any-pointer: coarse)').matches;
-    return Boolean(coarsePointer);
-}
-
-function setupCategorySortable(itemsEl) {
-    const items = $(itemsEl);
-    if (!items.length || typeof items.sortable !== 'function') {
-        return;
-    }
-
-    if (items.sortable('instance') !== undefined) {
-        items.sortable('destroy');
-    }
-
-    const touchSortable = isTouchSortableDevice();
-
-    items.sortable({
-        items: '.ica--agent-card',
-        handle: touchSortable ? '.ica--card-drag-handle' : null,
-        delay: touchSortable ? 1500 : getSortableDelay(),
-        distance: touchSortable ? 16 : 8,
-        tolerance: 'pointer',
-        cancel: '.ica--card-actions, .ica--card-actions *, .ica--card-toggle, .ica--card-select, .ica--card-favorite',
-        placeholder: 'ica--agent-card-placeholder',
-        forcePlaceholderSize: true,
-        start: function (_event, ui) {
-            suppressCardClickUntil = Date.now() + 750;
-            ui.placeholder.height(ui.item.outerHeight());
-        },
-        stop: async function () {
-            suppressCardClickUntil = Date.now() + 750;
-            const orderedIds = items.children('.ica--agent-card').map((_, el) => el.dataset.agentId).get();
-            await reorderAgentsInGroup(orderedIds);
-        },
-    });
-}
-
-function updateBulkBar() {
-    const count = selectedAgentIds.size;
-    $('#ica--bulkCount').text(`${count} selected`);
-    $('#ica--bulkBar').toggle(selectModeActive);
-    $('#ica--selectMode').toggleClass('is-active', selectModeActive);
-}
-
-function exitSelectMode() {
-    selectModeActive = false;
-    selectedAgentIds.clear();
-    updateBulkBar();
-    renderAgentList();
-}
-
-function openBulkEditPopup() {
-    const popup = document.getElementById('ica--bulkEditPopup');
-    if (!popup) return;
-    $('#ica--bulkEdit-role').val('');
-    $('#ica--bulkEdit-phase').val('');
-    $('#ica--bulkEdit-promptMode').val('');
-    $('#ica--bulkEdit-promptEnabled').val('');
-    $('#ica--bulkEdit-ppEnabled').val('');
-    $('#ica--bulkEdit-scan').val('');
-    popup.style.display = '';
-}
-
-function closeBulkEditPopup() {
-    const popup = document.getElementById('ica--bulkEditPopup');
-    if (popup) popup.style.display = 'none';
-}
-
-function getScrollContainer(element) {
-    if (!isAgentPanelVisible(element)) return null;
-    let current = element instanceof HTMLElement ? element : null;
-
-    while (current) {
-        const style = window.getComputedStyle(current);
-        const overflowY = style.overflowY;
-        const isScrollable = ['auto', 'scroll', 'overlay'].includes(overflowY)
-            && current.scrollHeight > current.clientHeight;
-        if (isScrollable) {
-            return current;
-        }
-
-        current = current.parentElement;
-    }
-
-    return document.scrollingElement instanceof HTMLElement
-        ? document.scrollingElement
-        : document.documentElement;
-}
-
-function captureAgentListScrollState(agentListElement) {
-    const scrollContainer = getScrollContainer(agentListElement);
-    if (!(scrollContainer instanceof HTMLElement)) {
-        return null;
-    }
-
-    return {
-        container: scrollContainer,
-        scrollTop: scrollContainer.scrollTop,
-        scrollLeft: scrollContainer.scrollLeft,
-    };
-}
-
-function restoreAgentListScrollState(scrollState) {
-    if (!(scrollState?.container instanceof HTMLElement)) {
-        return;
-    }
-
-    requestAnimationFrame(() => {
-        scrollState.container.scrollTop = Math.min(
-            scrollState.scrollTop,
-            Math.max(0, scrollState.container.scrollHeight - scrollState.container.clientHeight),
-        );
-        scrollState.container.scrollLeft = scrollState.scrollLeft;
-    });
-}
-
-async function applyBulkEdit() {
-    const role = $('#ica--bulkEdit-role').val();
-    const phase = $('#ica--bulkEdit-phase').val();
-    const promptMode = $('#ica--bulkEdit-promptMode').val();
-    const promptEnabled = $('#ica--bulkEdit-promptEnabled').val();
-    const ppEnabled = $('#ica--bulkEdit-ppEnabled').val();
-    const scan = $('#ica--bulkEdit-scan').val();
-
-    if (!role && !phase && !promptMode && !promptEnabled && !ppEnabled && !scan) {
-        toastr.info('No properties selected to change.');
-        return;
-    }
-
-    let changed = 0;
-    for (const id of selectedAgentIds) {
-        const agent = getAgentById(id);
-        if (!agent) continue;
-        let dirty = false;
-
-        if (role !== '') {
-            const r = Number(role);
-            if (agent.injection.role !== r) {
-                agent.injection.role = r;
-                dirty = true;
-            }
-        }
-        if (phase !== '') {
-            if (agent.phase !== phase) {
-                agent.phase = phase;
-                dirty = true;
-            }
-        }
-        if (promptMode !== '') {
-            agent.postProcess = agent.postProcess || {};
-            if (agent.postProcess.promptTransformMode !== promptMode) {
-                agent.postProcess.promptTransformMode = promptMode;
-                dirty = true;
-            }
-        }
-        if (promptEnabled !== '') {
-            agent.postProcess = agent.postProcess || {};
-            const val = promptEnabled === 'true';
-            if (Boolean(agent.postProcess.promptTransformEnabled) !== val) {
-                agent.postProcess.promptTransformEnabled = val;
-                dirty = true;
-            }
-        }
-        if (ppEnabled !== '') {
-            agent.postProcess = agent.postProcess || {};
-            const val = ppEnabled === 'true';
-            if (Boolean(agent.postProcess.enabled) !== val) {
-                agent.postProcess.enabled = val;
-                dirty = true;
-            }
-        }
-        if (scan !== '') {
-            const val = scan === 'true';
-            if (Boolean(agent.injection.scan) !== val) {
-                agent.injection.scan = val;
-                dirty = true;
-            }
-        }
-
-        if (dirty) {
-            lockBundledAgentCustomization(agent);
-            await saveAgent(agent);
-            changed++;
-        }
-    }
-
-    closeBulkEditPopup();
-    if (changed > 0) {
-        toastr.success(`Updated ${changed} agent(s).`);
-    } else {
-        toastr.info('No agents needed updating.');
-    }
-    exitSelectMode();
-}
-
 function updateFixTrackersButtonVisibility() {
     const hasInlineCandidates = getAgents().some(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
     const hasCompanionCandidates = getAgents().some(agent => isCompanionAgent(agent) && isTrackerFixAgent(agent));
@@ -1985,13 +1810,7 @@ function updateFixTrackersButtonVisibility() {
         ));
     });
 
-    const $agentsButton = $('#ica--fixTrackers');
-    const canRun = hasAnyFixableAgents();
-    const unavailableMessage = getFixTrackersUnavailableMessage();
-    $agentsButton.show();
-    $agentsButton.prop('disabled', fixTrackersRunning);
-    $agentsButton.attr('aria-disabled', String(!canRun || fixTrackersRunning));
-    $agentsButton.attr('title', unavailableMessage || 'Re-run enabled tracker and connected companion agents on the last message');
+    refreshAgentsPanels();
 }
 
 async function runTrackerFixFromButton(messageIndex, button, { inlineMessageIndex = messageIndex, companionMessageIndex = messageIndex } = {}) {
@@ -2035,34 +1854,6 @@ async function runTrackerFixFromButton(messageIndex, button, { inlineMessageInde
     }
 }
 
-const AGENT_LIST_TAB_STORAGE_KEY = 'ica--agent-list-tab';
-const AGENT_LIST_TABS = ['all', 'quick', 'pre', 'post', 'companion'];
-
-function getActiveAgentListTab() {
-    try {
-        const stored = accountStorage.getItem(AGENT_LIST_TAB_STORAGE_KEY);
-        return AGENT_LIST_TABS.includes(stored) ? stored : 'all';
-    } catch {
-        return 'all';
-    }
-}
-
-function setActiveAgentListTab(tab) {
-    try {
-        accountStorage.setItem(AGENT_LIST_TAB_STORAGE_KEY, tab);
-    } catch {
-        // Persistence failure does not prevent changing tabs for this session.
-    }
-}
-
-function syncAgentTabStrip(activeTab) {
-    $('#ica--agentTabs .ica--agent-tab').each(function () {
-        const isActive = $(this).attr('data-tab') === activeTab;
-        $(this).toggleClass('is-active', isActive);
-        $(this).attr('aria-selected', String(isActive));
-    });
-}
-
 /**
  * Re-renders the agent list panel.
  */
@@ -2078,448 +1869,12 @@ function getInChatAgentTokenUsage() {
 }
 
 function updateAgentTokenCounter() {
-    const tokenCounter = document.getElementById('ica--agent-token-counter');
-    const tokenValue = document.getElementById('ica--total-tokens-val');
-    if (!(tokenCounter instanceof HTMLElement) || !(tokenValue instanceof HTMLElement)) {
-        return;
-    }
-
-    const tokenCount = getInChatAgentTokenUsage();
-    tokenValue.textContent = String(tokenCount);
-    tokenCounter.classList.toggle('is-empty', tokenCount <= 0);
-}
-
-let agentListDirty = true;
-
-function isAgentPanelVisible(element) {
-    if (!(element instanceof HTMLElement) || !element.isConnected) return false;
-    if (element.closest('[hidden], [aria-hidden="true"], [inert], .closedDrawer, .sb-subpage-store, dialog:not([open]), .sb-shell-panel:not(.sb-shell-panel-active), .sb-settings-mounted-shell:not(.sb-settings-active-root)')) return false;
-    for (let node = element; node; node = node.parentElement) {
-        if (node.style.display === 'none') return false;
-    }
-    return true;
+    refreshAgentsPanels();
 }
 
 function renderAgentList() {
-    const container = $('#ica--agentList');
-    if (!isAgentPanelVisible(container[0])) {
-        agentListDirty = true;
-        return;
-    }
-    agentListDirty = false;
-    const scrollState = captureAgentListScrollState(container[0]);
-    container.empty();
-    updateCancelGenerationButton();
-    updateAgentTokenCounter();
-    const profileNames = buildConnectionProfileNameMap();
-    const allAgents = sortAgentsByOrder(getVisibleInChatAgents());
-    const activeTab = getActiveAgentListTab();
-    syncAgentTabStrip(activeTab);
-
-    const searchTerm = ($('#ica--search').val() || '').toString().toLowerCase();
-    const categoryFilter = ($('#ica--categoryFilter').val() || '').toString();
-    let agents = [...allAgents];
-
-    if (searchTerm) {
-        agents = agents.filter(a =>
-            a.name.toLowerCase().includes(searchTerm) ||
-            a.description.toLowerCase().includes(searchTerm) ||
-            a.tags.some(t => t.toLowerCase().includes(searchTerm)),
-        );
-    }
-
-    if (categoryFilter) {
-        agents = agents.filter(a => a.category === categoryFilter);
-    }
-
-    if (activeTab !== 'all' && activeTab !== 'quick') {
-        agents = agents.filter(a => agentMatchesListTab(a, activeTab));
-    }
-
-    const showQuickSection = !selectModeActive && allAgents.length > 0 && (activeTab === 'all' || activeTab === 'quick');
-    if (showQuickSection) {
-        const legend = $(`
-            <div class="ica--action-legend" aria-label="Agent card action legend">
-                <span><i class="fa-solid fa-eye"></i> Preview</span>
-                <span><i class="fa-solid fa-robot"></i> Apply</span>
-                <span><i class="fa-solid fa-user-astronaut"></i> To Companion</span>
-                <span><i class="fa-solid fa-right-left"></i> To Inline</span>
-                <span><i class="fa-solid fa-pen-to-square"></i> Edit</span>
-                <span><i class="fa-solid fa-download"></i> Export</span>
-                <span><i class="fa-solid fa-trash"></i> Delete</span>
-            </div>
-        `);
-        const favoriteAgents = allAgents.filter(agent => agent.favorite);
-        const quickSection = $(`
-            <div class="ica--quick-section">
-                <div class="ica--quick-header">
-                    <div class="ica--quick-title">
-                        <i class="fa-solid fa-star"></i>
-                        <span>Quick Toggles</span>
-                    </div>
-                    <span class="ica--quick-count">${favoriteAgents.length} pinned</span>
-                </div>
-                <div class="ica--quick-subtitle">Pin the agents you use most often for one-tap enable and disable.</div>
-                <div class="ica--quick-grid"></div>
-            </div>
-        `);
-        if (activeTab !== 'quick') {
-            container.append(legend);
-        }
-        const quickGrid = quickSection.find('.ica--quick-grid');
-
-        if (favoriteAgents.length === 0) {
-            quickGrid.append('<div class="ica--quick-empty">No pinned agents yet. Use the star button on an agent card or in the editor to keep it here.</div>');
-        } else {
-            for (const agent of favoriteAgents) {
-                const agentEnabled = isAgentEnabledForCurrentScope(agent);
-                const enabledClass = agentEnabled ? 'is-enabled' : '';
-                const categoryLabel = AGENT_CATEGORIES[agent.category]?.label ?? 'Custom';
-                const phaseLabel = AGENT_PHASE_LABELS[agent.phase] || agent.phase;
-                const companionExecution = isCompanionAgent(agent);
-                const executionLabel = companionExecution ? 'Companion' : phaseLabel;
-                const orderLabel = `Order ${getAgentOrderValue(agent)}`;
-                const canApplyToLastReply = !isPathfinderAgent(agent);
-                const canApplyToChosenTarget = !isPathfinderAgent(agent) && !companionExecution;
-                const applyTitle = companionExecution ? 'Run Companion on Last Reply' : 'Apply to Last Reply';
-                const applyIcon = companionExecution ? 'fa-user-astronaut' : 'fa-robot';
-                const quickItem = $(`
-                    <div class="ica--quick-chip ${enabledClass}">
-                        <button type="button" class="ica--quick-chip-main" title="${agentEnabled ? 'Disable agent' : 'Enable agent'}">
-                            <span class="ica--quick-chip-status">
-                                <i class="fa-solid ${agentEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
-                            </span>
-                            <span class="ica--quick-chip-copy">
-                                <span class="ica--quick-chip-name">${escapeHtml(agent.name || 'Untitled Agent')}</span>
-                                <span class="ica--quick-chip-meta">${escapeHtml(categoryLabel)} • ${escapeHtml(executionLabel)} • ${escapeHtml(orderLabel)}</span>
-                            </span>
-                        </button>
-                        <div class="ica--quick-chip-actions">
-                            ${canApplyToLastReply ? `
-                                <button type="button" class="ica--quick-chip-apply" title="${escapeHtml(applyTitle)}">
-                                    <i class="fa-solid ${applyIcon}"></i>
-                                </button>
-                            ` : ''}
-                            ${canApplyToChosenTarget ? '<button type="button" class="ica--quick-chip-apply-target" title="Apply this agent to a chosen target: the last reply, the composer text, or a companion note" aria-label="Apply to Target"><i class="fa-solid fa-crosshairs"></i></button>' : ''}
-                            <button type="button" class="ica--quick-chip-pin is-active" title="Remove from Quick Toggles">
-                                <i class="fa-solid fa-star"></i>
-                            </button>
-                        </div>
-                    </div>
-                `);
-
-                quickItem.find('.ica--quick-chip-main').on('click', async event => {
-                    stopEvent(event);
-                    await toggleAgentEnabled(agent);
-                });
-
-                quickItem.find('.ica--quick-chip-apply').on('click', async event => {
-                    stopEvent(event);
-                    const lastCharMessageIndex = getLastAssistantMessageIndex();
-                    if (lastCharMessageIndex < 0) {
-                        toastr.warning('No assistant reply yet to manually apply this agent to.');
-                        return;
-                    }
-                    await runAgentOnMessage(agent.id, lastCharMessageIndex);
-                });
-
-                quickItem.find('.ica--quick-chip-apply-target').on('click', async event => {
-                    stopEvent(event);
-                    const targets = await pickManualAgentRunTargets(agent);
-                    if (!targets) {
-                        return;
-                    }
-                    await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
-                });
-
-                quickItem.find('.ica--quick-chip-pin').on('click', async event => {
-                    stopEvent(event);
-                    await toggleAgentFavorite(agent);
-                });
-
-                quickGrid.append(quickItem);
-            }
-        }
-
-        container.append(quickSection);
-    }
-
-    if (activeTab === 'quick') {
-        if (allAgents.length === 0) {
-            container.append('<div class="ica--empty-state">No agents yet. Click <b>New Agent</b> or <b>Templates</b> to get started.</div>');
-        }
-        restoreAgentListScrollState(scrollState);
-        updateFixTrackersButtonVisibility();
-        updateCompanionButtonVisibility();
-        updateCompanionPanelHandleVisibility();
-        return;
-    }
-
-    // Group by category
-    const grouped = {};
-    for (const cat of Object.keys(AGENT_CATEGORIES)) {
-        const catAgents = agents.filter(a => a.category === cat);
-        if (catAgents.length > 0) {
-            grouped[cat] = catAgents;
-        }
-    }
-
-    if (Object.keys(grouped).length === 0) {
-        container.append(allAgents.length === 0
-            ? '<div class="ica--empty-state">No agents yet. Click <b>New Agent</b> or <b>Templates</b> to get started.</div>'
-            : '<div class="ica--empty-state">No agents match the current filters.</div>');
-        restoreAgentListScrollState(scrollState);
-        updateFixTrackersButtonVisibility();
-        updateCompanionButtonVisibility();
-        updateCompanionPanelHandleVisibility();
-        return;
-    }
-
-    for (const [cat, catAgents] of Object.entries(grouped)) {
-        const catInfo = AGENT_CATEGORIES[cat];
-        const group = $('<div class="ica--category-group"></div>');
-
-        const header = $(`
-            <div class="ica--category-header${collapsedCategories.has(cat) ? ' collapsed' : ''}">
-                <i class="fa-solid fa-chevron-down ica--chevron"></i>
-                <i class="fa-solid ${catInfo.icon}"></i>
-                ${catInfo.label}
-                <span class="ica--category-count">${catAgents.length}</span>
-            </div>
-        `);
-        header.on('click', function () {
-            $(this).toggleClass('collapsed');
-            if ($(this).hasClass('collapsed')) {
-                collapsedCategories.add(cat);
-            } else {
-                collapsedCategories.delete(cat);
-            }
-        });
-        group.append(header);
-
-        const items = $('<div class="ica--category-items"></div>');
-
-        for (const agent of catAgents) {
-            const agentEnabled = isAgentEnabledForCurrentScope(agent);
-            const enabledClass = agentEnabled ? 'is-enabled' : '';
-            const toggleClass = agentEnabled ? 'is-on' : '';
-            const desc = agent.description || agent.prompt.substring(0, 80).replace(/\n/g, ' ') + (agent.prompt.length > 80 ? '...' : '');
-            const regexCount = getAgentRegexScripts(agent).length;
-            const companionExecution = isCompanionAgent(agent);
-            const promptTransformEnabled = !companionExecution && hasPromptTransform(agent);
-            const promptTransformLabel = getPromptTransformLabel(agent);
-            const preInterceptEnabled = !companionExecution && isPreGenerationInterceptAgent(agent);
-            const preInterceptLabel = isPostMainGenerationInterceptAgent(agent) ? 'post-main intercept' : 'pre intercept';
-            const previewPromptButton = canPreviewPreGenerationPrompt(agent)
-                ? `<button type="button" class="ica--card-btn ica--btn-preview-prompt" title="Preview this pre-generation prompt after macro substitution" aria-label="${preInterceptEnabled ? 'Preview Instruction' : 'Preview Prompt'}"><i class="fa-solid fa-eye"></i></button>`
-                : '';
-            const previewCompanionButton = companionExecution
-                ? '<button type="button" class="ica--card-btn ica--btn-preview-companion-feedback" title="Preview companion feedback prompt" aria-label="Preview Companion Feedback"><i class="fa-solid fa-eye"></i></button>'
-                : '';
-            const applyTitle = companionExecution ? 'Run this companion on the last assistant reply' : 'Manually apply this agent to the last assistant reply';
-            const applyAria = companionExecution ? 'Run Companion on Last Reply' : 'Apply to Last Reply';
-            const applyIcon = companionExecution ? 'fa-user-astronaut' : 'fa-robot';
-            const connectionProfileLabel = agent.connectionProfile
-                ? profileNames.get(agent.connectionProfile) || `Missing profile (${agent.connectionProfile})`
-                : '';
-            const modelOverrideLabel = agent.modelOverride && agent.modelOverride.trim()
-                ? agent.modelOverride.trim()
-                : '';
-            const convertExecutionButton = isPathfinderAgent(agent) || isToolAgent(agent)
-                ? ''
-                : (companionExecution
-                    ? '<button type="button" class="ica--card-btn ica--btn-convert-execution" title="Convert to inline execution (runs inside the main generation again)" aria-label="Convert to Inline"><i class="fa-solid fa-right-left"></i></button>'
-                    : '<button type="button" class="ica--card-btn ica--btn-convert-execution" title="Convert to Companion (runs as a separate note card under replies, never edits the reply)" aria-label="Convert to Companion"><i class="fa-solid fa-user-astronaut"></i></button>');
-
-            const card = $(`
-                <div class="ica--agent-card ${enabledClass}${selectModeActive ? ' ica--selectable' : ''}${selectedAgentIds.has(agent.id) ? ' ica--selected' : ''}" data-agent-id="${escapeHtml(agent.id)}">
-                    <div class="ica--card-header">
-                        ${selectModeActive ? `<input type="checkbox" class="ica--card-select" title="Select agent" ${selectedAgentIds.has(agent.id) ? 'checked' : ''} />` : `<button type="button" class="ica--card-toggle ${toggleClass}" title="${agentEnabled ? 'Disable' : 'Enable'}"></button>`}
-                        <span class="ica--card-name">${escapeHtml(agent.name)}</span>
-                        <div class="ica--card-header-actions">
-                            <button type="button" class="ica--card-favorite ${agent.favorite ? 'is-active' : ''}" title="${agent.favorite ? 'Remove from Quick Toggles' : 'Add to Quick Toggles'}">
-                                <i class="fa-solid fa-star"></i>
-                            </button>
-                            <span class="ica--card-phase">${escapeHtml(getAgentCardPhaseLabel(agent))}</span>
-                            <button type="button" class="ica--card-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder agent">
-                                <i class="fa-solid fa-grip-vertical"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="ica--card-desc">${escapeHtml(desc)}</div>
-                    <div class="ica--card-meta">
-                        ${agent.conditions.triggerProbability < 100 ? `<span class="ica--card-pill"><i class="fa-solid fa-dice fa-xs"></i> ${agent.conditions.triggerProbability}%</span>` : ''}
-                        ${buildCompanionCardPill(agent)}
-                        ${preInterceptEnabled ? `<span class="ica--card-pill"><i class="fa-solid fa-shuffle fa-xs"></i> ${preInterceptLabel}</span>` : ''}
-                        ${!companionExecution && !preInterceptEnabled && agent.injection.position === 1 ? `<span class="ica--card-pill">depth ${agent.injection.depth}</span>` : ''}
-                        ${promptTransformEnabled ? `<span class="ica--card-pill"><i class="fa-solid fa-robot fa-xs"></i> ${promptTransformLabel}</span>` : ''}
-                        ${regexCount > 0 ? `<span class="ica--card-pill"><i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> ${regexCount} regex</span>` : ''}
-                        ${connectionProfileLabel ? `<span class="ica--card-pill"><i class="fa-solid fa-plug fa-xs"></i> ${escapeHtml(connectionProfileLabel)}</span>` : ''}
-                        ${modelOverrideLabel ? `<span class="ica--card-pill"><i class="fa-solid fa-microchip fa-xs"></i> ${escapeHtml(modelOverrideLabel)}</span>` : ''}
-                        ${buildAgentOrderPill(agent)}
-                        ${buildAgentVersionPill(agent)}
-                    </div>
-                    <div class="ica--card-actions">
-                        ${previewCompanionButton}
-                        ${previewPromptButton}
-                        ${isPathfinderAgent(agent) ? '' : `<button type="button" class="ica--card-btn ica--btn-run" title="${escapeHtml(applyTitle)}" aria-label="${escapeHtml(applyAria)}"><i class="fa-solid ${applyIcon}"></i></button>`}
-                        ${(isPathfinderAgent(agent) || companionExecution) ? '' : '<button type="button" class="ica--card-btn ica--btn-run-target" title="Apply this agent to a chosen target: the last reply, the composer text, or a companion note" aria-label="Apply to Target"><i class="fa-solid fa-crosshairs"></i></button>'}
-                        ${convertExecutionButton}
-                        <button type="button" class="ica--card-btn ica--btn-edit" title="Edit agent" aria-label="Edit agent"><i class="fa-solid fa-pen-to-square"></i></button>
-                        ${isPathfinderAgent(agent) ? '' : '<button type="button" class="ica--card-btn ica--btn-export" title="Export agent" aria-label="Export agent"><i class="fa-solid fa-download"></i></button>'}
-                        <button type="button" class="ica--card-btn ica--btn-delete caution" title="Delete agent" aria-label="Delete agent"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                </div>
-            `);
-
-            card.on('click', () => {
-                if (Date.now() < suppressCardClickUntil) {
-                    return;
-                }
-
-                if (selectModeActive) {
-                    if (selectedAgentIds.has(agent.id)) {
-                        selectedAgentIds.delete(agent.id);
-                    } else {
-                        selectedAgentIds.add(agent.id);
-                    }
-                    updateBulkBar();
-                    renderAgentList();
-                    return;
-                }
-                openEditor(agent.id);
-            });
-
-            card.find('.ica--card-select').on('click change', function (event) {
-                event.stopPropagation();
-                if ($(this).prop('checked')) {
-                    selectedAgentIds.add(agent.id);
-                } else {
-                    selectedAgentIds.delete(agent.id);
-                }
-                updateBulkBar();
-                renderAgentList();
-            });
-
-            card.find('.ica--card-drag-handle').on('click', stopEvent);
-
-            card.find('.ica--card-drag-handle').on('keydown', async event => {
-                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
-                    return;
-                }
-
-                stopEvent(event);
-                const cardEl = card[0];
-                const sibling = event.key === 'ArrowUp' ? cardEl.previousElementSibling : cardEl.nextElementSibling;
-                if (!sibling?.classList?.contains('ica--agent-card')) {
-                    return;
-                }
-
-                if (event.key === 'ArrowUp') {
-                    sibling.before(cardEl);
-                } else {
-                    sibling.after(cardEl);
-                }
-
-                const orderedIds = items.children('.ica--agent-card').map((_, el) => el.dataset.agentId).get();
-                await reorderAgentsInGroup(orderedIds);
-                // reorderAgentsInGroup re-renders the list; put focus back so nudges can be chained.
-                $('#ica--agentList .ica--agent-card')
-                    .filter((_, el) => el.dataset.agentId === agent.id)
-                    .find('.ica--card-drag-handle')
-                    .trigger('focus');
-            });
-
-            // Prevent touch-punch (jQuery UI mouse widget polyfill) from
-            // capturing touchstart on these buttons. Inside a .sortable()
-            // container, touch-punch's _touchStart consults _mouseCapture
-            // which only checks `handle` (not `cancel`), so it swallows
-            // the touchstart and may never synthesize a click on mobile.
-            // Stopping propagation on touch events keeps them local.
-            const touchPassthrough = function (event) { event.stopPropagation(); };
-            card.find('.ica--card-toggle').on('touchstart touchend', touchPassthrough);
-            card.find('.ica--card-favorite').on('touchstart touchend', touchPassthrough);
-
-            card.find('.ica--card-toggle').on('click', async function (event) {
-                stopEvent(event);
-                await toggleAgentEnabled(agent);
-            });
-
-            card.find('.ica--card-favorite').on('click', async function (event) {
-                stopEvent(event);
-                await toggleAgentFavorite(agent);
-            });
-
-            card.find('.ica--card-pill--version-update').on('click', async event => {
-                stopEvent(event);
-                await updateAgentFromSourceTemplate(agent);
-            });
-
-            card.find('.ica--btn-edit').on('click', event => {
-                stopEvent(event);
-                openEditor(agent.id);
-            });
-
-            card.find('.ica--btn-convert-execution').on('click', async event => {
-                stopEvent(event);
-                await applyAgentExecutionConversion(agent, isCompanionAgent(agent) ? 'inline' : 'companion');
-            });
-
-            card.find('.ica--btn-run').on('click', async event => {
-                stopEvent(event);
-                const lastCharMessageIndex = getLastAssistantMessageIndex();
-                if (lastCharMessageIndex < 0) {
-                    toastr.warning('No assistant reply yet to manually apply this agent to.');
-                    return;
-                }
-                await runAgentOnMessage(agent.id, lastCharMessageIndex);
-            });
-
-            card.find('.ica--btn-run-target').on('click', async event => {
-                stopEvent(event);
-                const targets = await pickManualAgentRunTargets(agent);
-                if (!targets) {
-                    return;
-                }
-                await Promise.all(targets.map(target => runAgentOnTarget(agent.id, target)));
-            });
-
-            card.find('.ica--btn-preview-prompt').on('click', async event => {
-                stopEvent(event);
-                await previewPreGenerationPrompt(agent);
-            });
-
-            card.find('.ica--btn-preview-companion-feedback').on('click', async event => {
-                stopEvent(event);
-                await previewCompanionFeedbackPrompt(agent);
-            });
-
-            card.find('.ica--btn-export').on('click', event => {
-                stopEvent(event);
-                const data = exportAgent(agent.id);
-                if (data) download(JSON.stringify(data, null, 2), `${agent.name}.json`, 'application/json');
-            });
-
-            card.find('.ica--btn-delete').on('click', async event => {
-                stopEvent(event);
-                const result = await new Popup('Delete agent "' + escapeHtml(agent.name) + '"?', POPUP_TYPE.CONFIRM).show();
-                if (result === POPUP_RESULT.AFFIRMATIVE) {
-                    await deleteAgent(agent.id);
-                    renderAgentList();
-                }
-            });
-
-            items.append(card);
-        }
-
-        setupCategorySortable(items[0]);
-        group.append(items);
-        container.append(group);
-    }
-
-    restoreAgentListScrollState(scrollState);
+    refreshAgentsPanels();
     updateFixTrackersButtonVisibility();
-    updateUpdateAllButtonVisibility();
     updateCompanionButtonVisibility();
     updateCompanionPanelHandleVisibility();
 }
@@ -2648,7 +2003,7 @@ function buildCompanionDraftAgent() {
  * @param {object|null} [options.draft] Prefilled agent to edit instead of a blank default (new agents only).
  * @param {boolean} [options.autoOpenCompanionMaker] Open the companion AI maker once the editor is up.
  */
-async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker = false } = {}) {
+async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker = false, materialiseTemplateId = null } = {}) {
     const existingAgent = agentId ? getAgentById(agentId) : null;
     if (agentId && !existingAgent) return;
     const agent = existingAgent ? structuredClone(existingAgent) : (draft ?? createDefaultAgent());
@@ -3649,13 +3004,17 @@ async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker
         lockBundledAgentCustomization(agent, template);
     }
 
-    await saveAgent(agent);
+    const saved = materialiseTemplateId
+        ? await materialise(materialiseTemplateId, { edits: agent }, getCatalogueContext())
+        : await saveAgent(agent);
+    agent.id = saved.id;
     if (isCompanionAgent(agent) && await syncCompanionChatHistoryConfig(agent) > 0) {
         saveChatDebounced({ deferBackup: false });
     }
     refreshRegexSnapshotsForAgent(agent.id);
     renderAgentList();
     updateCompanionButtonVisibility();
+    return saved;
 }
 
 // ===================== Template Browser =====================
@@ -3703,322 +3062,11 @@ async function loadTemplates() {
 }
 
 /**
- * Opens the template browser modal.
- */
-async function openTemplateBrowser() {
-    await loadTemplates();
-
-    const visibleTemplates = getVisibleTemplateBrowserTemplates();
-    if (visibleTemplates.length === 0) {
-        toastr.info('No templates available.');
-        return;
-    }
-
-    const wrapper = $('<div class="ica--template-browser"></div>');
-
-    // Groups section
-    const allGroups = getGroups();
-    if (allGroups.length > 0) {
-        const groupSection = $('<div class="ica--template-section"></div>');
-        groupSection.append('<div class="ica--template-section-title"><i class="fa-solid fa-layer-group"></i> Agent Groups</div>');
-        groupSection.append('<p class="ica--template-section-desc">Apply a whole set of agents at once. Agents you already have won\'t be duplicated.</p>');
-
-        const groupGrid = $('<div class="ica--group-grid"></div>');
-        for (const group of allGroups) {
-            const count = group.agentTemplateIds.length + (group.customAgents?.length ?? 0);
-            const card = $(`
-                <div class="ica--group-card">
-                    <div class="ica--group-card-header">
-                        <strong>${escapeHtml(group.name)}</strong>
-                        <span class="ica--card-pill">${count} agents</span>
-                    </div>
-                    <div class="ica--group-card-desc">${escapeHtml(group.description)}</div>
-                    <div class="ica--group-card-actions">
-                        <button type="button" class="ica--card-btn ica--grp-apply"><i class="fa-solid fa-download"></i> Apply Group</button>
-                        ${!group.builtin ? '<button type="button" class="ica--card-btn ica--grp-delete caution"><i class="fa-solid fa-trash"></i></button>' : ''}
-                    </div>
-                </div>
-            `);
-
-            card.on('click', async () => {
-                await applyGroup(group);
-            });
-
-            card.find('.ica--grp-apply').on('click', async event => {
-                stopEvent(event);
-                await applyGroup(group);
-            });
-
-            card.find('.ica--grp-delete').on('click', async event => {
-                stopEvent(event);
-                const r = await new Popup(`Delete group "${escapeHtml(group.name)}"?`, POPUP_TYPE.CONFIRM).show();
-                if (r === POPUP_RESULT.AFFIRMATIVE) {
-                    await deleteGroup(group.id);
-                    card.remove();
-                    toastr.success(`Deleted group "${group.name}".`);
-                }
-            });
-
-            groupGrid.append(card);
-        }
-
-        // "Create Group" card
-        const createCard = $(`
-            <div class="ica--group-card ica--group-card-create">
-                <div class="ica--group-card-header">
-                    <strong><i class="fa-solid fa-plus"></i> Create Custom Group</strong>
-                </div>
-                <div class="ica--group-card-desc">Save your current agents as a reusable group.</div>
-            </div>
-        `);
-        createCard.on('click', async () => {
-            await createCustomGroup();
-        });
-        groupGrid.append(createCard);
-
-        groupSection.append(groupGrid);
-        wrapper.append(groupSection);
-    }
-
-    // Individual templates section
-    const tplSection = $('<div class="ica--template-section"></div>');
-    tplSection.append('<div class="ica--template-section-title"><i class="fa-solid fa-puzzle-piece"></i> Individual Templates</div>');
-    tplSection.append('<p class="ica--template-section-desc">Bundled trackers and helpers live here. Click any card to install it into your agent list.</p>');
-
-    let selectedCategory = '';
-    const categoryOrder = getTemplateBrowserCategoryOrder(visibleTemplates);
-    const filterBar = $(`
-        <div class="ica--template-filter-bar">
-            <input type="text" class="text_pole ica--template-search" placeholder="Search templates…" value="${escapeHtml(templateBrowserSearchValue)}" />
-            <div class="ica--template-pill-row"></div>
-        </div>
-    `);
-    const pillRow = filterBar.find('.ica--template-pill-row');
-    const templateResults = $('<div class="ica--template-results"></div>');
-    const existingAgents = getAgents();
-    const allPill = $(`
-        <button type="button" class="ica--template-pill is-active" data-category="">
-            <span>All</span>
-            <span class="ica--template-pill-count">0</span>
-        </button>
-    `);
-    pillRow.append(allPill);
-
-    for (const category of categoryOrder) {
-        const catInfo = AGENT_CATEGORIES[category] || AGENT_CATEGORIES.custom;
-        pillRow.append(`
-            <button type="button" class="ica--template-pill" data-category="${escapeHtml(category)}">
-                <i class="fa-solid ${catInfo.icon}"></i>
-                <span>${escapeHtml(getTemplateCategoryLabel(category))}</span>
-                <span class="ica--template-pill-count">0</span>
-            </button>
-        `);
-    }
-
-    function buildTemplateCard(tpl) {
-        const catInfo = AGENT_CATEGORIES[tpl.category] || AGENT_CATEGORIES.custom;
-        const regexCount = getTemplateRegexCount(tpl);
-        const alreadyAdded = hasMatchingAgentSnapshot(buildAgentFromTemplate(tpl), existingAgents);
-        const trackerBadge = tpl.category === 'tracker'
-            ? '<span class="ica--card-pill"><i class="fa-solid fa-chart-line fa-xs"></i> Bundled tracker</span>'
-            : '';
-        const addedBadge = alreadyAdded
-            ? '<span class="ica--card-pill"><i class="fa-solid fa-check fa-xs"></i> Added</span>'
-            : '';
-        const card = $(`
-            <div class="ica--template-card${alreadyAdded ? ' ica--template-card--added' : ''}" data-id="${tpl.id}">
-                <div class="ica--template-card-header">
-                    <span class="ica--template-card-name">${escapeHtml(tpl.name)}</span>
-                    <span class="ica--template-card-category"><i class="fa-solid ${catInfo.icon}"></i> ${escapeHtml(catInfo.label)}</span>
-                </div>
-                <div class="ica--template-card-description">${escapeHtml(tpl.description)}</div>
-                <div class="ica--template-card-badges">
-                    <span class="ica--card-pill ica--card-pill--version">v${escapeHtml(getTemplateVersionValue(tpl))}</span>
-                    ${addedBadge}
-                    ${trackerBadge}
-                    ${regexCount > 0 ? `<span class="ica--card-pill"><i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> ${buildRegexTemplateLabel(regexCount)}</span>` : ''}
-                </div>
-                <div class="ica--template-card-prompt">${escapeHtml((tpl.prompt || '').substring(0, 200))}</div>
-            </div>
-        `);
-
-        card.on('click', async () => {
-            const newAgent = buildAgentFromTemplate(tpl);
-            if (!await confirmDuplicateAgentAddition(newAgent, existingAgents)) {
-                toastr.info('Duplicate agent not added.');
-                return;
-            }
-
-            await saveAgent(newAgent);
-            renderAgentList();
-            toastr.success(`Added "${tpl.name}" to your agents.`);
-        });
-
-        return card;
-    }
-
-    function appendTemplateGrid(parent, templateList) {
-        const grid = $('<div class="ica--template-grid"></div>');
-        for (const tpl of templateList) {
-            grid.append(buildTemplateCard(tpl));
-        }
-        parent.append(grid);
-    }
-
-    function updateTemplatePills(searchTerm) {
-        const searchedTemplates = filterTemplates(visibleTemplates, { searchTerm });
-        const countsByCategory = new Map();
-        for (const template of searchedTemplates) {
-            countsByCategory.set(template.category, (countsByCategory.get(template.category) ?? 0) + 1);
-        }
-
-        pillRow.find('.ica--template-pill').each(function () {
-            const category = $(this).attr('data-category') || '';
-            const count = category ? countsByCategory.get(category) ?? 0 : searchedTemplates.length;
-            $(this).toggleClass('is-active', category === selectedCategory);
-            $(this).find('.ica--template-pill-count').text(count);
-        });
-    }
-
-    function renderTemplateCategorySection(category, categoryTemplates, searchActive) {
-        const catInfo = AGENT_CATEGORIES[category] || AGENT_CATEGORIES.custom;
-        const categorySection = $(`
-            <div class="ica--template-category-section">
-                <div class="ica--template-category-title">
-                    <i class="fa-solid ${catInfo.icon}"></i>
-                    <span>${escapeHtml(getTemplateCategoryLabel(category))}</span>
-                    <span class="ica--template-category-count">${categoryTemplates.length}</span>
-                </div>
-            </div>
-        `);
-
-        if (searchActive || !['tracker', 'content'].includes(category)) {
-            appendTemplateGrid(categorySection, searchActive ? sortTemplatesByName(categoryTemplates) : categoryTemplates);
-            return categorySection;
-        }
-
-        const subcategories = getTemplateSubcategoriesForCategory(category);
-        const knownSubcategoryIds = new Set(subcategories.map(([subcategoryId]) => subcategoryId));
-        const directTemplates = categoryTemplates.filter(template => !knownSubcategoryIds.has(String(template.subcategory ?? '').trim()));
-        if (directTemplates.length > 0) {
-            appendTemplateGrid(categorySection, directTemplates);
-        }
-
-        for (const [subcategoryId, subcategory] of subcategories) {
-            const subgroupTemplates = categoryTemplates.filter(template => String(template.subcategory ?? '').trim() === subcategoryId);
-            if (subgroupTemplates.length === 0) {
-                continue;
-            }
-
-            categorySection.append(`
-                <div class="ica--template-subgroup-title">
-                    <i class="fa-solid ${subcategory.icon}"></i>
-                    <span>${escapeHtml(subcategory.label)}</span>
-                    <span>${subgroupTemplates.length}</span>
-                </div>
-            `);
-            appendTemplateGrid(categorySection, subgroupTemplates);
-        }
-
-        return categorySection;
-    }
-
-    function renderTemplateResults() {
-        const searchTerm = filterBar.find('.ica--template-search').val()?.toString() ?? '';
-        templateBrowserSearchValue = searchTerm;
-        const filteredTemplates = filterTemplates(visibleTemplates, {
-            searchTerm,
-            category: selectedCategory,
-        });
-        const searchActive = Boolean(searchTerm.trim());
-
-        updateTemplatePills(searchTerm);
-        templateResults.empty();
-
-        if (filteredTemplates.length === 0) {
-            templateResults.append('<div class="ica--template-empty">No templates match your filter.</div>');
-            return;
-        }
-
-        for (const category of categoryOrder) {
-            const categoryTemplates = filteredTemplates.filter(template => template.category === category);
-            if (categoryTemplates.length === 0) {
-                continue;
-            }
-
-            templateResults.append(renderTemplateCategorySection(category, categoryTemplates, searchActive));
-        }
-    }
-
-    filterBar.find('.ica--template-search').on('input', renderTemplateResults);
-    pillRow.on('click', '.ica--template-pill', function () {
-        selectedCategory = $(this).attr('data-category') || '';
-        renderTemplateResults();
-    });
-
-    tplSection.append(filterBar);
-    tplSection.append(templateResults);
-    wrapper.append(tplSection);
-    renderTemplateResults();
-
-    await new Popup(wrapper, POPUP_TYPE.TEXT, '', { wide: true, large: true }).show();
-}
-
-/**
- * Applies a group -- adds all its template agents that aren't already present.
- * @param {import('./agent-store.js').AgentGroup} group
- */
-async function applyGroup(group) {
-    let added = 0;
-
-    for (const tplId of group.agentTemplateIds) {
-        const tpl = findTemplateById(tplId);
-        if (!tpl) continue;
-
-        const newAgent = buildAgentFromTemplate(tpl);
-        if (hasMatchingAgentSnapshot(newAgent)) continue;
-        await saveAgent(newAgent);
-        added++;
-    }
-
-    if (Array.isArray(group.customAgents)) {
-        for (const customAgent of group.customAgents) {
-            const newAgent = buildAgentFromSnapshot(customAgent);
-            if (hasMatchingAgentSnapshot(newAgent)) continue;
-            await saveAgent(newAgent);
-            added++;
-        }
-    }
-
-    if (!group.builtin && (!Array.isArray(group.customAgents) || group.customAgents.length === 0)) {
-        for (const legacyAgentId of group.agentTemplateIds) {
-            if (findTemplateById(legacyAgentId)) continue;
-            const sourceAgent = getAgentById(legacyAgentId);
-            if (!sourceAgent) continue;
-
-            const snapshot = structuredClone(sourceAgent);
-            delete snapshot.id;
-            snapshot.enabled = false;
-
-            if (hasMatchingAgentSnapshot(snapshot)) continue;
-            await saveAgent(buildAgentFromSnapshot(snapshot));
-            added++;
-        }
-    }
-
-    renderAgentList();
-    if (added > 0) {
-        toastr.success(`Applied "${group.name}" -- added ${added} new agent(s).`);
-    } else {
-        toastr.info(`"${group.name}" is already applied.`);
-    }
-}
-
-/**
  * Creates a custom group from the user's current agents.
  */
-async function createCustomGroup() {
-    const currentAgents = getVisibleInChatAgents();
+async function createCustomGroup(selectedKeys = null) {
+    const entries = selectedKeys ? getAgentListEntries() : getAgentListEntries().filter(entry => entry.kind === 'agent');
+    const currentAgents = entries.map(entry => entry.agent);
     if (currentAgents.length === 0) {
         toastr.info('No agents to group. Add some agents first.');
         return;
@@ -4042,10 +3090,11 @@ async function createCustomGroup() {
     `);
 
     const agentList = html.find('#ica--grp-agents');
-    for (const agent of currentAgents) {
+    for (const entry of entries) {
+        const agent = entry.agent;
         agentList.append(`
             <label class="checkbox_label">
-                <input type="checkbox" value="${agent.id}" checked />
+                <input type="checkbox" value="${escapeHtml(entry.key)}" ${!selectedKeys || selectedKeys.includes(entry.key) ? 'checked' : ''} />
                 <span>${escapeHtml(agent.name)}</span>
             </label>
         `);
@@ -4076,7 +3125,7 @@ async function createCustomGroup() {
     }
 
     const selectedAgents = selectedIds
-        .map(id => getAgentById(String(id)))
+        .map(key => entries.find(entry => entry.key === key)?.agent)
         .filter(Boolean);
 
     const group = createDefaultGroup();
@@ -5103,7 +4152,7 @@ function refreshConnectionProfileUi() {
 }
 
 function populateGlobalNotificationToggle() {
-    updateGlobalAgentToggle();
+    refreshAgentsPanels();
     populateSeparateRecentChatsToggle();
     populatePathfinderSubmoduleToggle();
     $('#ica--promptTransformShowNotifications').prop(
@@ -5387,7 +4436,13 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         return;
     }
 
-    $('#in_chat_agents_container').append(settingsHtml);
+    const settingsStore = document.createElement('div');
+    settingsStore.id = 'ica--settings';
+    settingsStore.hidden = true;
+    const settingsTemplate = $(settingsHtml);
+    settingsStore.append(settingsTemplate.find('[data-sb-agent-global-settings]')[0], settingsTemplate.find('#ica--importFile')[0]);
+    document.body.append(settingsStore);
+    document.body.append(settingsTemplate.filter('#ica--bulkEditPopup')[0]);
     attachTextareaFullscreen($('#ica--settings'));
 
     const savedState = extension_settings.inChatAgents;
@@ -5399,9 +4454,6 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             setGlobalSettings(savedState.globalSettings);
         }
         restoreAutoSeededTemplateIds(savedState);
-        if (savedState.dismissedTemplatesCallout === true) {
-            $('.ica--templates-callout').hide();
-        }
     }
 
     const initResults = await Promise.allSettled([
@@ -5541,7 +4593,8 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         console.warn('[InChatAgents] Tool agent sync failed:', err);
     }
 
-    // Render the panel
+    // The shell may already be mounted; registration reveals it only after initialization.
+    await registerAgentListUi(settingsStore);
     renderAgentList();
     initCompanionCardUi();
     configureCompanionDashboard({
@@ -5560,233 +4613,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     initCompanionPanel();
     schedulePathfinderExtensionsMount();
 
-    // Wire up toolbar
-    $('#ica--globalEnabled').on('click', () => {
-        const enabled = !areAgentsGloballyEnabled();
-        setGlobalSettings({ enabled });
-        if (!enabled) cancelPathfinderSummary();
-        persistExtensionState();
-        updateGlobalAgentToggle();
-        syncToolAgentRegistrations();
-        updateFixTrackersButtonVisibility();
-        updateCompanionButtonVisibility();
-        toastr.info(enabled ? 'In-Chat Agents enabled.' : 'In-Chat Agents disabled.');
-    });
-    $('#ica--addAgent').on('click', () => openEditor());
-    $('#ica--updateAllAgents').on('click', () => updateAllAgentsFromSourceTemplates());
-    $('#ica--companionsDashboard').on('click', () => openCompanionDashboard());
-    $('#ica--convertAllTrackers').on('click', async () => {
-        const inlineTrackers = getAgents().filter(agent => agent.category === 'tracker' && !isCompanionAgent(agent) && !isPathfinderAgent(agent));
-        if (inlineTrackers.length === 0) {
-            toastr.info('Every tracker already runs as a companion.');
-            return;
-        }
-
-        const result = await new Popup(`Convert ${inlineTrackers.length} tracker agent(s) to companion execution? They will run automatically on their own model and show in the Tracker panel.`, POPUP_TYPE.CONFIRM).show();
-        if (result !== POPUP_RESULT.AFFIRMATIVE) {
-            return;
-        }
-
-        let converted = 0;
-        for (const agent of inlineTrackers) {
-            if (!convertAgentExecution(agent, 'companion')) {
-                continue;
-            }
-            lockBundledAgentCustomization(agent);
-            await saveAgent(agent);
-            refreshRegexSnapshotsForAgent(agent.id);
-            converted++;
-        }
-
-        syncToolAgentRegistrations();
-        renderAgentList();
-        toastr.success(`Converted ${converted} tracker(s) to companions — state shows in the Tracker panel.`);
-    });
-    $('#ica--importAgent').on('click', () => $('#ica--importFile').trigger('click'));
     $('#ica--importFile').on('change', handleImport);
-    $('#ica--exportAll').on('click', handleExportAll);
-    $('#ica--templates').on('click', openTemplateBrowser);
-    $('#ica--fixTrackers').on('click', async function () {
-        if (showFixTrackersUnavailableToast()) {
-            updateFixTrackersButtonVisibility();
-            return;
-        }
-        const inlineMessageIndex = getLastAssistantMessageIndex();
-        const companionMessageIndex = getLatestValidCompanionMessageIndex();
-        const messageIndex = Math.max(inlineMessageIndex, companionMessageIndex);
-        if (messageIndex < 0) {
-            toastr.warning('No assistant reply yet to fix trackers on.');
-            return;
-        }
-        await runTrackerFixFromButton(messageIndex, this, { inlineMessageIndex, companionMessageIndex });
-    });
-    $('#ica--templatesCallout').on('click', openTemplateBrowser);
-    $('#ica--templatesCalloutDismiss').on('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        $('.ica--templates-callout').hide();
-        extension_settings.inChatAgents = {
-            ...(extension_settings.inChatAgents ?? {}),
-            dismissedTemplatesCallout: true,
-        };
-        saveSettingsDebounced();
-    });
-    $('#ica--cancelGeneration').on('click', () => {
-        cancelAgentGeneration();
-        updateCancelGenerationButton();
-    });
-    $('#ica--selectMode').on('click', () => {
-        selectModeActive = !selectModeActive;
-        if (!selectModeActive) {
-            selectedAgentIds.clear();
-        }
-        updateBulkBar();
-        renderAgentList();
-    });
-    $('#ica--bulkCancel').on('click', exitSelectMode);
-    $('#ica--bulkSelectAll').on('click', () => {
-        for (const agent of getVisibleInChatAgents()) {
-            selectedAgentIds.add(agent.id);
-        }
-        updateBulkBar();
-        renderAgentList();
-    });
-    $('#ica--bulkEnable').on('click', async () => {
-        let changed = false;
-        for (const id of selectedAgentIds) {
-            const agent = getAgentById(id);
-            if (agent && !isAgentEnabledForCurrentScope(agent)) {
-                setAgentEnabledForCurrentScope(agent, true);
-                await saveAgent(agent);
-                changed = true;
-            }
-        }
-        if (changed) {
-            persistExtensionState();
-            syncToolAgentRegistrations();
-        }
-        exitSelectMode();
-    });
-    $('#ica--bulkEnableOnCompanions').on('click', async () => {
-        let changed = 0;
-        let eligible = 0;
-        for (const id of selectedAgentIds) {
-            const agent = getAgentById(id);
-            if (!agent || isCompanionAgent(agent) || isToolAgent(agent) || !['post', 'both'].includes(agent.phase)) {
-                continue;
-            }
-            eligible++;
-            agent.conditions ??= {};
-            if (agent.conditions.runOnCompanionOutputs) {
-                continue;
-            }
-            agent.conditions.runOnCompanionOutputs = true;
-            lockBundledAgentCustomization(agent);
-            await saveAgent(agent);
-            changed++;
-        }
-        if (changed > 0) {
-            toastr.success(`Enabled ${changed} selected post-generation agent(s) on companion outputs.`);
-        } else if (eligible > 0) {
-            toastr.info('Selected post-generation agents are already enabled on companion outputs.');
-        } else {
-            toastr.warning('No selected post-generation agents can run on companion outputs.');
-        }
-        exitSelectMode();
-    });
-    $('#ica--bulkDisable').on('click', async () => {
-        let changed = false;
-        for (const id of selectedAgentIds) {
-            const agent = getAgentById(id);
-            if (agent && isAgentEnabledForCurrentScope(agent)) {
-                setAgentEnabledForCurrentScope(agent, false);
-                if (isPathfinderAgent(agent)) cancelPathfinderSummary();
-                await saveAgent(agent);
-                changed = true;
-            }
-        }
-        if (changed) {
-            persistExtensionState();
-            syncToolAgentRegistrations();
-        }
-        exitSelectMode();
-    });
-    $('#ica--bulkDelete').on('click', async () => {
-        const count = selectedAgentIds.size;
-        if (count === 0) return;
-        const result = await new Popup(`Delete ${count} selected agent${count !== 1 ? 's' : ''}?`, POPUP_TYPE.CONFIRM).show();
-        if (result === POPUP_RESULT.AFFIRMATIVE) {
-            for (const id of [...selectedAgentIds]) {
-                await deleteAgent(id);
-            }
-            exitSelectMode();
-        }
-    });
-    $('#ica--bulkRoleSystem').on('click', async () => {
-        if (selectedAgentIds.size === 0) return;
-        for (const id of selectedAgentIds) {
-            const agent = getAgentById(id);
-            if (agent && agent.injection.role !== 0) {
-                agent.injection.role = 0;
-                lockBundledAgentCustomization(agent);
-                await saveAgent(agent);
-            }
-        }
-        toastr.success(`Set ${selectedAgentIds.size} agent(s) to System role.`);
-        exitSelectMode();
-    });
-    $('#ica--bulkRoleUser').on('click', async () => {
-        if (selectedAgentIds.size === 0) return;
-        for (const id of selectedAgentIds) {
-            const agent = getAgentById(id);
-            if (agent && agent.injection.role !== 1) {
-                agent.injection.role = 1;
-                lockBundledAgentCustomization(agent);
-                await saveAgent(agent);
-            }
-        }
-        toastr.success(`Set ${selectedAgentIds.size} agent(s) to User role.`);
-        exitSelectMode();
-    });
-    $('#ica--bulkConvertCompanion').on('click', async () => {
-        if (selectedAgentIds.size === 0) return;
-        let converted = 0;
-        for (const id of selectedAgentIds) {
-            const agent = getAgentById(id);
-            if (!agent || isPathfinderAgent(agent) || !convertAgentExecution(agent, 'companion')) {
-                continue;
-            }
-            lockBundledAgentCustomization(agent);
-            await saveAgent(agent);
-            refreshRegexSnapshotsForAgent(agent.id);
-            converted++;
-        }
-        if (converted > 0) {
-            syncToolAgentRegistrations();
-            toastr.success(`Converted ${converted} agent(s) to companion execution.`);
-        } else {
-            toastr.info('No selected agents could be converted to companions.');
-        }
-        exitSelectMode();
-    });
-    $('#ica--bulkEditProps').on('click', () => {
-        if (selectedAgentIds.size === 0) return;
-        openBulkEditPopup();
-    });
-    $('#ica--bulkEditApply').on('click', async () => {
-        await applyBulkEdit();
-    });
-    $('#ica--bulkEditCancel').on('click', () => {
-        closeBulkEditPopup();
-    });
-
-    // Wire up filter
-    $('#ica--agentTabs').on('click', '.ica--agent-tab', function () {
-        setActiveAgentListTab($(this).attr('data-tab') || 'all');
-        renderAgentList();
-    });
-    $('#ica--search').on('input', renderAgentList);
-    $('#ica--categoryFilter').on('change', renderAgentList);
 
     // Wire up connection profile dropdown
     populateProfileDropdown();
@@ -5880,11 +4707,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             toastr.info('No bundled agents found to reset.');
             return;
         }
-        const result = await new Popup(
-            `Reset ${bundledCount} bundled agent${bundledCount !== 1 ? 's' : ''} to their original template defaults? Custom agents will not be affected. This cannot be undone.`,
-            POPUP_TYPE.CONFIRM,
-        ).show();
-        if (result !== POPUP_RESULT.AFFIRMATIVE) return;
+        if (!await confirmDestructiveAction({
+            text: `Reset ${bundledCount} bundled agent${bundledCount !== 1 ? 's' : ''} to their original template defaults? Custom agents will not be affected. This cannot be undone.`,
+            confirmLabel: t`Reset`,
+        })) return;
         const { reset, added } = await resetBundledAgents(getCatalogueContext());
         const resetCount = reset + added;
         toastr.success(`Reset ${resetCount} bundled agent${resetCount !== 1 ? 's' : ''} to defaults.`);
@@ -5892,21 +4718,10 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     // Refresh profiles when chat changes (profiles may have been added/removed)
     const refreshProfileUi = () => {
-        if (!isAgentPanelVisible(document.getElementById('ica--agentList'))) {
-            agentListDirty = true;
-            return;
-        }
         refreshConnectionProfileUi();
         populateGlobalNotificationToggle();
         populateGlobalExecutionModeDropdown();
     };
-    const agentListElement = document.getElementById('ica--agentList');
-    if (agentListElement) {
-        const observer = new IntersectionObserver(entries => {
-            if (agentListDirty && entries.some(entry => entry.isIntersecting)) refreshProfileUi();
-        });
-        observer.observe(agentListElement);
-    }
 
     eventSource.on(event_types.CHAT_CHANGED, refreshProfileUi);
 
@@ -5981,7 +4796,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     document.addEventListener('sb:shell-tab-activated', (event) => {
         if (event.detail?.tabId === 'agents') {
             syncToolAgentRegistrations();
-            if (agentListDirty) refreshProfileUi();
+            refreshProfileUi();
             updateAgentTokenCounter();
         }
     });

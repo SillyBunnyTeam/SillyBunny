@@ -11,6 +11,29 @@ export const DELETE_CHOICE = Object.freeze({
     SWIPE: 'swipe',
 });
 
+export async function confirmDestructiveAction({ text, confirmLabel, copyPlaceholder = false }) {
+    const popup = new Popup(text, POPUP_TYPE.CONFIRM, null, {
+        okButton: confirmLabel,
+        cancelButton: t`Cancel`,
+        defaultResult: POPUP_RESULT.NEGATIVE,
+    });
+    popup.dlg.classList.add('sb-popup-destructive-confirm');
+    popup.okButton.classList.add('sb-popup-destructive');
+    if (copyPlaceholder) popup.content.dataset.sbCopyPlaceholder = 'true';
+    const cancelOnReturn = event => {
+        if (event.key !== 'Enter' || event.isComposing) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        void popup.complete(POPUP_RESULT.NEGATIVE);
+    };
+    popup.dlg.addEventListener('keydown', cancelOnReturn, true);
+    try {
+        return await popup.show() === POPUP_RESULT.AFFIRMATIVE;
+    } finally {
+        popup.dlg.removeEventListener('keydown', cancelOnReturn, true);
+    }
+}
+
 /**
  * @param {object} [options]
  * @param {string} [options.text]

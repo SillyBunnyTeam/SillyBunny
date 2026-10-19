@@ -262,18 +262,13 @@ describe('Characters tab shell', () => {
         expect(reconcileRows).toHaveBeenCalledTimes(1);
     });
 
-    test.each(['hidden', 'class="sb-subpage-store"'])('hidden agent lists (%s) never measure scroll ancestors or touch mode-card state', attribute => {
+    test.each(['hidden', 'class="sb-subpage-store"'])('removed agent cards never measure scroll ancestors; hidden Pathfinder (%s) never touches mode-card state', attribute => {
         document.body.innerHTML = `<div ${attribute}><div id="agent-list"></div></div>`;
         const element = document.getElementById('agent-list');
-        const computed = jest.fn();
         const source = read('scripts/extensions/in-chat-agents/index.js');
-        const getScroll = runInNewContext(`
-            ${section(source, 'function isAgentPanelVisible(', 'function renderAgentList(')}
-            ${section(source, 'function getScrollContainer(', 'function captureAgentListScrollState(')}
-            getScrollContainer;
-        `, { document, HTMLElement, window: { getComputedStyle: computed } });
-        expect(getScroll(element)).toBeNull();
-        expect(computed).not.toHaveBeenCalled();
+        expect(source).not.toContain('function getScrollContainer(');
+        expect(source).not.toContain('function captureAgentListScrollState(');
+        expect(source).not.toContain('$(\'#ica--agentList\')');
         const find = jest.fn();
         const pathfinder = read('scripts/extensions/in-chat-agents/pathfinder-settings-ui.js');
         const update = runInNewContext(`

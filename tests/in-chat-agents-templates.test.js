@@ -15,7 +15,6 @@ const {
 } = await import('../public/scripts/extensions/in-chat-agents/regex-scripts.js');
 
 const templateDir = new URL('../public/scripts/extensions/in-chat-agents/templates/', import.meta.url);
-const indexSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/index.js', import.meta.url);
 const catalogueSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/catalogue.js', import.meta.url);
 const sourceFilenames = [
     'achievements-tracker.json',
@@ -79,30 +78,6 @@ function readCatalogueSetBody(name) {
     }
 
     return match[1];
-}
-
-function readIndexFunctionBody(name) {
-    const source = fs.readFileSync(indexSourceUrl, 'utf8');
-    const start = source.indexOf(`function ${name}(`);
-
-    if (start === -1) {
-        throw new Error(`Missing function definition: ${name}`);
-    }
-
-    const bodyStart = source.indexOf('{', start);
-    let depth = 0;
-    for (let i = bodyStart; i < source.length; i++) {
-        if (source[i] === '{') {
-            depth++;
-        } else if (source[i] === '}') {
-            depth--;
-            if (depth === 0) {
-                return source.slice(start, i + 1);
-            }
-        }
-    }
-
-    throw new Error(`Unterminated function: ${name}`);
 }
 
 async function importAgentStore() {
@@ -694,17 +669,15 @@ describe('in-chat agent bundled templates', () => {
         expect(unknownCategories).toEqual([]);
     });
 
-    test('surfaces bundled content templates such as HTML Toggle in the browser', () => {
+    test('keeps bundled content metadata such as HTML Toggle after retiring the install browser', () => {
         const catalog = readTemplate('index.json');
         const htmlToggle = findCatalogTemplate(catalog, 'tpl-html-toggle');
 
         expect(htmlToggle.category).toBe('content');
         expect(htmlToggle.subcategory).toBe('behaviour');
 
-        // 'custom' stays in AGENT_CATEGORIES as a fallback for user/saved agents
-        // even though no bundled templates ship in that category anymore.
-        const orderSource = readIndexFunctionBody('getTemplateBrowserCategoryOrder');
-        expect(orderSource).not.toContain('category !== \'custom\'');
-        expect(orderSource).toContain('AGENT_CATEGORIES');
+        const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/index.js', import.meta.url), 'utf8');
+        expect(source).not.toContain('function openTemplateBrowser(');
+        expect(source).toContain('categories: AGENT_CATEGORIES');
     });
 });

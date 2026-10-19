@@ -405,8 +405,6 @@ describe('mobile shell lifecycle wiring', () => {
     test('allows horizontal scrolling within designated mobile rails', () => {
         for (const [rootSelector, railSelector] of [
             ['#sheld', '.group_speaker_list'],
-            ['#left-nav-panel', '.ica--agent-tabs'],
-            ['.popup', '.ica--template-pill-row'],
             ['#user-settings-block', '.sb-settings-tabs-nav'],
             ['#top-bar', '.sb-topbar-group-left'],
             ['#sheld', '.sb-conversation-channel-tabs'],

@@ -1,11 +1,13 @@
 import { devices, expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 const sessions = new WeakMap();
 
 test.setTimeout(60000);
 
 test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
     const savedSettings = [];
     sessions.set(page, savedSettings);
     await page.route('**/api/settings/save', route => {

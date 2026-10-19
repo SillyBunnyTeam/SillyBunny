@@ -73,6 +73,8 @@ import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.j
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
+// SillyBunny: the Agents shell mounts independently of extension initialization.
+import { mountAgentsPanel, getAgentsPanelSearchEntries } from './extensions/in-chat-agents/ui/agent-list.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import { initCharacterEditor } from './sillybunny-character-editor.js';
 import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybunny-search-entities.js';
@@ -10019,23 +10021,8 @@ function buildInChatAgentsPanel() {
         id: 'agents',
     });
 
-    const column = createElement('div', { className: 'sb-shell-column' });
-    const callout = createElement('div', { className: 'sb-shell-callout' });
-    callout.innerHTML = `
-        <strong>In-Chat Agents</strong>
-        <p>Lightweight helpers that run alongside your conversation. Configure them per-chat for modular functionality.</p>
-    `;
-
-    const inChatAgentsContainer = createElement('div', { id: 'in_chat_agents_container' });
-    const normalizeGlobalSettings = () => normalizeBackendSettingsRows(column.querySelector('[data-sb-agent-global-settings]'));
-    const settingsObserver = new MutationObserver(() => {
-        if (!column.querySelector('[data-sb-agent-global-settings]')) return;
-        settingsObserver.disconnect();
-        normalizeGlobalSettings();
-    });
-    settingsObserver.observe(inChatAgentsContainer, { childList: true });
-
-    column.append(callout, inChatAgentsContainer);
+    const column = createElement('div', { className: 'sb-shell-column ica-agents-column' });
+    const controller = mountAgentsPanel(column);
     scroller.appendChild(column);
 
     return {
@@ -10043,7 +10030,7 @@ function buildInChatAgentsPanel() {
         panel,
         button: null,
         searchRoot: column,
-        onActivate: normalizeGlobalSettings,
+        onActivate: () => { controller.prepareReveal(); controller.onReveal(); },
     };
 }
 
@@ -12647,9 +12634,10 @@ function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities =
                 tabState.searchIndex = createSearchIndex(tabState);
             }
 
-            const extraEntries = tabState.id === 'persona' ? getPersonaSearchEntries(tabState) : [];
+            const extraEntries = tabState.id === 'persona' ? getPersonaSearchEntries(tabState)
+                : tabState.id === 'agents' ? getAgentsPanelSearchEntries(tabState) : [];
 
-            for (const entry of [...tabState.searchIndex, ...extraEntries]) {
+            for (const entry of [...(tabState.id === 'agents' ? [] : tabState.searchIndex), ...extraEntries]) {
                 // Match first: the visibility check walks ancestors with `getComputedStyle`, and the
                 // memo only covers repeated rows, so this filter is what keeps a keystroke cheap.
                 if (!searchTerms.every(term => entry.searchText.includes(term))) {
@@ -12751,8 +12739,9 @@ function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
     }
 
     return [
-        ...(searchIndex || tabState.searchIndex),
+        ...(tabState.id === 'agents' ? [] : (searchIndex || tabState.searchIndex)),
         ...(tabState.id === 'persona' ? getPersonaSearchEntries(tabState) : []),
+        ...(tabState.id === 'agents' ? getAgentsPanelSearchEntries(tabState) : []),
     ].filter(entry => isSearchEntryAvailable(entry, tabState));
 }
 
@@ -12968,14 +12957,14 @@ async function renderUniversalSearchResults(query) {
                 ? `Jump straight to this item in ${match.tabLabel}.`
                 : match.displayText;
 
-            button.appendChild(createElement('strong', { text: sectionDisplay }));
+            button.appendChild(createElement('strong', { text: match.description !== undefined ? match.displayText : sectionDisplay }));
 
-            if (sectionDisplay !== match.displayText) {
-                button.appendChild(createElement('span', { text: detailText }));
+            if (match.description !== undefined || sectionDisplay !== match.displayText) {
+                button.appendChild(createElement('span', { text: match.description ?? detailText }));
             }
 
             button.appendChild(createElement('small', {
-                text: typeof match.action === 'function' ? 'Quick action' : 'Jump to setting',
+                text: match.locationLabel ? `${groupLabel} · ${match.sectionLabel}` : typeof match.action === 'function' ? 'Quick action' : 'Jump to setting',
             }));
 
             if (duplicateIndex > 1) {

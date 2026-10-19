@@ -29,6 +29,34 @@
     display: none !important;
 }
 
+.sb-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    color: var(--SmartThemeBodyColor);
+    background: var(--sb-layer-headerbar);
+}
+
+.sb-banner[hidden] {
+    display: none !important;
+}
+
+.sb-banner > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sb-banner > button {
+    flex: none;
+    width: auto;
+    min-width: max-content;
+    white-space: nowrap;
+}
+
 /* --- Sidebar --- */
 
 .sb-list-editor__sidebar {

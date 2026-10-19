@@ -685,8 +685,6 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '.sb-bottom-chat-secondary-row',
     '#sb-persona-picker',
     '.group_speaker_list',
-    '.ica--agent-tabs',
-    '.ica--template-pill-row',
     '.sb-shell-nav',
     '.sb-settings-tabs-nav',
     // The icons-only top bar is made entirely of buttons, so every swipe on it matches
