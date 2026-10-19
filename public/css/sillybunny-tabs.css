@@ -6322,7 +6322,7 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    padding-block: 2px;
+    padding-block: 6px;
     cursor: text;
 }
 
@@ -6342,9 +6342,10 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     justify-content: flex-end;
 }
 
+/* The field is a filled text entry like every other shell text field; the title sits inside its padding. */
 .ds-row-entry--floating .ds-row-entry__title {
     position: absolute;
-    inset-inline: 0;
+    inset-inline: 13px;
     top: 50%;
     overflow: hidden;
     color: var(--sb-input-placeholder);
@@ -6388,13 +6389,13 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     width: 100%;
     min-width: 0;
     height: auto;
-    min-height: 0;
+    min-height: max(48px, 3.4em);
     margin: 0;
-    padding: 1.45em 0 0.35em;
-    border: 0;
-    border-radius: 0;
+    padding: 1.45em 12px 0.35em;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-button);
     outline: none;
-    background: none;
+    background: var(--sb-composer-input-bg);
     box-shadow: none;
     color: var(--sb-shell-text);
     font: inherit;
@@ -6413,16 +6414,12 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     color: var(--sb-input-placeholder) !important;
 }
 
-/* The row draws the focus ring; outrank the theme's text-entry focus rules so the field adds none. */
+/* Same focus treatment as the shell's other text entries (sillybunny-theme.css shell entry rules). */
 .ds-row.ds-row-entry--floating .ds-row-entry__field > input:is(:focus, :focus-visible):not([disabled]) {
-    border: 0;
+    border-color: var(--sb-composer-focus-border);
     outline: none;
-    background: none;
-    box-shadow: none;
-}
-
-.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus-visible) {
-    box-shadow: var(--sb-focus-ring-inset);
+    background: var(--sb-composer-input-bg);
+    box-shadow: var(--sb-composer-focus-ring);
 }
 
 .ds-row-entry--floating .ds-row-entry__field > input.is-masked {
@@ -6689,7 +6686,11 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 }
 
 @media (forced-colors: active) {
-    .ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus-visible) {
+    .ds-row-entry--floating .ds-row-entry__field > input {
+        border-color: CanvasText;
+    }
+
+    .ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus-visible:not([disabled]) {
         outline: 2px solid Highlight;
         outline-offset: -2px;
     }
@@ -9990,14 +9991,32 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     inset-inline-end: 44px;
 }
 
+/* Outranks the generic shell .text_pole rules so the adopted input keeps the floating-entry field shape. */
 #sb-settings-page .sb-connections-provider .ds-row-entry__field > input {
     margin: 0;
-    padding: 1.45em 0 0.35em;
-    min-height: 0;
-    background: none;
-    border: 0;
+    padding: 1.45em 12px 0.35em;
+    min-height: max(48px, 3.4em);
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-button);
+    background: var(--sb-composer-input-bg);
     box-shadow: none;
     color: var(--sb-shell-text);
+}
+
+#sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus:not([disabled]) {
+    border-color: var(--sb-composer-focus-border);
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+@media (forced-colors: active) {
+    #sb-settings-page .sb-connections-provider .ds-row-entry__field > input {
+        border-color: CanvasText;
+    }
+
+    #sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus-visible {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
 }
 
 #sb-settings-page .sb-connections-provider .ds-row-entry__field > input::placeholder {

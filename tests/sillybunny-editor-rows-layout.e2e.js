@@ -93,8 +93,14 @@ for (const width of [1440, 360]) {
             expect(isFloated(await geometry(page, 'programmatic'))).toBe(true);
         });
 
-        test('shows one focus ring on the row and none on the input', async ({ page }) => {
+        test('draws the field as a filled entry and shows one focus ring, on the field', async ({ page }) => {
             await mountRows(page);
+            const rest = await page.locator('#empty').evaluate(input => {
+                const style = getComputedStyle(input);
+                return { background: style.backgroundColor, radius: parseFloat(style.borderTopLeftRadius) };
+            });
+            expect(rest.background).not.toBe('rgba(0, 0, 0, 0)');
+            expect(rest.radius).toBeGreaterThan(0);
             await page.keyboard.press('Tab');
             await expect(page.locator('#empty')).toBeFocused();
             const rings = await page.locator('#empty').evaluate(input => ({
@@ -102,8 +108,8 @@ for (const width of [1440, 360]) {
                 input: getComputedStyle(input).boxShadow,
                 outline: getComputedStyle(input).outlineStyle,
             }));
-            expect(rings.row).toContain('inset');
-            expect(rings.input).toBe('none');
+            expect(rings.row).toBe('none');
+            expect(rings.input).not.toBe('none');
             expect(rings.outline).toBe('none');
         });
 
@@ -138,7 +144,7 @@ test.describe('floating entry row under forced colours', () => {
     test('keeps a visible focus indicator and a key status with text', async ({ page }) => {
         await mountRows(page);
         await page.keyboard.press('Tab');
-        const outline = await page.locator('#empty').evaluate(input => getComputedStyle(input.closest('.ds-row')).outlineStyle);
+        const outline = await page.locator('#empty').evaluate(input => getComputedStyle(input).outlineStyle);
         expect(outline).toBe('solid');
         const status = page.locator('.ds-row-entry__status');
         await expect(status).toHaveAttribute('data-state', 'missing');

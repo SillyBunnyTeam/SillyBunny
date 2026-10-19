@@ -404,6 +404,24 @@ for (const width of [1440, 390]) {
             await trigger.hover();
             await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         });
+
+        test('text fields are filled entries with their own focus ring, and keep their trailing controls outside', async ({ page }) => {
+            await mountConnections(page);
+            await page.locator('#chat_completion_source').selectOption('openrouter');
+            const key = page.locator('#api_key_openrouter');
+            const rest = await key.evaluate(input => {
+                const style = getComputedStyle(input);
+                const field = input.getBoundingClientRect();
+                const suffix = input.closest('.ds-row-entry__line').querySelector('.ds-row-suffix')?.getBoundingClientRect();
+                return { background: style.backgroundColor, radius: parseFloat(style.borderTopLeftRadius), suffixOutside: !suffix || suffix.left >= field.right };
+            });
+            expect(rest.background).not.toBe('rgba(0, 0, 0, 0)');
+            expect(rest.radius).toBeGreaterThan(0);
+            expect(rest.suffixOutside).toBe(true);
+            await key.focus();
+            expect(await key.evaluate(node => getComputedStyle(node).boxShadow)).not.toBe('none');
+            expect(await key.evaluate(node => getComputedStyle(node.closest('.ds-row')).boxShadow)).toBe('none');
+        });
     });
 }
 
