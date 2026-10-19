@@ -40,10 +40,6 @@
     --sb-chatbar-input-height-base: 18px;
     --sb-chatbar-input-font-scale-base: 0.72;
     --sb-chatbar-status-font-scale-base: 0.58;
-    --sb-connection-strip-gap-base: 10px;
-    --sb-connection-strip-padding-y-base: 8px;
-    --sb-connection-strip-padding-x-base: 10px;
-    --sb-connection-strip-radius-base: 14px;
     --sb-proxy-button-padding-x-base: 15px;
     --sb-proxy-button-height-base: 40px;
     --sb-proxy-button-min-width-base: 104px;
@@ -99,10 +95,6 @@
     --sb-chatbar-input-height: calc(var(--sb-chatbar-input-height-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-input-font-size: calc(var(--mainFontSize) * var(--sb-chatbar-input-font-scale-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-status-font-size: calc(var(--mainFontSize) * var(--sb-chatbar-status-font-scale-base) * var(--sb-chatbar-scale-active));
-    --sb-connection-strip-gap: calc(var(--sb-connection-strip-gap-base) * var(--sb-topbar-scale-active));
-    --sb-connection-strip-padding-y: calc(var(--sb-connection-strip-padding-y-base) * var(--sb-topbar-scale-active));
-    --sb-connection-strip-padding-x: calc(var(--sb-connection-strip-padding-x-base) * var(--sb-topbar-scale-active));
-    --sb-connection-strip-radius: calc(var(--sb-connection-strip-radius-base) * var(--sb-topbar-scale-active));
     --sb-proxy-button-padding-x: var(--sb-proxy-button-padding-x-base);
     --sb-proxy-button-height: var(--sb-proxy-button-height-base);
     --sb-proxy-button-min-width: var(--sb-proxy-button-min-width-base);
@@ -587,7 +579,6 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 #sb-chatbar::before,
-#sb-connection-strip::before,
 #sb-mobile-chat-tools-panel::before {
     content: '';
     position: absolute;
@@ -700,7 +691,6 @@ body.sb-topbar-compact #sb-chatbar-layer {
 }
 
 .sb-chatbar-button:focus-visible,
-.sb-connection-strip-connect:focus-visible,
 .sb-bottom-chat-btn:focus-visible,
 .sb-mobile-chat-close:focus-visible {
     outline: none;
@@ -801,106 +791,6 @@ body.sb-topbar-compact #sb-chatbar-layer {
     white-space: nowrap;
     opacity: 0.65;
     font-size: var(--sb-chatbar-status-font-size);
-}
-
-#sb-connection-strip {
-    position: absolute;
-    isolation: isolate;
-    top: calc(100% + var(--sb-topbar-bottom-padding));
-    left: 50%;
-    transform: translate(-50%, calc(var(--sb-topbar-bottom-padding) * -2));
-    width: 100%;
-    max-width: 100%;
-    display: flex;
-    align-items: center;
-    gap: var(--sb-connection-strip-gap);
-    padding: var(--sb-connection-strip-padding-y) var(--sb-connection-strip-padding-x);
-    /* libadwaita popover: opaque popover layer, 1px border, one popover shadow, no blur. */
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-overlay);
-    overflow: visible;
-    background-color: var(--sb-layer-popover) !important;
-    background-image: none !important;
-    box-shadow: var(--sb-shadow-popover);
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    z-index: var(--sb-z-raised);
-    transition: opacity var(--sb-transition-fast), transform var(--sb-transition-fast), visibility var(--sb-transition-fast);
-}
-
-#sb-connection-strip::before {
-    background: var(--sb-layer-popover) !important;
-    opacity: 1;
-}
-
-#sb-connection-strip.is-open {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: translate(-50%, 0);
-}
-
-#sb-connection-strip-field {
-    flex: 0 1 260px;
-    min-width: 0;
-}
-
-.sb-connection-strip-status {
-    flex: 1 1 auto;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: calc(var(--mainFontSize) * 0.72);
-    opacity: 0.96;
-}
-
-.sb-connection-strip-connect {
-    -webkit-appearance: none;
-    appearance: none;
-    position: relative;
-    isolation: isolate;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: var(--sb-chatbar-field-height);
-    padding: 0 14px;
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border) 58%);
-    border-radius: var(--sb-chatbar-button-radius);
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    font: inherit;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: border-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
-}
-
-.sb-connection-strip-connect::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, var(--sb-card-bg));
-    opacity: 0.96;
-}
-
-@media (hover: hover) {
-    .sb-connection-strip-connect:hover::before {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 22%, var(--sb-card-bg));
-    }
-}
-
-.sb-connection-strip-connect:disabled {
-    opacity: 0.5;
-    cursor: default;
-    transform: none;
-    box-shadow: none;
 }
 
 #sheld {

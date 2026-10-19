@@ -718,10 +718,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         width: 100%;
     }
 
-    #sb-connection-strip {
-        display: none !important;
-    }
-
     #sb-chatbar {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;

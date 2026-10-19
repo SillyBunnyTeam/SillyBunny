@@ -3,7 +3,6 @@ import { parse } from '@adobe/css-tools';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import vm from 'node:vm';
 
 import {
     MOBILE_SHELL_VIEWPORT_SYNC_STEP,
@@ -771,14 +770,12 @@ describe('mobile shell lifecycle wiring', () => {
         const closeMobileSurfacesForSettingsPageSource = getFunctionSource('closeMobileSurfacesForSettingsPage');
         const openSettingsPageSource = getFunctionSource('openSettingsPage');
         const closeAllDropdownsSource = getFunctionSource('closeAllDropdowns');
-        const setConnectionStripOpenStateSource = getFunctionSource('setConnectionStripOpenState');
 
         expect(applyExclusivitySource).toContain('[surface.NAV]: () => closeMobileNav(),');
         expect(applyExclusivitySource).toContain('[surface.LEFT_SHELL]: () => closeShell(\'left\'),');
         expect(applyExclusivitySource).toContain('[surface.RIGHT_SHELL]: () => closeShell(\'right\'),');
         expect(applyExclusivitySource).toContain('[surface.CHARACTER_PANEL]: () => closeCharacterPanel(),');
         expect(applyExclusivitySource).toContain('[surface.CHAT_TOOLS]: () => closeMobileChatTools(),');
-        expect(applyExclusivitySource).toContain('[surface.CONNECTION_STRIP]: () => setConnectionStripOpenState(false),');
         expect(applyExclusivitySource).toContain('throw new Error(`Unknown mobile shell surface: ${closeSurfaceKey}`);');
 
         for (const source of [
@@ -786,7 +783,6 @@ describe('mobile shell lifecycle wiring', () => {
             toggleMobileChatToolsSource,
             openCharacterWorldInfoTabSource,
             closeAllDropdownsSource,
-            setConnectionStripOpenStateSource,
         ]) {
             expect(source).toContain('applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({');
         }
@@ -805,7 +801,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeAllDropdownsSource).toContain('surface: exemptSurface,');
         expect(closeAllDropdownsSource).toContain('closeSurfaces: sbMobileShellLifecycle.overlays.closeAllSurfaces,');
         expect(closeAllDropdownsSource).not.toContain('const surfaceByException = {');
-        expect(setConnectionStripOpenStateSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,');
 
         expect(openMobileChatToolsSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');');
         expect(toggleCharacterPanelSource).not.toContain('closeShell(\'left\');\n    closeShell(\'right\');');

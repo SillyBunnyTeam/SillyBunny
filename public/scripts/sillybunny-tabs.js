@@ -19,7 +19,6 @@ import {
     animateIn,
     animateOut,
     MOTION_FAST,
-    MOTION_SLOW,
     prefersReducedMotion,
     SPRING_SHEET,
     stopMotion,
@@ -1471,7 +1470,6 @@ const sbState = {
     desktopQuickActions: [],
     mobileQuickActions: [],
     chatbar: {
-        desktop: null,
         sidebar: null,
         mobileTools: null,
         visible: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), true),
@@ -1487,7 +1485,6 @@ const sbState = {
         sourceSelectObserver: null,
         sourceObservedElement: null,
         sourceChangeHandler: null,
-        connectionStripOpen: false,
         sidebarOpen: false,
         mobileToolsOpen: false,
         mobileToolsReturnFocus: null,
@@ -2077,10 +2074,6 @@ function setTopbarScale(mode, value, { persist = true } = {}) {
 
     if (persist) {
         safeSetItem(storageKey, String(nextScale));
-    }
-
-    if (getChatDesktopRefs()) {
-        scheduleChatbarRefresh(0);
     }
 
     updateThemePickerUi();
@@ -4148,7 +4141,6 @@ function returnToChatSurface() {
     closeCharacterPanel();
     closeMobileNav();
     closeMobileChatTools();
-    setConnectionStripOpenState(false);
     queueLandingPageStateSync();
 }
 
@@ -4727,10 +4719,6 @@ function setChatbarVisible(shouldShow, { persist = true } = {}) {
 
     document.body.classList.toggle('sb-chatbar-hidden', !nextVisible);
 
-    if (!nextVisible) {
-        setConnectionStripOpenState(false);
-    }
-
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.chatbarVisible, String(nextVisible));
     }
@@ -4871,10 +4859,6 @@ function bindTopbarDragEvents() {
     window.addEventListener('touchmove', updateTopbarDrag, { passive: false });
     window.addEventListener('touchend', endTopbarDrag);
     window.addEventListener('touchcancel', endTopbarDrag);
-}
-
-function getChatDesktopRefs() {
-    return getChatbarState().desktop;
 }
 
 function getChatMobileRefs() {
@@ -5587,7 +5571,7 @@ function setButtonPressed(button, pressed) {
 function setSearchStatusText(statusText) {
     const normalizedText = String(statusText ?? '').trim();
 
-    for (const refs of [getChatDesktopRefs(), getChatMobileRefs(), getBottomChatBarState()]) {
+    for (const refs of [getChatMobileRefs(), getBottomChatBarState()]) {
         const status = refs?.searchStatus;
         if (!(status instanceof HTMLElement)) {
             continue;
@@ -5809,7 +5793,6 @@ function setChatSidebarOpenState(shouldOpen) {
     getChatbarState().sidebarOpen = isOpen;
     refs.root.style.display = isOpen ? 'flex' : 'none';
     refs.root.classList.toggle('sb-chat-sidebar-visible', isOpen);
-    setButtonPressed(getChatDesktopRefs()?.toggleSidebarButton, isOpen);
 
     if (isOpen) {
         scheduleChatbarRefresh(0);
@@ -5822,7 +5805,6 @@ function toggleChatSidebar() {
         return;
     }
 
-    setConnectionStripOpenState(false);
     setChatSidebarOpenState(!isChatSidebarOpen());
 }
 
@@ -6082,7 +6064,6 @@ function applyMobileSurfaceExclusivity(decision) {
         [surface.RIGHT_SHELL]: () => closeShell('right'),
         [surface.CHARACTER_PANEL]: () => closeCharacterPanel(),
         [surface.CHAT_TOOLS]: () => closeMobileChatTools(),
-        [surface.CONNECTION_STRIP]: () => setConnectionStripOpenState(false),
     };
 
     for (const closeSurfaceKey of decision.closeSurfaces) {
@@ -6127,52 +6108,6 @@ function syncConnectionProfileSelection(value) {
     sourceSelect.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function isConnectionStripOpen() {
-    return Boolean(getChatbarState().connectionStripOpen);
-}
-
-function setConnectionStripOpenState(shouldOpen) {
-    const desktopRefs = getChatDesktopRefs();
-    const nextState = Boolean(shouldOpen);
-
-    if (!desktopRefs?.connectionStrip) {
-        return;
-    }
-
-    if (nextState) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    const wasOpen = getChatbarState().connectionStripOpen;
-    getChatbarState().connectionStripOpen = nextState;
-    desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
-    if (nextState) {
-        desktopRefs.connectionStrip.hidden = false;
-    }
-    setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
-
-    if (wasOpen === nextState) {
-        return;
-    }
-
-    if (nextState) {
-        animateIn(desktopRefs.connectionStrip, [
-            { opacity: 0, transform: 'translateY(-6px)' },
-            { opacity: 1, transform: 'none' },
-        ], { duration: MOTION_SLOW });
-    } else {
-        animateOut(desktopRefs.connectionStrip, [
-            { opacity: 1, transform: 'none' },
-            { opacity: 0, transform: 'translateY(-6px)' },
-        ], () => {
-            desktopRefs.connectionStrip.hidden = true;
-        }, { enabled: !isMobileViewport(), duration: MOTION_SLOW });
-    }
-}
-
 function getCurrentMainApiValue() {
     const mainApiSelect = document.getElementById('main_api');
     const context = getSillyTavernContext();
@@ -6181,17 +6116,6 @@ function getCurrentMainApiValue() {
         selectValue: mainApiSelect instanceof HTMLSelectElement ? mainApiSelect.value : '',
         contextMainApi: context?.mainApi,
     });
-}
-
-function resolveActiveApiConnectButton() {
-    const selector = sbPresetApiSyncLifecycle.api.resolveConnectButtonSelector(getCurrentMainApiValue());
-
-    if (!selector) {
-        return null;
-    }
-
-    const button = document.querySelector(selector);
-    return button instanceof HTMLElement ? button : null;
 }
 
 function getSearchTerms(query = getChatbarState().searchQuery) {
@@ -6538,7 +6462,7 @@ function setChatSearchQuery(value, { source = null } = {}) {
     chatbarState.searchQuery = nextValue;
     chatbarState.searchApplyToken += 1;
 
-    for (const input of [getChatDesktopRefs()?.searchInput, getChatMobileRefs()?.searchInput, getBottomChatBarState()?.searchInput]) {
+    for (const input of [getChatMobileRefs()?.searchInput, getBottomChatBarState()?.searchInput]) {
         if (!(input instanceof HTMLInputElement) || input === source) {
             continue;
         }
@@ -6874,10 +6798,9 @@ function bindConnectionProfileSourceObserver() {
 async function refreshChatbarState() {
     const chatbarState = getChatbarState();
     const refreshToken = ++chatbarState.refreshToken;
-    const desktopRefs = getChatDesktopRefs();
     const mobileRefs = getChatMobileRefs();
 
-    if (!desktopRefs && !mobileRefs) {
+    if (!mobileRefs) {
         return;
     }
 
@@ -6895,19 +6818,7 @@ async function refreshChatbarState() {
         files.unshift({ fileName: chatContext.chatId, tokenEstimate: 0 });
     }
 
-    populateChatSelector(desktopRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
     populateChatSelector(mobileRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
-
-    if (desktopRefs) {
-        setButtonDisabled(desktopRefs.managerButton, !chatContext.canBrowseChats);
-        setButtonDisabled(desktopRefs.toggleSidebarButton, !chatContext.canBrowseChats);
-        setButtonDisabled(desktopRefs.newButton, !chatContext.canStartNewChat);
-        setButtonDisabled(desktopRefs.renameButton, !chatContext.hasChat);
-        setButtonDisabled(desktopRefs.deleteButton, !chatContext.hasChat);
-        setButtonDisabled(desktopRefs.closeButton, !chatContext.hasChat);
-        setButtonDisabled(desktopRefs.chatSelect, !chatContext.canBrowseChats);
-        setButtonDisabled(desktopRefs.searchInput, !chatContext.hasChat);
-    }
 
     if (mobileRefs) {
         setButtonDisabled(mobileRefs.managerButton, !chatContext.canBrowseChats);
@@ -6923,30 +6834,9 @@ async function refreshChatbarState() {
     const hasConnectionProfiles = connectionProfilesSource instanceof HTMLSelectElement;
     const connectionMirrorState = sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorState({
         hasConnectionProfiles,
-        isConnectionStripOpen: isConnectionStripOpen(),
-        hasActiveConnectButton: hasConnectionProfiles && Boolean(resolveActiveApiConnectButton()),
     });
 
-    if (desktopRefs) {
-        desktopRefs.toggleConnectionButton.hidden = !connectionMirrorState.shouldShowToggle;
-        if (!connectionMirrorState.shouldShowDesktopStrip && isConnectionStripOpen()) {
-            setConnectionStripOpenState(false);
-        } else {
-            desktopRefs.connectionStrip.hidden = !connectionMirrorState.shouldShowDesktopStrip;
-        }
-    }
-
-    if (connectionMirrorState.shouldCloseDesktopStrip) {
-        setConnectionStripOpenState(false);
-    }
-
     if (connectionMirrorState.shouldClearMirrors) {
-        if (desktopRefs) {
-            desktopRefs.connectionSelect.replaceChildren();
-            desktopRefs.connectionStatus.textContent = '';
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
-        }
-
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
             mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
             mobileRefs.connectionSelect.replaceChildren();
@@ -6954,13 +6844,6 @@ async function refreshChatbarState() {
         }
     } else {
         const optionsMarkup = connectionProfilesSource.innerHTML;
-        if (desktopRefs) {
-            desktopRefs.connectionSelect.innerHTML = optionsMarkup;
-            desktopRefs.connectionSelect.value = connectionProfilesSource.value;
-            desktopRefs.connectionStatus.textContent = connectionStatusText;
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
-        }
-
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
             mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
             mobileRefs.connectionSelect.innerHTML = optionsMarkup;
@@ -6976,11 +6859,6 @@ async function refreshChatbarState() {
         compact: true,
         onSelect: chatId => openChatById(chatId, { closeMobileTools: true }),
     });
-
-    if (desktopRefs) {
-        setButtonPressed(desktopRefs.toggleSidebarButton, isChatSidebarOpen());
-        setButtonPressed(desktopRefs.toggleConnectionButton, isConnectionStripOpen());
-    }
 
     if (!chatContext.canBrowseChats) {
         setChatSidebarOpenState(false);
@@ -8496,7 +8374,6 @@ async function returnToLandingPage() {
     closeCharacterPanel();
     closeMobileNav();
     closeMobileChatTools();
-    setConnectionStripOpenState(false);
 
     if (isLandingPageVisible()) {
         queueLandingPageStateSync();

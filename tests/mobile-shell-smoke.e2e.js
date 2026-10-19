@@ -127,9 +127,6 @@ function getOverlayStateSnapshot(page) {
                 && overlay.getAttribute('aria-hidden') === 'false');
         };
 
-        // The connection strip is a desktop-chatbar surface; on mobile the
-        // exclusion cascades close it via setConnectionStripOpenState(false),
-        // which has no observable mobile DOM, so it is not snapshotted here.
         return {
             navOpen: isOverlayOpen('sb-mobile-nav', 'sb-nav-open'),
             chatToolsOpen: isOverlayOpen('sb-mobile-chat-tools', 'sb-chat-tools-open'),
