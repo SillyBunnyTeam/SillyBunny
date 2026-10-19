@@ -80,6 +80,32 @@ function mount(options) {
 const pickerOptions = () => [...document.querySelectorAll('.sb-picker__list [role="option"]')];
 
 describe('createSelectRow', () => {
+    test('ordered multiple choices keep routing priority in pick order, including after deselection', () => {
+        const select = makeSelect({ multiple: true });
+        const { trigger } = mount({ select, ordered: true });
+        trigger.click();
+        const choose = label => pickerOptions().find(option => option.textContent === label).click();
+        choose('Claude Sonnet');
+        choose('GPT-4o');
+        expect([...select.selectedOptions].map(option => option.value)).toEqual(['claude', 'gpt']);
+        choose('Claude Sonnet');
+        choose('Claude Sonnet');
+        expect([...select.selectedOptions].map(option => option.value)).toEqual(['gpt', 'claude']);
+    });
+
+    test('carries the real select2 container immediately after its adopted select', () => {
+        loadJQuery();
+        const source = readFileSync(new URL('../../public/lib/select2.min.js', import.meta.url), 'utf8');
+        new Function(source).call(window);
+        const select = makeSelect();
+        globalThis.jQuery(select).select2();
+        const container = globalThis.jQuery(select).data('select2').$container[0];
+        const { row } = mount({ select });
+        expect(row.contains(container)).toBe(true);
+        expect(select.nextElementSibling).toBe(container);
+        globalThis.jQuery(select).select2('destroy');
+    });
+
     test('adopts the native select without cloning, keeps its id and listeners, and hides it from layout and focus', () => {
         const select = makeSelect();
         const listener = jest.fn();
@@ -228,6 +254,38 @@ describe('createSelectRow', () => {
         closePicker({ animate: false });
         row.querySelector('.ds-row-label').click();
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    test('a second press on the row background closes the picker instead of reopening it', () => {
+        const select = makeSelect();
+        const { row, trigger } = mount({ select });
+        const press = target => {
+            target.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+            target.click();
+        };
+        const label = row.querySelector('.ds-row-label');
+        press(label);
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        press(label);
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        press(label);
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        press(document.body);
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    test('a press on another control inside the row, such as the profile menu, still dismisses the picker', () => {
+        const select = makeSelect();
+        const onMenu = jest.fn();
+        const result = createProfileRow({ select, label: 'Profile', field: 'profile', menuLabel: 'Profile Menu', onMenu });
+        document.body.append(result.row);
+        result.trigger.click();
+        expect(result.trigger.getAttribute('aria-expanded')).toBe('true');
+        result.menuButton.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true }));
+        result.menuButton.click();
+        expect(result.trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(onMenu).toHaveBeenCalledTimes(1);
+        result.destroy();
     });
 
     test('multiple selects toggle options without closing and summarise the selection', () => {

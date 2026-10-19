@@ -183,8 +183,13 @@ export function createSwitchRow({ label, subtitle, field, id, checked, disabled,
     row.append(textColumn(label, subtitle, control), control);
     const notify = () => onChange?.(control.checked);
     control.addEventListener('change', notify);
+    const controller = rowController(row, control);
     return {
-        ...rowController(row, control),
+        ...controller,
+        destroy() {
+            control.removeEventListener('change', notify);
+            controller.destroy();
+        },
         getValue: () => control.checked,
         setValue(value, { silent = true } = {}) {
             control.checked = Boolean(value);

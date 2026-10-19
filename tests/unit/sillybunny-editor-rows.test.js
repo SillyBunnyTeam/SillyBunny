@@ -249,6 +249,18 @@ describe('createSwitchRow', () => {
         expect(control.hasAttribute('aria-checked')).toBe(false);
     });
 
+    test('destroy unbinds its listener from an adopted checkbox', () => {
+        const control = document.createElement('input');
+        control.type = 'checkbox';
+        document.body.append(control);
+        const onChange = jest.fn();
+        const result = createSwitchRow({ label: 'Enabled', field: 'enabled', input: control, onChange });
+        result.destroy();
+        change(control);
+        expect(onChange).not.toHaveBeenCalled();
+        control.remove();
+    });
+
     test('setValue changes the checked state without adding aria-checked', () => {
         const result = createSwitchRow({ label: 'Enabled', field: 'enabled' });
         result.setValue(true);

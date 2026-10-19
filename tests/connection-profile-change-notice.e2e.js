@@ -162,6 +162,12 @@ async function openPanel(page, tab) {
 
 const openConnections = page => openPanel(page, 'connections');
 
+/** @param {import('@playwright/test').Page} page @param {string} label */
+async function selectProfileMenuAction(page, label) {
+    await page.locator('.ds-profile-row .ds-select-row__menu').click();
+    await page.locator('.sb-action-menu-item', { hasText: label }).click();
+}
+
 /** @param {import('@playwright/test').Page} page */
 const summaryOf = page => page.locator('#toast-container .toast-info:has(.sb-profile-switch-summary)');
 
@@ -401,7 +407,7 @@ function stopRecordingSwitchTimes(page) {
  * @returns {Promise<string[]>} Labels, trimmed
  */
 async function readViewLabels(page) {
-    await page.locator('#view_connection_profile').click();
+    await selectProfileMenuAction(page, 'View Details');
     const scope = page.locator('dialog[open] .profile-summary-scope');
     await expect(scope).toBeVisible();
     await expect(page.locator('#connection_profile_details_content')).toBeHidden();
@@ -432,7 +438,7 @@ test('Reload shows the summary beside the reloaded toast', async ({ page }) => {
     await presets.locator('#openai_reasoning_effort').selectOption('low');
     await expect.poll(() => page.evaluate(async () => (await import('/scripts/openai.js')).oai_settings.reasoning_effort)).toBe('low');
     await openConnections(page);
-    await page.locator('#reload_connection_profile').click();
+    await selectProfileMenuAction(page, 'Reload');
     await expect(page.locator('.toast-success', { hasText: 'Connection profile reloaded' })).toBeVisible();
     await expectSummaryFor(page, 'CC_A');
     await expect(summaryOf(page).locator('li')).toHaveText(['Reasoning Effort: Low → High']);
@@ -474,7 +480,7 @@ test('<None>, the backend pill and a no-op switch show nothing', async ({ page }
     await expect(summaryOf(page)).toHaveCount(0);
 
     // A backend chosen by hand clears the profile and changes the backend; neither is a profile switch.
-    await page.locator('.sb-backend-switch-button[data-sb-backend="text"]').click();
+    await page.locator('.ds-toggle-row input[value="text"]').check();
     await expect(page.locator('#connection_profiles')).toHaveValue('');
     await expect.poll(() => page.evaluate(() => window.SillyTavern.getContext().mainApi)).toBe('textgenerationwebui');
     await sleep(page, SILENT_WAIT_MS);
@@ -484,7 +490,7 @@ test('<None>, the backend pill and a no-op switch show nothing', async ({ page }
 test('the card line sits in the card, hides with no profile and fits at 390px', async ({ page }) => {
     await loadApp(page);
     await openConnections(page);
-    const line = page.locator('.sb-connections-profile .connection-profile-picker > #sb-connection-profile-sets');
+    const line = page.locator('.ds-profile-row #sb-connection-profile-sets');
     await expect(line).toHaveCount(1);
     await expect(page.locator('#connection_profiles')).toHaveValue('');
     await expect(line).toBeHidden();
@@ -666,13 +672,13 @@ test('legacy exclude entries survive View and Edit', async ({ page }) => {
     await openConnections(page);
     await selectProfile(page, 'CC_LEGACY');
 
-    await page.locator('#view_connection_profile').click();
+    await selectProfileMenuAction(page, 'View Details');
     const view = page.locator('dialog[open]', { has: page.locator('.profile-summary-scope') });
     await expect(view.locator('div.margin5', { hasText: 'Omitted Settings:' }).locator('span')).toHaveText('Instruct Template, System Prompt, sb-unknown');
     await view.locator('.popup-button-ok').click();
     await expect(page.locator('dialog[open]')).toHaveCount(0);
 
-    await page.locator('#edit_connection_profile').click();
+    await selectProfileMenuAction(page, 'Edit…');
     const edit = page.locator('dialog[open]', { has: page.locator('input[name="exclude"]') });
     await expect(edit).toBeVisible();
     await recordToastTexts(page);

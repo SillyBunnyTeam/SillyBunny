@@ -123,8 +123,10 @@ function initializeSettingsPanel() {
  * reason -- its panel is built by the bundled in-chat-agents extension, which drives its own
  * drawer's toggle programmatically (`in-chat-agents/index.js` reaches for the toggle and dispatches
  * a click), so flattening it would take away a control the extension owns.
+ * Connections preserves upstream drawer content because its descendants carry provider visibility
+ * gates; its scoped form pass supplies expander-row presentation without flattening that ancestry.
  */
-const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents']));
+const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents', 'connections']));
 
 /**
  * Extensions owns independently authored sections, so it retains the sliding detail stack.
@@ -14716,7 +14718,7 @@ function reinitSelect2AfterShell() {
 }
 
 function injectModelFilterInput($select) {
-    if (!$select.length || $select.prev('.sb-model-filter').length) {
+    if (!$select.length || $select[0].closest('.ds-select-row') || $select.prev('.sb-model-filter').length) {
         return;
     }
 

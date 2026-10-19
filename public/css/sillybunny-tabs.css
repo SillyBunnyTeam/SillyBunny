@@ -6264,6 +6264,45 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     font-weight: 700;
 }
 
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 0 4px;
+    margin: 0 0 8px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > :is(.ds-pref-group-heading, .ds-pref-group-subtitle) {
+    grid-column: 1;
+    margin: 0;
+    padding: 0;
+    font-weight: 700;
+    text-align: start;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > .ds-pref-group-heading {
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: var(--sb-type-body);
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > .ds-pref-group-subtitle {
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-muted-fg);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > :not(.ds-pref-group-heading, .ds-pref-group-subtitle) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+}
+
 #right-nav-panel :is(#form_create, #rm_group_chats_block) .ds-pref-group-header > :is(.ds-pref-group-heading, .ds-pref-group-subtitle) {
     margin: 0;
     padding: 0;
@@ -6621,21 +6660,27 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
     cursor: pointer;
 }
 
+.ds-select-row > .ds-row-text {
+    flex: 0 0 auto;
+    max-width: 60%;
+}
+
 .ds-select-row > .ds-row-suffix {
-    flex: 0 1 auto;
-    max-width: min(60%, 360px);
+    flex: 1 1 0;
+    justify-content: flex-end;
     gap: 4px;
 }
 
 .ds-select-row__trigger {
     display: inline-flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
     min-width: 0;
     max-width: 100%;
-    min-height: 34px;
+    min-height: 32px;
     margin: 0;
-    padding: 0 8px 0 10px;
+    padding: 0;
     border: 0;
     border-radius: var(--sb-radius-control);
     background: transparent;
@@ -6654,9 +6699,11 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
 }
 
 .ds-select-row__arrow {
-    flex: 0 0 auto;
+    flex: 0 0 16px;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
+    width: 16px;
+    text-align: center;
 }
 
 .ds-select-row__menu {
@@ -6676,12 +6723,12 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
     transition: background-color var(--sb-transition-fast);
 }
 
-:is(.ds-select-row__trigger, .ds-select-row__menu):focus-visible {
+.ds-select-row__menu:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-:is(.ds-select-row__trigger, .ds-select-row__menu)[aria-expanded='true'] {
+.ds-select-row__menu[aria-expanded='true'] {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -6695,12 +6742,37 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
         background: var(--sb-flat-hover-bg);
     }
 
-    :is(.ds-select-row__trigger, .ds-select-row__menu):not(:disabled):hover {
+    .ds-select-row__menu:not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-:is(.ds-select-row__trigger, .ds-select-row__menu):not(:disabled):active {
+.ds-select-row__menu:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sb-settings-page .ds-select-row .ds-select-row__trigger {
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+#sb-settings-page .ds-row.ds-select-row:has(:focus-visible) {
+    background: transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#sb-settings-page .ds-select-row:has(:focus-visible) .ds-select-row__menu:focus-visible {
+    box-shadow: none;
+}
+
+@media (hover: hover) {
+    #sb-settings-page .ds-row.ds-select-row:not(:has(.ds-select-row__trigger:disabled)):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page .ds-row.ds-select-row:has(.ds-select-row__trigger:not(:disabled)):active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -7674,7 +7746,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 .sb-connections-panel #openai_api select#chat_completion_source,
 .sb-connections-panel #textgenerationwebui_api #textgen_type,
 .sb-connections-panel #openai_api h4:has(+ select#chat_completion_source),
-.sb-connections-panel #textgenerationwebui_api h4:has(+ select#textgen_type) {
+.sb-connections-panel #textgenerationwebui_api h4:has(+ select#textgen_type),
+.sb-connections-panel .sb-connections-source-label {
     display: none !important;
 }
 
@@ -8120,7 +8193,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    accent uppercase kickers and `.standoutHeader` / `h3` paint tinted chips, so one view mixed three
    heading styles. Collapsible headers keep their own row treatment. `h3` keeps its colour so the
    user's custom CSS (`h1, h2, h3 { color }`) still applies. */
-#sb-settings-page .sb-settings-mounted-shell :is(h3, h4, .standoutHeader):not(.inline-drawer-header, .inline-drawer-toggle) {
+#sb-settings-page .sb-settings-mounted-shell :is(h3, h4, .standoutHeader):not(.inline-drawer-header, .inline-drawer-toggle, .ds-pref-group-heading) {
     min-height: 0;
     margin-inline: 0;
     padding: 12px 0 4px;
@@ -9958,474 +10031,611 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* ==========================================================================================
    Connections panel (feat/v1.9.0-ui-overhaul)
    ------------------------------------------------------------------------------------------
-   The tab is three controls stacked in the order a user answers them -- which saved profile,
-   which backend, which provider -- and then that provider's own settings. It is built by
-   `sillybunny-connections-panel.js` rather than by the subpage stack, because the backend is the
-   axis the settings hang off and a picker behind a row is a picker that cannot be used until the
-   row that stands for it is opened.
-
-   Every provider block, its settings, and its connect row are upstream's own nodes, moved rather
-   than rebuilt, so most of what is here is framing: the pill switch, the combo row,
-   and the sticky band the switch rides in.
+   The page answers one configuration question at a time: profile, backend, provider status,
+   provider settings, and general connection behaviour. Upstream controls are adopted in place;
+   this panel owns only the preference-group framing and mirrors.
    ========================================================================================== */
 
 .sb-connections-panel {
-    /* The sticky switch has to sit over the provider settings it scrolls past, so the band and the
-       panel's own surface are opaque; a translucent band would show two layers of text moving
-       through each other. */
-    --sb-connections-band-bg: var(--sb-layer-view, var(--sb-layer-canvas));
-    --sb-connections-band-pad: var(--sb-shell-space-sm);
-}
-
-/* libadwaita preference pill, matching `.ds-pref-group` so the profile card reads as the same
-   primitive as every other boxed group on the settings page (DESIGN.md, Cards / Containers). */
-.sb-connections-profile:not(:empty) {
+    --sb-connections-icon-size: 32px;
     display: flex;
     flex-direction: column;
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    overflow: hidden;
-    padding: 12px 16px;
+    gap: var(--sb-shell-section-gap);
+    min-width: 0;
 }
 
-/* The band is the panel's answer to a header that stays put while the provider's thirty-odd forms
-   scroll under it: the two controls that decide *what* is being configured never scroll away from
-   the settings they configure. It bleeds to the panel's own edges so nothing shows behind it. */
-.sb-connections-switcher {
-    position: -webkit-sticky;
-    position: sticky;
-    top: 0;
-    z-index: var(--sb-z-sticky, 500);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: var(--sb-connections-band-pad) var(--sb-connections-band-pad) 10px;
-    margin-inline: calc(var(--sb-connections-band-pad) * -1);
-    background: var(--sb-connections-band-bg);
-    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
+.sb-connections-panel > .sb-editor-section {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
 }
 
-/* ── Backend switch ──────────────────────────────────────────────────────────────────────── */
-
-.sb-backend-switch,
-.sb-other-backend-switch {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px;
-    border-radius: var(--sb-radius-button, 14px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+.sb-connections-panel .ds-row {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 100%;
 }
 
-/* The pill is the control: it says which backend is in use, so the selected one takes the accent
-   fill rather than hovering into it. Both rows wrap, because three backend names do not fit a
-   phone and a wrapped row is better than three clipped labels. */
-.sb-backend-switch-button,
-.sb-other-backend-button {
+.sb-connections-profile .ds-pref-group-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sb-connections-help {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 36px;
-    padding: 6px 14px;
-    border: 1px solid transparent;
-    border-radius: calc(var(--sb-radius-button, 14px) - 4px);
-    background: transparent;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
     color: var(--sb-shell-text-secondary);
-    font-size: var(--sb-type-control);
-    font-weight: 600;
-    line-height: 1.25;
-    text-align: center;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-    -webkit-user-select: none;
-    user-select: none;
+    text-decoration: none;
 }
 
-.sb-backend-switch-button:hover,
-.sb-other-backend-button:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
-    color: var(--sb-shell-text);
+.sb-connections-help:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-backend-switch-button:focus-visible,
-.sb-other-backend-button:focus-visible,
-.sb-combo-trigger:focus-visible,
-.sb-combo-option:focus-visible {
-    outline: 2px solid var(--color-primary, var(--sb-accent));
-    outline-offset: 2px;
-}
-
-.sb-backend-switch-button.is-selected,
-.sb-other-backend-button.is-selected {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, var(--sb-layer-view, transparent));
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
-    color: var(--sb-shell-text);
-}
-
-.sb-backend-switch-button i,
-.sb-other-backend-button i {
-    flex-shrink: 0;
-    font-size: var(--sb-type-meta);
-}
-
-/* A profile that moved the backend highlights the pill it landed on, so the change is visible even
-   when the profile was applied from a control somewhere else on the page. */
-.sb-backend-switch-button.is-flash {
-    animation: sb-connections-pill-flash 720ms var(--sb-ease, ease-out);
-}
-
-@keyframes sb-connections-pill-flash {
-    0% {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, transparent);
-    }
-
-    100% {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, var(--sb-layer-view, transparent));
+@media (hover: hover) {
+    .sb-connections-help:hover {
+        background: var(--sb-flat-hover-bg);
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .sb-backend-switch-button.is-flash {
-        animation: none;
-    }
+.sb-connections-help:active {
+    background: var(--sb-flat-active-bg);
 }
 
-/* ── Source combo row ───────────────────────────────────────────────────────────────────── */
+.sb-connections-panel .ds-profile-row .sb-connection-profile-sets {
+    overflow-wrap: anywhere;
+}
 
-/* libadwaita action row: a title on the leading edge and the control on the trailing edge, which is
-   the shape the platform uses for a list of choices that is not important enough for a page. */
-.sb-combo-row {
-    position: relative;
-    display: flex;
+.sb-connections-panel #connection_profile_spinner {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.sb-connections-source-label,
+.sb-connections-field-title,
+.sb-connections-empty,
+.sb-connections-legacy {
+    display: none !important;
+}
+
+.sb-connections-panel .ds-select-row[hidden] {
+    display: none !important;
+}
+
+.sb-connections-panel #ReverseProxyWarningMessage:not(:has(> .reverse_proxy_warning:not([hidden], [style*='display: none']))) {
+    display: none !important;
+}
+
+.sb-connections-panel .ds-select-row .select2-container {
+    display: none !important;
+}
+
+.sb-connections-panel :is(#model_openai_picker_toggle, [data-sb-model-id-picker-source], #nanogpt_allowed_providers_picker, #nanogpt_ignored_providers_picker) {
+    display: none !important;
+}
+
+.sb-connections-panel .sb-connections-model-field.sb-connections-model-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
-    min-height: 46px;
-    padding: 4px 4px 4px 14px;
-    border-radius: var(--sb-radius-control, 9px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    width: 100%;
+    margin: 0;
+    padding: 0;
 }
 
-.sb-combo-row-title {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: var(--sb-type-control);
-    font-weight: 600;
+.sb-connections-model-field > .ds-row-entry__title {
+    inset-inline-end: 44px;
+}
+
+#sb-settings-page .sb-connections-provider .ds-row-entry__field > input {
+    margin: 0;
+    padding: 1.45em 0 0.35em;
+    min-height: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
     color: var(--sb-shell-text);
 }
 
-.sb-combo-trigger {
+#sb-settings-page .sb-connections-provider .ds-row-entry__field > input::placeholder {
+    color: transparent !important;
+    text-shadow: none;
+}
+
+#sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus::placeholder {
+    color: var(--sb-input-placeholder) !important;
+}
+
+.sb-connections-provider .ds-row-entry__line > .ds-row-entry__field {
+    flex: 1 1 0;
+}
+
+.sb-connections-provider .ds-row-entry__line > .ds-row-suffix {
+    flex: 0 0 auto;
+    gap: 6px;
+}
+
+.sb-connections-provider .ds-select-row > .ds-row-suffix > .ds-select-row__trigger {
+    flex: 0 1 auto;
+}
+
+#sb-settings-page .sb-connections-panel .ds-row-suffix > .sb-connections-icon-help {
     display: inline-flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    flex: 0 0 auto;
-    min-width: 0;
-    max-width: min(100%, 340px);
-    min-height: 34px;
-    padding: 6px 12px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    border-radius: calc(var(--sb-shell-control-radius, 999px));
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    justify-content: center;
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
     color: var(--sb-shell-text);
+    text-decoration: none;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-icon-help > * {
+    margin: 0;
+    color: inherit;
     font-size: var(--sb-type-control);
-    font-family: inherit;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
 }
 
-.sb-combo-trigger:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
+#sb-settings-page .sb-connections-panel .sb-connections-icon-help:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-combo-row.is-open .sb-combo-trigger {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, var(--sb-shell-border) 54%);
+@media (hover: hover) {
+    #sb-settings-page .sb-connections-panel .sb-connections-icon-help:hover {
+        background: var(--sb-flat-hover-bg);
+    }
 }
 
-.sb-combo-value {
+#sb-settings-page .sb-connections-panel .sb-connections-icon-help:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-connections-provider .ds-select-row > .ds-row-entry__caption {
+    flex: 1 1 100%;
+    width: 100%;
     min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
-.sb-combo-chevron {
-    flex-shrink: 0;
-    font-size: var(--sb-type-caption);
-    color: var(--sb-shell-text-secondary);
+.sb-connections-provider .ds-row-entry__caption > * {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.sb-connections-provider .ds-select-row .ds-select-row__native {
+    position: absolute !important;
+    width: 1px !important;
+    min-width: 0 !important;
+    max-width: 1px !important;
+}
+
+.sb-connections-provider .ds-select-row:has(> .ds-row-entry__caption) {
+    flex-wrap: wrap;
+}
+
+.sb-connections-panel .flex-container:has(> #featherless_model_search_bar) {
+    flex-wrap: wrap;
+}
+
+.sb-connections-panel :is(#featherless_model_search_bar, #featherless_model_sort_order, #featherless_category_selection, #featherless_class_selection, #featherless_model_pagination_container) {
+    flex: 1 1 140px;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+}
+
+.sb-connections-panel #featherless_model_grid_toggle {
+    flex: 0 0 44px;
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.sb-connections-provider :is(.sb-connections-expander, .sb-connections-expander > .inline-drawer-toggle) {
+    border-radius: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-expander {
+    padding: 0;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle {
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 16px;
+    border-bottom: 0;
+    cursor: pointer;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle > b {
+    margin: 0;
+    font-family: var(--mainFontFamily);
+    font-size: var(--sb-type-control);
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--sb-shell-text);
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon {
+    flex: 0 0 16px;
+    width: 16px;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    text-align: center;
+    transform: rotate(0deg);
     transition: transform var(--sb-transition-fast);
 }
 
-.sb-combo-row.is-open .sb-combo-chevron {
+#sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon::before {
+    content: '\f078';
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon.up {
     transform: rotate(180deg);
 }
 
-/* The list overlays the settings below rather than pushing them down: it is a menu, and a menu that
-   reflows the page under it moves the control the user is aiming at. */
-.sb-combo-list {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 4px;
-    z-index: var(--sb-z-dropdown, 100);
+.sb-connections-provider .sb-connections-expander > .inline-drawer-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-connections-provider .sb-connections-expander > .inline-drawer-content {
+    margin: 0;
+    padding: 0;
+}
+
+.sb-connections-parameters:not(:has(> :not([style*='display: none']))) {
+    display: none !important;
+}
+
+#sb-settings-page .sb-connections-parameters > .ds-button-row {
     display: flex;
-    flex-direction: column;
-    width: min(100%, 420px);
-    max-height: min(60vh, 420px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 6px;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-card, 12px);
-    background: var(--sb-layer-drawer, var(--sb-layer-canvas));
-    box-shadow: var(--sb-shadow-dialog, 0 8px 24px rgb(0 0 0 / 28%));
-    -webkit-overflow-scrolling: touch;
-}
-
-.sb-combo-list[hidden] {
-    display: none;
-}
-
-.sb-combo-group {
-    padding: 8px 10px 4px;
-    font-size: var(--sb-type-caption);
-    font-weight: 700;
-    color: var(--sb-shell-text-secondary);
-}
-
-.sb-combo-group:not(:first-child) {
-    margin-top: 4px;
-    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
-}
-
-.sb-combo-option {
-    display: block;
+    justify-content: center;
     width: 100%;
-    min-height: 36px;
-    padding: 7px 10px;
-    border: none;
-    border-radius: var(--sb-radius-control, 9px);
-    background: transparent;
-    color: var(--sb-shell-text);
-    font-size: var(--sb-type-control);
-    font-family: inherit;
-    line-height: 1.35;
-    text-align: start;
-    cursor: pointer;
+    margin: 0;
+    min-height: 44px;
+    border: 0;
+    border-radius: 0;
+    background: none;
 }
 
-.sb-combo-option:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 9%, transparent);
+.sb-connections-backend .ds-toggle-row__group--fill .sb-boolean-radio-option > span {
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
-.sb-combo-option.is-selected {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 16%, transparent);
-    font-weight: 600;
+.sb-connections-panel .sb-profile-action-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
-
-/* ── Footer ──────────────────────────────────────────────────────────────────────────────── */
-
-/* The controls that apply to every backend rather than to one: auto-connect and the hidden-key
-   viewer. They sit below the provider page as one row, on the same pill surface as the profile
-   card, because they are settings of the tab rather than of the backend. */
-.sb-connections-footer:not(:empty) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-}
-
-.sb-connections-footer .checkbox_label {
-    flex: 1 1 220px;
-    min-width: 0;
-}
-
-/* ── Provider page ───────────────────────────────────────────────────────────────────────── */
 
 .sb-connections-provider {
     display: flex;
     flex-direction: column;
     gap: var(--sb-shell-card-gap, 12px);
+    width: 100%;
+    min-width: 0;
 }
 
 .sb-connections-provider[hidden] {
     display: none;
 }
 
+/* The shared status row keeps the upstream flex parent so mobile selectors and event wiring keep
+   seeing the original parent chain. It is the first row of the provider group, which supplies the
+   box, so it draws none of its own. Authorize retains a second row to preserve its visibility gates. */
+#sb-settings-page [data-sb-connections-panel] .sb-connections-connect {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+}
+
+#sb-settings-page [data-sb-connections-panel] .sb-connections-connect .online_status {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--sb-shell-text);
+    text-align: start;
+    flex-wrap: nowrap;
+}
+
+.sb-connections-provider .sb-connections-connect .online_status_text {
+    min-width: 0;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+#sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 38px;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: var(--color-primary, var(--sb-accent));
+    color: var(--sb-on-solid-accent, var(--sb-on-accent));
+    font-weight: 600;
+}
+
+#sb-settings-page [data-sb-connections-panel] .sb-connections-connect #test_api_button {
+    flex: 0 0 auto;
+    width: auto;
+    border: 0;
+    background: transparent;
+}
+
+@media (hover: hover) {
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action:hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
+    }
+
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect #test_api_button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page [data-sb-connections-panel] .sb-connections-connect #test_api_button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+[data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#sb-settings-page [data-sb-connections-panel] .sb-connections-status-extra {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0;
+    min-height: 44px;
+    padding: 0;
+}
+
+.sb-connections-status-extra:not(:has(> :not([style*='display: none']))) {
+    display: none !important;
+}
+
+@media (pointer: coarse) {
+    #sb-settings-page .sb-connections-panel .ds-row-suffix > .sb-connections-icon-help {
+        flex-basis: 44px;
+        width: 44px;
+        height: 44px;
+    }
+
+    #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle {
+        min-height: 56px;
+    }
+
+    .sb-connections-help,
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-status-extra > .menu_button,
+    .sb-connections-provider .ds-row-suffix > :is(button, .menu_button, .right_menu_button) {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading, #test_api_button) {
+        min-height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon,
+    [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action {
+        transition: none;
+    }
+}
+
+body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon {
+    transition: none;
+}
+
+/* ── Provider page ───────────────────────────────────────────────────────────────────────── */
+
 /* Upstream authors a block-level connector that upstream's own change function shows and hides. The
    panel owns that decision now, so the block is not a box of its own here: its children are the
    page. */
 .sb-connections-provider > [id$='_api'],
 .sb-connections-provider > #kobold_horde {
-    display: block;
+    display: flex;
     width: 100%;
     min-width: 0;
 }
 
-/* The connect row and the status text are one card at the top of the provider page, which is where
-   the state of the connection is read before anything is configured -- and, when it fails, where
-   the failure is reported rather than mid-form. The row keeps the fact that it is a flex container,
-   because the theme and the mobile sheet both lay its buttons out with `.flex-container:has(> .api_button)`
-   rules that now match again -- so this card adds chrome and no layout. */
-.sb-connections-provider .sb-connections-connect {
-    position: relative;
-    width: 100%;
-    padding: 12px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-}
-
-/* The upstream OpenAI row sometimes carries the redundant `.flex` utility and sometimes does not;
-   the provider class is the stable presentation contract for both forms. */
-.sb-connections-provider .sb-connections-connect {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
-    align-items: stretch;
-    gap: 8px;
-}
-
-.sb-connections-provider .sb-connections-connect:not(:has(> .api_button, > #horde_api_key_button)) {
-    grid-template-columns: 1fr;
-    gap: 0;
-}
-
-.sb-connections-provider .sb-connections-connect .online_status {
-    /* Grid child: center vertically with the buttons and shrink-wrap the pill text. width: fit-content
-       prevents stretching, but align-self: center is what actually aligns it with the button row.
-       The base .online_status in style.css carries an uneven 2px/15px vertical margin, which
-       offsets a centered grid item by ~6px, so it is zeroed here. */
-    width: fit-content;
-    align-self: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: flex-start;
-    margin: 0;
-}
-
-.sb-connections-provider .sb-connections-connect .online_status_text {
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
-/* libadwaita suggested-action: the primary connect button gets accent colour treatment so it reads
-   as the main action on the provider card rather than as a neutral tool button. */
-[data-sb-connections-panel] .sb-connections-connect .api_button,
-[data-sb-connections-panel] .sb-connections-connect #horde_api_key_button {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 22%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, transparent);
-    color: var(--color-primary, var(--sb-accent));
-    font-weight: 600;
-}
-
-[data-sb-connections-panel] .sb-connections-connect .api_button:hover,
-[data-sb-connections-panel] .sb-connections-connect #horde_api_key_button:hover {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 32%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 62%, transparent);
-}
-
-/* ── Provider settings pill ─────────────────────────────────────────────────────────────── */
-
-/* Every provider block's settings (everything below its connect card) live in a pill that matches
-   the boxed preference groups the Messages tab uses. The wrapper is built by wrapProviderContent()
-   in sillybunny-connections-panel.js, so normalizeSettingsPresentation never runs over it. */
-.sb-connections-provider-body {
+/* ── Provider preference groups ─────────────────────────────────────────────────────────── */
+.sb-connections-provider > div {
     display: flex;
     flex-direction: column;
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    overflow: hidden;
+    gap: var(--sb-shell-section-gap);
 }
 
-/* Match the flattened-section rule's specificity so it cannot remove the provider inset. */
-.sb-connections-panel .sb-connections-provider-body > * {
+#sb-settings-page .sb-connections-panel [data-sb-connections-group] {
+    width: 100%;
     margin: 0;
-    padding: 10px 16px;
-}
-
-.sb-connections-panel .sb-connections-provider-body > * + * {
-    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-}
-
-/* A leading nested drawer shares its enclosing provider row's separator. */
-.sb-connections-provider-body > * > .sb-settings-flat-section:first-child {
-    border-top: 0;
-}
-
-/* These fields are already inset by the provider row; generic flat-section metrics add it twice. */
-.sb-connections-panel .sb-connections-provider-body .sb-settings-flat-section > .flex-container {
     padding: 0;
 }
 
-/* The Chat Completions connect row is slotted directly in the body, while Text Completions keeps it
-   inside its form; both wrappers take the same body-row inset so the connect card sits identically. */
-.sb-connections-panel .sb-connections-provider-body > .sb-connections-connect-slot {
+#sb-settings-page .sb-connections-panel [data-sb-connections-group][hidden] {
+    display: none;
+}
+
+/* jQuery writes inline display values; only its hidden state must override the layout-transparent mirror. */
+#sb-settings-page .sb-connections-mirror:not([style*='display: none']) {
+    display: contents !important;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-unit {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-unit[data-sb-connections-first] {
+    border-top: 0;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-unit[hidden] {
+    display: none;
+}
+
+#sb-settings-page .sb-connections-panel [data-sb-connections-group] .ds-row {
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-unit > :not(.ds-row, .inline-drawer, .sb-connections-status-extra, :has(.ds-row, .checkbox_label)) {
     padding: 10px 16px;
 }
 
-.sb-connections-provider-body > .sb-connections-connect-slot > .sb-connections-connect {
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+#sb-settings-page .sb-connections-panel .sb-connections-unit > .checkbox_label {
+    padding: 6px 16px;
 }
 
-/* Inside the pill, text_pole inputs get consistent vertical rhythm with no extra margin. */
-[data-sb-connections-panel] .sb-connections-provider-body .text_pole {
+/* The unit already supplies the row inset; the status row keeps only its vertical padding. */
+#sb-settings-page .sb-connections-panel .sb-connections-unit > .sb-connections-connect {
+    padding: 6px 0;
+}
+
+/* Units that hold several rows (#vertexai_form moves whole, drawer contents) separate them like units.
+   Outranks the mounted-shell rule that drops the border of a row after a hidden upstream label (1,6,1). */
+#sb-settings-page .sb-settings-mounted-shell .sb-connections-panel .ds-pref-group .sb-connections-unit .ds-row.ds-row[data-sb-connections-row-separator] {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-connections-panel #vertexai_form h4 {
+    padding-inline: 16px;
+}
+
+[data-sb-connections-panel] .sb-connections-provider .text_pole {
     margin: 4px 0;
 }
 
-/* Rows that pair a text input with a side icon (API keys, save/delete) use a grid so the input
-   fills the available width and the icon(s) trail at a fixed size. Scoped to the panel, not to
-   the provider body pill, so it applies even when the pill wrapper is not yet present. */
-[data-sb-connections-panel] .flex-container:has(> .text_pole):has(> .menu_button):not(:has(> .api_button)) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+/* Important geometry matches the theme's logical sizes and upstream's inline model-button sizes. */
+#sb-settings-page .sb-connections-panel .sb-connections-flat-action {
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-}
-
-/* Trailing icon buttons beside an input (key manager, model list, favourite) share one 44px square, so
-   they line up with the 44px inputs and with each other. The theme's icon-button rule
-   (sillybunny-theme.css, `.menu_button:not(#bg_selection_mode_button)…:has(> i:only-child)`) carries
-   an id inside :not() and sizes the 38px square through logical properties, so it outranks any
-   selector this panel can reasonably write; !important mirrors what setModelIdPickerTouchTarget()
-   in openai.js already does inline for the picker toggle. Both toggles are listed: the rule used to
-   cover only the favourite star, so the picker toggle's geometry lived in JS alone. */
-.sb-connections-panel .sb-connections-provider-body :is(.manage-api-keys, #openai_proxy_access_key_show, #model_openai_favorite_toggle, .sb-model-id-favorite-toggle, #model_openai_picker_toggle, .sb-model-id-picker-toggle) {
-    flex: 0 0 44px !important;
-    inline-size: 44px !important;
-    min-inline-size: 44px !important;
-    max-inline-size: 44px;
-    block-size: 44px !important;
-    min-block-size: 44px !important;
-    max-block-size: 44px;
+    justify-content: center;
+    flex: 0 0 var(--sb-connections-icon-size) !important;
+    inline-size: var(--sb-connections-icon-size) !important;
+    min-inline-size: var(--sb-connections-icon-size) !important;
+    max-inline-size: var(--sb-connections-icon-size) !important;
+    block-size: var(--sb-connections-icon-size) !important;
+    min-block-size: var(--sb-connections-icon-size) !important;
+    max-block-size: var(--sb-connections-icon-size) !important;
+    margin: 0;
     padding: 0 !important;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-control);
+    text-shadow: none;
     align-self: center;
+    cursor: pointer;
 }
 
-/* The model ID row holds the input, the list toggle and the favourite star, so it needs a third
-   column; the generic two-column row rule below would wrap the star onto its own line. */
-[data-sb-connections-panel] .sb-model-id-search-row.sb-model-id-search-row:has(> .text_pole):has(> .sb-model-id-picker-toggle):has(> .sb-model-id-favorite-toggle) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 6px;
+#sb-settings-page .sb-connections-panel :is(.sb-connections-flat-action, .sb-connections-status-extra > .menu_button, .ds-row.ds-button-row):focus-visible {
+    outline: none;
+    background: transparent;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
-/* The proxy/endpoint preset pickers add two trailing icon buttons, so they get a three-column grid. */
-[data-sb-connections-panel] .openai_logit_bias_preset_form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 6px;
+#sb-settings-page .sb-connections-panel .sb-connections-text-action {
+    flex: 0 0 auto !important;
+    inline-size: auto !important;
+    max-inline-size: none !important;
+    min-block-size: var(--sb-connections-icon-size);
+    padding: 0 8px !important;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    box-shadow: none;
+}
+
+#sb-settings-page .sb-connections-panel .sb-connections-status-extra > .openrouter_authorize {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: var(--sb-type-control);
+    font-weight: 700;
+    line-height: 1.3;
+    text-shadow: none;
+    transform: none;
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-connections-panel :is(.sb-connections-flat-action, .sb-connections-status-extra > .menu_button, .ds-row.ds-button-row):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page .sb-connections-panel :is(.sb-connections-flat-action, .sb-connections-status-extra > .menu_button, .ds-row.ds-button-row):active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (pointer: coarse) {
+    .sb-connections-panel {
+        --sb-connections-icon-size: 44px;
+    }
 }
 
 /* ── Model ID picker (bug fix: styles were mobile-only) ──────────────────────────────────── */
@@ -10528,66 +10738,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 74%, var(--sb-shell-border) 26%);
     background: var(--color-primary, var(--sb-accent));
     box-shadow: inset 0 0 0 3px var(--sb-surface-elevated);
-}
-
-/* Chat and Text Completions both use Select2 controls, but provider and quantization fields use
-   the multiple-selection variant. Keep its outer field identical to the single-selection model
-   fields: one 46px input surface, one radius, and the same theme-derived border and fill. */
-[data-sb-connections-panel] .select2-container--default :is(.select2-selection--single, .select2-selection--multiple) {
-    box-sizing: border-box;
-    min-height: var(--sb-field-min-height);
-    height: var(--sb-field-min-height);
-    border: 1px solid var(--sb-input-border);
-    border-radius: var(--sb-radius-button);
-    background: var(--sb-input-bg);
-    color: var(--SmartThemeBodyColor);
-}
-
-[data-sb-connections-panel] .select2-container--default .select2-selection--multiple {
-    display: flex;
-    align-items: center;
-    padding: 0 var(--sb-field-padding-x);
-}
-
-[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-selection__rendered {
-    display: flex;
-    align-items: center;
-    flex: 0 1 auto;
-    min-width: 0;
-    min-height: 0;
-    gap: 6px;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-}
-
-[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-selection__choice {
-    margin: 0;
-    max-width: 100%;
-    border-color: var(--sb-input-border);
-    border-radius: var(--sb-radius-control, 9px);
-    background: var(--sb-flat-selected-bg);
-    color: var(--SmartThemeBodyColor);
-    line-height: 1.25;
-}
-
-/* The inline search field carries the placeholder, so it fills the space after any chips and its
-   text starts at the field's leading edge instead of trailing after an empty chip list. */
-[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-search--inline {
-    display: flex;
-    flex: 1 1 0;
-    min-width: 0;
-}
-
-[data-sb-connections-panel] .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
-    width: 100% !important;
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    border: 0;
-    color: var(--SmartThemeBodyColor);
-    line-height: 1.4;
-    text-align: start;
 }
 
 /* Select2 is the desktop implementation of the same model/provider pickers. Its legacy option
@@ -10714,12 +10864,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
-/* The drawer's remaining top-level nodes -- the `#main_api` picker row and the two connection
-   forms whose blocks the panel has already relocated. They stay in the document so their ids stay
-   resolvable, and are hidden here rather than moved, because `#main_api` in particular must keep
-   its position in the document: half the app reads it by id and `changeMainAPI` writes `display`
-   onto it. Closed picker menus share the rule. */
-.sb-connections-legacy,
+/* Theme flex rules must not reveal a closed inline picker. */
 .sb-model-id-picker-menu[hidden],
 .sb-inline-select-picker-menu[hidden] {
     display: none !important;
@@ -10728,49 +10873,20 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* ── Mobile ──────────────────────────────────────────────────────────────────────────────── */
 
 @media screen and (max-width: 768px) {
-    .sb-connections-switcher {
-        gap: 6px;
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect {
+        flex-wrap: wrap;
     }
 
-    /* Three backend names do not fit a phone, so the pills shed their icons and wrap onto as many
-       rows as they need rather than clipping a label. */
-    .sb-backend-switch-button i,
-    .sb-other-backend-button i {
-        display: none;
-    }
-
-    .sb-backend-switch-button,
-    .sb-other-backend-button {
-        flex: 1 1 30%;
-        min-width: 96px;
-        padding-inline: 10px;
-        white-space: normal;
-    }
-
-    /* A combo row on a phone is the control and nothing else: the "Source" title above it is the
-       same word as the label the trigger already carries. */
-    .sb-combo-row {
-        padding: 4px;
-    }
-
-    .sb-combo-row-title {
-        display: none;
-    }
-
-    .sb-combo-trigger {
-        justify-content: space-between;
-        width: 100%;
-        max-width: 100%;
-    }
-
-    .sb-combo-list {
-        width: 100%;
-        max-height: min(50vh, 320px);
-    }
-
-    /* The buttons stack full-width on a phone, so the status pill centers under them. */
-    .sb-connections-provider .sb-connections-connect .online_status {
-        justify-self: center;
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect .online_status {
+        flex: 1 1 100%;
         justify-content: center;
+        order: -1;
+    }
+
+    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading, #test_api_button) {
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+        text-align: center;
     }
 }

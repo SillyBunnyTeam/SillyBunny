@@ -729,7 +729,12 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     gap: 2px;
 }
 
-.sb-picker__label,
+/* Labels wrap rather than truncate: the popover already grows to fit them, so this only applies
+   past its width cap or in the narrow mobile sheet, where a cut-off option name hides the choice. */
+.sb-picker__label {
+    overflow-wrap: anywhere;
+}
+
 .sb-picker__subtitle {
     overflow: hidden;
     text-overflow: ellipsis;

@@ -7,6 +7,9 @@ const MODULES = [
     'public/scripts/sillybunny-editor/rows.js',
     'public/scripts/sillybunny-editor/select-row.js',
     'public/scripts/sillybunny-editor/toggle-row.js',
+    'public/scripts/sillybunny-connections-panel.js',
+    'public/scripts/sillybunny-connections-form.js',
+    'public/scripts/sillybunny-connections-groups.js',
 ];
 
 const TRANSLATED = /\bt`((?:[^`\\]|\\.)*)`|\btranslate\(\s*(['"])((?:(?!\2)[^\\]|\\.)*)\2/g;

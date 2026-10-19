@@ -86,13 +86,15 @@ function onSelectChanges(select, handler) {
  * @param {string} [options.emptyText]
  * @param {string} [options.noneLabel='']  Trigger text when nothing is selected.
  * @param {Node|Node[]} [options.suffix]  Extra trailing nodes after the trigger.
+ * @param {boolean} [options.ordered=false]  Newly selected options move last (routing priority).
  * @param {Element|null} [options.bounds=null]
  * @param {(value: string|string[]) => void} [options.onChange]  Called on every change event of the select.
  * @param {(value: string|string[]) => void} [options.onPick]  Called before write-back, only for a choice made in the picker.
  * @returns {object}
  */
-export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, bounds = null, onChange, onPick }) {
+export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, bounds = null, onChange, onPick }) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
+    const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
     select.classList.add('ds-select-row__native');
     select.tabIndex = -1;
@@ -107,7 +109,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     trigger.append(value, icon('fa-solid fa-chevron-down ds-select-row__arrow'));
 
     const extra = suffix ? (Array.isArray(suffix) ? suffix : [suffix]) : [];
-    const base = createRow({ label, subtitle, field, id, suffix: [select, trigger, ...extra] });
+    const base = createRow({ label, subtitle, field, id, suffix: [select, ...(container ? [container] : []), trigger, ...extra] });
     const { row } = base;
     row.classList.add('ds-select-row');
     const caption = row.querySelector('.ds-row-label');
@@ -134,6 +136,10 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         const values = selectedValues(select);
         const next = !select.multiple ? chosen
             : values.includes(chosen) ? values.filter(item => item !== chosen) : [...values, chosen];
+        if (ordered && select.multiple && !values.includes(chosen)) {
+            const option = [...select.options].find(option => option.value === chosen);
+            if (option) select.append(option);
+        }
         onPick?.(next);
         writeBack(select, next);
     };
@@ -151,6 +157,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
             emptyText,
             bounds,
             matchTriggerWidth: true,
+            owner: row,
         });
     };
 
@@ -172,10 +179,10 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         event.preventDefault();
         if (!isPickerOpen(trigger)) open();
     });
-    // HIG boxed lists: clicking the row background activates its control.
+    // HIG boxed lists: clicking the row background activates its control, so it toggles like the trigger.
     row.addEventListener('click', event => {
         if (event.target instanceof Element && event.target.closest('button, a, input, select, textarea')) return;
-        if (!isPickerOpen(trigger)) open();
+        open();
     });
     sync();
 

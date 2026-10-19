@@ -333,6 +333,23 @@ describe('searchable picker', () => {
         expect(surface.style.inlineSize).toBe(`${expected}px`);
     });
 
+    test.each([[480, 480], [900, 560]])('trigger-width placement widens a narrow trigger to %ipx of option content (capped at %ipx), stable while filtering', (contentWidth, expected) => {
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+        jest.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ width: 120 });
+        const scrollWidth = jest.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+            .mockImplementation(function () { return this.classList.contains('sb-picker') ? contentWidth : 0; });
+        try {
+            const { surface, input } = makePicker({ trigger, matchTriggerWidth: true });
+            expect(surface.style.inlineSize).toBe(`${expected}px`);
+            scrollWidth.mockImplementation(() => 0);
+            filter(input, 'Alpha');
+            expect(surface.style.inlineSize).toBe(`${expected}px`);
+        } finally {
+            scrollWidth.mockRestore();
+        }
+    });
+
     test('trigger-width placement caps its width to viewport-clipped bounds on every resize', () => {
         const bounds = document.createElement('div');
         jest.spyOn(bounds, 'getBoundingClientRect').mockReturnValue({ left: -20, right: 260, width: 280 });

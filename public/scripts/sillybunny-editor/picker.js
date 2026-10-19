@@ -369,13 +369,21 @@ function handlePickerInput(event) {
     state.searchTimer = setTimeout(() => applyPickerSearch(state), 300);
 }
 
+/** A press on the owner itself, not on another control inside it (a row's menu button still dismisses). */
+function isOwnerBackground(state, target) {
+    if (!state.owner.contains(target)) return false;
+    const control = target instanceof Element ? target : target.parentElement;
+    const inner = control?.closest('button, a, input, select, textarea, [role="button"], [tabindex]');
+    return !inner || !state.owner.contains(inner) || inner === state.owner;
+}
+
 function handleOutsidePointerDown(event) {
     const state = activePicker;
     if (!state || state.kind !== 'popover') {
         return;
     }
     const target = event.target instanceof Node ? event.target : null;
-    if (target && (state.surface.contains(target) || state.trigger.contains(target))) {
+    if (target && (state.surface.contains(target) || state.trigger.contains(target) || isOwnerBackground(state, target))) {
         return;
     }
     closePicker();
@@ -392,7 +400,19 @@ function handleResize() {
         const available = bounds?.width > 0
             ? Math.min(bounds.right, window.innerWidth) - Math.max(bounds.left, 0) - 16
             : window.innerWidth - 16;
-        const width = Math.max(0, Math.min(560, Math.max(320, state.trigger.getBoundingClientRect().width), available));
+        // Measured once with every option rendered, so filtering never resizes the popover.
+        if (state.contentWidth === undefined) {
+            state.surface.style.inlineSize = 'max-content';
+            state.surface.style.maxInlineSize = 'none';
+            // max-content leaves out the list's scrollbar, which would then push the widest label onto a second line.
+            const list = state.surface.querySelector('.sb-picker__list');
+            const scrollbar = list ? Math.max(0, list.offsetWidth - list.clientWidth) : 0;
+            // scrollWidth leaves out the borders, which border-box sizing counts; the box width includes them.
+            const box = state.surface.getBoundingClientRect().width || 0;
+            state.contentWidth = Math.ceil(Math.max(box, state.surface.scrollWidth || 0) + scrollbar);
+        }
+        const wanted = Math.max(320, state.trigger.getBoundingClientRect().width, state.contentWidth);
+        const width = Math.max(0, Math.min(560, wanted, available));
         state.surface.style.inlineSize = `${width}px`;
         state.surface.style.maxInlineSize = `${width}px`;
         state.origin = positionPopover(state.surface, state.trigger, null, state.bounds, 'start');
@@ -439,6 +459,8 @@ function finishClose() {
  * @param {boolean} [options.matchTriggerWidth=false] Desktop: match the trigger up to 560px and align inline-start.
  * @param {boolean} [options.renderAsPopover=false] Keep a nested picker in the current modal on mobile.
  * @param {() => void|null} [options.onClose=null]
+ * @param {HTMLElement|null} [options.owner=null] Element around the trigger (such as its row) whose presses
+ *     do not dismiss the popover, so the owner can toggle it closed itself.
  * @returns {{ close: () => void, refresh: (items?: object[]) => void, readonly isOpen: boolean }}
  */
 export function openPicker({
@@ -456,6 +478,7 @@ export function openPicker({
     matchTriggerWidth = false,
     renderAsPopover = false,
     onClose = null,
+    owner = null,
 }) {
     if (!(trigger instanceof HTMLElement) || !Array.isArray(items) || !Array.isArray(footer) || typeof onSelect !== 'function') {
         throw new TypeError('openPicker requires a trigger, items, footer actions, and an onSelect callback');
@@ -468,6 +491,7 @@ export function openPicker({
 
     const state = {
         trigger,
+        owner: owner instanceof HTMLElement ? owner : trigger,
         title,
         items: [...items],
         selected,
