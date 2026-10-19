@@ -42,8 +42,9 @@ import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { createRow } from './sillybunny-editor/rows.js';
+import { createComboRow, createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
+import { getFolderId, getFolders, setFolder, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import './sillybunny-characters-navigation.js';
 import { mountEditorPreviews } from './sillybunny-editor/preview.js';
 import { animateHeightFrom, animateIn, animateListChange, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, prefersReducedMotion } from './sillybunny-motion.js';
@@ -79,6 +80,7 @@ let chrome = null;
 let previews = null;
 /** Header title for the open session; follows inline renames. */
 let editorTitle = '';
+let folderSelectRow = null;
 
 /** @type {MutationObserver|null} */
 let tokenMirrorObserver = null;
@@ -116,6 +118,7 @@ export function initCharacterEditor() {
     _bindGreetingExpanders();
     _bindFieldDirtyListeners();
     _bindRelatedLinks();
+    _mountFolderField();
     registerEditorNavigation(navigation);
 
     // Recapture baseline whenever the backend saves (avatar change, world link, export)
@@ -166,6 +169,7 @@ export function openCharacterEditorSession(chid) {
     }
 
     editorTitle = character.name;
+    _setFolderDraft(getFolderId('characters', character.avatar));
     _openSession({ mode: 'edit', entityId: character.avatar, chid });
 }
 
@@ -175,6 +179,7 @@ export function openCharacterEditorSession(chid) {
  */
 export function openCharacterEditorCreateSession() {
     editorTitle = t`Create New Character`;
+    _setFolderDraft(null);
     _openSession({ mode: 'create', entityId: NEW_CHAR_DRAFT_KEY, chid: null });
 }
 
@@ -192,7 +197,10 @@ export function captureCharacterEditorSave(avatar) {
  */
 export function markCharacterEditorSaved(receipt, newAvatar) {
     if (!receipt?.isCurrent()) return false;
-    if (receipt.context.mode !== 'create' || !newAvatar) return receipt.markSaved();
+    if (receipt.context.mode !== 'create' || !newAvatar) {
+        if (receipt.context.mode === 'edit' && receipt.context.entityId) _commitFolder(receipt, receipt.context.entityId);
+        return receipt.markSaved();
+    }
 
     const chid = characters.findIndex(character => character.avatar === newAvatar);
     if (chid < 0) throw new Error(`Created character not found: ${newAvatar}`);
@@ -210,7 +218,60 @@ export function markCharacterEditorSaved(receipt, newAvatar) {
         const field = document.getElementById(id);
         if (field) field.value = value ?? '';
     }
+    _commitFolder(receipt, newAvatar);
     return receipt.markSaved({ mode: 'edit', entityId: newAvatar, chid });
+}
+
+function folderOptions() {
+    let folders = [];
+    try {
+        folders = getFolders('characters');
+    } catch {
+        folders = [];
+    }
+    return [{ value: '', label: t`No folder` }, ...folders.map(folder => ({ value: folder.id, label: folder.name }))];
+}
+
+function _mountFolderField() {
+    const host = document.getElementById('character_folder_row');
+    if (!(host instanceof HTMLElement) || folderSelectRow) return;
+    const select = document.createElement('select');
+    select.id = 'character_folder';
+    select.setAttribute('aria-label', t`Folder`);
+    folderSelectRow = createComboRow({
+        label: t`Folder`,
+        field: 'folder',
+        options: folderOptions(),
+        value: '',
+        onChange: () => session.changed({ immediate: true }),
+        select,
+    });
+    host.replaceChildren(folderSelectRow.row);
+    subscribeFolders(({ scope }) => {
+        if (scope && scope !== 'characters') return;
+        const value = folderSelectRow.getValue();
+        folderSelectRow.control.replaceChildren(...folderOptions().map(option => {
+            const element = document.createElement('option');
+            element.value = option.value;
+            element.textContent = option.label;
+            return element;
+        }));
+        folderSelectRow.setValue(folderOptions().some(option => option.value === value) ? value : '', { silent: true });
+    });
+}
+
+function _setFolderDraft(folderId) {
+    const value = folderId ? String(folderId) : '';
+    folderSelectRow?.setValue(value, { silent: true });
+}
+
+function _folderDraft() {
+    return String(folderSelectRow?.getValue() ?? '') || null;
+}
+
+function _commitFolder(receipt, key) {
+    if (!receipt?.isCurrent() || !key) return;
+    setFolder('characters', [String(key)], receipt.snapshot?._folder ?? null);
 }
 
 /** @param {import('./sillybunny-editor/session.js').EditorSaveReceipt} receipt */
@@ -1025,6 +1086,7 @@ function _captureSnapshot() {
     }
     // Read favorite state from DOM class since fav_ch_checked is not exported
     snap._fav = document.getElementById('favorite_button')?.classList.contains('fav_on') ?? false;
+    snap._folder = _folderDraft();
     snap._alt = [...draftAlt];
     snap._grp = [...draftGrp];
     return snap;
@@ -1050,6 +1112,8 @@ function _restoreSnapshot(snap) {
             $(btn).trigger('click');
         }
     }
+
+    if ('_folder' in snap) _setFolderDraft(snap._folder);
 
     if ('_alt' in snap) {
         draftAlt.splice(0, draftAlt.length, ...(snap._alt || []));

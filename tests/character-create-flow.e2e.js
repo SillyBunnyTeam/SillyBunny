@@ -113,17 +113,17 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.evaluate(async () => window.SillyBunnyShell.openTab('characters', 'editor'));
         await page.evaluate(async () => window.SillyBunnyShell.openTab('characters', 'characters'));
         await expect(list.locator('.ds-entity-row')).toHaveCount(3);
-            const rowKeys = await list.locator('.ds-entity-row').evaluateAll(rows => rows.map(row => row.dataset.sbListKey));
-            expect(new Set(rowKeys).size).toBe(rowKeys.length);
-            for (const rowKey of rowKeys) {
-                const row = list.locator(`[data-sb-list-key=${JSON.stringify(rowKey)}]`);
-                const characterId = Number(await row.getAttribute('data-chid'));
-                await row.locator('.ch_name').click();
-                await waitForChatActivation(page);
-                await expect.poll(() => page.evaluate(async () => Number((await import('/script.js')).this_chid))).toBe(characterId);
-                await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
-                await expect(list).toBeVisible();
-            }
+        const rowKeys = await list.locator('.ds-entity-row').evaluateAll(rows => rows.map(row => row.dataset.sbListKey));
+        expect(new Set(rowKeys).size).toBe(rowKeys.length);
+        for (const rowKey of rowKeys) {
+            const row = list.locator(`[data-sb-list-key=${JSON.stringify(rowKey)}]`);
+            const characterId = Number(await row.getAttribute('data-chid'));
+            await row.locator('.ch_name').click();
+            await waitForChatActivation(page);
+            await expect.poll(() => page.evaluate(async () => Number((await import('/script.js')).this_chid))).toBe(characterId);
+            await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
+            await expect(list).toBeVisible();
+        }
 
         await page.locator('.sb-character-list [data-action-id="new"]').click();
         await expect(page.locator('#character_nickname_pole')).toHaveValue('');
@@ -132,9 +132,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     test(`group create returns to Groups and reveals the new row at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);
         await openView(page, 'groups');
+        const folderId = await page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).createFolder('groups', 'QA Group Folder').id);
         await page.locator('.sb-character-list [data-action-id="new"]').click();
         await expect(page.locator('#sb_group_editor_header')).toBeVisible();
         await page.locator('#rm_group_chat_name').fill('QA Created Group');
+        await page.locator('#group_folder').selectOption(folderId);
         await addCharacterToGroup(page);
         const save = page.locator('#sb_group_editor_save');
         await expect(save).toBeEnabled();
@@ -147,6 +149,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(page.locator('[data-sb-settings-tab="groups"][aria-selected="true"]')).toHaveCount(1);
         await expect.poll(() => page.evaluate(async () => (await import('/script.js')).menu_type)).toBe('characters');
         await expect(created).toBeFocused();
+        await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('groups', 'qa-created-group'))).toBe(folderId);
+        expect(await page.evaluate(async () => (await import('/scripts/group-chats.js')).groups.find(group => group.id === 'qa-created-group'))).not.toHaveProperty('_folder');
     });
 }
 

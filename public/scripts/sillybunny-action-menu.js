@@ -373,9 +373,10 @@ function finishClose() {
  * @param {{ x: number, y: number }|null} [options.point] - Desktop: open at this pointer position.
  * @param {boolean} [options.keyboard] - Focus the first row instead of the surface.
  * @param {Element|null} [options.bounds] - Desktop popover stays inside this element.
+ * @param {boolean} [options.forcePopover=false] - Use an anchored popover even on mobile.
  * @param {() => void} [options.onClose]
  */
-export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, onClose = null }) {
+export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, onClose = null }) {
     initialize();
     if (open?.trigger === trigger && !point) {
         closeActionMenu({ restoreFocus: true });
@@ -388,7 +389,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
         return;
     }
 
-    if (isMobileLayout()) {
+    if (isMobileLayout() && !forcePopover) {
         const frame = ensureSheet();
         frame.title.textContent = title;
         frame.subtitle.textContent = subtitle;

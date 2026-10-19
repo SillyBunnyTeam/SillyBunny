@@ -8,16 +8,18 @@ import { reconcileRows, bindListKeyboard, rowEntry } from './sillybunny-editor/l
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
+import { createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { eventSource, event_types } from './events.js';
 import { animateListChange, prefersReducedMotion, stopMotion } from './sillybunny-motion.js';
+import { getFolders, getFolderId, setFolder, setFolderExpanded, subscribe as subscribeFolders } from './sillybunny-folders.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261018d', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261020a', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();
@@ -187,28 +189,6 @@ function rowTags(row, key, data, tags) {
     limitTagChips(tagSlot, { allNames });
 }
 
-function createFolderAvatar(item) {
-    const folderIcon = item?.folder_type === 'BACK'
-        ? icon('right-from-bracket')
-        : icon(item?.folder_type === 'OPEN' ? 'folder-open' : item?.folder_type === 'CLOSED' ? 'eye-slash' : 'folder');
-    if (item?.folder_type === 'BACK') folderIcon.classList.add('fa-flip-horizontal');
-    folderIcon.classList.add('bogus_folder_icon');
-    return folderIcon;
-}
-
-function createBackEntry(script) {
-    const template = script.getBackBlock?.();
-    const legacy = template?.[0] ?? template;
-    return {
-        kind: 'back',
-        key: entityKey('tag', 'back'),
-        item: {
-            name: legacy?.querySelector?.('.ch_name')?.textContent?.trim() || t`Go back`,
-            avatar: legacy?.querySelector?.('.bogus_folder_icon')?.cloneNode(true) ?? createFolderAvatar({ folder_type: 'BACK' }),
-        },
-    };
-}
-
 async function createHiddenEntry(count, script) {
     const template = await script.getHiddenBlock?.(count);
     const legacy = template?.[0] ?? template;
@@ -219,26 +199,7 @@ async function createHiddenEntry(count, script) {
     };
 }
 
-function createFolderEntry(entity, tags) {
-    const item = entity.item ?? {};
-    const template = tags.getTagBlock?.(item, entity.entities ?? [], entity.hidden ?? 0, entity.isUseless ?? false);
-    const legacy = template?.[0] ?? template;
-    return {
-        kind: 'tag',
-        key: entityKey('tag', entity.id),
-        entity,
-        item,
-        label: legacy?.querySelector?.('.ch_name')?.textContent?.trim() || textValue(item.name),
-        avatar: legacy?.querySelector?.('.bogus_folder_icon')?.cloneNode(true) ?? createFolderAvatar(item),
-        folderClasses: legacy ? [...legacy.classList].filter(className => !['bogus_folder_select', 'entity_block'].includes(className)) : [],
-        subtitle: [legacy?.querySelector?.('.bogus_folder_counter'), legacy?.querySelector?.('.bogus_folder_hidden_counter')]
-            .filter(Boolean)
-            .map(element => element.cloneNode(true)),
-    };
-}
-
 function normalizeEntry(entity, view, dataModules) {
-    if (entity.type === 'tag') return createFolderEntry(entity, dataModules.tags);
     const item = entity.item ?? entity;
     if (entity.type === 'group' || view === 'groups') {
         const data = dataModules.script.getGroupRowData?.(item) ?? item;
@@ -280,17 +241,6 @@ function normalizeEntry(entity, view, dataModules) {
 }
 
 function rowOptions(entry) {
-    if (entry.kind === 'back') {
-        return {
-            key: entry.key,
-            label: entry.item.name,
-            title: entry.item.name,
-            avatar: entry.item.avatar ?? createFolderAvatar({ folder_type: 'BACK' }),
-            activation: 'navigate',
-            compatClasses: { row: ['bogus_folder_select', 'bogus_folder_select_back', 'entity_block'], avatar: ['avatar'], title: ['ch_name'] },
-            attributes: { tagid: 'back', id: 'BogusFolderBack' },
-        };
-    }
     if (entry.kind === 'hidden') {
         return {
             key: entry.key,
@@ -300,26 +250,6 @@ function rowOptions(entry) {
             attributes: { 'aria-hidden': 'true' },
         };
     }
-    if (entry.kind === 'tag') {
-        const item = entry.item;
-        const folderClass = item.folder_type ? String(item.folder_type).toLowerCase() : '';
-        return {
-            key: entry.key,
-            label: entry.label,
-            title: entry.label,
-            subtitle: entry.subtitle,
-            avatar: entry.avatar ?? createFolderAvatar(item),
-            activation: 'navigate',
-            compatClasses: {
-                row: ['bogus_folder_select', 'entity_block', folderClass, ...(entry.folderClasses ?? [])].filter(Boolean),
-                avatar: ['avatar'],
-                title: ['ch_name'],
-                subtitle: ['character_name_block_sub_line'],
-            },
-            attributes: { tagid: textValue(entry.entity.id), id: `BogusFolder${entry.entity.id}` },
-        };
-    }
-
     const { data, item } = entry;
     const badges = [];
     if (entry.favorite) {
@@ -363,6 +293,11 @@ function rowOptions(entry) {
 }
 
 function createRowEntry(entry, actionHandlers) {
+    if (entry.kind === 'folder') {
+        const factory = createFolderRow(entry);
+        rowFactories.set(factory.row, factory);
+        return factory.row;
+    }
     const factory = createEntityRow(rowOptions(entry));
     const { row } = factory;
     rowFactories.set(row, factory);
@@ -382,6 +317,11 @@ function createRowEntry(entry, actionHandlers) {
 
 function updateRow(row, entry, dependencies, visible) {
     const factory = rowFactories.get(row);
+    if (entry.kind === 'folder') {
+        factory.update(entry);
+        rowPresentations.set(row, JSON.stringify([entry.folder, entry.countLabel, entry.expanded, entry.temporaryExpansion, entry.inert]));
+        return;
+    }
     const tagKey = entry.kind === 'group' ? entry.data?.id ?? entry.item.id : entry.data?.avatar ?? entry.item.avatar;
     const tags = dependencies.tags.getTagsList?.(tagKey) ?? entry.data?.tags ?? [];
     const presentation = Object.fromEntries(Object.entries(entry.data ?? {}).filter(([key]) => key !== 'active' && key !== 'isActive'));
@@ -390,8 +330,6 @@ function updateRow(row, entry, dependencies, visible) {
         ? [t`Edit`, t`Actions for ${entry.label}`] : null;
     const signature = JSON.stringify([
         entry.kind, entry.label ?? entry.item.name, presentation, tagPresentation, actionLabels,
-        entry.item?.folder_type, entry.folderClasses, entry.subtitle?.map(part => part.textContent),
-        entry.kind === 'tag' ? entry.avatar?.outerHTML : null,
         entry.kind === 'group' ? [...(entry.avatar?.querySelectorAll('img') ?? [])].map(image => image.getAttribute('src')) : null,
     ]);
     const changed = rowPresentations.get(row) !== signature;
@@ -450,7 +388,67 @@ function destroyLegacyPagination(container) {
 }
 
 function modelCount(model) {
-    return model.entities.filter(entity => entity.type !== 'tag').length;
+    return model.entities.filter(entity => entity.type === 'character' || entity.type === 'group').length;
+}
+
+function entityFolderKey(entity, view) {
+    const item = entity.item ?? entity;
+    return view === 'groups' ? String(item.id ?? entity.id ?? '') : String(item.avatar ?? '');
+}
+
+function countLabel(count, view) {
+    return folderCountLabel(count, view);
+}
+
+function buildVisibleRows(model, view, query) {
+    const folders = getFolders(view);
+    const folderIds = new Set(folders.map(folder => folder.id));
+    const membersByFolder = new Map(folders.map(folder => [folder.id, []]));
+    const unfiled = [];
+    const entities = model.entities.filter(entity => entity.type === 'character' || entity.type === 'group');
+    for (const entity of entities) {
+        const folderId = getFolderId(view, entityFolderKey(entity, view));
+        const members = folderIds.has(folderId) ? membersByFolder.get(folderId) : null;
+        if (members) members.push(entity);
+        else unfiled.push(entity);
+    }
+
+    const filtered = Boolean(String(query ?? '').trim()) || Boolean(model.hasAnyFilter);
+    const rows = [];
+    const headers = new Map();
+    for (const folder of folders) {
+        const members = membersByFolder.get(folder.id);
+        if (filtered && !members.length) continue;
+        const header = {
+            kind: 'folder',
+            key: `folder:${view}:${folder.id}`,
+            folder: { ...folder, scope: view },
+            scope: view,
+            count: members.length,
+            countLabel: countLabel(members.length, view),
+            expanded: filtered || folder.expanded,
+            temporaryExpansion: filtered,
+        };
+        headers.set(folder.id, header);
+        rows.push(header);
+        if (!header.expanded) continue;
+        for (const entity of members) rows.push({
+            kind: 'entity',
+            key: modelEntityKey(entity),
+            entity,
+            folderId: folder.id,
+        });
+    }
+    for (const entity of unfiled) rows.push({ kind: 'entity', key: modelEntityKey(entity), entity, folderId: null });
+    return { rows, headers };
+}
+
+function pageVisibleRows(rows, headers, pagination) {
+    const pageRows = pagination.slice(rows);
+    const first = pageRows[0];
+    if (first?.kind !== 'entity' || !first.folderId) return pageRows;
+    const header = headers.get(first.folderId);
+    return header ? [header, ...pageRows] : pageRows;
 }
 
 async function loadStylesheets(stylesheets) {
@@ -518,6 +516,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         lastQuery: '',
         pageSync: 0,
         selectableKeys: [],
+        visibleRows: [],
     };
     let header;
     let search;
@@ -532,6 +531,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let suppressedStateRenders = 0;
     let handlingSearchInput = false;
     let unbindKeyboard;
+    let unsubscribeFolders;
     let destroyed = false;
     let selection;
     let selectionActive = false;
@@ -574,10 +574,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         for (const row of rowsContainer.querySelectorAll('.ds-entity-row')) {
             if (listVisible) row.classList.toggle('is-selected', !active && Boolean(rowEntry(row)?.active));
             for (const control of row.querySelectorAll('.ds-entity-row__suffix')) control.inert = active;
-            if (row.matches('.bogus_folder_select')) {
+            if (row.matches('.sb-folder-row')) {
                 row.inert = active;
                 if (active) row.setAttribute('aria-disabled', 'true');
                 else row.removeAttribute('aria-disabled');
+                row.tabIndex = active ? -1 : 0;
             }
         }
     }
@@ -656,14 +657,22 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const view = key.startsWith('group:') ? 'groups' : key.startsWith('character:') ? 'characters' : null;
         if (!view || view !== state.view) return false;
 
-        const findIndex = () => latestModel?.entities.findIndex(entity => modelEntityKey(entity) === key) ?? -1;
-        let index = findIndex();
-        if (index < 0 && latestModel?.hasAnyFilter) {
+        const findEntity = () => latestModel?.entities.find(entity => modelEntityKey(entity) === key);
+        let entity = findEntity();
+        if (!entity && latestModel?.hasAnyFilter) {
             document.querySelector('#rm_characters_block .clearAllFilters')?.click();
             await dataModules.script.printCharacters(false);
             if (destroyed || !isCurrent()) return false;
-            index = findIndex();
+            entity = findEntity();
         }
+        if (!entity) return false;
+        const folderId = getFolderId(view, entityFolderKey(entity, view));
+        if (folderId && getFolders(view).find(folder => folder.id === folderId)?.expanded !== true) {
+            setFolderExpanded(view, folderId, true);
+            await dataModules.script.printCharacters(false);
+            if (destroyed || !isCurrent()) return false;
+        }
+        const index = state.visibleRows.findIndex(entry => entry.kind === 'entity' && entry.key === key);
         if (index < 0) return false;
 
         const pageSize = Number(dataModules.state.getListPageSize?.(view)) || pagination.pageSize;
@@ -764,15 +773,46 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         }
     }
 
+    function bulkMoveToFolder(trigger, selectedKeys) {
+        const folderKeysBySelectionKey = state.view === 'groups'
+            ? new Map(dataModules.groups.groups.map(group => [entityKey('group', group.id), String(group.id)]))
+            : new Map(dataModules.script.characters.flatMap(character => character?.avatar
+                ? [[entityKey('character', character.avatar), String(character.avatar)]]
+                : []));
+        const keys = selectedKeys.map(key => folderKeysBySelectionKey.get(key)).filter(key => key !== undefined);
+        if (!keys.length) return;
+        const folders = getFolders(state.view);
+        const currentFolder = key => {
+            const folderId = getFolderId(state.view, key);
+            return folderId && folders.some(folder => folder.id === folderId) ? folderId : null;
+        };
+        const items = [
+            makeMenuItem(t`No folder`, 'folder', () => {
+                setFolder(state.view, keys, null);
+                selection.exit();
+            }, { kind: 'radio', checked: keys.every(key => currentFolder(key) === null) }),
+            ...folders.map(folder => makeMenuItem(folder.name, 'folder', () => {
+                setFolder(state.view, keys, folder.id);
+                selection.exit();
+            }, { kind: 'radio', checked: keys.every(key => currentFolder(key) === folder.id) })),
+        ];
+        menu(trigger, t`Move to Folder`, [{ items }]);
+    }
+
     function createSelection() {
         const action = (id, label, glyph, danger = false) => ({
             id, label, icon: `fa-solid fa-${glyph}`, danger, onActivate: () => run(() => bulkAction(id)),
         });
+        const folderAction = {
+            id: 'folder', label: t`Move to Folder`, icon: 'fa-solid fa-folder',
+            onActivate: selectedKeys => bulkMoveToFolder(selectionBar.querySelector('[data-action-id="folder"]'), selectedKeys),
+        };
         const actions = state.view === 'groups'
-            ? [action('tag', t`Tag`, 'tags'), action('delete', t`Delete`, 'trash', true)]
+            ? [action('tag', t`Tag`, 'tags'), folderAction, action('delete', t`Delete`, 'trash', true)]
             : [
                 action('favorite', t`Favorite`, 'star'),
                 action('tag', t`Tag`, 'tags'),
+                folderAction,
                 action('duplicate', t`Duplicate`, 'copy'),
                 action('persona', t`Convert to Persona`, 'user'),
                 action('delete', t`Delete`, 'trash', true),
@@ -860,10 +900,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             makeMenuItem(t`Manage tags`, 'tags', () => filter('.manageTags')?.click()),
             makeMenuItem(t`Clear all filters`, 'filter-circle-xmark', () => filter('.clearAllFilters')?.click()),
         ] });
-        sections.push({ items: [makeMenuItem(t`Tags as Folders`, 'folder', () => clickTransport('#bogus_folders'), {
-            kind: 'check',
-            checked: Boolean(power_user.bogus_folders),
-        })] });
+        sections.push({ items: [makeMenuItem(t`Manage Folders`, 'folder', () => globalThis.SillyBunnyFolderManager?.open?.(state.view)
+            ?? import('./sillybunny-folder-manager.js').then(module => module.openFolderManager(state.view)))] });
         sections.push({ items: [makeMenuItem(t`Import`, 'file-import', () => globalThis.SillyBunnyShell?.openTab?.('characters', 'import'))] });
         menu(trigger, state.view === 'groups' ? t`Groups` : t`Characters`, sections);
     }
@@ -938,7 +976,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     async function renderStatus(model, revision) {
         let content = null;
-        if (!model.sourceCount) {
+        const hasVisibleFolder = state.visibleRows.some(entry => entry.kind === 'folder');
+        if (!model.sourceCount && !hasVisibleFolder) {
             const template = await dataModules.script.getEmptyBlock?.();
             const legacy = template?.[0] ?? template;
             const empty = createStatusPage({
@@ -950,7 +989,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 } }],
             });
             content = empty.element;
-        } else if (!model.entities.length) {
+        } else if (!model.entities.length && !hasVisibleFolder) {
             const empty = createStatusPage({ icon: 'magnifying-glass', title: t`No results`, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
@@ -988,19 +1027,21 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         }
         section.dataset.view = state.view;
         header?.setTitle(state.view === 'groups' ? t`Groups` : t`Characters`);
-        const noun = state.view === 'groups' ? t`groups` : t`characters`;
-        header?.setSubtitle(`${model.sourceCount} ${noun}`);
+        header?.setSubtitle(countLabel(model.sourceCount, state.view));
         setOverflow();
+        const { rows: visibleRows, headers } = buildVisibleRows(model, view, search.query);
+        state.visibleRows = visibleRows;
         const pageSize = Number(dataModules.state.getListPageSize?.(state.view)) || pagination.pageSize;
         let page = Number(dataModules.state.getListPage?.(state.view)) || 1;
         if (revealActiveOnRender && !selection.isActive) {
-            const index = model.entities.findIndex(entity => {
-                if (entity.type === 'tag') return false;
+            const activeEntity = model.entities.find(entity => {
+                if (entity.type !== 'character' && entity.type !== 'group') return false;
                 const data = entity.type === 'group'
                     ? dataModules.script.getGroupRowData(entity.item)
                     : dataModules.script.getCharacterRowData(entity.item, entity.id);
                 return Boolean(data.active ?? data.isActive);
             });
+            const index = activeEntity ? visibleRows.findIndex(entry => entry.kind === 'entity' && entry.key === modelEntityKey(activeEntity)) : -1;
             if (index >= 0) page = Math.floor(index / pageSize) + 1;
         }
         if (paginationView !== state.view || pagination.pageSize !== pageSize) {
@@ -1010,7 +1051,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             footer.replaceChildren(pagination.element);
         }
         const currentPagination = pagination;
-        currentPagination.setTotal(model.entities.length);
+        currentPagination.setTotal(visibleRows.length);
         const clampedPage = Math.min(currentPagination.pages, page);
         state.pageSync++;
         try {
@@ -1021,8 +1062,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             state.pageSync--;
         }
         if (revision !== renderRevision) return;
-        const pageEntries = currentPagination.slice(model.entities).map(entity => normalizeEntry(entity, view, dataModules));
-        if (model.folderOpen) pageEntries.unshift(createBackEntry(dataModules.script));
+        const pageRows = pageVisibleRows(visibleRows, headers, currentPagination);
+        const pageEntries = pageRows.map(entry => entry.kind === 'folder'
+            ? { ...entry, inert: selection.isActive }
+            : { ...normalizeEntry(entry.entity, view, dataModules), folderId: entry.folderId });
         const hidden = getHiddenCount(model);
         if (model.hasAnyFilter && hidden > 0) pageEntries.push(await createHiddenEntry(hidden, dataModules.script));
         if (revision !== renderRevision) return;
@@ -1193,6 +1236,12 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             onOpen: (row, event) => {
                 if (selection.isActive) return true;
                 const entry = rowEntry(row);
+                if (entry?.kind === 'folder') {
+                    if (entry.temporaryExpansion) return true;
+                    setFolderExpanded(entry.scope, entry.folder.id, !entry.expanded);
+                    row.focus({ preventScroll: true });
+                    return true;
+                }
                 if (entry?.kind === 'character' || entry?.kind === 'group') {
                     // Keep the upstream selection guards, but own completion instead of its mobile-only delegated close.
                     event.preventDefault();
@@ -1242,6 +1291,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         }
         const activeEvents = [event_types.CHAT_CHANGED, event_types.CHAT_LOADED, event_types.GROUP_UPDATED].filter(Boolean);
         activeEvents.forEach(event => eventSource.on(event, syncActiveRows));
+        unsubscribeFolders = subscribeFolders(({ scope }) => {
+            if (!scope || scope === state.view) run(refresh);
+        });
         if (extensionSlot) {
             observeExtensionItems();
             extensionObserver = new MutationObserver(observeExtensionItems);
@@ -1270,6 +1322,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 extensionObserver?.disconnect();
                 visibilityObserver.disconnect();
                 activeEvents.forEach(event => eventSource.removeListener(event, syncActiveRows));
+                unsubscribeFolders?.();
                 tagMenu.destroy();
                 search.destroy();
                 selection.exit();

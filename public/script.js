@@ -258,6 +258,8 @@ import {
     tag_import_setting,
     applyCharacterTagsToMessageDivs,
 } from './scripts/tags.js';
+// SillyBunny: migrate the opt-in legacy tag folders after both settings stores load.
+import { convertLegacyTagFolders } from './scripts/sillybunny-folders.js';
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
@@ -1238,6 +1240,18 @@ async function firstLoadInit() {
         await dismissPreloader();
         await getUserAvatars(true, user_avatar);
         await getCharacters();
+        // SillyBunny: convert opt-in legacy tag folders once, after characters and groups exist to classify tag_map keys.
+        convertLegacyTagFolders({
+            enabled: power_user.bogus_folders === true,
+            tags,
+            tagMap: tag_map,
+            characters,
+            groups,
+            accountStorage,
+            entitiesFilter,
+            tagFilterType: FILTER_TYPES.TAG,
+            notify: () => globalThis.toastr?.info?.(t`Your tag folders are now folders. Manage them from Manage Folders in the Characters menu.`),
+        });
         await getBackgrounds();
         await initTokenizers();
         initBackgrounds();
@@ -1676,8 +1690,10 @@ export async function printCharacters(fullRefresh = false) {
             view: characterMenuEntityView,
             entities,
             sourceCount,
-            hasAnyFilter: entitiesFilter.hasAnyFilter(),
-            folderOpen: power_user.bogus_folders && isBogusFolderOpen(),
+            // SillyBunny: the shared list neutralises the groups-only and folders-only toggles.
+            hasAnyFilter: entitiesFilter.hasAnyFilter({ ignore: [FILTER_TYPES.GROUP, FILTER_TYPES.FOLDER] }),
+            // SillyBunny: tag folders remain available only to the upstream fallback.
+            folderOpen: false,
             fullRefresh,
             pageLoaded: () => eventSource.emit(event_types.CHARACTER_PAGE_LOADED),
         });
@@ -1852,7 +1868,8 @@ export function getEntitiesList({ doFilter = false, doSort = true, mainList = fa
     let entities = [
         ...characters.map((item, index) => characterToEntity(item, index)),
         ...groups.map(item => groupToEntity(item)),
-        ...(power_user.bogus_folders ? tags.filter(isBogusFolder).sort(compareTagsForSort).map(item => tagToEntity(item)) : []),
+        // SillyBunny: the shared list has its own folder sections; preserve tag folders for fallback callers.
+        ...(power_user.bogus_folders && !mainList ? tags.filter(isBogusFolder).sort(compareTagsForSort).map(item => tagToEntity(item)) : []),
     ];
 
     // We need to do multiple filter runs in a specific order, otherwise different settings might override each other
@@ -1865,7 +1882,7 @@ export function getEntitiesList({ doFilter = false, doSort = true, mainList = fa
 
     // First run filters, that will hide what should never be displayed
     if (doFilter) {
-        entities = filterByTagState(entities);
+        entities = filterByTagState(entities, { mainList });
     }
 
     // Run over all entities between first and second filter to save some states
@@ -1873,9 +1890,9 @@ export function getEntitiesList({ doFilter = false, doSort = true, mainList = fa
         // For folders, we remember the sub entities so they can be displayed later, even if they might be filtered
         // Those sub entities should be filtered and have the search filters applied too
         if (entity.type === 'tag') {
-            let subEntities = filterByTagState(entities, { subForEntity: entity, filterHidden: false });
+            let subEntities = filterByTagState(entities, { subForEntity: entity, filterHidden: false, mainList });
             const subCount = subEntities.length;
-            subEntities = filterByTagState(entities, { subForEntity: entity });
+            subEntities = filterByTagState(entities, { subForEntity: entity, mainList });
             if (doFilter) {
                 // sub entities filter "hacked" because folder filter should not be applied there, so even in "only folders" mode characters show up
                 subEntities = entitiesFilter.applyFilters(subEntities, {
@@ -1884,7 +1901,7 @@ export function getEntitiesList({ doFilter = false, doSort = true, mainList = fa
                     // the shared main list — see docs/ui-migration.md
                     tempOverrides: {
                         [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED,
-                        ...(mainList ? { [FILTER_TYPES.GROUP]: false } : {}),
+                        ...(mainList ? { [FILTER_TYPES.GROUP]: false, [FILTER_TYPES.FOLDER]: false } : {}),
                     },
                     clearFuzzySearchCaches: false,
                 });
@@ -1899,11 +1916,11 @@ export function getEntitiesList({ doFilter = false, doSort = true, mainList = fa
 
     // Second run filters, hiding whatever should be filtered later
     if (doFilter) {
-        const beforeFinalEntities = filterByTagState(entities, { globalDisplayFilters: true });
+        const beforeFinalEntities = filterByTagState(entities, { globalDisplayFilters: true, mainList });
         entities = entitiesFilter.applyFilters(beforeFinalEntities, {
             // SillyBunny: keep the persisted GROUP state for the fallback and
             // filter UI, but neutralize it for the shared main list — see docs/ui-migration.md
-            tempOverrides: mainList ? { [FILTER_TYPES.GROUP]: false } : {},
+            tempOverrides: mainList ? { [FILTER_TYPES.GROUP]: false, [FILTER_TYPES.FOLDER]: false } : {},
             clearFuzzySearchCaches: false,
         });
 
@@ -1912,7 +1929,7 @@ export function getEntitiesList({ doFilter = false, doSort = true, mainList = fa
             entities = entitiesFilter.applyFilters(beforeFinalEntities, {
                 tempOverrides: {
                     [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED,
-                    ...(mainList ? { [FILTER_TYPES.GROUP]: false } : {}),
+                    ...(mainList ? { [FILTER_TYPES.GROUP]: false, [FILTER_TYPES.FOLDER]: false } : {}),
                 },
                 clearFuzzySearchCaches: false,
             });

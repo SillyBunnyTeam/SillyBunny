@@ -395,11 +395,13 @@ let expanded_tags_cache = [];
  * @param {Boolean} [param1.filterHidden] Optional switch with which filtering out hidden items (from closed folders) can be disabled.
  * @returns The filtered list of entities
  */
-function filterByTagState(entities, { globalDisplayFilters = false, subForEntity = undefined, filterHidden = true } = {}) {
+function filterByTagState(entities, { globalDisplayFilters = false, subForEntity = undefined, filterHidden = true, mainList = false } = {}) {
     const filterData = structuredClone(entitiesFilter.getFilterData(FILTER_TYPES.TAG));
 
     entities = entities.filter(entity => {
         if (entity.type === 'tag') {
+            // SillyBunny: folder sections replace tag-folder entities in the shared main list.
+            if (mainList && isBogusFolder(entity.item)) return false;
             // Remove folders that are already filtered on
             if (filterData.selected.includes(entity.id) || filterData.excluded.includes(entity.id)) {
                 return false;
@@ -415,7 +417,8 @@ function filterByTagState(entities, { globalDisplayFilters = false, subForEntity
 
         entities = entities.filter(entity => {
             // Hide entities that are in a closed folder, unless that one is opened
-            if (filterHidden && entity.type !== 'tag' && closedFolders.some(f => entitiesFilter.isElementTagged(entity, f.id) && !filterData.selected.includes(f.id))) {
+            // SillyBunny: the shared main list renders its own folders and never hides closed-tag members.
+            if (filterHidden && !mainList && entity.type !== 'tag' && closedFolders.some(f => entitiesFilter.isElementTagged(entity, f.id) && !filterData.selected.includes(f.id))) {
                 return false;
             }
 

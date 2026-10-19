@@ -11,10 +11,12 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () =>
     blockUpstreamDrawerClose: jest.fn(), createSheetController: jest.fn(),
 }));
 const { openActionMenu, closeActionMenu, isActionMenuOpen, positionPopover } = await import('../../public/scripts/sillybunny-action-menu.js');
+let mobileMatches = false;
 
 beforeEach(() => {
     document.body.replaceChildren();
-    window.matchMedia = () => ({ matches: false, addEventListener: jest.fn() });
+    mobileMatches = false;
+    window.matchMedia = () => ({ get matches() { return mobileMatches; }, addEventListener: jest.fn() });
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { callback(); return 1; });
 });
 afterEach(() => {
@@ -29,6 +31,18 @@ function trigger() {
 }
 
 describe('action menu optional sections', () => {
+    test('can keep a nested action menu as a popover on mobile', () => {
+        mobileMatches = true;
+        openActionMenu({
+            trigger: trigger(),
+            forcePopover: true,
+            sections: [{ items: [{ label: 'Delete', onSelect() {} }] }],
+        });
+
+        expect(document.querySelector('.sb-action-popover')).not.toBeNull();
+        expect(document.querySelector('.sb-action-sheet')).toBeNull();
+    });
+
     test('radio and checkbox items render state indicators instead of caller icons', () => {
         openActionMenu({
             trigger: trigger(),

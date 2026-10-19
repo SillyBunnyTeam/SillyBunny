@@ -213,16 +213,11 @@ describe('tag manager interactions', () => {
         expect(adapter.commit).toHaveBeenCalledTimes(1);
     });
 
-    test('folder controls follow Tags as Folders and route through the upstream action', async () => {
+    test('legacy tag-folder controls are absent from the manager', async () => {
         mount();
-        const folder = manager.root.querySelector('.sb-tag-manager__folder');
-        expect(folder.hidden).toBe(true);
+        expect(manager.root.querySelector('.sb-tag-manager__folder')).toBeNull();
         manager.root.querySelector('.sb-tag-manager__menu').click();
-        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Tags as Folders').onSelect();
-        await settle();
-        expect(folder.hidden).toBe(false);
-        folder.click();
-        expect(adapter.actions.folder).toHaveBeenCalledWith(folder.closest('.tag_view_item'));
+        expect(menuOptions.sections.flatMap(section => section.items).some(item => item.label === 'Tags as Folders')).toBe(false);
     });
 
     test.each(['Backup', 'Restore', 'Prune'])('%s routes to its upstream handler', async label => {

@@ -30,6 +30,8 @@ import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } fr
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
+import { createComboRow } from './sillybunny-editor/rows.js';
+import { getFolders, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import { LIST_EDITOR_STYLESHEET } from './sillybunny-editor/list-shell.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
 
@@ -88,6 +90,7 @@ const navigation = {
 let chrome = null;
 /** Header title for the open session; follows inline renames. */
 let editorTitle = '';
+let folderSelectRow = null;
 
 /**
  * Callbacks supplied by group-chats.js at init time. This module never imports
@@ -100,6 +103,10 @@ let editorTitle = '';
  *   createGroup: (receipt: import('./sillybunny-editor/session.js').EditorSaveReceipt) => Promise<unknown>,
  *   getGroupName: (groupId: string) => string|null,
  *   canCreate: () => boolean,
+ *   getFolderValue: () => string|null,
+ *   setFolderValue: (value: string|null) => void,
+ *   onFolderChanged: () => void,
+ *   commitFolder: (groupId: string, folderId: string|null) => void,
  * }|null}
  */
 let callbacks = null;
@@ -118,6 +125,7 @@ let callbacks = null;
 export function initGroupEditor(config) {
     callbacks = config;
     _mountChrome();
+    _mountFolderField();
     _mountMemberSortable();
     attachGroupTagFilterMenus(document.getElementById('rm_group_chats_block'));
     registerEditorNavigation(navigation);
@@ -268,6 +276,52 @@ export function discardGroupEditorForEntity(groupId) {
  */
 export function notifyGroupEditorChanged(options) {
     session.changed(options);
+}
+
+function folderOptions() {
+    let folders = [];
+    try {
+        folders = getFolders('groups');
+    } catch {
+        folders = [];
+    }
+    return [{ value: '', label: t`No folder` }, ...folders.map(folder => ({ value: folder.id, label: folder.name }))];
+}
+
+function _mountFolderField() {
+    const host = document.getElementById('group_folder_row');
+    if (!(host instanceof HTMLElement) || folderSelectRow || !callbacks) return;
+    const select = document.createElement('select');
+    select.id = 'group_folder';
+    select.setAttribute('aria-label', t`Folder`);
+    folderSelectRow = createComboRow({
+        label: t`Folder`,
+        field: 'folder',
+        options: folderOptions(),
+        value: callbacks.getFolderValue?.() ?? '',
+        onChange: value => {
+            callbacks.setFolderValue?.(value || null);
+            callbacks.onFolderChanged?.();
+        },
+        select,
+    });
+    host.replaceChildren(folderSelectRow.row);
+    subscribeFolders(({ scope }) => {
+        if (scope && scope !== 'groups') return;
+        const value = folderSelectRow.getValue();
+        const options = folderOptions();
+        folderSelectRow.control.replaceChildren(...options.map(option => {
+            const element = document.createElement('option');
+            element.value = option.value;
+            element.textContent = option.label;
+            return element;
+        }));
+        folderSelectRow.setValue(options.some(option => option.value === value) ? value : '', { silent: true });
+    });
+}
+
+export function setGroupEditorFolderValue(value) {
+    folderSelectRow?.setValue(value ? String(value) : '', { silent: true });
 }
 
 // ============================================================
@@ -494,7 +548,10 @@ async function _persist(receipt) {
         await callbacks.createGroup(receipt);
     } else {
         const saved = await callbacks.saveDraft(ctx.entityId, receipt.snapshot);
-        if (saved) receipt.markSaved();
+        if (saved) {
+            callbacks.commitFolder?.(ctx.entityId, receipt.snapshot?._folder ?? null);
+            receipt.markSaved();
+        }
     }
 }
 

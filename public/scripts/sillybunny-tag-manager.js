@@ -144,7 +144,7 @@ export async function openTagManager(adapter) {
  * @returns {object} Surface lifecycle and reconciliation methods.
  */
 export function createTagManager(adapter) {
-    const { getState, commit, create, rename, actions, folderTypes } = adapter;
+    const { getState, commit, create, rename, actions } = adapter;
     const mobile = window.matchMedia(MOBILE_QUERY);
     const returnFocus = document.activeElement;
     const cache = new Map();
@@ -319,7 +319,6 @@ export function createTagManager(adapter) {
             { title: t`Sort mode`, items: [
                 ['manual', t`Manual (Drag & Drop)`], ['alphabetical', t`Alphabetical (A-Z)`], ['by_entries', t`Most Used (By Count)`],
             ].map(([mode, label]) => item(label, 'arrow-down-wide-short', () => mutate(() => settings.tag_sort_mode = mode), { kind: 'radio', checked: settings.tag_sort_mode === mode })) },
-            { items: [item(t`Tags as Folders`, 'folder', () => mutate(() => settings.bogus_folders = !settings.bogus_folders), { kind: 'check', checked: Boolean(settings.bogus_folders) })] },
             { items: [item(t`Backup`, 'file-export', actions.backup), item(t`Restore`, 'file-import', actions.restore), item(t`Prune`, 'scissors', actions.prune)] },
         ];
     }
@@ -418,12 +417,11 @@ export function createTagManager(adapter) {
         const dot = element('span', 'sb-tag-manager__dot');
         dot.dataset.sbTagId = tag.id;
         dot.setAttribute('aria-hidden', 'true');
-        const folder = button('', 'folder', () => mutate(() => actions.folder(row)), 'tag_as_folder sb-tag-manager__folder');
         const more = button(t`Manage tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row)), 'sb-tag-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
             key: entityKey('tag', tag.id), label: tag.name, title: name, avatar: dot,
-            subtitle: '', grip: true, suffix: [folder, more],
+            subtitle: '', grip: true, suffix: [more],
             compatClasses: { row: ['tag_view_item'] }, attributes: { id: tag.id },
         });
         const { row, slots } = entity;
@@ -440,7 +438,7 @@ export function createTagManager(adapter) {
         colors.hidden = true;
         const pickers = {};
         row.append(colors);
-        controls.set(tag.id, { entity, input, error, folder, colors, pickers, countValue });
+        controls.set(tag.id, { entity, input, error, colors, pickers, countValue });
         input.addEventListener('blur', () => {
             // insertBefore temporarily blurs a focused input; a DOM move is not a user commit.
             if (!reconciling) commitName(currentTag(), input, error);
@@ -485,12 +483,6 @@ export function createTagManager(adapter) {
                     if (focused !== entry.input && entry.input.getAttribute('aria-invalid') !== 'true') entry.input.value = tag.name;
                     entry.entity.update({ label: tag.name });
                     entry.countValue.textContent = String(counts.get(tag.id) ?? 0);
-                    entry.folder.hidden = !state.settings.bogus_folders;
-                    const type = folderTypes[tag.folder_type] ?? folderTypes.NONE;
-                    entry.folder.title = translate(type.tooltip);
-                    entry.folder.setAttribute('aria-label', entry.folder.title);
-                    entry.folder.replaceChildren(icon((type.fa_icon ?? 'fa-folder').replace(/^fa-/, '')));
-                    entry.folder.setAttribute('aria-pressed', String(tag.folder_type === 'OPEN' || tag.folder_type === 'CLOSED'));
                     entry.entity.slots.grip.hidden = Boolean(query);
                     row.hidden = Boolean(query) && !tag.name.toLowerCase().includes(query);
                     updateTagColors(tag, row);

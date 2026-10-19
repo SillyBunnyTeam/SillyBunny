@@ -307,10 +307,9 @@ describe('upstream main-list renderer boundary', () => {
         context.api.setCharacterListRenderer({ render });
         await context.api.printCharacters(true);
         const model = render.mock.calls[0][0];
-        expect(model.entities).toEqual(legacy.dataSource);
-        expect(model.entities.map(entity => entity.type)).toEqual(['character', 'tag', 'character']);
-        expect(model.entities.find(entity => entity.type === 'tag').entities).toHaveLength(2);
-        expect(model).toMatchObject({ view: 'characters', sourceCount: 2, hasAnyFilter: false, folderOpen: true, fullRefresh: true });
+        expect(model.entities).not.toEqual(legacy.dataSource);
+        expect(model.entities.map(entity => entity.type)).toEqual(['character', 'character']);
+        expect(model).toMatchObject({ view: 'characters', sourceCount: 2, hasAnyFilter: false, folderOpen: false, fullRefresh: true });
         expect(context.resetListPage).toHaveBeenCalledWith('characters');
         expect(context.printTagFilters).toHaveBeenCalledTimes(2);
         expect(context.applyTagsOnCharacterSelect).toHaveBeenCalledTimes(2);
@@ -337,7 +336,6 @@ describe('upstream main-list renderer boundary', () => {
         helper.setFilterData('group', state, true);
         const result = context.api.getEntitiesList({ doFilter: true, mainList: true });
         expect(result.filter(entity => entity.type !== 'tag')).toHaveLength(3);
-        expect(result.find(entity => entity.type === 'tag').entities).toHaveLength(3);
         expect(helper.getFilterData('group')).toBe(state);
         const fallback = context.api.getEntitiesList({ doFilter: true });
         expect(fallback.filter(entity => entity.type !== 'tag').map(entity => entity.type)).toEqual(
@@ -538,9 +536,11 @@ describe('id-based list actions', () => {
     function groupEditorSetup() {
         localStorage.clear();
         const group = { id: 'g1', name: 'Saved', fav: false };
+        const folderAssignments = new Map([['g1', 'saved-folder']]);
         const context = groupPersistenceSetup({
             groups: [group],
             editorDraft: { ...group },
+            editorFolderId: 'saved-folder',
             structuredClone: value => JSON.parse(JSON.stringify(value)),
             EDITABLE_KEYS: ['name', 'fav'],
             cloneDraftValue: value => value,
@@ -560,21 +560,39 @@ describe('id-based list actions', () => {
             resetChatState: jest.fn(),
             printMessages: jest.fn(),
             select_rm_info: jest.fn(),
+            getFolderId: (_scope, key) => folderAssignments.get(key) ?? null,
+            setFolder: jest.fn((_scope, keys, folderId) => {
+                for (const key of keys) {
+                    if (folderId === null) folderAssignments.delete(key);
+                    else folderAssignments.set(key, folderId);
+                }
+            }),
+            removeFolderEntityKey: jest.fn((_scope, key) => folderAssignments.delete(key)),
         }, ['captureEditorSnapshot', 'saveDraft', 'applyDraftToGroup', 'deleteGroupById', 'deleteGroup']);
+        let editor;
         const { session, drafts } = createStoredSession({
             captureSnapshot: context.api.captureEditorSnapshot,
-            restoreSnapshot: snapshot => { context.editorDraft = { ...snapshot }; },
-            persist: async receipt => {
-                if (await context.api.saveDraft(receipt.context.entityId, receipt.snapshot)) receipt.markSaved();
+            restoreSnapshot: snapshot => {
+                const { _folder, ...editable } = snapshot;
+                context.editorDraft = { ...editable };
+                context.editorFolderId = _folder ?? null;
             },
+            persist: receipt => editor.api._persist(receipt),
             prefix: 'sb-group-editor-draft-',
         });
-        const editor = loadSourceFunctions('scripts/sillybunny-group-editor.js', [
+        editor = loadSourceFunctions('scripts/sillybunny-group-editor.js', [
             'openGroupEditorSession', '_openSession', '_handleBack', '_navigateBack', 'isGroupEditorOwner',
-            'readGroupEditorBaseline', 'captureGroupEditorSave', 'discardGroupEditorForEntity',
+            'readGroupEditorBaseline', 'captureGroupEditorSave', 'discardGroupEditorForEntity', '_persist',
         ], {
             session,
-            callbacks: { getGroupName: () => group.name },
+            callbacks: {
+                getGroupName: () => group.name,
+                saveDraft: context.api.saveDraft,
+                commitFolder: jest.fn(),
+                getFolderValue: () => context.editorFolderId,
+                setFolderValue: value => { context.editorFolderId = value; },
+                onFolderChanged: () => session.changed({ immediate: true }),
+            },
             editorTitle: '',
             chrome: null,
             _refreshChrome: jest.fn(),
@@ -590,8 +608,82 @@ describe('id-based list actions', () => {
         context.captureGroupEditorSave = editor.api.captureGroupEditorSave;
         context.discardGroupEditorForEntity = editor.api.discardGroupEditorForEntity;
         editor.api.openGroupEditorSession('g1');
-        return { context, editor, session, drafts, group };
+        return { context, editor, session, drafts, group, folderAssignments };
     }
+
+    test('group Folder changes participate in discard and save without entering the group payload', async () => {
+        const { context, session, editor } = groupEditorSetup();
+        expect(session.readBaseline()._folder).toBe('saved-folder');
+
+        context.editorFolderId = 'discarded-folder';
+        session.changed({ immediate: true });
+        expect(session.isDirty()).toBe(true);
+        session.discard();
+        expect(context.editorFolderId).toBe('saved-folder');
+        expect(session.isDirty()).toBe(false);
+
+        context.editorFolderId = 'saved-next-folder';
+        session.changed({ immediate: true });
+        await session.save();
+        expect(editor.callbacks.commitFolder).toHaveBeenCalledWith('g1', 'saved-next-folder');
+        expect(JSON.parse(context.fetch.mock.calls.at(-1)[1].body)).not.toHaveProperty('_folder');
+        expect(session.readBaseline()._folder).toBe('saved-next-folder');
+        session.close();
+    });
+
+    test('group create acknowledges the submitted Folder in its saved baseline', async () => {
+        const draft = {
+            id: null,
+            avatar_url: '',
+            name: 'New group',
+            fav: false,
+            members: [],
+            disabled_members: [],
+            member_models: {},
+            _folder: 'new-group-folder',
+        };
+        const context = groupPersistenceSetup({
+            editorDraft: { ...draft },
+            characters: [],
+            GROUP_MEMBER_MODELS_KEY: 'member_models',
+            group_activation_strategy: { NATURAL: 0 },
+            group_generation_mode: { SWAP: 0 },
+            findGroupByMembers: () => null,
+            createNewGroupChat: jest.fn(),
+            toastr: { info: jest.fn() },
+            isValidImageUrl: () => false,
+            default_avatar: 'default.png',
+            humanizedDateTime: () => 'qa-chat',
+            onlyUnique: (value, index, values) => values.indexOf(value) === index,
+            getRequestHeaders: () => ({}),
+            fetch: jest.fn(async (_url, request) => ({
+                ok: true,
+                json: async () => ({ ...JSON.parse(request.body), id: 'created-group' }),
+            })),
+            createTagMapFromList: jest.fn(),
+            createEditorDraft: group => ({
+                id: group.id,
+                avatar_url: group.avatar_url,
+                ...Object.fromEntries(['name', 'fav', 'members', 'disabled_members', 'member_models'].map(key => [key, group[key]])),
+            }),
+            EDITABLE_KEYS: ['name', 'fav', 'members', 'disabled_members', 'member_models'],
+            cloneDraftValue: value => value,
+            setFolder: jest.fn(),
+            getCharacters: jest.fn(),
+            isGroupEditorOwner: () => true,
+            objectNavigation: { isRouting: false },
+            select_rm_info: jest.fn(),
+        }, ['createGroup']);
+        const receipt = { snapshot: draft, isCurrent: () => true, markSaved: jest.fn() };
+
+        await expect(context.api.createGroup(receipt)).resolves.toBe(true);
+
+        expect(context.setFolder).toHaveBeenCalledWith('groups', ['created-group'], 'new-group-folder');
+        expect(receipt.markSaved).toHaveBeenCalledWith(
+            { entityId: 'created-group', mode: 'edit' },
+            expect.objectContaining({ id: 'created-group', _folder: 'new-group-folder' }),
+        );
+    });
 
     test('group pencil-open, Back, list favorite and reopen stay clean and a later Save preserves the favorite', async () => {
         const { context, editor, session, group } = groupEditorSetup();
@@ -782,6 +874,14 @@ describe('id-based list actions', () => {
 
     function characterEditorSetup() {
         localStorage.clear();
+        let folderDraft = null;
+        const folderAssignments = new Map([['alice.png', 'original-folder']]);
+        const setFolder = jest.fn((_scope, keys, folderId) => {
+            for (const key of keys) {
+                if (folderId === null) folderAssignments.delete(key);
+                else folderAssignments.set(key, folderId);
+            }
+        });
         document.body.innerHTML = `
             <form id="form_create" actiontype="editcharacter">
                 <input id="character_name_pole" name="ch_name" value="Alice">
@@ -835,6 +935,8 @@ describe('id-based list actions', () => {
             accountStorage: { removeItem: jest.fn() },
             tag_map: {},
             select_rm_info: jest.fn(),
+            getFolderId: (_scope, key) => folderAssignments.get(key) ?? null,
+            setFolder,
             eventSource: { emit: jest.fn() },
             event_types: { CHARACTER_EDITED: 'edited', CHARACTER_DELETED: 'deleted' },
             removeCharacterFromUI: jest.fn(),
@@ -847,6 +949,7 @@ describe('id-based list actions', () => {
             restoreSnapshot: snapshot => {
                 document.getElementById('character_name_pole').value = snapshot.character_name_pole;
                 script.api.updateFavButtonState(snapshot._fav);
+                folderDraft = snapshot._folder ?? null;
             },
             persist: receipt => editor.api._persist(receipt),
             prefix: 'sb-editor-draft-',
@@ -856,6 +959,7 @@ describe('id-based list actions', () => {
             '_syncFavoritePressed', 'syncCharacterEditorFavorite', 'discardCharacterEditorForEntity',
             'markCharacterEditorSaved', '_handleExternalSave',
             'captureCharacterEditorSave', '_persist', 'openCharacterEditorCreateSession',
+            '_commitFolder',
         ], {
             session,
             drafts,
@@ -865,6 +969,10 @@ describe('id-based list actions', () => {
             t,
             this_chid: 0,
             SNAPSHOT_FIELDS: ['character_name_pole'],
+            getFolderId: (_scope, key) => folderAssignments.get(key) ?? null,
+            setFolder,
+            _folderDraft: () => folderDraft,
+            _setFolderDraft: value => { folderDraft = value; },
             draftAlt: [],
             draftGrp: [],
             draftOwner: 'alice.png',
@@ -892,8 +1000,26 @@ describe('id-based list actions', () => {
             if (type === 'edited') editor.api._handleExternalSave(...args);
         });
         editor.api.openCharacterEditorSession(0);
-        return { script, editor, session, drafts };
+        return { script, editor, session, drafts, folderAssignments, setFolder, getFolderDraft: () => folderDraft, setFolderDraft: value => { folderDraft = value; } };
     }
+
+    test('character Folder changes are dirty, discardable, and committed only after Save', async () => {
+        const { session, folderAssignments, getFolderDraft, setFolderDraft } = characterEditorSetup();
+        setFolderDraft('pending-folder');
+        session.changed({ immediate: true });
+        expect(session.isDirty()).toBe(true);
+
+        session.discard();
+        expect(getFolderDraft()).toBe('original-folder');
+        expect(session.isDirty()).toBe(false);
+
+        setFolderDraft('saved-folder');
+        session.changed({ immediate: true });
+        await session.save();
+        expect(folderAssignments.get('alice.png')).toBe('saved-folder');
+        expect(session.readBaseline()._folder).toBe('saved-folder');
+        session.close();
+    });
 
     test('character pencil-open, Back, list favorite and reopen stay clean and real Save retains the new value', async () => {
         const { script, editor, session } = characterEditorSetup();
@@ -994,12 +1120,13 @@ describe('id-based list actions', () => {
     });
 
     test('character create re-keys its submitted baseline and later edits to the returned avatar', async () => {
-        const { script, editor, session, drafts } = characterEditorSetup();
+        const { script, editor, session, drafts, setFolderDraft } = characterEditorSetup();
         session.suspend();
         document.getElementById('form_create').setAttribute('actiontype', 'createcharacter');
         document.getElementById('character_name_pole').value = 'V1';
         editor.draftOwner = 'new-character';
         editor.api.openCharacterEditorCreateSession();
+        setFolderDraft('create-folder');
         let finish;
         script.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
         const saving = session.save();
@@ -1020,6 +1147,7 @@ describe('id-based list actions', () => {
         expect(document.getElementById('form_create').getAttribute('actiontype')).toBe('editcharacter');
         expect(document.querySelector('[name="avatar_url"]').value).toBe('created.png');
         expect(editor.draftOwner).toBe('created.png');
+        expect(script.setFolder).toHaveBeenCalledWith('characters', ['created.png'], 'create-folder');
         await session.save();
         expect(script.fetch.mock.calls.at(-1)[0]).toBe('/api/characters/edit');
         expect(script.fetch.mock.calls.at(-1)[1].body.get('avatar_url')).toBe('created.png');

@@ -390,6 +390,7 @@ function finishClose() {
  * @param {string} [options.emptyText]
  * @param {Element|null} [options.bounds=null]
  * @param {boolean} [options.matchTriggerWidth=false] Desktop: match the trigger up to 560px and align inline-start.
+ * @param {boolean} [options.renderAsPopover=false] Keep a nested picker in the current modal on mobile.
  * @param {() => void|null} [options.onClose=null]
  * @returns {{ close: () => void, refresh: (items?: object[]) => void, readonly isOpen: boolean }}
  */
@@ -406,6 +407,7 @@ export function openPicker({
     emptyText = t`No results`,
     bounds = null,
     matchTriggerWidth = false,
+    renderAsPopover = false,
     onClose = null,
 }) {
     if (!(trigger instanceof HTMLElement) || !Array.isArray(items) || !Array.isArray(footer) || typeof onSelect !== 'function') {
@@ -438,7 +440,7 @@ export function openPicker({
         activeIndex: 0,
         searchTimer: 0,
         surface: null,
-        kind: isMobileLayout() ? 'sheet' : 'popover',
+        kind: renderAsPopover || !isMobileLayout() ? 'popover' : 'sheet',
     };
     setTriggerExpanded(trigger, true);
 

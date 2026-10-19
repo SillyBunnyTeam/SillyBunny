@@ -49,7 +49,7 @@ describe('Group chat shared bulk actions', () => {
         const rows = mounted.section.querySelectorAll('.group_select');
         for (const row of rows) row.querySelector('.ch_name').click();
         expect(mounted.section.querySelectorAll('.sb-selection-check:checked')).toHaveLength(2);
-        expect([...mounted.section.querySelectorAll('.sb-selection-action')].map(button => button.dataset.actionId)).toEqual(['tag', 'delete']);
+        expect([...mounted.section.querySelectorAll('.sb-selection-action')].map(button => button.dataset.actionId)).toEqual(['tag', 'folder', 'delete']);
         mounted.section.querySelector(`.sb-selection-action[data-action-id="${action}"]`).click();
         await settle();
         expect(overlay.runBulkAction).toHaveBeenCalledWith(action, ['0012', 'group-2']);

@@ -5657,11 +5657,8 @@
                                     <small data-i18n="Avatar Hover Magnification">Avatar Hover Magnification</small>
                                     <i title="Enables a magnification effect on hover when you display the zoomed avatar after clicking an avatar's image in chat." data-i18n="[title]Enables a magnification effect on hover when you display the zoomed avatar after clicking an avatar's image in chat." class="right_menu_button fa-solid fa-circle-exclamation"></i>
                                 </label>
-                                <label for="bogus_folders" class="checkbox_label" title="Show tagged character folders in the character list." data-i18n="[title]Show tagged character folders in the character list">
-                                    <input id="bogus_folders" type="checkbox" />
-                                    <small data-i18n="Tags as Folders">Tags as Folders</small>
-                                    <i title="Recent change: Tags must be marked as folders in the Tag Management menu to appear as such. Click here to bring it up." data-i18n="[title]Tags_as_Folders_desc" class="tags_view right_menu_button fa-solid fa-circle-exclamation"></i>
-                                </label>
+                                <!-- SillyBunny: retain the upstream setting as a hidden conversion transport. -->
+                                <input id="bogus_folders" type="checkbox" hidden />
                                 <label for="click_to_edit" class="checkbox_label" title="Click the message text in the chat log to edit it." data-i18n="[title]Click the message text in the chat log to edit it.">
                                     <input id="click_to_edit" type="checkbox" />
                                     <small data-i18n="Click to Edit">Click to Edit</small>
@@ -6930,6 +6927,7 @@
                                                     </div>
                                                     <div id="tagList" class="tags"></div>
                                                 </div>
+                                                <div id="character_folder_row" class="ds-field"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -7326,6 +7324,7 @@
                                                 </div>
                                                 <div id="groupTagList" class="tags"></div>
                                             </div>
+                                            <div id="group_folder_row" class="ds-field"></div>
                                         </div>
                                     </div>
                                 </div>

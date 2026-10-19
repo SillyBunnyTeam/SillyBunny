@@ -288,6 +288,7 @@
 }
 
 #rm_characters_block > .sb-character-list .filterByGroups,
+#rm_characters_block > .sb-character-list .filterByFolder,
 #rm_characters_block > .sb-character-list .manageTags,
 #rm_characters_block > .sb-character-list .showTagList,
 #rm_characters_block > .sb-character-list .clearAllFilters {
@@ -528,6 +529,43 @@
     color: var(--sb-accent);
 }
 
+.sb-character-list .sb-folder-row {
+    min-height: 48px;
+    padding-block: 4px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.sb-character-list .sb-folder-row .ds-entity-row__avatar {
+    display: grid;
+    flex-basis: 18px;
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    background: transparent;
+}
+
+.sb-character-list .sb-folder-row__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--sb-folder-color, var(--sb-muted-fg));
+}
+
+.sb-character-list .sb-folder-row .ds-entity-row__title {
+    font-weight: 700;
+}
+
+.sb-character-list .sb-folder-row .ds-entity-row__chevron {
+    margin-inline-start: 4px;
+}
+
+@media (forced-colors: active) {
+    .sb-character-list .sb-folder-row__dot {
+        outline: 1px solid CanvasText;
+    }
+}
+
 /* GNOME-style cards use the same rows and controls as list view. */
 body.charListGrid .sb-character-list #rm_print_characters_block {
     flex-grow: 0;
@@ -553,6 +591,35 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
     border: 1px solid var(--sb-shell-border);
     border-radius: var(--sb-radius-card);
     background: var(--sb-layer-view);
+}
+
+body.charListGrid .sb-character-list #rm_print_characters_block > .sb-folder-row {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center !important;
+    width: 100%;
+    min-height: 48px;
+    padding: 6px 12px;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+body.charListGrid .sb-character-list .sb-folder-row > .ds-entity-row__avatar {
+    align-self: center;
+    flex: 0 0 18px;
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    max-width: 18px;
+    margin: 0;
+}
+
+body.charListGrid .sb-character-list #rm_print_characters_block .sb-folder-row .ds-entity-row__subtitle {
+    display: block;
+}
+
+body.charListGrid .sb-character-list .sb-folder-row .ds-entity-row__chevron {
+    margin-block-start: 0;
 }
 
 body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row:is(.is-selected, .is-selection-selected) {
@@ -678,6 +745,10 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
 
     .sb-character-list__search {
         height: 44px;
+        min-height: 44px;
+    }
+
+    .sb-character-list .sb-folder-row {
         min-height: 44px;
     }
 

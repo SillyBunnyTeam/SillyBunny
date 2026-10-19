@@ -185,12 +185,13 @@ for (const width of [1440, 390]) {
             await expect(manager(page).locator('.tag_view_item').first()).toHaveAttribute('id', 'qa-tag-beta');
         });
 
-        test('header and row menus retain folders, sort, Backup, Restore, Prune and delete/merge flows', async ({ page }) => {
+        test('header and row menus retain sort, Backup, Restore, Prune and delete/merge flows', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);
             let menu = await headerMenu(page);
-            await menu.getByRole('menuitemcheckbox', { name: 'Tags as Folders', exact: true }).click();
-            await expect(row(page, fixtureTag).locator('.sb-tag-manager__folder')).toBeVisible();
+            await expect(menu.getByRole('menuitemcheckbox', { name: 'Tags as Folders', exact: true })).toHaveCount(0);
+            await expect(row(page, fixtureTag).locator('.sb-tag-manager__folder')).toHaveCount(0);
+            await page.keyboard.press('Escape');
             menu = await headerMenu(page);
             await menu.getByRole('menuitemradio', { name: 'Alphabetical (A-Z)', exact: true }).click();
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();

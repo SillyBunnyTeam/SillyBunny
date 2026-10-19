@@ -17,6 +17,8 @@ import {
 import { RA_CountCharTokens, humanizedDateTime, dragElement, favsToHotswap, getMessageTimeStamp } from './RossAscends-mods.js';
 import { power_user, loadMovingUIState, sortEntitiesList } from './power-user.js';
 import { debounce_timeout } from './constants.js';
+// SillyBunny: group folder membership is settings-only editor state, removed with the group.
+import { getFolderId, removeEntityKey as removeFolderEntityKey, setFolder } from './sillybunny-folders.js';
 
 import {
     chat,
@@ -119,6 +121,7 @@ import {
     // SillyBunny: cloned member filters share the searchable tag menu — see docs/ui-migration.md.
     attachGroupTagFilterMenus,
     prepareGroupEditorReveal,
+    setGroupEditorFolderValue,
 } from './sillybunny-group-editor.js';
 
 export {
@@ -179,6 +182,7 @@ const EDITABLE_KEYS = [
 
 /** @type {GroupDraft|null} */
 let editorDraft = null;
+let editorFolderId = null;
 // SillyBunny: group routes share deferred-style readiness, including failed-link retries — see docs/ui-migration.md
 let groupEditorReady = Promise.resolve(true);
 
@@ -240,6 +244,8 @@ function _draftDefaultFor(key, group) {
 /** Start a new draft for the group being loaded; null starts an empty one. */
 function resetEditorDraft(group) {
     editorDraft = createEditorDraft(group ?? null);
+    editorFolderId = group?.id ? getFolderId('groups', String(group.id)) : null;
+    setGroupEditorFolderValue(editorFolderId);
 }
 
 /**
@@ -286,6 +292,7 @@ function applyDraftToGroup(group, draft) {
  */
 function writeGroupEditorFields(source) {
     if (!source) return;
+    setGroupEditorFolderValue(editorFolderId);
 
     const name = $('#rm_group_chat_name');
     if (name.val() !== source.name) name.val(source.name ?? '');
@@ -2377,6 +2384,7 @@ async function deleteGroup(id) {
         await clearChat();
         selected_group = null;
         delete tag_map[id];
+        removeFolderEntityKey('groups', String(id));
         resetChatState();
         await printMessages();
         await getCharacters();
@@ -3596,7 +3604,7 @@ async function saveDraft(groupId, snapshot) {
  * @returns {object}
  */
 function captureEditorSnapshot() {
-    return editorDraft ? structuredClone(editorDraft) : {};
+    return editorDraft ? { ...structuredClone(editorDraft), _folder: editorFolderId } : {};
 }
 
 /**
@@ -3606,6 +3614,10 @@ function captureEditorSnapshot() {
  */
 function applyEditorSnapshot(snapshot) {
     if (!editorDraft || !snapshot) return;
+    if (Object.hasOwn(snapshot, '_folder')) {
+        editorFolderId = snapshot._folder ? String(snapshot._folder) : null;
+        setGroupEditorFolderValue(editorFolderId);
+    }
     // v1 backups from the DOM-based controller used field IDs and underscored
     // member keys. Only known editable values may cross the restore boundary.
     const legacyKeys = {
@@ -3662,11 +3674,18 @@ function reconcileEditorDraft(group) {
             adopted = true;
         }
     }
+    const baselineFolder = baseline?._folder ?? null;
+    const liveFolder = group?.id ? getFolderId('groups', String(group.id)) : null;
+    if (editorFolderId === baselineFolder && editorFolderId !== liveFolder) {
+        editorFolderId = liveFolder;
+        setGroupEditorFolderValue(editorFolderId);
+        adopted = true;
+    }
     // The baseline is what the live group holds, not the merge result: the merge
     // deliberately keeps the user's edited keys, and baselining those would
     // report the unsaved edits as saved, so Save would skip them and a later
     // discard would revert to them instead of the stored group.
-    const liveSnapshot = createEditorDraft(group);
+    const liveSnapshot = { ...createEditorDraft(group), _folder: liveFolder };
     rebaseGroupEditor(liveSnapshot);
     writeGroupEditorFields(editorDraft);
     printGroupCandidates();
@@ -4012,7 +4031,9 @@ async function createGroup(receipt = captureGroupEditorSave()) {
     const data = await createGroupResponse.json();
     createTagMapFromList(tagList, data.id);
     if (receipt.isCurrent() && editorDraft === pendingDraft) {
-        const savedSnapshot = createEditorDraft(data);
+        // Folder membership is a settings-only editor value, so it is not part
+        // of the server response or the group draft's editable keys.
+        const savedSnapshot = { ...createEditorDraft(data), _folder: draft._folder ?? null };
         // Adopt server defaults without overwriting edits made after submission.
         for (const key of ['avatar_url', ...EDITABLE_KEYS]) {
             if (JSON.stringify(editorDraft[key]) === JSON.stringify(draft[key])) {
@@ -4021,6 +4042,7 @@ async function createGroup(receipt = captureGroupEditorSave()) {
         }
         editorDraft.id = data.id;
         openGroupId = data.id;
+        setFolder('groups', [String(data.id)], receipt.snapshot?._folder ?? null);
         receipt.markSaved({ entityId: String(data.id), mode: 'edit' }, savedSnapshot);
     }
     await getCharacters();
@@ -4415,6 +4437,10 @@ jQuery(() => {
         canCreate: () => getGroupCharacters({ doFilter: false, onlyMembers: true }).length > 0,
         canRestoreAvatar: canRestoreGroupAvatar,
         reorderMembers: reorderMembersByIndices,
+        getFolderValue: () => editorFolderId,
+        setFolderValue: value => { editorFolderId = value ? String(value) : null; },
+        onFolderChanged: () => notifyGroupEditorChanged({ immediate: true }),
+        commitFolder: (groupId, folderId) => setFolder('groups', [String(groupId)], folderId),
     });
     if (!CSS.supports('field-sizing', 'content')) {
         $(document).on('input', '#rm_group_chats_block .autoSetHeight', function () {

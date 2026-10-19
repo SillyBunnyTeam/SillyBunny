@@ -307,7 +307,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(popup.getByRole('button', { name: 'Discard', exact: true })).toBeVisible();
         await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(popup).toBeHidden();
-        await expect(page.locator('#sb_group_editor_header')).toBeVisible();
+        await expect(page.locator('#right-nav-panel')).toHaveAttribute('data-menu-type', 'group_edit');
+        await expect(page.locator('#sb_group_editor_content')).toBeVisible();
         await expect(page.locator('#rm_ch_create_block')).toBeHidden();
         await expect(row.getByRole('switch')).not.toBeChecked();
         expect(await readChatState(page)).toEqual(chat);

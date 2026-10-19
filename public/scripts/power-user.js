@@ -56,7 +56,7 @@ import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment } from './utils.js';
+import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 // SillyBunny: the shared sort control delegates Groups persistence to the
 // view-scoped state module — see docs/ui-migration.md
@@ -83,6 +83,8 @@ import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
+// SillyBunny: persisted one-level Characters and Groups folders.
+import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -402,6 +404,13 @@ export const power_user = {
     quote_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeQuoteColor').trim()}`,
     sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile })),
     sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION,
+    // SillyBunny: folders are separate from the upstream tag-folder settings.
+    sb_folders: {
+        version: 1,
+        migratedFromTags: false,
+        characters: { folders: [], members: {} },
+        groups: { folders: [], members: {} },
+    },
     sb_preset_autosave: false,
     characterEditorQuickEdit: false,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
@@ -2172,6 +2181,23 @@ export async function loadPowerUserSettings(settings, data) {
         }
         Object.assign(power_user, settings.power_user);
     }
+
+    // SillyBunny: normalise saved folder data at the settings boundary.
+    const sourceFolders = power_user.sb_folders;
+    const normalizedFolders = normalizeFoldersData(sourceFolders, uuidv4);
+    if (JSON.stringify(sourceFolders) !== JSON.stringify(normalizedFolders)) {
+        power_user.sb_folders = normalizedFolders;
+        saveSettingsDebounced();
+    } else {
+        power_user.sb_folders = normalizedFolders;
+    }
+    configureFolderStore({
+        powerUser: power_user,
+        saveSettingsDebounced,
+        idFactory: uuidv4,
+        eventSource,
+        eventTypes: event_types,
+    });
 
     // SillyBunny: preset autosave is on for new installs and off for upgrades until the user opts in.
     if (!Object.hasOwn(savedPowerUserSettings, 'sb_preset_autosave')) {
