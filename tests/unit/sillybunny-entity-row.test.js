@@ -793,6 +793,16 @@ describe('limitTagChips', () => {
 });
 
 describe('entity keys', () => {
+    test('builds saved agent keys without changing the persisted ID', () => {
+        expect(entityKey('agent', 'saved:helper')).toBe('agent:saved:helper');
+        expect(entityKey('agent', 0)).toBe('agent:0');
+    });
+
+    test('uses a distinct namespace for unused agent templates even when IDs collide', () => {
+        expect(entityKey('agent-template', 'tpl-helper')).toBe('agent-template:tpl-helper');
+        expect(entityKey('agent-template', 'tpl-helper')).not.toBe(entityKey('agent', 'tpl-helper'));
+    });
+
     test('builds keys for each supported kind and preserves numeric zero', () => {
         for (const kind of ['character', 'group', 'tag', 'persona']) {
             expect(entityKey(kind, 'stable:id')).toBe(`${kind}:stable:id`);

@@ -2,7 +2,7 @@ import { DiffMatchPatch } from '../../../lib.js';
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../popup.js';
 import { accountStorage } from '../../util/AccountStorage.js';
-import { download, escapeHtml, escapeRegex, getSortableDelay, uuidv4 } from '../../utils.js';
+import { download, escapeHtml, escapeRegex, getSortableDelay } from '../../utils.js';
 import { activateSendButtons, CLIENT_VERSION, chat, deactivateSendButtons, getCurrentChatId, getRequestHeaders, generateQuietPrompt, is_send_press, normalizeContentText, saveChatDebounced, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { eventSource, event_types } from '../../events.js';
 import { is_group_generating } from '../../group-chats.js';
@@ -27,7 +27,6 @@ import {
     initializeScopedAgentEnableState,
     isAgentEnabledForCurrentScope,
     LEGACY_AGENT_MAX_TOKENS,
-    normalizeAgentCategory,
     getAgentChatScopeLabel,
     getPromptTransformMode,
     isTrackerFixAgent,
@@ -98,6 +97,29 @@ import { initCompanionCardUi, updateCompanionButtonVisibility } from './companio
 import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
 import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility } from './companion/companion-panel.js';
 import { attachTextareaFullscreen } from './textarea-fullscreen.js';
+import { t } from '../../i18n.js';
+import {
+    buildAgentFromTemplate as buildCatalogueAgentFromTemplate,
+    buildUpdatedAgentFromTemplate as buildCatalogueUpdatedAgentFromTemplate,
+    buildAgentFromSnapshot,
+    ensureDefaultBundledAgents as ensureCatalogueDefaultBundledAgents,
+    findSourceTemplateForAgent as findCatalogueSourceTemplateForAgent,
+    getAgentOrderValue,
+    getAgentVersionValue,
+    getTemplateVersionValue,
+    getAgentsWithTemplateUpdates as getCatalogueAgentsWithTemplateUpdates,
+    getDefaultBundledTemplates as getCatalogueDefaultBundledTemplates,
+    hasTemplateUpdate as hasCatalogueTemplateUpdate,
+    hasIdenticalAgent,
+    hasMatchingAgentSnapshot as hasCatalogueMatchingAgentSnapshot,
+    HIDDEN_TEMPLATE_BROWSER_IDS,
+    isBundledRegexPostDefaultTemplate,
+    isRemovedBundledAgent,
+    mergeTemplateDefaults as mergeCatalogueTemplateDefaults,
+    REMOVED_BUNDLED_TEMPLATE_IDS,
+    resetBundledAgents,
+    shouldUseTrackerPromptPassDefaults,
+} from './catalogue.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfinder';
@@ -110,20 +132,6 @@ let templates = [];
 let templateRegexBundles = {};
 let autoSeededTemplateIds = new Set();
 
-const DEFAULT_BUNDLED_TEMPLATE_IDS = new Set([
-    'tpl-prose-polisher',
-]);
-
-// Internal bundled templates stay available for migrations/settings even when
-// their agent card is hidden from the In-Chat Agents management UI.
-const INTERNAL_BUNDLED_TEMPLATE_IDS = new Set([
-    'tpl-pathfinder',
-]);
-
-const HIDDEN_TEMPLATE_BROWSER_IDS = new Set([
-    'tpl-pathfinder',
-]);
-
 /** Whether the agent list is in multi-select mode. */
 let selectModeActive = false;
 /** Set of agent IDs currently selected in select mode. */
@@ -133,24 +141,11 @@ let pathfinderExtensionsMountPromise = null;
 let pathfinderExtensionsMountRevision = 0;
 let fixTrackersRunning = false;
 
-const REMOVED_BUNDLED_TEMPLATE_IDS = new Set([
-    'tpl-anti-slop-regex',
-    'tpl-director-core',
-    'tpl-nsfw-mode',
-]);
-
-const REMOVED_BUNDLED_AGENT_NAMES = new Set([
-    'anti-slop regex',
-    'director core',
-    'nsfw mode',
-]);
-
 const REMOVED_BUNDLED_GROUP_IDS = new Set([
     'grp-pura-director',
 ]);
 
 const CHATROOM_TEMPLATE_ID = 'tpl-chatroom-companion';
-const MESSAGE_INBOX_TEMPLATE_ID = 'tpl-message-inbox-companion';
 const DIRECTORS_COMMENTARY_TEMPLATE_ID = 'tpl-directors-commentary-companion';
 const PLOT_COMPASS_TEMPLATE_ID = 'tpl-plot-compass-companion';
 const LEVEL_UP_COMPANION_TEMPLATE_ID = 'tpl-level-up-companion';
@@ -190,10 +185,6 @@ const DIRECTOR_COMMENTARY_VOICE_VALUES = Object.freeze([
     'grand-satirical-stage',
     'randomised',
     DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE,
-]);
-const BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS = new Set([
-    CHATROOM_TEMPLATE_ID,
-    MESSAGE_INBOX_TEMPLATE_ID,
 ]);
 const BUNDLED_PROMPT_TRANSFORM_IMPERSONATE_TEMPLATE_IDS = new Set([
     'tpl-prose-polisher',
@@ -473,6 +464,20 @@ function persistExtensionState() {
     };
     delete extension_settings.inChatAgents.groups;
     saveSettingsDebounced();
+}
+
+function getCatalogueContext() {
+    return {
+        templates,
+        regexBundles: templateRegexBundles,
+        getAgents,
+        saveAgent,
+        initializeScopedAgentEnableState,
+        setAgentEnabledForCurrentScope,
+        persistState: persistExtensionState,
+        autoSeededTemplateIds,
+        t,
+    };
 }
 
 function restoreAutoSeededTemplateIds(savedState) {
@@ -869,23 +874,7 @@ function findTemplateForAgent(agent) {
 }
 
 function findSourceTemplateForAgent(agent) {
-    const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
-    return sourceTemplateId ? findTemplateById(sourceTemplateId) : null;
-}
-
-function getAgentOrderValue(agent) {
-    const order = Number(agent?.injection?.order ?? 0);
-    return Number.isFinite(order) ? order : 0;
-}
-
-function getAgentVersionValue(agent) {
-    const version = Number(agent?.version ?? 1);
-    return Number.isFinite(version) ? version : 1;
-}
-
-function getTemplateVersionValue(template) {
-    const version = Number(template?.version ?? 1);
-    return Number.isFinite(version) ? version : 1;
+    return findCatalogueSourceTemplateForAgent(agent, templates);
 }
 
 function buildAgentOrderPill(agent) {
@@ -893,12 +882,11 @@ function buildAgentOrderPill(agent) {
 }
 
 function hasTemplateUpdate(agent) {
-    const sourceTemplate = findSourceTemplateForAgent(agent);
-    return Boolean(sourceTemplate && getTemplateVersionValue(sourceTemplate) > getAgentVersionValue(agent));
+    return hasCatalogueTemplateUpdate(agent, templates);
 }
 
 function getAgentsWithTemplateUpdates() {
-    return getAgents().filter(hasTemplateUpdate);
+    return getCatalogueAgentsWithTemplateUpdates(getAgents(), templates);
 }
 
 function buildAgentVersionPill(agent) {
@@ -912,117 +900,12 @@ function buildAgentVersionPill(agent) {
     return `<span class="ica--card-pill ica--card-pill--version">v${escapeHtml(agentVersion)}</span>`;
 }
 
-function getBundledRegexScriptsForTemplate(templateId) {
-    const bundledScripts = templateRegexBundles[String(templateId ?? '').trim()];
-    return Array.isArray(bundledScripts)
-        ? bundledScripts.map(script => normalizeRegexScript(script ?? {}))
-        : [];
-}
-
-function shouldUseTrackerPromptPassDefaults(template) {
-    return String(template?.category ?? '') === 'tracker';
-}
-
-function applyBundledTrackerPromptPass(template) {
-    if (!shouldUseTrackerPromptPassDefaults(template)) {
-        return template;
-    }
-
-    const postProcess = template?.postProcess && typeof template.postProcess === 'object'
-        ? template.postProcess
-        : {};
-
-    return {
-        ...template,
-        phase: 'pre',
-        postProcess: {
-            ...postProcess,
-            promptTransformEnabled: false,
-            promptTransformShowNotifications: Object.hasOwn(postProcess, 'promptTransformShowNotifications')
-                ? Boolean(postProcess.promptTransformShowNotifications)
-                : true,
-            promptTransformMode: 'append',
-            promptTransformMaxTokens: Number.isFinite(Number(postProcess.promptTransformMaxTokens))
-                ? Number(postProcess.promptTransformMaxTokens)
-                : DEFAULT_AGENT_MAX_TOKENS,
-        },
-    };
-}
-
-function isBundledRegexPostDefaultTemplate(template, bundledScripts = null) {
-    const templateId = String(template?.id ?? '').trim();
-    if (!template
-        || shouldUseTrackerPromptPassDefaults(template)
-        || BUNDLED_REGEX_POST_DEFAULT_EXCLUDED_TEMPLATE_IDS.has(templateId)) {
-        return false;
-    }
-
-    const resolvedScripts = Array.isArray(bundledScripts)
-        ? bundledScripts
-        : (Array.isArray(template?.regexScripts) ? template.regexScripts : getBundledRegexScriptsForTemplate(templateId));
-
-    return Array.isArray(resolvedScripts) && resolvedScripts.length > 0;
-}
-
-function getBundledRegexPromptTransformMode(template) {
-    return shouldUseTrackerPromptPassDefaults(template) ? 'append' : 'rewrite';
-}
-
-function applyBundledRegexPostDefaults(template, bundledScripts = null) {
-    if (!isBundledRegexPostDefaultTemplate(template, bundledScripts)) {
-        return template;
-    }
-
-    const postProcess = template?.postProcess && typeof template.postProcess === 'object'
-        ? template.postProcess
-        : {};
-    const hasPrompt = Boolean(String(template?.prompt ?? '').trim());
-
-    return {
-        ...template,
-        phase: 'post',
-        postProcess: {
-            ...postProcess,
-            promptTransformEnabled: hasPrompt ? true : Boolean(postProcess.promptTransformEnabled),
-            promptTransformShowNotifications: Object.hasOwn(postProcess, 'promptTransformShowNotifications')
-                ? Boolean(postProcess.promptTransformShowNotifications)
-                : true,
-            promptTransformMode: hasPrompt
-                ? getBundledRegexPromptTransformMode(template)
-                : (postProcess.promptTransformMode === 'append' ? 'append' : 'rewrite'),
-            promptTransformMaxTokens: Number.isFinite(Number(postProcess.promptTransformMaxTokens))
-                ? Number(postProcess.promptTransformMaxTokens)
-                : DEFAULT_AGENT_MAX_TOKENS,
-        },
-    };
-}
-
 function mergeTemplateDefaults(template) {
-    const normalizedTemplate = {
-        ...template,
-        category: normalizeAgentCategory(template?.category, template?.id, template?.name),
-    };
-    const templateWithPromptPass = applyBundledTrackerPromptPass(normalizedTemplate);
-    const bundledScripts = getBundledRegexScriptsForTemplate(templateWithPromptPass?.id);
-    const templateWithRegexPostDefaults = applyBundledRegexPostDefaults(templateWithPromptPass, bundledScripts);
-    if (bundledScripts.length === 0) {
-        return {
-            ...templateWithRegexPostDefaults,
-            regexScripts: getAgentRegexScripts(templateWithRegexPostDefaults),
-        };
-    }
-
-    return {
-        ...templateWithRegexPostDefaults,
-        regexScripts: bundledScripts,
-    };
+    return mergeCatalogueTemplateDefaults(template, { regexBundles: templateRegexBundles });
 }
 
 function getDefaultBundledTemplates() {
-    return templates.filter(template => {
-        const templateId = String(template?.id ?? '').trim();
-        return DEFAULT_BUNDLED_TEMPLATE_IDS.has(templateId) || INTERNAL_BUNDLED_TEMPLATE_IDS.has(templateId);
-    });
+    return getCatalogueDefaultBundledTemplates(templates);
 }
 
 function getVisibleTemplateBrowserTemplates() {
@@ -1276,30 +1159,11 @@ async function previewPreGenerationPrompt(agent, promptOverride = null) {
 }
 
 function buildAgentFromTemplate(template) {
-    const agent = {
-        ...createDefaultAgent(),
-        ...structuredClone(mergeTemplateDefaults(template)),
-        id: uuidv4(),
-        sourceTemplateId: template.id,
-        enabled: false,
-    };
-    delete agent.subcategory;
-    return agent;
+    return buildCatalogueAgentFromTemplate(template, { regexBundles: templateRegexBundles });
 }
 
 function buildUpdatedAgentFromTemplate(agent, template) {
-    const updatedAgent = buildAgentFromTemplate(template);
-    updatedAgent.id = agent.id;
-    updatedAgent.enabled = Boolean(agent.enabled);
-    updatedAgent.favorite = Boolean(agent.favorite);
-    updatedAgent.connectionProfile = typeof agent.connectionProfile === 'string' ? agent.connectionProfile : '';
-    updatedAgent.modelOverride = typeof agent.modelOverride === 'string' ? agent.modelOverride : '';
-    updatedAgent.injection = {
-        ...updatedAgent.injection,
-        order: getAgentOrderValue(agent),
-    };
-    updatedAgent.phaseLocked = false;
-    return updatedAgent;
+    return buildCatalogueUpdatedAgentFromTemplate(agent, template, { regexBundles: templateRegexBundles });
 }
 
 async function updateAgentFromSourceTemplate(agent) {
@@ -1369,56 +1233,9 @@ function updateUpdateAllButtonVisibility() {
     button.attr('title', `Update ${outdatedCount} agent(s) whose bundled template has a newer version`);
 }
 
-function buildAgentFromSnapshot(snapshot) {
-    return {
-        ...createDefaultAgent(),
-        ...structuredClone(snapshot),
-        id: uuidv4(),
-        enabled: false,
-    };
-}
-
 globalThis.SillyBunnyAgents = Object.assign(globalThis.SillyBunnyAgents || {}, {
     getEnabledAgents,
 });
-
-function getComparableAgentSnapshot(agent) {
-    const snapshot = structuredClone(agent || {});
-    delete snapshot.id;
-    delete snapshot.enabled;
-    delete snapshot.favorite;
-    return snapshot;
-}
-
-function stableAgentComparableValue(value) {
-    if (Array.isArray(value)) {
-        return value.map(stableAgentComparableValue);
-    }
-
-    if (value && typeof value === 'object') {
-        return Object.fromEntries(
-            Object.entries(value)
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([key, entryValue]) => [key, stableAgentComparableValue(entryValue)]),
-        );
-    }
-
-    return value;
-}
-
-function getComparableAgentKey(agent) {
-    return JSON.stringify(stableAgentComparableValue(getComparableAgentSnapshot(agent)));
-}
-
-function hasIdenticalAgent(agent, existingAgents = getAgents()) {
-    const candidateKey = getComparableAgentKey(agent);
-    const candidateName = String(agent?.name ?? '').trim();
-
-    return existingAgents.some(existingAgent =>
-        String(existingAgent?.name ?? '').trim() === candidateName &&
-        getComparableAgentKey(existingAgent) === candidateKey,
-    );
-}
 
 async function confirmDuplicateAgentAddition(agent, existingAgents = getAgents()) {
     if (hasIdenticalAgent(agent, existingAgents)) {
@@ -1858,13 +1675,7 @@ async function purgeRemovedBundledAgents() {
     let removedCount = 0;
 
     for (const agent of [...getAgents()]) {
-        const sourceTemplateId = String(agent?.sourceTemplateId ?? '').trim();
-        const agentName = String(agent?.name ?? '').trim().toLowerCase();
-        const agentAuthor = String(agent?.author ?? '').trim().toLowerCase();
-        const isRemovedBundledAgent = REMOVED_BUNDLED_TEMPLATE_IDS.has(sourceTemplateId)
-            || (REMOVED_BUNDLED_AGENT_NAMES.has(agentName) && agentAuthor === 'sillybunny');
-
-        if (!isRemovedBundledAgent) {
+        if (!isRemovedBundledAgent(agent)) {
             continue;
         }
 
@@ -1891,31 +1702,7 @@ async function loadCustomGroupsFromServer() {
 }
 
 async function ensureDefaultBundledAgents() {
-    let touchedSeedState = false;
-
-    for (const template of getDefaultBundledTemplates()) {
-        const templateId = String(template?.id ?? '').trim();
-        if (!templateId) {
-            continue;
-        }
-
-        const shouldEnsureTemplate = INTERNAL_BUNDLED_TEMPLATE_IDS.has(templateId) || !autoSeededTemplateIds.has(templateId);
-        if (shouldEnsureTemplate) {
-            const seededAgent = buildAgentFromTemplate(template);
-            if (!hasMatchingAgentSnapshot(seededAgent)) {
-                await saveAgent(seededAgent);
-            }
-        }
-
-        if (!autoSeededTemplateIds.has(templateId)) {
-            autoSeededTemplateIds.add(templateId);
-            touchedSeedState = true;
-        }
-    }
-
-    if (touchedSeedState) {
-        persistExtensionState();
-    }
+    await ensureCatalogueDefaultBundledAgents(getCatalogueContext());
 }
 
 async function migrateLegacyGroups(legacyGroups = []) {
@@ -1950,33 +1737,7 @@ async function migrateLegacyGroups(legacyGroups = []) {
 }
 
 function hasMatchingAgentSnapshot(snapshot, existingAgents = getAgents()) {
-    const snapshotTemplateId = String(snapshot?.sourceTemplateId ?? '').trim();
-    const snapshotName = String(snapshot?.name ?? '').trim().toLowerCase();
-    const snapshotPrompt = String(snapshot?.prompt ?? '').trim();
-
-    return existingAgents.some(agent => {
-        const existingTemplateId = String(agent?.sourceTemplateId ?? '').trim();
-        const existingName = String(agent?.name ?? '').trim().toLowerCase();
-        const existingPrompt = String(agent?.prompt ?? '').trim();
-
-        if (snapshotTemplateId && existingTemplateId === snapshotTemplateId) {
-            return true;
-        }
-
-        if (snapshotTemplateId && snapshotName && existingName === snapshotName) {
-            return true;
-        }
-
-        if (!snapshotName || existingName !== snapshotName) {
-            return false;
-        }
-
-        if (snapshotPrompt) {
-            return existingPrompt === snapshotPrompt;
-        }
-
-        return true;
-    });
+    return hasCatalogueMatchingAgentSnapshot(snapshot, existingAgents);
 }
 
 // ===================== Panel Rendering =====================
@@ -6124,43 +5885,8 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             POPUP_TYPE.CONFIRM,
         ).show();
         if (result !== POPUP_RESULT.AFFIRMATIVE) return;
-        let resetCount = 0;
-        for (const agent of agents) {
-            const template = findTemplateForAgent(agent);
-            if (!template) continue;
-            const fresh = mergeTemplateDefaults(template);
-            agent.name = fresh.name ?? agent.name;
-            agent.description = fresh.description ?? agent.description;
-            agent.icon = fresh.icon ?? agent.icon;
-            agent.category = fresh.category ?? agent.category;
-            agent.tags = fresh.tags ?? agent.tags;
-            agent.author = fresh.author ?? agent.author;
-            agent.prompt = fresh.prompt ?? agent.prompt;
-            agent.phase = fresh.phase ?? 'pre';
-            agent.phaseLocked = false;
-            agent.injection = { ...agent.injection, ...fresh.injection };
-            agent.postProcess = { ...agent.postProcess, ...fresh.postProcess };
-            agent.regexScripts = Array.isArray(fresh.regexScripts) ? structuredClone(fresh.regexScripts) : agent.regexScripts;
-            // Reset companion settings (execution, batch, context flags) to template defaults too.
-            // Agent-level connectionProfile/modelOverride and per-agent settings live outside
-            // agent.companion, so they are preserved automatically.
-            if (fresh.companion && typeof fresh.companion === 'object') {
-                agent.companion = structuredClone(fresh.companion);
-            }
-            agent.execution = fresh.execution ?? agent.execution;
-            agent.sourceTemplateId = template.id;
-            await saveAgent(agent);
-            resetCount++;
-        }
-        for (const template of missingDefaultBundledTemplates) {
-            const freshAgent = buildAgentFromTemplate(template);
-            await saveAgent(freshAgent);
-            autoSeededTemplateIds.add(String(template.id ?? '').trim());
-            resetCount++;
-        }
-        if (missingDefaultBundledTemplates.length > 0) {
-            persistExtensionState();
-        }
+        const { reset, added } = await resetBundledAgents(getCatalogueContext());
+        const resetCount = reset + added;
         toastr.success(`Reset ${resetCount} bundled agent${resetCount !== 1 ? 's' : ''} to defaults.`);
         renderAgentList();
     });

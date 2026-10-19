@@ -13,6 +13,9 @@ beforeAll(async () => {
         renderExtensionTemplateAsync: jest.fn(async () => ''),
         getContext: jest.fn(() => ({})),
     }));
+    await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+        t: jest.fn(),
+    }));
 
     await jest.unstable_mockModule('../public/lib.js', () => ({
         DiffMatchPatch: class DiffMatchPatch {

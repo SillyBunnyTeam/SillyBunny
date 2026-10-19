@@ -16,6 +16,7 @@ const {
 
 const templateDir = new URL('../public/scripts/extensions/in-chat-agents/templates/', import.meta.url);
 const indexSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/index.js', import.meta.url);
+const catalogueSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/catalogue.js', import.meta.url);
 const sourceFilenames = [
     'achievements-tracker.json',
     'actor-interview-companion.json',
@@ -69,8 +70,8 @@ function readTemplate(filename) {
     return JSON.parse(fs.readFileSync(new URL(filename, templateDir), 'utf8'));
 }
 
-function readIndexSetBody(name) {
-    const source = fs.readFileSync(indexSourceUrl, 'utf8');
+function readCatalogueSetBody(name) {
+    const source = fs.readFileSync(catalogueSourceUrl, 'utf8');
     const match = source.match(new RegExp(`${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`));
 
     if (!match) {
@@ -675,10 +676,10 @@ describe('in-chat agent bundled templates', () => {
     test('hides Pathfinder from the in-chat template browser without purging the internal agent', () => {
         const pathfinderTemplateId = '\'tpl-pathfinder\'';
 
-        expect(readIndexSetBody('HIDDEN_TEMPLATE_BROWSER_IDS')).toContain(pathfinderTemplateId);
-        expect(readIndexSetBody('INTERNAL_BUNDLED_TEMPLATE_IDS')).toContain(pathfinderTemplateId);
-        expect(readIndexSetBody('REMOVED_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
-        expect(readIndexSetBody('DEFAULT_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
+        expect(readCatalogueSetBody('HIDDEN_TEMPLATE_BROWSER_IDS')).toContain(pathfinderTemplateId);
+        expect(readCatalogueSetBody('INTERNAL_BUNDLED_TEMPLATE_IDS')).toContain(pathfinderTemplateId);
+        expect(readCatalogueSetBody('REMOVED_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
+        expect(readCatalogueSetBody('DEFAULT_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
     });
 
     test('keeps every catalog template category renderable in the browser', async () => {

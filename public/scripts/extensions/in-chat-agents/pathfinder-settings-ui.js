@@ -28,6 +28,7 @@ import { clearFeed, getFeedItems } from './pathfinder/activity-feed.js';
 import { getSummaryMemoryState, onSummaryMemoryChanged, saveSummaryMemoryContent } from './pathfinder/summary-memory-store.js';
 import { sidecarGenerate } from './pathfinder/llm-sidecar.js';
 import { createSeparateSummaryMemoryEntry, createSummaryMemoryEntry, deriveSummaryLorebookTitle } from './pathfinder/tools/summarize.js';
+export { isPathfinderAgent } from './catalogue.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
@@ -1616,13 +1617,4 @@ function showPromptStatus(message, type) {
 
 function clearPromptStatus() {
     settingsEl.find('#pf--prompt-status').text('');
-}
-
-/**
- * Check if an agent is Pathfinder
- */
-export function isPathfinderAgent(agent) {
-    return agent?.sourceTemplateId === 'tpl-pathfinder' ||
-           agent?.name === 'Pathfinder' ||
-           (agent?.category === 'tool' && agent?.tools?.some(t => t.name?.startsWith('Pathfinder_')));
 }
