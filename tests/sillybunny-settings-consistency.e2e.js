@@ -804,7 +804,9 @@ test.describe('Customize consistency', () => {
         expect(colorRows).toEqual([5, 5]);
         await expect(appearance.locator('#AppearanceLayoutSection .ds-row-slider')).toHaveCount(7);
         await expect(appearance.locator('#sb-background-settings-controls #background-blur-block, #sb-background-settings-controls #background-opacity-block')).toHaveCount(2);
-        await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(22);
+        // 21 since Tags as Folders was retired for full folder support; #bogus_folders stays as a hidden transport.
+        await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(21);
+        await expect(appearance.locator('#bogus_folders')).toBeHidden();
     });
 });
 

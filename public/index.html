@@ -5657,8 +5657,9 @@
                                     <small data-i18n="Avatar Hover Magnification">Avatar Hover Magnification</small>
                                     <i title="Enables a magnification effect on hover when you display the zoomed avatar after clicking an avatar's image in chat." data-i18n="[title]Enables a magnification effect on hover when you display the zoomed avatar after clicking an avatar's image in chat." class="right_menu_button fa-solid fa-circle-exclamation"></i>
                                 </label>
-                                <!-- SillyBunny: retain the upstream setting as a hidden conversion transport. -->
-                                <input id="bogus_folders" type="checkbox" hidden />
+                                <!-- SillyBunny: retain the upstream setting as a hidden conversion transport.
+                                     displayNone: style.css gives every checkbox display: grid, which overrides [hidden]. -->
+                                <input id="bogus_folders" type="checkbox" class="displayNone" hidden />
                                 <label for="click_to_edit" class="checkbox_label" title="Click the message text in the chat log to edit it." data-i18n="[title]Click the message text in the chat log to edit it.">
                                     <input id="click_to_edit" type="checkbox" />
                                     <small data-i18n="Click to Edit">Click to Edit</small>
