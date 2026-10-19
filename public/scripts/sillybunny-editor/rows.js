@@ -173,24 +173,21 @@ export function createSwitchRow({ label, subtitle, field, id, checked, disabled,
     const control = prepareInput(input, 'checkbox', id);
     control.classList.add('sb-switch');
     control.setAttribute('role', 'switch');
+    // ARIA in HTML forbids aria-checked on a native checkbox; `checked` is the switch state.
+    control.removeAttribute('aria-checked');
     if (checked !== undefined) control.checked = Boolean(checked);
     if (disabled !== undefined) control.disabled = Boolean(disabled);
     const row = element('label', 'ds-row ds-row-switch');
     markField(row, field);
     row.htmlFor = control.id;
     row.append(textColumn(label, subtitle, control), control);
-    const notify = () => {
-        control.setAttribute('aria-checked', String(control.checked));
-        onChange?.(control.checked);
-    };
-    control.setAttribute('aria-checked', String(control.checked));
+    const notify = () => onChange?.(control.checked);
     control.addEventListener('change', notify);
     return {
         ...rowController(row, control),
         getValue: () => control.checked,
         setValue(value, { silent = true } = {}) {
             control.checked = Boolean(value);
-            control.setAttribute('aria-checked', String(control.checked));
             if (!silent) notify();
         },
     };
@@ -304,34 +301,138 @@ export function createSpinRow({ label, subtitle, field, id, value, min, max, ste
     };
 }
 
+const FLOATING_ENTRY_TYPES = new Set(['text', 'url', 'search', 'email', 'tel']);
+
+function prepareFloatingInput(input, id) {
+    if (input && (input.tagName !== 'INPUT' || !FLOATING_ENTRY_TYPES.has(input.type))) {
+        throw new TypeError('Expected a single-line text input.');
+    }
+    const control = input ?? document.createElement('input');
+    if (!input) control.type = 'text';
+    ensureId(control, id);
+    return control;
+}
+
+function secretStatus(control, { savedText, missingText }) {
+    const status = element('span', 'ds-row-entry__status');
+    ensureId(status);
+    const icon = element('i', 'fa-solid');
+    icon.setAttribute('aria-hidden', 'true');
+    const text = element('span', 'sr-only');
+    status.append(icon, text);
+    associateDescription(control, status);
+    const read = () => {
+        const placeholder = control.getAttribute('placeholder') ?? '';
+        const state = savedText && placeholder.startsWith(savedText) ? 'saved'
+            : missingText && placeholder.startsWith(missingText) ? 'missing'
+                : 'unknown';
+        status.dataset.state = state;
+        status.hidden = state === 'unknown';
+        icon.className = `fa-solid ${state === 'saved' ? 'fa-circle-check' : 'fa-circle-exclamation'}`;
+        text.textContent = placeholder;
+    };
+    read();
+    // secrets.js reports key status by rewriting the placeholder; follow it rather than edit secrets.js.
+    const observer = new MutationObserver(read);
+    observer.observe(control, { attributes: true, attributeFilter: ['placeholder'] });
+    return { status, disconnect: () => observer.disconnect() };
+}
+
+function revealToggle(control, label) {
+    if (!globalThis.CSS?.supports?.('-webkit-text-security', 'disc')) return null;
+    control.classList.add('is-masked');
+    const button = element('button', 'ds-row-entry__reveal');
+    button.type = 'button';
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-controls', control.id);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    const icon = element('i', 'fa-solid fa-eye');
+    icon.setAttribute('aria-hidden', 'true');
+    button.append(icon);
+    button.addEventListener('click', () => {
+        const revealed = control.classList.toggle('is-masked') === false;
+        button.setAttribute('aria-pressed', String(revealed));
+        icon.className = `fa-solid ${revealed ? 'fa-eye-slash' : 'fa-eye'}`;
+    });
+    return button;
+}
+
+function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
+    // :placeholder-shown tells an empty field from a filled one, including programmatic .val() writes.
+    if (!control.hasAttribute('placeholder')) control.setAttribute('placeholder', ' ');
+    const row = element('div', 'ds-row ds-row-entry ds-row-entry--floating');
+    markField(row, field);
+    const line = element('span', 'ds-row-entry__line');
+    const fieldBox = element('span', 'ds-row-text ds-row-entry__field');
+    const title = element('label', 'ds-row-label ds-row-entry__title', label);
+    title.htmlFor = control.id;
+    fieldBox.append(title, control);
+    line.append(fieldBox);
+    const trailing = [];
+    const keyStatus = secret ? secretStatus(control, secret) : null;
+    if (keyStatus) trailing.push(keyStatus.status);
+    const reveal = secret ? revealToggle(control, secret.revealLabel) : null;
+    if (reveal) trailing.push(reveal);
+    if (suffix) trailing.push(...(Array.isArray(suffix) ? suffix : [suffix]));
+    if (trailing.length) {
+        const tail = element('span', 'ds-row-suffix');
+        tail.append(...trailing);
+        line.append(tail);
+    }
+    row.append(line);
+    if (subtitle) {
+        const caption = element('small', 'ds-row-subtitle ds-row-entry__caption', subtitle);
+        associateDescription(control, caption);
+        row.append(caption);
+    }
+    return { row, disconnect: () => keyStatus?.disconnect() };
+}
+
 /**
  * @param {object} options
  * @param {string} options.label
  * @param {string} options.field
  * @param {string} [options.id]
- * @param {string} [options.subtitle]
+ * @param {string} [options.subtitle]  With `floating`, shown as a caption under the field.
  * @param {string} [options.value]
  * @param {string} [options.placeholder]
  * @param {number} [options.maxLength]
+ * @param {boolean} [options.floating=false]  Title inside the field that floats on focus or value (AdwEntryRow).
+ * @param {Node|Node[]} [options.suffix]  Trailing controls; `floating` only.
+ * @param {{savedText: string, missingText: string, revealLabel: string}} [options.secret]
+ *     Mirrors key status from the placeholder and masks where supported; the input type never changes. `floating` only.
  * @param {(value: string) => void} [options.onInput]
  * @param {(value: string) => void} [options.onChange]
  * @param {HTMLInputElement} [options.input]
  * @returns {object}
  */
-export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, onInput, onChange, input }) {
-    const control = prepareInput(input, 'text', id);
+export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, floating = false, suffix, secret, onInput, onChange, input }) {
+    if ((secret || suffix) && !floating) throw new TypeError('Secret and suffix options need the floating layout.');
+    const control = floating ? prepareFloatingInput(input, id) : prepareInput(input, 'text', id);
     if (value !== undefined) control.value = value;
     if (placeholder !== undefined) control.placeholder = placeholder;
     if (maxLength !== undefined) control.maxLength = maxLength;
-    const row = element('div', 'ds-row ds-row-entry');
-    markField(row, field);
-    const text = textColumn(label, subtitle, control, 'label');
-    text.append(control);
-    row.append(text);
+    let row;
+    let disconnect = () => {};
+    if (floating) {
+        ({ row, disconnect } = floatingEntryRow({ label, subtitle, field, control, suffix, secret }));
+    } else {
+        row = element('div', 'ds-row ds-row-entry');
+        markField(row, field);
+        const text = textColumn(label, subtitle, control, 'label');
+        text.append(control);
+        row.append(text);
+    }
     control.addEventListener('input', () => onInput?.(control.value));
     control.addEventListener('change', () => onChange?.(control.value));
+    const controller = rowController(row, control);
     return {
-        ...rowController(row, control),
+        ...controller,
+        destroy() {
+            disconnect();
+            controller.destroy();
+        },
         getValue: () => control.value,
         setValue(value, { silent = true } = {}) {
             control.value = value ?? '';

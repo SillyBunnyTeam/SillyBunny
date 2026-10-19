@@ -169,7 +169,8 @@ describe('World Info settings transport adoption', () => {
         change(strategy);
         expect(inputHandler).toHaveBeenCalledTimes(1);
         expect(changeHandler).toHaveBeenCalledTimes(1);
-        expect(checkbox.getAttribute('aria-checked')).toBe('true');
+        expect(checkbox.checked).toBe(true);
+        expect(checkbox.hasAttribute('aria-checked')).toBe(false);
         expect(strategy.options).toHaveLength(3);
     });
 
@@ -368,7 +369,7 @@ describe('active books', () => {
         select.options[1].selected = false;
         eventSource.emit(eventTypes.WORLDINFO_SETTINGS_UPDATED);
         expect(book(0).checked).toBe(true);
-        expect(book(0).getAttribute('aria-checked')).toBe('true');
+        expect(book(0).hasAttribute('aria-checked')).toBe(false);
         expect(book(1).checked).toBe(false);
         expect(onChange).not.toHaveBeenCalled();
         select.options[2].selected = true;

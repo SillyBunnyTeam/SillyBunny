@@ -755,6 +755,34 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     color: var(--sb-input-placeholder);
 }
 
+.sb-picker__option.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.sb-picker__group {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sb-picker__group-item + .sb-picker__group-item,
+.sb-picker__option + .sb-picker__group-item,
+.sb-picker__group-item + .sb-picker__option {
+    margin-block-start: 6px;
+}
+
+/* Dimmed heading; capitalisation comes from the label (DESIGN.md Capitalisation Rule). */
+.sb-picker__group-heading {
+    padding: 6px 12px 4px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sb-picker__separator {
     margin-inline: 0;
 }

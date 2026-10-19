@@ -51,6 +51,24 @@ export async function protectMaintainerServer(page) {
     await page.route(/\/api\/stats\/(?:update|recreate)$/, route => route.fulfill({ json: {} }));
     await page.route(/\/api\/(?:characters|groups)\/(?:edit[^/]*|save[^/]*|merge-attributes)$/, route => route.fulfill({ body: 'ok' }));
     await page.route(/\/api\/(?:characters|groups)\/(?:create|delete|rename|duplicate)$/, route => route.abort());
+    await page.route('**/api/presets/save', route => route.fulfill({ json: { name: readPayload(route.request())?.name ?? '' } }));
+    await page.route('**/api/presets/delete', route => route.fulfill({ body: 'OK' }));
+    await page.route('**/api/presets/restore-defaults', route => route.fulfill({ json: { ok: true, restored: [], failed: [] } }));
+    await page.route('**/api/presets/restore', async route => {
+        const request = route.request();
+        const payload = readPayload(request);
+        if (payload.clearTombstone !== true) return route.continue();
+        const headers = { ...request.headers() };
+        delete headers['content-encoding'];
+        delete headers['content-length'];
+        // clearTombstone deletes a tombstone file; read the default preset without it.
+        const response = await route.fetch({ headers, postData: { ...payload, clearTombstone: false } });
+        return route.fulfill({ response });
+    });
+    // Key status tests mock /api/secrets/read instead of storing keys.
+    await page.route('**/api/secrets/write', route => route.fulfill({ json: { id: 'sb-qa-stub' } }));
+    await page.route(/\/api\/secrets\/(?:delete|rotate|rename)$/, route => route.fulfill({ status: 204 }));
+    await page.route(/\/api\/in-chat-agents\/(?:save|delete|groups\/save|groups\/delete)$/, route => route.fulfill({ body: 'OK' }));
     await page.addInitScript(() => {
         document.addEventListener('DOMContentLoaded', () => {
             const style = document.createElement('style');

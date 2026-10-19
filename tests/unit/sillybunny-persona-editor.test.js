@@ -1146,7 +1146,8 @@ describe('Persona settings transport adoption', () => {
         expect(host.querySelector('[aria-label="Save"]')).toBeNull();
         input.click();
         expect(onChange).toHaveBeenCalledTimes(1);
-        expect(input.getAttribute('aria-checked')).toBe('true');
+        expect(input.checked).toBe(true);
+        expect(input.hasAttribute('aria-checked')).toBe(false);
         settings.destroy();
         settings.destroy();
         expect(input.parentNode).toBe(parent);

@@ -110,6 +110,10 @@ function createOption(item, selected, id, onClick, { multiple = false, state = n
     option.setAttribute('role', 'option');
     option.setAttribute('aria-selected', String(selected));
     option.tabIndex = -1;
+    if (item.disabled) {
+        option.setAttribute('aria-disabled', 'true');
+        option.classList.add('is-disabled');
+    }
     if (multiple) {
         option.classList.toggle('is-muted', Boolean(item.muted));
         // Keep pointer activation from moving the combobox's virtual focus onto a replaced option.
@@ -197,16 +201,49 @@ function buildPickerContent(state, body) {
     }
 }
 
+/** Groups items by their `group` label in first-appearance order; ungrouped items form their own bucket. */
+function groupBuckets(items) {
+    const buckets = new Map();
+    for (const item of items) {
+        const key = item.group || null;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(item);
+    }
+    return [...buckets];
+}
+
+function createGroup(label, options) {
+    const wrapper = document.createElement('li');
+    wrapper.className = 'sb-picker__group-item';
+    wrapper.setAttribute('role', 'presentation');
+    const heading = document.createElement('div');
+    heading.className = 'sb-picker__group-heading';
+    heading.setAttribute('role', 'presentation');
+    heading.id = createId('sb-picker-group');
+    heading.textContent = label;
+    const group = document.createElement('ul');
+    group.className = 'sb-picker__group';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-labelledby', heading.id);
+    group.append(...options);
+    wrapper.append(heading, group);
+    return wrapper;
+}
+
 function renderOptions(state) {
     clearTimeout(state.searchTimer);
     state.searchTimer = 0;
     const listScrollTop = state.list.scrollTop;
     const surfaceScrollTop = state.surface?.scrollTop ?? 0;
     const query = state.input.value.toLocaleLowerCase();
-    state.filtered = state.items.filter(item => {
-        const haystack = `${item.label} ${item.subtitle ?? ''}`.toLocaleLowerCase();
+    const matches = state.items.filter(item => {
+        const haystack = `${item.label} ${item.subtitle ?? ''} ${item.group ?? ''}`.toLocaleLowerCase();
         return !query || haystack.includes(query);
     });
+    const grouped = state.items.some(item => item.group);
+    const buckets = grouped ? groupBuckets(matches) : [[null, matches]];
+    // Keyboard order follows the grouped visual order.
+    state.filtered = buckets.flatMap(([, items]) => items);
     state.activeIndex = state.filtered.length
         ? Math.max(0, Math.min(state.activeIndex, state.filtered.length - 1))
         : -1;
@@ -222,16 +259,22 @@ function renderOptions(state) {
         return;
     }
 
-    state.filtered.forEach((item, index) => {
-        const itemState = state.multiple ? state.getItemState?.(item.value) : null;
-        const selected = state.multiple ? itemState === 'selected' : Object.is(item.value, state.selected);
-        const option = createOption(item, selected, createId('sb-picker-option'), () => {
-            selectPickerItem(state, item.value);
-        }, { multiple: state.multiple, state: itemState });
-        option.classList.toggle('is-active', index === state.activeIndex);
-        state.list.append(option);
-    });
-    const active = state.list.children[state.activeIndex];
+    let index = 0;
+    for (const [label, items] of buckets) {
+        const options = items.map(item => {
+            const itemState = state.multiple ? state.getItemState?.(item.value) : null;
+            const selected = state.multiple ? itemState === 'selected' : Object.is(item.value, state.selected);
+            const option = createOption(item, selected, createId('sb-picker-option'), () => {
+                selectPickerItem(state, item.value);
+            }, { multiple: state.multiple, state: itemState });
+            option.classList.toggle('is-active', index === state.activeIndex);
+            index += 1;
+            return option;
+        });
+        if (label === null) state.list.append(...options);
+        else state.list.append(createGroup(label, options));
+    }
+    const active = state.list.querySelectorAll('.sb-picker__option')[state.activeIndex];
     if (active) {
         state.input.setAttribute('aria-activedescendant', active.id);
     }
@@ -243,6 +286,9 @@ function renderOptions(state) {
 
 function selectPickerItem(state, value) {
     if (activePicker !== state) {
+        return;
+    }
+    if (state.items.find(item => Object.is(item.value, value))?.disabled) {
         return;
     }
     try {
@@ -380,7 +426,8 @@ function finishClose() {
  * @param {object} options
  * @param {HTMLElement} options.trigger
  * @param {string} options.title
- * @param {{ value: unknown, label: string, subtitle?: string, icon?: string|Element, muted?: boolean }[]} options.items
+ * @param {{ value: unknown, label: string, subtitle?: string, group?: string, disabled?: boolean, icon?: string|Element, muted?: boolean }[]} options.items
+ *     Items with a `group` render under that heading, groups in first-appearance order; search also matches it.
  * @param {unknown} [options.selected=null]
  * @param {boolean} [options.multiple=false] Toggle values without closing or changing search focus.
  * @param {(value: unknown) => 'selected'|'excluded'|null} [options.getItemState=null]

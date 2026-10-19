@@ -78,7 +78,8 @@ export function mountPersonaSettings({ host, onClose }) {
             input.setAttribute('aria-describedby', [...descriptions].join(' '));
         }
         const refresh = () => {
-            input.setAttribute('aria-checked', String(input.checked));
+            // ARIA in HTML forbids aria-checked on a native checkbox; teardown restores the original attributes.
+            input.removeAttribute('aria-checked');
             row.classList.toggle('is-insensitive', input.disabled);
             row.setAttribute('aria-disabled', String(input.disabled));
         };

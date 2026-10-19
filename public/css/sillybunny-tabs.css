@@ -6387,6 +6387,356 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     margin: 0;
 }
 
+/* Floating-title entry row (AdwEntryRow): the title sits in the field and floats above the value on
+   focus or when filled. CSS alone tracks the state, so programmatic .val() writes float it too. */
+.ds-row.ds-row-entry--floating {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-block: 2px;
+    cursor: text;
+}
+
+.ds-row-entry--floating > .ds-row-entry__line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.ds-row-entry--floating .ds-row-entry__field {
+    position: relative;
+    flex: 1 1 auto;
+    gap: 0;
+    min-width: 0;
+    min-height: max(48px, 3.4em);
+    justify-content: flex-end;
+}
+
+.ds-row-entry--floating .ds-row-entry__title {
+    position: absolute;
+    inset-inline: 0;
+    top: 50%;
+    overflow: hidden;
+    color: var(--sb-input-placeholder);
+    font-weight: 400;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transform-origin: 0 0;
+    transition: top var(--sb-transition-fast), transform var(--sb-transition-fast), font-size var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+[dir='rtl'] .ds-row-entry--floating .ds-row-entry__title {
+    transform-origin: 100% 0;
+}
+
+.ds-row-entry--floating .ds-row-entry__field:focus-within > .ds-row-entry__title,
+.ds-row-entry--floating .ds-row-entry__field:has(> input:not(:placeholder-shown)) > .ds-row-entry__title {
+    top: 0.45em;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    transform: none;
+}
+
+/* Separate rules: an unsupported autofill selector would invalidate a shared selector list. */
+.ds-row-entry--floating .ds-row-entry__field:has(> input:-webkit-autofill) > .ds-row-entry__title {
+    top: 0.45em;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    transform: none;
+}
+
+.ds-row-entry--floating .ds-row-entry__field:has(> input:autofill) > .ds-row-entry__title {
+    top: 0.45em;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    transform: none;
+}
+
+.ds-row-entry--floating .ds-row-entry__field > input {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 1.45em 0 0.35em;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    background: none;
+    box-shadow: none;
+    color: var(--sb-shell-text);
+    font: inherit;
+    font-size: var(--sb-type-control);
+    line-height: 1.3;
+    box-sizing: border-box;
+}
+
+/* The title doubles as the placeholder until focus; !important matches the theme's placeholder contrast rule. */
+.ds-row-entry--floating .ds-row-entry__field > input::placeholder {
+    color: transparent !important;
+    opacity: 1;
+}
+
+.ds-row-entry--floating .ds-row-entry__field > input:focus::placeholder {
+    color: var(--sb-input-placeholder) !important;
+}
+
+/* The row draws the focus ring; outrank the theme's text-entry focus rules so the field adds none. */
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input:is(:focus, :focus-visible):not([disabled]) {
+    border: 0;
+    outline: none;
+    background: none;
+    box-shadow: none;
+}
+
+.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.ds-row-entry--floating .ds-row-entry__field > input.is-masked {
+    -webkit-text-security: disc;
+}
+
+.ds-row-entry--floating > .ds-row-entry__caption {
+    margin-block-start: -4px;
+    padding-block-end: 8px;
+}
+
+.ds-row-entry__status {
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: var(--sb-type-control);
+}
+
+.ds-row-entry__status[data-state='saved'] {
+    color: var(--sb-color-success);
+}
+
+.ds-row-entry__status[data-state='missing'] {
+    color: var(--sb-color-danger);
+}
+
+.ds-row-entry__reveal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--sb-shell-text);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.ds-row-entry__reveal:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.ds-row-entry__reveal[aria-pressed='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+@media (hover: hover) {
+    .ds-row-entry__reveal:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.ds-row-entry__reveal:active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (pointer: coarse) {
+    .ds-row-entry__reveal {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ds-row-entry--floating .ds-row-entry__title,
+    .ds-row-entry__reveal {
+        transition: none;
+    }
+}
+
+body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-entry__reveal) {
+    transition: none;
+}
+
+/* Toggle row (AdwToggleGroup): fill gives equal segments whose labels wrap rather than change wording. */
+.ds-toggle-row__group.ds-toggle-row__group--fill {
+    display: flex;
+    width: 100%;
+}
+
+.ds-toggle-row__group--fill .sb-boolean-radio-option {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.ds-toggle-row__group--fill .sb-boolean-radio-option > span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 34px;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    box-sizing: border-box;
+}
+
+@media (pointer: coarse) {
+    .ds-toggle-row__group .sb-boolean-radio-option > span {
+        min-height: 44px;
+    }
+}
+
+/* Select-mirror row (AdwComboRow): the native select stays in the row as the source of truth, hidden. */
+.ds-select-row .ds-select-row__native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ds-row.ds-select-row {
+    position: relative;
+    cursor: pointer;
+}
+
+.ds-select-row > .ds-row-suffix {
+    flex: 0 1 auto;
+    max-width: min(60%, 360px);
+    gap: 4px;
+}
+
+.ds-select-row__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 34px;
+    margin: 0;
+    padding: 0 8px 0 10px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font: inherit;
+    font-size: var(--sb-type-control);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.ds-select-row__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ds-select-row__arrow {
+    flex: 0 0 auto;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
+.ds-select-row__menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--sb-shell-text);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+:is(.ds-select-row__trigger, .ds-select-row__menu):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+:is(.ds-select-row__trigger, .ds-select-row__menu)[aria-expanded='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.ds-select-row__trigger:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+@media (hover: hover) {
+    .ds-row.ds-select-row:not(:has(.ds-select-row__trigger:disabled)):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    :is(.ds-select-row__trigger, .ds-select-row__menu):not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+:is(.ds-select-row__trigger, .ds-select-row__menu):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (pointer: coarse) {
+    .ds-select-row__trigger {
+        min-height: 44px;
+    }
+
+    .ds-select-row__menu {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ds-select-row__trigger,
+    .ds-select-row__menu {
+        transition: none;
+    }
+}
+
+body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
+    transition: none;
+}
+
+@media (forced-colors: active) {
+    .ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus-visible) {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    .ds-row-entry__status {
+        color: CanvasText;
+    }
+}
+
 /* SillyBunny: counter inputs inside .ds-row-suffix measure 28px without an explicit
    min-height; the desktop touch-target floor is 32px. Counters may be nested inside
    .range-block-range-and-counter, so use a descendant selector. Also covers compact

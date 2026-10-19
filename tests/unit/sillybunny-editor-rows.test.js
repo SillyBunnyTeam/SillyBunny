@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use parameterized synchronous DOM assertions. */
 import { jest, describe, test, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
@@ -235,7 +236,8 @@ describe('createSwitchRow', () => {
         expect(control.type).toBe('checkbox');
         expect(control.classList.contains('sb-switch')).toBe(true);
         expect(control.getAttribute('role')).toBe('switch');
-        expect(control.getAttribute('aria-checked')).toBe('true');
+        // ARIA in HTML forbids aria-checked on a native checkbox; its checked state is the switch state.
+        expect(control.hasAttribute('aria-checked')).toBe(false);
         expect(control.checked).toBe(true);
         expect(control.disabled).toBe(true);
         control.disabled = false;
@@ -244,7 +246,22 @@ describe('createSwitchRow', () => {
         expect(onChange).not.toHaveBeenCalled();
         change(control);
         expect(onChange).toHaveBeenCalledWith(false);
-        expect(control.getAttribute('aria-checked')).toBe('false');
+        expect(control.hasAttribute('aria-checked')).toBe(false);
+    });
+
+    test('setValue changes the checked state without adding aria-checked', () => {
+        const result = createSwitchRow({ label: 'Enabled', field: 'enabled' });
+        result.setValue(true);
+        expect(result.control.checked).toBe(true);
+        expect(result.control.hasAttribute('aria-checked')).toBe(false);
+    });
+
+    test('adoption removes a stale aria-checked from the native checkbox', () => {
+        const control = input('checkbox');
+        control.setAttribute('aria-checked', 'false');
+        control.checked = true;
+        createSwitchRow({ label: 'Enabled', field: 'enabled', input: control });
+        expect(control.hasAttribute('aria-checked')).toBe(false);
     });
 
     test('adoption moves the input without losing identity, state, descriptions or listeners', () => {
@@ -456,6 +473,169 @@ describe('createEntryRow', () => {
         control.dispatchEvent(new Event('input'));
         change(control);
         expect(listener).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('createEntryRow floating title', () => {
+    test('the title is a label inside the field, before the input, with the full text as its accessible name', () => {
+        const { row, control } = createEntryRow({ label: 'A Long Server URL Title', field: 'url', floating: true });
+        expect(row.classList.contains('ds-row-entry--floating')).toBe(true);
+        const field = control.parentElement;
+        expect(field.classList.contains('ds-row-entry__field')).toBe(true);
+        const title = field.querySelector('label.ds-row-entry__title');
+        expect(title.htmlFor).toBe(control.id);
+        expect(title.textContent).toBe('A Long Server URL Title');
+        expect(title.nextElementSibling).toBe(control);
+        expect(control.labels[0]).toBe(title);
+    });
+
+    test('a created input gets a blank placeholder so the CSS can tell an empty field from a filled one', () => {
+        const { control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
+        expect(control.getAttribute('placeholder')).toBe(' ');
+        const filled = createEntryRow({ label: 'Name', field: 'name', floating: true, placeholder: 'Model name' });
+        expect(filled.control.placeholder).toBe('Model name');
+    });
+
+    test('adoption keeps identity, type, placeholder and listeners for text, URL and search inputs', () => {
+        for (const type of ['text', 'url', 'search']) {
+            const control = input(type, 'value');
+            control.placeholder = 'Example';
+            const listener = jest.fn();
+            control.addEventListener('change', listener);
+            const old = node('div');
+            old.append(control);
+            const result = createEntryRow({ label: 'Field', field: 'field', floating: true, input: control });
+            expect(result.control).toBe(control);
+            expect(control.type).toBe(type);
+            expect(control.id).toBe(`existing-${type}`);
+            expect(control.placeholder).toBe('Example');
+            expect(old.children).toHaveLength(0);
+            change(control);
+            expect(listener).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    test('an adopted input without a placeholder gets a blank one and keeps any it has', () => {
+        const control = input('text');
+        createEntryRow({ label: 'Field', field: 'field', floating: true, input: control });
+        expect(control.getAttribute('placeholder')).toBe(' ');
+    });
+
+    test('rejects inputs whose type is not single-line text', () => {
+        expect(() => createEntryRow({ label: 'Field', field: 'field', floating: true, input: input('number') })).toThrow(TypeError);
+        expect(() => createEntryRow({ label: 'Field', field: 'field', floating: true, input: input('checkbox') })).toThrow(TypeError);
+    });
+
+    test('the subtitle becomes a caption under the field, linked by aria-describedby', () => {
+        const { row, control } = createEntryRow({ label: 'Key', subtitle: 'Helpful description', field: 'key', floating: true });
+        const caption = row.querySelector('small.ds-row-entry__caption');
+        expect(caption.textContent).toBe('Helpful description');
+        expect(caption.parentElement).toBe(row);
+        expect(caption.previousElementSibling.contains(control)).toBe(true);
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+    });
+
+    test('suffix nodes sit in a trailing suffix after the field', () => {
+        const button = node('button', 'Refresh');
+        const { row, control } = createEntryRow({ label: 'Model', field: 'model', floating: true, suffix: button });
+        const suffix = row.querySelector('.ds-row-suffix');
+        expect(suffix.contains(button)).toBe(true);
+        expect(suffix.previousElementSibling.contains(control)).toBe(true);
+    });
+
+    test('setValue writes the value without notifying unless asked', () => {
+        const onChange = jest.fn();
+        const result = createEntryRow({ label: 'Name', field: 'name', floating: true, onChange });
+        result.setValue('Programmatic');
+        expect(result.control.value).toBe('Programmatic');
+        expect(onChange).not.toHaveBeenCalled();
+        result.setValue('Again', { silent: false });
+        expect(onChange).toHaveBeenCalledWith('Again');
+    });
+});
+
+describe('createEntryRow secret', () => {
+    const secret = { savedText: '✔️ Key saved', missingText: '❌ Missing key', revealLabel: 'Show Key' };
+
+    function status(row) {
+        return row.querySelector('.ds-row-entry__status');
+    }
+
+    test('mirrors the key status from the placeholder into a trailing status with text', async () => {
+        const control = input('text');
+        control.placeholder = '❌ Missing key';
+        const { row } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        expect(status(row).dataset.state).toBe('missing');
+        expect(status(row).querySelector('.sr-only').textContent).toBe('❌ Missing key');
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(status(row).id);
+        control.setAttribute('placeholder', '✔️ Key saved (Work)');
+        await Promise.resolve();
+        expect(status(row).dataset.state).toBe('saved');
+        expect(status(row).querySelector('.sr-only').textContent).toBe('✔️ Key saved (Work)');
+    });
+
+    test('an unrecognised placeholder hides the status', () => {
+        const control = input('text');
+        control.placeholder = 'sk-…';
+        const { row } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        expect(status(row).dataset.state).toBe('unknown');
+        expect(status(row).hidden).toBe(true);
+    });
+
+    test('never changes the input type', () => {
+        const control = input('text');
+        createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        expect(control.type).toBe('text');
+        expect(control.getAttribute('type')).toBe('text');
+    });
+
+    test('offers no reveal toggle when the browser cannot mask text', () => {
+        const supports = globalThis.CSS?.supports;
+        globalThis.CSS = { ...(globalThis.CSS ?? {}), supports: () => false };
+        try {
+            const { row, control } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: input('text') });
+            expect(row.querySelector('.ds-row-entry__reveal')).toBeNull();
+            expect(control.classList.contains('is-masked')).toBe(false);
+        } finally {
+            globalThis.CSS.supports = supports;
+        }
+    });
+
+    test('masks and offers a pressed-state reveal toggle where masking is supported', () => {
+        const supports = globalThis.CSS?.supports;
+        globalThis.CSS = { ...(globalThis.CSS ?? {}), supports: (property, value) => property === '-webkit-text-security' && value === 'disc' };
+        try {
+            const { row, control } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: input('text') });
+            const reveal = row.querySelector('button.ds-row-entry__reveal');
+            expect(control.classList.contains('is-masked')).toBe(true);
+            expect(reveal.type).toBe('button');
+            expect(reveal.getAttribute('aria-pressed')).toBe('false');
+            expect(reveal.getAttribute('aria-label')).toBe('Show Key');
+            expect(reveal.title).toBe('Show Key');
+            expect(reveal.getAttribute('aria-controls')).toBe(control.id);
+            reveal.click();
+            expect(control.classList.contains('is-masked')).toBe(false);
+            expect(reveal.getAttribute('aria-pressed')).toBe('true');
+            reveal.click();
+            expect(control.classList.contains('is-masked')).toBe(true);
+        } finally {
+            globalThis.CSS.supports = supports;
+        }
+    });
+
+    test('destroy stops following the placeholder', async () => {
+        const control = input('text');
+        control.placeholder = '❌ Missing key';
+        const result = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        const statusNode = status(result.row);
+        result.destroy();
+        control.setAttribute('placeholder', '✔️ Key saved');
+        await Promise.resolve();
+        expect(statusNode.dataset.state).toBe('missing');
+    });
+
+    test('requires the floating layout', () => {
+        expect(() => createEntryRow({ label: 'API Key', field: 'key', secret })).toThrow(TypeError);
     });
 });
 

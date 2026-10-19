@@ -546,3 +546,93 @@ describe('picker search scheduling', () => {
         expect(onSelect).toHaveBeenCalledWith('b');
     });
 });
+
+describe('picker disabled items', () => {
+    const items = [
+        { value: 'a', label: 'Available' },
+        { value: 'b', label: 'Unavailable', disabled: true },
+        { value: 'c', label: 'Also available' },
+    ];
+
+    test('disabled items are marked, cannot be chosen by click or Enter, and keep the picker open', () => {
+        const { picker, input, list, onSelect } = makePicker({ items });
+        const disabled = [...list.querySelectorAll('[role="option"]')][1];
+        expect(disabled.getAttribute('aria-disabled')).toBe('true');
+        disabled.click();
+        expect(onSelect).not.toHaveBeenCalled();
+        keydown(input, 'ArrowDown');
+        expect(document.getElementById(input.getAttribute('aria-activedescendant'))).toBe(disabled);
+        keydown(input, 'Enter');
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(picker.isOpen).toBe(true);
+        keydown(input, 'ArrowDown');
+        keydown(input, 'Enter');
+        expect(onSelect).toHaveBeenCalledWith('c');
+    });
+});
+
+describe('picker group headings', () => {
+    const groupedItems = [
+        { value: 'gpt', label: 'GPT-4o', group: 'OpenAI' },
+        { value: 'claude', label: 'Claude Sonnet', group: 'Anthropic' },
+        { value: 'mini', label: 'GPT-4o mini', group: 'OpenAI' },
+        { value: 'loose', label: 'Ungrouped model' },
+    ];
+    const optionTexts = root => [...root.querySelectorAll('[role="option"]')].map(option => option.textContent);
+
+    test('lists without groups keep options as direct children of the listbox', () => {
+        const { list } = makePicker();
+        expect([...list.children].every(child => child.getAttribute('role') === 'option')).toBe(true);
+        expect(list.querySelector('[role="group"]')).toBeNull();
+    });
+
+    test('grouped items render inside labelled groups in first-appearance order', () => {
+        const { list } = makePicker({ items: groupedItems });
+        const groups = [...list.querySelectorAll('[role="group"]')];
+        const headings = groups.map(group => document.getElementById(group.getAttribute('aria-labelledby')).textContent);
+        expect(headings).toEqual(['OpenAI', 'Anthropic']);
+        expect(optionTexts(groups[0])).toEqual(['GPT-4o', 'GPT-4o mini']);
+        expect(optionTexts(groups[1])).toEqual(['Claude Sonnet']);
+        const loose = [...list.querySelectorAll('[role="option"]')].find(option => option.textContent === 'Ungrouped model');
+        expect(loose.closest('[role="group"]')).toBeNull();
+    });
+
+    test('headings are not options and cannot take focus', () => {
+        const { list } = makePicker({ items: groupedItems });
+        const heading = list.querySelector('.sb-picker__group-heading');
+        expect(heading.getAttribute('role')).toBe('presentation');
+        expect(heading.hasAttribute('tabindex')).toBe(false);
+        expect(list.querySelectorAll('[role="option"]')).toHaveLength(4);
+    });
+
+    test('keyboard order follows the grouped visual order and skips headings', () => {
+        const { input, onSelect } = makePicker({ items: groupedItems });
+        const active = () => document.getElementById(input.getAttribute('aria-activedescendant')).textContent;
+        expect(active()).toBe('GPT-4o');
+        keydown(input, 'ArrowDown');
+        expect(active()).toBe('GPT-4o mini');
+        keydown(input, 'ArrowDown');
+        expect(active()).toBe('Claude Sonnet');
+        keydown(input, 'End');
+        expect(active()).toBe('Ungrouped model');
+        keydown(input, 'Home');
+        keydown(input, 'ArrowDown');
+        keydown(input, 'Enter');
+        expect(onSelect).toHaveBeenCalledWith('mini');
+    });
+
+    test('search hides groups it empties and keeps the others labelled', () => {
+        const { input, list } = makePicker({ items: groupedItems });
+        filter(input, 'claude');
+        const groups = [...list.querySelectorAll('[role="group"]')];
+        expect(groups).toHaveLength(1);
+        expect(document.getElementById(groups[0].getAttribute('aria-labelledby')).textContent).toBe('Anthropic');
+        expect(list.textContent).not.toContain('OpenAI');
+    });
+
+    test('a group label also matches search', () => {
+        const { input, list } = makePicker({ items: groupedItems });
+        filter(input, 'anthropic');
+        expect(optionTexts(list)).toEqual(['Claude Sonnet']);
+    });
+});
