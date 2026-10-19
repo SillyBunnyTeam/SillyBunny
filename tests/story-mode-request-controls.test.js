@@ -8,6 +8,7 @@ import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerati
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
 import { resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
 import { event_types } from '../public/scripts/events.js';
+import { collectHiddenGenerationMessages } from '../public/scripts/generation-hidden-messages.js';
 import { OVERSWIPE_BEHAVIOR, SWIPE_DIRECTION, SWIPE_SOURCE, SWIPE_STATE } from '../public/scripts/constants.js';
 import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
 
@@ -102,6 +103,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         getGroupDepthPrompts: () => [], getExtensionPromptRoleByName: () => 0,
         hasCompanionChatHistoryForHiddenHost: () => false,
         selectCompanionChatHistory: () => [], consolidateCompanionChatHistory: () => ({ host: null, entries: [] }),
+        collectHiddenGenerationMessages,
         resolveRegexScriptsForSnapshot: () => [], shouldRetainContextAtDepth: () => true,
         stripHtmlTagsFromContext: value => value, stripOocBlocksFromContext: value => value,
         getRegexedString: value => value, appendFileContent: async () => '',
@@ -575,6 +577,24 @@ describe('owned host generation flow', () => {
         expect(context.promptManager.serviceSettings.openai_max_tokens).toBe(8192);
     });
 
+    test.each([
+        ['a whole reply', {}],
+        ['a streamed reply', { api: 'textgenerationwebui', stream: true }],
+        ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
+    ])('suppressAutoSwipe keeps %s that auto-swipe would otherwise redo', async (_, options) => {
+        for (const suppressAutoSwipe of [false, true]) {
+            const { context } = makeRuntime(options);
+            Object.assign(context, { SWIPE_DIRECTION, SWIPE_SOURCE, generatedTextFiltered: () => true, swipe: jest.fn(async () => {}) });
+            context.power_user.auto_swipe = true;
+            context.chunks = [{ text: 'New prose. ' }];
+
+            await context.Generate('normal', { suppressUserMessage: true, suppressAutoContinue: true, suppressAutoSwipe });
+
+            expect(context.swipe).toHaveBeenCalledTimes(suppressAutoSwipe ? 0 : 1);
+            expect(context.chat.at(-1).mes).toBe('New prose. ');
+        }
+    });
+
     test('auto-continue forwards owned options through its existing click handler', () => {
         const { context, dom } = makeRuntime();
         const controls = { maxOutputTokens: 160, suppressUserMessage: true };
@@ -792,5 +812,51 @@ describe('owned host generation flow', () => {
         expect(context.saveChatConditional).not.toHaveBeenCalled();
         expect(received).not.toHaveBeenCalled();
         expect(context.chat[0].mes).toBe(buffer ? 'Existing prose. ' : 'Existing prose. abcd');
+    });
+});
+
+describe('hide request in the owned generation flow', () => {
+    const options = { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 };
+    const line = mes => ({ name: 'Story', mes, extra: {}, is_user: false });
+
+    test('leaves a line a handler hides out of the retained Companion candidates', async () => {
+        const { context } = makeRuntime();
+        const [first] = context.chat;
+        const second = line('Second line. ');
+        context.chat.push(second);
+        context.selectCompanionChatHistory = jest.fn(() => []);
+        const seen = [];
+        context.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, request => {
+            seen.push({ type: request.type, lines: request.messages.map(item => item.mes) });
+            request.hide(0);
+        });
+        await context.Generate('normal', options);
+        expect(seen).toEqual([{ type: 'normal', lines: ['Existing prose. ', 'Second line. '] }]);
+        expect(context.selectCompanionChatHistory).toHaveBeenCalledTimes(1);
+        expect(context.selectCompanionChatHistory.mock.calls[0][0]).toEqual([second]);
+        expect(context.selectCompanionChatHistory.mock.calls[0][0]).not.toContain(first);
+        expect(first.mes).toBe('Existing prose. ');
+    });
+
+    test('asks nothing on a dry run', async () => {
+        const { context } = makeRuntime();
+        context.selectCompanionChatHistory = jest.fn(() => []);
+        const handler = jest.fn();
+        context.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, handler);
+        await context.Generate('normal', options, true);
+        expect(handler).not.toHaveBeenCalled();
+        expect(context.selectCompanionChatHistory).toHaveBeenCalledTimes(1);
+        expect(context.selectCompanionChatHistory.mock.calls[0][0]).toEqual([context.chat[0]]);
+    });
+
+    test('offers a swipe the lines before the swiped one', async () => {
+        const { context } = makeRuntime();
+        context.chat.push({ ...line('Second line. '), swipes: ['Second line. '], swipe_id: 0, swipe_info: [{}] });
+        const seen = [];
+        context.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, request => {
+            seen.push({ type: request.type, lines: request.messages.map(item => item.mes) });
+        });
+        await context.Generate('swipe', options);
+        expect(seen).toEqual([{ type: 'swipe', lines: ['Existing prose. '] }]);
     });
 });

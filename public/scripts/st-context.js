@@ -89,7 +89,7 @@ import {
     writeExtensionField,
     writeExtensionFieldBulk,
 } from './extensions.js';
-import { groups, openGroupChat, selected_group, unshallowGroupMembers } from './group-chats.js';
+import { getSelectedGroupSpeakerAvatar, groups, groupTurnRoutingApi, openGroupChat, selected_group, setSelectedGroupSpeakerAvatar, unshallowGroupMembers } from './group-chats.js';
 import { addLocaleData, getCurrentLocale, t, translate } from './i18n.js';
 import { hideLoader, showLoader } from './loader.js';
 import { loader } from './action-loader.js';
@@ -326,6 +326,11 @@ export function getContext() {
         getReasoningTemplateByName,
         unshallowCharacter,
         unshallowGroupMembers,
+        // SillyBunny: speaker bar pick for extensions such as Group Chat Overhaul.
+        getSelectedGroupSpeakerAvatar,
+        setSelectedGroupSpeakerAvatar,
+        // SillyBunny: lets one extension plan who answers ordinary group messages; see group-turn-routing.js.
+        groupTurnRouting: groupTurnRoutingApi,
         getExtensionManifest,
         openThirdPartyExtensionMenu,
         symbols: {

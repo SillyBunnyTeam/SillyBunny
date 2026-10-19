@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { dismissOnboardingIfPresent, dismissOpenDialogIfPresent } from './chat-scroll-regression-helpers.js';
 
-test.use({ serviceWorkers: 'block', reducedMotion: 'reduce' });
+test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
 const MANUAL_BOOK = 'Pathfinder test memory';
 const ATTACHED_BOOK = 'Attached Pathfinder lorebook with a long name '.repeat(4).trim();

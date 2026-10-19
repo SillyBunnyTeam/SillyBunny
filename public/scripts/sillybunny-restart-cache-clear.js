@@ -100,6 +100,12 @@
         return;
     }
 
+    // Halt the rest of this document so the app cannot boot and become
+    // interactive while a slow purge delays the pending reload.
+    if (typeof window.stop === 'function') {
+        window.stop();
+    }
+
     var pass = completed + 1;
     clearBrowserCaches()
         .catch(function (error) {

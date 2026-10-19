@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { EventEmitter } from '../public/lib/eventemitter.js';
 import { event_types } from '../public/scripts/events.js';
+import { collectHiddenGenerationMessages } from '../public/scripts/generation-hidden-messages.js';
 import { resolveGenerationUiLockState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
 import { limitGenerationProse, isGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
 
@@ -68,6 +69,7 @@ function createHost() {
         getExtensionPromptRoleByName: role => role,
         ToolManager: { isToolCallingSupported: () => false, canPerformToolCalls: () => false, RECURSE_LIMIT: 5 },
         selectCompanionChatHistory: () => [], consolidateCompanionChatHistory: () => ({ host: null, entries: [] }),
+        collectHiddenGenerationMessages,
         PromptReasoning: class { removePrefix(text) { return text; } },
         getMaxPromptTokens: () => 4096, runGenerationInterceptors: jest.fn(async () => false),
         getGuidanceScale: () => null, parseMesExamples: () => [], buildWorldInfoScanChat: () => [],
@@ -145,6 +147,7 @@ describe('Pathfinder integration with the real extracted host generation flow', 
         expect(host.context.checkWorldInfo).toHaveBeenCalledTimes(1);
         const native = host.emitted.mock.calls.find(([event]) => event === event_types.WORLD_INFO_ACTIVATED);
         expect(native[2]).toEqual({ chatId: 'chat-a', runId: 1, cancelRevision: 0 });
+        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_HIDE_MESSAGES)).toHaveLength(1);
         expect(host.context.prepareOpenAIMessages.mock.calls[0][0].worldInfoBefore).toBe('Native town lore.');
         const prompt = host.context.sendGenerationRequest.mock.calls[0][1].prompt[0].content;
         expect(prompt).not.toContain('Town lore.');
@@ -280,7 +283,7 @@ describe('Pathfinder integration with the real extracted host generation flow', 
         await host.generate('normal', {}, true);
         expect(host.context.activeGenerationRun).toBe(parent);
         expect(host.context.is_send_press).toBe(true);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.WORLD_INFO_ACTIVATED || event === event_types.GENERATION_ENDED)).toHaveLength(0);
+        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.WORLD_INFO_ACTIVATED || event === event_types.GENERATION_HIDE_MESSAGES || event === event_types.GENERATION_ENDED)).toHaveLength(0);
         expect(host.context.sendGenerationRequest).not.toHaveBeenCalled();
     });
 
