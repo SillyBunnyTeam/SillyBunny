@@ -493,7 +493,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
             const key = await row.getAttribute('data-sb-list-key');
             const before = await row.evaluate(element => element.classList.contains('is_fav'));
             await row.getByRole('button', { name: /^Actions for / }).click();
-            const favorite = page.getByRole('menuitemradio', { name: 'Favorites', exact: true });
+            const favorite = page.getByRole('menuitemcheckbox', { name: 'Favorites', exact: true });
             await expect(favorite).toHaveAttribute('aria-checked', String(before));
             await favorite.click();
             const retained = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);

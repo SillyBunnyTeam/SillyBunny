@@ -14255,6 +14255,7 @@ function injectCharacterDrawerControls() {
     if (emptyCreateButton instanceof HTMLButtonElement && emptyCreateButton.dataset.sbBound !== 'true') {
         emptyCreateButton.dataset.sbBound = 'true';
         emptyCreateButton.addEventListener('click', () => {
+            globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.('characters');
             setCharacterEditorEmptyState(false);
             setCharacterPersonaPanelVisible(false);
             setCharacterImportPanelVisible(false);

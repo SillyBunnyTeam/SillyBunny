@@ -45,6 +45,7 @@ const setListPageSize = jest.fn((view, size) => { sizes[view] = size; return sta
 const sorts = { characters: { field: 'name', order: 'asc' }, groups: { field: 'name', order: 'desc' } };
 const setListSort = jest.fn();
 const template = html => { const element = document.createElement('div'); element.innerHTML = html; return element; };
+const originalDollar = Object.getOwnPropertyDescriptor(globalThis, '$');
 
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => translationPrefix + strings.reduce((out, string, index) => out + string + (values[index] ?? ''), ''),
@@ -171,6 +172,8 @@ afterEach(() => {
     delete globalThis.SillyBunnyShell;
     delete globalThis.SillyBunnyCharacterListController;
     delete globalThis.toastr;
+    if (originalDollar) Object.defineProperty(globalThis, '$', originalDollar);
+    else delete globalThis.$;
 });
 
 describe('shared Characters/Groups list', () => {
@@ -237,6 +240,35 @@ describe('shared Characters/Groups list', () => {
         expect(row.querySelector('.ch_fav_icon')).not.toBeNull();
         expect(pageLoaded).toHaveBeenCalledTimes(2);
         expect(await mountCharacterList()).toBe(mounted);
+    });
+
+    test('mount destroys an initialized legacy pagination instance', async () => {
+        const paginationDestroy = jest.fn();
+        const paginationElement = document.getElementById('rm_print_characters_pagination');
+        const jquery = jest.fn(() => ({
+            data: key => key === 'pagination' ? { initialized: true } : undefined,
+            pagination: paginationDestroy,
+        }));
+        jquery.fn = { pagination: jest.fn() };
+        globalThis.$ = jquery;
+
+        await mount();
+
+        expect(jquery.mock.calls.some(([target]) => target === paginationElement || target === '#rm_print_characters_pagination')).toBe(true);
+        expect(paginationDestroy).toHaveBeenCalledWith('destroy');
+    });
+
+    test('render removes unkeyed legacy rows before reconciling SillyBunny rows', async () => {
+        await mount();
+        const legacyRow = document.createElement('div');
+        legacyRow.className = 'entity_block';
+        legacyRow.dataset.chid = '99';
+        document.getElementById('rm_print_characters_block').append(legacyRow);
+
+        await mounted.render(model);
+
+        expect(legacyRow.isConnected).toBe(false);
+        expect(rows()).toHaveLength(3);
     });
 
     test('renders groups, folders, Back, hidden counts and badges', async () => {
@@ -420,6 +452,46 @@ describe('shared Characters/Groups list', () => {
         expect(mounted.captureState()).toEqual({ query: 'Name', page: 2, scrollTop: 65, focusKey: 'character:10.png' });
     });
 
+    test('reveals a character by key without writing a search query', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        await mount();
+
+        expect(await mounted.revealByKey('character:24.png')).toBe(true);
+
+        expect(pages.characters).toBe(3);
+        expect(document.activeElement).toBe(document.querySelector('[data-sb-list-key="character:24.png"]'));
+        expect(setFilterData).not.toHaveBeenCalled();
+    });
+
+    test('clears filters for a by-key reveal only when the target is filtered out', async () => {
+        model = { ...model, hasAnyFilter: true, sourceCount: 26, entities: characters(3) };
+        const clearFilters = document.querySelector('.clearAllFilters');
+        const clear = jest.fn(() => {
+            model = { ...model, hasAnyFilter: false, entities: characters(26), sourceCount: 26 };
+        });
+        clearFilters.addEventListener('click', clear);
+        await mount();
+
+        expect(await mounted.revealByKey('character:24.png')).toBe(true);
+
+        expect(clear).toHaveBeenCalledTimes(1);
+        expect(pages.characters).toBe(3);
+        expect(setFilterData).not.toHaveBeenCalled();
+    });
+
+    test('keeps active filters when a by-key reveal target is already in the filtered results', async () => {
+        model = { ...model, hasAnyFilter: true, sourceCount: 3, entities: characters(3) };
+        const clear = jest.fn();
+        document.querySelector('.clearAllFilters').addEventListener('click', clear);
+        await mount();
+
+        expect(await mounted.revealByKey('character:2.png')).toBe(true);
+
+        expect(clear).not.toHaveBeenCalled();
+        expect(setFilterData).not.toHaveBeenCalled();
+    });
+
     test('search shortcuts reach the upstream input engine and restored queries stay in sync', async () => {
         const input = document.getElementById('character_search_bar');
         const upstream = jest.fn();
@@ -469,6 +541,12 @@ describe('shared Characters/Groups list', () => {
         button('new').click();
         expect(create).toHaveBeenCalledTimes(1);
         button('sort').click();
+        const sortItems = menu.sections.find(section => section.title === 'Sort').items;
+        const checkedSortItems = sortItems.filter(item => item.checked);
+        expect(checkedSortItems).toHaveLength(1);
+        expect(checkedSortItems[0].label).toBe('Name (A-Z)');
+        expect(checkedSortItems[0].kind).toBe('radio');
+        expect(checkedSortItems[0].icon).not.toContain('fa-check');
         expect(action('Name (A-Z)').checked).toBe(true);
         expect(action('Grid').checked).toBe(false);
         action('Grid').onSelect();

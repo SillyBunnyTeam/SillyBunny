@@ -218,13 +218,14 @@ export function mountPersonaEditor(container) {
             // HUMAN: replace — Sort by section title.
             title: t`Sort type`,
             items: [['asc', t`A-Z`], ['desc', t`Z-A`]].map(([order, label]) => ({
-                ...menuItem(label, power_user.persona_sort_order === order ? 'check' : 'circle', () => {
+                ...menuItem(label, 'arrow-down-wide-short', () => {
                     power_user.persona_sort_order = order;
                     saveSettingsDebounced();
                     heldOrder = null;
                     updateDisplayEntries();
                     renderList();
                 }),
+                kind: 'radio',
                 checked: power_user.persona_sort_order === order,
             })),
         }]);

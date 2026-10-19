@@ -189,7 +189,7 @@ for (const width of [1440, 390]) {
             await prepare(page, width);
             await openFromList(page);
             let menu = await headerMenu(page);
-            await menu.getByRole('menuitemradio', { name: 'Tags as Folders', exact: true }).click();
+            await menu.getByRole('menuitemcheckbox', { name: 'Tags as Folders', exact: true }).click();
             await expect(row(page, fixtureTag).locator('.sb-tag-manager__folder')).toBeVisible();
             menu = await headerMenu(page);
             await menu.getByRole('menuitemradio', { name: 'Alphabetical (A-Z)', exact: true }).click();

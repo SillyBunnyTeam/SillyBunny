@@ -25,7 +25,8 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
  * @property {string} [title] - Tooltip for the row.
  * @property {boolean} [danger]
  * @property {boolean} [disabled]
- * @property {boolean} [checked] - When present, exposes the item as a radio choice.
+ * @property {'radio'|'check'} [kind] - Stateful indicator; checked-only items default to radio.
+ * @property {boolean} [checked]
  * @property {(event: MouseEvent) => void} onSelect
  */
 
@@ -60,6 +61,26 @@ function createIcon(icon) {
     element.className = icon || 'fa-solid fa-puzzle-piece';
     element.setAttribute('aria-hidden', 'true');
     return element;
+}
+
+function createStateIndicator(kind, checked) {
+    const indicator = document.createElement('span');
+    indicator.className = `sb-action-menu-indicator sb-action-menu-indicator--${kind}`;
+    indicator.dataset.kind = kind;
+    indicator.classList.toggle('is-checked', checked);
+    indicator.setAttribute('aria-hidden', 'true');
+    if (kind === 'radio' && checked) {
+        const dot = document.createElement('span');
+        dot.className = 'sb-action-menu-indicator-dot';
+        indicator.append(dot);
+    }
+    if (kind === 'check' && checked) {
+        const check = document.createElement('i');
+        check.className = 'sb-action-menu-indicator-check fa-solid fa-check';
+        check.setAttribute('aria-hidden', 'true');
+        indicator.append(check);
+    }
+    return indicator;
 }
 
 function createSeparator() {
@@ -119,8 +140,12 @@ function buildMenu(sections, label) {
             button.type = 'button';
             button.className = 'sb-action-menu-item';
             button.classList.toggle('is-danger', Boolean(item.danger));
-            button.setAttribute('role', typeof item.checked === 'boolean' ? 'menuitemradio' : 'menuitem');
-            if (typeof item.checked === 'boolean') button.setAttribute('aria-checked', String(item.checked));
+            const kind = item.kind === 'check' || item.kind === 'radio'
+                ? item.kind
+                : typeof item.checked === 'boolean' ? 'radio' : null;
+            const checked = Boolean(item.checked);
+            button.setAttribute('role', kind === 'check' ? 'menuitemcheckbox' : kind === 'radio' ? 'menuitemradio' : 'menuitem');
+            if (kind) button.setAttribute('aria-checked', String(checked));
             if (item.title && item.title !== item.label) {
                 button.title = item.title;
             }
@@ -130,7 +155,7 @@ function buildMenu(sections, label) {
             const text = document.createElement('span');
             text.className = 'sb-action-menu-label';
             text.textContent = item.label;
-            button.append(createIcon(item.icon), text);
+            button.append(kind ? createStateIndicator(kind, checked) : createIcon(item.icon), text);
             if (item.detail) {
                 const detail = document.createElement('span');
                 detail.className = 'sb-action-menu-detail';

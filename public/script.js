@@ -15024,6 +15024,10 @@ export function select_rm_info(type, charId, previousCharId = null) {
     }
     const rightNavPanel = document.getElementById('right-nav-panel');
     const keepSillyBunnyImportTab = rightNavPanel?.dataset.menuType === 'import' && ['char_import', 'char_import_no_toast'].includes(type);
+    // SillyBunny: the shared list renderer reveals new entities by key; the legacy paginator is retired once it mounts.
+    const usesListNavigation = !keepSillyBunnyImportTab && Boolean(characterListRenderer)
+        && ['char_create', 'group_create', 'char_import', 'char_import_no_toast'].includes(type)
+        && typeof globalThis.SillyBunnyCharactersNavigation?.returnToCreatedEntity === 'function';
 
     if (type !== 'group_create') {
         var displayName = String(charId).replace('.png', '');
@@ -15046,7 +15050,11 @@ export function select_rm_info(type, charId, previousCharId = null) {
         toastr.success(t`Character Imported: ${displayName}`);
     }
 
-    if (!keepSillyBunnyImportTab) {
+    if (usesListNavigation) {
+        const key = type === 'group_create' ? `group:${charId}` : `character:${charId}`;
+        Promise.resolve(globalThis.SillyBunnyCharactersNavigation.returnToCreatedEntity(type, key))
+            .catch(error => console.error(error));
+    } else if (!keepSillyBunnyImportTab) {
         selectRightMenuWithAnimation('rm_characters_block');
     } else {
         document.dispatchEvent(new CustomEvent('sillybunny:character-import-tab-preserve'));
@@ -15055,7 +15063,7 @@ export function select_rm_info(type, charId, previousCharId = null) {
     // Set a timeout so multiple flashes don't overlap
     clearTimeout(importFlashTimeout);
     importFlashTimeout = setTimeout(function () {
-        if (keepSillyBunnyImportTab) {
+        if (keepSillyBunnyImportTab || usesListNavigation) {
             return;
         }
 
@@ -15170,6 +15178,8 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     // SillyBunny: flush pending draft before overwriting fields (Step 3b)
     beginCharacterEditorLoad();
     $('#character_name_pole').val(characters[chid].name);
+    // SillyBunny: reset nicknames per character so a previous draft is never applied to another card.
+    $('#character_nickname_pole').val(characters[chid].data?.nickname ?? '');
     $('#description_textarea').val(characters[chid].description);
     $('#character_world').val(characters[chid].data?.extensions?.world || '');
     $('#creator_notes_textarea').val(characters[chid].data?.creator_notes || characters[chid].creatorcomment);
@@ -16163,6 +16173,7 @@ export async function createOrEditCharacter(e, saveReceipt) {
 
             const fields = [
                 { id: '#character_name_pole', callback: value => create_save.name = value },
+                { id: '#character_nickname_pole', callback: value => create_save.nickname = value },
                 { id: '#description_textarea', callback: value => create_save.description = value },
                 { id: '#creator_notes_textarea', callback: value => create_save.creator_notes = value },
                 { id: '#character_version_textarea', callback: value => create_save.character_version = value },

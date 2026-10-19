@@ -12,7 +12,7 @@ import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { eventSource, event_types } from './events.js';
-import { animateListChange, stopMotion } from './sillybunny-motion.js';
+import { animateListChange, prefersReducedMotion, stopMotion } from './sillybunny-motion.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
@@ -426,12 +426,27 @@ function getHiddenCount(model) {
     return Math.max(0, Number(model.sourceCount) - renderedEntities);
 }
 
+function modelEntityKey(entity) {
+    if (entity.type === 'group') return entityKey('group', entity.item?.id ?? entity.id);
+    if (entity.type === 'character') return entityKey('character', (entity.item ?? entity).avatar);
+    return null;
+}
+
 function makeMenuItem(label, glyph, onSelect, options = {}) {
     return { label, icon: `fa-solid fa-${glyph}`, onSelect: () => run(onSelect), ...options };
 }
 
 function clickTransport(selector) {
     document.querySelector(selector)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+}
+
+function destroyLegacyPagination(container) {
+    const jquery = globalThis.$;
+    const element = container.querySelector('#rm_print_characters_pagination');
+    if (typeof jquery !== 'function' || typeof jquery.fn?.pagination !== 'function' || !element) return;
+    const pagination = jquery(element);
+    if (!pagination.data?.('pagination')?.initialized) return;
+    pagination.pagination('destroy');
 }
 
 function modelCount(model) {
@@ -527,6 +542,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let visibilityObserver;
     let preserveRestoredScroll = false;
     let revealActiveOnRender = false;
+    let latestModel = null;
     const headerWidths = new Map();
     let headerWidth = 0;
     let firstRenderComplete = false;
@@ -633,6 +649,42 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (!isRevealCurrent()) return;
         if (!preserveRestoredScroll && !selection.isActive) scrollToActiveRow();
         preserveRestoredScroll = false;
+    }
+
+    async function revealByKey(key, { highlight = false, isCurrent = () => true } = {}) {
+        if (typeof key !== 'string' || !key || destroyed || !isCurrent()) return false;
+        const view = key.startsWith('group:') ? 'groups' : key.startsWith('character:') ? 'characters' : null;
+        if (!view || view !== state.view) return false;
+
+        const findIndex = () => latestModel?.entities.findIndex(entity => modelEntityKey(entity) === key) ?? -1;
+        let index = findIndex();
+        if (index < 0 && latestModel?.hasAnyFilter) {
+            document.querySelector('#rm_characters_block .clearAllFilters')?.click();
+            await dataModules.script.printCharacters(false);
+            if (destroyed || !isCurrent()) return false;
+            index = findIndex();
+        }
+        if (index < 0) return false;
+
+        const pageSize = Number(dataModules.state.getListPageSize?.(view)) || pagination.pageSize;
+        await dataModules.state.setListPage?.(view, Math.floor(index / pageSize) + 1);
+        if (destroyed || !isCurrent()) return false;
+
+        let row = [...rowsContainer.children].find(element => element.dataset.sbListKey === key);
+        if (!row) {
+            await dataModules.script.printCharacters(false);
+            if (destroyed || !isCurrent()) return false;
+            row = [...rowsContainer.children].find(element => element.dataset.sbListKey === key);
+        }
+        if (!(row instanceof HTMLElement)) return false;
+
+        row.scrollIntoView?.({ block: 'nearest' });
+        row.focus({ preventScroll: true });
+        if (highlight && !prefersReducedMotion() && typeof globalThis.$ === 'function') {
+            const { flashHighlight } = await import('./utils.js');
+            if (!destroyed && isCurrent()) flashHighlight(globalThis.$(row), 2000);
+        }
+        return true;
     }
 
     async function activateChat(row, entry) {
@@ -782,15 +834,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     function openSortMenu(trigger) {
         const current = dataModules.state.getListSort?.(state.view) ?? {};
-        const sortItems = currentSortOptions().map(option => makeMenuItem(option.label || option.i18nKey || t`Sort`, 'check', () => dataModules.state.setListSort?.(state.view, option), {
+        const sortItems = currentSortOptions().map(option => makeMenuItem(option.label || option.i18nKey || t`Sort`, 'arrow-down-wide-short', () => dataModules.state.setListSort?.(state.view, option), {
+            kind: 'radio',
             checked: option.field === current.field && option.order === current.order && (option.rule ?? null) === (current.rule ?? null),
         }));
         const viewItems = [
             ['list', t`List`],
             ['grid', t`Grid`],
-        ].map(([value, label]) => makeMenuItem(label, power_user.charListGrid === (value === 'grid') ? 'check' : 'circle', () => {
+        ].map(([value, label]) => makeMenuItem(label, 'list', () => {
             if (Boolean(power_user.charListGrid) !== (value === 'grid')) clickTransport('#charListGridToggle');
         }, {
+            kind: 'radio',
             checked: power_user.charListGrid === (value === 'grid'),
         }));
         menu(trigger, t`Sort`, [{ title: t`Sort`, items: sortItems }, { title: t`View`, items: viewItems }]);
@@ -804,9 +858,12 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         sections.push({ items: [makeMenuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !state.selectableKeys.length })] });
         sections.push({ items: [
             makeMenuItem(t`Manage tags`, 'tags', () => filter('.manageTags')?.click()),
-            makeMenuItem(t`Tags as Folders`, 'folder', () => clickTransport('#bogus_folders'), { checked: Boolean(power_user.bogus_folders) }),
             makeMenuItem(t`Clear all filters`, 'filter-circle-xmark', () => filter('.clearAllFilters')?.click()),
         ] });
+        sections.push({ items: [makeMenuItem(t`Tags as Folders`, 'folder', () => clickTransport('#bogus_folders'), {
+            kind: 'check',
+            checked: Boolean(power_user.bogus_folders),
+        })] });
         sections.push({ items: [makeMenuItem(t`Import`, 'file-import', () => globalThis.SillyBunnyShell?.openTab?.('characters', 'import'))] });
         menu(trigger, state.view === 'groups' ? t`Groups` : t`Characters`, sections);
     }
@@ -847,24 +904,26 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     function openRowMenu(trigger, entry) {
         const favorite = entry.favorite;
-        const items = entry.kind === 'group'
-            ? [
-                makeMenuItem(t`Favorites`, 'star', () => groupAction(entry, 'favorite'), { checked: favorite }),
-                makeMenuItem(t`Delete`, 'trash', () => groupAction(entry, 'delete'), { danger: true }),
-            ]
+        const favoriteItem = makeMenuItem(t`Favorites`, 'star', () => entry.kind === 'group'
+            ? groupAction(entry, 'favorite')
+            : characterAction(entry, 'favorite'), { kind: 'check', checked: favorite });
+        const actionItems = entry.kind === 'group'
+            ? [makeMenuItem(t`Delete`, 'trash', () => groupAction(entry, 'delete'), { danger: true })]
             : [
-                makeMenuItem(t`Favorites`, 'star', () => characterAction(entry, 'favorite'), { checked: favorite }),
                 makeMenuItem(t`Duplicate`, 'copy', () => characterAction(entry, 'duplicate')),
                 makeMenuItem(t`Convert to Persona`, 'user', () => characterAction(entry, 'persona')),
                 makeMenuItem(t`Delete`, 'trash', () => characterAction(entry, 'delete'), { danger: true }),
             ];
-        menu(trigger, t`Actions for ${entry.label}`, [{ items }]);
+        menu(trigger, t`Actions for ${entry.label}`, [{ items: [favoriteItem] }, { items: actionItems }]);
     }
 
     function createHeader() {
         const actions = [
             { id: 'search', label: t`Search`, icon: 'magnifying-glass', onActivate: () => search.toggle(), overflowPriority: 2 },
-            { id: 'new', label: t`New`, icon: 'plus', onActivate: () => clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create') },
+            { id: 'new', label: t`New`, icon: 'plus', onActivate: () => {
+                globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.(state.view);
+                clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create');
+            } },
             { id: 'sort', label: t`Sort`, icon: 'arrow-down-wide-short', menu: true, onActivate: openSortMenu, overflowPriority: 1 },
             { id: 'more', label: t`More...`, icon: 'ellipsis-vertical', menu: true, onActivate: openListMenu },
         ];
@@ -885,7 +944,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             const empty = createStatusPage({
                 icon: 'address-card',
                 title: legacy?.textContent?.trim() || t`No results`,
-                actions: [{ label: t`New`, primary: true, onActivate: () => clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create') }],
+                actions: [{ label: t`New`, primary: true, onActivate: () => {
+                    globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.(state.view);
+                    clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create');
+                } }],
             });
             content = empty.element;
         } else if (!model.entities.length) {
@@ -898,6 +960,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     async function render(model) {
         if (destroyed) return;
         if (!model || !Array.isArray(model.entities)) throw new TypeError('Character list model requires entities.');
+        latestModel = model;
         const revision = ++renderRevision;
         const view = model.view === 'groups' ? 'groups' : 'characters';
         const viewChanged = state.view !== model.view;
@@ -973,6 +1036,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             create: entry => createRowEntry(entry, { edit: openEditor, menu: openRowMenu }),
             update: (row, entry) => updateRow(row, entry, dataModules, listVisible),
         });
+        for (const child of [...rowsContainer.children]) {
+            if (!child.hasAttribute('data-sb-list-key')) child.remove();
+        }
         if (listVisible && !viewChanged && !revealActiveOnRender && state.rows.size > 0 && pageEntries.length <= 50 && Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
         else updateRows();
         decorateSelection();
@@ -1192,6 +1258,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             captureState,
             restoreState,
             revealActiveEntity,
+            revealByKey,
             destroy() {
                 if (destroyed) return;
                 destroyed = true;
@@ -1236,6 +1303,7 @@ export async function mountCharacterList(container = document.getElementById('rm
     if (mountingLists.has(container)) return mountingLists.get(container);
     const promise = (async () => {
         await loadCharacterListStyles();
+        destroyLegacyPagination(container);
         const originalChildren = [...container.children].map(element => ({ element, style: element.getAttribute('style') }));
         const engineSelectors = ['#character_search_bar', '#charListFixedTop > .rm_tag_controls', '#rm_print_characters_block', '#rm_print_characters_pagination', '#rm_buttons_container'];
         const engines = engineSelectors.map(selector => container.querySelector(selector)).filter(Boolean).map(element => {

@@ -29,6 +29,30 @@ function trigger() {
 }
 
 describe('action menu optional sections', () => {
+    test('radio and checkbox items render state indicators instead of caller icons', () => {
+        openActionMenu({
+            trigger: trigger(),
+            sections: [{ items: [
+                { label: 'Selected sort', icon: 'fa-solid fa-check', kind: 'radio', checked: true, onSelect() {} },
+                { label: 'Other sort', icon: 'fa-solid fa-check', kind: 'radio', checked: false, onSelect() {} },
+                { label: 'Favorite', icon: 'fa-solid fa-star', kind: 'check', checked: true, onSelect() {} },
+                { label: 'Not favorite', icon: 'fa-solid fa-star', kind: 'check', checked: false, onSelect() {} },
+            ] }],
+        });
+
+        const menu = document.querySelector('[role="menu"]');
+        const radioItems = [...menu.querySelectorAll('[role="menuitemradio"]')];
+        const checkboxItems = [...menu.querySelectorAll('[role="menuitemcheckbox"]')];
+        expect(radioItems.map(item => item.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+        expect(checkboxItems.map(item => item.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+        expect(radioItems.map(item => item.querySelector('.sb-action-menu-indicator').dataset.kind)).toEqual(['radio', 'radio']);
+        expect(radioItems[0].querySelector('.sb-action-menu-indicator-dot')).not.toBeNull();
+        expect(radioItems[1].querySelector('.sb-action-menu-indicator-dot')).toBeNull();
+        expect(checkboxItems[0].querySelector('.sb-action-menu-indicator-check')).not.toBeNull();
+        expect(checkboxItems[1].querySelector('.sb-action-menu-indicator-check')).toBeNull();
+        expect(menu.querySelectorAll('.sb-action-menu-item > .fa-check, .sb-action-menu-item > .fa-star')).toHaveLength(0);
+    });
+
     test('titles label groups without becoming keyboard stops and radio items expose checked state', () => {
         openActionMenu({
             trigger: trigger(), title: 'Entries', keyboard: true,

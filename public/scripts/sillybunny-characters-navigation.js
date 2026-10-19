@@ -17,6 +17,13 @@ import { power_user } from './power-user.js';
 
 const EDITOR_READY_TIMEOUT = 5000;
 const EDITOR_READY_INTERVAL = 50;
+let createOrigin = 'characters';
+let createNavigationRevision = 0;
+
+export function recordCharacterCreateOrigin(view = 'characters') {
+    createOrigin = view === 'groups' ? 'groups' : 'characters';
+    createNavigationRevision++;
+}
 
 function characterEditorScroller() {
     return document.querySelector('#form_create .sb-editor-sheet__content');
@@ -134,8 +141,11 @@ function listDestination(view, kind) {
             try {
                 const opened = await shell.openTab('characters', view);
                 if (opened === false || !isCurrent()) return false;
-                await list.mountCharacterList();
+                const controller = await list.mountCharacterList();
                 if (!isCurrent()) return false;
+                if (target.revealKey) {
+                    return controller.revealByKey(target.revealKey, { highlight: true, isCurrent });
+                }
                 if (target.focusAvatar) return revealCharacterListRow(list, target.focusAvatar, isCurrent);
                 return isCurrent();
             } finally {
@@ -149,6 +159,21 @@ function listDestination(view, kind) {
 
 objectNavigation.register('character-list', listDestination('characters', 'character-list'));
 objectNavigation.register('group-list', listDestination('groups', 'group-list'));
+
+export async function returnToCreatedEntity(type, key) {
+    if (typeof key !== 'string' || !key) return false;
+    const view = type === 'group_create' ? 'groups' : type === 'char_create' ? createOrigin : 'characters';
+    const kind = view === 'groups' ? 'group-list' : 'character-list';
+    const revision = ++createNavigationRevision;
+    createOrigin = 'characters';
+    objectNavigation.clear();
+    return listDestination(view, kind).open({ revealKey: key }, { isCurrent: () => revision === createNavigationRevision });
+}
+
+globalThis.SillyBunnyCharactersNavigation = {
+    recordCreateOrigin: recordCharacterCreateOrigin,
+    returnToCreatedEntity,
+};
 
 objectNavigation.register('world-info', {
     exists: name => world_names.includes(name),

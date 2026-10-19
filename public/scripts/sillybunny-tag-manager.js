@@ -318,8 +318,8 @@ export function createTagManager(adapter) {
         return [
             { title: t`Sort mode`, items: [
                 ['manual', t`Manual (Drag & Drop)`], ['alphabetical', t`Alphabetical (A-Z)`], ['by_entries', t`Most Used (By Count)`],
-            ].map(([mode, label]) => item(label, 'arrow-down-wide-short', () => mutate(() => settings.tag_sort_mode = mode), { checked: settings.tag_sort_mode === mode })) },
-            { items: [item(t`Tags as Folders`, 'folder', () => mutate(() => settings.bogus_folders = !settings.bogus_folders), { checked: Boolean(settings.bogus_folders) })] },
+            ].map(([mode, label]) => item(label, 'arrow-down-wide-short', () => mutate(() => settings.tag_sort_mode = mode), { kind: 'radio', checked: settings.tag_sort_mode === mode })) },
+            { items: [item(t`Tags as Folders`, 'folder', () => mutate(() => settings.bogus_folders = !settings.bogus_folders), { kind: 'check', checked: Boolean(settings.bogus_folders) })] },
             { items: [item(t`Backup`, 'file-export', actions.backup), item(t`Restore`, 'file-import', actions.restore), item(t`Prune`, 'scissors', actions.prune)] },
         ];
     }
@@ -361,7 +361,8 @@ export function createTagManager(adapter) {
             item(t`lorum ipsum`, 'palette', () => showColor(tag, 'color')),
             // HUMAN: replace — Text colour action label.
             item(t`lorum ipsum`, 'font', () => showColor(tag, 'color2')),
-            item(t`Hide on character card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { checked: Boolean(tag.is_hidden_on_character_card) }),
+        ] }, { items: [
+            item(t`Hide on character card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { kind: 'check', checked: Boolean(tag.is_hidden_on_character_card) }),
         ] }, { items: [
             item(t`Move up`, 'arrow-up', () => move(tag, -1), { disabled: !manual || index === 0 }),
             item(t`Move down`, 'arrow-down', () => move(tag, 1), { disabled: !manual || index === ordered.length - 1 }),

@@ -4024,7 +4024,11 @@ async function createGroup(receipt = captureGroupEditorSave()) {
         receipt.markSaved({ entityId: String(data.id), mode: 'edit' }, savedSnapshot);
     }
     await getCharacters();
-    if (editorDraft === pendingDraft && isGroupEditorOwner(data.id)) select_rm_info('group_create', data.id);
+    // SillyBunny: a leave-guard save persists the create draft before routing to
+    // its destination; only an explicit Create action should return to the list.
+    if (editorDraft === pendingDraft && isGroupEditorOwner(data.id) && !objectNavigation.isRouting) {
+        select_rm_info('group_create', data.id);
+    }
     return true;
 }
 

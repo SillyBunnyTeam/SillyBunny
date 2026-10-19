@@ -368,7 +368,8 @@ export function mountWorldInfoEditor(container) {
                 // HUMAN: replace — Show section title.
                 title: t`lorum ipsum`,
                 items: viewButtons.map(control => ({
-                    ...menuItem(translate(control.textContent.trim()), control.classList.contains('is-active') ? 'check' : 'circle', () => control.click()),
+                    ...menuItem(translate(control.textContent.trim()), 'list', () => control.click()),
+                    kind: 'radio',
                     checked: control.classList.contains('is-active'),
                 })),
             },
@@ -376,10 +377,11 @@ export function mountWorldInfoEditor(container) {
                 // HUMAN: replace — Sort by section title.
                 title: t`lorum ipsum`,
                 items: options.map(option => ({
-                    ...menuItem(translate(option.textContent.trim()), option.selected ? 'check' : 'circle', () => {
+                    ...menuItem(translate(option.textContent.trim()), 'arrow-down-wide-short', () => {
                         sort.value = option.value;
                         sort.dispatchEvent(new Event('change', { bubbles: true }));
                     }),
+                    kind: 'radio',
                     checked: option.selected,
                 })),
             },
