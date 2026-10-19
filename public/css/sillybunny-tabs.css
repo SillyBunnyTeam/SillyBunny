@@ -8217,3 +8217,13 @@ body.charListGrid #right-nav-panel.openDrawer #rm_print_characters_block:not(.gr
         content: none;
     }
 }
+
+/* The picker binds on phones and tablets; desktop Select2 hides the native control. */
+.sb-inline-select-picker-control {
+    cursor: pointer;
+}
+
+/* The picker scrolls options; native-select gestures scroll the surrounding panel. */
+.sb-inline-select-picker-control[multiple] {
+    overflow: hidden;
+}

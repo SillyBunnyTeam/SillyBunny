@@ -36,7 +36,7 @@ You can still send a pull request for `release` in the following scenarios:
 - Updating GitHub Actions.
 - Hotfixing a critical bug. (Note: Hotfixes merged into release must also be backported to staging to prevent regression in the next update)
 
-**Maintainers: PRs require review from another maintainer, unless they're `chore` or `docs`. Never commit directly to the `staging` or `release` repositories unless they're `docs` changes.**
+**Maintainers: PRs require review from another maintainer, unless they're `chore` or `docs`. Never commit directly to the `staging` or `release` repositories unless they're `docs` changes. Hotfixes are on a per-case basis, and can be merged as an exception to favor speed over thoroughness by maintainers/code owners.**
 
 #### Release Cadence
 
@@ -57,6 +57,7 @@ When submitting a PR, follow this template:
 
 Pull requests should use the following [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) PR prefixes before the title:
 - `fix` - a direct bug fix.
+- `hotfix` - a critical fix that must ship from `release` ahead of the next release. Hotfixes are on a per-case basis, and can be merged as an exception to favor speed over thoroughness by maintainers/code owners.
 - `chore` - a simple maintenance change.
 - `feat` - a new feature implementation.
 - `sync` - synchronizing with upstream.

@@ -32,7 +32,7 @@
 ## Workflow Notes
 
 - PR targets must go to `staging` by default; `release` is only for documentation, GitHub Actions, or critical hotfixes that must be backported to staging.
-- PRs require require review from another maintainer. **Never commit directly to the `staging` or `release` repositories without a PR, unless they're `doc` or `chore` changes.**
+- PRs require require review from another maintainer. **Never commit directly to the `staging` or `release` repositories without a PR, unless they're `doc` or `chore` changes. Hotfixes are on a per-case basis, and can be merged as an exception to favor speed over thoroughness by maintainers/code owners.**
 - Prefer complete, focused PRs: use small PRs for isolated bug fixes and one cohesive larger PR for a feature or design decision; avoid tiny micro PRs that do not close a problem end to end.
 - Do not write PR descriptions for the user. PR descriptions must be manually written without AI assistance; you may prepare branches, commits, and a ready-to-open PR link, but ask the end user to provide the PR title/body before submission.
 - Keep upstream SillyTavern syncs separate from feature/fix work. Use `docs/upstream-sync.md` before preparing or reviewing an upstream sync.

@@ -141,6 +141,67 @@ export class MockServer {
     }
 
     /**
+     * Handles Interactions API requests.
+     * @param {object} jsonBody The parsed JSON body from the request.
+     * @returns {object} Mock response object.
+     */
+    handleInteractions(jsonBody) {
+        const input = Array.isArray(jsonBody?.input) ? jsonBody.input : [];
+        const lastStep = input[input.length - 1];
+        const userText = lastStep?.content?.find?.(part => part?.type === 'text')?.text;
+
+        return {
+            id: 'int-test-1',
+            model: jsonBody?.model,
+            status: 'completed',
+            steps: [
+                {
+                    type: 'thought',
+                    summary: [
+                        { type: 'text', text: `${jsonBody?.model}\n${input.length}\n${jsonBody?.generation_config?.max_output_tokens}` },
+                    ],
+                },
+                {
+                    type: 'model_output',
+                    content: [
+                        { type: 'text', text: String(userText ?? 'No prompt messages.') },
+                    ],
+                },
+            ],
+            usage: {
+                total_input_tokens: 12,
+                total_output_tokens: 5,
+                total_tokens: 17,
+            },
+        };
+    }
+
+    /**
+     * Writes an Interactions API SSE stream.
+     * @param {object} jsonBody The parsed JSON body from the request.
+     * @param {import('node:http').ServerResponse} res The HTTP response.
+     */
+    handleInteractionsStream(jsonBody, res) {
+        const writeEvent = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        writeEvent({
+            event_type: 'step.delta',
+            index: 0,
+            delta: { type: 'thought_summary', content: { type: 'text', text: `${jsonBody?.model} stream` } },
+        });
+        writeEvent({
+            event_type: 'step.delta',
+            index: 1,
+            delta: { type: 'text', text: 'Hello from Interactions.' },
+        });
+        writeEvent({
+            event_type: 'interaction.completed',
+            interaction: { id: 'int-stream-1', status: 'completed' },
+        });
+        res.end();
+    }
+
+    /**
      * Starts the mock server.
      * @returns {Promise<void>}
      */
@@ -165,6 +226,15 @@ export class MockServer {
                         }
 
                         const mockResponse = this.handleResponses(jsonBody);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify(mockResponse));
+                    } else if (req.method === 'POST' && req.url === '/v1beta/interactions') {
+                        if (jsonBody?.stream) {
+                            this.handleInteractionsStream(jsonBody, res);
+                            return;
+                        }
+
+                        const mockResponse = this.handleInteractions(jsonBody);
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify(mockResponse));
                     } else {

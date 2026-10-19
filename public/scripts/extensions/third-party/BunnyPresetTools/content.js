@@ -41,6 +41,10 @@ let backgroundMutationObserver = null;
 let backgroundCardObserversAttached = false;
 let backgroundSyncTimer = null;
 let backgroundLifecycleHandlersAttached = false;
+let renderedSourcesContainer = null;
+let renderedSourcesKey = '';
+let syncedDividerInput = null;
+let syncedDividerValue = null;
 let legacySettingsMigrationChecked = false;
 let activeSectionDrag = null;
 let sectionDropIndicator = null;
@@ -1339,9 +1343,14 @@ function clearAnimatedBackgroundLayer() {
         return;
     }
 
-    backgroundLayerElement.innerHTML = '';
+    // Runs on every bootstrap tick, so it must not write when already clear. classList.remove()
+    // rewrites the class attribute even for an absent class, and each class write on <body>
+    // makes keyboard.js rescan the whole document; toggle() with a matching force writes nothing.
+    if (backgroundLayerElement.hasChildNodes()) {
+        backgroundLayerElement.replaceChildren();
+    }
     backgroundLayerElement.removeAttribute('data-active-key');
-    document.body.classList.remove('bpt-animated-bg-active');
+    document.body.classList.toggle('bpt-animated-bg-active', false);
     renderAnimatedSourceList();
 }
 
@@ -1421,8 +1430,13 @@ function syncAnimatedBackgroundLayer() {
         const video = backgroundLayerElement.querySelector('video');
         if (video) {
             video.muted = settings.animatedBackgroundMuted;
-            video.loop = settings.animatedBackgroundLoop;
-            video.controls = settings.animatedBackgroundShowControls;
+            // loop and controls reflect to attributes, which are rewritten even when unchanged.
+            if (video.loop !== settings.animatedBackgroundLoop) {
+                video.loop = settings.animatedBackgroundLoop;
+            }
+            if (video.controls !== settings.animatedBackgroundShowControls) {
+                video.controls = settings.animatedBackgroundShowControls;
+            }
             video.volume = settings.animatedBackgroundMuted ? 0 : settings.animatedBackgroundVolume / 100;
             video.style.objectFit = getObjectFitValue();
         }
@@ -1458,7 +1472,7 @@ function syncAnimatedBackgroundLayer() {
         }
     }
 
-    document.body.classList.add('bpt-animated-bg-active');
+    document.body.classList.toggle('bpt-animated-bg-active', true);
     renderAnimatedSourceList();
 }
 
@@ -1524,6 +1538,15 @@ function renderAnimatedSourceList() {
     const activeSource = getCurrentBackgroundReference();
     const sources = settings.savedAnimatedSources;
 
+    // Called several times per bootstrap tick; rebuilding unchanged cards wakes every
+    // document-wide observer and drops focus from the card buttons.
+    const renderKey = JSON.stringify([activeSource, sources]);
+    if (container === renderedSourcesContainer && renderKey === renderedSourcesKey && container.childElementCount === Math.max(sources.length, 1)) {
+        return;
+    }
+    renderedSourcesContainer = container;
+    renderedSourcesKey = renderKey;
+
     if (!sources.length) {
         container.innerHTML = '<div class="bpt-animated-source-empty">Saved video and YouTube URLs will show up here.</div>';
         return;
@@ -1551,7 +1574,8 @@ function renderAnimatedSourceList() {
         card.querySelector('.bpt-animated-source-label').textContent = makeAnimatedSourceLabel(source);
         card.querySelector('.bpt-animated-source-main').addEventListener('click', () => applyAnimatedSource(source));
         card.querySelector('.menu_button').addEventListener('click', () => {
-            settings.savedAnimatedSources = settings.savedAnimatedSources.filter(item => item !== source);
+            const currentSettings = ensureSettings();
+            currentSettings.savedAnimatedSources = currentSettings.savedAnimatedSources.filter(item => item !== source);
             saveSettingsDebounced();
             renderAnimatedSourceList();
         });
@@ -1593,8 +1617,10 @@ function setSettingsPanelExpanded(expand) {
         return;
     }
 
-    if (header instanceof HTMLElement) {
-        header.setAttribute('aria-expanded', String(expand));
+    // Re-applied on every bootstrap tick; setAttribute and dataset write even when unchanged.
+    const expandedValue = String(expand);
+    if (header instanceof HTMLElement && header.getAttribute('aria-expanded') !== expandedValue) {
+        header.setAttribute('aria-expanded', expandedValue);
     }
 
     icon.classList.toggle('down', !expand);
@@ -1602,7 +1628,9 @@ function setSettingsPanelExpanded(expand) {
     icon.classList.toggle('up', expand);
     icon.classList.toggle('fa-circle-chevron-up', expand);
     content.style.display = expand ? 'block' : 'none';
-    panel.dataset.expanded = String(expand);
+    if (panel.dataset.expanded !== expandedValue) {
+        panel.dataset.expanded = expandedValue;
+    }
 }
 
 function isSettingsPanelExpanded(panel = document.getElementById('bpt-settings')) {
@@ -1705,7 +1733,12 @@ function injectSettingsPanel() {
     });
 
     panel.querySelector('#bpt-save-divider-patterns').addEventListener('click', () => {
-        ensureSettings().dividerRegexPattern = String(panel.querySelector('#bpt-divider-patterns').value || '').trim();
+        const dividerInput = panel.querySelector('#bpt-divider-patterns');
+        const dividerValue = String(dividerInput.value || '').trim();
+        ensureSettings().dividerRegexPattern = dividerValue;
+        dividerInput.value = dividerValue;
+        syncedDividerInput = dividerInput;
+        syncedDividerValue = dividerValue;
         saveSettingsDebounced();
         schedulePromptRefresh();
     });
@@ -1722,7 +1755,14 @@ function syncSettingsPanel() {
     const settings = ensureSettings();
     panel.querySelector('#bpt-enable-sections').checked = settings.enablePromptSections;
     panel.querySelector('#bpt-enable-animated').checked = settings.enableAnimatedBackgrounds;
-    panel.querySelector('#bpt-divider-patterns').value = settings.dividerRegexPattern;
+    // Runs every bootstrap tick: only write the field when the saved value changed, so unsaved
+    // typing is not replaced.
+    const dividerInput = panel.querySelector('#bpt-divider-patterns');
+    if (dividerInput !== syncedDividerInput || settings.dividerRegexPattern !== syncedDividerValue) {
+        dividerInput.value = settings.dividerRegexPattern;
+        syncedDividerInput = dividerInput;
+        syncedDividerValue = settings.dividerRegexPattern;
+    }
     setSettingsPanelExpanded(settings.settingsPanelExpanded);
 }
 
