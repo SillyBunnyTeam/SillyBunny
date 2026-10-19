@@ -166,9 +166,9 @@
     --sb-input-placeholder: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, var(--SmartThemeBlurTintColor) 22%);
     --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent);
     --sb-focus-ring-inset: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
-    /* Neutral text-entry focus (trial): body-colour border and ring instead of accent. */
-    --sb-entry-focus-border: color-mix(in srgb, var(--SmartThemeBodyColor) 42%, transparent);
-    --sb-entry-focus-ring: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    /* libadwaita entry focus: the 1px border plus a 1px inset in the focus-ring colour read as one 2px accent ring. */
+    --sb-entry-focus-border: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    --sb-entry-focus-ring: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
     /* libadwaita composer entry: body-colour tint at rest, accent outline on focus. */
     --sb-composer-focus-border: var(--color-primary, var(--sb-accent));
     --sb-composer-focus-ring: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 50%, transparent);
@@ -1325,8 +1325,7 @@ input.text_pole::placeholder {
     opacity: 1;
 }
 
-/* Neutral entry focus: the border and fill deepen in body-colour; no accent tint or ring.
-   Keyboard focus keeps a visible 2px neutral inset ring. */
+/* libadwaita entry focus: border and 1px inset in the accent focus-ring colour; the fill does not change. */
 .text_pole:focus,
 textarea.text_pole:focus,
 select.text_pole:focus,
@@ -6001,8 +6000,8 @@ body #toast-container > .toast:hover {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-/* Text entries match :focus-visible on every focus, including mouse clicks, so they take the
-   neutral entry ring instead of the accent keyboard ring that buttons and controls keep. */
+/* Text entries match :focus-visible on every focus, including mouse clicks; they take the entry ring,
+   which pairs with their accent border, instead of the 2px inset ring that buttons and controls use. */
 :is(textarea, input:not([type]), input:is([type='text'], [type='search'], [type='number'], [type='password'], [type='email'], [type='url'], [type='tel']), select):focus-visible {
     box-shadow: var(--sb-entry-focus-ring);
 }

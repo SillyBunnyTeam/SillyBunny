@@ -4179,7 +4179,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 .sb-bottom-chat-search-field:focus-within {
     border-color: transparent;
-    box-shadow: var(--sb-entry-focus-ring);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-bottom-chat-search-status {
