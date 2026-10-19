@@ -1022,6 +1022,29 @@ describe('chat activation and current entity', () => {
         expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
     });
 
+    test('folder sections mark their start, members and end apart from unfiled rows', async () => {
+        const open = folderStore.createFolder('characters', 'Open', { expanded: true });
+        const closed = folderStore.createFolder('characters', 'Closed', { expanded: false });
+        folderStore.setFolder('characters', ['0.png', '1.png'], open.id);
+        await mount();
+        const classes = element => ['is-folder-section-start', 'is-folder-member', 'is-folder-section-end']
+            .filter(name => element.classList.contains(name));
+        const openHeader = document.querySelector(`[data-sb-list-key="folder:characters:${open.id}"]`);
+        const closedHeader = document.querySelector(`[data-sb-list-key="folder:characters:${closed.id}"]`);
+        expect(classes(openHeader)).toEqual(['is-folder-section-start']);
+        expect(classes(document.getElementById('CharID0'))).toEqual(['is-folder-member']);
+        expect(classes(document.getElementById('CharID1'))).toEqual(['is-folder-member', 'is-folder-section-end']);
+        expect(classes(closedHeader)).toEqual(['is-folder-section-start', 'is-folder-section-end']);
+        const unfiled = [...document.querySelectorAll('#rm_print_characters_block > .character_select')]
+            .filter(row => !['CharID0', 'CharID1'].includes(row.id));
+        expect(unfiled.length).toBeGreaterThan(0);
+        for (const row of unfiled) expect(classes(row)).toEqual([]);
+
+        openHeader.click();
+        await settle();
+        expect(classes(openHeader)).toEqual(['is-folder-section-start', 'is-folder-section-end']);
+    });
+
     test('first reveal scrolls to the current row without focus theft or repeated scrolling', async () => {
         await mount();
         const row = rows()[2];

@@ -560,9 +560,52 @@
     margin-inline-start: 4px;
 }
 
+/* A folder and its members read as one inset boxed group; unfiled rows stay
+   edge to edge, so the end of a folder is clear. */
+body:not(.charListGrid) .sb-character-list #rm_print_characters_block > :is(.sb-folder-row, .is-folder-member) {
+    --sb-folder-section-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    width: auto;
+    margin-inline: 8px;
+    border-inline: 1px solid var(--sb-folder-section-edge);
+}
+
+.sb-character-list :where(#rm_print_characters_block > .is-folder-member) {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+}
+
+body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .sb-folder-row {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .is-folder-member {
+    padding-inline-start: 20px;
+}
+
+body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .is-folder-section-start {
+    margin-block-start: 8px;
+    border-block-start: 1px solid var(--sb-folder-section-edge);
+    border-start-start-radius: var(--sb-radius-card);
+    border-start-end-radius: var(--sb-radius-card);
+}
+
+body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .is-folder-section-end {
+    margin-block-end: 8px;
+    border-block-end: 1px solid var(--sb-folder-section-edge);
+    border-end-start-radius: var(--sb-radius-card);
+    border-end-end-radius: var(--sb-radius-card);
+}
+
+body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .is-folder-section-end + :not(.sb-folder-row) {
+    border-block-start: 1px solid var(--SmartThemeBorderColor);
+}
+
 @media (forced-colors: active) {
     .sb-character-list .sb-folder-row__dot {
         outline: 1px solid CanvasText;
+    }
+
+    body:not(.charListGrid) .sb-character-list #rm_print_characters_block > :is(.sb-folder-row, .is-folder-member) {
+        --sb-folder-section-edge: CanvasText;
     }
 }
 

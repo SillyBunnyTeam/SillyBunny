@@ -19,7 +19,7 @@ import { getFolders, getFolderId, setFolder, setFolderExpanded, subscribe as sub
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261020a', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261020b', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();
@@ -441,6 +441,30 @@ function buildVisibleRows(model, view, query) {
     }
     for (const entity of unfiled) rows.push({ kind: 'entity', key: modelEntityKey(entity), entity, folderId: null });
     return { rows, headers };
+}
+
+/**
+ * Marks the rows of each folder section on the current page so CSS can frame a
+ * folder header and its members as one group, apart from unfiled rows.
+ * @param {HTMLElement} container Rows container in display order.
+ */
+function decorateFolderSections(container) {
+    const rows = [...container.children];
+    const sectionOf = row => {
+        const entry = rowEntry(row);
+        if (entry?.kind === 'folder') return entry.folder?.id ?? null;
+        return entry?.folderId ?? null;
+    };
+    rows.forEach((row, index) => {
+        const section = sectionOf(row);
+        const isHeader = rowEntry(row)?.kind === 'folder';
+        const nextSection = index + 1 < rows.length ? sectionOf(rows[index + 1]) : null;
+        const nextIsHeader = rowEntry(rows[index + 1])?.kind === 'folder';
+        const previousSection = index > 0 ? sectionOf(rows[index - 1]) : null;
+        row.classList.toggle('is-folder-member', Boolean(section) && !isHeader);
+        row.classList.toggle('is-folder-section-start', Boolean(section) && (isHeader || previousSection !== section));
+        row.classList.toggle('is-folder-section-end', Boolean(section) && (nextSection !== section || nextIsHeader));
+    });
 }
 
 function pageVisibleRows(rows, headers, pagination) {
@@ -1070,15 +1094,18 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (model.hasAnyFilter && hidden > 0) pageEntries.push(await createHiddenEntry(hidden, dataModules.script));
         if (revision !== renderRevision) return;
         const scrollTop = box.scrollTop;
-        const updateRows = () => reconcileRows({
-            container: rowsContainer,
-            cache: state.rows,
-            entries: pageEntries,
-            key: entry => entry.key,
-            signature: entry => entry.kind,
-            create: entry => createRowEntry(entry, { edit: openEditor, menu: openRowMenu }),
-            update: (row, entry) => updateRow(row, entry, dataModules, listVisible),
-        });
+        const updateRows = () => {
+            reconcileRows({
+                container: rowsContainer,
+                cache: state.rows,
+                entries: pageEntries,
+                key: entry => entry.key,
+                signature: entry => entry.kind,
+                create: entry => createRowEntry(entry, { edit: openEditor, menu: openRowMenu }),
+                update: (row, entry) => updateRow(row, entry, dataModules, listVisible),
+            });
+            decorateFolderSections(rowsContainer);
+        };
         for (const child of [...rowsContainer.children]) {
             if (!child.hasAttribute('data-sb-list-key')) child.remove();
         }
