@@ -70,7 +70,7 @@ APK (applicationId io.github.sillybunnyteam.sillybunny, label "SillyBunny")
 │   ├── libnpx.so        native trampoline → libnode.so <npx-cli.js> "$@"
 │   └── lib*.so          shared libs needed by git/bash (openssl, curl, zlib, nghttp2, pcre2, iconv, ...; inspect ELF DT_NEEDED)
 └── assets/
-    ├── runtime/npm/     npm package (JS), version >= 11.10.0 (needed for .npmrc min-release-age)
+    ├── runtime/npm/     npm package (JS), version >= 11.10.0 (needed for .npmrc min-release-age); spike: 11.19.1 from Node's deps/npm, one ZIP asset
     ├── runtime/certs/   CA bundle for git/curl/openssl
     ├── runtime/git-templates/
     ├── runtime/git-core-links.txt  tab-separated helper basename → native filename map
@@ -106,7 +106,7 @@ filesDir/
 
 - `start.sh` → `node server.js` (the supervisor, `src/server-supervisor.js`) → `node server.js` (the server child, spawned via `argv[0]`, `src/server-supervisor.js:219-229`). git, npm and other short-lived processes come and go.
 - Android 12+ counts these processes towards a configurable **system-wide default** limit of 32 (the "phantom process" limit), not a per-app pool. Foreground importance does not exempt them; keep update/install work sequential (R2, §2).
-- **Stopping:** send SIGTERM to the whole process group (or to the supervisor PID). The supervisor sends the child the IPC message `sillybunny:shutdown`, with a 5 s SIGKILL fallback (`src/server-supervisor.js:177-211`). Verify the mechanism in Phase 2 (toybox `setsid` / `Os.kill(-pgid)`).
+- **Stopping:** send SIGTERM to the whole process group (or to the supervisor PID). The supervisor sends the child the IPC message `sillybunny:shutdown`, with a 5 s SIGKILL fallback (`src/server-supervisor.js:177-211`). **Verified (S2.5):** with the server started under an app-owned `setsid` shell, SIGTERM to the negative PGID removed every process in 67–151 ms on API 29/36/37, without SIGKILL. A supervisor-only SIGTERM diagnostic showed the graceful path (shutdown message → child exit 0 → supervisor exit 0) in 36–43 ms. Group SIGTERM proves clean removal, not graceful IPC delivery to a child that receives the signal too.
 
 ### 2.4 Startup sequence (every launch)
 
@@ -138,10 +138,10 @@ filesDir/
 | `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `CURL_CA_BUNDLE` | `filesDir/runtime/etc/certs/cert.pem` |
 | `OPENSSL_CONF`, `OPENSSL_MODULES` | `/dev/null`, `filesDir/runtime/openssl-modules` (empty; no optional providers/engines) |
 | `LD_PRELOAD`, `BASH_ENV`, `ENV` | unset before spawning; no inherited Termux preload or shell startup file |
-| `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | fixed local identity so `git stash` works (`autoStashBeforePull`, `src/endpoints/server-admin.js:1062-1078`) |
+| `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | fixed neutral local identity `SillyBunny` / `sillybunny@localhost.invalid` (S2.5) so `git stash` works (`autoStashBeforePull`, `src/endpoints/server-admin.js:1062-1078`) |
 | `SILLYBUNNY_ANDROID_NPM_CLI`, `SILLYBUNNY_ANDROID_NPX_CLI` | paths used by the npm/npx trampolines |
 
-Invoke bundled Bash with `--noprofile --norc` for both launchers. Preserve deliberate app-owned Git configuration/identity; P4-T's hook/global-config/automatic-maintenance disabling was test isolation, not the production contract (P4-T, §6).
+Pass the server port as `start.sh -- --port <P>` (an argument, not an environment variable). Start from an empty environment except the inherited Android framework roots (`ANDROID_ROOT`, `ANDROID_DATA`, `ANDROID_TZDATA_ROOT`, plus `ANDROID_ART_ROOT` and `ANDROID_I18N_ROOT` on API 36+), which S2.5 kept on every API. Invoke bundled Bash with `--noprofile --norc` for both launchers. Preserve deliberate app-owned Git configuration/identity; P4-T's hook/global-config/automatic-maintenance disabling was test isolation, not the production contract (P4-T, §6).
 
 ---
 
@@ -196,7 +196,7 @@ When `SILLYBUNNY_ANDROID_APP=1`:
   - `install.sh`: `cat`, `grep`, `ls`, `git`, `bash`, `mkdir`, `cp`, `dirname`, `basename`, `head`, `sed`, `tr`, `uname`; git bootstrap can also call `sudo`, `pkg`, `xcode-select`, `apt-get`, `dnf`, `yum`, `pacman`, `zypper`, `apk` (skipped in APK mode). No `tail` or `curl` command.
   - The implemented APK shell gate additionally calls `mkdir`, `mv`, `rm`; the APK installer skips wizard/platform/package-manager paths, and the prerequisites script runs no external commands in APK mode.
 
-  Anything missing gets bundled from Termux (e.g. `busybox` or `coreutils`) and added to `runtime/bin`.
+  Anything missing gets bundled from Termux (e.g. `busybox` or `coreutils`) and added to `runtime/bin`. **Verified (S2.5):** with `PATH=runtime/bin:/system/bin`, every command above resolves on API 29/36/37 (toybox 0.8.0/0.8.12/0.8.13). Only the skipped package-manager/prerequisite commands, the comment-only `curl` and the deliberately absent `bun` are missing, so no gap-filler is needed. OEM toybox builds remain **UNVERIFIED**.
 
 Add short inline comments at each APK-mode branch (AGENTS.md rule for diverging base files).
 
@@ -302,8 +302,8 @@ Spec:
 
 1. **Welcome.** Ask for notification permission (Android 13+); denial must not block installation/server startup. Offer the battery-optimisation exemption (optional, never forced, also available in Settings). An FGS still requires its notification when permission is denied, though only Task Manager may show it (R2, §2).
 2. **Preflight:**
-   - free storage check (threshold measured in task 2.6)
-   - network check; on a metered or mobile connection, show a warning with the **measured** estimated download size (clone + `npm ci`) and let the user continue
+   - free storage check. S2.5 measured about 940 MB installed before user data on x86_64: natives 110 MB, `runtime/` 33 MB, checkout 691 MB (including `node_modules` 452 MB and `.git` 79 MB) and `home/` with the npm cache 108 MB. Peak usage during installation is not measured yet; the threshold needs it plus a margin (task 2.6)
+   - network check; on a metered or mobile connection, show a warning with the **measured** estimated download size (clone + `npm ci`; S2.5: about 175–187 MB on x86_64, clone ~79 MB plus `npm ci` ~98–108 MB) and let the user continue
 3. **Lay out the runtime** (§2.2).
 4. **Install.** Run `libbash.so install.sh --no-start --dir filesDir/SillyBunny --ref BuildConfig.DEFAULT_REF --use-node` with the APK-mode env (§2.5), and show streamed progress and log output; no runtime picker while Bun is deferred.
 5. **On success:** start `ServerService` → WebView.
@@ -324,7 +324,7 @@ There is **no branch picker**; branches are switched via Server Tools in the web
   - **An unexpected exit or the process being killed** (out of memory, battery-manager kill) triggers an automatic restart with backoff, **at most 3 times within 5 minutes**. After that, show an error screen with the last N log lines and **Restart** / **Share logs** (Android share sheet, with a `lorum ipsum` warning that logs may contain sensitive details).
   - Distinguish child exit from whole-host death: an in-memory loop cannot run while the host is dead; `START_STICKY` recreation may have a null intent and no latency guarantee. Preserve the bounded-recovery policy without resurrecting a user-stopped server from jobs/alarms. Android 13 Task Manager Stop has no callback; guard exit-history APIs at API 30, and do not treat ambiguous `REASON_USER_REQUESTED` as a reason to reject a fresh explicit launch (R2, §2).
 - **Data safety:** restarts and recovery **never** touch `data/` or `config.yaml`, never re-clone, and never run Repair on their own.
-- **Stopping:** SIGTERM to the process group (verify the mechanism), then SIGKILL after a timeout. This matches the supervisor's 5 s force-kill (`src/server-supervisor.js:31`).
+- **Stopping:** SIGTERM the supervisor first (the graceful IPC path), then SIGTERM the process group, then SIGKILL after a timeout. Group SIGTERM alone removed every process in ≤151 ms in S2.5 but does not prove graceful IPC delivery (§2.3). This matches the supervisor's 5 s force-kill (`src/server-supervisor.js:31`).
 - **Health check:** poll `GET /__sillybunny/health` with the launch-token cookie until it returns 204.
 - **Platform limits:** the six-hour/24-hour timeouts for `dataSync`/`mediaProcessing` do not apply to `specialUse`; this is not an uptime/Doze/OEM-survival guarantee. Android 16 job quotas still affect WorkManager/JobScheduler/DownloadManager, not a documented timer on ProcessBuilder children (R2, §2).
 
@@ -399,7 +399,7 @@ Triggered manually from Settings or the error screens:
   - P4-T replaces exactly one compiled-in Termux shell literal in each Git/HTTP-helper binary (six across three ABIs) with same-length NUL-padded `/system/bin/sh`; the API 37 real-app shell-alias probe passes. This does not make writable hooks executable or add SSH/submodule/GUI support.
   - bash's rc paths: run with `--noprofile --norc`
   - any `/data/data/com.termux/...` strings: use `strings` on each binary
-- **npm/npx trampolines:** a tiny C program built with the NDK. It works out its name from `argv[0]` and runs `execv(nativeLibraryDir/libnode.so, [node, $SILLYBUNNY_ANDROID_NPM_CLI|NPX_CLI, argv[1:]...])`. It is packaged as `libnpm.so` / `libnpx.so` (an executable named like a library, so it needs a small Gradle copy step; AGP only auto-packages CMake library targets).
+- **npm/npx trampolines:** a tiny C program built with the NDK. It works out its name from `argv[0]` and runs `execv(nativeLibraryDir/libnode.so, [node, $SILLYBUNNY_ANDROID_NPM_CLI|NPX_CLI, argv[1:]...])`. It is packaged as `libnpm.so` / `libnpx.so` (an executable named like a library, so it needs a small Gradle copy step; AGP only auto-packages CMake library targets). **Verified (S2.5):** a 57-line C trampoline (source in `s25-app-install.md` §4) builds for all three ABIs as a stripped PIE with 16 KB LOAD alignment and NEEDED limited to libc/libdl. It runs `npm`/`npx` 11.19.1 on API 29/36/37, resolves `libnode.so` next to its own `/proc/self/exe`, and also accepts the `libnpm.so`/`libnpx.so` names.
 - **Execution proof (R2, §2):** use absolute Context-derived native paths for direct starts; a `.so` name only makes a packaging candidate, not a valid executable. Validate the actual app-launched chain/helper symlink targets on the required API/OEM matrix, not `run-as`. Interpreting writable JS/shell files differs from directly executing them. Target-37 `System.load()` requires modules read-only to the app UID; installed 0755 files owned elsewhere need not be 0444. This Java rule does not establish a blanket native dlopen/exec/npm-add-on ban; test those paths separately.
 - **Bun [DEFERRED]:** Node is the only bundled JavaScript runtime (confirmed 2026-10-21, §9.10); no Bun fetch/packaging now. Retain `bun-linux-aarch64-android.zip` (https://github.com/oven-sh/bun/releases) as a Bionic candidate fact, not a qualified runtime; S2.4's failures and future patched-build gates remain in §10.
 
@@ -662,12 +662,13 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
 
 ## 10. Known risks and unknowns (verify early, in Phase 2)
 
-Report keys: **S2.4** = `s24-bun.md`; **R2** = `r2-android-platform.md` (2026-10-20 cutoff, validated 2026-10-21); **S2.7b** = `s27-downloads-audit.md`; **P4-T** = `p4-termux-runtime.md`; **P3-B** = `p3-B-server-gate.md`; **T3.7** = `t37-touch-ledger.md`; **S2.2** = `s22-termux-git-bash.md`; **S2.2b** = `s22b-api36.md`.
+Report keys: **S2.4** = `s24-bun.md`; **R2** = `r2-android-platform.md` (2026-10-20 cutoff, validated 2026-10-21); **S2.7b** = `s27-downloads-audit.md`; **P4-T** = `p4-termux-runtime.md`; **P3-B** = `p3-B-server-gate.md`; **T3.7** = `t37-touch-ledger.md`; **S2.2** = `s22-termux-git-bash.md`; **S2.2b** = `s22b-api36.md`; **S2.5** = `s25-app-install.md`.
 
 - **Exec via symlinks:** task 2.2 is complete: S2.2 real `untrusted_app` tests cover API 29/4 KB; P4-T and S2.2b cover committed-pipeline outputs on API 37/16 KB and API 36/4 KB. Required filtered HTTPS clone/Git operations, symlinks and writable-copy EACCES pass; API 36 adds 19 cloned-repository/39 local checks, repaired shell alias and group stop. API 29 used the earlier spike payload, not a rerun of final outputs; API 33/35 and ARM/OEM execution remain **UNVERIFIED**. `run-as` is not production exec proof (S2.2, §4; P4-T, §5; S2.2b, §§4–6; R2, §2).
 - **ELF/page-size checks:** P4-T audits all 51 final Termux ELFs: arm64/x86_64 LOADs ≥ `0x4000`; ARM32 retains `0x1000` and needs rebuilding if ARM32 16 KB support is required. All five S2.4 Bun candidates pass static 16 KB LOAD checks, but tested x86_64 JavaScript still aborts on 16 KB pages. Node ELFs await S2.1; task 2.7 stays open. ZIP alignment alone proves neither ELF compatibility nor runtime page-size independence (P4-T, §§5–6; S2.4, §4; R2, §§1–2).
 - **Bun qualification (retained for a later revisit):** official x64 and baseline 1.4.3 die with SIGSYS on `close_range` before `--version` on API 29/31. All three tested x86_64 builds install on API 37/16 KB but abort during JavaScriptCore initialization; aligned arm64 ELFs were not executed. Termux passes feature probes on 29/31, but only the diagnostic copyfile install starts SillyBunny in the isolated symlinked layout. Successful installs fail the `.npmrc min-release-age=7` control while `ignore-scripts` passes; the pinned-source audit also finds ignored directory/file/git source restrictions. Copyfile does not fix policy or 16 KB failures. Task 2.4's verification is answered negatively; task 4.4 is deferred by confirmed §9.10 (S2.4, §§4, 6).
 - **Bun CPU/license limits:** Termux-copyfile child CPU samples are 0.717%/0.467% over one 60 s emulator window on API 29/31, not ARM battery or steady-state estimates. Bun includes JSC/WebKit and other dependency obligations; complete corresponding-source/relink compliance and fake-node/lifecycle-path relocation are not cleared (S2.4, §§4, 6).
+- **npm through the APK runtime (S2.5):** `npm ci --omit=dev` installs 675 packages (20,480 files, ~299 MB of content) with every `.npmrc` policy enforced on API 29/36/37. `protobufjs@6.11.4` is the only production package with an install script; `ignore-scripts=true` keeps it suppressed and the server still starts. Git dependencies are refused by `allow-git=none` and could not work anyway: npm clones with `--recurse-submodules`, which needs Git's `git-submodule` shell script, and the runtime deliberately excludes it. npm prints an update notice (11.19.1 → 12.2.0) and its audit reports 54 vulnerabilities in the production tree; neither was acted on. Extracting the npm ZIP took 8.8–9.7 s with a per-file fsync.
 - **Termux relocation:** P4-T patches Git/HTTP shell literals and supplies the helper map, templates and CA; follow §§2.2/2.5 exactly. SSH, submodule/GUI/foreign-VCS helpers and writable hooks are not supported by this closure; ARM execution remains **UNVERIFIED** (P4-T, §§3, 6).
 
 - **Node Android build patches.** Use ST-android's patch set as the reference, and check its license compatibility (AGPL-3.0, same as SillyBunny).
@@ -699,9 +700,9 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 ## Phase 2: De-risking spikes (throwaway; results recorded in Notes) [IN PROGRESS]
 - [ ] **2.1 Build upstream Node (spike pin v24.22.0; release line open, §9) for arm64 + x86_64 with the NDK (ST-android patches as reference). Confirm `process.platform === 'android'`, `/system/bin/sh` for `shell: true`, ICU/Intl, WASM, worker_threads** ← CURRENT
 - [x] 2.2 Repackage Termux git + bash (+ libs). Confirm exec via symlinks from `filesDir` → `nativeLibraryDir` on API 29, 36 and 37 emulators. Run `git clone --filter=blob:none` over HTTPS, `fetch`, `pull --ff-only`, `stash`, `checkout`, `show`
-- [ ] 2.3 Prove the npm trampoline: `npm ci --omit=dev` of SillyBunny on the emulator, honouring `.npmrc` (npm ≥ 11.10.0)
+- [x] 2.3 Prove the npm trampoline: `npm ci --omit=dev` of SillyBunny on the emulator, honouring `.npmrc` (npm ≥ 11.10.0)
 - [x] 2.4 Verify that Bun's official Android zip runs on API 29+ (arm64 device or emulator image) and can run `bun install` + the server
-- [ ] 2.5 Run `install.sh` + `start.sh` from an actual app-launched process with the APK-mode env (prototype flags); verify SELinux identity/resolved executables and list missing toybox commands/Termux path issues. `run-as` is inspection, not production exec proof (R2, §2)
+- [x] 2.5 Run `install.sh` + `start.sh` from an actual app-launched process with the APK-mode env (prototype flags); verify SELinux identity/resolved executables and list missing toybox commands/Termux path issues. `run-as` is inspection, not production exec proof (R2, §2)
 - [ ] 2.6 Measure: Node-only APK size per ABI, first-run download (clone + `npm ci`), installed storage footprint, cold-start time; Bun-size comparison deferred with the bundle (§9.10)
 - [ ] 2.7 Check the 16 KB alignment of every ELF; check `install.sh --migrate-from` on a git checkout; audit how SillyBunny triggers downloads (blob/data URLs)
 - [ ] 2.8 Write the findings into §10 / Notes, and adjust the plan if anything changes a decision (escalate to the maintainers if it does)
@@ -718,7 +719,7 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 ## Phase 4: Runtime pipeline [IN PROGRESS]
 - [ ] 4.1 `android/runtime.lock` format + `android/runtime/patches/` (§5.1)
 - [ ] 4.2 `.github/workflows/android-runtime.yml`: Node NDK builds per ABI → GHCR (oras) + attestation → digest-update PR (§5.2)
-- [ ] 4.3 `android/runtime/fetch-termux.sh`: download, verify, extract, ELF-patch git/bash/libs (+ toybox gap-fillers) (§4.9)
+- [x] 4.3 `android/runtime/fetch-termux.sh`: download, verify, extract, ELF-patch git/bash/libs (+ toybox gap-fillers) (§4.9)
 - [ ] 4.4 Bun zip fetch + verify (arm64 only). **DEFERRED (2026-10-21):** confirmed Node-only APK decision; revisit gates in §9.10
 - [ ] 4.5 Sources-archive builder + `THIRD_PARTY_NOTICES` generator (§5.3)
 
@@ -791,6 +792,7 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 - 2026-10-21: Maintainers confirmed Node-only APKs for now (relayed by user); Bun packaging, selector/switching, size comparison and Bun-specific release copy/sources are deferred. Runtime lock/update manifest keep `bun: null`; non-APK Bun support is unchanged. Revisit only after 16 KB JSC start-up, unchanged `.npmrc min-release-age=7`/source policies and real arm64 tests pass (§9.10; S2.4).
 - 2026-10-21: §4.5 explicitly keeps file/universal-file access disabled, including for Blob downloads; chooser URI rejection is a separate control (R2, §4). Earlier Bun-mode notes and Appendix A answers are historical and superseded for APKs by §9.10.
 - 2026-10-21: Task 5.1 complete in `cffd1f67c`, `af05a0334`, `0937e8ccc` and `45262ecc2`: checksum-pinned Gradle 9.6.0 wrapper, AGP 9.4.1/Kotlin 2.4.21 project, per-ABI splits (x86_64 only with `-PincludeX86_64`), `app-version.properties` (versionCode 1, versionName 1.0.0), BuildConfig `DEFAULT_REF`/`REPO_URL`/`UPDATE_MANIFEST_URL` with debug-only overrides, environment-only release signing (v2/v3, no v4; unsigned without the variables) and the §4.2 manifest with inert service/provider/receiver stubs. Debug builds use AGP's generated debug key, not a committed test key. Debug/release builds and lint pass (0 errors; 1 warning suggesting a newer Gradle, kept for the pin); the x86_64 debug APK launches on API 37/16 KB without a crash. The launcher label is the product name `SillyBunny`; the only placeholder strings are `scaffold_message` and `server_service_subtype` (`lorum ipsum`, `android/app/src/main/res/values/strings.xml`).
+- 2026-10-21: Tasks 2.3 and 2.5 complete (S2.5). On x86_64 emulators at API 37 (16 KB), API 29 and API 36, the real app process ran clone → `npm ci` → `install.sh --no-start` → `start.sh` → authenticated health (204 with the launch cookie, 403 without) → group stop: 61/63 checks each. The two failures are the unavailable Git-dependency positive control (§10). Cold first start including `npm ci` took 60–68 s, warm starts 4.8–5.5 s, and the `install.sh` clone 10–27 s; a versionCode-0 run wrote `update-blocked.json` and still served. Task 4.3 complete: no toybox gap-fillers are needed. Task 2.6 stays open for ARM and production APK sizes and peak storage; the x86_64 download and footprint figures are in §4.3.
 
 ---
 
