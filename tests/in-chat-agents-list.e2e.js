@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -63,6 +64,8 @@ async function openAgents(page, baseURL, width = 1440) {
 
 async function menu(page, root, label = 'Agents Menu') {
     await root.getByRole('button', { name: label, exact: true }).click();
+    await expectAgentMenuIcons(page);
+    if (label === 'Agents Menu') expect(await page.getByRole('menuitem').count()).toBeLessThanOrEqual(12);
     return page.getByRole('menuitem');
 }
 
@@ -74,7 +77,183 @@ async function selectMode(page, root) {
 
 async function back(root) {
     await root.getByRole('button', { name: 'Back', exact: true }).click();
-    await expect(root.locator('.ica-agents-fixed')).toBeVisible();
+    await expect(root).toHaveAttribute('data-open', 'false');
+}
+
+async function openPage(page, root, label) {
+    await menu(page, root);
+    await page.getByRole('menuitem', { name: label, exact: true }).click();
+}
+
+async function searchAgents(root, query) {
+    const search = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
+    if (!await search.isVisible()) await root.getByRole('button', { name: 'Search Agents', exact: true }).click();
+    await search.fill(query);
+}
+
+test('stage headings match Connections group headings and categories are smaller plain labels', async ({ page, baseURL }) => {
+    const { root } = await openAgents(page, baseURL);
+    const typography = selector => page.locator(selector).first().evaluate(node => {
+        const style = getComputedStyle(node);
+        return { size: style.fontSize, weight: style.fontWeight, color: style.color };
+    });
+    const stage = await typography('.ica-agents-stage:visible');
+    const category = await typography('.ica-agents-category');
+    await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
+    await page.locator('button[data-sb-settings-tab="connections"]').evaluate(node => node.click());
+    const connections = await typography('.sb-connections-panel .ds-pref-group-heading');
+    expect(stage).toEqual(connections);
+    expect(parseFloat(category.size)).toBeLessThan(parseFloat(stage.size));
+    expect(category.weight).toBe('400');
+    expect(category.color).not.toBe(stage.color);
+    await expect(root.locator('.ica-agents-category')).toHaveText(['Custom', 'Custom']);
+});
+
+test('context and feedback previews use the document icon and context wording', async ({ page, baseURL }) => {
+    const { root, saves, errors } = await openAgents(page, baseURL);
+    const row = root.locator('.ica-agent-row[data-agent-id="qa-bravo"]');
+    await menu(page, row, 'Agent Menu');
+    const preview = page.getByRole('menuitem', { name: 'Preview Prompt in Context', exact: true });
+    await expect(preview.locator(':scope > i')).toHaveClass(/fa-file-lines/);
+    await expect(page.getByRole('menuitem', { name: 'Preview Prompt', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.evaluate(async () => {
+        const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+        store.getAgentById('qa-bravo').execution = 'companion';
+        (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+    });
+    await menu(page, row, 'Agent Menu');
+    await expect(page.getByRole('menuitem', { name: 'Preview Feedback', exact: true }).locator(':scope > i'))
+        .toHaveClass(/fa-file-lines/);
+    expect(saves()).toHaveLength(0);
+    expect(errors).toEqual([]);
+});
+
+test('search header toggle, Ctrl+F, type-to-search and Escape follow the prompt list pattern', async ({ page, baseURL }) => {
+    const { root, saves } = await openAgents(page, baseURL);
+    const trigger = root.getByRole('button', { name: 'Search Agents', exact: true });
+    const search = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await trigger.click();
+    await expect(search).toBeFocused();
+    await search.fill('Bravo');
+    await expect(root.locator('.ica-agent-row')).toHaveCount(1);
+    await root.locator('.ica-agent-row').first().focus();
+    await expect(search).toBeVisible();
+    await search.focus();
+    await page.keyboard.press('Escape');
+    await expect(search).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(root.locator('.ica-agent-row')).toHaveCount(4);
+    await root.locator('[data-sb-list-key="agent:qa-bravo"]').focus();
+    await page.keyboard.type('B');
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue('B');
+    await page.keyboard.press('Escape');
+    await trigger.press('Control+f');
+    await expect(search).toBeFocused();
+    await trigger.click();
+    await expect(search).toBeHidden();
+    await trigger.click();
+    await root.locator('.ica-agent-row').first().focus();
+    await expect(search).toBeHidden();
+    await expect(root.locator('.ica-agent-row').first()).toBeFocused();
+    await openPage(page, root, 'Settings');
+    await back(root);
+    expect(saves()).toHaveLength(0);
+});
+
+for (const width of [1440, 390]) {
+    test(`${width}px filters live beside search and remain visibly active when search closes`, async ({ page, baseURL }) => {
+        const { root, saves } = await openAgents(page, baseURL, width);
+        const trigger = root.getByRole('button', { name: 'Search Agents', exact: true });
+        const filter = root.getByRole('button', { name: 'Filter Agents', exact: true });
+        const search = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
+        await menu(page, root);
+        await expect(page.getByRole('menuitemcheckbox')).toHaveCount(0);
+        await expect(page.getByRole('menuitem', { name: 'Settings', exact: true }).locator('i')).toHaveClass('fa-solid fa-gear');
+        await page.keyboard.press('Escape');
+        await expect(filter).toBeHidden();
+        await expect(trigger).toHaveAttribute('aria-pressed', 'false');
+        await trigger.click();
+        await expect(filter).toBeVisible();
+        await expect(root.locator('.ica-agents-search').getByRole('button', { name: 'Filter Agents', exact: true })).toBeVisible();
+        await menu(page, root, 'Filter Agents');
+        await expect(page.getByRole('menuitem')).toHaveCount(0);
+        await expect(page.getByRole('menuitemcheckbox')).toHaveCount(7);
+        await page.getByRole('menuitemcheckbox', { name: 'Only agents that are on', exact: true }).click();
+        await expect(filter).toHaveAttribute('aria-pressed', 'true');
+        await expect(trigger).toHaveAttribute('aria-pressed', 'true');
+        await expect(root.locator('.sb-status-page').getByRole('heading')).toHaveText('No Results');
+        const activeFill = await trigger.evaluate(node => getComputedStyle(node).backgroundColor);
+        await trigger.click();
+        await expect(search).toBeHidden();
+        await expect(trigger).toHaveAttribute('aria-pressed', 'true');
+        await expect(root.locator('.ica-agent-row')).toHaveCount(0);
+        await trigger.click();
+        await menu(page, root, 'Filter Agents');
+        await expect(page.getByRole('menuitemcheckbox', { name: 'Only agents that are on', exact: true })).toHaveAttribute('aria-checked', 'true');
+        await page.getByRole('menuitemcheckbox', { name: 'Only agents that are on', exact: true }).click();
+        await expect(filter).toHaveAttribute('aria-pressed', 'false');
+        await expect(trigger).toHaveAttribute('aria-pressed', 'false');
+        expect(await trigger.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(activeFill);
+        await menu(page, root, 'Filter Agents');
+        await page.getByRole('menuitemcheckbox', { name: 'Tracker', exact: true }).click();
+        await expect(filter).toHaveAttribute('aria-pressed', 'true');
+        await search.fill('QA ');
+        await page.keyboard.press('Escape');
+        await expect(search).toBeHidden();
+        await expect(trigger).toHaveAttribute('aria-pressed', 'true');
+        await expect(root.locator('.ica-agent-row')).toHaveCount(0);
+        await trigger.click();
+        await menu(page, root, 'Filter Agents');
+        await page.getByRole('menuitemcheckbox', { name: 'Tracker', exact: true }).click();
+        await expect(filter).toHaveAttribute('aria-pressed', 'false');
+        await expect(trigger).toHaveAttribute('aria-pressed', 'false');
+        await expect(root.locator('.ica-agent-row')).toHaveCount(4);
+        expect(await page.evaluate(async () => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem('ica--agent-list-only-on'))).toBe('false');
+        expect(saves()).toHaveLength(0);
+    });
+
+    test(`${width}px template pickers group and search inline/companion templates; empty status actions remain reachable`, async ({ page, baseURL }) => {
+        const { root, saves } = await openAgents(page, baseURL, width);
+        for (const { companion, label } of [
+            { companion: false, label: 'New Agent from Template…' },
+            { companion: true, label: 'New Companion from Template…' },
+        ]) {
+            await menu(page, root, 'Add Agent');
+            await page.getByRole('menuitem', { name: label, exact: true }).click();
+            const picker = page.getByRole('dialog', { name: label.slice(0, -1), exact: true });
+            await expect(picker.getByRole('combobox')).toBeFocused();
+            const headings = await picker.locator('.sb-picker__group-heading').allTextContents();
+            expect(headings.some(heading => heading.includes(' · '))).toBe(true);
+            await expect(picker.getByRole('option').filter({ hasText: /Pathfinder|Anti-Slop Regex|Director Core|NSFW Mode/ })).toHaveCount(0);
+            const first = picker.getByRole('option').first();
+            const name = await first.locator('.sb-picker__label').textContent();
+            await expect(first.locator('.sb-picker__subtitle')).not.toBeEmpty();
+            await picker.getByRole('combobox').fill(name);
+            await expect(picker.getByRole('option')).toHaveCount(1);
+            await picker.getByRole('option').click();
+            await expect(root.locator('[data-sb-section="companion-output"]')).toBeVisible({ visible: companion });
+            await back(root);
+            expect(saves()).toHaveLength(0);
+        }
+        await page.evaluate(async () => {
+            (await import('/scripts/extensions/in-chat-agents/agent-store.js')).loadAgents([]);
+            (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+        });
+        await expect(root.locator('.ica-agent-row, .ica-agents-group')).toHaveCount(0);
+        const status = root.locator('.sb-status-page');
+        await expect(status.getByRole('heading')).toHaveText('No Agents');
+        await expect(status.locator('.sb-status-page__description')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await status.getByRole('button', { name: 'New Agent', exact: true }).click();
+        await expect(root.locator('.ica-agent-detail')).toBeVisible();
+        await back(root);
+        await status.getByRole('button', { name: 'New Agent from Template…', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'New Agent from Template', exact: true })).toBeVisible();
+        await page.keyboard.press('Escape');
+        expect(saves()).toHaveLength(0);
+    });
 }
 
 for (const width of [1440, 390]) {
@@ -113,13 +292,17 @@ for (const width of [1440, 768, 390, 360]) {
     test(`${width}px Agents list alignment, tooltips, adaptive metadata and accessibility`, async ({ page, baseURL }) => {
         const { root, errors } = await openAgents(page, baseURL, width);
         await expect(page.locator('#ica--agentList, #ica--agentTabs, #ica--bulkBar, .ica--quick-section, .ica--template-browser')).toHaveCount(0);
-        for (const label of ['Add Agent', 'Agents Menu', 'Filter Agents']) {
+        for (const label of ['Add Agent', 'Agents Menu', 'Search Agents']) {
             expect(await root.getByRole('button', { name: label, exact: true }).evaluate(node => node.title || node.getAttribute('data-sttt--title'))).toBe(label);
         }
         const rows = root.locator('.ica-agent-row');
-        expect(await rows.count()).toBeGreaterThan(10);
+        expect(await rows.count()).toBe(4);
         expect(await rows.locator(':scope > .ds-entity-row__grip').count()).toBe(await rows.count());
-        await expect(root.locator('.ica-agent-row[data-saved="false"]').first().locator('.ica-agent-grip-placeholder')).toHaveAttribute('aria-hidden', 'true');
+        await expect(root.locator('.ica-agent-row[data-saved="false"], .ica-agents-fixed')).toHaveCount(0);
+        await expect(root.locator('[data-sb-list-key^="pinned:"] .ica-agent-grip-placeholder')).toHaveAttribute('aria-hidden', 'true');
+        await expect(root.locator('.ica-agents-stage:visible')).toHaveText(['Pinned', 'Before Reply']);
+        await expect(root.locator('.ica-agents-category')).toHaveText(['Custom', 'Custom']);
+        await expect(root.getByRole('searchbox', { name: 'Search Agents', exact: true })).toBeHidden();
         const geometry = await root.evaluate(node => ({ scroll: node.scrollWidth, client: node.clientWidth }));
         expect(geometry.scroll).toBeLessThanOrEqual(geometry.client + 1);
         await expect(rows.first()).toHaveAttribute('aria-description', /tokens/);
@@ -127,13 +310,13 @@ for (const width of [1440, 768, 390, 360]) {
         await page.evaluate(() => document.documentElement.style.setProperty('--mainFontSize', '32px'));
         expect(await root.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
         await page.evaluate(() => document.documentElement.style.removeProperty('--mainFontSize'));
-        await root.locator('[data-sb-list-key="settings"]').click();
+        await openPage(page, root, 'Settings');
         await expect(root.locator('#ica--helperPrefillMessages')).toBeVisible();
         const sidebarWidth = await root.locator('.sb-list-editor__sidebar').evaluate(node => node.clientWidth);
         expect(sidebarWidth >= 400 || await root.locator('.ica-agent-token:visible').count() === 0).toBe(true);
         expect(await root.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
         await back(root);
-        await root.locator('[data-sb-list-key="groups"]').click();
+        await openPage(page, root, 'Agent Groups');
         await expect(root.getByRole('button', { name: 'Save Agents as Group…', exact: true })).toHaveClass(/ds-button-row/);
         expect(await root.getByRole('button', { name: 'Turn On', exact: true }).first().evaluate(node => getComputedStyle(node).whiteSpace)).toBe('nowrap');
         await back(root);
@@ -143,50 +326,50 @@ for (const width of [1440, 768, 390, 360]) {
 }
 
 for (const width of [1440, 390]) {
-    test(`${width}px unused open, cancel, preview and export never save; sole-copy Delete restores unused`, async ({ page, baseURL }) => {
+    test(`${width}px template draft stays unsaved, Added opens existing copy and sole-copy Delete removes the row`, async ({ page, baseURL }) => {
         const { root, writes, saves, errors } = await openAgents(page, baseURL, width);
-        const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
-        const key = await unused.getAttribute('data-sb-list-key');
-        const name = await unused.getAttribute('aria-label');
-        const search = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
-        await search.fill(name);
-        await unused.click();
-        await expect(page.locator('dialog[open] #ica--editor')).toBeVisible();
-        await page.locator('dialog[open] .popup-button-cancel').click();
-        await menu(page, unused, 'Agent Menu');
-        await page.getByRole('menuitem', { name: /Preview (Prompt|Feedback)/ }).click();
-        await page.locator('dialog[open] .popup-button-ok').click();
-        await menu(page, unused, 'Agent Menu');
-        const download = page.waitForEvent('download');
-        await page.getByRole('menuitem', { name: 'Export…', exact: true }).click();
-        expect((await download).suggestedFilename()).toContain(name);
+        const name = await chooseAgentTemplate(page, root);
+        await expect(root.locator('.ica-agent-detail')).toBeVisible();
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
+        await back(root);
         expect(saves()).toHaveLength(0);
-        await unused.getByRole('switch').click();
+        await chooseAgentTemplate(page, root, { name });
+        await root.locator('.ica-agent-detail').getByRole('button', { name: 'Save', exact: true }).click();
         await expect.poll(() => saves().length).toBe(1);
-        const saved = root.getByRole('listitem', { name, exact: true }).first();
+        const id = JSON.parse(saves()[0].body).id;
+        await back(root);
+        const saved = root.locator(`[data-sb-list-key="agent:${id}"]`);
         await expect(saved).toHaveAttribute('data-saved', 'true');
-        await expect.poll(() => saved.evaluate(node => node.contains(document.activeElement))).toBe(true);
+        await menu(page, root, 'Add Agent');
+        await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).click();
+        const picker = page.getByRole('dialog', { name: 'New Agent from Template', exact: true });
+        await picker.getByRole('combobox').fill(name);
+        const option = picker.getByRole('option').filter({ has: page.getByText(name, { exact: true }) });
+        await expect(option.locator('.sb-picker__subtitle')).toHaveText(/^Added(?: · |$)/);
+        await option.click();
+        await expect(root.locator('.ica-agent-detail').getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+        await back(root);
+        expect(saves()).toHaveLength(1);
         await menu(page, saved, 'Agent Menu');
         await page.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
         await expect(page.locator('dialog[open] .popup-button-cancel')).toBeFocused();
         await page.locator('dialog[open] .popup-button-ok').click();
-        await expect(root.locator(`[data-sb-list-key="${key}"]`)).toHaveAttribute('data-saved', 'false');
+        await expect(saved).toHaveCount(0);
+        await expect(root.locator('.ica-agent-row[data-saved="false"]')).toHaveCount(0);
         expect(writes.filter(write => write.path === '/api/in-chat-agents/delete')).toHaveLength(1);
         expect(errors).toEqual([]);
     });
 
-    test(`${width}px selection deduplicates Pinned; filtered Select All includes unused; no-op and mixed Delete are safe`, async ({ page, baseURL }) => {
+    test(`${width}px selection deduplicates Pinned; filtered Select All includes saved rows only and Delete is guarded`, async ({ page, baseURL }) => {
         const { root, writes, saves } = await openAgents(page, baseURL, width);
         await selectMode(page, root);
         await root.locator('[data-sb-list-key="pinned:agent:qa-alpha"]').click();
         await expect(root.locator('.sb-selection-title')).toHaveText('1 selected');
         await expect(root.locator('[data-sb-list-key="agent:qa-alpha"] .sb-selection-check')).toBeChecked();
         await root.locator('[data-sb-list-key="agent:qa-alpha"]').click();
-        const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
-        await unused.click();
+        await expect(root.locator('.sb-selection-title')).toHaveText('0 selected');
         await expect(root.getByRole('button', { name: 'Delete…', exact: true })).toBeDisabled();
-        await root.getByRole('button', { name: 'Turn Off', exact: true }).click();
-        expect(saves()).toHaveLength(0);
+        await root.locator('[data-sb-list-key="agent:qa-alpha"]').click();
         await root.getByRole('button', { name: 'Edit Properties…', exact: true }).click();
         await expect(page.locator('dialog[open] #ica--bulkEdit-role')).toBeVisible();
         await page.locator('dialog[open] .popup-button-cancel').click();
@@ -200,12 +383,12 @@ for (const width of [1440, 390]) {
         await page.locator('dialog[open] .popup-button-cancel').click();
         expect(writes.filter(write => write.path.endsWith('/delete'))).toHaveLength(0);
         await root.getByRole('button', { name: 'Cancel', exact: true }).click();
-        await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill(await unused.getAttribute('aria-label'));
+        await searchAgents(root, 'QA Alpha');
         await selectMode(page, root);
         await root.getByRole('button', { name: 'Select All', exact: true }).click();
         await expect(root.locator('.sb-selection-title')).toHaveText('1 selected');
         await root.getByRole('button', { name: 'Cancel', exact: true }).click();
-        await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill('QA ');
+        await searchAgents(root, 'QA ');
         await selectMode(page, root);
         await root.getByRole('button', { name: 'Select All', exact: true }).click();
         await expect(root.locator('.sb-selection-title')).toHaveText('3 selected');
@@ -227,7 +410,7 @@ for (const width of [1440, 390]) {
         await page.keyboard.press('Escape');
         await expect(root.locator('#ica--helperPrefillMessages')).not.toBeFocused();
         await page.keyboard.press('Escape');
-        await expect(root.locator('[data-sb-list-key="settings"]')).toBeFocused();
+        await expect(root.getByRole('button', { name: 'Agents Menu', exact: true })).toBeFocused();
         expect(saves()).toHaveLength(0);
     });
 }
@@ -252,14 +435,14 @@ test('keyboard reorder and Move Up/Down persist identical saved slots without ma
     await page.mouse.up();
     await expect.poll(() => group.locator('.ica-agent-row').evaluateAll(rows => rows.map(row => row.dataset.agentId))).toEqual(['qa-bravo', 'qa-alpha', 'qa-charlie']);
     expect(saves().every(write => JSON.parse(write.body).id.startsWith('qa-'))).toBe(true);
-    await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill('QA ');
+    await searchAgents(root, 'QA ');
     await menu(page, bravo, 'Agent Menu');
     await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
 });
 
 test('bulk roles, six-field properties, companion-output eligibility and conversion skip unchanged saved records', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
-    await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill('QA ');
+    await searchAgents(root, 'QA ');
     await selectMode(page, root);
     await root.getByRole('button', { name: 'Select All', exact: true }).click();
     const overflow = async label => {
@@ -299,11 +482,11 @@ test('bulk roles, six-field properties, companion-output eligibility and convers
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
 });
 
-test('unused bulk no-ops stay virtual; a changed role materialises once and keeps canonical selection', async ({ page, baseURL }) => {
+test('saved bulk no-ops do not write; a changed role saves once and keeps canonical selection', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
-    const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
+    const unused = root.locator('[data-sb-list-key="agent:qa-bravo"]');
     const name = await unused.getAttribute('aria-label');
-    await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill(name);
+    await searchAgents(root, name);
     await selectMode(page, root);
     await root.getByRole('button', { name: 'Select All', exact: true }).click();
     await root.getByRole('button', { name: 'Edit Properties…', exact: true }).click();
@@ -322,26 +505,22 @@ test('unused bulk no-ops stay virtual; a changed role materialises once and keep
     expect(saves()).toHaveLength(1);
 });
 
-test('mixed Delete names and deletes only the saved count while retaining unused selection', async ({ page, baseURL }) => {
+test('Delete names the saved count and prunes deleted selection', async ({ page, baseURL }) => {
     const { root, writes, saves } = await openAgents(page, baseURL);
-    const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
-    const key = await unused.getAttribute('data-sb-list-key');
     await selectMode(page, root);
     await root.locator('[data-sb-list-key="agent:qa-bravo"]').click();
-    await unused.click();
     await root.getByRole('button', { name: 'Delete…', exact: true }).click();
     await expect(page.locator('dialog[open] .popup-button-ok')).toHaveText('Delete 1 Saved Agents');
     await page.locator('dialog[open] .popup-button-ok').click();
     await expect(root.locator('[data-sb-list-key="agent:qa-bravo"]')).toHaveCount(0);
-    await expect(root.locator(`[data-sb-list-key="${key}"] .sb-selection-check`)).toBeChecked();
-    await expect(root.locator('.sb-selection-title')).toHaveText('1 selected');
+    await expect(root.locator('.sb-selection-title')).toHaveText('0 selected');
     expect(saves()).toHaveLength(0);
     expect(writes.filter(write => write.path.endsWith('/delete'))).toHaveLength(1);
 });
 
-test('Save as Group snapshots selected unused rows without materialisation and cancellation keeps selection', async ({ page, baseURL }) => {
+test('Save as Group snapshots saved rows without agent writes and cancellation keeps selection', async ({ page, baseURL }) => {
     const { root, writes, saves } = await openAgents(page, baseURL, 390);
-    const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
+    const unused = root.locator('[data-sb-list-key="agent:qa-bravo"]');
     const key = await unused.getAttribute('data-sb-list-key');
     await selectMode(page, root);
     await unused.click();
@@ -366,11 +545,11 @@ test('Save as Group snapshots selected unused rows without materialisation and c
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
 });
 
-test('failed unused bulk save retains selection and can retry without a phantom saved row', async ({ page, baseURL }) => {
+test('failed saved bulk save retains selection and retries without changing row identity', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
     let fail = true;
     await page.context().route('**/api/in-chat-agents/save', route => fail ? route.fulfill({ status: 503, json: {} }) : route.fallback());
-    const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
+    const unused = root.locator('[data-sb-list-key="agent:qa-bravo"]');
     const key = await unused.getAttribute('data-sb-list-key');
     await selectMode(page, root);
     await unused.click();
@@ -381,7 +560,7 @@ test('failed unused bulk save retains selection and can retry without a phantom 
     fail = false;
     await root.getByRole('button', { name: 'Turn On', exact: true }).click();
     await expect.poll(() => saves().length).toBe(1);
-    await expect(root.locator(`[data-sb-list-key="${key}"]`)).toHaveCount(0);
+    await expect(root.locator(`[data-sb-list-key="${key}"]`)).toHaveCount(1);
     await expect(root.locator('.sb-selection-title')).toHaveText('1 selected');
 });
 
@@ -390,10 +569,14 @@ test('new drafts, manual-target cancel, pin, duplicate, import and saved-only ex
     for (const label of ['New Agent', 'New Companion']) {
         await menu(page, root, 'Add Agent');
         await page.getByRole('menuitem', { name: label, exact: true }).click();
-        await expect(page.locator('dialog[open] #ica--editor')).toBeVisible();
-        await page.locator('dialog[open] .popup-button-cancel').click();
+        await expect(root.locator('.ica-agent-detail')).toBeVisible();
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
+        await root.locator('.ica-agent-detail').getByRole('button', {
+            name: 'Back',
+            exact: true,
+        }).click();
     }
-    const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
+    const unused = root.locator('[data-sb-list-key="agent:qa-bravo"]');
     const name = await unused.getAttribute('aria-label');
     await page.locator('#send_textarea').fill('QA composer target');
     await menu(page, unused, 'Agent Menu');
@@ -404,8 +587,8 @@ test('new drafts, manual-target cancel, pin, duplicate, import and saved-only ex
     await menu(page, unused, 'Agent Menu');
     await page.getByRole('menuitem', { name: 'Duplicate', exact: true }).click();
     await expect.poll(() => saves().length).toBe(1);
-    expect(JSON.parse(saves()[0].body)).toMatchObject({ enabled: false, sourceTemplateId: '', name: `${name} (Copy)` });
-    await expect(unused).toHaveAttribute('data-saved', 'false');
+    expect(JSON.parse(saves()[0].body)).toMatchObject({ enabled: false, sourceTemplateId: '', name });
+    await expect(unused).toHaveAttribute('data-saved', 'true');
     await menu(page, unused, 'Agent Menu');
     await page.getByRole('menuitem', { name: 'Pin to Top', exact: true }).click();
     await expect.poll(() => saves().length).toBe(2);
@@ -417,7 +600,9 @@ test('new drafts, manual-target cancel, pin, duplicate, import and saved-only ex
     const download = page.waitForEvent('download');
     await page.getByRole('menuitem', { name: 'Export All…', exact: true }).click();
     const exported = JSON.parse(await readFile(await (await download).path(), 'utf8'));
-    expect(exported.agents ?? exported).toHaveLength(6);
+    expect((exported.agents ?? exported).map(agent => agent.id).sort()).toEqual([
+        'qa-alpha', 'qa-bravo', 'qa-charlie', JSON.parse(saves()[0].body).id, JSON.parse(saves()[2].body).id,
+    ].sort());
     expect(saves()).toHaveLength(3);
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
 });
@@ -425,16 +610,17 @@ test('new drafts, manual-target cancel, pin, duplicate, import and saved-only ex
 test('global switch and banner preserve row state and unfiltered header totals', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
     const row = root.locator('[data-sb-list-key="agent:qa-bravo"]');
-    await row.getByRole('switch').check();
+    await row.getByRole('switch').click();
     await expect.poll(() => saves().length).toBe(1);
+    await expect(row.getByRole('switch')).toBeChecked();
     await expect(root.locator('.sb-list-header__subtitle')).toHaveText(/1 on · \d+ tokens/);
-    await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill('no such QA entry');
+    await searchAgents(root, 'no such QA entry');
     await expect(root.locator('.sb-list-header__subtitle')).toHaveText(/1 on · \d+ tokens/);
     await root.locator('.sb-list-header input[role="switch"]').uncheck();
     await expect(root.locator('.sb-banner')).toBeVisible();
     await root.locator('.sb-banner button').click();
     await expect(root.locator('.sb-banner')).toBeHidden();
-    await root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill('QA Bravo');
+    await searchAgents(root, 'QA Bravo');
     await expect(row.getByRole('switch')).toBeChecked();
     expect(saves()).toHaveLength(1);
 });
@@ -444,6 +630,8 @@ test('390px coarse controls meet 44px and interim pages keep shell and in-pane B
     try {
         const page = await context.newPage();
         const { root } = await openAgents(page, baseURL, 390);
+        await root.getByRole('button', { name: 'Search Agents', exact: true }).click();
+        await expect(root.getByRole('button', { name: 'Filter Agents', exact: true })).toBeVisible();
         const targets = root.locator('.sb-list-header__button:visible, .ica-agents-search button, .ica-agent-row .ds-entity-row__button, .ica-agent-grip');
         for (const target of await targets.all()) {
             const box = await target.boundingBox();
@@ -459,8 +647,8 @@ test('390px coarse controls meet 44px and interim pages keep shell and in-pane B
         await switchTarget.click({ position: { x: 1, y: 1 } });
         await expect(switchTarget.getByRole('switch')).toBeChecked();
         await expect(page.locator('dialog[open]')).toHaveCount(0);
-        for (const key of ['settings', 'groups']) {
-            await root.locator(`[data-sb-list-key="${key}"]`).click();
+        for (const label of ['Settings', 'Agent Groups']) {
+            await openPage(page, root, label);
             const paneBack = root.getByRole('button', { name: 'Back', exact: true });
             await expect(paneBack).toBeVisible();
             const box = await paneBack.boundingBox();
@@ -476,7 +664,7 @@ test('390px coarse controls meet 44px and interim pages keep shell and in-pane B
                 expect((await target.boundingBox()).height).toBeGreaterThanOrEqual(44);
             }
             await back(root);
-            await expect(root.locator(`[data-sb-list-key="${key}"]`)).toBeFocused();
+            await expect(root.getByRole('button', { name: 'Agents Menu', exact: true })).toBeFocused();
         }
     } finally {
         await context.close();
@@ -485,12 +673,11 @@ test('390px coarse controls meet 44px and interim pages keep shell and in-pane B
 
 test('saved extra copies update and restore by ID; Update keeps order while Restore resets it', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
-    const templateKey = await root.locator('.ica-agent-row[data-saved="false"]').first().getAttribute('data-sb-list-key');
-    const fixture = await page.evaluate(async templateId => {
+    const fixture = await page.evaluate(async () => {
         const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
         const catalogue = await import('/scripts/extensions/in-chat-agents/catalogue.js');
         const templates = await (await fetch('/scripts/extensions/in-chat-agents/templates/index.json')).json();
-        const template = templates.find(item => item.id === templateId);
+        const template = templates.find(item => item.id === 'tpl-drift-tracker');
         const agent = catalogue.buildAgentFromTemplate(template);
         agent.id = 'qa-copy-two';
         agent.name = 'QA outdated copy';
@@ -505,7 +692,7 @@ test('saved extra copies update and restore by ID; Update keeps order while Rest
         store.loadAgents([...store.getAgents(), { ...structuredClone(agent), id: 'qa-copy-one', name: 'QA first copy' }, agent]);
         (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
         return { name: template.name, prompt: agent.prompt };
-    }, templateKey.slice('agent-template:'.length));
+    });
     const copy = root.locator('[data-sb-list-key="agent:qa-copy-two"]');
     await menu(page, copy, 'Agent Menu');
     await page.getByRole('menuitem', { name: /^Update to v/ }).click();
@@ -527,23 +714,34 @@ test('saved extra copies update and restore by ID; Update keeps order while Rest
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
 });
 
-test('unused editor Save materialises once and a later saved edit retains its ID', async ({ page, baseURL }) => {
+test('template editor Save materialises once and a later saved edit retains its ID', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
-    const unused = root.locator('.ica-agent-row[data-saved="false"]').first();
-    const key = await unused.getAttribute('data-sb-list-key');
-    await unused.click();
-    await page.locator('#ica--editor-name').fill('QA saved catalogue draft');
+    await chooseAgentTemplate(page, root);
+    const detail = root.locator('.ica-agent-detail');
+    await detail.getByRole('textbox', {
+        name: 'Name',
+        exact: true,
+    }).fill('QA saved catalogue draft');
     expect(saves()).toHaveLength(0);
-    await page.locator('dialog[open] .popup-button-ok').click();
+    await detail.getByRole('button', {
+        name: 'Save',
+        exact: true,
+    }).click();
     await expect.poll(() => saves().length).toBe(1);
     const saved = JSON.parse(saves()[0].body);
-    expect(saved.sourceTemplateId).toBe(key.slice('agent-template:'.length));
+    expect(saved.sourceTemplateId).toMatch(/^tpl-/);
     expect(saved.enabled).toBe(false);
     const row = root.locator(`[data-sb-list-key="agent:${saved.id}"]`);
     await expect(row).toBeVisible();
     await row.click();
-    await page.locator('#ica--editor-name').fill('QA saved catalogue edited');
-    await page.locator('dialog[open] .popup-button-ok').click();
+    await detail.getByRole('textbox', {
+        name: 'Name',
+        exact: true,
+    }).fill('QA saved catalogue edited');
+    await detail.getByRole('button', {
+        name: 'Save',
+        exact: true,
+    }).click();
     await expect.poll(() => saves().length).toBe(2);
     expect(JSON.parse(saves()[1].body).id).toBe(saved.id);
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
@@ -551,7 +749,7 @@ test('unused editor Save materialises once and a later saved edit retains its ID
 
 test('interim Groups create, additive Turn On and Delete retain single-level confirmation', async ({ page, baseURL }) => {
     const { root, writes, saves } = await openAgents(page, baseURL, 390);
-    await root.locator('[data-sb-list-key="groups"]').click();
+    await openPage(page, root, 'Agent Groups');
     await root.getByRole('button', { name: 'Save Agents as Group…', exact: true }).click();
     await page.locator('#ica--grp-name').fill('QA group roundtrip');
     await page.locator('dialog[open] .popup-button-ok').click();

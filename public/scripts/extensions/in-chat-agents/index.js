@@ -90,8 +90,22 @@ import {
 import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, getLatestValidCompanionMessageIndex, runTrackerCompanionsOnMessage, syncCompanionChatHistoryConfig } from './companion/companion-runner.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
-import { configureCompanionDashboard, initCompanionWandMenuItem, openCompanionDashboard } from './companion/companion-dashboard.js';
-import { configureCompanionPanel, initCompanionPanel, refreshCompanionPanel, updateCompanionPanelHandleVisibility, isConversationModeActive } from './companion/companion-panel.js';
+import {
+    configureCompanionDashboard,
+    initCompanionWandMenuItem,
+    openCompanionDashboard,
+    captureCompanionDashboardOrigin,
+    restoreCompanionDashboardOrigin,
+} from './companion/companion-dashboard.js';
+import {
+    configureCompanionPanel,
+    initCompanionPanel,
+    refreshCompanionPanel,
+    updateCompanionPanelHandleVisibility,
+    isConversationModeActive,
+    captureCompanionPanelOrigin,
+    restoreCompanionPanelOrigin,
+} from './companion/companion-panel.js';
 import { attachTextareaFullscreen } from './textarea-fullscreen.js';
 import { t } from '../../i18n.js';
 import { confirmDestructiveAction } from '../../sillybunny-delete-confirm.js';
@@ -328,50 +342,18 @@ function getCompanionAgentOptionLabel(agent) {
     return `${name} (Order ${getAgentOrderValue(agent)})`;
 }
 
-function getCompanionBatchOptionsForAgent(agent) {
-    if (!isCompanionAgent(agent)) return [];
-
+// SillyBunny: display legacy template references without silently rewriting their stored IDs.
+function getAgentEditorCompanionOptions(id, enabledOnly = false, selectedIds = []) {
     return getAgents()
-        .filter(candidate => candidate.id !== agent.id)
-        .filter(candidate => isCompanionAgent(candidate))
-        .filter(candidate => isAgentEnabledForCurrentScope(candidate))
-        .map(candidate => ({
-            id: candidate.id,
-            referenceIds: getCompanionReferenceIds(candidate),
-            label: getCompanionAgentOptionLabel(candidate),
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label));
+        .filter(candidate => candidate.id !== id && isCompanionAgent(candidate))
+        .filter(candidate => !enabledOnly || isAgentEnabledForCurrentScope(candidate))
+        .flatMap(candidate => {
+            const references = new Set(getCompanionReferenceIds(candidate).map(value => value.toLowerCase()));
+            const selected = selectedIds.filter(value => references.has(value.toLowerCase()));
+            return (selected.length ? selected : [candidate.id]).map(value => [value, getCompanionAgentOptionLabel(candidate)]);
+        });
 }
 
-function getCompanionDependencyOptionsForAgent(agent) {
-    if (!isCompanionAgent(agent)) return [];
-
-    return getAgents()
-        .filter(candidate => candidate.id !== agent.id)
-        .filter(candidate => isCompanionAgent(candidate))
-        .map(candidate => ({
-            id: candidate.id,
-            referenceIds: getCompanionReferenceIds(candidate),
-            label: getCompanionAgentOptionLabel(candidate),
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label));
-}
-
-function getCompanionContextRecipientOptionsForAgent(agent) {
-    return getCompanionDependencyOptionsForAgent(agent);
-}
-
-function getCompanionOutputTargetOptionsForAgent(agent) {
-    return getAgents()
-        .filter(candidate => candidate.id !== agent?.id)
-        .filter(candidate => isCompanionAgent(candidate))
-        .map(candidate => ({
-            id: candidate.id,
-            referenceIds: getCompanionReferenceIds(candidate),
-            label: getCompanionAgentOptionLabel(candidate),
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label));
-}
 
 function normalizeDirectorCommentaryVoice(value = '') {
     const normalized = String(value ?? '').trim().toLowerCase();
@@ -419,13 +401,32 @@ function getDirectorCustomVoicesSetting(settings = {}) {
     return legacyCustomVoice ? normalizeDirectorCustomVoices(`Custom: ${legacyCustomVoice}`) : '';
 }
 
-const REGEX_PLACEMENT_LABELS = {
-    [AGENT_REGEX_PLACEMENT.AI_OUTPUT]: 'AI Output',
-    [AGENT_REGEX_PLACEMENT.USER_INPUT]: 'User Input',
-    [AGENT_REGEX_PLACEMENT.SLASH_COMMAND]: 'Slash Command',
-    [AGENT_REGEX_PLACEMENT.WORLD_INFO]: 'World Info',
-    [AGENT_REGEX_PLACEMENT.REASONING]: 'Reasoning',
-};
+// SillyBunny: the detail uses the same library migrations and parsers as the retained editor.
+function agentEditorTemplateSettings(agent) {
+    const settings = { ...agent.settings };
+    const activeName = (items, name) => items.find(item => item.name.toLowerCase() === name.toLowerCase())?.name ?? items[0]?.name ?? '';
+    if (agent.sourceTemplateId === CHATROOM_TEMPLATE_ID) {
+        settings.chatroomStyle = normalizeChatroomStyle(settings.chatroomStyle);
+        settings.chatroomCustomStyles = getChatroomCustomStylesSetting(settings);
+        settings.chatroomCustomStyleName = activeName(
+            parseChatroomCustomStyles(settings.chatroomCustomStyles),
+            normalizeChatroomCustomStyleName(settings.chatroomCustomStyleName),
+        );
+        settings.chatroomExtraCharacterAvatars = normalizeChatroomExtraCharacterAvatars(settings.chatroomExtraCharacterAvatars);
+        delete settings.chatroomCustomStyle;
+    } else if (agent.sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID) {
+        settings.directorCommentaryVoice = normalizeDirectorCommentaryVoice(settings.directorCommentaryVoice);
+        settings.directorCommentaryCustomVoices = getDirectorCustomVoicesSetting(settings);
+        settings.directorCommentaryCustomVoiceName = activeName(
+            parseDirectorCustomVoices(settings.directorCommentaryCustomVoices),
+            normalizeDirectorCustomVoiceName(settings.directorCommentaryCustomVoiceName),
+        );
+        delete settings.directorCommentaryCustomVoice;
+    } else if (agent.sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
+        settings.plotCompassObjective = String(settings.plotCompassObjective ?? '').trim();
+    }
+    return settings;
+}
 
 const DEFAULT_PRE_PROCESS = {
     mode: 'inject',
@@ -515,7 +516,7 @@ async function openAgentListEntry(entry) {
     if (entry.kind === 'agent') return openEditor(entry.agent.id);
     const defaults = createDefaultAgent();
     const draft = { ...defaults, ...structuredClone(entry.agent) };
-    // Catalogue previews are intentionally partial; the legacy editor expects complete nested defaults.
+    // SillyBunny: catalogue previews are partial; keep the detail's creation boundary complete.
     for (const field of ['injection', 'conditions', 'preProcess', 'postProcess', 'companion', 'settings']) {
         draft[field] = { ...defaults[field], ...draft[field] };
     }
@@ -615,6 +616,30 @@ async function convertTrackersFromList() {
 
 async function registerAgentListUi(settingsStore) {
     const ui = await import('./ui/agent-list.js');
+    const { objectNavigation } = await import('../../sillybunny-editor/object-navigation.js');
+    for (const [kind, captureState, restoreOrigin] of [
+        ['companion-dashboard', captureCompanionDashboardOrigin, restoreCompanionDashboardOrigin],
+        ['companion-panel', captureCompanionPanelOrigin, restoreCompanionPanelOrigin],
+    ]) {
+        objectNavigation.register(
+            kind,
+            {
+                captureState,
+                async open(_target, {
+                    restore,
+                    isCurrent,
+                }) {
+                    if (!isCurrent()) return false;
+                    await ui.closeAgentDetail();
+                    if (restore?.settingsOpen === false && document.documentElement.dataset.sbSettingsOpen === 'true') {
+                        document.getElementById('sb-settings-close')?.click();
+                        await new Promise(resolve => requestAnimationFrame(resolve));
+                    }
+                    return restoreOrigin(restore, isCurrent);
+                },
+            },
+        );
+    }
     refreshAgentsPanels = ui.refreshAgentsPanels;
     ui.registerAgentsPanelAdapter({
         categories: AGENT_CATEGORIES,
@@ -622,10 +647,12 @@ async function registerAgentListUi(settingsStore) {
         settingsFooter: settingsStore.querySelector('[data-sb-agent-global-settings]'),
         importFile: settingsStore.querySelector('#ica--importFile'),
         getEntries: getAgentListEntries,
-        state: () => ({ enabled: areAgentsGloballyEnabled(), running: isAgentGenerationActive(), fixRunning: fixTrackersRunning,
+        state: () => ({
+            enabled: areAgentsGloballyEnabled(), running: isAgentGenerationActive(), fixRunning: fixTrackersRunning,
             enabledKeys: new Set(getAgents().filter(isAgentEnabledForCurrentScope).map(agent => `agent:${agent.id}`)),
             updates: getAgentsWithTemplateUpdates().filter(agent => !isPathfinderAgent(agent)).length,
-            tokens: getInChatAgentTokenUsage(), conversationMode: isConversationModeActive() }),
+            tokens: getInChatAgentTokenUsage(), conversationMode: isConversationModeActive(),
+        }),
         setGlobalEnabled: enabled => {
             setGlobalSettings({ enabled });
             if (!enabled) cancelPathfinderSummary();
@@ -633,23 +660,125 @@ async function registerAgentListUi(settingsStore) {
             syncToolAgentRegistrations();
             renderAgentList();
         },
-        stop: () => { cancelAgentGeneration(); refreshGenerationUi(); },
+        stop: () => {
+            cancelAgentGeneration(); refreshGenerationUi();
+        },
         openEditor: openAgentListEntry,
         newCompanion: autoOpenCompanionMaker => openEditor(null, { draft: buildCompanionDraftAgent(), autoOpenCompanionMaker }),
         setEnabled: setAgentListEntryEnabled,
         perform: performAgentListAction,
         bulk: performAgentBulkAction,
         editProperties: editAgentListProperties,
-        reorder: async ids => { await reorderAgentsIntoOrderSlots(ids); renderAgentList(); refreshCompanionPanel(); },
+        reorder: async ids => {
+            await reorderAgentsIntoOrderSlots(ids); renderAgentList(); refreshCompanionPanel();
+        },
         updateAll: updateAllAgentsFromSourceTemplates,
         fixTrackers: fixTrackersFromList,
         convertTrackers: convertTrackersFromList,
         exportAll: handleExportAll,
         openCompanions: openCompanionDashboard,
         getGroups,
-        turnOnGroup: async group => { await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList(); },
+        turnOnGroup: async group => {
+            await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList();
+        },
         deleteGroup,
         createGroup: createCustomGroup,
+        editor: {
+            saveAgent: agent => saveAgent({
+                ...agent,
+                settings: agentEditorTemplateSettings(agent),
+            }),
+            materialise: (id, options) => materialise(
+                id,
+                {
+                    ...options,
+                    edits: {
+                        ...options.edits,
+                        settings: agentEditorTemplateSettings(options.edits),
+                    },
+                },
+                getCatalogueContext(),
+            ),
+            syncCompanionChatHistoryConfig,
+            saveChatDebounced,
+            refreshRegexSnapshotsForAgent,
+            updateCompanionButtonVisibility: () => {
+                updateCompanionButtonVisibility();
+                syncToolAgentRegistrations();
+                refreshCompanionPanel();
+            },
+            populateProfiles: (select, selectedValue) => populateConnectionProfileSelect(select, { selectedValue }),
+            profileMenu: async trigger => {
+                const { openActionMenu } = await import('../../sillybunny-action-menu.js');
+                const { confirmActiveEditorLeave } = await import('../../sillybunny-editor/navigation.js');
+                openActionMenu({
+                    trigger,
+                    sections: [
+                        {
+                            items: [
+                                {
+                                    label: t`Connections`,
+                                    onSelect: async () => {
+                                        if (await confirmActiveEditorLeave()) await globalThis.SillyBunnyShell.openTab('left', 'connections');
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                });
+            },
+            companions: getAgentEditorCompanionOptions,
+            characters: () => getChatroomSelectableCharacters().map(character => [character.avatar, character.label]),
+            templateSettings: agentEditorTemplateSettings,
+            customStyles: value => parseChatroomCustomStyles(value).map(item => [item.name, item.name]),
+            customVoices: value => parseDirectorCustomVoices(value).map(item => [item.name, item.name]),
+            chatroomStyles: [
+                ['mixed', t`Mixed`],
+                ['in-world', t`In-world`],
+                ['discord/twitch', t`Discord / Twitch`],
+                ['twitter/x', t`Twitter / X`],
+                ['reddit', t`Reddit`],
+                ['ao3/wattpad', t`AO3 / Wattpad`],
+                ['newsroom', t`Newsroom`],
+                ['thread-board/4chan', t`Thread-board / 4chan`],
+                ['infomercial', t`Infomercial`],
+                ['custom', t`Custom`],
+            ],
+            directorVoices: [
+                ['active', t`Active narration voice`],
+                ['conspiratorial-absurdity', t`Conspiratorial absurdity`],
+                ['bureaucratic-irony', t`Bureaucratic irony`],
+                ['cosmic-playbook', t`Cosmic playbook`],
+                ['beige-undercurrents', t`Beige undercurrents`],
+                ['gossipy-voyeurism', t`Gossipy voyeurism`],
+                ['cruel-realism', t`Cruel realism`],
+                ['solemn-witness', t`Solemn witness`],
+                ['grand-satirical-stage', t`Grand satirical stage`],
+                ['randomised', t`Randomised`],
+                ['custom', t`Custom`],
+            ],
+            preview: previewPreGenerationPrompt,
+            feedback: previewCompanionFeedbackPrompt,
+            refine: refinePromptWithAI,
+            createRegex: createDefaultRegexScript,
+            normalizeRegex: normalizeRegexScript,
+            regexSubstitutions: [
+                [AGENT_REGEX_SUBSTITUTE.NONE, t`None`],
+                [AGENT_REGEX_SUBSTITUTE.RAW, t`Raw macros`],
+                [AGENT_REGEX_SUBSTITUTE.ESCAPED, t`Escaped macros`],
+            ],
+            regexPlacements: [
+                [AGENT_REGEX_PLACEMENT.USER_INPUT, t`User Input`],
+                [AGENT_REGEX_PLACEMENT.AI_OUTPUT, t`AI Output`],
+                [AGENT_REGEX_PLACEMENT.SLASH_COMMAND, t`Slash Commands`],
+                [AGENT_REGEX_PLACEMENT.WORLD_INFO, t`World Info`],
+                [AGENT_REGEX_PLACEMENT.REASONING, t`Reasoning`],
+            ],
+            generateCompanionKitWithAI,
+            generateTrackerKitWithAI,
+            parseTrackerFormat,
+            buildTrackerPreviewPopupContent,
+        },
     });
 }
 
@@ -671,7 +800,9 @@ async function performAgentBulkAction(keys, action, { properties = {}, onSaved =
                 const enabled = action === 'on';
                 if ((entry.kind === 'agent' && isAgentEnabledForCurrentScope(entry.agent)) === enabled) continue;
                 const saved = await setAgentListEntryEnabled(entry, enabled);
-                if (saved) { changed++; onSaved(key, saved); }
+                if (saved) {
+                    changed++; onSaved(key, saved);
+                }
                 continue;
             }
             const agent = structuredClone(entry.agent);
@@ -1142,29 +1273,6 @@ function getTemplateRegexCount(template) {
     return Array.isArray(template?.regexScripts) ? template.regexScripts.length : 0;
 }
 
-function buildRegexTemplateLabel(regexCount) {
-    if (regexCount <= 0) return '';
-    return regexCount === 1 ? '1 regex' : `${regexCount} regex`;
-}
-
-function describeRegexPlacements(regexScript) {
-    return (regexScript.placement || [])
-        .map(placement => REGEX_PLACEMENT_LABELS[placement] || `Placement ${placement}`)
-        .join(', ');
-}
-
-function describeRegexScript(regexScript) {
-    const mode = regexScript.promptOnly
-        ? 'prompt'
-        : (regexScript.markdownOnly ? 'markdown' : 'raw');
-    const toggles = [
-        mode,
-        regexScript.runOnEdit ? 'edit' : null,
-        regexScript.disabled ? 'disabled' : null,
-    ].filter(Boolean).join(' • ');
-    const placements = describeRegexPlacements(regexScript) || 'AI Output';
-    return `${placements} • ${toggles}`;
-}
 
 function getAgentPreProcess(agent) {
     return {
@@ -1881,111 +1989,6 @@ function renderAgentList() {
 
 // ===================== Editor Modal =====================
 
-async function openRegexScriptEditor(existingScript = null) {
-    const regexScript = existingScript
-        ? normalizeRegexScript(structuredClone(existingScript))
-        : createDefaultRegexScript();
-
-    const placementOptions = [
-        AGENT_REGEX_PLACEMENT.AI_OUTPUT,
-        AGENT_REGEX_PLACEMENT.USER_INPUT,
-        AGENT_REGEX_PLACEMENT.SLASH_COMMAND,
-        AGENT_REGEX_PLACEMENT.WORLD_INFO,
-        AGENT_REGEX_PLACEMENT.REASONING,
-    ].map(placement => `
-        <label class="checkbox_label">
-            <input type="checkbox" name="ica--regex-placement" value="${placement}" ${regexScript.placement.includes(placement) ? 'checked' : ''} />
-            <span>${REGEX_PLACEMENT_LABELS[placement]}</span>
-        </label>
-    `).join('');
-
-    const html = $(`
-        <div class="ica--regex-editor">
-            <label class="ica--editor-row">Script Name
-                <input type="text" id="ica--regex-name" class="text_pole" placeholder="Regex script name" value="${escapeHtml(regexScript.scriptName)}" />
-            </label>
-            <label class="ica--editor-row">Find Regex
-                <textarea id="ica--regex-find" class="text_pole textarea_compact" rows="4" placeholder="/pattern/g or plain regex">${escapeHtml(regexScript.findRegex)}</textarea>
-            </label>
-            <label class="ica--editor-row">Replace String
-                <textarea id="ica--regex-replace" class="text_pole textarea_compact" rows="4" placeholder="Replacement text">${escapeHtml(regexScript.replaceString)}</textarea>
-            </label>
-            <label class="ica--editor-row">Trim Strings <small>(one per line)</small>
-                <textarea id="ica--regex-trim" class="text_pole textarea_compact" rows="3" placeholder="Text removed from capture groups before substitution">${escapeHtml((regexScript.trimStrings || []).join('\n'))}</textarea>
-            </label>
-            <div class="ica--editor-section ica--regex-subsection">
-                <strong>Placement</strong>
-                <div class="ica--regex-placement-grid">${placementOptions}</div>
-                <div class="ica--regex-note">Bundled in-chat agent regex currently executes on output formatting. Other placements are preserved for compatibility.</div>
-            </div>
-            <div class="ica--editor-row flex-container flexGap5">
-                <label class="flex1">Substitute Find Regex
-                    <select id="ica--regex-substitute" class="text_pole">
-                        <option value="${AGENT_REGEX_SUBSTITUTE.NONE}">None</option>
-                        <option value="${AGENT_REGEX_SUBSTITUTE.RAW}">Raw macros</option>
-                        <option value="${AGENT_REGEX_SUBSTITUTE.ESCAPED}">Escaped macros</option>
-                    </select>
-                </label>
-                <label class="flex1">Min Depth
-                    <input type="number" id="ica--regex-minDepth" class="text_pole" placeholder="blank" value="${regexScript.minDepth ?? ''}" />
-                </label>
-                <label class="flex1">Max Depth
-                    <input type="number" id="ica--regex-maxDepth" class="text_pole" placeholder="blank" value="${regexScript.maxDepth ?? ''}" />
-                </label>
-            </div>
-            <div class="ica--regex-toggles">
-                <label class="checkbox_label"><input type="checkbox" id="ica--regex-markdownOnly" ${regexScript.markdownOnly ? 'checked' : ''} /><span>Markdown only</span></label>
-                <label class="checkbox_label"><input type="checkbox" id="ica--regex-promptOnly" ${regexScript.promptOnly ? 'checked' : ''} /><span>Prompt only</span></label>
-                <label class="checkbox_label"><input type="checkbox" id="ica--regex-runOnEdit" ${regexScript.runOnEdit ? 'checked' : ''} /><span>Run on edit</span></label>
-                <label class="checkbox_label"><input type="checkbox" id="ica--regex-disabled" ${regexScript.disabled ? 'checked' : ''} /><span>Disabled</span></label>
-            </div>
-        </div>
-    `);
-
-    html.find('#ica--regex-substitute').val(String(regexScript.substituteRegex ?? AGENT_REGEX_SUBSTITUTE.NONE));
-    attachTextareaFullscreen(html);
-
-    const result = await new Popup(html, POPUP_TYPE.CONFIRM, '', {
-        okButton: 'Save Regex',
-        cancelButton: 'Cancel',
-        wide: true,
-        large: true,
-    }).show();
-
-    if (result !== POPUP_RESULT.AFFIRMATIVE) {
-        return null;
-    }
-
-    const placement = [];
-    html.find('input[name="ica--regex-placement"]:checked').each(function () {
-        placement.push(Number($(this).val()));
-    });
-
-    const findRegex = html.find('#ica--regex-find').val()?.toString() ?? '';
-    if (!findRegex.trim()) {
-        toastr.warning('Regex scripts need a find pattern.');
-        return null;
-    }
-
-    return normalizeRegexScript({
-        ...regexScript,
-        scriptName: html.find('#ica--regex-name').val()?.toString().trim() || 'Regex Script',
-        findRegex,
-        replaceString: html.find('#ica--regex-replace').val()?.toString() ?? '',
-        trimStrings: html.find('#ica--regex-trim').val()?.toString()
-            .split('\n')
-            .map(value => value.trim())
-            .filter(Boolean),
-        placement,
-        substituteRegex: Number(html.find('#ica--regex-substitute').val()),
-        markdownOnly: html.find('#ica--regex-markdownOnly').prop('checked'),
-        promptOnly: html.find('#ica--regex-promptOnly').prop('checked'),
-        runOnEdit: html.find('#ica--regex-runOnEdit').prop('checked'),
-        disabled: html.find('#ica--regex-disabled').prop('checked'),
-        minDepth: html.find('#ica--regex-minDepth').val()?.toString() ?? '',
-        maxDepth: html.find('#ica--regex-maxDepth').val()?.toString() ?? '',
-    });
-}
 
 function buildCompanionDraftAgent() {
     const draft = createDefaultAgent();
@@ -2003,1019 +2006,25 @@ function buildCompanionDraftAgent() {
  * @param {object|null} [options.draft] Prefilled agent to edit instead of a blank default (new agents only).
  * @param {boolean} [options.autoOpenCompanionMaker] Open the companion AI maker once the editor is up.
  */
-async function openEditor(agentId = null, { draft = null, autoOpenCompanionMaker = false, materialiseTemplateId = null } = {}) {
-    const existingAgent = agentId ? getAgentById(agentId) : null;
-    if (agentId && !existingAgent) return;
-    const agent = existingAgent ? structuredClone(existingAgent) : (draft ?? createDefaultAgent());
-    const originalAgentState = JSON.stringify(agent);
-    if (!agent) return;
-
-    // Check if this is a Pathfinder agent - open special settings panel
-    if (isPathfinderAgent(agent)) {
-        await openPathfinderEditor(agent);
-        return;
-    }
-
-    let regexScripts = getAgentRegexScripts(agent).map(script => structuredClone(script));
-    const template = findTemplateForAgent(agent);
-    const bundledRegexScripts = Array.isArray(template?.regexScripts)
-        ? template.regexScripts.map(script => structuredClone(script))
-        : [];
-
-    const html = await renderExtensionTemplateAsync(MODULE_NAME, 'editor');
-    if (!html) {
-        toastr.error('Could not load the agent editor. Please refresh the page and try again.');
-        return;
-    }
-
-    const editorEl = $(html);
-
-    // Populate fields
-    editorEl.find('#ica--editor-name').val(agent.name);
-    editorEl.find('#ica--editor-category').val(agent.category);
-    editorEl.find('#ica--editor-phase').val(agent.phase);
-    editorEl.find('#ica--editor-execution').val(isCompanionAgent(agent) ? 'companion' : 'inline');
-    editorEl.find('#ica--editor-description').val(agent.description);
-    editorEl.find('#ica--editor-favorite').prop('checked', Boolean(agent.favorite));
-    editorEl.find('#ica--editor-prompt').val(agent.prompt);
-    populateConnectionProfileSelect(editorEl.find('#ica--editor-connectionProfile')[0], {
-        emptyLabel: 'Use extension default',
-        selectedValue: agent.connectionProfile || '',
+async function openEditor(agentId = null, {
+    draft = null,
+    autoOpenCompanionMaker = false,
+    materialiseTemplateId = null,
+} = {}, origin = 'agent-list') {
+    // SillyBunny: preserve the public hook while routing generic agents to Backend detail.
+    const saved = agentId ? getAgentById(agentId) : null;
+    if (agentId && !saved) return;
+    if (saved && isPathfinderAgent(saved)) return openPathfinderEditor(saved);
+    const ui = await import('./ui/agent-list.js');
+    const entry = getAgentListEntries().find(value => materialiseTemplateId ? value.key === `agent-template:${materialiseTemplateId}` : value.key === `agent:${agentId}`);
+    return ui.openAgentDetail({
+        entry,
+        draft: entry ? null : draft ?? createDefaultAgent(),
+        autoOpenCompanionMaker,
+        origin,
     });
-    editorEl.find('#ica--editor-modelOverride').val(agent.modelOverride || '');
-
-    const companion = getCompanionConfig(agent);
-    editorEl.find('#ica--editor-companion-trigger').val(companion.trigger);
-    editorEl.find('#ica--editor-companion-displayMode').val(companion.displayMode);
-    editorEl.find('#ica--editor-companion-format').val(companion.format);
-    editorEl.find('#ica--editor-companion-contextMessages').val(companion.contextMessages);
-    editorEl.find('#ica--editor-companion-minContextTokens').val(companion.minContextTokens);
-    editorEl.find('#ica--editor-companion-historyDepth').val(companion.historyDepth);
-    editorEl.find('#ica--editor-companion-maxTokens').val(companion.maxTokens);
-    editorEl.find('#ica--editor-companion-includeCharacterCard').prop('checked', companion.includeCharacterCard);
-    editorEl.find('#ica--editor-companion-includePersona').prop('checked', companion.includePersona);
-    editorEl.find('#ica--editor-companion-includeWorldInfo').prop('checked', companion.includeWorldInfo);
-    editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', companion.includeAuthorsNote);
-    editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', companion.includeSystemPrompt);
-    editorEl.find('#ica--editor-companion-includeHistory').prop('checked', companion.includeHistory);
-    editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', companion.includeInChatHistory);
-    editorEl.find('#ica--editor-companion-chatHistoryDepth').val(companion.chatHistoryDepth);
-    editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', companion.includeAllChatHistory);
-    editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', companion.keepInChatHistoryWhenHostHidden);
-    editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', companion.feedback.enabled);
-    editorEl.find('#ica--editor-companion-feedbackDepth').val(companion.feedback.depth);
-    editorEl.find('#ica--editor-companion-batch').prop('checked', companion.batch);
-    const savedCompanionBatchAgentIds = normalizeCompanionBatchAgentIds(companion.batchAgentIds);
-    const savedCompanionContextRecipientAgentIds = normalizeCompanionBatchAgentIds(companion.contextRecipientAgentIds);
-    const savedCompanionOutputTargetAgentIds = normalizeCompanionBatchAgentIds(agent.conditions.companionOutputTargetAgentIds);
-    const savedCompanionDependencies = normalizeCompanionBatchAgentIds(companion.dependencies);
-    editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', companion.sendContextToCompanions);
-    editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', companion.waitForDependencies);
-    editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', companion.rawPrompt);
-    editorEl.find('#ica--editor-chatroom-style').val(normalizeChatroomStyle(agent.settings?.chatroomStyle));
-    const savedChatroomCustomStyleName = normalizeChatroomCustomStyleName(agent.settings?.chatroomCustomStyleName);
-    editorEl.find('#ica--editor-chatroom-custom-styles').val(getChatroomCustomStylesSetting(agent.settings));
-    const savedChatroomExtraCharacterAvatars = normalizeChatroomExtraCharacterAvatars(agent.settings?.chatroomExtraCharacterAvatars);
-    editorEl.find('#ica--editor-director-voice').val(normalizeDirectorCommentaryVoice(agent.settings?.directorCommentaryVoice));
-    const savedDirectorCustomVoiceName = normalizeDirectorCustomVoiceName(agent.settings?.directorCommentaryCustomVoiceName);
-    editorEl.find('#ica--editor-director-custom-voices').val(getDirectorCustomVoicesSetting(agent.settings));
-    editorEl.find('#ica--editor-plot-compass-objective').val(typeof agent.settings?.plotCompassObjective === 'string'
-        ? agent.settings.plotCompassObjective
-        : '');
-
-    let editorFullscreen = false;
-    const fullscreenButton = editorEl.find('#ica--editor-fullscreen');
-    const updateEditorFullscreenState = (nextEnabled) => {
-        editorFullscreen = Boolean(nextEnabled);
-        editorEl.toggleClass('ica--editor-fullscreen', editorFullscreen);
-        document.body.classList.toggle('ica--editor-fullscreen-active', editorFullscreen);
-        fullscreenButton.attr('aria-pressed', String(editorFullscreen));
-        fullscreenButton.attr('title', editorFullscreen ? 'Exit fullscreen editor' : 'Toggle fullscreen editor');
-        fullscreenButton.find('i').attr('class', `fa-solid ${editorFullscreen ? 'fa-compress' : 'fa-maximize'}`);
-    };
-    fullscreenButton.on('click', () => updateEditorFullscreenState(!editorFullscreen));
-    attachTextareaFullscreen(editorEl);
-    const editorOrderInput = editorEl.find('#ica--editor-order');
-    const companionOrderInput = editorEl.find('#ica--editor-companion-order');
-
-    // Injection
-    editorEl.find('#ica--editor-position').val(agent.injection.position);
-    editorEl.find('#ica--editor-depth').val(agent.injection.depth);
-    editorEl.find('#ica--editor-role').val(agent.injection.role);
-    editorOrderInput.val(agent.injection.order);
-    editorEl.find('#ica--editor-scan').prop('checked', agent.injection.scan);
-    const preProcess = getAgentPreProcess(agent);
-    editorEl.find('#ica--editor-pre-mode').val(preProcess.mode);
-    editorEl.find('#ica--editor-pre-interceptTiming').val(preProcess.interceptTiming);
-    editorEl.find('#ica--editor-pre-applyMode').val(preProcess.applyMode);
-    editorEl.find('#ica--editor-pre-wrapPosition').val(preProcess.wrapPosition);
-    editorEl.find('#ica--editor-pre-wrapPrefix').val(preProcess.wrapPrefix);
-    editorEl.find('#ica--editor-pre-wrapSuffix').val(preProcess.wrapSuffix);
-    editorEl.find('#ica--editor-pre-patchStartTag').val(preProcess.patchStartTag);
-    editorEl.find('#ica--editor-pre-patchEndTag').val(preProcess.patchEndTag);
-    editorEl.find('#ica--editor-pre-maxTokens').val(preProcess.maxTokens ?? DEFAULT_AGENT_MAX_TOKENS);
-
-    // Post-process
-    const postProcessType = agent.postProcess.type === 'append' ? 'append' : 'extract';
-    editorEl.find('#ica--editor-pp-promptEnabled').prop('checked', Boolean(agent.postProcess.promptTransformEnabled));
-    editorEl.find('#ica--editor-pp-promptMode').val(getPromptTransformMode(agent));
-    editorEl.find('#ica--editor-pp-promptMaxTokens').val(agent.postProcess.promptTransformMaxTokens ?? DEFAULT_AGENT_MAX_TOKENS);
-    editorEl.find('#ica--editor-pp-promptShowNotifications').prop('checked', Boolean(agent.postProcess.promptTransformShowNotifications));
-    editorEl.find('#ica--editor-pp-runOnImpersonate').prop('checked', Boolean(agent.conditions.runOnImpersonate));
-    editorEl.find('#ica--editor-pp-runOnCompanionOutputs').prop('checked', Boolean(agent.conditions.runOnCompanionOutputs));
-    editorEl.find('#ica--editor-pp-enabled').prop('checked', agent.postProcess.enabled && agent.postProcess.type !== 'regex');
-    editorEl.find('#ica--editor-pp-type').val(postProcessType);
-    editorEl.find('#ica--editor-pp-extractPattern').val(agent.postProcess.extractPattern);
-    editorEl.find('#ica--editor-pp-extractVariable').val(agent.postProcess.extractVariable);
-    editorEl.find('#ica--editor-pp-appendText').val(agent.postProcess.appendText);
-
-    // Conditions
-    editorEl.find('#ica--editor-probability').val(agent.conditions.triggerProbability);
-    editorEl.find('#ica--editor-keywords').val((agent.conditions.triggerKeywords || []).join(', '));
-    editorEl.find('#ica--editor-type-normal').prop('checked', agent.conditions.generationTypes.includes('normal'));
-    editorEl.find('#ica--editor-type-continue').prop('checked', agent.conditions.generationTypes.includes('continue'));
-    editorEl.find('#ica--editor-type-impersonate').prop('checked', agent.conditions.generationTypes.includes('impersonate'));
-    editorEl.find('#ica--editor-type-quiet').prop('checked', agent.conditions.generationTypes.includes('quiet'));
-
-    function updateTrackerBuilderVisibility() {
-        const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
-        editorEl.find('#ica--tracker-builder-section').toggle(category === 'tracker');
-    }
-
-    function isEditorCompanionExecution() {
-        const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
-        const execution = editorEl.find('#ica--editor-execution').val()?.toString() || 'inline';
-        return category === 'companion' || execution === 'companion';
-    }
-
-    function updateChatroomCustomStyleOptions() {
-        const select = editorEl.find('#ica--editor-chatroom-custom-style-name');
-        const currentName = normalizeChatroomCustomStyleName(select.val());
-        const customStyles = parseChatroomCustomStyles(editorEl.find('#ica--editor-chatroom-custom-styles').val());
-
-        select.empty();
-        if (!customStyles.length) {
-            select.append($('<option>').val('').text('Add styles below'));
-            return;
-        }
-
-        const findStyleName = name => {
-            const normalizedName = normalizeChatroomCustomStyleName(name).toLowerCase();
-            return customStyles.find(style => style.name.toLowerCase() === normalizedName)?.name || '';
-        };
-        const preferredName = findStyleName(currentName) || findStyleName(savedChatroomCustomStyleName) || customStyles[0].name;
-
-        for (const style of customStyles) {
-            select.append($('<option>').val(style.name).text(style.name));
-        }
-        select.val(preferredName);
-    }
-
-    function updateChatroomExtraCharacterOptions() {
-        const select = editorEl.find('#ica--editor-chatroom-extra-character-avatars');
-        const currentAvatars = normalizeChatroomExtraCharacterAvatars(select.val());
-        const selectedAvatars = currentAvatars.length ? currentAvatars : savedChatroomExtraCharacterAvatars;
-        const selectedKeys = new Set(selectedAvatars.map(avatar => avatar.toLowerCase()));
-        const selectableCharacters = getChatroomSelectableCharacters();
-        const availableKeys = new Set(selectableCharacters.map(character => character.avatar.toLowerCase()));
-
-        select.empty();
-        if (!selectableCharacters.length && !selectedAvatars.length) {
-            select.append($('<option>').val('').text('No other character cards available').prop('disabled', true));
-            return;
-        }
-
-        for (const character of selectableCharacters) {
-            select.append(
-                $('<option>')
-                    .val(character.avatar)
-                    .text(character.label)
-                    .prop('selected', selectedKeys.has(character.avatar.toLowerCase())),
-            );
-        }
-
-        for (const avatar of selectedAvatars) {
-            if (availableKeys.has(avatar.toLowerCase())) continue;
-
-            select.append(
-                $('<option>')
-                    .val(avatar)
-                    .text(`Missing or active: ${avatar}`)
-                    .prop('selected', true),
-            );
-        }
-    }
-
-    function updateDirectorCustomVoiceOptions() {
-        const select = editorEl.find('#ica--editor-director-custom-voice-name');
-        const currentName = normalizeDirectorCustomVoiceName(select.val());
-        const customVoices = parseDirectorCustomVoices(editorEl.find('#ica--editor-director-custom-voices').val());
-
-        select.empty();
-        if (!customVoices.length) {
-            select.append($('<option>').val('').text('Add voices below'));
-            return;
-        }
-
-        const findVoiceName = name => {
-            const normalizedName = normalizeDirectorCustomVoiceName(name).toLowerCase();
-            return customVoices.find(voice => voice.name.toLowerCase() === normalizedName)?.name || '';
-        };
-        const preferredName = findVoiceName(currentName) || findVoiceName(savedDirectorCustomVoiceName) || customVoices[0].name;
-
-        for (const voice of customVoices) {
-            select.append($('<option>').val(voice.name).text(voice.name));
-        }
-        select.val(preferredName);
-    }
-
-    function updateCompanionBatchAgentOptions() {
-        const select = editorEl.find('#ica--editor-companion-batchAgentIds');
-        const currentIds = normalizeCompanionBatchAgentIds(select.val());
-        const selectedIds = currentIds.length ? currentIds : savedCompanionBatchAgentIds;
-        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
-        const options = getCompanionBatchOptionsForAgent(agent);
-        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
-
-        select.empty();
-        if (!options.length && !selectedIds.length) {
-            select.append($('<option>').val('').text('No enabled side companions').prop('disabled', true));
-            return;
-        }
-
-        for (const option of options) {
-            select.append(
-                $('<option>')
-                    .val(option.id)
-                    .text(option.label)
-                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
-            );
-        }
-
-        for (const id of selectedIds) {
-            if (availableKeys.has(id.toLowerCase())) continue;
-
-            select.append(
-                $('<option>')
-                    .val(id)
-                    .text(`Unavailable or disabled: ${id}`)
-                    .prop('selected', true),
-            );
-        }
-    }
-
-    function updateCompanionContextRecipientOptions() {
-        const select = editorEl.find('#ica--editor-companion-contextRecipientAgentIds');
-        const currentIds = normalizeCompanionBatchAgentIds(select.val());
-        const selectedIds = currentIds.length ? currentIds : savedCompanionContextRecipientAgentIds;
-        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
-        const options = getCompanionContextRecipientOptionsForAgent(agent);
-        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
-
-        select.empty();
-        if (!options.length && !selectedIds.length) {
-            select.append($('<option>').val('').text('No other companion agents').prop('disabled', true));
-            return;
-        }
-
-        for (const option of options) {
-            select.append(
-                $('<option>')
-                    .val(option.id)
-                    .text(option.label)
-                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
-            );
-        }
-
-        for (const id of selectedIds) {
-            if (availableKeys.has(id.toLowerCase())) continue;
-
-            select.append(
-                $('<option>')
-                    .val(id)
-                    .text(`Unavailable: ${id}`)
-                    .prop('selected', true),
-            );
-        }
-    }
-
-    function updateCompanionOutputTargetOptions() {
-        const select = editorEl.find('#ica--editor-pp-companionTargets');
-        const currentIds = normalizeCompanionBatchAgentIds(select.val());
-        const selectedIds = currentIds.length ? currentIds : savedCompanionOutputTargetAgentIds;
-        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
-        const options = getCompanionOutputTargetOptionsForAgent(agent);
-        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
-
-        select.empty();
-        if (!options.length && !selectedIds.length) {
-            select.append($('<option>').val('').text('No companion agents').prop('disabled', true));
-            return;
-        }
-
-        for (const option of options) {
-            select.append(
-                $('<option>')
-                    .val(option.id)
-                    .text(option.label)
-                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
-            );
-        }
-
-        for (const id of selectedIds) {
-            if (availableKeys.has(id.toLowerCase())) continue;
-
-            select.append(
-                $('<option>')
-                    .val(id)
-                    .text(`Unavailable: ${id}`)
-                    .prop('selected', true),
-            );
-        }
-    }
-
-    function updateCompanionDependencyOptions() {
-        const select = editorEl.find('#ica--editor-companion-dependencies');
-        const currentIds = normalizeCompanionBatchAgentIds(select.val());
-        const selectedIds = currentIds.length ? currentIds : savedCompanionDependencies;
-        const selectedKeys = new Set(selectedIds.map(id => id.toLowerCase()));
-        const options = getCompanionDependencyOptionsForAgent(agent);
-        const availableKeys = new Set(options.flatMap(option => option.referenceIds).map(id => id.toLowerCase()));
-
-        select.empty();
-        if (!options.length && !selectedIds.length) {
-            select.append($('<option>').val('').text('No other companion agents').prop('disabled', true));
-            return;
-        }
-
-        for (const option of options) {
-            select.append(
-                $('<option>')
-                    .val(option.id)
-                    .text(option.label)
-                    .prop('selected', option.referenceIds.some(id => selectedKeys.has(id.toLowerCase()))),
-            );
-        }
-
-        for (const id of selectedIds) {
-            if (availableKeys.has(id.toLowerCase())) continue;
-
-            select.append(
-                $('<option>')
-                    .val(id)
-                    .text(`Unavailable: ${id}`)
-                    .prop('selected', true),
-            );
-        }
-    }
-
-    function updateCompanionEditorVisibility() {
-        const category = editorEl.find('#ica--editor-category').val()?.toString() || '';
-        const companionExecution = isEditorCompanionExecution();
-        const executionSelect = editorEl.find('#ica--editor-execution');
-        const sourceTemplateId = String(agent.sourceTemplateId ?? '').trim();
-        const showChatroomSettings = companionExecution && sourceTemplateId === CHATROOM_TEMPLATE_ID;
-        const showCustomChatroomStyle = showChatroomSettings
-            && normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val()) === CHATROOM_CUSTOM_STYLE_VALUE;
-        const showDirectorSettings = companionExecution && sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID;
-        const showCustomDirectorVoice = showDirectorSettings
-            && normalizeDirectorCommentaryVoice(editorEl.find('#ica--editor-director-voice').val()) === DIRECTOR_COMMENTARY_CUSTOM_VOICE_VALUE;
-
-        if (category === 'companion') {
-            executionSelect.val('companion');
-        }
-
-        executionSelect.prop('disabled', category === 'companion');
-        editorEl.find('#ica--companion-section').toggle(companionExecution);
-        const showChatHistoryOptions = companionExecution && editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked');
-        editorEl.find('#ica--companion-chat-history-row').toggle(showChatHistoryOptions);
-        editorEl.find('#ica--editor-companion-chatHistoryDepth').prop('disabled', editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked'));
-        editorEl.find('#ica--companion-feedback-depth-row').toggle(editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked'));
-        editorEl.find('#ica--companion-batch-row').toggle(companionExecution);
-        editorEl.find('#ica--companion-batch-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-batch').prop('checked'));
-        editorEl.find('#ica--companion-context-recipient-row').toggle(companionExecution);
-        editorEl.find('#ica--companion-context-recipient-select-row').toggle(companionExecution && editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked'));
-        editorEl.find('#ica--companion-dependency-row').toggle(companionExecution);
-        editorEl.find('#ica--chatroom-style-row').toggle(showChatroomSettings);
-        editorEl.find('#ica--chatroom-custom-style-row').toggle(showCustomChatroomStyle);
-        editorEl.find('#ica--chatroom-extra-characters-row').toggle(showChatroomSettings);
-        editorEl.find('#ica--director-voice-row').toggle(showDirectorSettings);
-        editorEl.find('#ica--director-custom-voice-row').toggle(showCustomDirectorVoice);
-        editorEl.find('#ica--plot-compass-objective-row').toggle(companionExecution && sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID);
-    }
-
-    function syncCompanionOrderInput() {
-        companionOrderInput.val(editorOrderInput.val());
-    }
-
-    function syncPrimaryOrderInputFromCompanion() {
-        editorOrderInput.val(companionOrderInput.val());
-    }
-
-    function readCompanionConfigFromEditor(root, baseAgent = agent) {
-        const current = getCompanionConfig(baseAgent);
-        return {
-            ...current,
-            trigger: root.find('#ica--editor-companion-trigger').val()?.toString() === 'manual' ? 'manual' : 'auto',
-            displayMode: ['card', 'panel', 'hidden'].includes(root.find('#ica--editor-companion-displayMode').val()?.toString())
-                ? root.find('#ica--editor-companion-displayMode').val().toString()
-                : 'card',
-            format: ['markdown', 'html', 'text'].includes(root.find('#ica--editor-companion-format').val()?.toString())
-                ? root.find('#ica--editor-companion-format').val().toString()
-                : 'markdown',
-            rawPrompt: root.find('#ica--editor-companion-rawPrompt').prop('checked'),
-            contextMessages: Number(root.find('#ica--editor-companion-contextMessages').val()) || current.contextMessages,
-            minContextTokens: Number.isFinite(Number(root.find('#ica--editor-companion-minContextTokens').val()))
-                ? Number(root.find('#ica--editor-companion-minContextTokens').val())
-                : current.minContextTokens,
-            includeCharacterCard: root.find('#ica--editor-companion-includeCharacterCard').prop('checked'),
-            includePersona: root.find('#ica--editor-companion-includePersona').prop('checked'),
-            includeWorldInfo: root.find('#ica--editor-companion-includeWorldInfo').prop('checked'),
-            includeAuthorsNote: root.find('#ica--editor-companion-includeAuthorsNote').prop('checked'),
-            includeSystemPrompt: root.find('#ica--editor-companion-includeSystemPrompt').prop('checked'),
-            includeHistory: root.find('#ica--editor-companion-includeHistory').prop('checked'),
-            includeInChatHistory: root.find('#ica--editor-companion-includeInChatHistory').prop('checked'),
-            chatHistoryDepth: Number(root.find('#ica--editor-companion-chatHistoryDepth').val()) || current.chatHistoryDepth,
-            includeAllChatHistory: root.find('#ica--editor-companion-includeAllChatHistory').prop('checked'),
-            keepInChatHistoryWhenHostHidden: root.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked'),
-            historyDepth: Number(root.find('#ica--editor-companion-historyDepth').val()) || current.historyDepth,
-            feedback: {
-                ...current.feedback,
-                enabled: root.find('#ica--editor-companion-feedbackEnabled').prop('checked'),
-                depth: Number(root.find('#ica--editor-companion-feedbackDepth').val()) || current.feedback.depth,
-            },
-            batch: root.find('#ica--editor-companion-batch').prop('checked'),
-            batchAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-batchAgentIds').val()),
-            sendContextToCompanions: root.find('#ica--editor-companion-sendContextToCompanions').prop('checked'),
-            contextRecipientAgentIds: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-contextRecipientAgentIds').val()),
-            dependencies: normalizeCompanionBatchAgentIds(root.find('#ica--editor-companion-dependencies').val()),
-            waitForDependencies: root.find('#ica--editor-companion-waitForDependencies').prop('checked'),
-            maxTokens: Number(root.find('#ica--editor-companion-maxTokens').val()) || current.maxTokens,
-        };
-    }
-
-    function writeCompanionConfigToEditor(companionConfig) {
-        const nextCompanion = getCompanionConfig({ companion: companionConfig });
-        editorEl.find('#ica--editor-companion-trigger').val(nextCompanion.trigger);
-        editorEl.find('#ica--editor-companion-displayMode').val(nextCompanion.displayMode);
-        editorEl.find('#ica--editor-companion-format').val(nextCompanion.format);
-        editorEl.find('#ica--editor-companion-contextMessages').val(nextCompanion.contextMessages);
-        editorEl.find('#ica--editor-companion-minContextTokens').val(nextCompanion.minContextTokens);
-        editorEl.find('#ica--editor-companion-historyDepth').val(nextCompanion.historyDepth);
-        editorEl.find('#ica--editor-companion-maxTokens').val(nextCompanion.maxTokens);
-        editorEl.find('#ica--editor-companion-includeCharacterCard').prop('checked', nextCompanion.includeCharacterCard);
-        editorEl.find('#ica--editor-companion-includePersona').prop('checked', nextCompanion.includePersona);
-        editorEl.find('#ica--editor-companion-includeWorldInfo').prop('checked', nextCompanion.includeWorldInfo);
-        editorEl.find('#ica--editor-companion-includeAuthorsNote').prop('checked', nextCompanion.includeAuthorsNote);
-        editorEl.find('#ica--editor-companion-includeSystemPrompt').prop('checked', nextCompanion.includeSystemPrompt);
-        editorEl.find('#ica--editor-companion-includeHistory').prop('checked', nextCompanion.includeHistory);
-        editorEl.find('#ica--editor-companion-includeInChatHistory').prop('checked', nextCompanion.includeInChatHistory);
-        editorEl.find('#ica--editor-companion-chatHistoryDepth').val(nextCompanion.chatHistoryDepth);
-        editorEl.find('#ica--editor-companion-includeAllChatHistory').prop('checked', nextCompanion.includeAllChatHistory);
-        editorEl.find('#ica--editor-companion-keepInChatHistoryWhenHostHidden').prop('checked', nextCompanion.keepInChatHistoryWhenHostHidden);
-        editorEl.find('#ica--editor-companion-feedbackEnabled').prop('checked', nextCompanion.feedback.enabled);
-        editorEl.find('#ica--editor-companion-feedbackDepth').val(nextCompanion.feedback.depth);
-        editorEl.find('#ica--editor-companion-batch').prop('checked', nextCompanion.batch);
-        editorEl.find('#ica--editor-companion-sendContextToCompanions').prop('checked', nextCompanion.sendContextToCompanions);
-        editorEl.find('#ica--editor-companion-waitForDependencies').prop('checked', nextCompanion.waitForDependencies);
-        updateCompanionBatchAgentOptions();
-        updateCompanionContextRecipientOptions();
-        updateCompanionDependencyOptions();
-        editorEl.find('#ica--editor-companion-rawPrompt').prop('checked', nextCompanion.rawPrompt);
-        updateCompanionEditorVisibility();
-    }
-
-    editorEl.find('#ica--editor-category').on('change', () => {
-        updateTrackerBuilderVisibility();
-        updateCompanionEditorVisibility();
-    });
-    editorEl.find('#ica--editor-execution, #ica--editor-companion-feedbackEnabled, #ica--editor-companion-includeInChatHistory, #ica--editor-companion-includeAllChatHistory, #ica--editor-chatroom-style, #ica--editor-director-voice').on('change', updateCompanionEditorVisibility);
-    editorEl.find('#ica--editor-companion-batch').on('change', () => {
-        updateCompanionBatchAgentOptions();
-        updateCompanionEditorVisibility();
-    });
-    editorEl.find('#ica--editor-companion-sendContextToCompanions').on('change', () => {
-        updateCompanionContextRecipientOptions();
-        updateCompanionEditorVisibility();
-    });
-    editorEl.find('#ica--editor-chatroom-custom-styles').on('input', updateChatroomCustomStyleOptions);
-    editorEl.find('#ica--editor-director-custom-voices').on('input', updateDirectorCustomVoiceOptions);
-    editorOrderInput.on('input change', syncCompanionOrderInput);
-    companionOrderInput.on('input change', syncPrimaryOrderInputFromCompanion);
-    updateTrackerBuilderVisibility();
-    updateChatroomCustomStyleOptions();
-    updateChatroomExtraCharacterOptions();
-    updateDirectorCustomVoiceOptions();
-    updateCompanionBatchAgentOptions();
-    updateCompanionContextRecipientOptions();
-    updateCompanionDependencyOptions();
-    updateCompanionOutputTargetOptions();
-    updateCompanionEditorVisibility();
-    syncCompanionOrderInput();
-
-    // Show/hide sections based on phase
-    function updatePhaseVisibility() {
-        const phase = editorEl.find('#ica--editor-phase').val();
-        editorEl.find('#ica--injection-section').toggle(phase === 'pre' || phase === 'both');
-        editorEl.find('#ica--postprocess-section').toggle(phase === 'post' || phase === 'both');
-        updatePreProcessVisibility();
-    }
-    editorEl.find('#ica--editor-phase').on('change', updatePhaseVisibility);
-
-    function updatePreProcessVisibility() {
-        const phase = editorEl.find('#ica--editor-phase').val();
-        const preGenerationVisible = phase === 'pre' || phase === 'both';
-        const preMode = editorEl.find('#ica--editor-pre-mode').val()?.toString() || 'inject';
-        const applyMode = editorEl.find('#ica--editor-pre-applyMode').val()?.toString() || 'replace';
-        const interceptVisible = preGenerationVisible && preMode === 'intercept';
-
-        editorEl.find('#ica--pre-intercept-options').toggle(interceptVisible);
-        editorEl.find('#ica--pre-injection-note').toggle(preGenerationVisible && preMode !== 'intercept');
-        editorEl.find('#ica--pre-wrap-position-row').toggle(interceptVisible && (applyMode === 'wrap' || applyMode === 'patch'));
-        editorEl.find('#ica--pre-wrap-options').toggle(interceptVisible && applyMode === 'wrap');
-        editorEl.find('#ica--pre-patch-options').toggle(interceptVisible && applyMode === 'patch');
-    }
-    editorEl.find('#ica--editor-pre-mode, #ica--editor-pre-applyMode').on('change', updatePreProcessVisibility);
-    updatePhaseVisibility();
-
-    // Show/hide post-process options
-    function updatePPVisibility() {
-        const promptEnabled = editorEl.find('#ica--editor-pp-promptEnabled').prop('checked');
-        editorEl.find('#ica--pp-prompt-options').toggle(promptEnabled);
-
-        const runOnCompanionOutputs = editorEl.find('#ica--editor-pp-runOnCompanionOutputs').prop('checked');
-        editorEl.find('#ica--pp-companion-target-options').toggle(runOnCompanionOutputs);
-
-        const enabled = editorEl.find('#ica--editor-pp-enabled').prop('checked');
-        editorEl.find('#ica--pp-options').toggle(enabled);
-
-        const type = editorEl.find('#ica--editor-pp-type').val();
-        editorEl.find('#ica--pp-extract').toggle(type === 'extract');
-        editorEl.find('#ica--pp-append').toggle(type === 'append');
-    }
-    editorEl.find('#ica--editor-pp-promptEnabled, #ica--editor-pp-runOnCompanionOutputs, #ica--editor-pp-enabled, #ica--editor-pp-type').on('change', updatePPVisibility);
-    updatePPVisibility();
-
-    editorEl.find('#ica--tracker-builder-generate').on('click', async () => {
-        const formatText = editorEl.find('#ica--tracker-builder-format').val()?.toString() ?? '';
-        if (!parseTrackerFormat(formatText)) {
-            toastr.warning('Paste a tracker example with at least one opening tag like [TRACKER|Field].');
-            return;
-        }
-
-        const currentPrompt = editorEl.find('#ica--editor-prompt').val()?.toString() ?? '';
-        const agentName = editorEl.find('#ica--editor-name').val()?.toString().trim() ?? '';
-        const description = editorEl.find('#ica--editor-description').val()?.toString().trim() ?? '';
-        const rulesText = editorEl.find('#ica--tracker-builder-rules').val()?.toString() ?? '';
-        const styleNotes = editorEl.find('#ica--tracker-builder-style').val()?.toString() ?? '';
-        const connectionProfile = editorEl.find('#ica--editor-connectionProfile').val()?.toString() || '';
-
-        toastr.info('Generating tracker kit...', '', { timeOut: 0, extendedTimeOut: 0 });
-
-        let generatedKit;
-        try {
-            generatedKit = await generateTrackerKitWithAI({
-                agentName,
-                description,
-                currentPrompt,
-                formatText,
-                rulesText,
-                styleNotes,
-                connectionProfile,
-            });
-        } catch (error) {
-            toastr.clear();
-            toastr.error(`Tracker generation failed: ${error instanceof Error ? error.message : String(error)}`);
-            return;
-        }
-
-        toastr.clear();
-
-        let latestGeneratedKit = generatedKit;
-        const trackerPreviewPopup = new Popup(buildTrackerPreviewPopupContent(latestGeneratedKit, formatText), POPUP_TYPE.CONFIRM, '', {
-            okButton: 'Apply',
-            cancelButton: 'Discard',
-            customButtons: [
-                {
-                    text: 'Regenerate',
-                    icon: 'fa-rotate',
-                    tooltip: 'Regenerate the tracker kit using the extra instructions in this preview.',
-                    action: async (event) => {
-                        const button = event.currentTarget;
-                        if (!(button instanceof HTMLElement) || button.getAttribute('aria-disabled') === 'true') {
-                            return;
-                        }
-
-                        const extraInstructions = $(trackerPreviewPopup.content).find('#ica--tracker-builder-extra-instructions').val()?.toString().trim() ?? '';
-                        button.setAttribute('aria-disabled', 'true');
-                        button.classList.add('disabled');
-                        toastr.info('Regenerating tracker kit...', '', { timeOut: 0, extendedTimeOut: 0 });
-
-                        try {
-                            latestGeneratedKit = await generateTrackerKitWithAI({
-                                agentName,
-                                description,
-                                currentPrompt: latestGeneratedKit.prompt || currentPrompt,
-                                formatText,
-                                rulesText,
-                                styleNotes,
-                                connectionProfile,
-                                extraInstructions,
-                            });
-                            trackerPreviewPopup.content.innerHTML = '';
-                            $(trackerPreviewPopup.content).append(buildTrackerPreviewPopupContent(latestGeneratedKit, formatText, extraInstructions));
-                            toastr.clear();
-                            toastr.success('Regenerated tracker preview.');
-                        } catch (error) {
-                            toastr.clear();
-                            toastr.error(`Tracker regeneration failed: ${error instanceof Error ? error.message : String(error)}`);
-                        } finally {
-                            button.removeAttribute('aria-disabled');
-                            button.classList.remove('disabled');
-                        }
-                    },
-                },
-            ],
-            wide: true,
-            large: true,
-        });
-        const previewResult = await trackerPreviewPopup.show();
-
-        if (previewResult !== POPUP_RESULT.AFFIRMATIVE) {
-            return;
-        }
-
-        if (!agentName && latestGeneratedKit.name) {
-            editorEl.find('#ica--editor-name').val(latestGeneratedKit.name);
-        }
-
-        if (!description && latestGeneratedKit.description) {
-            editorEl.find('#ica--editor-description').val(latestGeneratedKit.description);
-        }
-
-        editorEl.find('#ica--editor-category').val('tracker').trigger('change');
-        editorEl.find('#ica--editor-phase').val(latestGeneratedKit.phase).trigger('change');
-        editorEl.find('#ica--editor-prompt').val(latestGeneratedKit.prompt);
-        editorEl.find('#ica--editor-pp-promptEnabled').prop('checked', false);
-        editorEl.find('#ica--editor-pp-enabled').prop('checked', true);
-        editorEl.find('#ica--editor-pp-type').val('extract');
-        editorEl.find('#ica--editor-pp-extractPattern').val(latestGeneratedKit.postProcess.extractPattern);
-        editorEl.find('#ica--editor-pp-extractVariable').val(latestGeneratedKit.postProcess.extractVariable);
-        editorEl.find('#ica--editor-pp-appendText').val('');
-        regexScripts = latestGeneratedKit.regexScripts.map(script => normalizeRegexScript(structuredClone(script)));
-        updatePPVisibility();
-        renderRegexList();
-
-        toastr.success(
-            latestGeneratedKit.usedFallback
-                ? 'Built a starter tracker kit. Review and tweak it before saving.'
-                : 'Applied generated tracker kit. Review and save when ready.',
-        );
-    });
-
-    editorEl.find('#ica--editor-companion-maker').on('click', async () => {
-        const currentPrompt = editorEl.find('#ica--editor-prompt').val()?.toString() || '';
-        const agentName = editorEl.find('#ica--editor-name').val()?.toString().trim() || '';
-        const description = editorEl.find('#ica--editor-description').val()?.toString().trim() || '';
-        const connectionProfile = editorEl.find('#ica--editor-connectionProfile').val()?.toString() || '';
-        const makerForm = $(`
-            <div class="ica--companion-edit-popup">
-                <div class="ica--regex-note">Describe the side note this companion should produce. Existing name, description, and prompt text will be used as extra context.</div>
-                <textarea id="ica--companion-maker-goal" class="text_pole textarea_compact" rows="8" placeholder="Example: Watch for continuity issues, unresolved promises, location changes, and character state shifts."></textarea>
-            </div>
-        `);
-        attachTextareaFullscreen(makerForm);
-        const makerResult = await new Popup(makerForm, POPUP_TYPE.CONFIRM, '', {
-            okButton: 'Generate Companion',
-            cancelButton: 'Cancel',
-            wide: true,
-        }).show();
-
-        if (makerResult !== POPUP_RESULT.AFFIRMATIVE) {
-            return;
-        }
-
-        const goalText = makerForm.find('#ica--companion-maker-goal').val()?.toString().trim() || '';
-        if (!goalText && !currentPrompt.trim() && !description) {
-            toastr.warning('Describe what this companion should watch for.');
-            return;
-        }
-
-        toastr.info('Generating companion...', '', { timeOut: 0, extendedTimeOut: 0 });
-
-        let generatedKit;
-        try {
-            generatedKit = await generateCompanionKitWithAI({
-                agentName,
-                description,
-                currentPrompt,
-                goalText,
-                connectionProfile,
-            });
-        } finally {
-            toastr.clear();
-        }
-
-        const generatedCompanion = getCompanionConfig({ companion: generatedKit.companion });
-        const previewHtml = $(`
-            <div class="ica--regex-editor">
-                ${generatedKit.usedFallback ? '<div class="ica--regex-note"><strong>Fallback scaffold used.</strong> The builder produced a safe starter companion locally because the AI response was unavailable or invalid. You can still apply and tweak it.</div>' : ''}
-                <div class="ica--editor-section ica--regex-subsection">
-                    <strong>${escapeHtml(generatedKit.name)}</strong>
-                    <div class="ica--regex-note">${escapeHtml(generatedKit.description)}</div>
-                </div>
-                <div class="ica--editor-section ica--regex-subsection">
-                    <strong>Prompt</strong>
-                    <pre style="white-space:pre-wrap;max-height:260px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.prompt)}</pre>
-                </div>
-                <div class="ica--editor-section ica--regex-subsection">
-                    <strong>Settings</strong>
-                    <div class="ica--regex-note">Trigger: ${escapeHtml(generatedCompanion.trigger)}. Display: ${escapeHtml(generatedCompanion.displayMode)}. Format: ${escapeHtml(generatedCompanion.format)}. Context: ${escapeHtml(generatedCompanion.contextMessages)} messages. Max tokens: ${escapeHtml(generatedCompanion.maxTokens)}.</div>
-                </div>
-            </div>
-        `);
-        const previewResult = await new Popup(previewHtml, POPUP_TYPE.CONFIRM, '', {
-            okButton: 'Apply',
-            cancelButton: 'Discard',
-            wide: true,
-            large: true,
-        }).show();
-
-        if (previewResult !== POPUP_RESULT.AFFIRMATIVE) {
-            return;
-        }
-
-        if (!agentName && generatedKit.name) {
-            editorEl.find('#ica--editor-name').val(generatedKit.name);
-        }
-        if (!description && generatedKit.description) {
-            editorEl.find('#ica--editor-description').val(generatedKit.description);
-        }
-        if (editorEl.find('#ica--editor-category').val()?.toString() === 'custom') {
-            editorEl.find('#ica--editor-category').val('companion').trigger('change');
-        }
-        editorEl.find('#ica--editor-execution').val('companion').trigger('change');
-        editorEl.find('#ica--editor-phase').val('post').trigger('change');
-        editorEl.find('#ica--editor-prompt').val(generatedKit.prompt);
-        const currentCompanion = readCompanionConfigFromEditor(editorEl);
-        writeCompanionConfigToEditor({
-            ...generatedKit.companion,
-            includeInChatHistory: currentCompanion.includeInChatHistory,
-            chatHistoryDepth: currentCompanion.chatHistoryDepth,
-            includeAllChatHistory: currentCompanion.includeAllChatHistory,
-            keepInChatHistoryWhenHostHidden: currentCompanion.keepInChatHistoryWhenHostHidden,
-        });
-        toastr.success('Applied generated companion. Review and save when ready.');
-    });
-
-    function renderRegexList() {
-        const list = editorEl.find('#ica--regex-list');
-        list.empty();
-
-        if (regexScripts.length === 0) {
-            list.append('<div class="ica--regex-empty">No regex scripts yet. Add one or load bundled template regex.</div>');
-            return;
-        }
-
-        for (const [index, script] of regexScripts.entries()) {
-            const item = $(`
-                <div class="ica--regex-item">
-                    <div class="ica--regex-item-main">
-                        <div class="ica--regex-item-title">${escapeHtml(script.scriptName || 'Regex Script')}</div>
-                        <div class="ica--regex-item-meta">${escapeHtml(describeRegexScript(script))}</div>
-                        <div class="ica--regex-item-pattern">${escapeHtml(script.findRegex)}</div>
-                    </div>
-                    <div class="ica--regex-item-actions">
-                        <button type="button" class="ica--card-btn ica--regex-up" title="Move up"><i class="fa-solid fa-arrow-up"></i></button>
-                        <button type="button" class="ica--card-btn ica--regex-down" title="Move down"><i class="fa-solid fa-arrow-down"></i></button>
-                        <button type="button" class="ica--card-btn ica--regex-edit" title="Edit regex" aria-label="Edit regex"><i class="fa-solid fa-pen-to-square"></i></button>
-                        <button type="button" class="ica--card-btn caution ica--regex-delete" title="Delete regex" aria-label="Delete regex"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                </div>
-            `);
-
-            item.find('.ica--regex-edit').on('click', async () => {
-                const updatedScript = await openRegexScriptEditor(script);
-                if (updatedScript) {
-                    regexScripts[index] = updatedScript;
-                    renderRegexList();
-                }
-            });
-
-            item.find('.ica--regex-up').on('click', () => {
-                if (index === 0) return;
-                [regexScripts[index - 1], regexScripts[index]] = [regexScripts[index], regexScripts[index - 1]];
-                renderRegexList();
-            });
-
-            item.find('.ica--regex-down').on('click', () => {
-                if (index >= regexScripts.length - 1) return;
-                [regexScripts[index + 1], regexScripts[index]] = [regexScripts[index], regexScripts[index + 1]];
-                renderRegexList();
-            });
-
-            item.find('.ica--regex-delete').on('click', () => {
-                regexScripts.splice(index, 1);
-                renderRegexList();
-            });
-
-            list.append(item);
-        }
-    }
-
-    editorEl.find('#ica--regex-note').text(
-        bundledRegexScripts.length > 0
-            ? `This template ships with ${buildRegexTemplateLabel(bundledRegexScripts.length)}.`
-            : 'Attach ST-style regex scripts that run when this agent activates.',
-    );
-
-    if (bundledRegexScripts.length > 0) {
-        editorEl.find('#ica--regex-resetTemplate').show();
-        editorEl.find('#ica--regex-resetTemplate').on('click', () => {
-            regexScripts = bundledRegexScripts.map(script => structuredClone(script));
-            renderRegexList();
-            toastr.success('Loaded bundled template regex.');
-        });
-    }
-
-    editorEl.find('#ica--regex-add').on('click', async () => {
-        const newScript = await openRegexScriptEditor();
-        if (newScript) {
-            regexScripts.push(newScript);
-            renderRegexList();
-        }
-    });
-    renderRegexList();
-
-    // Refine with AI button
-    editorEl.find('#ica--editor-refine').on('click', async () => {
-        const currentPrompt = editorEl.find('#ica--editor-prompt').val()?.toString() || '';
-        const category = editorEl.find('#ica--editor-category').val()?.toString() || 'custom';
-        const phase = editorEl.find('#ica--editor-phase').val()?.toString() || 'pre';
-        const connectionProfile = editorEl.find('#ica--editor-connectionProfile').val()?.toString() || '';
-        const refined = await refinePromptWithAI(currentPrompt, category, phase, connectionProfile);
-        if (refined) {
-            editorEl.find('#ica--editor-prompt').val(refined);
-        }
-    });
-
-    editorEl.find('#ica--editor-preview-prompt').on('click', async () => {
-        const previewAgent = {
-            ...agent,
-            name: editorEl.find('#ica--editor-name').val()?.toString().trim() || agent.name,
-            category: editorEl.find('#ica--editor-category').val()?.toString() || agent.category,
-            execution: isEditorCompanionExecution() ? 'companion' : 'inline',
-            phase: editorEl.find('#ica--editor-phase').val()?.toString() || agent.phase,
-            preProcess: {
-                ...getAgentPreProcess(agent),
-                mode: editorEl.find('#ica--editor-pre-mode').val()?.toString() || 'inject',
-                interceptTiming: editorEl.find('#ica--editor-pre-interceptTiming').val()?.toString() === 'post-main-generation'
-                    ? 'post-main-generation'
-                    : 'pre-generation',
-            },
-        };
-        await previewPreGenerationPrompt(previewAgent, editorEl.find('#ica--editor-prompt').val()?.toString() || '');
-    });
-
-    editorEl.find('#ica--editor-companion-preview-feedback').on('click', async () => {
-        const previewAgent = {
-            ...agent,
-            name: editorEl.find('#ica--editor-name').val()?.toString().trim() || agent.name,
-            category: editorEl.find('#ica--editor-category').val()?.toString() || agent.category,
-            execution: 'companion',
-            companion: readCompanionConfigFromEditor(editorEl, agent),
-        };
-        await previewCompanionFeedbackPrompt(previewAgent);
-    });
-
-    if (autoOpenCompanionMaker) {
-        setTimeout(() => editorEl.find('#ica--editor-companion-maker').trigger('click'), 50);
-    }
-
-    // Show popup
-    const result = await new Popup(editorEl, POPUP_TYPE.CONFIRM, '', {
-        okButton: 'Save',
-        cancelButton: 'Cancel',
-        wide: true,
-        large: true,
-    }).show();
-
-    document.body.classList.remove('ica--editor-fullscreen-active');
-
-    if (result !== POPUP_RESULT.AFFIRMATIVE) return;
-
-    // Read values back
-    agent.name = editorEl.find('#ica--editor-name').val().toString().trim() || 'Untitled Agent';
-    agent.category = editorEl.find('#ica--editor-category').val().toString();
-    agent.execution = agent.category === 'companion' || editorEl.find('#ica--editor-execution').val()?.toString() === 'companion'
-        ? 'companion'
-        : 'inline';
-    agent.phase = editorEl.find('#ica--editor-phase').val().toString();
-    agent.description = editorEl.find('#ica--editor-description').val().toString().trim();
-    agent.favorite = editorEl.find('#ica--editor-favorite').prop('checked');
-    agent.connectionProfile = editorEl.find('#ica--editor-connectionProfile').val()?.toString() || '';
-    agent.modelOverride = editorEl.find('#ica--editor-modelOverride').val()?.toString().trim() || '';
-    agent.prompt = editorEl.find('#ica--editor-prompt').val().toString();
-    agent.companion = readCompanionConfigFromEditor(editorEl, agent);
-    agent.settings = agent.settings && typeof agent.settings === 'object' && !Array.isArray(agent.settings)
-        ? { ...agent.settings }
-        : {};
-    const sourceTemplateId = String(agent.sourceTemplateId ?? '').trim();
-    if (sourceTemplateId === CHATROOM_TEMPLATE_ID) {
-        agent.settings.chatroomStyle = normalizeChatroomStyle(editorEl.find('#ica--editor-chatroom-style').val());
-        agent.settings.chatroomCustomStyles = normalizeChatroomCustomStyles(editorEl.find('#ica--editor-chatroom-custom-styles').val());
-        agent.settings.chatroomCustomStyleName = normalizeChatroomCustomStyleName(editorEl.find('#ica--editor-chatroom-custom-style-name').val());
-        agent.settings.chatroomExtraCharacterAvatars = normalizeChatroomExtraCharacterAvatars(editorEl.find('#ica--editor-chatroom-extra-character-avatars').val());
-        delete agent.settings.chatroomCustomStyle;
-    }
-    if (sourceTemplateId === DIRECTORS_COMMENTARY_TEMPLATE_ID) {
-        agent.settings.directorCommentaryVoice = normalizeDirectorCommentaryVoice(editorEl.find('#ica--editor-director-voice').val());
-        agent.settings.directorCommentaryCustomVoices = normalizeDirectorCustomVoices(editorEl.find('#ica--editor-director-custom-voices').val());
-        agent.settings.directorCommentaryCustomVoiceName = normalizeDirectorCustomVoiceName(editorEl.find('#ica--editor-director-custom-voice-name').val());
-        delete agent.settings.directorCommentaryCustomVoice;
-    }
-    if (sourceTemplateId === PLOT_COMPASS_TEMPLATE_ID) {
-        agent.settings.plotCompassObjective = editorEl.find('#ica--editor-plot-compass-objective').val()?.toString().trim() || '';
-    }
-
-    agent.injection.position = Number(editorEl.find('#ica--editor-position').val());
-    agent.injection.depth = Number(editorEl.find('#ica--editor-depth').val());
-    agent.injection.role = Number(editorEl.find('#ica--editor-role').val());
-    agent.injection.order = Number(editorEl.find('#ica--editor-order').val());
-    agent.injection.scan = editorEl.find('#ica--editor-scan').prop('checked');
-    agent.preProcess = {
-        ...getAgentPreProcess(agent),
-        mode: editorEl.find('#ica--editor-pre-mode').val()?.toString() === 'intercept' ? 'intercept' : 'inject',
-        interceptTiming: editorEl.find('#ica--editor-pre-interceptTiming').val()?.toString() === 'post-main-generation'
-            ? 'post-main-generation'
-            : 'pre-generation',
-        applyMode: ['replace', 'wrap', 'patch'].includes(editorEl.find('#ica--editor-pre-applyMode').val()?.toString())
-            ? editorEl.find('#ica--editor-pre-applyMode').val().toString()
-            : 'replace',
-        wrapPosition: editorEl.find('#ica--editor-pre-wrapPosition').val()?.toString() === 'before' ? 'before' : 'after',
-        wrapPrefix: editorEl.find('#ica--editor-pre-wrapPrefix').val()?.toString() ?? '',
-        wrapSuffix: editorEl.find('#ica--editor-pre-wrapSuffix').val()?.toString() ?? '',
-        patchStartTag: editorEl.find('#ica--editor-pre-patchStartTag').val()?.toString() || DEFAULT_PRE_PROCESS.patchStartTag,
-        patchEndTag: editorEl.find('#ica--editor-pre-patchEndTag').val()?.toString() || DEFAULT_PRE_PROCESS.patchEndTag,
-        maxTokens: Number(editorEl.find('#ica--editor-pre-maxTokens').val()) || DEFAULT_AGENT_MAX_TOKENS,
-    };
-
-    if (isCompanionAgent(agent) && !agent.prompt.trim()) {
-        toastr.warning('Companion execution needs an agent prompt.');
-        return;
-    }
-
-    if (!isCompanionAgent(agent) && ['pre', 'both'].includes(agent.phase) && agent.preProcess.mode === 'intercept' && !agent.prompt.trim()) {
-        toastr.warning('Pre-generation intercept mode needs an agent prompt.');
-        return;
-    }
-
-    if (!isCompanionAgent(agent) && editorEl.find('#ica--editor-pp-promptEnabled').prop('checked') && !agent.prompt.trim()) {
-        toastr.warning('Prompt-based post-generation passes need an agent prompt.');
-        return;
-    }
-
-    agent.postProcess.enabled = editorEl.find('#ica--editor-pp-enabled').prop('checked');
-    agent.postProcess.type = editorEl.find('#ica--editor-pp-type').val().toString();
-    agent.postProcess.extractPattern = editorEl.find('#ica--editor-pp-extractPattern').val().toString();
-    agent.postProcess.extractVariable = editorEl.find('#ica--editor-pp-extractVariable').val().toString();
-    agent.postProcess.appendText = editorEl.find('#ica--editor-pp-appendText').val().toString();
-    agent.postProcess.promptTransformEnabled = editorEl.find('#ica--editor-pp-promptEnabled').prop('checked');
-    agent.postProcess.promptTransformShowNotifications = editorEl.find('#ica--editor-pp-promptShowNotifications').prop('checked');
-    agent.postProcess.promptTransformMode = editorEl.find('#ica--editor-pp-promptMode').val()?.toString() === 'append' ? 'append' : 'rewrite';
-    agent.postProcess.promptTransformMaxTokens = Number(editorEl.find('#ica--editor-pp-promptMaxTokens').val()) || DEFAULT_AGENT_MAX_TOKENS;
-    agent.regexScripts = regexScripts.map(script => normalizeRegexScript(script));
-    agent.conditions.runOnImpersonate = editorEl.find('#ica--editor-pp-runOnImpersonate').prop('checked');
-    agent.conditions.runOnCompanionOutputs = editorEl.find('#ica--editor-pp-runOnCompanionOutputs').prop('checked');
-    agent.conditions.companionOutputTargetAgentIds = normalizeCompanionBatchAgentIds(editorEl.find('#ica--editor-pp-companionTargets').val());
-
-    agent.conditions.triggerProbability = Number(editorEl.find('#ica--editor-probability').val());
-    const kwText = editorEl.find('#ica--editor-keywords').val().toString();
-    agent.conditions.triggerKeywords = kwText ? kwText.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-    const genTypes = [];
-    if (editorEl.find('#ica--editor-type-normal').prop('checked')) genTypes.push('normal');
-    if (editorEl.find('#ica--editor-type-continue').prop('checked')) genTypes.push('continue');
-    if (editorEl.find('#ica--editor-type-impersonate').prop('checked')) genTypes.push('impersonate');
-    if (editorEl.find('#ica--editor-type-quiet').prop('checked')) genTypes.push('quiet');
-    agent.conditions.generationTypes = genTypes;
-
-    if (JSON.stringify(agent) !== originalAgentState || agent.phaseLocked) {
-        lockBundledAgentCustomization(agent, template);
-    }
-
-    const saved = materialiseTemplateId
-        ? await materialise(materialiseTemplateId, { edits: agent }, getCatalogueContext())
-        : await saveAgent(agent);
-    agent.id = saved.id;
-    if (isCompanionAgent(agent) && await syncCompanionChatHistoryConfig(agent) > 0) {
-        saveChatDebounced({ deferBackup: false });
-    }
-    refreshRegexSnapshotsForAgent(agent.id);
-    renderAgentList();
-    updateCompanionButtonVisibility();
-    return saved;
 }
+
 
 // ===================== Template Browser =====================
 
@@ -3499,7 +2508,6 @@ function buildTrackerPreviewPopupContent(generatedKit, sampleText, extraInstruct
 
     previewContent.find('.ica--tracker-preview-slot').replaceWith(buildTrackerHtmlPreviewNode(generatedKit, sampleText));
     previewContent.find('#ica--tracker-builder-extra-instructions').val(extraInstructions);
-    attachTextareaFullscreen(previewContent);
 
     return previewContent;
 }
@@ -4138,16 +3146,6 @@ function populateProfileDropdown() {
 function refreshConnectionProfileUi() {
     populateProfileDropdown();
 
-    const editorSelect = document.getElementById('ica--editor-connectionProfile');
-    if (editorSelect instanceof HTMLSelectElement) {
-        const emptyLabel = editorSelect.options[0]?.textContent?.trim() || 'Use extension default';
-        const selectedValue = editorSelect.value || '';
-        populateConnectionProfileSelect(editorSelect, {
-            emptyLabel,
-            selectedValue,
-        });
-    }
-
     renderAgentList();
 }
 
@@ -4340,7 +3338,8 @@ Requirements:
  * @param {string} phase - Agent phase
  * @returns {Promise<string|null>} - Refined prompt or null if cancelled
  */
-async function refinePromptWithAI(currentPrompt, category, phase, connectionProfile = '') {
+async function refinePromptWithAI(currentPrompt, category, phase, connectionProfile = '', isCurrent = () => true) {
+    if (!isCurrent()) return null;
     if (!currentPrompt.trim()) {
         toastr.warning('Write a prompt first before refining.');
         return null;
@@ -4371,7 +3370,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         cancelButton: 'Cancel',
     }).show();
 
-    if (result !== POPUP_RESULT.AFFIRMATIVE) return null;
+    if (result !== POPUP_RESULT.AFFIRMATIVE || !isCurrent()) return null;
 
     const selectedVal = html.find('input[name="ica-refine-mode"]:checked').val();
     let instruction;
@@ -4394,6 +3393,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     try {
         const refined = await refineLLMCall(systemPrompt, userText, connectionProfile);
         toastr.clear();
+        if (!isCurrent()) return null;
 
         if (!refined || !refined.trim()) {
             toastr.error('AI returned an empty response.');
@@ -4598,8 +3598,11 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     renderAgentList();
     initCompanionCardUi();
     configureCompanionDashboard({
-        openEditor: agentId => openEditor(agentId),
-        openCompanionDraftEditor: ({ autoOpenCompanionMaker = false } = {}) => openEditor(null, { draft: buildCompanionDraftAgent(), autoOpenCompanionMaker }),
+        openEditor: agentId => openEditor(agentId, {}, 'companion-dashboard'),
+        openCompanionDraftEditor: ({ autoOpenCompanionMaker = false } = {}) => openEditor(null, {
+            draft: buildCompanionDraftAgent(),
+            autoOpenCompanionMaker,
+        }, 'companion-dashboard'),
         toggleAgentEnabled,
         convertAgent: applyAgentExecutionConversion,
         getVisibleAgents: getVisibleInChatAgents,
@@ -4607,7 +3610,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     });
     initCompanionWandMenuItem();
     configureCompanionPanel({
-        openEditor: agentId => openEditor(agentId),
+        openEditor: agentId => openEditor(agentId, {}, 'companion-panel'),
         refreshAgentList: () => renderAgentList(),
     });
     initCompanionPanel();

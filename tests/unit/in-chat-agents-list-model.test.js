@@ -135,18 +135,17 @@ describe('Agents list grouping and visibility', () => {
         ]);
     });
 
-    test('uses catalogue subcategory for saved copies; agent.subcategory is not a saved schema field', async () => {
+    test('Q53: one plain category heading combines saved template subcategories', async () => {
         const model = await loadModel();
         const saved = bundled('saved', { category: 'tracker' }, { subcategory: 'world' });
         const custom = entry('custom', { category: 'tracker', subcategory: 'world' });
         const list = build(model, [saved, custom]);
-        expect(list.sections[0].groups.map(group => group.label)).toEqual(['Tracker', 'Tracker · World & Scene']);
-        expect(list.sections[0].groups[0].rows.map(row => row.key)).toEqual(['agent:custom']);
-        expect(list.sections[0].groups[1].rows.map(row => row.key)).toEqual(['agent:saved']);
+        expect(list.sections[0].groups.map(group => group.label)).toEqual(['Tracker']);
+        expect(list.sections[0].groups[0].rows.map(row => row.key)).toEqual(['agent:custom', 'agent:saved']);
         expect(saved.agent).not.toHaveProperty('subcategory');
     });
 
-    test('uses known subcategory order after the plain heading, with deterministic unknown headings last', async () => {
+    test('Q53: known and unknown subcategories never create list headings', async () => {
         const model = await loadModel();
         const entries = [
             bundled('progress', { category: 'tracker' }, { subcategory: 'progress' }),
@@ -156,9 +155,7 @@ describe('Agents list grouping and visibility', () => {
             bundled('world', { category: 'tracker' }, { subcategory: 'world' }),
             bundled('a', { category: 'tracker' }, { subcategory: 'a-extra' }),
         ];
-        expect(build(model, entries).sections[0].groups.map(group => group.subcategory)).toEqual([
-            '', 'world', 'characters', 'progress', 'a-extra', 'z-extra',
-        ]);
+        expect(build(model, entries).sections[0].groups.map(group => group.label)).toEqual(['Tracker']);
     });
 
     test('keeps a bundled row visible when its edited category differs from its template subcategory category', async () => {
@@ -166,7 +163,7 @@ describe('Agents list grouping and visibility', () => {
         const selected = bundled('recategorised', { category: 'custom' }, { subcategory: 'behaviour' });
         const list = build(model, [selected]);
         expect(list.visibleKeys).toEqual(['agent:recategorised']);
-        expect(list.sections[0].groups[0].label).toBe('Custom · Behaviour & Tone');
+        expect(list.sections[0].groups[0].label).toBe('Custom');
     });
 
     test('sorts within a sub-heading by numeric injection.order then name then canonical key', async () => {
@@ -183,14 +180,15 @@ describe('Agents list grouping and visibility', () => {
         ]);
     });
 
-    test('Q51: saved rows precede unused rows, which sort by name rather than template order', async () => {
+    test('Q53: unused rows never appear, even when pinned or enabled', async () => {
         const model = await loadModel();
         const list = build(model, [
-            bundled('tpl-z', { name: 'Zulu', injection: { order: -100 } }, { unused: true }),
+            bundled('tpl-z', { name: 'Zulu', favorite: true, enabled: true, injection: { order: -100 } }, { unused: true }),
             bundled('saved', { name: 'Saved', injection: { order: 100 } }),
             bundled('tpl-a', { name: 'Alpha', injection: { order: 999 } }, { unused: true }),
         ]);
-        expect(list.visibleKeys).toEqual(['agent:saved', 'agent-template:tpl-a', 'agent-template:tpl-z']);
+        expect(list.visibleKeys).toEqual(['agent:saved']);
+        expect(list.sections.map(section => section.key)).toEqual(['pre']);
     });
 
     test('nonfinite or absent order falls back to zero, without changing saved values', async () => {
@@ -300,6 +298,45 @@ describe('Agents list grouping and visibility', () => {
     });
 });
 
+describe('Agents template picker', () => {
+    const picker = (model, entries, companionTemplates = false) => model.buildAgentTemplatePickerModel({
+        entries, categories: CATEGORIES, subcategories: SUBCATEGORIES, companionTemplates,
+    });
+
+    test('groups templates by category and subcategory, with template names and descriptions', async () => {
+        const model = await loadModel();
+        const first = bundled('a', {}, { unused: true, templateId: 'tpl-a', subcategory: 'pov' });
+        first.template.description = 'Template detail';
+        const second = bundled('b', {}, { unused: true, templateId: 'tpl-b', subcategory: 'behaviour' });
+        expect(picker(model, freeze([second, first])).map(({ id, group, description, added }) => ({ id, group, description, added }))).toEqual([
+            { id: 'tpl-a', group: 'Content · Point of View', description: 'Template detail', added: false },
+            { id: 'tpl-b', group: 'Content · Behaviour & Tone', description: '', added: false },
+        ]);
+    });
+
+    test('uses template execution/category rather than an edited saved copy, marks Added and resolves first saved ID', async () => {
+        const model = await loadModel();
+        const saved = bundled('saved', { name: 'Edited', execution: 'companion', category: 'custom' });
+        const extra = bundled('second');
+        const items = picker(model, [saved, extra]);
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({ id: 'tpl-helper', label: 'Bundled Helper', added: true, entry: { key: 'agent:saved' } });
+        expect(picker(model, [saved], true)).toEqual([]);
+    });
+
+    test('separates companion templates and excludes Pathfinder and removed templates', async () => {
+        const model = await loadModel();
+        const inline = bundled('inline', {}, { unused: true, templateId: 'tpl-inline' });
+        const sidecar = bundled('sidecar', {}, { unused: true, templateId: 'tpl-sidecar' });
+        sidecar.template.execution = 'companion';
+        const hidden = bundled('hidden', {}, { unused: true, templateId: 'tpl-pathfinder' });
+        const removed = bundled('removed', {}, { unused: true, templateId: 'tpl-anti-slop-regex' });
+        const entries = freeze([sidecar, hidden, inline, removed]);
+        expect(picker(model, entries).map(item => item.id)).toEqual(['tpl-inline']);
+        expect(picker(model, entries, true).map(item => item.id)).toEqual(['tpl-sidecar']);
+    });
+});
+
 describe('Agents row-menu rules', () => {
     test.each([
         ['pre', ['pin', 'preview-prompt', 'apply-last', 'apply-target', 'convert-companion', 'duplicate', 'export', 'delete']],
@@ -376,12 +413,10 @@ describe('Agents row-menu rules', () => {
         ]);
     });
 
-    test.each(['inline', 'companion'])('unused %s has no destructive or Update action, but is not a disabled placeholder', async execution => {
+    test.each(['inline', 'companion'])('unused %s has no list row menu', async execution => {
         const model = await loadModel();
         const selected = bundled('tpl-unused', { execution }, { unused: true, templateId: 'tpl-unused' });
-        expect(menuIds(model, selected)).toEqual(execution === 'inline'
-            ? ['pin', 'preview-prompt', 'apply-last', 'apply-target', 'convert-companion', 'duplicate', 'export']
-            : ['pin', 'preview-feedback', 'run-last', 'convert-inline', 'duplicate', 'export']);
+        expect(menuIds(model, selected)).toEqual([]);
     });
 
     test('Pin changes to Unpin without adding a second command', async () => {
@@ -454,16 +489,15 @@ describe('Agents canonical identity and selection', () => {
         expect(selected.agent.enabled).toBe(false);
     });
 
-    test('materialisation intentionally replaces only the template key; unaffected row keys remain stable', async () => {
+    test('saving a template adds its saved key without changing unrelated row identities', async () => {
         const model = await loadModel();
         const unused = bundled('tpl:helper', { favorite: true }, { unused: true, templateId: 'tpl:helper' });
         const saved = bundled('saved:uuid', { favorite: true }, { templateId: 'tpl:helper' });
         const before = build(model, [unused, entry('other')]);
         const after = build(model, [saved, entry('other')]);
-        expect(before.visibleKeys).toEqual(['agent-template:tpl:helper', 'agent:other']);
+        expect(before.visibleKeys).toEqual(['agent:other']);
         expect(after.visibleKeys).toEqual(['agent:saved:uuid', 'agent:other']);
-        expect(model.remapAgentListKeys(rows(before).map(row => row.key), { fromKey: unused.key, toKey: saved.key }))
-            .toEqual(rows(after).map(row => row.key));
+        expect(rows(after).map(row => row.key)).toContain('pinned:agent:saved:uuid');
     });
 
     test('selection canonicalises exactly one Pinned prefix and preserves ID colons', async () => {
@@ -473,7 +507,7 @@ describe('Agents canonical identity and selection', () => {
         expect(model.getAgentSelectionKey('agent-template:tpl:helper')).toBe('agent-template:tpl:helper');
     });
 
-    test('filtered Select All includes unused entries once, excludes hidden records and does not select fixed destinations', async () => {
+    test('filtered Select All includes saved entries once, never templates or menu destinations', async () => {
         const model = await loadModel();
         const list = build(model, [
             entry('match', { name: 'Match', favorite: true, category: 'content' }),
@@ -482,17 +516,10 @@ describe('Agents canonical identity and selection', () => {
             entry('not-matched', { name: 'Other', category: 'content' }),
             entry('internal', { name: 'Match', sourceTemplateId: 'tpl-pathfinder' }),
         ], { search: 'match', filters: { categories: ['content'], onlyOn: false } });
-        expect(model.getAgentSelectionKeys(list)).toEqual(['agent:match', 'agent-template:tpl-match']);
+        expect(model.getAgentSelectionKeys(list)).toEqual(['agent:match']);
         expect(model.getAgentSelectionKeys(list)).not.toEqual(expect.arrayContaining(['settings', 'companions', 'groups']));
     });
 
-    test('remapping materialised selection does not duplicate a key already present and does not mutate its input', async () => {
-        const model = await loadModel();
-        const keys = freeze(['agent-template:tpl:helper', 'agent:uuid', 'agent:other']);
-        expect(model.remapAgentListKeys(keys, { fromKey: 'agent-template:tpl:helper', toKey: 'agent:uuid' }))
-            .toEqual(['agent:uuid', 'agent:other']);
-        expect(keys).toEqual(['agent-template:tpl:helper', 'agent:uuid', 'agent:other']);
-    });
 });
 
 describe('Agents shared movement', () => {
@@ -502,18 +529,18 @@ describe('Agents shared movement', () => {
         const list = build(model, entries);
         const nudge = model.moveAgentWithinSubheading(list, { key: 'agent:b', direction: -1 });
         const drag = model.moveAgentWithinSubheading(list, { key: 'agent:b', orderedKeys: ['agent:b', 'agent:a', 'agent:c'] });
-        expect(nudge).toEqual({ orderedKeys: ['agent:b', 'agent:a', 'agent:c'], materialiseKeys: [], focusKey: 'agent:b' });
+        expect(nudge).toEqual({ orderedKeys: ['agent:b', 'agent:a', 'agent:c'], focusKey: 'agent:b' });
         expect(drag).toEqual(nudge);
         expect(entries.map(item => item.key)).toEqual(['agent:a', 'agent:b', 'agent:c']);
     });
 
-    test('downward nudge changes just the matching sub-heading, not other categories, stages or subcategories', async () => {
+    test('downward nudge stays in its stage/category but includes other template subcategories', async () => {
         const model = await loadModel();
         const selected = bundled('a', { injection: { order: 0 } });
         const next = bundled('b');
         const list = build(model, [selected, next, entry('other'), bundled('post', { phase: 'post' }), bundled('pov', {}, { subcategory: 'pov' })]);
         expect(model.moveAgentWithinSubheading(list, { key: selected.key, direction: 1 })).toEqual({
-            orderedKeys: ['agent:b', 'agent:a'], materialiseKeys: [], focusKey: 'agent:a',
+            orderedKeys: ['agent:b', 'agent:a', 'agent:pov'], focusKey: 'agent:a',
         });
     });
 

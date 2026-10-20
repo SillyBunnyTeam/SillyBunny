@@ -463,7 +463,8 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         await visitSection('Backend', 'left', ['connections', 'sampling', 'prompting', 'editor', 'context', 'agents']);
         await showSettingsTab(page, 'agents');
-        await page.locator('.ica-agents-fixed [data-sb-list-key="settings"]').click();
+        await page.getByRole('button', { name: 'Agents Menu', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
         const textareaFullscreenToggle = page.locator('#left-nav-panel .ica--textarea-fullscreen-toggle').first();
         await expect(textareaFullscreenToggle).toBeVisible();
         await textareaFullscreenToggle.click();

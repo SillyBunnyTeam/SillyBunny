@@ -17,13 +17,9 @@ export function getAgentSelectionKey(key) {
     return key.startsWith('pinned:') ? key.slice(7) : key;
 }
 
-export function remapAgentListKeys(keys, { fromKey, toKey }) {
-    return [...new Set(keys.map(key => getAgentSelectionKey(key) === fromKey ? (key.startsWith('pinned:') ? `pinned:${toKey}` : toKey) : key))];
-}
-
-export function buildAgentListModel({ entries, categories, subcategories = {}, search = '', filters = {}, enabledKeys }) {
-    const universe = entries.filter(entry => !excluded(entry));
-    const enabled = entry => entry.kind === 'agent' && (enabledKeys ? enabledKeys.has(entry.key) : Boolean(entry.agent.enabled));
+export function buildAgentListModel({ entries, categories, search = '', filters = {}, enabledKeys }) {
+    const universe = entries.filter(entry => entry.kind === 'agent' && !excluded(entry));
+    const enabled = entry => enabledKeys ? enabledKeys.has(entry.key) : Boolean(entry.agent.enabled);
     const query = search.toLowerCase();
     const filtered = Boolean(query || filters.onlyOn || filters.categories?.length);
     const visible = universe.filter(entry => {
@@ -35,18 +31,11 @@ export function buildAgentListModel({ entries, categories, subcategories = {}, s
     function groups(items, pinnedCopy = false) {
         return Object.keys(categories).flatMap(category => {
             const members = items.filter(entry => entry.agent.category === category);
-            const subgroup = entry => entry.subcategory || '';
-            const unknown = [...new Set(members.map(subgroup))].filter(key => key && !Object.hasOwn(subcategories, key)).sort();
-            return ['', ...Object.keys(subcategories), ...unknown].flatMap(subcategory => {
-                const rows = members.filter(entry => subgroup(entry) === subcategory).sort((a, b) => {
-                    if (a.kind !== b.kind) return a.kind === 'agent' ? -1 : 1;
-                    return (a.kind === 'agent' ? order(a.agent) - order(b.agent) : 0)
-                        || a.agent.name.localeCompare(b.agent.name) || a.key.localeCompare(b.key);
-                }).map(entry => ({ key: pinnedCopy ? `pinned:${entry.key}` : entry.key, selectionKey: entry.key, entry, enabled: enabled(entry), pinnedCopy }));
-                if (!rows.length) return [];
-                return [{ key: `${category}:${subcategory}`, category, subcategory,
-                    label: subcategory ? `${categories[category].label} · ${subcategories[subcategory]?.label ?? subcategory}` : categories[category].label, rows }];
-            });
+            if (!members.length) return [];
+            const rows = members.sort((a, b) => order(a.agent) - order(b.agent)
+                || a.agent.name.localeCompare(b.agent.name) || a.key.localeCompare(b.key))
+                .map(entry => ({ key: pinnedCopy ? `pinned:${entry.key}` : entry.key, selectionKey: entry.key, entry, enabled: enabled(entry), pinnedCopy }));
+            return [{ key: category, category, label: categories[category].label, rows }];
         });
     }
     const sections = [];
@@ -57,7 +46,29 @@ export function buildAgentListModel({ entries, categories, subcategories = {}, s
         if (stageGroups.length) sections.push({ key, groups: stageGroups });
     }
     const visibleKeys = sections.filter(section => section.key !== 'pinned').flatMap(section => section.groups.flatMap(group => group.rows.map(row => row.selectionKey)));
-    return { sections, visibleKeys, onCount: universe.filter(enabled).length, filtered };
+    return { sections, visibleKeys, savedCount: universe.length, onCount: universe.filter(enabled).length, filtered };
+}
+
+export function buildAgentTemplatePickerModel({ entries, categories, subcategories = {}, companionTemplates = false }) {
+    const templates = new Map();
+    for (const entry of entries) {
+        const template = entry.template;
+        if (!template || excluded({ agent: template, template }) || companion(template) !== companionTemplates) continue;
+        if (!templates.has(template.id) || templates.get(template.id).kind !== 'agent') templates.set(template.id, entry);
+    }
+    return Object.keys(categories).flatMap(category => {
+        const members = [...templates.values()].filter(entry => entry.template.category === category);
+        const subgroup = entry => entry.template.subcategory || '';
+        const unknown = [...new Set(members.map(subgroup))].filter(key => key && !Object.hasOwn(subcategories, key)).sort();
+        return ['', ...Object.keys(subcategories), ...unknown].flatMap(subcategory => members
+            .filter(entry => subgroup(entry) === subcategory)
+            .sort((a, b) => a.template.name.localeCompare(b.template.name) || a.template.id.localeCompare(b.template.id))
+            .map(entry => ({
+                id: entry.template.id, label: entry.template.name, description: entry.template.description || '',
+                group: subcategory ? `${categories[category].label} · ${subcategories[subcategory]?.label ?? subcategory}` : categories[category].label,
+                added: entry.kind === 'agent', entry,
+            })));
+    });
 }
 
 export function getAgentSelectionKeys(model) {
@@ -69,7 +80,7 @@ function savedNeighbours(model, key) {
     for (const section of model.sections) {
         if (section.key === 'pinned') continue;
         for (const group of section.groups) {
-            const keys = group.rows.filter(row => row.entry.kind === 'agent').map(row => row.key);
+            const keys = group.rows.map(row => row.key);
             if (keys.includes(key)) return keys;
         }
     }
@@ -82,16 +93,17 @@ export function moveAgentWithinSubheading(model, { key, direction, orderedKeys }
     const next = [...keys];
     if (orderedKeys) {
         if (orderedKeys.length !== keys.length || new Set(orderedKeys).size !== keys.length || orderedKeys.some(key => !keys.includes(key))) return null;
-        return { orderedKeys: [...orderedKeys], materialiseKeys: [], focusKey: key };
+        return { orderedKeys: [...orderedKeys], focusKey: key };
     }
     const index = keys.indexOf(key);
     const target = index + direction;
     if (![-1, 1].includes(direction) || target < 0 || target >= keys.length) return null;
     [next[index], next[target]] = [next[target], next[index]];
-    return { orderedKeys: next, materialiseKeys: [], focusKey: key };
+    return { orderedKeys: next, focusKey: key };
 }
 
 export function getAgentRowMenuItems(entry, { model, rowKey = entry.key }) {
+    if (entry.kind !== 'agent') return [];
     const agent = entry.agent;
     const isCompanion = companion(agent);
     const items = [];

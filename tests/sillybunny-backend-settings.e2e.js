@@ -788,7 +788,8 @@ test('Agents globals and Connections switches use the shared row semantics', asy
     await loadSettings(page, baseURL);
     await page.setViewportSize({ width: 390, height: 844 });
     const agents = await openPanel(page, 'agents');
-    await agents.locator('[data-sb-list-key="settings"]').click();
+    await agents.getByRole('button', { name: 'Agents Menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
     await expect(agents.locator('[data-sb-agent-global-settings] > .ds-pref-group')).toHaveCount(2);
     await expect(agents.locator('[data-sb-agent-global-settings] .ds-row')).toHaveCount(10);
     await expect(agents.locator('#ica--companionConcurrent')).toHaveAttribute('role', 'switch');

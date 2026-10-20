@@ -64,6 +64,22 @@ const PANEL_ANCHOR_OPTIONS = {
 
 let panelInitialized = false;
 let panelOpen = false;
+let panelOrigin = null;
+
+export const captureCompanionPanelOrigin = () => panelOrigin;
+
+// SillyBunny: restore the originating companion and scroll position after detail closes.
+export function restoreCompanionPanelOrigin(restore, isCurrent) {
+    if (!isCurrent() || isConversationModeActive()) return false;
+    openCompanionPanel();
+    const body = document.querySelector('#ica--tracker-panel .ica--tpanel-body');
+    if (body) {
+        body.scrollTop = restore?.scrollTop ?? 0;
+        const row = [...body.querySelectorAll('[data-agent-id]')].find(node => node.dataset.agentId === restore?.agentId);
+        row?.querySelector('[data-action="panel-edit"]')?.focus({ preventScroll: true });
+    }
+    return true;
+}
 let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
@@ -848,6 +864,11 @@ export function openCompanionPanel() {
 }
 
 export function closeCompanionPanel() {
+    if (panelOpen) panelOrigin = {
+        scrollTop: document.querySelector('#ica--tracker-panel .ica--tpanel-body')?.scrollTop ?? 0,
+        agentId: document.activeElement?.closest('[data-agent-id]')?.dataset.agentId,
+        settingsOpen: document.documentElement?.dataset.sbSettingsOpen === 'true',
+    };
     panelOpen = false;
     $('#ica--tracker-panel').removeClass('is-open').attr('aria-hidden', 'true');
 }

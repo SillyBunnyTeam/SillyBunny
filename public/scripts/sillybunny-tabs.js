@@ -1148,7 +1148,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Agents',
                 icon: 'fa-robot',
                 tooltip: 'Interact with accompanying pre, post, and sidecar agents',
-                description: 'Enable, disable, or modify in-chat agents here. Can be configured as pre-gen, sidecar, or post-gen.',
+                description: 'Configure your in-chat agents here. They can be configured for pre-gen, post-gen, or as a side companion.',
             },
         ],
     },

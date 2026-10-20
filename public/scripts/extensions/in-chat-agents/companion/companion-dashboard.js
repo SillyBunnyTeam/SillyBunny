@@ -41,6 +41,24 @@ const NOTE_SNIPPET_LENGTH = 120;
  */
 let dashboardHooks = null;
 let activeDashboardPopup = null;
+let dashboardOrigin = null;
+
+export const captureCompanionDashboardOrigin = () => dashboardOrigin;
+
+// SillyBunny: restore the closed origin without retaining a dialog underneath Backend detail.
+export function restoreCompanionDashboardOrigin(restore, isCurrent) {
+    if (!isCurrent() || isConversationModeActive()) return false;
+    void openCompanionDashboard();
+    const popup = activeDashboardPopup;
+    if (!popup) return false;
+    requestAnimationFrame(() => {
+        if (!isCurrent() || activeDashboardPopup !== popup) return;
+        popup.content.scrollTop = restore?.scrollTop ?? 0;
+        const trigger = [...popup.content.querySelectorAll('[data-action]')].find(node => node.dataset.action === restore?.action && node.closest('[data-agent-id]')?.dataset.agentId === restore?.agentId);
+        trigger?.focus({ preventScroll: true });
+    });
+    return true;
+}
 
 function scrollChatMessageIntoView(messageElement) {
     const chatRoot = document.getElementById('chat');
@@ -272,6 +290,13 @@ export function buildDashboardHtml() {
 async function closeDashboard() {
     const popup = activeDashboardPopup;
     if (popup) {
+        const focused = document.activeElement;
+        dashboardOrigin = {
+            scrollTop: popup.content.scrollTop,
+            action: focused?.dataset?.action,
+            agentId: focused?.closest('[data-agent-id]')?.dataset.agentId,
+            settingsOpen: document.documentElement?.dataset.sbSettingsOpen === 'true',
+        };
         await popup.completeAffirmative();
     }
 }

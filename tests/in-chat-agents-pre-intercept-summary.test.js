@@ -224,6 +224,8 @@ beforeAll(async () => {
         configureCompanionDashboard: jest.fn(),
         initCompanionWandMenuItem: jest.fn(),
         openCompanionDashboard: jest.fn(),
+        captureCompanionDashboardOrigin: jest.fn(),
+        restoreCompanionDashboardOrigin: jest.fn(),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
@@ -233,6 +235,8 @@ beforeAll(async () => {
         openCompanionPanel: jest.fn(),
         refreshCompanionPanel: jest.fn(),
         updateCompanionPanelHandleVisibility: jest.fn(),
+        captureCompanionPanelOrigin: jest.fn(),
+        restoreCompanionPanelOrigin: jest.fn(),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({

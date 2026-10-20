@@ -110,3 +110,24 @@ describe('new Agents ui/ modules follow Q32', () => {
         expect(violations).toEqual([]);
     });
 });
+
+describe(
+    'A3 editor modules follow Q32 without vacuous missing-file passes',
+    () => {
+        test.each([
+            'agent-editor-model.js',
+            'agent-editor-controller.js',
+            'agent-editor.js',
+            'agent-editor-dialogs.js',
+        ])(
+            '%s is present and its translated copy follows the same rules',
+            async name => {
+                // Gate only new assertions: existing A2 contracts must stay runnable during A3 red.
+                await import('../../public/scripts/extensions/in-chat-agents/ui/agent-editor-model.js');
+                const source = readFileSync(new URL(name, UI_ROOT), 'utf8');
+                expect(translatedStrings(source).filter(({ text }) => forbiddenCopy(text)).map(({ text }) => text)).toEqual([]);
+                expect(fragmentedTranslations(source)).toEqual([]);
+            },
+        );
+    },
+);
