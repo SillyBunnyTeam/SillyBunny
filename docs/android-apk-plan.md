@@ -1,6 +1,6 @@
 ---
-status: not-started
-phase: 1
+status: in-progress
+phase: 2
 updated: 2026-10-21
 ---
 
@@ -24,7 +24,7 @@ Ship a first-party SillyBunny Android APK (GitHub Releases only) that acts as th
   - Prefer self-contained additions. Where a base file must change, add a short inline comment explaining where and why (for future upstream merges).
   - Node parity: there must be no Bun-only APIs in server code.
   - ESLint style: ESM, 4-space indent, single quotes, semicolons, trailing commas.
-- Facts below cite repo paths (`path:line`, taken from a 1.9.0-dev working tree on 2026-10-21) or URLs. **Line numbers may have drifted, and `staging` may already carry v2.0.0 work. Re-verify each cited fact against current `staging` before relying on it** (task 1.2).
+- Repo `path:line` references below were re-verified against `staging` commit `21b571a1d`, before this branch's changes (task 1.2). Re-verify them if `staging` moves.
 - Research claims marked *(unverified)* came from secondary research summaries. Verify them during Phase 2 spikes.
 
 ---
@@ -34,12 +34,12 @@ Ship a first-party SillyBunny Android APK (GitHub Releases only) that acts as th
 ### 1.1 The v2.0.0 distribution model (what the APK must match)
 
 - SillyBunny v2.0.0 only supports **git checkouts**, and releases provide **installer files** that set users up with a git environment. ZIP installs are being retired. GHCR and CI automate the pipeline.
-- Release assets today are the bootstrap installers in `scripts/bootstrap/` (`install.sh`, `Install-SillyBunny.ps1`, `Install-SillyBunny.cmd`), plus `SHA256SUMS` and build-provenance attestation (`.github/workflows/release.yml:71-111`).
+- Release assets today are the bootstrap installers in `scripts/bootstrap/` (`install.sh`, `Install-SillyBunny.ps1`, `Install-SillyBunny.cmd`), plus `SHA256SUMS`. Build-provenance attestations cover these files and are stored by GitHub's attestation service, not uploaded as release assets (`.github/workflows/release.yml:71-111`).
 - Tags: stable `vX.Y.Z` (must be on `release`, marked `--latest`) and RC `vX.Y.Z-rc.N` (on `staging` or `release`, marked `--prerelease`). Releases are created as **drafts** for maintainers to publish, and the tag must equal `package.json` version (`release.yml:41-69, 95-111`).
 - Launchers self-update on startup:
-  - **Update:** `start.sh` → `bash scripts/self-update.sh --optional` (`start.sh:182-195`) runs `git fetch`, then `git pull --ff-only` on the current branch's upstream. It requires a clean worktree and a named branch with an upstream, and it skips with exit 0 when the update is optional (`scripts/self-update.sh:14-109`).
-  - **Then:** a dependency-profile check runs `npm ci` / `bun install` only when needed, followed by `init`, then server start. The launcher loops on exit code **75** (`start.sh:221-374`).
-- `install.sh` clones with `git clone --filter=blob:none --branch "$ref"` (default `release`) and supports `--dir`, `--ref`, `--repo`, `--migrate-from`, `--use-bun`, `--use-node`, `--no-start` (`scripts/bootstrap/install.sh:40-60, 380`).
+  - **Update:** `start.sh` → `bash scripts/self-update.sh --optional` (`start.sh:192-196`) runs `git fetch`, then `git pull --ff-only` on the current branch's upstream. It requires a clean worktree and a named branch with an upstream, and it skips with exit 0 when the update is optional (`scripts/self-update.sh:14-113`). APK mode instead merges the checked commit (§3.2).
+  - **Then:** a dependency-profile check runs `npm ci` / `bun install` only when needed, followed by `init`, then server start. The launcher loops on exit code **75** (`start.sh:221-375`).
+- `install.sh` clones with `git clone --filter=blob:none --branch "$ref"` (default `release`) and supports `--dir`, `--ref`, `--repo`, `--migrate-from`, `--use-bun`, `--use-node`, `--no-start` (`scripts/bootstrap/install.sh:39-60, 79-123, 380`).
 
 ### 1.2 Why the APK is a "runtime host + git installer", not a code snapshot
 
@@ -62,7 +62,7 @@ Termux stays supported. Its docs visibility is reduced **only once the APK is pr
 APK (applicationId io.github.sillybunnyteam.sillybunny, label "SillyBunny")
 ├── Kotlin + Jetpack Compose shell (minimal native UI)
 ├── jniLibs/<abi>/   (extracted to nativeLibraryDir; the only place Android lets the app run programs from)
-│   ├── libnode.so       Node.js (current Active LTS, built from upstream source with the NDK)
+│   ├── libnode.so       Node.js (spike: v24.22.0; release line open, §9; built from upstream source with the NDK)
 │   ├── libbun.so        Bun (official Android build; arm64-v8a only; experimental)
 │   ├── libgit.so        git (repackaged pinned Termux package)
 │   ├── libgit-remote-http.so (and any other helpers git execs by name)
@@ -85,7 +85,7 @@ ABIs: **arm64-v8a** (primary, Node + Bun), **armeabi-v7a** (fallback, Node only,
 ```
 filesDir/
 ├── runtime/
-│   ├── bin/            symlinks: node, bun, git, bash, npm, npx → nativeLibraryDir/lib*.so
+│   ├── bin/            symlinks: node, git, bash, npm, npx (+ bun in Bun mode) → nativeLibraryDir/lib*.so
 │   ├── libexec/git-core/  symlinks: git-remote-http, git-remote-https, ... → nativeLibraryDir
 │   ├── lib/node_modules/npm/   (extracted from assets)
 │   ├── share/git-core/templates/, etc/certs/
@@ -101,9 +101,9 @@ filesDir/
 
 `ServerService` (foreground service, type `specialUse`) → `ProcessBuilder(nativeLibraryDir/libbash.so, "--noprofile", "--norc", "start.sh")` with cwd `filesDir/SillyBunny`.
 
-- `start.sh` → `node server.js` (the supervisor, `src/server-supervisor.js`) → `node server.js` (the server child, spawned via `argv[0]`, `src/server-supervisor.js:219-230`). git, npm and other short-lived processes come and go.
+- `start.sh` → `node server.js` (the supervisor, `src/server-supervisor.js`) → `node server.js` (the server child, spawned via `argv[0]`, `src/server-supervisor.js:219-229`). git, npm and other short-lived processes come and go.
 - Android 12+ counts these processes towards a **system-wide** limit of 32 (the "phantom process" limit). Keep update and install work sequential.
-- **Stopping:** send SIGTERM to the whole process group (or to the supervisor PID). The supervisor forwards shutdown to the child (`src/server-supervisor.js:177-211`). Verify the mechanism in Phase 2 (toybox `setsid` / `Os.kill(-pgid)`).
+- **Stopping:** send SIGTERM to the whole process group (or to the supervisor PID). The supervisor sends the child the IPC message `sillybunny:shutdown`, with a 5 s SIGKILL fallback (`src/server-supervisor.js:177-211`). Verify the mechanism in Phase 2 (toybox `setsid` / `Os.kill(-pgid)`).
 
 ### 2.4 Startup sequence (every launch)
 
@@ -120,18 +120,19 @@ filesDir/
 | `SILLYBUNNY_ANDROID_APP` | `1`: enables APK mode in the scripts (§3.1) |
 | `SILLYBUNNY_ANDROID_APP_VERSION_CODE` | installed APK versionCode (for the min-app-version gate) |
 | `SILLYBUNNY_ANDROID_STATUS_DIR` | `filesDir/status` |
-| `SILLYBUNNY_LAUNCHER` | `1`, so host updates request exit 77→75 and the launcher loop relaunches the supervisor (`src/endpoints/server-admin.js:392-415`) |
+| `SILLYBUNNY_LAUNCHER` | already exported as `1` by `start.sh:330`; host updates request exit 77→75 and the launcher loop relaunches the supervisor (`src/endpoints/server-admin.js:392-416`) |
 | `SILLYBUNNY_LAUNCH_TOKEN` | 32 random bytes (hex), regenerated each time the app starts the server (§3.3) |
 | `SILLYBUNNY_AUTO_UPDATE` | from the native setting (default on) |
 | `SILLYBUNNY_USE_NODE=1` *or* `SILLYBUNNY_USE_BUN=1` (+ `SILLYBUNNY_BUN_SMOL=1`) | runtime choice; Node is the default |
-| `SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH=1`, `SILLYTAVERN_BROWSERLAUNCH_ENABLED=false` | no browser launch from the server (config-to-env mapping: `src/util.js:37-42, 92-112`) |
+| `SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH=1`, `SILLYTAVERN_BROWSERLAUNCH_ENABLED=false` | no browser launch from the server (config-to-env mapping: `src/util.js:36-42, 92-113`) |
 | `SILLYTAVERN_LISTEN=false` | enforce localhost-only even if the user edits `config.yaml` (LAN is out of scope for v1) |
-| `PATH` | `filesDir/runtime/bin:/system/bin` |
+| `PATH` | `filesDir/runtime/bin:/system/bin`; expose `bun` only in Bun mode, because the in-app updater selects `bun install` whenever it finds `bun` (§3.4) |
+| `npm_config_script_shell` (optional note) | npm runs `sh` from `PATH`, not `/bin/sh`; keep `/system/bin` on `PATH` or point this variable at the bundled bash |
 | `HOME`, `TMPDIR` | `filesDir/home`, `cacheDir/tmp` |
 | `LD_LIBRARY_PATH` | `nativeLibraryDir` |
 | `GIT_EXEC_PATH`, `GIT_TEMPLATE_DIR`, `GIT_CONFIG_NOSYSTEM=1` | the relocated git layout |
 | `GIT_SSL_CAINFO`, `SSL_CERT_FILE`, `CURL_CA_BUNDLE` | the bundled CA bundle |
-| `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | fixed local identity so `git stash` works (`autoStashBeforePull`, `src/endpoints/server-admin.js:1062-1077`) |
+| `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | fixed local identity so `git stash` works (`autoStashBeforePull`, `src/endpoints/server-admin.js:1062-1078`) |
 | `SILLYBUNNY_ANDROID_NPM_CLI`, `SILLYBUNNY_ANDROID_NPX_CLI` | paths used by the npm/npx trampolines |
 
 ---
@@ -140,18 +141,18 @@ filesDir/
 
 | Decision | Rationale | Source |
 |---|---|---|
-| APK = runtime host + git installer; the code is a real git checkout updated by `start.sh` | Matches v2.0.0 exactly. Extensions, plugins and Server Tools work unchanged | Round 1 Q1; `scripts/self-update.sh`, `start.sh:182-374` |
-| targetSdk = latest (36); minSdk 29 | Must not break on future Android. Android 10+ blocks running files from app data, so programs ship as `lib*.so` in nativeLibraryDir | Round 1 Q2; https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission |
-| Bundle the real git (pinned Termux package), not isomorphic-git | Extension update/branch, the plugin loader/updater and self-update all use system git | Round 1 Q3; `src/endpoints/extensions.js`, `src/plugin-loader.js:359-415`, `src/server-plugin-manager.js:688-710` |
+| APK = runtime host + git installer; the code is a real git checkout updated by `start.sh` | Matches v2.0.0 exactly. Extensions, plugins and Server Tools work unchanged | Round 1 Q1; `scripts/self-update.sh`, `start.sh:182-375` |
+| targetSdk/compileSdk = latest (37); minSdk 29 | Must not break on future Android. Android 10+ blocks running files from app data, so programs ship as `lib*.so` in nativeLibraryDir | Round 1 Q2; https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission |
+| Bundle the real git (pinned Termux package), not isomorphic-git | Extension update/branch, the plugin loader/updater and self-update all use system git | Round 1 Q3; `src/endpoints/extensions.js`, `src/plugin-loader.js:359-421`, `src/server-plugin-manager.js:688-711` |
 | Node built from upstream source with the NDK, in CI, stored in GHCR | Termux's Node is patched to use Termux's `sh` path. Upstream Node on Android uses `/system/bin/sh`. Hours of CI only when the pins change | Round 2 Q2, Round 3 Q1; https://github.com/nodejs/node/blob/main/BUILDING.md#android, https://github.com/Sanitised/ST-android |
 | git + bash from repackaged pinned Termux packages | Proven by TavernDroid/VSCodroid. Fast | Round 2 Q2; https://github.com/S0ul-Sh3ll/TavernDroid, https://github.com/rmyndharis/VSCodroid |
 | nodejs-mobile / Capacitor-NodeJS rejected | Stuck on Node 18.20.4 (below `engines.node >= 20`). No child_process, no in-process restart | https://github.com/nodejs-mobile/nodejs-mobile/releases (verified) |
-| Bun bundled (arm64 only), labelled Experimental, Node default | Official Android builds since Bun 1.3.14. ARM idle-CPU bug (oven-sh/bun#26415) drains battery | Round 1 Q13, Round 2 Q11; https://bun.com/blog/bun-v1.3.14 (verified) |
+| Bun bundled (arm64 only), labelled Experimental, Node default | Official Android builds since Bun 1.3.14; oven-sh/bun#26415 reports idle CPU on x86_64, not an ARM-specific bug. Open Android SIGSYS crashes affect `close_range` on Android 11/12 and `openat2`/`fchmodat2` in `bun install` (§9.3) | Round 1 Q13, Round 2 Q11; https://bun.com/blog/bun-v1.3.14 (verified); https://github.com/oven-sh/bun/issues/30766; https://github.com/oven-sh/bun/issues/39060 |
 | npm/npx via native trampolines on PATH | Scripts and server code look for `npm` by name. Scripts in app data can't be executed directly. No base-code change | Round 2 Q3 |
-| Reuse `install.sh` / `start.sh` via the bundled bash in an APK mode | One source of truth for update behaviour. Helpers are already run as `bash script.sh` (`start.sh:187-195`) | Round 2 Q4 |
+| Reuse `install.sh` / `start.sh` via the bundled bash in an APK mode | One source of truth for update behaviour. Helpers are already run as `bash script.sh` (`start.sh:186-196`) | Round 2 Q4 |
 | Data/config stay inside the checkout | Same as every other install, so no special-case code | Round 2 Q5; `src/command-line.js:54-60` |
 | min-app-version gate before any git update | Code needing a newer runtime must not brick the app | Round 2 Q6 |
-| Launch-token gate for localhost | Any Android app can reach 127.0.0.1. The default user is admin with no auth | Round 1 Q8; `default/config.yaml:59-115`, `src/users.js:979-988`, `src/constants.js:59-67` |
+| Launch-token gate for localhost | Any Android app can reach 127.0.0.1. The default user is admin with no auth | Round 1 Q8; `default/config.yaml:58-115`, `src/users.js:979-989`, `src/constants.js:59-67` |
 | WebView by default + "Open in browser" | Integrated, with a browser escape hatch | Round 1 Q9 |
 | Foreground service (`specialUse`) with Stop | Long generations survive switching apps | Round 1 Q11; https://developer.android.com/develop/background-work/services/fgs/service-types |
 | Minimal native UI | The phone UI lives in the SillyBunny web app | Round 1 Q12 |
@@ -178,13 +179,14 @@ All changes must be inert unless their env var is set, so other installs keep th
 Files: `start.sh`, `scripts/self-update.sh`, `scripts/bootstrap/install.sh`, `scripts/install-prerequisites.sh` (and anything they source).
 
 When `SILLYBUNNY_ANDROID_APP=1`:
-- **Skip the prerequisites installer entirely.** The APK provides git, node, bun, npm and bash. `install-prerequisites.sh` uses `awk`, `curl`, `wget`, `tar` and `sha256sum`, which may not exist on Android.
-- **Skip Termux detection and the shared-storage check** (`start.sh:22-39, 52-58, 157-162, 213-214, 257`).
+- **Skip the prerequisites installer entirely.** The APK provides git, node, bun, npm and bash. `install-prerequisites.sh` uses download, archive, checksum and package-management commands that may not exist on Android (full inventory in B.1).
+- **Skip Termux detection and the shared-storage check** (`start.sh:22-24, 26-39, 52-58, 157-162, 213-216, 257-259`); these already stay inactive without a Termux env.
 - **Runtime selection:** honour `SILLYBUNNY_USE_NODE` / `SILLYBUNNY_USE_BUN` as today. Do not trigger the ARM/macOS auto-switch messages.
-- **`install.sh` must run non-interactively** when given flags and when stdin is not a TTY (verify; it has a wizard when run with no options). Find out what it uses `curl` for (`install.sh`, 3 occurrences) and make sure that path is skipped or works in APK mode.
-- **Verify tool availability.** Every external command the APK-mode path calls must exist in Android's toybox on API 29 and API 36:
-  - `start.sh` uses `date`, `diff`, `tr`, `uname`
-  - `install.sh` uses `head`, `sed`, `tail`, `tr`, `uname`
+- **`install.sh` runs non-interactively** when given flags or when stdin is not a TTY; the wizard requires both a TTY and no arguments. Its three `curl` hits are comments, not commands.
+- **Verify tool availability.** Check every external command the APK-mode path calls on API 29, API 36 and API 37 emulators. Baseline inventories (git/bash/runtimes are bundled; other commands must be in toybox or bundled):
+  - `start.sh`: `dirname`, `tr`, `uname`, `git`, `bash`, `node`/`bun`, `npm`/`bun`; `mkdir` is Termux-only. No standalone `date` or `diff` (`git diff` is a git subcommand).
+  - `install.sh`: `cat`, `grep`, `ls`, `git`, `bash`, `mkdir`, `cp`, `dirname`, `basename`, `head`, `sed`, `tr`, `uname`; git bootstrap can also call `sudo`, `pkg`, `xcode-select`, `apt-get`, `dnf`, `yum`, `pacman`, `zypper`, `apk` (skipped in APK mode). No `tail` or `curl` command.
+  - The implemented APK shell gate additionally calls `mkdir`, `mv`, `rm`; the APK installer skips wizard/platform/package-manager paths, and the prerequisites script runs no external commands in APK mode.
 
   Anything missing gets bundled from Termux (e.g. `busybox` or `coreutils`) and added to `runtime/bin`.
 
@@ -193,42 +195,44 @@ Add short inline comments at each APK-mode branch (AGENTS.md rule for diverging 
 ### 3.2 min-app-version gate (blocks git updates that need a newer APK)
 
 - **The file:** add `android/min-app-version`, containing a single integer: the minimum APK versionCode the code at that commit needs. It starts at the first APK's versionCode.
-- **Shell gate** (`scripts/self-update.sh`, APK mode only): after `git fetch` and before `git pull --ff-only`:
-  1. Read `git show "@{upstream}:android/min-app-version"` (missing → 0).
-  2. If it is greater than `SILLYBUNNY_ANDROID_APP_VERSION_CODE`: skip the pull, print a clear log line, and write `$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json` = `{ "required": N, "installed": M, "upstream": "<sha>", "branch": "<name>" }`.
+- **Shell gate** (`scripts/self-update.sh`, APK mode only): after `git fetch` and before fast-forwarding:
+  1. Resolve the upstream SHA once and read `git show "<sha>:android/min-app-version"`. Missing or invalid files block instead of defaulting to 0, because those branches predate the launch-token and update gates (**needs maintainer confirmation**, §9).
+  2. If the minimum is newer, missing or invalid: skip the update, log `lorum ipsum`, and write `$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json` = `{"required":N|null,"installed":M,"reason":"newer|missing|invalid","upstream":"<sha>","branch":"<name>"}`.
   3. In optional mode, exit 0, so the server still starts on the current code.
   4. Remove the file when no block applies.
+- **Checked-commit pinning:** the shell runs `git merge --ff-only <sha>` on exactly the checked commit, closing the check/pull race; the server must likewise merge/check out the checked commit (server follow-up not yet reported complete; task 3.3 stays open).
 - **Server gate.** The in-app updater bypasses `self-update.sh`, so the same check is needed on the server side:
   - Add a small self-contained module (e.g. `src/android-app-gate.js`) that is a no-op unless `SILLYBUNNY_ANDROID_APP=1`.
-  - **`POST /api/server-admin/update`** (`src/endpoints/server-admin.js:1044-1127`): check `@{upstream}:android/min-app-version` before merging.
-  - **`/switch-branch`** (`src/endpoints/server-admin.js:1177-1255`): check `origin/<branch>:android/min-app-version` before checkout.
-  - Return a distinct error code (e.g. `android_app_update_required`) that the existing Server Tools UI shows as an error. Any new UI string is `lorum ipsum`.
+  - **`POST /api/server-admin/update`** (`src/endpoints/server-admin.js:1044-1141`): check the tracking branch's minimum after the final fetch and before merging.
+  - **`/switch-branch`** (`src/endpoints/server-admin.js:1177-1260`): check the resolved remote branch (not necessarily `origin/<branch>`) or requested local fallback before either checkout path; restore request-owned auto-stashes on a block.
+  - Return HTTP **409** with `code: android_app_update_required`; Server Tools hides the supplied message of every 403. Any new UI string is `lorum ipsum`.
 - **Not gated:** extensions and server plugins.
 - **Release safety:** a CI check fails the release if `android/min-app-version` is greater than the versionCode of the APK attached to the same release (§6.2).
-- **Tests:** Jest unit tests in `tests/` for the gate module (allowed, blocked, missing file, non-APK mode no-op).
+- **Tests:** Jest unit tests in `tests/` for the gate module (allowed, blocked, missing/invalid file, checked-commit pinning, non-APK mode no-op).
 
 ### 3.3 Launch-token gate (localhost hardening)
 
 **Why it's needed:** on Android every app shares the loopback interface. With SillyBunny defaults:
-- whitelist on, allowing `127.0.0.1` and `::1` (`default/config.yaml:59-70`)
-- basic auth only applies when `listen: true` (`src/server-main.js:200-207`)
-- accounts disabled, so the default user is admin (`default/config.yaml:108-115`, `src/users.js:979-988`, `src/constants.js:59-67`)
+- whitelist on, allowing `127.0.0.1`, `::1`, `172.16.0.0/12` and `192.168.0.0/16` (`default/config.yaml:59-70`)
+- basic auth only applies when `listen: true` (`src/server-main.js:200-202`)
+- accounts disabled, so the default user is admin (`default/config.yaml:108-115`, `src/users.js:979-989`, `src/constants.js:59-67`)
 
 So **any installed app can call the admin endpoints** (update, branch switch, extension and plugin install, which amount to running arbitrary code, and reading API keys). CSRF doesn't help, because a local client can fetch `/csrf-token` (`src/server-main.js:322-377`).
 
 Spec:
-- **Module:** new self-contained middleware `src/middleware/launchToken.js`, following the existing middleware pattern (`src/middleware/whitelist.js`). It is enabled **only** when `process.env.SILLYBUNNY_LAUNCH_TOKEN` is non-empty, so it is inert for every other install.
-- **Mounting:** in `src/server-main.js`, before the whitelist, basic auth, session/user middleware and static files, with an inline comment. It applies to every route, including static files. No HTTP WebSocket upgrade handler exists in `src/`, but re-check this.
+- **Module:** new self-contained middleware `src/middleware/launchToken.js`, following the existing middleware pattern (`src/middleware/whitelist.js:57-104`). It is enabled **only** when `process.env.SILLYBUNNY_LAUNCH_TOKEN` is non-empty, so it is inert for every other install.
+- **Mounting:** in `src/server-main.js`, immediately after helmet and before the whitelist, basic auth, session/user middleware and static files, with an inline comment. It applies to every route, including static files. The Phase 3 search found no HTTP WebSocket upgrade handler in `src/`.
 - **What it accepts:** a request passes if it carries the cookie `sillybunny_launch=<token>`, compared in constant time with `crypto.timingSafeEqual` (Node + Bun). Otherwise the server replies `403` with a minimal body.
   - **Cookie flags:** `HttpOnly`, `SameSite=Strict`, `Path=/`. Not `Secure`, because this is plain http on localhost.
 - **Browser handoff endpoint** (`GET /__sillybunny/handoff?c=<code>`), used by "Open in browser" and optionally by the WebView:
-  - **Code format:** `base64url(nonce || expiryMs || HMAC-SHA256(token, "handoff" || nonce || expiryMs))`.
+  - **Code format:** 16-byte random nonce, 8-byte unsigned big-endian Unix expiry milliseconds, then HMAC-SHA256 keyed with the UTF-8 token over `ASCII("handoff") || nonce || expiry`; encode all 56 bytes as unpadded base64url (75 characters).
   - **Validity:** expires within 60 s; the nonce is single-use and tracked in memory.
   - **Response:** sets the cookie, then `302` to `/`.
   - **No token in the URL:** the long-lived token itself must never appear in a URL.
 - **WebView:** the app sets the cookie via `CookieManager.setCookie("http://127.0.0.1:<port>", ...)` before loading, or uses the handoff URL.
-- **App health probe:** sends the cookie header.
+- **App health probe:** `GET /__sillybunny/health` returns **204** with a valid launch cookie (403 without it).
 - **Compatible with account logins:** the gate is independent of `enableUserAccounts`, `perUserBasicAuth` and `basicAuthMode`. If accounts are on, users log in normally after passing the gate. Do not touch the `cookie-session` cookie.
+- **Cookie clearing:** `/api/cookies/clear` skips `sillybunny_launch` when the gate is enabled; account/session clearing remains unchanged.
 - **Token lifetime:** the supervisor's child inherits the env, so the token is stable for the lifetime of one `start.sh` run. A new token is issued each time the app starts the server.
 - **Tests (Jest, `tests/`):**
   - disabled when the env is unset
@@ -238,10 +242,10 @@ Spec:
 
 ### 3.4 Things that need no base change (verify only)
 
-- **git found by name:** `simple-git` and `command-exists` find `git` on `PATH` (`src/git/client.js:25`, `src/util.js:141`). The symlink in `runtime/bin` covers this. `command-exists` runs `command -v` through a shell. Upstream Node on Android uses `/system/bin/sh` for `shell: true` *(verify in Node's `lib/child_process.js`)*.
-- **npm found by name:** `npm` is looked up by name in `start.sh`, `src/endpoints/server-admin.js:552-620` (`npm ci --omit=dev`) and `src/server-plugin-manager.js:688-849` (`npm ci --omit=dev --ignore-scripts`). The trampoline covers all of these.
+- **git found by name:** `simple-git` and `command-exists` find `git` on `PATH` (`src/git/client.js:25`, `src/util.js:141`). The symlink in `runtime/bin` covers this. `command-exists` runs `command -v` through a shell. Upstream Node on Android uses `/system/bin/sh` for `shell: true` (confirmed in v24.22.0 `lib/child_process.js`).
+- **npm found by name:** `npm` is looked up by name in `start.sh`, `src/endpoints/server-admin.js:552-631` (`npm ci --omit=dev`) and `src/server-plugin-manager.js:688-711, 713-864` (`npm ci --omit=dev --ignore-scripts`). The trampoline covers all of these. The in-app updater's `getInstallCommand` chooses `bun install` whenever `bun` is on `PATH`, even under Node, so expose `bun` only in Bun mode (§2.5).
 - **Platform checks:** the server already handles `process.platform === 'android'` (`src/server-main.js:637`, `src/endpoints/characters.js:43`) because Termux's Node reports `android`. Upstream Node built for Android reports `android` too.
-- **Data location:** `data/` and `config.yaml` stay in the checkout (gitignored, `.gitignore:23-25, 54`).
+- **Data location:** `data/` and `config.yaml` stay in the checkout (gitignored, `.gitignore:24, 54`).
 
 ---
 
@@ -251,7 +255,7 @@ Spec:
 
 - **Project:** a Gradle project at `android/` with a committed Gradle wrapper. Kotlin + Jetpack Compose, minimal Views.
 - **Kept separate from the JS tooling:** it is not covered by the root npm scripts or ESLint, the same as `src/electron/`. Add Android lint to CI.
-- **SDK levels:** `minSdk 29`, `targetSdk` and `compileSdk` = latest stable (36 as of 2026-10).
+- **SDK levels:** `minSdk 29`, `targetSdk` and `compileSdk` = latest stable (Android 17 / API 37 as of 2026-10-20).
 - **IDs:** `applicationId io.github.sillybunnyteam.sillybunny`. Debug and test builds use the suffix `.debug` and a test signing key.
 - **Packaging:**
   - `packaging.jniLibs.useLegacyPackaging = true`, so binaries are extracted to `nativeLibraryDir`.
@@ -304,7 +308,7 @@ There is **no branch picker**; branches are switched via Server Tools in the web
   - **An unexpected exit or the process being killed** (out of memory, battery-manager kill) triggers an automatic restart with backoff, **at most 3 times within 5 minutes**. After that, show an error screen with the last N log lines and **Restart** / **Share logs** (Android share sheet, with a `lorum ipsum` warning that logs may contain sensitive details).
 - **Data safety:** restarts and recovery **never** touch `data/` or `config.yaml`, never re-clone, and never run Repair on their own.
 - **Stopping:** SIGTERM to the process group (verify the mechanism), then SIGKILL after a timeout. This matches the supervisor's 5 s force-kill (`src/server-supervisor.js:31`).
-- **Health check:** poll a lightweight endpoint with the launch-token cookie until it answers.
+- **Health check:** poll `GET /__sillybunny/health` with the launch-token cookie until it returns 204.
 
 ### 4.5 WebView screen
 
@@ -318,7 +322,7 @@ There is **no branch picker**; branches are switched via Server Tools in the web
   - Audit how SillyBunny's export and backup buttons create downloads.
 - **Links:** `shouldOverrideUrlLoading` keeps `127.0.0.1` in the WebView and sends everything else to an external browser via `Intent.ACTION_VIEW`.
 - **Back button:** goes back in WebView history, then backgrounds the app (the server keeps running).
-- **"Open in browser":** a menu or toolbar action. It asks the server for a handoff code (the app computes the HMAC itself, §3.3) and opens `http://127.0.0.1:<port>/__sillybunny/handoff?c=...` in the default browser.
+- **"Open in browser":** a menu or toolbar action. The app computes the handoff code itself (§3.3) and opens `http://127.0.0.1:<port>/__sillybunny/handoff?c=...` in the default browser.
 - **Minimum WebView version:** if the WebView major version is below the minimum, show a **warning, not a block** (`lorum ipsum`), with "Open in browser" and a link to update Android System WebView.
   - **How to set the minimum:** audit the frontend's newest CSS/JS features against the project baseline (AGENTS.md: Safari/WebKit 16.4+).
   - **Starting proposal:** Chromium 111, which must be verified.
@@ -326,7 +330,7 @@ There is **no branch picker**; branches are switched via Server Tools in the web
 ### 4.6 Native Settings (minimal; copy is `lorum ipsum`)
 
 - **Auto-update SillyBunny on launch** (git), maps to `SILLYBUNNY_AUTO_UPDATE`. Default on.
-- **Runtime:** Node (default, recommended) / Bun (**Experimental**, arm64 only, with a battery warning about the ARM idle-CPU bug). Switching restarts the server; `start.sh`'s dependency profile handles the reinstall. Keep this until Bun fixes the bug upstream.
+- **Runtime:** Node (default, recommended) / Bun (**Experimental**, arm64 only, with a warning about idle CPU and the Android SIGSYS crash reports, §9.3). Switching restarts the server; `start.sh`'s dependency profile handles the reinstall. Re-evaluate after upstream fixes.
 - **App updates:** an on/off toggle for the automatic check, plus "Check now".
 - **Battery optimisation exemption** shortcut.
 - **Open in browser.**
@@ -341,8 +345,8 @@ There is **no branch picker**; branches are switched via Server Tools in the web
 Triggered manually from Settings or the error screens:
 1. Stop the server.
 2. Rename `SillyBunny/` to `SillyBunny.broken-<timestamp>/`. Nothing is deleted.
-3. Run `install.sh --no-start --dir filesDir/SillyBunny --ref <previously tracked branch, else DEFAULT_REF> --migrate-from filesDir/SillyBunny.broken-<timestamp>`.
-   - **Verify** that `--migrate-from` copies `data/`, `config.yaml`, plugins and extensions from a *git* checkout as well as from ZIP installs (`install.sh:286-330`). If it doesn't, extend it in APK-mode-neutral code.
+3. Run `install.sh --no-start --dir filesDir/SillyBunny --ref <previously tracked branch, else DEFAULT_REF> --migrate-from filesDir/SillyBunny.broken-<timestamp> --allow-git-source`.
+   - **Verified:** the new opt-in `--allow-git-source` bypasses the existing git-source refusal (baseline `scripts/bootstrap/install.sh:280-310`); existing copying (`scripts/bootstrap/install.sh:312-375`) preserves `config.yaml`, the relative data root, user plugins, third-party extensions, legacy `secrets.json` and `certs/`. Absolute data roots are retained/reused, not copied.
 4. Start the server.
 5. Keep the broken folder until the user deletes it from the separate confirmed screen (§4.6).
 
@@ -381,7 +385,7 @@ It pins:
 ### 5.2 Node runtime build workflow (new, e.g. `.github/workflows/android-runtime.yml`)
 
 - **Triggers:** `workflow_dispatch`, plus changes to the Node pin or patch files.
-- **Build:** upstream Node (current Active LTS line, 24.x at time of writing; confirm) with `./android-configure <NDK> <API> <arch>` (https://github.com/nodejs/node/blob/main/BUILDING.md#android) for arm64, armv7 and x86_64, 16 KB aligned. Expect hours; **this cost is CI-only, never per user**.
+- **Build:** upstream Node (spike pin **v24.22.0**) with `./android-configure <NDK> <API> <arch>` (https://github.com/nodejs/node/blob/main/BUILDING.md#android) for arm64, armv7 and x86_64, 16 KB aligned. Node 24.x entered Maintenance LTS on 2026-10-20; 26.x becomes Active LTS on 2026-10-28. Re-decide the line before the first release build (§9). Expect hours; **this cost is CI-only, never per user**.
 - **Patches:** keep any needed Android patches in `android/runtime/patches/node/`. ST-android (AGPL-3.0, Node submodule + minimal patches) is the reference.
 - **Publishing:** push to **GHCR** as an OCI artifact (e.g. `ghcr.io/sillybunnyteam/sillybunny-android-runtime:node-<ver>-<patchhash>-<abi>`, via `oras`), with build-provenance attestation. Then open a PR updating the digests in `runtime.lock`.
 - **Termux packages:** a script (e.g. `android/runtime/fetch-termux.sh`) downloads them from the Termux repo, verifies sha256 against `runtime.lock`, extracts them, and patches the ELFs. It can also run locally.
@@ -453,9 +457,11 @@ Android kills the process during the install. On `ACTION_MY_PACKAGE_REPLACED`, p
 
 ### 6.2 `release.yml` changes
 
+**Open Phase 6/7 constraint:** `tests/release-workflows.test.js` forbids `environment:` in `release.yml` and requires every `uses:` to be `owner/repo@<40-hex>`. Signing therefore needs a separate workflow or a deliberate, reviewed test change; do not choose the layout until this is resolved (§9).
+
 Restructure the single draft job (it currently has a 15-minute timeout) into separate jobs:
 1. **`android-apk` job:**
-   - Compute `inputsHash` and `defaultRef` (`staging` when the existing `prerelease` output is true, `release` otherwise).
+   - Compute `inputsHash` and `defaultRef` (`staging` when the existing step output `steps.tag.outputs.prerelease` is true, `release` otherwise).
    - Re-attach the previous APKs, or build:
      - pull the runtime from GHCR by the digest in `runtime.lock`
      - fetch the Termux packages
@@ -497,8 +503,9 @@ Restructure the single draft job (it currently has a 15-minute timeout) into sep
 
 - **Location:** a new job in `.github/workflows/bootstrap-smoke.yml`, alongside the other smoke jobs.
 - **When it runs:** only when Android-relevant files change: `android/**`, `start.sh`, `scripts/**`, `src/middleware/launchToken.js` and its hook, `src/android-app-gate.js`, `src/endpoints/server-admin.js`, `package.json`, `package-lock.json`, `bun.lock`, `.npmrc`. Other files are covered by the other smoke jobs. It also runs **nightly** (`nightly.yml`) and as a **required step in `release.yml`** before APKs are attached.
-- **Path filtering:** this needs a changes-detection step inside the existing workflow, since workflow-level `paths:` would affect the other jobs.
-- **Environment:** an x86_64 test-only APK (debug signing, fixture URL overrides) on GitHub-hosted x86_64 emulators (e.g. `reactivecircus/android-emulator-runner`, KVM). Run on **API 29 and API 36**.
+- **Path filtering:** Android change detection must be a script step: `tests/bootstrap-installer.test.js` forbids the literal string `paths:` anywhere in `bootstrap-smoke.yml`.
+- **Workflow constraints:** `tests/nightly-workflow.test.js` also requires `owner/repo@<40-hex>` for `uses:` and keeps launcher flags out of the checks-job and unit-test-step environments. Local reusable-workflow calls do not fit the current assertion; reuse/signing layout remains open for Phase 6/7 (§6.2, §9).
+- **Environment:** an x86_64 test-only APK (debug signing, fixture URL overrides) on GitHub-hosted x86_64 emulators (e.g. `reactivecircus/android-emulator-runner`, KVM). Run on **API 29, API 36 and API 37**.
 - **Fixtures on the runner host,** reachable from the emulator at `10.0.2.2`:
   - **Git remote:** a bare repo built from the PR commit, with branches `release` and `staging`, served over http.
   - **Mock LLM:** a mock OpenAI-compatible endpoint returning canned streaming responses.
@@ -596,35 +603,38 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
 
    While unregistered, Termux must stay visible in the docs.
 2. **Who holds the signing key and identity:** Geechan or TheLonelyDevil (not yet decided). TheLonelyDevil should read §6.4.
-3. **Bun:** experimental until upstream fixes oven-sh/bun#26415. Then re-evaluate the default.
+3. **Bun:** remains experimental; oven-sh/bun#26415 is an x86_64 idle-CPU report, not ARM-specific. Official Android builds also have open SIGSYS crashes: `close_range` on Android 11/12 (oven-sh/bun#30766), and `openat2`/`fchmodat2` in `bun install` (oven-sh/bun#39060). Re-evaluate the default after upstream fixes and device verification.
 4. **Icon:** placeholder until the design work in PR #870.
 5. **Minimum WebView version:** to be determined by audit (proposal: Chromium 111).
 6. **Toybox gaps:** the list of commands that need bundling depends on the Phase 2 verification.
+7. **Node release line:** the spike pins v24.22.0; 24.x entered Maintenance LTS on 2026-10-20 and 26.x becomes Active LTS on 2026-10-28. Re-decide before the first release build.
+8. **Missing/invalid min-app-version:** APK mode blocks these branches instead of treating a missing file as 0, because they predate the launch-token and update gates. **Needs maintainer confirmation.**
+9. **Phase 6/7 workflow layout:** resolve signing in a separate workflow versus a deliberate, reviewed test change; preserve the current `uses:` assertions, script-step Android change detection and nightly unit-test environment constraints until reviewed (§6.2, §7.1).
 
 ## 10. Known risks and unknowns (verify early, in Phase 2)
 
-- **Exec via symlinks.** Running `nativeLibraryDir` binaries through symlinks in `filesDir` works per TavernDroid/VSCodroid, but it isn't a documented Android guarantee. Test on API 29, 33, 35 and 36 and on OEM builds.
+- **Exec via symlinks.** Running `nativeLibraryDir` binaries through symlinks in `filesDir` works per TavernDroid/VSCodroid, but it isn't a documented Android guarantee. Test on API 29, 33, 35, 36 and 37 and on OEM builds.
 - **16 KB alignment** of the Termux packages; re-link if needed.
 - **Termux hardcoded paths** in git (`SHELL_PATH`, `templates`, `exec-path`) and bash; operations that unexpectedly shell out.
 - **Node Android build patches.** Use ST-android's patch set as the reference, and check its license compatibility (AGPL-3.0, same as SillyBunny).
 - **The phantom-process limit is system-wide (32).** Other apps (e.g. Termux itself) count towards it. Keep git and npm work sequential.
 - **OEM battery killers** despite the foreground service; the exemption prompt helps but doesn't guarantee survival.
 - **First-run download size and time** on mobile; measure it (task 2.6).
-- **`install.sh --migrate-from`** behaviour on git checkouts (§4.7).
+- **Repair migration:** git-source copying is verified with `--allow-git-source` (§4.7); still verify native Repair on-device, including absolute data roots and damaged source metadata.
 - **Blob downloads** for SillyBunny exports in the WebView.
 - **`.npmrc` `allow-git=none` / `allow-file=none`** effects on the server-plugin `npm ci` path. These are already the same on desktop, so just confirm.
 
 ---
 
-## Phase 1: Handoff setup [PENDING]
-- [ ] **1.1 Create `feat/android-apk` from `staging`; commit this file as `docs/android-apk-plan.md`** ← CURRENT
-- [ ] 1.2 Re-verify every cited `path:line` fact against current `staging` (v2.0.0 work may have moved things); update this file where needed
-- [ ] 1.3 Read `AGENTS.md`, `PRODUCT.md`, `DESIGN.md`/`DESIGN.json`, `SECURITY.md`, `CONTRIBUTING.md`, `docs/upstream-sync.md`
-- [ ] 1.4 Open a **draft** PR to `staging` early (ask the maintainer for the title/body; never write them)
+## Phase 1: Handoff setup [DONE]
+- [x] **1.1 Create `feat/android-apk` from `staging`; commit this file as `docs/android-apk-plan.md`**
+- [x] 1.2 Re-verify every cited `path:line` fact against current `staging` (v2.0.0 work may have moved things); update this file where needed
+- [x] 1.3 Read `AGENTS.md`, `PRODUCT.md`, `DESIGN.md`/`DESIGN.json`, `SECURITY.md`, `CONTRIBUTING.md`, `docs/upstream-sync.md`
+- [x] 1.4 Open a **draft** PR to `staging` early (ask the maintainer for the title/body; never write them)
 
-## Phase 2: De-risking spikes (throwaway; results recorded in Notes) [PENDING]
-- [ ] 2.1 Build upstream Node (Active LTS) for arm64 + x86_64 with the NDK (ST-android patches as reference). Confirm `process.platform === 'android'`, `/system/bin/sh` for `shell: true`, ICU/Intl, WASM, worker_threads
-- [ ] 2.2 Repackage Termux git + bash (+ libs). Confirm exec via symlinks from `filesDir` → `nativeLibraryDir` on API 29 and 36 emulators. Run `git clone --filter=blob:none` over HTTPS, `fetch`, `pull --ff-only`, `stash`, `checkout`, `show`
+## Phase 2: De-risking spikes (throwaway; results recorded in Notes) [IN PROGRESS]
+- [ ] **2.1 Build upstream Node (spike pin v24.22.0; release line open, §9) for arm64 + x86_64 with the NDK (ST-android patches as reference). Confirm `process.platform === 'android'`, `/system/bin/sh` for `shell: true`, ICU/Intl, WASM, worker_threads** ← CURRENT
+- [ ] 2.2 Repackage Termux git + bash (+ libs). Confirm exec via symlinks from `filesDir` → `nativeLibraryDir` on API 29, 36 and 37 emulators. Run `git clone --filter=blob:none` over HTTPS, `fetch`, `pull --ff-only`, `stash`, `checkout`, `show`
 - [ ] 2.3 Prove the npm trampoline: `npm ci --omit=dev` of SillyBunny on the emulator, honouring `.npmrc` (npm ≥ 11.10.0)
 - [ ] 2.4 Verify that Bun's official Android zip runs on API 29+ (arm64 device or emulator image) and can run `bun install` + the server
 - [ ] 2.5 Run `install.sh` + `start.sh` by hand via `adb shell run-as` with the APK-mode env (prototype flags); list any missing toybox commands and Termux path issues
@@ -632,13 +642,14 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
 - [ ] 2.7 Check the 16 KB alignment of every ELF; check `install.sh --migrate-from` on a git checkout; audit how SillyBunny triggers downloads (blob/data URLs)
 - [ ] 2.8 Write the findings into §10 / Notes, and adjust the plan if anything changes a decision (escalate to the maintainers if it does)
 
-## Phase 3: Base repository changes [PENDING]
-- [ ] 3.1 APK mode in `start.sh`, `scripts/self-update.sh`, `scripts/bootstrap/install.sh`, `scripts/install-prerequisites.sh` (§3.1), with inline comments
-- [ ] 3.2 `android/min-app-version` + the shell gate in `self-update.sh` + the status file (§3.2)
+## Phase 3: Base repository changes [IN PROGRESS]
+- [x] 3.1 APK mode in `start.sh`, `scripts/self-update.sh`, `scripts/bootstrap/install.sh`, `scripts/install-prerequisites.sh` (§3.1), with inline comments
+- [x] 3.2 `android/min-app-version` + the shell gate in `self-update.sh` + the status file (§3.2)
 - [ ] 3.3 `src/android-app-gate.js` + hooks in the server-admin `/update` and `/switch-branch` endpoints + the error code (§3.2)
-- [ ] 3.4 `src/middleware/launchToken.js` + the handoff endpoint + the hook in `src/server-main.js` (§3.3)
-- [ ] 3.5 Jest unit tests for 3.3 and 3.4; `npm run lint` passes; Node and Bun parity checked
+- [x] 3.4 `src/middleware/launchToken.js` + the handoff endpoint + the hook in `src/server-main.js` (§3.3)
+- [x] 3.5 Jest unit tests for 3.3 and 3.4; `npm run lint` passes; Node and Bun parity checked
 - [ ] 3.6 Confirm zero behaviour change without the env vars (run the existing bootstrap smoke)
+- [ ] 3.7 Add/update `docs/upstream-touch-ledger.md` entries for every modified upstream-origin file, with protecting tests, validation, rollback and owner
 
 ## Phase 4: Runtime pipeline [PENDING]
 - [ ] 4.1 `android/runtime.lock` format + `android/runtime/patches/` (§5.1)
@@ -662,7 +673,7 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
 
 ## Phase 6: CI smoke tests [PENDING]
 - [ ] 6.1 Fixtures: git remote builder, mock LLM, fixture extension, fixture plugin, update-manifest server (§7.1)
-- [ ] 6.2 Android job in `bootstrap-smoke.yml` with changes detection; API 29 + 36 x86_64 emulators
+- [ ] 6.2 Android job in `bootstrap-smoke.yml` with script-step changes detection; API 29 + 36 + 37 x86_64 emulators
 - [ ] 6.3 Automate steps 1–14 of §7.1 (UiAutomator + Playwright over CDP)
 - [ ] 6.4 Hook into `nightly.yml`; make it reusable so `release.yml` can call it
 
@@ -687,6 +698,21 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
 
 ## Notes
 - 2026-10-21: Plan created from a grilling session (Appendix A). No code written yet.
+- 2026-10-20: `feat/android-apk` is based on `staging` `21b571a1d`; plan committed as `9a12799ad`; draft PR https://github.com/SillyBunnyTeam/SillyBunny/pull/918 targets `staging`.
+- 2026-10-20: Task 1.2 re-verified baseline citations/tool inventories and corrected attestation storage, supervisor IPC shutdown, whitelist ranges and Repair validation/copying ranges; task 1.3 governance read completed.
+- 2026-10-20: SDK target/compile move to Android 17 / API 37; API 29/36 emulator coverage is retained with API 37 added; Phase 2 device spikes remain unchecked.
+- 2026-10-20: Node spike pins v24.22.0; 24.x entered Maintenance LTS today and 26.x becomes Active LTS on 2026-10-28; first-release line choice remains open (§9).
+- 2026-10-20: Bun remains experimental/arm64-only; #26415 reports x86_64 idle CPU, not an ARM bug; official Android SIGSYS reports cover `close_range` and `openat2`/`fchmodat2` (§9.3).
+- 2026-10-20: npm scripts resolve `sh` on `PATH`; retain `/system/bin` or set `npm_config_script_shell`; expose `bun` only in Bun mode because the in-app updater otherwise selects `bun install` even under Node (§2.5, §3.4).
+- 2026-10-20: APK launcher/prerequisite guards landed in `e07841e8f`, bootstrap guards and git-source Repair opt-in in `0fc410941`, minimum file in `3ef41bc6e`, and shell gate in `17c636563`.
+- 2026-10-20: Missing/invalid minimums now block with reasons `missing`/`invalid` (needs maintainer confirmation); status includes nullable `required`, `installed`, `reason`, checked `upstream` and `branch`; Server Tools blocks use 409/`android_app_update_required` because 403 messages are hidden (§3.2).
+- 2026-10-20: Shell updates pin/check/merge one SHA (`17c636563`); server hooks are implemented but uncommitted, and their pinned-commit follow-up is not reported complete, so task 3.3 stays open (§3.2).
+- 2026-10-20: Launch-token middleware `dbae30460` and wiring `2966a6131` add authenticated 204 health, the exact 75-character handoff protocol and launch-cookie preservation during cookie clearing (§3.3).
+- 2026-10-20: Repair must pass `--allow-git-source` (`0fc410941`); verified existing copying covers config, relative data root, user plugins, third-party extensions, legacy secrets and certs; absolute data roots are reused (§4.7).
+- 2026-10-20: Existing workflow tests constrain signing/reuse (`environment:`, SHA-pinned `uses:`), require script-step Android change detection (no `paths:`), and keep launcher flags out of nightly unit tests; Phase 6/7 layout remains open (§6.2, §7.1, §9).
+- 2026-10-20: Governance requires a touch-ledger entry for every modified upstream-origin file; added unchecked task 3.7; no ledger edits made by this plan update.
+- 2026-10-20: Phase 3 reports show WSL shell tests 189/189, server-focused tests 88/88, launch-token tests 55/55, root lint and Node/Bun checks passing; full tests lint has 168 pre-existing errors/70 warnings in untouched files; broader Windows regression checks also hit two pre-existing symlink-permission failures.
+- 2026-10-20: Task 3.6 remains unchecked pending the draft PR's bootstrap-smoke CI; first unfinished task is 2.1; `updated:` stays 2026-10-21 because the plan's creation date is later than today.
 
 ---
 
@@ -774,32 +800,33 @@ The viability finding: feasible. SillyBunny's dependencies are pure JS/WASM (no 
 
 The research was done in a prior OpenCode session whose transcripts aren't shared, so primary sources are cited directly. "Verified" means the source was fetched and checked on 2026-10-21. Everything else comes from research summaries and should be re-checked.
 
-### B.1 Codebase facts (1.9.0-dev working tree, 2026-10-21; re-verify on `staging`)
+### B.1 Codebase facts (`staging` `21b571a1d`, before this branch's changes)
 
-- **Dependencies:** no native addons. `find node_modules -name '*.node' -o -name '*.so'` → 0 files; no `binding.gyp`. `sillytavern-transformers` uses `onnxruntime-web` (WASM).
-- **Self-update:** `scripts/self-update.sh` does fetch + `pull --ff-only` on the upstream, needs a clean worktree, and treats the update as optional (exit 0 on skip). `start.sh` runs helpers via `bash <script>` (`start.sh:187-195`) and loops on exit 75 (`start.sh:332-374`).
-- **Installer:** `scripts/bootstrap/install.sh` clones with `git clone --filter=blob:none --branch "$ref"` (line 380), defaults to `release`, and supports `--dir`/`--ref`/`--repo`/`--migrate-from`/`--use-bun`/`--use-node`/`--no-start` (lines 40-60).
+- **Dependencies:** the citation audit found no `gypfile` or OS-restricted packages in `package-lock.json`; it could not rerun the earlier `node_modules` native-addon scan. `sillytavern-transformers` 2.14.6 uses `onnxruntime-web` (WASM).
+- **Self-update:** `scripts/self-update.sh` does fetch + `pull --ff-only` on the upstream, needs a clean worktree, and treats the update as optional (exit 0 on skip). `start.sh` runs helpers via `bash <script>` (`start.sh:186-196`) and loops on exit 75 (`start.sh:349-375`).
+- **Installer:** `scripts/bootstrap/install.sh` clones with `git clone --filter=blob:none --branch "$ref"` (line 380), defaults to `release`, and supports `--dir`/`--ref`/`--repo`/`--migrate-from`/`--use-bun`/`--use-node`/`--no-start` (usage 39-60, parsing 79-123).
 - **Release workflow** (`.github/workflows/release.yml`):
   - tags `vX.Y.Z` (stable, `--latest`, must be on `release`) and `vX.Y.Z-rc.N` (`--prerelease`, on `staging` or `release`)
   - the tag must equal `package.json` version
   - releases are drafts
-  - assets = `scripts/bootstrap/*.{sh,ps1,cmd}` + `SHA256SUMS` + attestation
+  - assets = `scripts/bootstrap/*.{sh,ps1,cmd}` + `SHA256SUMS`; provenance is stored by GitHub's attestation service, not uploaded as an asset
   - the job has a 15-minute timeout
 - **Bootstrap smoke** (`.github/workflows/bootstrap-smoke.yml`): runs on PRs to `staging` and `release`, with a POSIX matrix (ubuntu/macos) and a Windows job.
 - **GitHub API:** no runtime query of the Releases API anywhere in `src/` or `public/`.
 - **Git use:** extensions clone via `src/git/client.js` (system git, or isomorphic-git, which is Node-only). Extension update/branch/version checks use `simple-git` (system git).
-  - The plugin loader auto-update needs system git (`src/plugin-loader.js:359-415`).
-  - The plugin release updater needs git + npm + the supervisor (`src/server-plugin-manager.js:688-849`).
-- **Server admin** (`src/endpoints/server-admin.js`): `/update` (fetch + ff-merge + `npm ci --omit=dev` + restart, lines 1044-1127), `/switch-branch` (1177-1255), and a restart that requests 77 when `SILLYBUNNY_LAUNCHER=1` (392-415).
+  - The plugin loader auto-update needs system git (`src/plugin-loader.js:359-421`).
+  - The plugin release updater needs git + npm + the supervisor (`src/server-plugin-manager.js:688-711, 713-864`).
+- **Server admin** (`src/endpoints/server-admin.js`): `/update` (fetch + ff-merge + dependency install + restart, lines 1044-1141), `/switch-branch` (1177-1260), and a host-update restart that requests 77 when `reloadSupervisor` and `SILLYBUNNY_LAUNCHER=1` (392-416). `getInstallCommand` prefers `bun install` when `bun` is on `PATH`, otherwise `npm ci --omit=dev` (552-631).
 - **Supervisor** (`src/server-supervisor.js`): exit codes 75/76/77; spawns `argv[0]`.
-- **Network defaults** (`default/config.yaml`): `listen: false`, port 4444, whitelist including `127.0.0.1`/`::1`, `basicAuthMode: false` (applied only when listening, `src/server-main.js:200-207`), accounts disabled, so the default user is admin. CSRF on.
-- **Paths:** `--dataRoot` and `--configPath` are supported in standalone mode (`src/command-line.js`). Config-to-env mapping is `SILLYTAVERN_<KEY>` (`src/util.js:37-42, 92-112`).
+- **Network defaults** (`default/config.yaml`): `listen: false`, port 4444, whitelist including `127.0.0.1`/`::1`, `172.16.0.0/12` and `192.168.0.0/16`, `basicAuthMode: false` (applied only when listening, `src/server-main.js:200-202`), accounts disabled, so the default user is admin. CSRF on.
+- **Paths:** `--dataRoot` and `--configPath` are supported in standalone mode (`src/command-line.js`). Config-to-env mapping is `SILLYTAVERN_<KEY>` (`src/util.js:36-42, 92-113`).
 - **Android:** the server already branches on `process.platform === 'android'` (`src/server-main.js:637`, `src/endpoints/characters.js:43`).
 - **`.npmrc`:** `ignore-scripts=true`, `min-release-age=7`, `allow-directory=none`, `allow-file=none`, `allow-git=none`. Both `package-lock.json` and `bun.lock` exist.
 - **External commands used by the scripts:**
-  - `start.sh`: `date`, `diff`, `tr`, `uname`
-  - `install.sh`: `curl`, `head`, `sed`, `tail`, `tr`, `uname`
-  - `install-prerequisites.sh`: `awk`, `curl`, `find`, `mktemp`, `sha256sum`/`shasum`, `tar`, `wget` (skipped in APK mode)
+  - `start.sh`: `dirname`, `tr`, `uname`, `git`, `bash`, `node`/`bun`, `npm`/`bun`; `mkdir` is Termux-only. No standalone `date` or `diff`.
+  - `self-update.sh`: `dirname`, `git`; the APK gate adds `mkdir`, `mv`, `rm` (§3.1).
+  - `install.sh`: `cat`, `grep`, `ls`, `git`, `bash`, `mkdir`, `cp`, `dirname`, `basename`, `head`, `sed`, `tr`, `uname`; git bootstrap can also call `sudo`, `pkg`, `xcode-select`, `apt-get`, `dnf`, `yum`, `pacman`, `zypper`, `apk`. No `tail` command; the three `curl` hits are comments.
+  - `install-prerequisites.sh`: `uname`, `bun`, `git`, `node`, `npm`, `sudo`, package managers, `curl`, `wget`, `grun`, `grep`, `mkdir`, `mv`, `cat`, `chmod`, `xcode-select`, `shasum`/`sha256sum`/`openssl` with `awk`, `dirname`, `mktemp`, `rm`, `tar`, `bash`; no `find` (script skipped in APK mode).
 - **WebSockets:** no WebSocket upgrade handler in `src/`.
 - **Icons:** existing assets in `public/img/` (`logo.svg`, `icon-*.png`, `apple-icon-*.png`), but they're placeholders only (PR #870).
 
@@ -807,9 +834,11 @@ The research was done in a prior OpenCode session whose transcripts aren't share
 
 - **nodejs-mobile:** latest release v18.20.4 (Node 18.20.4), with Android armeabi-v7a/arm64-v8a/x86_64. **Verified:** https://github.com/nodejs-mobile/nodejs-mobile/releases. Limitations (no child_process, one instance per process, no restart): https://nodejs-mobile.github.io/docs/api/differences
 - **Capacitor-NodeJS:** bundles nodejs-mobile 18.20.4 and is not recommended for new projects: https://github.com/hampoelz/Capacitor-NodeJS
-- **Bun:** first-party Android builds since v1.3.14 (2026-05-13). **Verified:** https://bun.com/blog/bun-v1.3.14. Release assets: https://github.com/oven-sh/bun/releases. ARM idle-CPU bug: https://github.com/oven-sh/bun/issues/26415
-- **Node on Android:** builds via `android-configure`, but Android is not a supported platform: https://github.com/nodejs/node/blob/main/BUILDING.md#android
+- **Bun:** first-party Android builds since v1.3.14 (2026-05-13). **Verified:** https://bun.com/blog/bun-v1.3.14. Release assets: https://github.com/oven-sh/bun/releases. Idle-CPU report on x86_64, not ARM-specific: https://github.com/oven-sh/bun/issues/26415. Open Android SIGSYS reports: `close_range` on Android 11/12 (https://github.com/oven-sh/bun/issues/30766), `openat2`/`fchmodat2` in `bun install` (https://github.com/oven-sh/bun/issues/39060).
+- **Node on Android:** builds via `android-configure`, but Android is not a supported platform: https://github.com/nodejs/node/blob/main/BUILDING.md#android. Upstream v24.22.0 uses `/system/bin/sh` for `shell: true`: https://github.com/nodejs/node/blob/v24.22.0/lib/child_process.js.
+- **Node release lines (2026-10-20):** 24.x entered Maintenance LTS today; 26.x becomes Active LTS on 2026-10-28. Spike pin v24.22.0; release-line decision remains open (§9): https://github.com/nodejs/Release/blob/main/schedule.json.
 - **Android platform rules:**
+  - latest stable SDK: Android 17 / API 37 as of 2026-10-20
   - W^X: from targetSdk 29, apps can't `execve` from writable app data: https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission
   - ABIs and native-lib extraction: https://developer.android.com/ndk/guides/abis
   - 16 KB pages: https://developer.android.com/guide/practices/page-sizes
@@ -825,7 +854,7 @@ The research was done in a prior OpenCode session whose transcripts aren't share
   - FAQ / advanced flow: https://developer.android.com/developer-verification/guides/faq
   - F-Droid's opposition: https://f-droid.org/2026/02/24/open-letter-opposing-developer-verification.html
 - **GitHub Releases:** assets up to 2 GiB each: https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
-- **npm:** `min-release-age` added in npm 11.10.0: https://docs.npmjs.com/cli/v11/using-npm/changelog
+- **npm:** `min-release-age` added in npm 11.10.0: https://docs.npmjs.com/cli/v11/using-npm/changelog. Scripts use `sh` from `PATH` on non-Windows (or `npm_config_script_shell`), not a fixed `/bin/sh`: https://github.com/npm/promise-spawn/blob/main/lib/index.js.
 - **git:** GPL-2.0: https://git-scm.com/about ; `GIT_EXEC_PATH`: https://git-scm.com/docs/git
 
 ### B.3 Prior art (architectures to borrow from; check licenses before copying code)
