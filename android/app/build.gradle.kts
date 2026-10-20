@@ -88,6 +88,7 @@ android {
         targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "DEFAULT_REF", buildConfigString(defaultRef))
         buildConfigField("String", "REPO_URL", buildConfigString(officialRepoUrl))
@@ -153,6 +154,28 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Robolectric needs these on JDK 17+; they apply to the unit-test JVM only.
+                test.jvmArgs(
+                    listOf(
+                        "java.base/java.lang",
+                        "java.base/java.util",
+                        "java.base/java.io",
+                        "java.base/java.net",
+                        "java.base/java.security",
+                        "java.base/java.text",
+                        "java.base/jdk.internal.access",
+                        "java.desktop/java.awt.font",
+                        "jdk.compiler/com.sun.tools.javac.api",
+                    ).map { "--add-opens=$it=ALL-UNNAMED" },
+                )
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -172,4 +195,14 @@ dependencies {
     implementation(libs.compose.foundation.layout)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.uiautomator)
 }
