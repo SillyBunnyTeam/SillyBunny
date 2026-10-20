@@ -81,3 +81,7 @@ screenshots/sillybunny-ui-polish-mobile-workspace.png
 # Local Agent Skills
 .agents/
 skills-lock.json
+
+# SillyBunny Android: keep downloaded runtime packages and generated native payloads out of source control.
+/android/runtime/out/
+/android/runtime/cache/
