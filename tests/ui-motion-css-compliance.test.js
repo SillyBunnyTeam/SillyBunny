@@ -89,7 +89,7 @@ describe('audited UI motion CSS', () => {
         const inChatAgentsSource = stylesheets.find(stylesheet => stylesheet.name === 'in-chat agents').source;
         const mobileShellSource = stylesheets.find(stylesheet => stylesheet.name === 'mobile shell').source;
 
-        expect(inChatAgentsSource).toContain('transition: -webkit-clip-path 0.25s ease, clip-path 0.25s ease;');
+        expect(inChatAgentsSource).toContain('transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition);');
         expect(inChatAgentsSource).toContain('-webkit-clip-path: inset(0 0 0 100%);');
         expect(inChatAgentsSource).toContain('clip-path: inset(0 0 0 100%);');
         // DESIGN.md Opaque Shell Rule: mobile shell layers no longer blur what sits behind them.
