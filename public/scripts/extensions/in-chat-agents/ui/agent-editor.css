@@ -62,10 +62,17 @@
 }
 
 @media (max-width: 768px) {
-    /* Persona's touch-target minimum overrides its textarea minimum on phones. */
+    /* Persona's phone touch-target rule also overrides auxiliary textarea minimums. */
+    #sb-settings-page .ica-agent-detail textarea.text_pole,
+    .ica-agent-editor-dialog textarea {
+        min-height: clamp(180px, 30vh, 360px);
+        min-height: clamp(180px, min(30dvh, calc(var(--sb-shell-viewport-height, 100dvh) * 0.3)), 360px);
+        max-height: none;
+    }
+
     #sb-settings-page .ica-agent-detail textarea.ica-agent-prompt {
-        min-height: clamp(240px, 45vh, 560px);
-        min-height: clamp(240px, min(45dvh, calc(var(--sb-shell-viewport-height, 100dvh) * 0.45)), 560px);
+        min-height: clamp(320px, 45vh, 560px);
+        min-height: clamp(320px, min(45dvh, calc(var(--sb-shell-viewport-height, 100dvh) * 0.45)), 560px);
         max-height: none;
     }
 }

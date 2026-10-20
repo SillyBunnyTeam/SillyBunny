@@ -1296,6 +1296,9 @@
 }
 
 .ica-agents-editor .ica-agent-row > .ds-entity-row__avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--sb-muted-fg);
 }
 

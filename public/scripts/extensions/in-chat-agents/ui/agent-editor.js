@@ -371,13 +371,14 @@ export function mountAgentDetail({
     expand.dataset.for = promptView.control.id;
     promptFooter.append(expand);
     prompt.section.append(promptFooter);
-    let promptViewportFrame = 0;
-    const keepFocusedPromptVisible = () => {
-        cancelAnimationFrame(promptViewportFrame);
-        promptViewportFrame = requestAnimationFrame(() => {
-            promptViewportFrame = 0;
-            if (destroyed || document.activeElement !== promptView.control || !matchMedia('(max-width: 768px)').matches) return;
-            const rect = promptView.control.getBoundingClientRect();
+    let textareaViewportFrame = 0;
+    const keepFocusedTextareaVisible = () => {
+        cancelAnimationFrame(textareaViewportFrame);
+        textareaViewportFrame = requestAnimationFrame(() => {
+            textareaViewportFrame = 0;
+            const focused = document.activeElement;
+            if (destroyed || !focused?.matches('textarea') || !body.contains(focused) || !matchMedia('(max-width: 768px)').matches) return;
+            const rect = focused.getBoundingClientRect();
             const bounds = body.getBoundingClientRect();
             const viewport = globalThis.visualViewport;
             const bottom = Math.min(bounds.bottom, (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight)) - 8;
@@ -386,10 +387,10 @@ export function mountAgentDetail({
             else if (rect.bottom > bottom) body.scrollTop += rect.bottom - bottom;
         });
     };
-    const promptViewportResize = new ResizeObserver(keepFocusedPromptVisible);
-    promptViewportResize.observe(body);
-    promptView.control.addEventListener('focus', keepFocusedPromptVisible);
-    globalThis.visualViewport?.addEventListener('resize', keepFocusedPromptVisible);
+    const textareaViewportResize = new ResizeObserver(keepFocusedTextareaVisible);
+    textareaViewportResize.observe(body);
+    body.addEventListener('focusin', keepFocusedTextareaVisible);
+    globalThis.visualViewport?.addEventListener('resize', keepFocusedTextareaVisible);
     function setPreview(show) {
         showingPreview = show;
         setSegmentedControlValue(modes, show);
@@ -870,9 +871,10 @@ export function mountAgentDetail({
             destroyed = true;
             headerResize.disconnect();
             cancelAnimationFrame(headerFrame);
-            cancelAnimationFrame(promptViewportFrame);
-            promptViewportResize.disconnect();
-            globalThis.visualViewport?.removeEventListener('resize', keepFocusedPromptVisible);
+            cancelAnimationFrame(textareaViewportFrame);
+            textareaViewportResize.disconnect();
+            body.removeEventListener('focusin', keepFocusedTextareaVisible);
+            globalThis.visualViewport?.removeEventListener('resize', keepFocusedTextareaVisible);
             properties.destroy();
             helpers.destroy();
             chrome.dispose();

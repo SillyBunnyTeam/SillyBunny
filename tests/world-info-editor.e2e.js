@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
@@ -89,6 +90,23 @@ async function selectSettings(page, editor) {
 async function selectSortOrFilter(page, editor, label) {
     await editor.locator('.sb-wi-sort-button').click();
     await page.locator('.sb-action-menu').last().getByRole('menuitemradio', { name: label, exact: true }).click();
+}
+
+for (const width of [1440, 390]) {
+    test(`q56 ${width}px World Info selection uses header Cancel and suggested Save styles`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        const reference = await promptButtonReference(page);
+        const editor = await openBook(page);
+        await enterSelection(page, editor);
+        const selection = {
+            cancel: await buttonStates(editor.locator('.sb-selection-cancel')),
+            save: await buttonStates(editor.locator('.sb-selection-select-all')),
+        };
+        await q56Screenshot(page, `selection-world-info-${width}`);
+        await testInfo.attach('q56 selection button states', { body: JSON.stringify({ reference, selection }), contentType: 'application/json' });
+        expect(selection).toEqual(reference);
+    });
 }
 
 test.describe('World Info editor', () => {

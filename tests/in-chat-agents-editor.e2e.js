@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
+import { q56Screenshot } from './helpers/q56-review.js';
 import {
     activatePromptAction,
     activateAgentEditorAction,
@@ -47,6 +48,184 @@ async function expectActiveOption(listbox, label) {
     await expect(option).toHaveClass('sb-prompt-option is-active');
     await expect(listbox).toBeFocused();
 }
+
+test('q56 dropdown sweep toggles each trigger closed on its second pointer click', async ({ page, baseURL }, testInfo) => {
+    test.setTimeout(300000);
+    const editor = await setup(page, baseURL, 1440);
+    const trace = [];
+    const close = () => page.evaluate(async () => {
+        (await import('/scripts/sillybunny-editor/picker.js')).closePicker({ animate: false });
+        (await import('/scripts/sillybunny-action-menu.js')).closeActionMenu({ animate: false });
+    });
+    const check = async (trigger, label, target = trigger) => {
+        await target.click();
+        await expect(trigger, label).toHaveAttribute('aria-expanded', 'true');
+        await target.click();
+        await expect.soft(trigger, label).toHaveAttribute('aria-expanded', 'false');
+        trace.push({ label, secondClickExpanded: await trigger.getAttribute('aria-expanded') });
+        await close();
+    };
+    for (const label of ['Add Agent', 'Agents Menu']) {
+        await check(editor.root.getByRole('button', { name: label, exact: true }), label);
+    }
+    await editor.root.getByRole('button', { name: 'Search Agents', exact: true }).click();
+    await editor.root.getByRole('searchbox').fill('Editor');
+    await check(editor.root.getByRole('button', { name: 'Filter Agents', exact: true }), 'Filter Agents');
+    await check(editor.root.locator('[data-sb-list-key="agent:editor-pre"]').getByRole('button', { name: 'Agent Menu', exact: true }), 'Agent row menu');
+    for (const id of ['pre', 'wrap', 'post', 'companion', 'tool', 'chatroom', 'director', 'plot']) {
+        await editor.open(id);
+        if (['companion', 'chatroom', 'director', 'plot'].includes(id)) {
+            await editor.detail.locator('[data-sb-editor-field="companion.batch"] input').check();
+            await editor.detail.locator('[data-sb-editor-field="companion.sendContextToCompanions"] input').check();
+        }
+        if (id === 'post') await editor.detail.locator('[data-sb-editor-field="conditions.runOnCompanionOutputs"] input').check();
+        for (const row of await editor.detail.locator('.ds-select-row:visible').all()) {
+            const trigger = row.locator('.ds-select-row__trigger');
+            const label = `${id}: ${await row.locator('.ds-row-label').textContent()}`;
+            await check(trigger, `${label} button`);
+            await check(trigger, `${label} row`, row.locator('.ds-row-label'));
+        }
+        if (id === 'pre') {
+            for (const label of ['More…', 'Sections', 'Connection Profile', 'Category']) {
+                const trigger = editor.detail.getByRole('button', { name: label, exact: true });
+                await check(trigger, label);
+            }
+            await editor.detail.getByRole('button', { name: 'Add Regex Script', exact: true }).click();
+            const dialog = page.locator('dialog[open]');
+            await dialog.getByRole('textbox', { name: 'Script Name', exact: true }).fill('QA toggle');
+            await dialog.getByRole('textbox', { name: 'Find', exact: true }).fill('/QA/g');
+            await dialog.locator('.popup-button-ok').click();
+            await check(editor.detail.getByRole('button', { name: 'Regex Script', exact: true }), 'Regex row menu');
+            await editor.discard.click();
+        }
+        if (await editor.discard.isEnabled()) await editor.discard.click();
+        await editor.back();
+    }
+    for (const label of ['New Agent from Template…', 'New Companion from Template…']) {
+        const trigger = editor.root.getByRole('button', { name: 'Add Agent', exact: true });
+        await trigger.click();
+        await page.getByRole('menuitem', { name: label, exact: true }).click();
+        await expect(page.getByRole('dialog', { name: label.slice(0, -1), exact: true })).toBeVisible();
+        await trigger.click();
+        const expanded = await trigger.getAttribute('aria-expanded');
+        trace.push({ label, secondClickExpanded: expanded });
+        await expect.soft(trigger, label).toHaveAttribute('aria-expanded', 'false');
+        await expect.soft(page.getByRole('menu'), label).toBeHidden();
+        await close();
+    }
+    await testInfo.attach('q56 dropdown sweep', { body: JSON.stringify(trace), contentType: 'application/json' });
+    expect(editor.saves()).toHaveLength(0);
+});
+
+for (const width of [360, 390, 430, 768]) {
+    test(`q56 ${width}px every Agent textarea has a useful phone minimum`, async ({ page, baseURL }, testInfo) => {
+        test.setTimeout(120000);
+        const editor = await setup(page, baseURL, width);
+        await mockEditorModel(page);
+        const heights = [];
+        const keyboardCheck = async field => {
+            await field.evaluate(node => node.focus({ preventScroll: true }));
+            await page.evaluate(() => {
+                Object.defineProperty(visualViewport, 'height', { configurable: true, value: 600 });
+                visualViewport.dispatchEvent(new Event('resize'));
+            });
+            await expect.poll(() => field.evaluate(node => {
+                const rect = node.getBoundingClientRect();
+                const body = node.closest('.sb-persona-entry-body').getBoundingClientRect();
+                return rect.top >= body.top && rect.top < visualViewport.height - 80;
+            })).toBe(true);
+            await expect(field).toBeFocused();
+            expect((await outerScroll(editor.detail)).every(position => position.top === 0)).toBe(true);
+            await page.evaluate(() => {
+                delete visualViewport.height;
+                visualViewport.dispatchEvent(new Event('resize'));
+            });
+        };
+        for (const id of ['pre', 'wrap', 'tracker', 'post', 'companion', 'chatroom', 'director', 'plot']) {
+            await editor.open(id);
+            if (id === 'post') {
+                await editor.detail.getByRole('switch', { name: 'Utility Post-processing', exact: true }).check();
+                await editor.detail.locator('[data-sb-editor-field="postProcess.type"]').getByRole('radio', { name: 'Append', exact: true }).check();
+            }
+            const fields = await editor.detail.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({
+                field: node.getAttribute('aria-label') || node.labels?.[0]?.textContent || node.name || node.id,
+                prompt: node.classList.contains('ica-agent-prompt'),
+                height: node.getBoundingClientRect().height,
+                minimum: getComputedStyle(node).minHeight,
+            })));
+            heights.push({ id, fields });
+            for (const field of fields) expect.soft(field.height, `${id}: ${field.field}`).toBeGreaterThanOrEqual(field.prompt ? 360 : 160);
+            await keyboardCheck(editor.detail.locator('textarea:visible').last());
+            if (id === 'tracker') {
+                await editor.prompt.evaluate(node => node.focus({ preventScroll: true }));
+                await q56Screenshot(page, `textareas-${width}-prompt`);
+                await editor.detail.getByRole('textbox', { name: 'Format Example', exact: true }).focus();
+                await q56Screenshot(page, `textareas-${width}-tracker`);
+            }
+            if (id === 'pre') {
+                await editor.detail.getByRole('button', { name: 'Add Regex Script', exact: true }).click();
+                const dialog = page.locator('dialog[open]');
+                const fields = await dialog.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({ field: node.getAttribute('aria-label'), height: node.getBoundingClientRect().height })));
+                heights.push({ id: 'regex-dialog', fields });
+                for (const field of fields) expect.soft(field.height, `regex: ${field.field}`).toBeGreaterThanOrEqual(160);
+                await dialog.locator('.popup-button-cancel').click();
+            }
+            if (id === 'tracker' || id === 'companion') {
+                if (id === 'tracker') {
+                    await editor.detail.getByRole('textbox', { name: 'Format Example', exact: true }).fill('[TRACKER|Field]\nQA\n[/TRACKER]');
+                    await editor.detail.getByRole('button', { name: 'Generate Kit…', exact: true }).click();
+                } else await editor.detail.getByRole('button', { name: 'AI Maker…', exact: true }).click();
+                const dialog = page.locator('dialog[open]');
+                const fields = await dialog.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({ field: node.id, height: node.getBoundingClientRect().height })));
+                expect(fields.length).toBeGreaterThan(0);
+                heights.push({ id: `${id}-dialog`, fields });
+                for (const field of fields) expect(field.height).toBeGreaterThanOrEqual(180);
+                await dialog.locator('.popup-button-cancel').click();
+            }
+            if (await editor.discard.isEnabled()) await editor.discard.click();
+            await editor.back();
+        }
+        await testInfo.attach('q56 textarea heights', { body: JSON.stringify({ width, heights }), contentType: 'application/json' });
+        expect(editor.saves()).toHaveLength(0);
+    });
+}
+
+test('q56 real saved long tracker prompt stays useful across phone widths and container breakpoints', async ({ page, baseURL }, testInfo) => {
+    test.setTimeout(90000);
+    const editor = await openEditorAgents(page, baseURL, 430, { seed: false });
+    mounted.set(page, editor);
+    const savedAgents = () => page.evaluate(async () => JSON.stringify((await import('/scripts/extensions/in-chat-agents/agent-store.js')).getAgents()));
+    await expect.poll(async () => JSON.parse(await savedAgents()).length).toBeGreaterThan(0);
+    const before = await savedAgents();
+    const tracker = JSON.parse(before).filter(agent => agent.category === 'tracker').sort((a, b) => b.prompt.length - a.prompt.length)[0];
+    expect(tracker, '4455 requires a real saved tracker').toBeTruthy();
+    expect(tracker.prompt.length).toBeGreaterThan(500);
+    await editor.root.locator(`[data-sb-list-key="agent:${tracker.id}"]`).first().evaluate(node => node.click());
+    await expect(editor.prompt).toHaveValue(tracker.prompt);
+    const samples = [];
+    for (const width of [360, 390, 430, 768]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.locator('[data-sb-settings-tab="agents"]').evaluate(node => node.click());
+        const fields = await editor.detail.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({
+            field: node.getAttribute('aria-label'), height: node.getBoundingClientRect().height, minimum: getComputedStyle(node).minHeight,
+        })));
+        samples.push({ width, fields });
+        expect(fields.find(field => field.field === 'Prompt').height).toBeGreaterThanOrEqual(360);
+        for (const field of fields) expect(field.height).toBeGreaterThanOrEqual(180);
+        await editor.prompt.focus();
+        await q56Screenshot(page, `textareas-real-${width}-prompt`);
+        const extra = editor.detail.getByRole('textbox', { name: 'Format Example', exact: true });
+        await extra.focus();
+        await q56Screenshot(page, `textareas-real-${width}-tracker`);
+    }
+    for (const width of [439, 440, 559, 560]) {
+        await editor.detail.locator('..').evaluate((node, width) => { node.style.width = `${width}px`; node.style.minWidth = `${width}px`; node.style.flex = 'none'; }, width);
+        expect(await editor.prompt.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(360);
+    }
+    await testInfo.attach('q56 real tracker textarea heights', { body: JSON.stringify({ savedCount: JSON.parse(before).length, promptLength: tracker.prompt.length, samples }), contentType: 'application/json' });
+    expect(await savedAgents()).toBe(before);
+    expect(editor.writes.filter(write => write.path.startsWith('/api/in-chat-agents/'))).toEqual([]);
+});
 
 test.afterEach(async ({ page }) => {
     const editor = mounted.get(page);
@@ -202,9 +381,11 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
             expect.soft(await surfaces.count(), `${first} initial surface`).toBe(1);
             const immediateCount = await open[second]();
             const count = await surfaces.count();
-            trace.push({ first, second, immediateCount, count });
-            expect.soft(immediateCount, `${first} → ${second} before focus/animation`).toBe(1);
-            expect.soft(count, `${first} → ${second}`).toBe(1);
+            // Q56: the template picker and Add menu share their trigger; pressing it again closes both.
+            const expectedCount = Number(first !== 'picker' || second !== 'add');
+            trace.push({ first, second, immediateCount, count, expectedCount });
+            expect.soft(immediateCount, `${first} → ${second} before focus/animation`).toBe(expectedCount);
+            expect.soft(count, `${first} → ${second}`).toBe(expectedCount);
             if (first === 'picker' && second === 'add') await round2Screenshot(page, 'plus-after-picker');
         }
     }

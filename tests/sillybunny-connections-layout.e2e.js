@@ -706,6 +706,34 @@ test.describe('profile menu', () => {
         ['delete_all_connection_profiles', 'Delete All…'],
     ];
 
+    test('q56 profile, backend and provider dropdown owners close on their second click', async ({ page }, testInfo) => {
+        await mountConnections(page);
+        await page.locator('.sb-connections-panel').evaluate(node => { node.tabIndex = -1; });
+        const trace = [];
+        for (const row of await page.locator('.sb-connections-panel .ds-select-row:visible').all()) {
+            const trigger = row.locator('.ds-select-row__trigger');
+            const label = await row.locator('.ds-row-label').textContent();
+            for (const [part, target] of [['button', trigger], ['label', row.locator('.ds-row-label')]]) {
+                await target.click();
+                await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+                await target.click();
+                await expect.soft(trigger).toHaveAttribute('aria-expanded', 'false');
+                trace.push({ label, part, secondClickExpanded: await trigger.getAttribute('aria-expanded') });
+                await page.evaluate(async () => (await import('/scripts/sillybunny-editor/picker.js')).closePicker({ animate: false, restoreFocus: false }));
+            }
+        }
+        const profile = page.locator('.sb-connections-profile .ds-select-row__trigger');
+        const menu = page.locator('.sb-connections-profile .ds-select-row__menu');
+        await profile.click();
+        await menu.click();
+        await expect(profile).toHaveAttribute('aria-expanded', 'false');
+        await expect(menu).toHaveAttribute('aria-expanded', 'true');
+        await menu.locator('i').click();
+        await expect(menu).toHaveAttribute('aria-expanded', 'false');
+        trace.push({ label: 'Profile menu', part: 'button/icon', secondClickExpanded: await menu.getAttribute('aria-expanded') });
+        await testInfo.attach('q56 Connections dropdown sweep', { body: JSON.stringify(trace), contentType: 'application/json' });
+    });
+
     test('proxies all nine buttons in four sections and mirrors their state', async ({ page }) => {
         await mountConnections(page);
         await page.evaluate(ids => {

@@ -383,7 +383,12 @@ function handleOutsidePointerDown(event) {
         return;
     }
     const target = event.target instanceof Node ? event.target : null;
-    if (target && (state.surface.contains(target) || state.trigger.contains(target) || isOwnerBackground(state, target))) {
+    if (target && isOwnerBackground(state, target)) {
+        // Keep focus inside until the owner's click toggles us; a focusable ancestor otherwise closes us first.
+        event.preventDefault();
+        return;
+    }
+    if (target && (state.surface.contains(target) || state.trigger.contains(target))) {
         return;
     }
     closePicker();

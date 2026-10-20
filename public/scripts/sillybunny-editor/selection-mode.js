@@ -140,7 +140,7 @@ export function createSelectionMode({
 
         const cancel = document.createElement('button');
         cancel.type = 'button';
-        cancel.className = 'menu_button sb-selection-cancel';
+        cancel.className = 'sb-editor-action sb-editor-action--secondary sb-selection-cancel';
         cancel.textContent = t`Cancel`;
         cancel.addEventListener('click', exit);
 
@@ -151,7 +151,7 @@ export function createSelectionMode({
 
         const selectAllButton = document.createElement('button');
         selectAllButton.type = 'button';
-        selectAllButton.className = 'menu_button sb-selection-select-all';
+        selectAllButton.className = 'sb-editor-action sb-editor-action--primary sb-selection-select-all';
         selectAllButton.textContent = selectAllLabel;
         selectAllButton.addEventListener('click', () => {
             const keys = allKeys();

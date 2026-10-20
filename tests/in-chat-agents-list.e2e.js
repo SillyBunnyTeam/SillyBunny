@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
+import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -108,6 +109,55 @@ test('stage headings match Connections group headings and categories are smaller
     expect(category.color).not.toBe(stage.color);
     await expect(root.locator('.ica-agents-category')).toHaveText(['Custom', 'Custom']);
 });
+
+for (const width of [1440, 390]) {
+    test(`q56 ${width}px category icons share the grip centre in closed and narrow open lists`, async ({ page, baseURL }, testInfo) => {
+        const { root, saves } = await openAgents(page, baseURL, width);
+        const samples = [];
+        for (const state of ['closed', 'open']) {
+            if (state === 'open') {
+                await root.locator('[data-sb-list-key="agent:qa-bravo"]').click();
+                await expect(root.locator('.ica-agent-detail')).toBeVisible();
+                // Phones normally hide the sidebar entirely; also exercise its narrow split presentation.
+                await root.evaluate(node => { node.dataset.collapsed = 'false'; });
+            }
+            const rows = await root.locator('.ica-agent-row').evaluateAll(rows => rows.map(row => {
+                const centre = selector => {
+                    const box = row.querySelector(selector).getBoundingClientRect();
+                    return box.top + box.height / 2;
+                };
+                return { icon: centre('.ds-entity-row__avatar i'), grip: centre('.ds-entity-row__grip') };
+            }));
+            samples.push({ state, rows });
+            await q56Screenshot(page, `list-icons-${width}-${state}`);
+            for (const row of rows) expect.soft(Math.abs(row.icon - row.grip), `${state} icon/grip`).toBeLessThanOrEqual(1);
+        }
+        await testInfo.attach('q56 icon centres', { body: JSON.stringify(samples), contentType: 'application/json' });
+        expect(saves()).toHaveLength(0);
+    });
+
+    test(`q56 ${width}px Agents selection buttons match editor Cancel and suggested Save`, async ({ page, baseURL }, testInfo) => {
+        const { root, saves } = await openAgents(page, baseURL, width);
+        const reference = await promptButtonReference(page);
+        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'agents'));
+        await page.locator('[data-sb-settings-tab="agents"]').evaluate(node => node.click());
+        await selectMode(page, root);
+        const selection = {
+            cancel: await buttonStates(root.locator('.sb-selection-cancel')),
+            save: await buttonStates(root.locator('.sb-selection-select-all')),
+        };
+        await q56Screenshot(page, `selection-agents-${width}`);
+        await testInfo.attach('q56 selection button states', { body: JSON.stringify({ reference, selection }), contentType: 'application/json' });
+        expect(selection).toEqual(reference);
+        expect(saves()).toHaveLength(0);
+        await page.emulateMedia({ forcedColors: 'active' });
+        await root.locator('.sb-selection-select-all').focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        const focus = await root.locator('.sb-selection-select-all').evaluate(node => ({ outline: getComputedStyle(node).outlineStyle, shadow: getComputedStyle(node).boxShadow }));
+        expect(focus.outline !== 'none' || focus.shadow !== 'none').toBe(true);
+    });
+}
 
 test('context and feedback previews use the document icon and context wording', async ({ page, baseURL }) => {
     const { root, saves, errors } = await openAgents(page, baseURL);

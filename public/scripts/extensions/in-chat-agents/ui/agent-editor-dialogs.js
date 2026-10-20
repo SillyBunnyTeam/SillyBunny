@@ -29,6 +29,7 @@ export function createAgentEditorDialogs({
     }
     async function showPopup(popup) {
         if (!current()) return POPUP_RESULT.CANCELLED;
+        popup.dlg.classList.add('ica-agent-editor-dialog');
         activePopup = popup;
         try {
             return await popup.show();

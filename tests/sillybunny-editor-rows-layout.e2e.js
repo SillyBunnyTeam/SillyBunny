@@ -10,6 +10,10 @@ const SECRET = { savedText: '✔️ Key saved', missingText: '❌ Missing key', 
 async function mountRows(page, { fontSize } = {}) {
     await page.route('http://rows.test/**', route => {
         const pathname = new URL(route.request().url()).pathname;
+        if (pathname === '/scripts/i18n.js') return route.fulfill({
+            contentType: 'text/javascript',
+            body: 'export const t = (s, ...v) => s.reduce((out, text, i) => out + text + (v[i] ?? ""), ""); export const translate = text => text;',
+        });
         if (pathname === '/') {
             return route.fulfill({
                 contentType: 'text/html',
@@ -19,6 +23,8 @@ async function mountRows(page, { fontSize } = {}) {
                     + '<link rel="stylesheet" href="/style.css">'
                     + '<link rel="stylesheet" href="/css/sillybunny-theme.css">'
                     + '<link rel="stylesheet" href="/css/sillybunny-tabs.css">'
+                    + '<link rel="stylesheet" href="/css/sillybunny-editor-shell.css">'
+                    + '<link rel="stylesheet" href="/css/sillybunny-message-actions.css">'
                     + (fontSize ? `<style>:root { --mainFontSize: ${fontSize}; }</style>` : '')
                     + '</head><body><main style="padding: 16px; max-width: 640px"><div class="ds-pref-group" id="group"></div></main></body></html>',
             });
@@ -48,6 +54,56 @@ async function mountRows(page, { fontSize } = {}) {
         group.append(...rows.map(row => row.row));
     }, SECRET);
 }
+
+test('q56 select and profile row owners toggle on pointer and keyboard without focusout reopening', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await mountRows(page);
+    await page.evaluate(async () => {
+        const { createSelectRow, createProfileRow } = await import('/scripts/sillybunny-editor/select-row.js');
+        const { openActionMenu } = await import('/scripts/sillybunny-action-menu.js');
+        document.querySelector('main').tabIndex = -1;
+        window.q56Changes = 0;
+        for (const kind of ['single', 'multiple', 'profile']) {
+            const select = document.createElement('select');
+            select.multiple = kind === 'multiple';
+            select.append(new Option('First', 'first', true, true), new Option('Second', 'second'));
+            select.addEventListener('change', () => window.q56Changes++);
+            const create = kind === 'profile' ? createProfileRow : createSelectRow;
+            const view = create({ select, label: kind, field: `q56-${kind}`, menuLabel: 'Profile menu',
+                onMenu: trigger => openActionMenu({ trigger, sections: [{ items: [{ label: 'Profile action', onSelect() {} }] }] }),
+            });
+            document.querySelector('#group').append(view.row);
+        }
+    });
+    for (const kind of ['single', 'multiple', 'profile']) {
+        const row = page.locator(`[data-sb-editor-field="q56-${kind}"]`);
+        const trigger = row.locator('.ds-select-row__trigger');
+        for (const target of [trigger, trigger.locator('span'), trigger.locator('i'), row.locator('.ds-row-label')]) {
+            await target.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+            await target.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        }
+        for (const key of ['Enter', 'Space']) {
+            await trigger.press(key);
+            await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+            await trigger.press(key);
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        }
+        await trigger.press('ArrowDown');
+        await expect(page.getByRole('combobox')).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(trigger).toBeFocused();
+        expect(await page.evaluate(async () => (await import('/scripts/sillybunny-editor/picker.js')).isPickerOpen())).toBe(false);
+    }
+    const menu = page.getByRole('button', { name: 'Profile menu', exact: true });
+    await menu.click();
+    expect(await menu.evaluate(async node => (await import('/scripts/sillybunny-action-menu.js')).isActionMenuOpen(node))).toBe(true);
+    await menu.click();
+    expect(await menu.evaluate(async node => (await import('/scripts/sillybunny-action-menu.js')).isActionMenuOpen(node))).toBe(false);
+    expect(await page.evaluate(() => window.q56Changes)).toBe(0);
+});
 
 function geometry(page, id) {
     return page.locator(`#${id}`).evaluate(input => {

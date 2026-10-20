@@ -211,6 +211,10 @@ export function mountAgentsPanel(column) {
         if (!isActionMenuOpen(trigger)) closeActionMenu({ animate: false, restoreFocus: false });
     };
     const showMenu = (trigger, sections, title) => {
+        if (isPickerOpen(trigger)) {
+            closePicker({ animate: false, restoreFocus: true });
+            return;
+        }
         preparePopup(trigger);
         openActionMenu({ trigger, sections, title });
     };

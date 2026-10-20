@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { q56Screenshot } from './helpers/q56-review.js';
 
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
@@ -528,6 +529,16 @@ async function enterSelection(page) {
     await expect(list(page).locator('.sb-selection-cancel')).toBeFocused();
 }
 
+for (const width of [1440, 390]) {
+    test(`q56 ${width}px Characters selection header retains contrasting header actions`, async ({ page }) => {
+        await prepareList(page, { width, height: 1000 });
+        await enterSelection(page);
+        await expect(list(page).locator('.sb-selection-cancel')).toHaveClass(/sb-editor-action--secondary/);
+        await expect(list(page).locator('.sb-selection-select-all')).toHaveClass(/sb-editor-action--primary/);
+        await q56Screenshot(page, `selection-characters-${width}`);
+    });
+}
+
 for (const width of [375, 390, 430, 768]) {
     test(`header controls and Chat Archive fit within the list at ${width}px`, async ({ page }) => {
         await prepareList(page, { width, height: 844 });
@@ -820,6 +831,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
         await listRows(page, 'characters').nth(3).locator('.ch_name').click({ modifiers: ['Shift'] });
         await expect(list(page).locator('.sb-selection-title')).toHaveText('4 selected');
+        const visibleCharacterCount = await listRows(page, 'characters').count();
         const focusedRow = listRows(page, 'characters').first();
         await focusedRow.focus();
         for (const key of ['x', 'Control+f', 'Meta+f']) {
@@ -827,7 +839,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(focusedRow).toBeFocused();
             await expect(page.locator('#character_search_bar')).toHaveValue('');
             await expect(page.locator('#character_search_bar')).toBeHidden();
-            await expect(listRows(page, 'characters')).toHaveCount(10);
+            // Saved folder headers consume page slots without representing selectable characters.
+            await expect(listRows(page, 'characters')).toHaveCount(visibleCharacterCount);
         }
         expect(await chatState(page)).toEqual(before);
         await list(page).getByRole('button', { name: 'Select all', exact: true }).click();

@@ -84,9 +84,41 @@ async function seedNotes(page) {
     await refresh(page);
 }
 
+test('q56 Settings profile rows and Group menus toggle closed without writes', async ({ page, baseURL }, testInfo) => {
+    const driver = await openEditorAgents(page, baseURL, 1440);
+    const settings = await destination(page, driver, 'Settings', 'settings');
+    const trace = [];
+    for (const row of await settings.locator('.ds-profile-row').all()) {
+        const trigger = row.locator('.ds-select-row__trigger');
+        const label = await row.locator('.ds-row-label').textContent();
+        for (const [part, target] of [['button', trigger], ['row', row.locator('.ds-row-label')]]) {
+            await target.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+            await target.click();
+            await expect.soft(trigger).toHaveAttribute('aria-expanded', 'false');
+            trace.push({ label, part, secondClickExpanded: await trigger.getAttribute('aria-expanded') });
+            await page.evaluate(async () => (await import('/scripts/sillybunny-editor/picker.js')).closePicker({ animate: false, restoreFocus: false }));
+        }
+    }
+    await closePage(settings);
+    await seedGroups(page);
+    await refresh(page);
+    const groups = await destination(page, driver, 'Agent Groups', 'groups');
+    const trigger = groups.getByRole('button', { name: 'Group Menu', exact: true }).first();
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    trace.push({ label: 'Custom Group row menu', secondClickExpanded: await trigger.getAttribute('aria-expanded') });
+    await testInfo.attach('q56 pages dropdown sweep', { body: JSON.stringify(trace), contentType: 'application/json' });
+    expect(driver.writes.filter(write => write.path.startsWith('/api/in-chat-agents/'))).toEqual([]);
+    await expectClean(page, driver);
+});
+
 for (const width of [1440, 390]) {
     test.describe(`Agents pages ${width}`, () => {
         test('every setting is searchable before mount and after reopen, with live visible focus', async ({ page, baseURL }) => {
+            test.setTimeout(90000);
             const driver = await openEditorAgents(page, baseURL, width);
             await expect(driver.root.locator('[data-agent-page]')).toHaveCount(0);
             const descriptors = await page.evaluate(async () => {
