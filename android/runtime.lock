@@ -1,0 +1,306 @@
+{
+    "schema": 1,
+    "abis": [
+        "arm64-v8a",
+        "armeabi-v7a",
+        "x86_64"
+    ],
+    "termux": {
+        "repository": "https://packages-cf.termux.dev/apt/termux-main",
+        "suite": "stable",
+        "component": "main",
+        "packages": [
+            {
+                "name": "bash",
+                "version": "5.3.20",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/b/bash/bash_5.3.20_aarch64.deb",
+                        "sha256": "26b5b3ab5b0ac0e3b372ac1e7ddd89270519c1eb25b88fe4175485c2de8086b2"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/b/bash/bash_5.3.20_arm.deb",
+                        "sha256": "ccd12672eb2d6f2c99d8c6340919b7145aa12a18d8a8ffbe794683227c889e61"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/b/bash/bash_5.3.20_x86_64.deb",
+                        "sha256": "f8c984e68269df3df2efae9f2835a9d9af381a8f80d08b34160772bc16cd0910"
+                    }
+                }
+            },
+            {
+                "name": "ca-certificates",
+                "version": "1:2026.10.20",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20_all.deb",
+                        "sha256": "2186ab9752ae1e705eea6fd69af0c114715b7a1b2a0b4d239ae59371b6001984"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20_all.deb",
+                        "sha256": "2186ab9752ae1e705eea6fd69af0c114715b7a1b2a0b4d239ae59371b6001984"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20_all.deb",
+                        "sha256": "2186ab9752ae1e705eea6fd69af0c114715b7a1b2a0b4d239ae59371b6001984"
+                    }
+                }
+            },
+            {
+                "name": "git",
+                "version": "2.56.0",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/g/git/git_2.56.0_aarch64.deb",
+                        "sha256": "dcdd22c5fdf7bdb5b825a03a17441d43858ed8515fea57fbb37eb42e733ca82f"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/g/git/git_2.56.0_arm.deb",
+                        "sha256": "92cb9aa498a39bfbad4823b7cb0ad5cd48cde7aa2dfe59a8790b700f65881615"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/g/git/git_2.56.0_x86_64.deb",
+                        "sha256": "9af296495286bffe22f8abda910c29fd09e561ddc668c2d45c94785b91cbb129"
+                    }
+                }
+            },
+            {
+                "name": "libandroid-support",
+                "version": "29-1",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/liba/libandroid-support/libandroid-support_29-1_aarch64.deb",
+                        "sha256": "f2f145d6135ad4843ac9670153be3e3944dc1e6f1736d46d2306c28f2b86f517"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/liba/libandroid-support/libandroid-support_29-1_arm.deb",
+                        "sha256": "67150f1cb050d4852cb21d2b138676c68920b2ec7f059795b287b75cf2cf6cb6"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/liba/libandroid-support/libandroid-support_29-1_x86_64.deb",
+                        "sha256": "665900760c05959ec076082a0941f05bd452f301e5a70bdfa7383fd3404d44d5"
+                    }
+                }
+            },
+            {
+                "name": "libcurl",
+                "version": "8.23.0",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/libc/libcurl/libcurl_8.23.0_aarch64.deb",
+                        "sha256": "2011bb9709261bb3d5ecaa6672faa333be14cf48ad4af37031e3e365309557ac"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/libc/libcurl/libcurl_8.23.0_arm.deb",
+                        "sha256": "f5263f174fa7d1ef7aa711907c78d491526d688f84b45771e202d2e3b4b653d1"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/libc/libcurl/libcurl_8.23.0_x86_64.deb",
+                        "sha256": "fa71ce8eca3d0aa48a748fc60e4519351fc9c4d51b20cac5722190cb002cfd1c"
+                    }
+                }
+            },
+            {
+                "name": "libiconv",
+                "version": "1.19",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/libi/libiconv/libiconv_1.19_aarch64.deb",
+                        "sha256": "fe9481b1dc101c6c3552943f25435109fd522aecc615ae49594f9fbee863bb37"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/libi/libiconv/libiconv_1.19_arm.deb",
+                        "sha256": "a540d434d458faccb4391a1d870bddaae5cf0a061b8fc52102b5642f6d7a9445"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/libi/libiconv/libiconv_1.19_x86_64.deb",
+                        "sha256": "880e9f423b448316a4951ffca3ffcd626d79538042b60ce2c3a821b9650c594c"
+                    }
+                }
+            },
+            {
+                "name": "libnghttp2",
+                "version": "1.70.0",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/libn/libnghttp2/libnghttp2_1.70.0_aarch64.deb",
+                        "sha256": "ab2e0a3408fe4934ffdf774bd5049a265db2e6db62dcb651baecbecfb81e3f0b"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/libn/libnghttp2/libnghttp2_1.70.0_arm.deb",
+                        "sha256": "d21d8375a670dd223563629a69c8ff3fb31c3c0559828178ab05f3d6d08e8f1d"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/libn/libnghttp2/libnghttp2_1.70.0_x86_64.deb",
+                        "sha256": "7378c2e54518d0bd8cd349f6f89148a7feaef7e42196efcc0db237767319cdca"
+                    }
+                }
+            },
+            {
+                "name": "libnghttp3",
+                "version": "1.18.0",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/libn/libnghttp3/libnghttp3_1.18.0_aarch64.deb",
+                        "sha256": "0be2ee96def3608afaf24eb0b4b55f3484a37c95ea21bb1d6d85c7d543467603"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/libn/libnghttp3/libnghttp3_1.18.0_arm.deb",
+                        "sha256": "43ff765ef6f4b3262aa6aca5829b94fd53890d8ae965a442f4f258418d8c185c"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/libn/libnghttp3/libnghttp3_1.18.0_x86_64.deb",
+                        "sha256": "bd9dc28e1e7593837dae5bb6747ca95de1cfb8da78d86009cbeb18fc6464fc0e"
+                    }
+                }
+            },
+            {
+                "name": "libngtcp2",
+                "version": "1.25.0",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/libn/libngtcp2/libngtcp2_1.25.0_aarch64.deb",
+                        "sha256": "f471bad7f4329b6b0b4aedf124e0a23a35f6ac99bfbae73304136f8bfd570fc3"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/libn/libngtcp2/libngtcp2_1.25.0_arm.deb",
+                        "sha256": "5dc0d716901f7ed7c679f939ed1924ef16f1ac455b75686af92de2ed57125f2a"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/libn/libngtcp2/libngtcp2_1.25.0_x86_64.deb",
+                        "sha256": "d8232b10e8ab9129f4a0c1a5c8fc4591f11c74d99e5fd4d24121abbea65af5b7"
+                    }
+                }
+            },
+            {
+                "name": "libssh2",
+                "version": "1.11.1-2",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/libs/libssh2/libssh2_1.11.1-2_aarch64.deb",
+                        "sha256": "1add4e0a926b848814e7e2f1817ea28b123c54cabd5bbc4e5cfd65291cbad84e"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/libs/libssh2/libssh2_1.11.1-2_arm.deb",
+                        "sha256": "5c39a041e53288fd763464be5bff2bab72401965c93bb1ab4f85f9574fb77a63"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/libs/libssh2/libssh2_1.11.1-2_x86_64.deb",
+                        "sha256": "00db1c1497e8703281efded7f1f2a63824b145c980d9ec309ae0ab7ccb9ce1c5"
+                    }
+                }
+            },
+            {
+                "name": "ncurses",
+                "version": "6.6.20260307+really6.5.20250830",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/n/ncurses/ncurses_6.6.20260307+really6.5.20250830_aarch64.deb",
+                        "sha256": "f44bbfdc3d42ec0217bffa978309390e59cea5a48a9a83226d4a496c42ad0b99"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/n/ncurses/ncurses_6.6.20260307+really6.5.20250830_arm.deb",
+                        "sha256": "a729f77be4109f8123aeb59702e49bf2d30f67a213d305c276859af52e12a3bb"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/n/ncurses/ncurses_6.6.20260307+really6.5.20250830_x86_64.deb",
+                        "sha256": "3f30f53c6a41c8450d146d4d42611a44be6ba0a8de1e8bb4dc903109a5fc3ff1"
+                    }
+                }
+            },
+            {
+                "name": "openssl",
+                "version": "1:3.6.5",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/o/openssl/openssl_1:3.6.5_aarch64.deb",
+                        "sha256": "a2fb7856875e63ef6b90442752e05974813372c3ca86d2513a78ea43c67a0f8b"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/o/openssl/openssl_1:3.6.5_arm.deb",
+                        "sha256": "4271df34c1cad73da0143b6d9013df4b80a4f6fc4d8a107f4069ef864606e0a9"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/o/openssl/openssl_1:3.6.5_x86_64.deb",
+                        "sha256": "540f144592d23d35672976e175ede1b5d8cf464f153f646df5d4e6dcd8491a15"
+                    }
+                }
+            },
+            {
+                "name": "pcre2",
+                "version": "10.49",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/p/pcre2/pcre2_10.49_aarch64.deb",
+                        "sha256": "c27995e5f52b8ecc9b8b3e662eb08e49f82a18bfd3f34343936acc7b23964724"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/p/pcre2/pcre2_10.49_arm.deb",
+                        "sha256": "27fb90cbb86a3bd290b816a6f8386a448f59dfb17af54e17b8493bff3738d581"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/p/pcre2/pcre2_10.49_x86_64.deb",
+                        "sha256": "4a6f66ac12565342897ce9b5cd11ba8ce6fce1fd1a91ae679c3468d7fc2ee541"
+                    }
+                }
+            },
+            {
+                "name": "readline",
+                "version": "8.3.6",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/r/readline/readline_8.3.6_aarch64.deb",
+                        "sha256": "616cc73009bc0223f61caed8dd09455714455aa5ea5e180126e2f69c4c775136"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/r/readline/readline_8.3.6_arm.deb",
+                        "sha256": "4b3bdacdbee97503a9062a81e5e460ff5c4f3b35fed4b1cb3a612c5b8c79e64f"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/r/readline/readline_8.3.6_x86_64.deb",
+                        "sha256": "e9684798d13ede05f785315f68d3ff739563db2abef0e73db4dc9b8e17ded368"
+                    }
+                }
+            },
+            {
+                "name": "termux-licenses",
+                "version": "2.2",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+                        "sha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+                        "sha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+                        "sha256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9"
+                    }
+                }
+            },
+            {
+                "name": "zlib",
+                "version": "1.3.2",
+                "debs": {
+                    "arm64-v8a": {
+                        "filename": "pool/main/z/zlib/zlib_1.3.2_aarch64.deb",
+                        "sha256": "75e7d0af17fcc3b40004309fdc00a1ddb9ae08346dce5e269902c34ac3966ac9"
+                    },
+                    "armeabi-v7a": {
+                        "filename": "pool/main/z/zlib/zlib_1.3.2_arm.deb",
+                        "sha256": "c63ee590f2f02254725bdd8e415582c70737b63712a20d5395b45e4b13ffffc5"
+                    },
+                    "x86_64": {
+                        "filename": "pool/main/z/zlib/zlib_1.3.2_x86_64.deb",
+                        "sha256": "c61b089dd30981452f5953b2bad4c4e7857062b2abd971f87fb0aec441bc02f4"
+                    }
+                }
+            }
+        ]
+    },
+    "node": null,
+    "bun": null,
+    "npm": null
+}
