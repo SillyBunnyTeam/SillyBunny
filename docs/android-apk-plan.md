@@ -265,7 +265,7 @@ Spec:
 - **Kept separate from the JS tooling:** it is not covered by the root npm scripts or ESLint, the same as `src/electron/`. Add Android lint to CI.
 - **SDK levels:** `minSdk 29`, `targetSdk` and `compileSdk` = latest stable (Android 17 / API 37 as of 2026-10-20).
 - **Build pins (R2, §1):** SDK package `platforms;android-37.0` (not `android-37`), Build Tools `37.0.0`, NDK `30.0.16248370`, build JDK 21; AGP `9.4.1`, Gradle `9.6.0`, Kotlin/Compose compiler plugin `2.4.21`. Use AGP 9's built-in Kotlin, explicitly upgrade its runtime KGP classpath, and do not apply `org.jetbrains.kotlin.android`; the Compose BOM does not pin the compiler.
-  - **UNVERIFIED integration:** Kotlin's fully supported matrix ends at AGP `9.3.1`. Require a real build of AGP `9.4.1` + Kotlin `2.4.21`; if staying within that matrix is mandatory, use AGP `9.3.1` / Gradle `9.5.0` / Kotlin+compiler `2.4.21`, still API 37-capable. Match Java/Kotlin bytecode targets (e.g. 17) separately from build JDK 21; do not suppress obsolete-AGP compile-SDK warnings.
+  - **Build-verified integration (P5.1):** AGP `9.4.1` + Gradle `9.6.0` + Kotlin/Compose compiler `2.4.21` (runtime KGP resolved to `2.4.21`) pass debug/release builds and Android lint, so no fallback is needed. Kotlin's fully supported matrix still ends at AGP `9.3.1`; if staying within that matrix is mandatory, use AGP `9.3.1` / Gradle `9.5.0` / Kotlin+compiler `2.4.21`, still API 37-capable. Match Java/Kotlin bytecode targets (e.g. 17) separately from build JDK 21; do not suppress obsolete-AGP compile-SDK warnings.
   - **UI pins:** Compose BOM `2026.09.00` (Material3 `1.4.0`, UI/runtime `1.12.1`), Activity Compose `1.13.0`, Core KTX `1.19.1`, Lifecycle runtime-compose/viewmodel-compose `2.11.0`, WebKit `1.17.1`. Leave BOM-managed library versions unset and import the BOM for instrumentation dependencies too when used. DocumentFile `1.1.0` is optional, not a DocumentsProvider requirement. R2 verified metadata/POM availability, not transitive resolution or the exact BOM announcement day.
 - **IDs:** `applicationId io.github.sillybunnyteam.sillybunny`. Debug and test builds use the suffix `.debug` and a test signing key.
 - **Packaging:**
@@ -521,7 +521,7 @@ Restructure the single draft job (it currently has a 15-minute timeout) into sep
 - **Key generation:** the keystore is generated **offline** by the key holder (Geechan or TheLonelyDevil, to be decided). **Two encrypted offline backups**, one per maintainer.
 - **Rotation key:** prepare an APK Signature Scheme v3 authorized lineage while both old/new keys are available, with encrypted backups of keys **and lineage** (https://source.android.com/docs/security/features/apksigning/v3). A spare key alone cannot recover a lost signer. v3.1 normally rotates on API 33+ while retaining old-key signing for older devices; API ≤31 rotation has documented bugs. Keep the initial single-key updater until §5.5 supports verified lineage/OS-specific signers (R2, §6).
 - **Workflow protection:** CODEOWNERS on `.github/workflows/**` and `android/**`, so changes to the signing path need maintainer review.
-- **Signing checks:** ZIP-align before signing, never mutate afterward; use environment password references, reject debuggable production APKs, enable v2/v3 and omit unnecessary v4 `.idsig`. Verify signing for supported API ranges and final ZIP alignment independently of ELF checks. Installed-device update/rotation behavior remains **UNVERIFIED** by R2's host-tool fixture (R2, §6).
+- **Signing checks:** the Gradle build decodes `ANDROID_KEYSTORE_B64` into the ignored `android/.gradle/signing/release.keystore`, which survives `clean`; the signing job must delete it after use and keep `android/.gradle/` out of caches and artifacts (P5.1). ZIP-align before signing, never mutate afterward; use environment password references, reject debuggable production APKs, enable v2/v3 and omit unnecessary v4 `.idsig`. Verify signing for supported API ranges and final ZIP alignment independently of ELF checks. Installed-device update/rotation behavior remains **UNVERIFIED** by R2's host-tool fixture (R2, §6).
 
 ### 6.4 Implications of CI signing (for TheLonelyDevil)
 
@@ -722,8 +722,8 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 - [ ] 4.4 Bun zip fetch + verify (arm64 only). **DEFERRED (2026-10-21):** confirmed Node-only APK decision; revisit gates in §9.10
 - [ ] 4.5 Sources-archive builder + `THIRD_PARTY_NOTICES` generator (§5.3)
 
-## Phase 5: Android app [PENDING]
-- [ ] 5.1 Gradle project scaffold, manifest, ABI splits, signing configs (debug/test key; release from env), `app-version.properties`, BuildConfig fields, placeholder icon (§4.1–4.2)
+## Phase 5: Android app [IN PROGRESS]
+- [x] 5.1 Gradle project scaffold, manifest, ABI splits, signing configs (debug/test key; release from env), `app-version.properties`, BuildConfig fields, placeholder icon (§4.1–4.2)
 - [ ] 5.2 Runtime layout installer (symlinks, assets, `installed-runtime.json`) (§2.2)
 - [ ] 5.3 npm/npx trampoline (NDK C) + Gradle packaging as `libnpm.so`/`libnpx.so` (§4.9)
 - [ ] 5.4 `ServerService`: env (§2.5), process-group start/stop, log capture and rotation, health probe, restart policy (§4.4)
@@ -790,6 +790,7 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 - 2026-10-21: P4-T per-ABI component/ZIP estimates are in §10, not APK-size claims; task 2.6 remains open. ARM32 retains 4 KB LOAD alignment; ARM/OEM execution and Node/whole-APK 16 KB checks remain pending. First unfinished task stays 2.1; front matter stays phase 2, updated 2026-10-21.
 - 2026-10-21: Maintainers confirmed Node-only APKs for now (relayed by user); Bun packaging, selector/switching, size comparison and Bun-specific release copy/sources are deferred. Runtime lock/update manifest keep `bun: null`; non-APK Bun support is unchanged. Revisit only after 16 KB JSC start-up, unchanged `.npmrc min-release-age=7`/source policies and real arm64 tests pass (§9.10; S2.4).
 - 2026-10-21: §4.5 explicitly keeps file/universal-file access disabled, including for Blob downloads; chooser URI rejection is a separate control (R2, §4). Earlier Bun-mode notes and Appendix A answers are historical and superseded for APKs by §9.10.
+- 2026-10-21: Task 5.1 complete in `cffd1f67c`, `af05a0334`, `0937e8ccc` and `45262ecc2`: checksum-pinned Gradle 9.6.0 wrapper, AGP 9.4.1/Kotlin 2.4.21 project, per-ABI splits (x86_64 only with `-PincludeX86_64`), `app-version.properties` (versionCode 1, versionName 1.0.0), BuildConfig `DEFAULT_REF`/`REPO_URL`/`UPDATE_MANIFEST_URL` with debug-only overrides, environment-only release signing (v2/v3, no v4; unsigned without the variables) and the §4.2 manifest with inert service/provider/receiver stubs. Debug builds use AGP's generated debug key, not a committed test key. Debug/release builds and lint pass (0 errors; 1 warning suggesting a newer Gradle, kept for the pin); the x86_64 debug APK launches on API 37/16 KB without a crash. The launcher label is the product name `SillyBunny`; the only placeholder strings are `scaffold_message` and `server_service_subtype` (`lorum ipsum`, `android/app/src/main/res/values/strings.xml`).
 
 ---
 
