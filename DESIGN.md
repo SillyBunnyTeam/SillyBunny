@@ -168,6 +168,45 @@ components:
     textColor: "{colors.accent}"
     rounded: "{rounded.pill}"
     height: "4px trough; 18px thumb"
+  floating-entry-row:
+    backgroundColor: "var(--sb-composer-input-bg); suffix outside the field"
+    textColor: "{colors.foreground}"
+    rounded: "var(--sb-radius-button)"
+    padding: "1.45em 12px 0.35em inside the field"
+    minimumHeight: "max(48px, 3.4em)"
+  toggle-row:
+    backgroundColor: "transparent; selected segment var(--sb-flat-selected-bg)"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.control}"
+    minimumHeight: "44px segments on coarse pointers"
+  select-mirror-row:
+    backgroundColor: "transparent; whole-row flat hover and active fills"
+    textColor: "{colors.foreground}"
+    padding: "6px 16px"
+  profile-row:
+    backgroundColor: "transparent; whole-row flat hover and active fills"
+    textColor: "{colors.foreground}"
+    padding: "6px 16px"
+  agent-row:
+    backgroundColor: "transparent; neutral hover and selection fills"
+    textColor: "{colors.foreground}"
+    minimumHeight: "52px beside an open detail pane"
+  connections-panel:
+    backgroundColor: "{colors.window}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.lg} on preference groups"
+  agents-list:
+    backgroundColor: "color-mix(in srgb, {colors.foreground} 8%, transparent); View in light tone"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.card} on row boxes"
+  agent-editor-property-bar:
+    backgroundColor: "transparent"
+    textColor: "{colors.foreground}"
+    minimumHeight: "44px phone summary button"
+  selection-mode-header:
+    backgroundColor: "transparent"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.control} on response buttons"
 ---
 
 # Design Reference Documentation
@@ -390,10 +429,11 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 ### Menus and Popovers
 - **Surface:** Popover layer, `15px` radius, `6px` padding, `1px` border, Popover Shadow.
 - **Rows:** `34px` minimum height (`44px` on coarse pointers), `0 12px` padding, `9px` radius, full opacity text with dimmed icons. Hover uses the flat hover fill, press the flat active fill, keyboard focus the inset focus ring. Deviation: GNOME popover menus show labels only (HIG UI Icons: a control has a label or an icon, not both).
-- **Items (HIG Menus):** Verbs for commands and adjectives for settings, in header capitalisation. Checkbox and radio items are allowed; keep actions, checkbox items, and radio items in separate sections. Order by importance, task order, or frequency, with the most important items at the top or bottom. No nested submenus. Menus hold three to twelve items. Deviation: the message menu can exceed twelve rows because extensions add items.
+- **Items (HIG Menus):** Verbs for commands and adjectives for settings, in header capitalisation. Checkbox and radio items are allowed; keep actions, checkbox items, and radio items in separate sections. Order by importance, task order, or frequency, with the most important items at the top or bottom. No nested submenus. Menus hold three to twelve items. Deviation: the message menu can exceed twelve rows because extensions add items; the agent row menu permits thirteen (see Agents). Custom-group menus contain only Delete… rather than adding commands to meet the minimum.
+- **Icons:** Every command item supplies an explicit, relevant icon; never rely on the action-menu fallback puzzle-piece glyph. Check and radio items use their state indicator. Keep icons dimmed and labels fully legible (the label-and-icon deviation above).
 - **Menu buttons:** Secondary menus use the vertical ellipsis (`view-more-symbolic` in GNOME). Its tooltip and accessible name name the menu ("Menu", or more specifically "Message Menu").
 - **Popovers (HIG Popovers):** Small and simple, covering no more than about a third of the window. No Close or Done button. A heading only when the content's purpose is unclear. Esc closes the popover and returns focus to its trigger.
-- **Dropdowns:** Select dropdowns and the search results list follow the same surface and row rules.
+- **Dropdowns:** Select dropdowns and the search results list follow the same surface and row rules. A second click on an open trigger closes its popup instead of reopening it; a select row's background follows the same rule. Only one menu, picker, or popover is open at a time: opening another closes the current one first. Apply this to header and row menus, select/profile rows, and prompt-style listbox dropdowns, not just native selects.
 
 ### Dialogs
 - **Surface:** Dialog layer, `15px` radius (`18px` for confirmations), `1px` border, Dialog Shadow, Dialog Backdrop without blur.
@@ -422,6 +462,10 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 
 ### Inputs / Fields
 - **Style:** Window background (`--sb-input-bg`), one-pixel theme border, `14px` radius, `46px` default height, and `12px` inline padding.
+- **Floating entry row (`createEntryRow({ floating: true })`):** Connections single-line fields adopt the live input, never clone it. The title is a linked `<label>` inside the filled field: `--sb-composer-input-bg`, transparent `1px` border, `--sb-radius-button` (`14px`), `max(48px, 3.4em)` minimum height, and `1.45em 12px 0.35em` padding. Focus uses `--sb-composer-focus-border` and `--sb-composer-focus-ring` on the input, not the row; status and suffix controls stay outside the fill and ring. Forced colours use a CanvasText border and an inset Highlight outline.
+- **Floating title:** Float on focus, a value (including programmatic writes), or autofill. Keep a placeholder attribute (a space if none exists), but show its text only on focus. The title is single-line with ellipsis; its full text remains the accessible name. Position with logical properties for RTL. Existing stacked fields in Characters, Persona, World Info, and Agents remain stacked until migrated.
+- **Secret variant (`secret: { savedText, missingText, revealLabel }`):** Observe the input's placeholder for saved/missing-key status; mirror it as a trailing status icon plus visually hidden text linked with `aria-describedby`. Unknown status is hidden. Mask and offer Reveal only when `CSS.supports('-webkit-text-security', 'disc')`; otherwise retain the unmasked upstream field. Never change the input type or introduce a password-manager prompt. Deviation: this preserves upstream text inputs rather than using a password input; secret rows may exceed the two-control limit to retain entry, reveal, and key management.
+- **Help captions:** The floating row's `subtitle` is a dimmed caption below the field, linked by `aria-describedby`. In Connections, move existing one-line help nodes into captions; keep multi-line instructions and lists above the field, and preserve visibility-gated warnings. Never flatten links or copy live nodes. Deviation: AdwEntryRow has no subtitle; captions and the focus-only placeholder preserve upstream help and status.
 - **Focus:** Accent, as in libadwaita, where entries take the same accent focus ring as every other control. The border turns `--sb-entry-focus-border` and the field receives a `1px` inset `--sb-entry-focus-ring` in the same colour, together a `2px` ring in the focus-ring colour (78% of `--sb-focus-ring`, about 55% accent). The fill does not change. The composer keeps its own accent outline (`--sb-composer-focus-*`).
 - **Behaviour:** In forms and preferences, prefer entry rows to standalone fields (HIG Text Fields). A field that holds a setting applies its change on Return or when it loses focus. Validation feedback appears as the field is edited and favours a positive "valid" cue over showing an error while the user is still typing. Placeholders read like labels, or as an instruction ending in an ellipsis for action fields ("Search for a city…"). Secret fields hide their text where the browser supports masking and offer a reveal button; their input type is not changed. Typing never starts a network action; connecting and testing stay behind explicit buttons.
 - **Error / Disabled:** Destructive Red uses a readable tint and explicit text; disabled fields preserve label and layout context rather than disappearing.
@@ -451,17 +495,44 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Anatomy:** Left side is `.ds-row-text` (flexing, `0` min-width for text wrapping): a title label followed by an optional `.ds-row-subtitle` (small grey text, visible description promoted from `title=` attributes). Right side is `.ds-row-suffix` (flex-shrink: 0): a control (select, input, switch, slider, button) or custom content.
 - **Sizing contract:** Setting controls use `.ds-control-flex` (`flex: 1 1 190px; min-width: 0`) to maintain consistent width across varied label text. Labels in settings rows use `.ds-label-bounded` (`flex: 0 1 180px`) to prevent overflow. Controls with intrinsic width (`widthNatural`, `widthUnset`) are excluded from this contract and keep their natural dimensions.
 - **Toggles (`.ds-row-switch`):** Boolean rows put `role="switch"` on the native checkbox input; its `checked` state is the switch state. Never add `aria-checked` to it (ARIA in HTML: "Authors MUST NOT use the aria-checked attribute on input type=checkbox elements"). The entire row is clickable (pointer events target the label). Keyboard focus and spacebar toggle the state.
+- **Toggle row (`createToggleRow`, `.ds-toggle-row`):** An exclusive choice, not a switch or view tab. Use label-only native radio segments in a named `radiogroup`, arrow-key grouping, and a neutral selected fill. `fill` places the title above equal-width segments; labels wrap without changing wording. Use for Backend Type and Parallel/Sequential; coarse-pointer segments are at least `44px`.
+- **Select-mirror row (`createSelectRow`, `.ds-select-row`):** Keep the adopted native select as source of truth, hidden from layout and focus; keep select2 initialised and its container adjacent but visually hidden. The named trigger shows the selected value and opens the shared searchable picker. Optgroups become non-focusable group headings; preserve disabled options, multiple selection, and late-loaded options. Write through a native bubbling `change`; listen through jQuery when present so upstream `.trigger('change')` is also reflected. Ordered multi-selects append newly picked options to preserve routing priority. Highlight and focus the whole row, not a filled trigger; align its chevron with expander chevrons.
+- **Profile row (`createProfileRow`, `.ds-profile-row`):** The select-mirror row with folders/favourites from the select's groups, an optional summary subtitle, and optional trailing ⋮ (only when `onMenu` exists). Connections and the agent editor keep ⋮; the two Agents Settings profile rows omit it. Keep profile application spinners in the suffix. Profile actions forward to the existing handlers; the row does not reimplement connection-manager logic.
 - **Sliders (`.ds-row-slider`):** Title and optional subtitle on the left; range input and paired number field on the right. On viewports ≤ 620px, content stacks vertically and spans full width.
 - **Expanders (`.ds-row-expander`):** Collapsible sections follow libadwaita `AdwExpanderRow`: a header row with a title, optional subtitle, optional suffix controls, and a trailing chevron after them. The chevron points down when collapsed and up when expanded. Content nests inside with `0` left margin.
 - **Groups (`.ds-pref-group`):** Boxed lists with a `5%` body-colour tint, `16px` radius (`12px` inside editors), a `1px` border at 72% of `--sb-shell-border`, `6px 16px` padding on rows, and `0px` margin between groups (separators show where rows meet). The heading and optional description (`.ds-pref-group-header`) sit above the boxed list, not inside it, as in `AdwPreferencesGroup`.
 - **Boxed-list rules (HIG Boxed Lists):**
   - Boxed lists are for small, static sets of rows. Large or dynamic collections use a list view (List → Split Editor).
   - A row holds one control, two at most. Clicking the row background activates its control; the control takes keyboard focus, not the row.
-  - Rows that can be reordered offer Move Up and Move Down in their menu, which the HIG requires for accessibility, instead of a per-row remove button.
+  - Rows that can be reordered offer Move Up and Move Down in their menu, which the HIG requires for accessibility, instead of a per-row remove button. Agent moves follow the bounds below. Deviation: prompt rows still lack move menu items until the libadwaita TODO follow-up; their grip/keyboard reorder remains available.
   - A button row that opens a new view ends with a trailing arrow instead of an ellipsis.
   - Groups and lists have a minimum and a maximum width.
 - **Density:** Row heights and padding adjust for compact mode (set `--sb-density-scale`) without changing hierarchy.
 - **Contrast:** Row text (including subtitles) maintains ≥ 4.5:1 contrast against background. Placeholders and secondary text use `--sb-input-placeholder` (78% body colour mixed with theme tint).
+
+### Connections
+- **Order:** Connection Profile, Backend, the active provider's Connection, Model, Providers, and Advanced groups, then General. Hide provider groups with no visible content; unknown fields remain reachable in Advanced. No sticky headers, switchers, status rows, or action bars. Keep the same order and actions at the `360px` minimum width (Navigation).
+- **Groups:** Preference groups use the Settings Rows contract. Headings match Customize: body-size, weight 700 foreground title; bold muted meta-size subtitle, `2px` below; `8px` to the box; `--sb-shell-section-gap` between groups. Backend contains label-only Chat Completions / Text Completions / Other segments and a Source picker. General holds auto-connect and View Hidden API Keys.
+- **Provider controls:** Connection holds status/actions, credentials, endpoints and account fields, with Reverse Proxy last; Model holds model selection and model widgets; Providers holds routing; Advanced holds the remaining controls. Keep source/type visibility gates and every upstream ID/handler. Featherless remains a restyled widget rather than forced picker rows. Authorize stays a separate gated button row; field-tied key-management, refresh, and download actions stay beside their field.
+- **Status:** A flat row at the start of Connection, not a separate Status group: upstream status icon and text, Connect as the sole suggested action (Cancel while connecting), and Test where supported. Horde has status only. Preserve model/server information in upstream status text; do not invent a second subtitle. Deviation: persistent connection errors use this inline status instead of a banner, next to the resolving action, never a toast alone. On phones status is centred and actions stack full-width.
+
+### Agents
+- **List:** Saved agents only, with Pinned first, then Before Reply, Before and After Reply, After Reply, and Companions when non-empty. These are strong body-size, weight 700 section headers; each contains plain, muted category sub-headings, with no subcategories or collapsible sections. Row boxes match the prompt list: `12px` radius, `1px` theme border, `8%` body-colour fill (View in light tone).
+- **Header and search:** Header contains the on/token counter, global switch, running-only Stop, Search, +, and ⋮. An off-state banner provides Turn On. Search is hidden behind the header icon; the filter sits beside the revealed field, not in ⋮. Search spans saved names, descriptions, and tags; category and remembered Only On filters combine with it. Settings, Companions Overview, and Agent Groups are the first section of ⋮, opening detail pages, not fixed list entries.
+- **Templates:** + offers separate agent and companion template pickers, grouped by category · subcategory. A pick opens an unsaved draft; only Save creates the saved agent. Added templates open their existing copy; Duplicate creates a detached, off custom copy. No catalogue rows or separate Templates page in the list. Deleting the last saved bundled copy removes it from the list; its template remains addable.
+- **Agent row:** Leading grip and dimmed category icon, name and one-line description, optional Update Available note, plain dimmed token count, then enable switch and ⋮. Keep icon and grip vertically centred. Deviation: agent and prompt rows have three controls in total (leading grip, trailing switch and menu), exceeding the boxed-list maximum of two for consistency with the prompt list; there are not three trailing controls.
+- **Moves:** Drag, grip keyboard actions, and Move Up / Move Down share the same saved order within a stage/category sub-heading. Omit a move at its boundary, while any search/filter is active, and on Pinned copies; keep the empty grip slot on those copies for alignment. Focus follows the moved row. Pinned is a duplicate view, not a separate reorderable sequence.
+- **Row menu:** Sections are organise, run, manage, then destructive. Omit inapplicable actions. Deviation: up to thirteen items are allowed to retain move actions, previews/runs, conversion, duplication, updates/export, and both Restore Default… and Delete…. Restore Default… appears on saved bundled agents; Delete… appears on every saved agent, including the only bundled copy. Both are last, in Destructive Red, and always confirm with Cancel focused and no destructive Return default (Dialogs; confirmation rather than undo is the existing deviation).
+- **Compact list:** While a detail pane is open beside the list, follow the prompt-editor rule: hide subtitles and row ⋮ without growing multi-line rows; use the shared `52px` row minimum and keep the switch. At list widths `≤400px`, hide the badge slot except beside an open agent editor; token information remains in the accessible description. The collapsed phone editor is a pushed page, not a squeezed list/detail pair.
+- **Editor:** One explicit-save detail page with an editable header title, dirty indicator, Edit/Preview, Sections, Preview Prompt in Context, Refine, ⋮, Cancel, and Save. Edit/Preview renders local text without a request; the context preview uses a distinct file-lines icon. Header actions overflow into ⋮ as space runs out (all three on phones); keep ⋮ useful for drafts too. Cancel discards local changes without closing the page; Back and navigation use the Save / Discard / Cancel leave guard and draft recovery. Saved-agent Duplicate/Export act on saved data after that guard.
+- **Property bar:** Directly under the header: Category listbox, Stage (Before / After / Both), Execution (Inline / Companion), and Pin. Hide Stage for companions; lock Execution for the companion category. On collapsed layouts replace the bar with a `44px` summary button (category · stage when applicable · execution ›) opening the Agent Properties sheet; move the same controls into it, not copies. Match the prompt editor's bar/sheet geometry and selection treatment.
+- **Editor body:** Show only applicable groups: General and Prompt; Companion Output, Context, Chat History, Feedback, and Coordination; Template Options; Tracker Builder; Before Reply; After Reply; Regex Scripts; Conditions. General keeps Description and template metadata, not duplicate property-bar controls. Keep the main prompt outside the boxed settings rows with a `12px` gap and footer Expand. Sections scrolls only this body, never shell ancestors. Helper dialogs are single-level transactions; no Expand in generic agent helper dialogs. Existing companion-note and Pathfinder pop-outs retain their separate behaviour.
+- **Pages:** Settings applies immediately: Connections, Running Agents, Chats, Notifications and Display, Advanced, then a separate confirmed Reset Bundled Agents row. Companions Overview has Run All on Last Message and Open Companion Panel, companion rows opening their editor, and Recent Notes with Jump; Conversation Mode shows an unavailable status page. Agent Groups has built-in/custom groups, additive Turn On, a confirmed Delete… menu for custom groups only, and Save Agents as Group…. Each page has an in-pane Back and one scrolling body; shell Back still returns to settings navigation.
+- **Companion panel:** Preserve the sidecar's behaviour and source context. Use the opaque Drawer surface, Header bar with flat circular icon actions, header shade, and shell-themed card surfaces matching the Agents list and chat note cards. Card actions are flat, neutral at rest, with gated hover, active fill, and inset focus; `40px` on fine and `44px` on coarse pointers. Retain edge docking, safe areas, viewport/keyboard sizing, history and note controls. Action clusters may wrap below the card title; do not invent a new overflow behaviour in a styling pass.
+
+### Selection Mode
+- **Header:** Agents, World Info, and Characters share `createSelectionMode`: Cancel at the start, a live selected-count title, and Select All at the end. Cancel uses the secondary editor action (neutral ink, theme border, transparent fill), not a flat toolbar icon; Select All is the solid Accent suggested action with `--sb-on-solid-accent` ink. Keep labels readable in forced colours and at user font scale.
+- **Scope:** Agents Select All uses only the current filtered saved agents and counts a Pinned copy once. Preserve the existing selection gestures, action bar, keyboard behaviour, and return focus across all consumers.
 
 ### Navigation
 - **Layer 1:** The main chat window is the primary surface with a bottom bar for direct conversation actions.
@@ -478,7 +549,9 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 ### List → Split Editor
 - **Pattern:** SillyBunny-specific pattern built from Libadwaita parts; `AdwNavigationSplitView` collapse rules. Libadwaita sidebars are not user-resizable and no stock widget animates from a full-width list into a split view.
 - **Sidebar:** Resizable sidebar `240–420px`, default `30%`; collapse at viewport `≤768px` or Editor pane `<720px`. Collapsed navigation: the editor is a full-screen page with a back button; no sidebar.
-- **Sizing:** The editor pane never scrolls. The textarea takes the highest sizing priority: `flex: 1 1 auto; min-height: 0`; it fills the leftover height and scrolls internally.
+- **Sizing — text-first editors:** The Prompt editor keeps the non-scrolling pane rule: textareas take the remaining height (`flex: 1 1 0; min-height: 0`) and scroll internally, including its Text Completion fields. Do not turn the pane into an outer page scroller.
+- **Sizing — multi-group editors:** Characters and Agents, and the shipped Persona and World Info detail pages, use one scrolling body container for their groups; the shell/detail frame does not scroll. Main text areas have a minimum height and Expand rather than competing for leftover height. Header/property controls remain outside the body; avoid nested group scrollers.
+- **Phone text areas:** At `≤768px`, Agents uses `clamp(320px, min(45dvh, measured shell viewport × 0.45), 560px)` for the prompt and `clamp(180px, min(30dvh, measured shell viewport × 0.3), 360px)` for other editor and helper-dialog text areas, with `vh` fallbacks. Keep the focused text area visible as the visual viewport changes. These are minimums, not fixed heights; do not generalise them to the text-first Prompt editor.
 - **Transition:** Full list → list shrinks to a sidebar while the editor slides in from the right; reverse on close. `SPRING_NAVIGATION` (`334ms`), continuous compression. Clicking another row in the sidebar swaps editor content without replaying the slide, after the dirty check.
 - **Reduced motion:** Instant swap for OS `prefers-reduced-motion` or `body.reduced-motion`.
 - **Search (HIG Search):** Live as the user types, across the whole collection, with a status page when nothing matches. Every item stays reachable without search.
@@ -520,6 +593,7 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Do** make every action possible with the keyboard as well as with a pointer or touch. Custom shortcuts use Ctrl with a letter, never Alt (reserved for access keys) or Super. Esc closes popovers, sheets, and dialogs (HIG Keyboard, Popovers, Windows).
 - **Do** test every surface with a high-contrast or forced-colours mode, 200% text size, the keyboard alone, a screen reader, and an on-screen keyboard (HIG Accessibility). Every element has a short, descriptive accessible name.
 - **Do** write UI text by the HIG Writing Style: short and neutral, familiar terms over system terms, "your" over "my" when ownership must be stated, no Latin abbreviations ("for example", not "e.g."), and no trailing period on labels, headings, or descriptions. An ellipsis (`…`, U+2026) ends a label only when more input or confirmation follows ("Delete…", not "Preferences…"). Never build one sentence from several strings or controls, so translations stay intact. Use typographic characters: “quotes”, ’ apostrophes, – ranges, × dimensions.
+- **Do** translate each new counter or sentence as one string with placeholders, never joined fragments. Use `…`, never three periods, in new labels. Reuse existing upstream strings and keys verbatim, including trailing periods; the punctuation rule applies to new copy. Unsupplied descriptions, help, and dialog bodies use exactly `lorum ipsum`, marked with `data-sb-copy-placeholder="true"` and reported for maintainer replacement; do not draft project prose.
 
 ### Don't:
 - **Don't** add configuration panels, extra toolbars, or utility panes to the chat viewport unless the user opens them. Navigation sidebars, split views, and utility panes follow the HIG (Navigation): each view keeps one clear subject, and panes collapse or overlay at narrow widths.
