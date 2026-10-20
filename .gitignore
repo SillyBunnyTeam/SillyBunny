@@ -85,3 +85,10 @@ skills-lock.json
 # SillyBunny Android: keep downloaded runtime packages and generated native payloads out of source control.
 /android/runtime/out/
 /android/runtime/cache/
+
+# SillyBunny Android: keep local SDK settings and generated Gradle/Kotlin outputs out of source control.
+/android/.gradle/
+/android/.kotlin/
+/android/build/
+/android/app/build/
+/android/local.properties
