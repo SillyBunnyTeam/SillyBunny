@@ -120,14 +120,12 @@ function initializeSettingsPanel() {
  * Tabs whose collapsible drawers are left alone.
  *
  * Extensions is the one the 6F decision names: each of its 17 drawers is a self-contained,
- * independently-authored block rather than a stray accordion. Agents is the same case for the same
- * reason -- its panel is built by the bundled in-chat-agents extension, which drives its own
- * drawer's toggle programmatically (`in-chat-agents/index.js` reaches for the toggle and dispatches
- * a click), so flattening it would take away a control the extension owns.
+ * independently-authored block rather than a stray accordion.
  * Connections preserves upstream drawer content because its descendants carry provider visibility
  * gates; its scoped form pass supplies expander-row presentation without flattening that ancestry.
  */
-const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'agents', 'connections']));
+// SillyBunny: Agents now owns shared preference pages, not an extension drawer.
+const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'connections']));
 
 /**
  * Extensions owns independently authored sections, so it retains the sliding detail stack.
@@ -541,7 +539,7 @@ function openAllInlineDrawers(root = null) {
  * and Advanced Formatting and the Appearance theme card are assembled after the split -- so both
  * passes are repeated on activation. Both are idempotent, so re-running them costs queries and no
  * DOM churn.
- * Extensions and Agents are skipped for the same reason as in `flattenRightShellSettingsDrawers`, and
+ * Extensions and Connections are skipped for the same reason as in `flattenRightShellSettingsDrawers`, and
  * the stacked panels are skipped here for the reason given on `SB_SUBPAGE_TAB_IDS`.
  *
  * @param {string} shellKey
@@ -11463,7 +11461,10 @@ async function renderMobileQuickActionResults(query, resultsElement, mode = 'mob
         button.disabled = isAdded || isFull;
         button.addEventListener('click', () => addQuickActionFromMatch(mode, match));
 
-        copy.append(title, detail);
+        copy.append(title);
+        // SillyBunny: synthetic settings destinations carry help independently of mounted controls.
+        if (match.description) copy.append(createElement('small', { className: 'sb-mobile-quick-action-help', text: match.description }));
+        copy.append(detail);
         row.append(copy, button);
         resultsElement.appendChild(row);
     }

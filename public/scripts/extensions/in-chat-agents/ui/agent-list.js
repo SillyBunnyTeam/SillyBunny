@@ -15,7 +15,9 @@ import { getTokenCountAsync, getTokenizerModel } from '../../../tokenizers.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
 import { t, translate } from '../../../i18n.js';
 import { buildAgentListModel, buildAgentTemplatePickerModel, getAgentRowMenuItems, moveAgentWithinSubheading, getAgentSelectionKeys, getAgentSelectionKey } from './agent-list-model.js';
-import { mountLegacySettings, mountLegacyGroups } from './legacy-pages.js';
+import { mountAgentSettings } from './settings-page.js';
+import { mountCompanionsPage } from './companions-page.js';
+import { mountAgentGroups } from './groups-page.js';
 import { mountAgentDetail } from './agent-editor.js';
 
 let adapter = null;
@@ -24,12 +26,19 @@ const controllers = new Set();
 let pendingDraft = null;
 
 const activePanel = () => [...controllers].find(controller => controller.isVisible()) ?? [...controllers][0];
+
+async function revealAgentsTab() {
+    await globalThis.SillyBunnyShell.openTab('left', 'agents');
+    // The shell API opens the mobile category list; activating its tab reveals the content pane.
+    document.querySelector('[data-sb-settings-tab="agents"]')?.click();
+}
+
 objectNavigation.register(
     'agent-editor',
     {
         exists: key => key === 'new-agent' || adapter?.getEntries().some(entry => entry.key === key),
         async open(target, { isCurrent }) {
-            await globalThis.SillyBunnyShell.openTab('left', 'agents');
+            await revealAgentsTab();
             if (!isCurrent()) return false;
             return Boolean(await activePanel()?.openAgent(target.id, { isCurrent }));
         },
@@ -47,7 +56,7 @@ objectNavigation.register(
             restore,
             isCurrent,
         }) {
-            await globalThis.SillyBunnyShell.openTab('left', 'agents');
+            await revealAgentsTab();
             if (!isCurrent()) return false;
             const panel = activePanel();
             if (!panel) return false;
@@ -76,6 +85,20 @@ export async function openAgentDetail({
 }
 
 export const closeAgentDetail = () => activePanel()?.closeDetail();
+
+export const openCompanionsOverview = () => objectNavigation.navigate({ kind: 'companion-dashboard' }, { from: { kind: 'agent-list' } });
+
+objectNavigation.register('companion-dashboard', {
+    async open(_target, { restore, isCurrent }) {
+        await revealAgentsTab();
+        if (!isCurrent()) return false;
+        const panel = activePanel();
+        if (!panel || !await panel.openPage('companions')) return false;
+        panel.restorePageState(restore);
+        return isCurrent();
+    },
+    captureState: () => activePanel()?.capturePageState(),
+});
 
 export function registerAgentsPanelAdapter(value) {
     adapter = value;
@@ -214,7 +237,7 @@ export function mountAgentsPanel(column) {
                     showMenu(trigger, [{
                         items: [
                             { label: t`Settings`, icon: 'fa-solid fa-gear', onSelect: () => run(() => openPage('settings')) },
-                            { label: t`Companions Overview`, icon: 'fa-solid fa-comments', onSelect: () => run(() => openPage('companions')) },
+                            { label: t`Companions Overview`, icon: 'fa-solid fa-comments', onSelect: () => run(openCompanionsOverview) },
                             { label: t`Agent Groups`, icon: 'fa-solid fa-layer-group', onSelect: () => run(() => openPage('groups')) },
                         ],
                     }, {
@@ -492,6 +515,7 @@ export function mountAgentsPanel(column) {
             shell.deferRefresh(); return;
         }
         const state = adapter.state();
+        if (['settings', 'companions', 'groups'].includes(shell.selectedKey)) pageController?.refresh?.();
         const entries = adapter.getEntries();
         const categories = Object.fromEntries(Object.entries(adapter.categories).map(([key, value]) => [key, { ...value, label: translate(value.label) }]));
         model = buildAgentListModel({ entries, categories, enabledKeys: state.enabledKeys, search: input.value, filters });
@@ -592,7 +616,6 @@ export function mountAgentsPanel(column) {
     async function openPage(key) {
         await ready;
         if (!await confirmEditorLeave({ session: detailSession })) return false;
-        if (key === 'companions' && !adapter.state().conversationMode) return adapter.openCompanions();
         return shell.selectItem(key, { guard: false });
     }
 
@@ -612,9 +635,10 @@ export function mountAgentsPanel(column) {
         renderDetail: (host, key) => {
             pageController?.destroy();
             returnFocusKey = key;
-            const onClose = () => shell.deselectItem();
-            if (key === 'settings') pageController = mountLegacySettings({ host, footer: adapter.settingsFooter, onClose });
-            else if (key === 'groups') pageController = mountLegacyGroups({ host, adapter, onClose, run });
+            const onClose = () => run(backToOrigin);
+            if (key === 'settings') pageController = mountAgentSettings({ host, services: adapter.settings, onClose, preparePopup });
+            else if (key === 'groups') pageController = mountAgentGroups({ host, services: adapter.groups, onClose, preparePopup });
+            else if (key === 'companions') pageController = mountCompanionsPage({ host, services: adapter.companions, onClose, preparePopup });
             else if (key === 'new-agent' || key.startsWith('agent:') || key.startsWith('agent-template:')) {
                 const entry = adapter.getEntries().find(entry => entry.key === key);
                 const creation = key === 'new-agent' ? pendingDraft : null;
@@ -678,8 +702,8 @@ export function mountAgentsPanel(column) {
     };
     const backToOrigin = () => objectNavigation.back({
         current: {
-            kind: 'agent-editor',
-            id: shell.selectedKey,
+            kind: shell.selectedKey === 'companions' ? 'companion-dashboard' : 'agent-editor',
+            ...(shell.selectedKey === 'companions' ? {} : { id: shell.selectedKey }),
         },
         fallback: () => shell.deselectItem(),
     });
@@ -705,6 +729,9 @@ export function mountAgentsPanel(column) {
     shell.root.hidden = true;
     const controller = {
         ready, refresh, openPage,
+        capturePageState: () => pageController?.captureState?.(),
+        restorePageState: state => pageController?.restoreState?.(state),
+        focusControl: id => pageController?.focusControl?.(id),
         isVisible: () => !destroyed && !shell.root.closest('[hidden], [aria-hidden="true"], [inert]'),
         currentKey: () => shell.selectedKey,
         captureState: () => ({
@@ -779,22 +806,17 @@ export function mountAgentsPanel(column) {
 export function getAgentsPanelSearchEntries(tabState) {
     const controller = mounts.get(tabState.searchRoot);
     if (!controller || !adapter) return [];
-    return [...adapter.settingsFooter.querySelectorAll('input,select,textarea')].map(control => {
-        const row = control.closest('label, .ds-row');
-        const labelNode = row?.querySelector('.ds-row-label, :scope > span');
-        const labelCopy = labelNode?.cloneNode(true);
-        labelCopy?.querySelectorAll('small, .ds-row-subtitle').forEach(node => node.remove());
-        const label = (labelCopy?.textContent || control.id).trim();
-        const help = [...row?.querySelectorAll('.ds-row-subtitle, small') ?? []].map(node => node.textContent.trim()).join(' ') || control.title;
+    return adapter.settings.fields.map(field => {
+        const label = translate(field.label);
+        const help = translate(field.caption || field.title);
         return {
-            element: null, searchText: `${label} ${help} ${control.title} ${control.id}`.toLowerCase(), displayText: label,
+            element: null, searchText: `${label} ${help} ${translate(field.title)} ${field.id}`.toLowerCase(), displayText: label,
             description: help, locationLabel: [tabState.label, t`Settings`].join(' · '),
-            sectionLabel: t`Settings`, tabId: 'agents', tabLabel: tabState.label, dedupeKey: `agents:settings:${control.id}`,
+            sectionLabel: t`Settings`, tabId: 'agents', tabLabel: tabState.label, dedupeKey: `agents:settings:${field.id}`,
             action: async () => {
-                await globalThis.SillyBunnyShell.openTab('left', 'agents');
-                await controller.openPage('settings');
-                control.scrollIntoView({ block: 'center' });
-                control.focus({ preventScroll: true });
+                await revealAgentsTab();
+                if (!await controller.openPage('settings')) return;
+                controller.focusControl(field.id);
             },
         };
     });

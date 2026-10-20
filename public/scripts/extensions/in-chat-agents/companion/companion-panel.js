@@ -98,6 +98,7 @@ function syncConversationModePanelVisibility() {
         closeCompanionPanel();
     }
     updateCompanionPanelHandleVisibility();
+    panelHooks?.refreshAgentList?.();
 }
 
 function observeConversationModeState() {

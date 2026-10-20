@@ -747,7 +747,7 @@ test('template editor Save materialises once and a later saved edit retains its 
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
 });
 
-test('interim Groups create, additive Turn On and Delete retain single-level confirmation', async ({ page, baseURL }) => {
+test('Agent Groups create, additive Turn On and menu Delete retain single-level confirmation', async ({ page, baseURL }) => {
     const { root, writes, saves } = await openAgents(page, baseURL, 390);
     await openPage(page, root, 'Agent Groups');
     await root.getByRole('button', { name: 'Save Agents as Group…', exact: true }).click();
@@ -762,10 +762,13 @@ test('interim Groups create, additive Turn On and Delete retain single-level con
     await row.getByRole('button', { name: 'Turn On', exact: true }).click();
     await expect(row.getByRole('button', { name: 'Turn On', exact: true })).toBeEnabled();
     expect(saves()).toHaveLength(3);
-    await row.getByRole('button', { name: 'Delete…', exact: true }).click();
+    await row.getByRole('button', { name: 'Group Menu', exact: true }).click();
+    await expectAgentMenuIcons(page);
+    await page.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
     await page.locator('dialog[open] .popup-button-cancel').click();
     await expect(row).toBeVisible();
-    await row.getByRole('button', { name: 'Delete…', exact: true }).click();
+    await row.getByRole('button', { name: 'Group Menu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
     await page.locator('dialog[open] .popup-button-ok').click();
     await expect(row).toHaveCount(0);
     expect(writes.filter(write => write.path.endsWith('/groups/delete'))).toHaveLength(1);

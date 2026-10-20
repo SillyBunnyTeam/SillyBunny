@@ -49,7 +49,7 @@ const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-
 
 /** @param {HTMLElement} row @returns {HTMLElement} */
 function createRowSubtitle(row) {
-    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, :scope > .ica--profile-help, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
+    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
     // These rows already own live help beside the label. Keep that node (and its dynamic
     // provider/preset updates) instead of promoting a redundant title or a status-icon tooltip.
     if (!existing && row.matches('label:is([for="bind_preset_to_connection"], [for="bind_preset_to_sampling"], [for="squash_system_messages"], [for="openai_function_calling"], [for="openai_media_inlining"])') && row.nextElementSibling?.matches('.toggle-description')) {

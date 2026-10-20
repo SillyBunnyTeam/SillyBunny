@@ -9,7 +9,7 @@ const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html
 const companionUiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'companion', 'companion-ui.js'), 'utf8');
 const agentRunnerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'agent-runner.js'), 'utf8');
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
-const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings.html'), 'utf8');
+const settingsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'settings-controls.js'), 'utf8');
 const coreScriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 const listSource = readFileSync(path.join(repoRoot, 'public/scripts/extensions/in-chat-agents/ui/agent-list.js'), 'utf8');
 const modelSource = readFileSync(path.join(repoRoot, 'public/scripts/extensions/in-chat-agents/ui/agent-list-model.js'), 'utf8');
@@ -111,7 +111,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorSource).toContain('createSwitchRow(');
         expect(editorSource).toContain('createPrefGroup(');
         expect(editorSource).toContain('Companion · Coordination');
-        expect(editorSource).toContain('toggle(coordination, \'companion.batch\', t`Batch`)');
+        expect(editorSource).toContain('toggle(coordination, \'companion.batch\', companionCopy.batch)');
         expect(editorSource).toContain('path === \'companion.batchAgentIds\'');
         expect(getFunctionSource('getAgentEditorCompanionOptions')).toContain('isAgentEnabledForCurrentScope(candidate)');
         expect(editorSource).toContain('toggle(coordination, \'companion.sendContextToCompanions\', t`Send Context`)');
@@ -262,7 +262,7 @@ describe('in-chat agents generation UI wiring', () => {
     test('groups companion execution separately and registers the initialized adapter', () => {
         expect(modelSource).toContain('const STAGES = [\'pre\', \'both\', \'post\', \'companion\'];');
         expect(modelSource).toContain('agent.execution === \'companion\' || agent.category === \'companion\'');
-        expect(indexSource).toContain('await registerAgentListUi(settingsStore);');
+        expect(indexSource).toContain('await registerAgentListUi(settingsStore, settingsFields);');
         expect(getFunctionSource('registerAgentListUi')).toContain('ui.registerAgentsPanelAdapter({');
         expect(listSource).not.toContain('from \'../index.js\'');
     });
@@ -276,7 +276,8 @@ describe('in-chat agents generation UI wiring', () => {
         expect(source).toContain('setAgentEnabledForCurrentScope(agent, enabled);');
         expect(source).toContain('persistExtensionState();');
         expect(getFunctionSource('performAgentListAction')).toContain('lockBundledAgentCustomization(agent);');
-        expect(settingsSource).toContain('data-sb-agent-global-settings');
+        expect(settingsSource).toContain('createAgentSettingsControls');
+        expect(settingsSource).toContain('ica--importFile');
     });
 
     test('allows manual agent application to multiple selected targets', () => {

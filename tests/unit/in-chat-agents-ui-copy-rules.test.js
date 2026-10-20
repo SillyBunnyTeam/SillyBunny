@@ -131,3 +131,20 @@ describe(
         );
     },
 );
+
+describe('A4 pages follow Q32 without vacuous missing-file passes', () => {
+    test.each([
+        ['settings-page.js', 'settings-page-controller.js'],
+        ['settings-page-controller.js', 'settings-page-controller.js'],
+        ['companions-page.js', 'companions-page-controller.js'],
+        ['companions-page-controller.js', 'companions-page-controller.js'],
+        ['groups-page.js', 'groups-page-controller.js'],
+        ['groups-page-controller.js', 'groups-page-controller.js'],
+    ])('%s is present and its translated copy follows the same rules', async (name, controller) => {
+        // Keep the pre-existing A2/A3 copy assertions runnable while each A4 seam is absent.
+        await import(new URL(controller, UI_ROOT).href);
+        const source = readFileSync(new URL(name, UI_ROOT), 'utf8');
+        expect(translatedStrings(source).filter(({ text }) => forbiddenCopy(text)).map(({ text }) => text)).toEqual([]);
+        expect(fragmentedTranslations(source)).toEqual([]);
+    });
+});

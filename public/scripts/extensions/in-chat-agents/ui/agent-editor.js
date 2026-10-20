@@ -22,6 +22,7 @@ import { createAgentEditorState, getAgentEditorVisibility } from './agent-editor
 import { createAgentEditorDialogs } from './agent-editor-dialogs.js';
 import { createSegmentedControl, setSegmentedControlValue } from '../../../sillybunny-segmented-control.js';
 import { createAgentEditorProperties } from './agent-editor-properties.js';
+import { companionLabels } from './companion-labels.js';
 
 let nextId = 0;
 const element = (tag, className = '', text = '') => Object.assign(document.createElement(tag), {
@@ -406,14 +407,15 @@ export function mountAgentDetail({
         expand.hidden = show;
     }
     const output = group('companion-output', t`Companion · Output`, 'paper-plane');
-    choice(output, 'companion.trigger', t`Trigger`, [['auto', t`Auto`], ['manual', t`Manual`]]);
+    const companionCopy = companionLabels();
+    choice(output, 'companion.trigger', t`Trigger`, companionCopy.trigger);
     choice(
         output,
         'companion.displayMode',
         t`Display`,
-        [['card', t`Note card`], ['panel', t`Tracker panel only`], ['hidden', t`Hidden feedback note`]],
+        companionCopy.displayMode,
     );
-    choice(output, 'companion.format', t`Format`, [['markdown', t`Markdown`], ['html', t`HTML`], ['text', t`Text`]]);
+    choice(output, 'companion.format', t`Format`, companionCopy.format);
     spin(output, 'companion.maxTokens', t`Max Tokens`);
     const order = spin(output, 'injection.order', t`Order`);
     headerAction(output, t`AI Maker…`, 'wand-magic-sparkles', async () => apply(await helpers.maker(fields())));
@@ -436,12 +438,12 @@ export function mountAgentDetail({
     toggle(history, 'companion.includeAllChatHistory', t`Keep All`);
     toggle(history, 'companion.keepInChatHistoryWhenHostHidden', t`Keep When Hidden`);
     const feedback = group('companion-feedback', t`Companion · Feedback`, 'comment-dots');
-    toggle(feedback, 'companion.feedback.enabled', t`Feed Recent Notes`);
+    toggle(feedback, 'companion.feedback.enabled', companionCopy.feedback);
     spin(feedback, 'companion.feedback.depth', t`Feedback Depth`);
     action(feedback, t`Preview Feedback`, 'file-lines', () => helpers.feedback(fields()));
     const coordination = group('companion-coordination', t`Companion · Coordination`, 'diagram-project');
     const companions = path => adapter.editor.companions(initial.id, path === 'companion.batchAgentIds', read(initial, path));
-    toggle(coordination, 'companion.batch', t`Batch`);
+    toggle(coordination, 'companion.batch', companionCopy.batch);
     select(coordination, 'companion.batchAgentIds', t`Companions`, companions('companion.batchAgentIds'), true);
     toggle(coordination, 'companion.sendContextToCompanions', t`Send Context`);
     select(coordination, 'companion.contextRecipientAgentIds', t`Recipients`, companions('companion.contextRecipientAgentIds'), true);

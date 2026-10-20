@@ -3789,6 +3789,10 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: 0.72;
 }
 
+.sb-mobile-quick-action-copy .sb-mobile-quick-action-help {
+    white-space: normal;
+}
+
 .sb-mobile-quick-action-controls {
     display: flex;
     align-items: center;
@@ -7516,21 +7520,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
         width: 100%;
     }
 
-    #sb-settings-page .sb-settings-mounted-shell [data-sb-agent-global-settings] .ica--profile-label.ds-row {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #sb-settings-page .sb-settings-mounted-shell [data-sb-agent-global-settings] .ica--profile-label.ds-row > :is(.ds-row-text, .ds-row-suffix) {
-        flex-basis: auto;
-        width: 100%;
-    }
-}
-
-#sb-settings-page [data-sb-agent-global-settings] .ica--textarea-fullscreen-wrapper {
-    flex: 1 1 0;
-    min-width: 0;
-    width: 100%;
 }
 
 /* Expander rows: new visual layer on top of existing .inline-drawer machinery */
@@ -9852,11 +9841,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 .sb-shell-panel[data-sb-panel='agents'] .ica--action-legend {
     font-size: var(--sb-type-meta);
     color: var(--sb-shell-text-secondary);
-}
-
-/* Long dash-style hints sit in a box of their own, the same box the other panels' hint rows get. */
-.sb-shell-panel[data-sb-panel='agents'] .ica--templates-callout {
-    border-radius: var(--sb-radius-lg, 16px);
 }
 
 @media screen and (max-width: 768px) {

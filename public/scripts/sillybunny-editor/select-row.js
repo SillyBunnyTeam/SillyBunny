@@ -228,16 +228,18 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
  * @returns {object}
  */
 export function createProfileRow({ menuLabel, onMenu, suffix, ...options }) {
-    const menuButton = document.createElement('button');
-    menuButton.type = 'button';
-    menuButton.className = 'ds-select-row__menu';
-    menuButton.setAttribute('aria-haspopup', 'menu');
-    menuButton.setAttribute('aria-label', menuLabel);
-    menuButton.title = menuLabel;
-    menuButton.append(icon('fa-solid fa-ellipsis-vertical'));
-    menuButton.addEventListener('click', () => onMenu?.(menuButton));
+    const menuButton = onMenu ? document.createElement('button') : null;
+    if (menuButton) {
+        menuButton.type = 'button';
+        menuButton.className = 'ds-select-row__menu';
+        menuButton.setAttribute('aria-haspopup', 'menu');
+        menuButton.setAttribute('aria-label', menuLabel);
+        menuButton.title = menuLabel;
+        menuButton.append(icon('fa-solid fa-ellipsis-vertical'));
+        menuButton.addEventListener('click', () => onMenu(menuButton));
+    }
     const extra = suffix ? (Array.isArray(suffix) ? suffix : [suffix]) : [];
-    const result = createSelectRow({ ...options, suffix: [...extra, menuButton] });
+    const result = createSelectRow({ ...options, suffix: [...extra, ...(menuButton ? [menuButton] : [])] });
     result.row.classList.add('ds-profile-row');
     return { ...result, menuButton };
 }

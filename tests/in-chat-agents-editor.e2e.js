@@ -1029,7 +1029,7 @@ for (const width of [1440, 390]) {
     );
 
     test(
-        `${width}px dashboard and panel public hooks open detail and Back restores origins`,
+        `${width}px overview and panel public hooks open detail and Back restores origins`,
         async ({
             page,
             baseURL,
@@ -1039,7 +1039,11 @@ for (const width of [1440, 390]) {
             await page.evaluate(() => {
                 void import('/scripts/extensions/in-chat-agents/companion/companion-dashboard.js').then(module => module.openCompanionDashboard());
             });
-            await dialog.locator('[data-agent-id="editor-companion"] [data-action="edit"]').click();
+            const overview = editor.root.locator('[data-agent-page="companions"]');
+            const companion = overview.locator('[data-companion-key="companion:editor-companion"]');
+            await expect(overview).toBeVisible();
+            await expect(dialog).toHaveCount(0);
+            await companion.click();
             await expect(dialog).toHaveCount(0);
             await expect(editor.name).toHaveValue('Editor companion');
             await editor.name.fill('Origin guarded');
@@ -1055,21 +1059,12 @@ for (const width of [1440, 390]) {
                 exact: true,
             }).click();
             await dialog.locator('.sb-editor-discard').click();
-            await expect(dialog.locator('.ica--cdash')).toBeVisible();
-            await expect(dialog.locator('[data-agent-id="editor-companion"] [data-action="edit"]')).toBeFocused();
-            await dialog.locator('[data-action="new-companion"]').click();
-            await expect(dialog).toHaveCount(0);
-            await expect(editor.detail.locator('[data-sb-section="companion-output"]')).toBeVisible();
-            await expect(editor.save).toBeEnabled();
-            await editor.back();
-            await expect(dialog.locator('.ica--cdash')).toBeVisible();
-            await dialog.locator('[data-action="ai-maker"]').click();
-            await expect(dialog.locator('#ica--companion-maker-goal')).toBeVisible();
-            await dialog.locator('.popup-button-cancel').click();
-            await expect(dialog).toHaveCount(0);
-            await editor.back();
-            await expect(dialog.locator('.ica--cdash')).toBeVisible();
-            await dialog.locator('.popup-button-ok').click();
+            await expect(overview).toBeVisible();
+            await expect(companion).toBeFocused();
+            await expect(overview.getByRole('button', { name: 'Run All on Last Message', exact: true })).toBeVisible();
+            await expect(overview.getByRole('button', { name: 'Open Companion Panel', exact: true })).toBeVisible();
+            await expect(overview.locator('[data-action="to-companion"], [data-action="new-companion"], [data-action="ai-maker"]')).toHaveCount(0);
+            await overview.getByRole('button', { name: 'Back', exact: true }).click();
             await page.locator('#sb-settings-close').click();
             await page.evaluate(async () => (await import('/scripts/extensions/in-chat-agents/companion/companion-panel.js')).openCompanionPanel());
             const panel = page.locator('#ica--tracker-panel');

@@ -80,6 +80,17 @@ function mount(options) {
 const pickerOptions = () => [...document.querySelectorAll('.sb-picker__list [role="option"]')];
 
 describe('createSelectRow', () => {
+    test('profile rows omit the menu unless onMenu is supplied', () => {
+        const withoutMenu = createProfileRow({ select: makeSelect(), label: 'Profile', field: 'profile' });
+        expect(withoutMenu.menuButton).toBeNull();
+        expect(withoutMenu.row.querySelector('.ds-select-row__menu')).toBeNull();
+        const onMenu = jest.fn();
+        const withMenu = createProfileRow({ select: makeSelect(), label: 'Profile', field: 'other-profile', menuLabel: 'Profile Menu', onMenu });
+        withMenu.menuButton.click();
+        expect(onMenu).toHaveBeenCalledWith(withMenu.menuButton);
+        withoutMenu.destroy();
+        withMenu.destroy();
+    });
     test('ordered multiple choices keep routing priority in pick order, including after deselection', () => {
         const select = makeSelect({ multiple: true });
         const { trigger } = mount({ select, ordered: true });

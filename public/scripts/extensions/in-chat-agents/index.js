@@ -87,15 +87,14 @@ import {
     getConnectionManagerRequestService,
     populateConnectionProfileSelect,
 } from './profile-utils.js';
-import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, getLatestValidCompanionMessageIndex, runTrackerCompanionsOnMessage, syncCompanionChatHistoryConfig } from './companion/companion-runner.js';
+import { collectRecentCompanionResults, getCompanionResults, initCompanionRunner, getLatestValidCompanionMessageIndex, runTrackerCompanionsOnMessage, runCompanionsOnMessage, COMPANION_RESULTS_UPDATED_EVENT, syncCompanionChatHistoryConfig } from './companion/companion-runner.js';
+import { resolveCompanionContentMacros } from './companion/companion-macros.js';
+import { createAgentSettingsControls } from './settings-controls.js';
 import { getCompanionReferenceIds } from './companion/companion-shared.js';
 import { initCompanionCardUi, updateCompanionButtonVisibility } from './companion/companion-ui.js';
 import {
     configureCompanionDashboard,
     initCompanionWandMenuItem,
-    openCompanionDashboard,
-    captureCompanionDashboardOrigin,
-    restoreCompanionDashboardOrigin,
 } from './companion/companion-dashboard.js';
 import {
     configureCompanionPanel,
@@ -105,10 +104,11 @@ import {
     isConversationModeActive,
     captureCompanionPanelOrigin,
     restoreCompanionPanelOrigin,
+    openCompanionPanel,
 } from './companion/companion-panel.js';
-import { attachTextareaFullscreen } from './textarea-fullscreen.js';
 import { t } from '../../i18n.js';
 import { confirmDestructiveAction } from '../../sillybunny-delete-confirm.js';
+import { buildSettingsPageModel } from './ui/settings-page-controller.js';
 import {
     buildAgentFromTemplate as buildCatalogueAgentFromTemplate,
     buildUpdatedAgentFromTemplate as buildCatalogueUpdatedAgentFromTemplate,
@@ -614,11 +614,10 @@ async function convertTrackersFromList() {
     renderAgentList();
 }
 
-async function registerAgentListUi(settingsStore) {
+async function registerAgentListUi(settingsStore, settingsFields) {
     const ui = await import('./ui/agent-list.js');
     const { objectNavigation } = await import('../../sillybunny-editor/object-navigation.js');
     for (const [kind, captureState, restoreOrigin] of [
-        ['companion-dashboard', captureCompanionDashboardOrigin, restoreCompanionDashboardOrigin],
         ['companion-panel', captureCompanionPanelOrigin, restoreCompanionPanelOrigin],
     ]) {
         objectNavigation.register(
@@ -644,7 +643,70 @@ async function registerAgentListUi(settingsStore) {
     ui.registerAgentsPanelAdapter({
         categories: AGENT_CATEGORIES,
         subcategories: AGENT_SUBCATEGORIES,
-        settingsFooter: settingsStore.querySelector('[data-sb-agent-global-settings]'),
+        settings: {
+            fields: settingsFields,
+            controls: new Map(settingsFields.map(field => [field.id, document.getElementById(field.id)])),
+            controlStore: settingsStore,
+            readSettings: getGlobalSettings,
+            applySetting(key, value) {
+                const field = buildSettingsPageModel().groups.flatMap(group => group.rows).find(field => field.key === key);
+                if (!field) throw new Error(`Unknown Agents setting: ${key}`);
+                const input = document.getElementById(field.id);
+                if (field.kind === 'switch') input.checked = value;
+                else input.value = value;
+                input.dispatchEvent(new Event(field.event, { bubbles: true }));
+            },
+            resetBundledAgents: resetBundledAgentsFromSettings,
+        },
+        companions: {
+            readSnapshot: () => ({ agents: getVisibleInChatAgents(), chat, enabled: areAgentsGloballyEnabled(), conversationMode: isConversationModeActive() }),
+            selectors: {
+                getResults: getCompanionResults, getCompanionConfig, isCompanionAgent, isToolAgent,
+                isAgentEnabledForCurrentScope, getAgentById, resolveContent: resolveCompanionContentMacros,
+            },
+            subscribeResults(handler) {
+                eventSource.on(COMPANION_RESULTS_UPDATED_EVENT, handler);
+                return () => eventSource.removeListener(COMPANION_RESULTS_UPDATED_EVENT, handler);
+            },
+            getLatestMessageIndex: getLatestValidCompanionMessageIndex,
+            runAll: runCompanionsOnMessage,
+            openEditor: id => openEditor(id, {}, 'companion-dashboard'),
+            async openPanel() {
+                await ui.closeAgentDetail();
+                document.getElementById('sb-settings-close')?.click();
+                openCompanionPanel();
+            },
+            async jumpToMessage(index) {
+                await ui.closeAgentDetail();
+                document.getElementById('sb-settings-close')?.click();
+                const message = document.querySelector(`.mes[mesid="${index}"]`);
+                const chatRoot = document.getElementById('chat');
+                if (!message || !chatRoot?.contains(message)) {
+                    toastr.info('That message is above the rendered window. Scroll up in the chat to load it.');
+                    return;
+                }
+                const chatRect = chatRoot.getBoundingClientRect();
+                const rect = message.getBoundingClientRect();
+                const top = chatRoot.scrollTop + rect.top - chatRect.top - (chatRect.height - rect.height) / 2;
+                chatRoot.scrollTo({
+                    top: Math.min(Math.max(top, 0), Math.max(0, chatRoot.scrollHeight - chatRoot.clientHeight)),
+                    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+                });
+            },
+            notify(code) {
+                if (code === 'no-message') toastr.warning('No message yet to run companions on.');
+                else if (code === 'no-companions-ran') toastr.info('No companion agents ran for this message.');
+            },
+        },
+        groups: {
+            getGroups, deleteGroup, createGroup: createCustomGroup,
+            async turnOnGroup(group) {
+                const result = await turnOnGroup(group, getCatalogueContext());
+                syncToolAgentRegistrations();
+                renderAgentList();
+                return result;
+            },
+        },
         importFile: settingsStore.querySelector('#ica--importFile'),
         getEntries: getAgentListEntries,
         state: () => ({
@@ -676,10 +738,10 @@ async function registerAgentListUi(settingsStore) {
         fixTrackers: fixTrackersFromList,
         convertTrackers: convertTrackersFromList,
         exportAll: handleExportAll,
-        openCompanions: openCompanionDashboard,
         getGroups,
         turnOnGroup: async group => {
-            await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList();
+            const result = await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList();
+            return result;
         },
         deleteGroup,
         createGroup: createCustomGroup,
@@ -718,6 +780,7 @@ async function registerAgentListUi(settingsStore) {
                             items: [
                                 {
                                     label: t`Connections`,
+                                    icon: 'fa-solid fa-plug',
                                     onSelect: async () => {
                                         if (await confirmActiveEditorLeave()) await globalThis.SillyBunnyShell.openTab('left', 'connections');
                                     },
@@ -1098,17 +1161,6 @@ function refreshGenerationUi(active = isAgentGenerationActive()) {
 
 function populateSeparateRecentChatsToggle() {
     $('#ica--separateRecentChats').prop('checked', Boolean(getGlobalSettings().separateRecentChats));
-}
-
-async function toggleAgentEnabled(agent) {
-    setAgentEnabledForCurrentScope(agent, !isAgentEnabledForCurrentScope(agent));
-    if (isPathfinderAgent(agent) && !isAgentEnabledForCurrentScope(agent)) cancelPathfinderSummary();
-    await saveAgent(agent);
-    refreshRegexSnapshotsForAgent(agent.id);
-    persistExtensionState();
-    syncToolAgentRegistrations();
-    renderAgentList();
-    updateCompanionButtonVisibility();
 }
 
 const TRACKER_COMPANION_AUTO_LOOP_VERSION = 4;
@@ -3429,21 +3481,38 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 
 // ===================== Initialization =====================
 
-(async function () {
-    const settingsHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'settings');
-    if (!settingsHtml) {
-        console.warn('[InChatAgents] Could not load the settings template.');
+async function resetBundledAgentsFromSettings() {
+    const agents = getVisibleInChatAgents();
+    const visibleDefaultBundledTemplates = getDefaultBundledTemplates()
+        .filter(template => !HIDDEN_TEMPLATE_BROWSER_IDS.has(String(template?.id ?? '').trim()));
+    const missingDefaultBundledTemplates = visibleDefaultBundledTemplates
+        .filter(template => !hasMatchingAgentSnapshot(buildAgentFromTemplate(template), agents));
+    const bundledCount = agents.filter(a => findTemplateForAgent(a)).length + missingDefaultBundledTemplates.length;
+    if (bundledCount === 0) {
+        toastr.info('No bundled agents found to reset.');
         return;
     }
+    if (!await confirmDestructiveAction({
+        text: bundledCount === 1
+            ? t`Reset 1 bundled agent to their original template defaults? Custom agents will not be affected. This cannot be undone.`
+            : t`Reset ${bundledCount} bundled agents to their original template defaults? Custom agents will not be affected. This cannot be undone.`,
+        confirmLabel: t`Reset`,
+    })) return;
+    const result = await resetBundledAgents(getCatalogueContext());
+    const resetCount = result.reset + result.added;
+    toastr.success(resetCount === 1
+        ? t`Reset 1 bundled agent to defaults.`
+        : t`Reset ${resetCount} bundled agents to defaults.`);
+    renderAgentList();
+    return result;
+}
 
-    const settingsStore = document.createElement('div');
-    settingsStore.id = 'ica--settings';
-    settingsStore.hidden = true;
-    const settingsTemplate = $(settingsHtml);
-    settingsStore.append(settingsTemplate.find('[data-sb-agent-global-settings]')[0], settingsTemplate.find('#ica--importFile')[0]);
+(async function () {
+    const bulkEditHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'bulk-edit');
+    if (!bulkEditHtml) return;
+    const { store: settingsStore, fields: settingsFields } = createAgentSettingsControls();
     document.body.append(settingsStore);
-    document.body.append(settingsTemplate.filter('#ica--bulkEditPopup')[0]);
-    attachTextareaFullscreen($('#ica--settings'));
+    document.body.append($(bulkEditHtml)[0]);
 
     const savedState = extension_settings.inChatAgents;
     const legacyGroups = Array.isArray(savedState?.groups)
@@ -3594,19 +3663,11 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     }
 
     // The shell may already be mounted; registration reveals it only after initialization.
-    await registerAgentListUi(settingsStore);
+    await registerAgentListUi(settingsStore, settingsFields);
     renderAgentList();
     initCompanionCardUi();
     configureCompanionDashboard({
-        openEditor: agentId => openEditor(agentId, {}, 'companion-dashboard'),
-        openCompanionDraftEditor: ({ autoOpenCompanionMaker = false } = {}) => openEditor(null, {
-            draft: buildCompanionDraftAgent(),
-            autoOpenCompanionMaker,
-        }, 'companion-dashboard'),
-        toggleAgentEnabled,
-        convertAgent: applyAgentExecutionConversion,
-        getVisibleAgents: getVisibleInChatAgents,
-        getLastAssistantMessageIndex,
+        openOverview: async () => (await import('./ui/agent-list.js')).openCompanionsOverview(),
     });
     initCompanionWandMenuItem();
     configureCompanionPanel({
@@ -3698,26 +3759,6 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     $('#ica--helperPrefillMessages').on('input', function () {
         setGlobalSettings({ helperPrefillMessages: this.value });
         persistExtensionState();
-    });
-    $('#ica--resetDefaults').on('click', async () => {
-        const agents = getVisibleInChatAgents();
-        const visibleDefaultBundledTemplates = getDefaultBundledTemplates()
-            .filter(template => !HIDDEN_TEMPLATE_BROWSER_IDS.has(String(template?.id ?? '').trim()));
-        const missingDefaultBundledTemplates = visibleDefaultBundledTemplates
-            .filter(template => !hasMatchingAgentSnapshot(buildAgentFromTemplate(template), agents));
-        const bundledCount = agents.filter(a => findTemplateForAgent(a)).length + missingDefaultBundledTemplates.length;
-        if (bundledCount === 0) {
-            toastr.info('No bundled agents found to reset.');
-            return;
-        }
-        if (!await confirmDestructiveAction({
-            text: `Reset ${bundledCount} bundled agent${bundledCount !== 1 ? 's' : ''} to their original template defaults? Custom agents will not be affected. This cannot be undone.`,
-            confirmLabel: t`Reset`,
-        })) return;
-        const { reset, added } = await resetBundledAgents(getCatalogueContext());
-        const resetCount = reset + added;
-        toastr.success(`Reset ${resetCount} bundled agent${resetCount !== 1 ? 's' : ''} to defaults.`);
-        renderAgentList();
     });
     // Refresh profiles when chat changes (profiles may have been added/removed)
     const refreshProfileUi = () => {

@@ -106,7 +106,7 @@ describe('SillyBunny Connections panel', () => {
     });
 
     test('the shell leaves Connections provider expanders under upstream control', () => {
-        expect(tabsSource).toMatch(/SB_COLLAPSIBLE_DRAWER_TAB_IDS = .*\['extensions', 'agents', 'connections'\]/);
+        expect(tabsSource).toMatch(/SB_COLLAPSIBLE_DRAWER_TAB_IDS = .*\['extensions', 'connections'\]/);
     });
 
     test('the mobile model filter is not injected into a shared searchable picker row', () => {

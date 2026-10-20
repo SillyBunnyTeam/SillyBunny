@@ -203,6 +203,7 @@ beforeAll(async () => {
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
+        COMPANION_RESULTS_UPDATED_EVENT: 'in_chat_agent_companion_results_updated',
         agentHasConnectedCompanionDependencies: jest.fn(() => false),
         collectRecentCompanionResults: jest.fn(() => []),
         getCompanionResults: jest.fn(() => ({})),
@@ -212,6 +213,7 @@ beforeAll(async () => {
         initCompanionRunner: jest.fn(),
         runConnectedCompanionsOnMessage: jest.fn(async () => []),
         runTrackerCompanionsOnMessage: jest.fn(async () => []),
+        runCompanionsOnMessage: jest.fn(async () => ({})),
         syncCompanionChatHistoryConfig: jest.fn(() => 0),
     }));
 
