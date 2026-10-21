@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import {
     createRow,
     createSwitchRow,
+    createCheckRow,
     createComboRow,
     createSpinRow,
     createEntryRow,
@@ -48,6 +49,7 @@ function assertAssociation({ row, control }, label) {
 
 const controlFactories = [
     ['switch', createSwitchRow, true, false],
+    ['check', createCheckRow, true, false],
     ['combo', options => createComboRow({ options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], ...options }), 'a', 'b'],
     ['spin', createSpinRow, 3, 4],
     ['entry', createEntryRow, 'first', 'second'],
@@ -300,6 +302,47 @@ describe('createSwitchRow', () => {
         assertAssociation(result, 'Enabled');
         change(control);
         expect(existingChange).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('createCheckRow', () => {
+    test('puts a plain native checkbox at the end of a whole-row label', () => {
+        const onChange = jest.fn();
+        const { row, control } = createCheckRow({ label: 'Model', subtitle: 'Helpful description', field: 'model', checked: true, onChange });
+        expect(row.tagName).toBe('LABEL');
+        expect(row.className).toBe('ds-row ds-row-check');
+        expect(row.htmlFor).toBe(control.id);
+        expect(row.lastChild).toBe(control);
+        expect(control.type).toBe('checkbox');
+        expect(control.classList.contains('sb-switch')).toBe(false);
+        expect(control.hasAttribute('role')).toBe(false);
+        expect(control.hasAttribute('aria-checked')).toBe(false);
+        assertAssociation({ row, control }, 'Model');
+        control.checked = false;
+        change(control);
+        expect(onChange).toHaveBeenCalledWith(false);
+    });
+
+    test('adopting an upstream checkbox keeps its id, name, value and listeners, and drops switch semantics', () => {
+        const control = input('checkbox');
+        control.value = 'api-url';
+        control.classList.add('sb-switch');
+        control.setAttribute('role', 'switch');
+        const existing = jest.fn();
+        control.addEventListener('input', existing);
+        const result = createCheckRow({ label: 'API URL', field: 'exclude', input: control });
+        expect(result.control).toBe(control);
+        expect([control.id, control.name, control.value]).toEqual(['existing-checkbox', 'preserved-name', 'api-url']);
+        expect(control.classList.contains('sb-switch')).toBe(false);
+        expect(control.hasAttribute('role')).toBe(false);
+        control.dispatchEvent(new Event('input'));
+        expect(existing).toHaveBeenCalledTimes(1);
+        result.setValue(false);
+        expect(result.getValue()).toBe(false);
+    });
+
+    test('rejects a non-checkbox input', () => {
+        expect(() => createCheckRow({ label: 'Title', field: 'field', input: input('text') })).toThrow(TypeError);
     });
 });
 

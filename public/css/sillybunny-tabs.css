@@ -6737,30 +6737,30 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     flex: 1 1 190px;
 }
 
-.ds-row-switch {
+:is(.ds-row-switch, .ds-row-check) {
     cursor: pointer;
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.ds-row-switch > input[type='checkbox'] {
+:is(.ds-row-switch, .ds-row-check) > input[type='checkbox'] {
     order: 1;
     flex: 0 0 auto;
     margin: 0;
     margin-inline-start: auto;
 }
 
-.ds-row-switch:has(input:disabled) {
+:is(.ds-row-switch, .ds-row-check):has(input:disabled) {
     cursor: not-allowed;
 }
 
 @media (hover: hover) {
-    .ds-row-switch:not(:has(input:disabled)):hover,
+    :is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):hover,
     .ds-row-expander > summary.ds-row:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-.ds-row-switch:not(:has(input:disabled)):active,
+:is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):active,
 .ds-row-expander > summary.ds-row:active {
     background: var(--sb-flat-active-bg);
 }
@@ -6849,13 +6849,14 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 
 @media (prefers-reduced-motion: reduce) {
     .ds-row-switch,
+    .ds-row-check,
     .ds-row-expander > summary.ds-row,
     .ds-row-expander > summary.ds-row::after {
         transition: none;
     }
 }
 
-body.reduced-motion :is(.ds-row-switch, .ds-row-expander > summary.ds-row),
+body.reduced-motion :is(.ds-row-switch, .ds-row-check, .ds-row-expander > summary.ds-row),
 body.reduced-motion .ds-row-expander > summary.ds-row::after {
     transition: none;
 }

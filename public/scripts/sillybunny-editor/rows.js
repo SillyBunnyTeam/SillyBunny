@@ -173,11 +173,36 @@ export function createSwitchRow({ label, subtitle, field, id, checked, disabled,
     const control = prepareInput(input, 'checkbox', id);
     control.classList.add('sb-switch');
     control.setAttribute('role', 'switch');
-    // ARIA in HTML forbids aria-checked on a native checkbox; `checked` is the switch state.
+    return checkboxRow('ds-row-switch', { label, subtitle, field, checked, disabled, onChange, control });
+}
+
+/**
+ * One item of a pick-several list: a native checkbox at the end, and the whole row toggles it.
+ * Same contract as {@link createSwitchRow}; use a switch row for a single on/off setting.
+ * @param {object} options
+ * @param {string} options.label
+ * @param {string} options.field
+ * @param {string} [options.id]
+ * @param {string} [options.subtitle]
+ * @param {boolean} [options.checked]
+ * @param {boolean} [options.disabled]
+ * @param {(checked: boolean) => void} [options.onChange]
+ * @param {HTMLInputElement} [options.input]
+ * @returns {object}
+ */
+export function createCheckRow({ label, subtitle, field, id, checked, disabled, onChange, input }) {
+    const control = prepareInput(input, 'checkbox', id);
+    control.classList.remove('sb-switch');
+    control.removeAttribute('role');
+    return checkboxRow('ds-row-check', { label, subtitle, field, checked, disabled, onChange, control });
+}
+
+function checkboxRow(variant, { label, subtitle, field, checked, disabled, onChange, control }) {
+    // ARIA in HTML forbids aria-checked on a native checkbox; `checked` is the state.
     control.removeAttribute('aria-checked');
     if (checked !== undefined) control.checked = Boolean(checked);
     if (disabled !== undefined) control.disabled = Boolean(disabled);
-    const row = element('label', 'ds-row ds-row-switch');
+    const row = element('label', `ds-row ${variant}`);
     markField(row, field);
     row.htmlFor = control.id;
     row.append(textColumn(label, subtitle, control), control);
