@@ -27,6 +27,8 @@ import {
     writeExtensionField,
 } from '../../extensions.js';
 import { selected_group } from '../../group-chats.js';
+// SillyBunny: adopt prompt review fields into the scrolling dialog body.
+import { utilityFormOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
 import {
     clamp,
     debounce,
@@ -842,16 +844,21 @@ async function refinePrompt(prompt, args = null) {
             });
         }
 
+        // SillyBunny: Popup still owns prompt results and optional custom inputs.
+        const dialogOptions = utilityFormOptions({ mainLabel: t`Prompt` });
         const refinedPrompt = await Popup.show.input(
             t`Review and edit the prompt:`,
             t`Press "Cancel" to abort the image generation.`,
             prompt.trim(),
             {
+                ...dialogOptions,
                 rows: 8,
                 okButton: t`Continue`,
                 cancelButton: t`Cancel`,
                 customInputs,
                 onClose: (popup) => {
+                    // SillyBunny: release row IDs while retaining the original prompt/result handling.
+                    dialogOptions.onClose(popup);
                     if (!popup.result || !(popup.inputResults instanceof Map) || !args) {
                         return;
                     }

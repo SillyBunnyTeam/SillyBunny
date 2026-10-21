@@ -7208,6 +7208,25 @@ dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
     min-width: 0;
 }
 
+.sb-dialog .sb-dialog-rows .ds-row-entry__caption {
+    margin-block-start: 6px;
+}
+
+/* Icon results share the Popup body scroller rather than an independently clipped grid. */
+dialog.popup.sb-dialog.sb-icon-picker {
+    height: auto;
+}
+
+.sb-icon-picker .faPicker-container {
+    overflow: visible;
+    gap: 16px;
+}
+
+.sb-icon-picker .faPicker {
+    flex: none;
+    overflow: visible;
+}
+
 .sb-dialog .ds-row-suffix :is(input[type='number'], input.ds-spin) {
     width: 6em;
     min-width: 0;

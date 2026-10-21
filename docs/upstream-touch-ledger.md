@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Utility dialogs - shared content rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/welcome-screen.js`; `public/scripts/personas.js`; `public/scripts/secrets.js`; `public/scripts/scrapers.js`; `public/scripts/utils.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/extensions/quick-reply/src/QuickReplySet.js`; `public/scripts/extensions/quick-reply/style.css`; `public/scripts/extensions/stable-diffusion/index.js`; `public/css/sillybunny-theme.css`. Templates remain unchanged. |
+| Area | Recent Chats settings, persona creation, Add Secret, regex import target, Quick Reply transfer/copy, image prompt review, web/wiki/transcript scrapers, icon picker. |
+| Divergence reason | Dialog-tier utility forms need adopted rows, trailing controls, reachable content, keyboard-accessible choices and P-1 responses. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/utility-dialogs.js`; shared rows, toggle-row, select-row and Popup frame. |
+| Adapter shape | Keep source control identities, IDs/names/values, native handlers, Popup mainInput/inputResults and upstream validation. Adopt numeric inputs without adding normalization. Copy uses an existing custom response appended after the main response so Transfer remains the default; forward select-trigger shortcuts. Load the transfer adapter lazily to keep the set model free of UI-only imports. Icon search stays in the body because Popup has no search option; icon buttons gain keyboard activation and share the body scroller. Add Secret retains Popup's source textarea (upstream has neither a password input nor autocomplete-off). Preserve YouTube's existing post-close language-listener timing. |
+| Protecting tests | `tests/unit/utility-dialogs.test.js`; `tests/utility-dialogs.e2e.js`; full Jest; dialog-tier, popup-scroll, misc-form-dialogs, persona-editor, character-list, welcome-starter-pack-actions and quick-reply-bar-layout E2E. |
+| Validation | Root lint; full Jest; diff check; frontend budgets; Chromium desktop/mobile E2E with intercepted settings, secret, avatar, Quick Reply, scraper and image routes. Utility E2E blocks service workers so request interception also covers extension modules. |
+| Rollback path | Remove adapter imports/options and callback cleanup calls; restore the inline Quick Reply Copy response and source select focus; remove scoped icon/transfer CSS. Keep templates and upstream persistence/results unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 3.15–3.21. |
+| Owner | UI integrator. |
+
 ### Miscellaneous form dialogs - shared content rows
 | Field | Value |
 | --- | --- |

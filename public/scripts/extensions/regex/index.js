@@ -12,6 +12,8 @@ import { allowPresetScripts, allowScopedScripts, disallowPresetScripts, disallow
 import { t } from '../../i18n.js';
 import { accountStorage } from '../../util/AccountStorage.js';
 import { getPresetManager } from '../../preset-manager.js';
+// SillyBunny: adopt the import target radios into a shared segmented row.
+import { regexImportOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
 
 // Re-exports for legacy extensions
 export { getRegexScripts };
@@ -1754,7 +1756,8 @@ export async function init() {
         template.find('#regex_import_target_scoped').on('input', () => (target = SCRIPT_TYPES.SCOPED));
         template.find('#regex_import_target_preset').on('input', () => (target = SCRIPT_TYPES.PRESET));
 
-        await callGenericPopup(template, POPUP_TYPE.TEXT);
+        // SillyBunny: retain the native target input handlers and import-on-close behavior.
+        await callGenericPopup(template, POPUP_TYPE.TEXT, '', regexImportOptions(template));
 
         const inputElement = this instanceof HTMLInputElement && this;
         for (const file of inputElement.files) {

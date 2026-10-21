@@ -29,6 +29,8 @@ import {
     this_chid,
 } from '../script.js';
 import { power_user } from './power-user.js';
+// SillyBunny: adopt persona name/title fields into shared entry rows.
+import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import {
     PAGINATION_TEMPLATE,
@@ -738,6 +740,8 @@ export async function createPersona(avatarId) {
 
 async function createDummyPersona() {
     const popup = new Popup(t`Enter a name for this persona:`, POPUP_TYPE.INPUT, '', {
+        // SillyBunny: keep the mainInput and optional title inputResults unchanged.
+        ...utilityFormOptions({ title: t`Enter a name for this persona:`, mainLabel: t`Name`, clearContent: true }),
         customInputs: [{
             id: 'persona_title',
             type: 'text',

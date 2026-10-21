@@ -5,6 +5,8 @@ import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { isValidUrl } from './utils.js';
+// SillyBunny: preserve scraper templates and listeners while adopting shared dialog rows.
+import { scraperDialogOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 
 /**
  * @typedef {Object} Scraper
@@ -172,7 +174,8 @@ class WebScraper {
      */
     async scrape() {
         const template = $(await renderExtensionTemplateAsync('attachments', 'web-scrape', {}));
-        const linksString = await callGenericPopup(template, POPUP_TYPE.INPUT, '', { wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel', rows: 4 });
+        // SillyBunny: move the upstream main textarea into a full-width entry row.
+        const linksString = await callGenericPopup(template, POPUP_TYPE.INPUT, '', { ...scraperDialogOptions(template, 'web'), wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel', rows: 4 });
 
         if (!linksString) {
             return;
@@ -285,7 +288,8 @@ class MediaWikiScraper {
             output = String($(this).val());
         });
 
-        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel' });
+        // SillyBunny: adopt the URL/filter entries and output radios without changing input events.
+        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { ...scraperDialogOptions(template, 'mediawiki'), wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel' });
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -392,7 +396,8 @@ class FandomScraper {
             output = String($(this).val());
         });
 
-        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel' });
+        // SillyBunny: keep Fandom parsing and file output upstream; only the form presentation changes.
+        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { ...scraperDialogOptions(template, 'fandom'), wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel' });
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -528,7 +533,8 @@ class YouTubeScraper {
     async scrape() {
         let lang = '';
         const template = $(await renderExtensionTemplateAsync('attachments', 'youtube-scrape', {}));
-        const videoUrl = await callGenericPopup(template, POPUP_TYPE.INPUT, '', { wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel' });
+        // SillyBunny: adopt both entries; leave the upstream post-close language listener timing intact.
+        const videoUrl = await callGenericPopup(template, POPUP_TYPE.INPUT, '', { ...scraperDialogOptions(template, 'youtube'), wide: false, large: false, okButton: 'Scrape', cancelButton: 'Cancel' });
 
         template.find('input[name="youtubeLanguageCode"]').on('input', function () {
             lang = String($(this).val()).trim();

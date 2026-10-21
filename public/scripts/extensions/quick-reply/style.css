@@ -1216,3 +1216,14 @@
   font-weight: bold;
   box-shadow: 0 0 10px;
 }
+
+/* SillyBunny: shared transfer responses retain one suggested action and a neutral Copy footer. */
+.popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy) {
+  flex-direction: row;
+  white-space: normal;
+  transition: none;
+}
+
+.popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy)::after {
+  content: none;
+}

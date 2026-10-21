@@ -33,6 +33,8 @@ import { renderTemplateAsync } from './templates.js';
 import { isAdmin } from './user.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { clamp, flashHighlight, isElementInViewport, sortMoments, timestampToMoment } from './utils.js';
+// SillyBunny: adopt Recent Chats custom inputs into shared spin rows.
+import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 
 const assistantAvatarKey = 'assistant';
 const pinnedChatsKey = 'pinnedChats';
@@ -2323,11 +2325,16 @@ async function openRecentChatsSettingsPopup() {
         step: 1,
     };
 
+    // SillyBunny: retain Popup's numeric validation, inputResults collection and row cleanup.
+    const dialogOptions = utilityFormOptions({ title: t`Recent Chats Settings`, clearContent: true });
     await callGenericPopup(t`Recent Chats Settings`, POPUP_TYPE.CONFIRM, null, {
+        ...dialogOptions,
         okButton: t`Save`,
         cancelButton: t`Cancel`,
         customInputs: [maxRecentChatsInput, collapsedRecentChatsInput],
         onClose: (popup) => {
+            // SillyBunny: release adopted row IDs before the original persistence callback.
+            dialogOptions.onClose(popup);
             if (!popup.result) {
                 return;
             }

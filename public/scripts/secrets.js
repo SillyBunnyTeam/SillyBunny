@@ -15,6 +15,8 @@ import { textgen_types } from './textgen-settings.js';
 import { getCurrentUserHandle } from './user.js';
 import { copyText, isTrueBoolean, uuidv4 } from './utils.js';
 import { accountStorage } from './util/AccountStorage.js';
+// SillyBunny: keep Add Secret's upstream input identity inside shared entry rows.
+import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 
 export const SECRET_KEYS = {
     HORDE: 'api_key_horde',
@@ -666,13 +668,18 @@ async function openKeyManagerDialog(key) {
     template.find('button[data-action="add-secret"]').on('click', async function () {
         let label = '';
         let result = POPUP_RESULT.CANCELLED;
+        // SillyBunny: preserve the source textarea and collection without mirroring its value.
+        const dialogOptions = utilityFormOptions({ mainLabel: t`Secret value (can be empty):`, clearContent: true });
         const value = await Popup.show.input(t`Add Secret`, t`Secret value (can be empty):`, '', {
+            ...dialogOptions,
             customInputs: [{
                 id: 'newSecretLabel',
                 type: 'text',
                 label: t`Label (optional):`,
             }],
             onClose: popup => {
+                // SillyBunny: clean up adopted rows without changing the secret result path.
+                dialogOptions.onClose(popup);
                 if (popup.result) {
                     label = popup.inputResults.get('newSecretLabel').toString().trim();
                     result = popup.result;
