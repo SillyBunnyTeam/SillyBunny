@@ -171,3 +171,27 @@ describe('Custom CSS save state', () => {
         expect(handlerSource).toContain('if (event.key !== \'Enter\' && event.key !== \' \') {');
     });
 });
+
+describe('Custom CSS AI wand keeps edits made during generation', () => {
+    test('the wand checks the result against the CSS it sent before applying it', () => {
+        const handlerSource = requireSection('async function handleCustomCssAiWandClick()', 'function getGoogleFontStylesheetId()');
+        const startIndex = handlerSource.indexOf('const startCss = String(power_user.custom_css ?? \'\');');
+        const resolveIndex = handlerSource.indexOf('const nextCss = await resolveGeneratedCustomCss({ mode: applyMode, startCss, generatedCss });');
+
+        expect(startIndex).toBeGreaterThan(handlerSource.indexOf('if (result !== POPUP_RESULT.AFFIRMATIVE) {'));
+        expect(handlerSource).toContain('currentCss: startCss,');
+        expect(resolveIndex).toBeGreaterThan(-1);
+        expect(resolveIndex).toBeLessThan(handlerSource.indexOf('power_user.custom_css = nextCss;'));
+        expect(handlerSource).toContain('if (nextCss === null) {');
+    });
+
+    test('Replace asks before dropping changes, defaults to Append and keeps Replace last', () => {
+        const resolveSource = requireSection('async function resolveGeneratedCustomCss(', 'async function handleCustomCssAiWandClick()');
+
+        expect(resolveSource).toContain('getGeneratedCustomCss({ mode, startCss, liveCss: power_user.custom_css, generatedCss })');
+        expect(resolveSource).toContain('defaultResult: POPUP_RESULT.AFFIRMATIVE,');
+        expect(resolveSource).toContain('result: POPUP_RESULT.CUSTOM1, classes: [\'red_button\'], appendAtEnd: true');
+        expect(resolveSource).toContain('return appendCustomCss(power_user.custom_css, generatedCss);');
+        expect(resolveSource).toContain('return result === POPUP_RESULT.CUSTOM1 ? generatedCss : null;');
+    });
+});

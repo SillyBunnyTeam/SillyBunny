@@ -77,7 +77,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
-import { buildImportedTheme, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
+import { appendCustomCss, buildImportedTheme, getGeneratedCustomCss, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
@@ -1921,6 +1921,36 @@ function setCustomCssAiWandBusy(isBusy) {
         .toggleClass('fa-spinner fa-spin', isBusy);
 }
 
+/**
+ * Gets the Custom CSS to apply once the AI wand finishes, asking first when Replace would
+ * drop Custom CSS changes made during generation.
+ * @param {object} options Generation state.
+ * @param {string} options.mode Apply mode picked in the wand popup.
+ * @param {string} options.startCss Custom CSS when generation started.
+ * @param {string} options.generatedCss CSS the AI returned.
+ * @returns {Promise<string|null>} CSS to apply, or null to keep the current Custom CSS.
+ */
+async function resolveGeneratedCustomCss({ mode, startCss, generatedCss }) {
+    const nextCss = getGeneratedCustomCss({ mode, startCss, liveCss: power_user.custom_css, generatedCss });
+
+    if (nextCss !== null) {
+        return nextCss;
+    }
+
+    const result = await callGenericPopup(t`lorum ipsum`, POPUP_TYPE.CONFIRM, '', {
+        okButton: t`lorum ipsum`,
+        cancelButton: t`lorum ipsum`,
+        customButtons: [{ text: t`lorum ipsum`, result: POPUP_RESULT.CUSTOM1, classes: ['red_button'], appendAtEnd: true }],
+        defaultResult: POPUP_RESULT.AFFIRMATIVE,
+    });
+
+    if (result === POPUP_RESULT.AFFIRMATIVE) {
+        return appendCustomCss(power_user.custom_css, generatedCss);
+    }
+
+    return result === POPUP_RESULT.CUSTOM1 ? generatedCss : null;
+}
+
 async function handleCustomCssAiWandClick() {
     const button = $('#custom_css_ai_wand');
     if (button.hasClass('is-busy')) {
@@ -1964,6 +1994,8 @@ async function handleCustomCssAiWandClick() {
         return;
     }
 
+    // SillyBunny: Custom CSS stays editable during generation, so the result is checked against the CSS the AI saw.
+    const startCss = String(power_user.custom_css ?? '');
     setCustomCssAiWandBusy(true);
     globalThis.toastr?.info?.('Generating custom CSS...', '', { timeOut: 0, extendedTimeOut: 0 });
     deactivateSendButtons({ markBodyGenerating: false });
@@ -1971,25 +2003,26 @@ async function handleCustomCssAiWandClick() {
     try {
         const generatedCss = await generateCustomCssWithAI({
             instruction,
-            currentCss,
+            currentCss: startCss,
             profileId: effectiveProfileId,
         });
+        globalThis.toastr?.clear?.();
 
         if (!generatedCss.trim()) {
-            globalThis.toastr?.clear?.();
             globalThis.toastr?.error?.('AI returned an empty CSS response.');
             return;
         }
 
-        const nextCss = applyMode === 'append' && currentCss.trim()
-            ? `${currentCss.trimEnd()}\n\n${generatedCss}`
-            : generatedCss;
+        const nextCss = await resolveGeneratedCustomCss({ mode: applyMode, startCss, generatedCss });
+
+        if (nextCss === null) {
+            return;
+        }
 
         $('#customCSS').val(nextCss);
         power_user.custom_css = nextCss;
         applyCustomCSS();
         saveSettingsDebounced();
-        globalThis.toastr?.clear?.();
         globalThis.toastr?.success?.('Generated custom CSS.');
     } catch (error) {
         globalThis.toastr?.clear?.();

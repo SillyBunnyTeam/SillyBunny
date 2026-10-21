@@ -103,3 +103,35 @@ export function shouldConfirmCssReplace(nextTheme, liveCss, themes) {
 
     return !isCssStoredInThemes(themes, liveCss);
 }
+
+/**
+ * Adds CSS below the current Custom CSS, with a blank line between them.
+ * @param {unknown} css Current Custom CSS.
+ * @param {string} addition CSS to add.
+ * @returns {string} Combined CSS.
+ */
+export function appendCustomCss(css, addition) {
+    const currentCss = String(css ?? '');
+    return currentCss.trim() ? `${currentCss.trimEnd()}\n\n${addition}` : addition;
+}
+
+/**
+ * Gets the Custom CSS to apply when an AI wand generation finishes. Append adds the result
+ * below the CSS as it is now, so edits made during generation stay. Replace gives null when
+ * the CSS changed during generation and is not blank, since replacing it would drop those
+ * changes.
+ * @param {object} options Generation state.
+ * @param {string} options.mode Apply mode picked in the wand popup: 'replace' or 'append'.
+ * @param {unknown} options.startCss Custom CSS when generation started.
+ * @param {unknown} options.liveCss Custom CSS now.
+ * @param {string} options.generatedCss CSS the AI returned.
+ * @returns {string|null} CSS to apply, or null when replacing needs confirmation.
+ */
+export function getGeneratedCustomCss({ mode, startCss, liveCss, generatedCss }) {
+    if (mode === 'append') {
+        return appendCustomCss(liveCss, generatedCss);
+    }
+
+    const currentCss = normalizeThemeCss(liveCss);
+    return !currentCss || currentCss === normalizeThemeCss(startCss) ? generatedCss : null;
+}

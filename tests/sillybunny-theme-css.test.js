@@ -4,7 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+    appendCustomCss,
     buildImportedTheme,
+    getGeneratedCustomCss,
     getThemeCustomCss,
     isCssStoredInThemes,
     isThemeCssDirty,
@@ -200,5 +202,44 @@ describe('shouldConfirmCssReplace', () => {
 
     test('does not ask when the theme CSS matches the current CSS', () => {
         expect(shouldConfirmCssReplace({ name: 'Copy', custom_css: 'edited {}' }, ' edited {}\r\n', themes)).toBe(false);
+    });
+});
+
+describe('appendCustomCss', () => {
+    test('adds CSS below the current CSS with one blank line between them', () => {
+        expect(appendCustomCss('a {}\n\n  ', 'b {}')).toBe('a {}\n\nb {}');
+    });
+
+    test('blank Custom CSS takes the addition as is', () => {
+        expect(appendCustomCss(' \n', 'b {}')).toBe('b {}');
+        expect(appendCustomCss(undefined, 'b {}')).toBe('b {}');
+    });
+});
+
+describe('getGeneratedCustomCss', () => {
+    const generatedCss = 'generated {}';
+
+    test('Replace applies the result when the CSS did not change during generation', () => {
+        expect(getGeneratedCustomCss({ mode: 'replace', startCss: 'a {}', liveCss: 'a {}\r\n', generatedCss })).toBe(generatedCss);
+    });
+
+    test('Replace asks when the CSS changed during generation', () => {
+        expect(getGeneratedCustomCss({ mode: 'replace', startCss: 'a {}', liveCss: 'a {}\nb {}', generatedCss })).toBeNull();
+    });
+
+    test('Replace asks when CSS was typed into blank Custom CSS during generation', () => {
+        expect(getGeneratedCustomCss({ mode: 'replace', startCss: '', liveCss: 'typed {}', generatedCss })).toBeNull();
+    });
+
+    test('Replace applies the result when the CSS was cleared during generation', () => {
+        expect(getGeneratedCustomCss({ mode: 'replace', startCss: 'a {}', liveCss: ' ', generatedCss })).toBe(generatedCss);
+    });
+
+    test('Append adds the result below the CSS as it is now', () => {
+        expect(getGeneratedCustomCss({ mode: 'append', startCss: 'a {}', liveCss: 'a {}\nb {}', generatedCss })).toBe('a {}\nb {}\n\ngenerated {}');
+    });
+
+    test('Append to blank Custom CSS gives the result alone', () => {
+        expect(getGeneratedCustomCss({ mode: 'append', startCss: '', liveCss: '', generatedCss })).toBe(generatedCss);
     });
 });
