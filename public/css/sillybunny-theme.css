@@ -6705,6 +6705,12 @@ dialog.popup.sb-dialog > .popup-body {
     padding: 0;
 }
 
+/* Override popup-safari-fix.css without changing its upstream-only sizing branch. */
+body.safari dialog.popup.sb-dialog > .popup-body {
+    height: auto;
+    max-height: none;
+}
+
 dialog.popup.sb-dialog .popup-content {
     flex: 0 0 auto;
     min-height: 0;
@@ -6850,12 +6856,21 @@ dialog.popup.sb-dialog > .sb-dialog__header > .popup-controls {
     display: contents;
 }
 
-dialog.popup.sb-dialog > .sb-dialog__header > .sb-dialog__titles {
+dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) {
+    padding-bottom: var(--sb-popup-response-height, 0px);
+}
+
+dialog.popup.sb-dialog > .sb-dialog__header > .popup-controls > .sb-dialog__bottom-bar {
+    position: absolute;
+    inset: auto 0 0;
+}
+
+dialog.popup.sb-dialog .sb-dialog__header > .sb-dialog__titles {
     grid-column: 2;
     grid-row: 1;
 }
 
-dialog.popup.sb-dialog > .sb-dialog__header .menu_button {
+dialog.popup.sb-dialog .sb-dialog__header > .popup-controls > .menu_button {
     flex: none;
     grid-row: 1;
     width: auto;
@@ -6864,17 +6879,17 @@ dialog.popup.sb-dialog > .sb-dialog__header .menu_button {
     white-space: nowrap;
 }
 
-dialog.popup.sb-dialog > .sb-dialog__header .popup-button-cancel {
+dialog.popup.sb-dialog .sb-dialog__header .popup-button-cancel {
     grid-column: 1;
     justify-self: start;
 }
 
-dialog.popup.sb-dialog > .sb-dialog__header .popup-button-ok {
+dialog.popup.sb-dialog .sb-dialog__header .popup-button-ok {
     grid-column: 3;
     justify-self: end;
 }
 
-dialog.popup.sb-dialog > .sb-dialog__header > .popup-button-close {
+dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close {
     position: static;
     display: grid;
     place-items: center;
@@ -6891,7 +6906,7 @@ dialog.popup.sb-dialog > .sb-dialog__header > .popup-button-close {
     opacity: 1;
 }
 
-dialog.popup.sb-dialog > .sb-dialog__header > .popup-button-close.sb-dialog__back {
+dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close.sb-dialog__back {
     grid-column: 1;
     justify-self: start;
 }
@@ -6908,13 +6923,17 @@ dialog.popup.sb-dialog[data-presentation='sheet'] {
     max-width: none !important;
     max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px - var(--sb-dialog-keyboard-inset, 0px));
     margin: 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sb-popup-response-height, 0px));
     border-width: 1px 0 0;
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
 }
 
 dialog.popup.sb-dialog--window[data-presentation='sheet'] {
     height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px - var(--sb-dialog-keyboard-inset, 0px)) !important;
+}
+
+dialog.popup.sb-dialog[data-presentation='sheet'] > .sb-dialog__header > .popup-controls > .sb-dialog__bottom-bar {
+    bottom: env(safe-area-inset-bottom, 0px);
 }
 
 dialog.popup.sb-dialog > .sb-dialog__handle {
@@ -6941,7 +6960,7 @@ dialog.popup.sb-dialog[data-presentation='sheet'] > .sb-dialog__handle::before {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
 }
 
-dialog.popup.sb-dialog[data-presentation='sheet'] > .sb-dialog__header {
+dialog.popup.sb-dialog[data-presentation='sheet'] .sb-dialog__header {
     padding-top: 16px;
     -webkit-user-select: none;
     user-select: none;
@@ -7181,6 +7200,57 @@ dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
     margin-inline-start: auto;
 }
 
+/* Adopted rows retain caller selectors without inheriting generic checkbox-label spacing. */
+.sb-dialog .ds-row.checkbox_label {
+    min-height: 44px;
+    gap: 12px;
+    padding: 6px 16px;
+}
+
+.sb-dialog .ds-row.checkbox_label:has(.ds-row-subtitle) {
+    min-height: 52px;
+}
+
+.sb-dialog .ds-row.checkbox_label .ds-row-label {
+    line-height: 1.3;
+}
+
+.sb-dialog .ds-row.checkbox_label .ds-row-subtitle {
+    line-height: 1.4;
+}
+
+/* QR's inline Show toggle is not a full-width preferences row. Keep its upstream editor intact. */
+.sb-dialog--window #qr--modalEditor .qr--inputGroup > .checkbox_label {
+    flex: 0 0 auto;
+    width: auto;
+    white-space: nowrap;
+}
+
+.sb-dialog--window #qr--modalEditor .qr--inputGroup > input {
+    min-width: 0;
+}
+
+.sb-dialog--window:has(#qr--modalEditor) > .popup-body {
+    container: sb-qr / inline-size;
+}
+
+@container sb-qr (max-width: 1000px) {
+    dialog.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) {
+        flex: 0 0 auto;
+        flex-direction: column;
+        overflow: visible;
+    }
+
+    dialog.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) > #qr--main {
+        flex: 0 0 auto;
+        overflow: visible;
+    }
+
+    .sb-dialog--window #qr--modalEditor:not(.qr--isExecuting) #qr--modal-messageHolder {
+        min-height: 300px;
+    }
+}
+
 dialog.popup.sb-dialog--alert .popup-content :is(h2, h3) {
     margin-top: 0;
 }
@@ -7308,7 +7378,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 /* Header bar: start | centred title | end, as AdwHeaderBar. */
 .sb-dialog__header {
     display: grid;
-    grid-template-columns: minmax(auto, 1fr) minmax(0, max-content) minmax(auto, 1fr);
+    grid-template-columns: minmax(var(--sb-dialog-header-side, 0px), auto) minmax(0, 1fr) minmax(var(--sb-dialog-header-side, 0px), auto);
     align-items: center;
     gap: 6px;
     flex: 0 0 auto;
@@ -7329,10 +7399,14 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 
 .sb-dialog__header-start {
     justify-content: flex-start;
+    justify-self: start;
+    width: max-content;
 }
 
 .sb-dialog__header-end {
     justify-content: flex-end;
+    justify-self: end;
+    width: max-content;
 }
 
 .sb-dialog__titles {

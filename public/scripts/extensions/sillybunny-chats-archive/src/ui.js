@@ -481,6 +481,7 @@ export async function openArchive(ctx, opener = null) {
 
     try {
         const shown = instance.show();
+        ui.observeLayout();
         void loadRows(ctx, state, ui);
         void loadOrganization(ctx, state, ui);
         await shown;
@@ -510,7 +511,15 @@ function buildRoot(ctx, state) {
     const root = el('div', 'sbca-root');
     root.dataset.sbcaView = 'list';
     root.dataset.sbcaDensity = 'comfortable';
-    const mobileQuery = globalThis.matchMedia('(max-width: 1000px)');
+    // Match the archive's container queries, not the viewport around a narrower Window frame.
+    const mobileQuery = Object.assign(new EventTarget(), { matches: globalThis.matchMedia('(max-width: 1000px)').matches });
+    const layoutObserver = new ResizeObserver(([entry]) => {
+        const width = entry.contentRect.width;
+        const matches = width <= 1000;
+        if (!width || mobileQuery.matches === matches) return;
+        mobileQuery.matches = matches;
+        mobileQuery.dispatchEvent(Object.assign(new Event('change'), { matches: mobileQuery.matches }));
+    });
     const avoidSoftwareKeyboard = globalThis.matchMedia('(max-width: 1000px), (any-pointer: coarse)');
 
     const heading = el('h3', 'sbca-heading', tr(ctx, 'Chat Archive'));
@@ -701,6 +710,9 @@ function buildRoot(ctx, state) {
 
     const ui = {
         root,
+        observeLayout() {
+            layoutObserver.observe(root.closest('.sbca-dialog.sb-dialog--window > .popup-body') ?? document.body);
+        },
         heading,
         search,
         characterMentions,
@@ -886,6 +898,7 @@ function buildRoot(ctx, state) {
         clearTimeout(queryTimer);
         clearTimeout(tagTimer);
         mobileQuery.removeEventListener('change', handleBreakpoint);
+        layoutObserver.disconnect();
         document.removeEventListener('pointerdown', closeOwnerOnOutside);
     };
 
