@@ -224,3 +224,81 @@
     color: var(--sb-input-placeholder);
     overflow-wrap: anywhere;
 }
+
+/* SillyBunny: adapters use one Popup scroller, not the upstream nested folder list. */
+.sb-connection-dialog-content {
+    min-width: 0;
+    margin: 0;
+}
+
+.sb-connection-dialog-content .folder-item {
+    display: block;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+}
+
+.sb-connection-dialog-content .folder-item:not(:last-child) {
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sb-connection-dialog-content .folder-item > .ds-row {
+    border-bottom: 0;
+}
+
+.sb-connection-dialog-content .folder-profile-count {
+    font: inherit;
+    color: inherit;
+}
+
+.sb-connection-dialog-content #add_new_folder {
+    white-space: nowrap;
+    min-height: 44px;
+}
+
+.sb-connection-dialog-content .ds-row-check > input:indeterminate {
+    border-color: var(--sb-accent);
+    background: var(--sb-accent);
+}
+
+.sb-connection-dialog-content .ds-row-check > input:indeterminate::before {
+    transform: scale(1);
+    -webkit-clip-path: inset(40% 0);
+    clip-path: inset(40% 0);
+}
+
+.sb-connection-dialog-content .folder-delete-btn {
+    display: grid;
+    place-items: center;
+    min-width: 34px;
+    min-height: 34px;
+    color: var(--color-danger);
+    opacity: 1;
+}
+
+.sb-connection-dialog-content .folder-delete-btn:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    border-radius: var(--sb-radius-button);
+}
+
+dialog.popup.sb-dialog .sb-connection-dialog-content .popup-input {
+    width: 100%;
+    margin: 0;
+    resize: none;
+    min-height: 46px;
+}
+
+.sb-connection-dialog-content .profile-summary-label::after {
+    content: none;
+}
+
+.sb-connection-dialog-content .ds-row-property__value {
+    overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+    .sb-connection-dialog-content .folder-delete-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}

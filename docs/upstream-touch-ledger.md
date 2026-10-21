@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### `public/scripts/extensions/connection-manager/index.js` and `style.css` - profile dialog rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/connection-manager/index.js`; `public/scripts/extensions/connection-manager/style.css`. Templates remain unchanged. |
+| Area | Connection profile forms, deletion selection, folders, and details. |
+| Divergence reason | Dialog-tier surfaces need trailing pick-several check rows, one scrolling body, adopted name/folder inputs, and immediate-apply Close headers. |
+| Target seam | `public/scripts/extensions/connection-manager/sillybunny-dialogs.js`; shared row and Popup-frame modules. |
+| Adapter shape | Prepare template rows before Popup construction; forward tier/title/defaultResult and lifecycle options. Final destructive confirmations default to Cancel and mark the affirmative destructive. Save and Update keeps its result/action as a neutral footer response. Keep exclusion events, folder-item ancestry, profile saving, and results upstream. Release row IDs on refresh/close. Extension CSS only scopes adapter content. |
+| Protecting tests | `tests/unit/connection-manager-dialogs.test.js`; `tests/unit/sillybunny-editor-rows.test.js`; `tests/connection-manager-dialogs.e2e.js`; connection-profile-change-notice, sillybunny-connections-layout, popup-scroll, and sillybunny-dialog-tiers E2E. |
+| Validation | Root lint; full Jest; frontend budgets; Chromium E2E at desktop, portrait, and landscape sizes. |
+| Rollback path | Remove adapter imports/calls/options and scoped extension CSS; remove the adapter module. Retain upstream templates and persistence handlers. |
+| Last reviewed | 2026-10-22, PR #870 Phase 3.1–3.4. |
+| Owner | UI integrator. |
+
 ### `public/scripts/popup.js` and `public/css/popup.css` - shared dialog frame hook
 | Field | Value |
 | --- | --- |
@@ -31,7 +45,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Popup lifecycle and dialog presentation. |
 | Divergence reason | First-party and extension popups need a shared Alert/Dialog/Window frame, reliable scrolling, mobile sheets, and trailing switch rows while preserving the public Popup API and result semantics. |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; tier CSS in `public/css/sillybunny-theme.css`. |
-| Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. All response buttons remain descendants of `buttonControls`; custom responses use a measured footer wrapper inside it. Cascade overrides correct upstream sizing and hidden overflow, including Safari. |
+| Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. All response buttons remain descendants of `buttonControls`; custom responses use a measured footer wrapper inside it and do not grow to fill it. Cascade overrides correct upstream sizing and hidden overflow, including Safari. |
 | Protecting tests | `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/unit/sillybunny-dialog.test.js`, `tests/popup-scroll.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, and the popup-touching suites in the dialogs plan §2.10. |
 | Validation | `npm run lint`; focused Jest suites for Popup contract/frame/dialog/rows and Tag/Folder Managers; `popup-scroll`, dialog-frame, Tag Manager and Folder Manager Chromium E2E; frontend budget check. WebKit unavailable on this host because Playwright's system dependencies are missing; track in Phase 9. |
 | Rollback path | Remove the four `framePopup` calls and `tier`/`title` options from `popup.js`, then remove `popup-frame.js` and its tier override rules. Leave upstream `popup.css` unchanged. Keep the independent dialog module and Tag/Folder Manager migration if still desired. |

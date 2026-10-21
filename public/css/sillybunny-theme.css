@@ -7542,6 +7542,11 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     background: var(--sb-sidebar-bg);
 }
 
+/* Extra responses stay end-aligned instead of inheriting Popup's wrapped-row growth. */
+.sb-dialog .sb-dialog__bottom-bar > .popup-button-custom {
+    flex: 0 1 auto;
+}
+
 .sb-dialog__status {
     position: absolute;
     width: 1px;

@@ -343,6 +343,13 @@ function prepareFloatingInput(input, id) {
     return control;
 }
 
+function prepareEntryInput(input, id) {
+    // Popup's public mainInput is a textarea, including its single-line name prompts.
+    if (input?.tagName !== 'TEXTAREA') return prepareInput(input, 'text', id);
+    ensureId(input, id);
+    return input;
+}
+
 function secretStatus(control, { savedText, missingText }) {
     const status = element('span', 'ds-row-entry__status');
     ensureId(status);
@@ -434,12 +441,12 @@ function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
  *     Mirrors key status from the placeholder and masks where supported; the input type never changes. `floating` only.
  * @param {(value: string) => void} [options.onInput]
  * @param {(value: string) => void} [options.onChange]
- * @param {HTMLInputElement} [options.input]
+ * @param {HTMLInputElement|HTMLTextAreaElement} [options.input]  Textareas are supported in the stacked layout only.
  * @returns {object}
  */
 export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, floating = false, suffix, secret, onInput, onChange, input }) {
     if ((secret || suffix) && !floating) throw new TypeError('Secret and suffix options need the floating layout.');
-    const control = floating ? prepareFloatingInput(input, id) : prepareInput(input, 'text', id);
+    const control = floating ? prepareFloatingInput(input, id) : prepareEntryInput(input, id);
     if (value !== undefined) control.value = value;
     if (placeholder !== undefined) control.placeholder = placeholder;
     if (maxLength !== undefined) control.maxLength = maxLength;

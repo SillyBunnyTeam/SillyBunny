@@ -22,6 +22,8 @@ import { ConnectionManagerRequestService, getProfileServiceTier } from '../share
 import { formatReasoning } from '/scripts/reasoning.js';
 import { abandonProfileSwitchReport, beginProfileSwitchReport, clearProfileSwitchOrigin, finishProfileSwitchReport, initProfileChangeNotice, markScriptedProfileSwitch, refreshProfileSetsLine, takeProfileSwitchStart } from './profile-change-notice.js';
 import { PROFILE_SNAPSHOT_NAMES, PROFILE_SWITCH_COPY, getAppliedCommands, getProfileCommandList } from './profile-change-model.js';
+// SillyBunny: adopt upstream controls into shared dialog rows without changing profile persistence.
+import { adaptProfileDeletion, adaptProfileDetails, adaptProfileFolders, profileDialogOptions, releaseProfileDialog } from './sillybunny-dialogs.js';
 
 const MODULE_NAME = 'connection-manager';
 const NONE = '<None>';
@@ -806,7 +808,8 @@ async function createConnectionProfile(forceName = null) {
     });
     const isNameTaken = (n) => extension_settings.connectionManager.profiles.some(p => p.name === n);
     const suggestedName = getUniqueName(collapseSpaces(`${profile.api ?? ''} ${profile.model ?? ''} - ${profile.preset ?? ''}`), isNameTaken);
-    let name = forceName ?? await callGenericPopup(template, POPUP_TYPE.INPUT, suggestedName);
+    // SillyBunny: check rows and an adopted mainInput share the Dialog scrolling body.
+    let name = forceName ?? await callGenericPopup(template, POPUP_TYPE.INPUT, suggestedName, profileDialogOptions(template[0]));
     // If it's cancelled, it will be false
     if (!name) {
         return null;
@@ -897,6 +900,9 @@ async function selectConnectionProfilesForDeletion() {
         okButton: t`Delete selected`,
         cancelButton: t`Cancel`,
         wide: true,
+        // SillyBunny: pick-several rows; destructive response never receives initial focus.
+        ...adaptProfileDeletion(html[0]),
+        defaultResult: POPUP_RESULT.NEGATIVE,
     }).show();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -920,6 +926,11 @@ async function deleteAllConnectionProfiles() {
     const confirm = await Popup.show.confirm(
         t`Delete selected connection profiles?`,
         t`This will permanently delete ${profilesToDelete.length} saved connection profile(s).`,
+        {
+            // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        },
     );
 
     if (!confirm) {
@@ -1531,6 +1542,8 @@ export async function init() {
             }
 
             const content = await buildFolderManagerContent();
+            // SillyBunny: release adopted row IDs before replacing immediate-apply content.
+            releaseProfileDialog(popup.content);
             popup.content.innerHTML = '';
             $(popup.content).append(content);
         }
@@ -1596,6 +1609,11 @@ export async function init() {
                     profileCount > 0
                         ? t`Deleting "${folder.name}" will move ${profileCount} profile(s) to the root level.`
                         : folder.name,
+                    {
+                        // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
+                        defaultResult: POPUP_RESULT.NEGATIVE,
+                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                    },
                 );
                 if (!confirm) {
                     return;
@@ -1613,6 +1631,8 @@ export async function init() {
                 toastr.success(t`Profile folder deleted.`);
             });
 
+            // SillyBunny: retain folder-item ancestry and every live input/action handler.
+            adaptProfileFolders(template[0]);
             return template;
         }
 
@@ -1622,6 +1642,10 @@ export async function init() {
             cancelButton: false,
             wide: true,
             allowVerticalScrolling: true,
+            // SillyBunny: immediate apply uses header Close; keep the title on content refresh.
+            tier: 'dialog',
+            title: t`Manage Profile Folders`,
+            onClose: () => releaseProfileDialog(popup.content),
         });
         await popup.show();
     }
@@ -1818,9 +1842,11 @@ export async function init() {
         }));
         const template = $(await renderExtensionTemplateAsync(MODULE_NAME, 'edit', { name: profile.name, rows, folders }));
         let newName = await callGenericPopup(template, POPUP_TYPE.INPUT, profile.name, {
+            // SillyBunny: preserve the folder select, exclusions and name control inside shared rows.
+            ...profileDialogOptions(template[0], { edit: true }),
             customButtons: [{
                 text: t`Save and Update`,
-                classes: ['popup-button-ok'],
+                // SillyBunny: Save is the sole suggested response; keep this extra response neutral.
                 result: POPUP_RESULT.AFFIRMATIVE,
                 action: () => {
                     saveChanges = true;
@@ -1893,11 +1919,18 @@ export async function init() {
             ? await buildProfileDetailsContent(profile)
             : `<div class="margin5">${DOMPurify.sanitize(t`No profile selected`)}</div>`;
 
-        const popup = new Popup(content, POPUP_TYPE.TEXT, profile?.name ?? '', {
+        // SillyBunny: read-only values use selectable property rows, keeping summary selectors/i18n.
+        const details = $(content);
+        if (profile) adaptProfileDetails(details[0]);
+        const popup = new Popup(details, POPUP_TYPE.TEXT, profile?.name ?? '', {
             okButton: t`Close`,
             cancelButton: false,
             wide: true,
             allowVerticalScrolling: true,
+            // SillyBunny: immediate-apply viewer has header Close and no OK response.
+            tier: 'dialog',
+            title: profile?.name ?? t`View connection profile details`,
+            onClose: () => releaseProfileDialog(popup.content),
         });
         await popup.show();
     }

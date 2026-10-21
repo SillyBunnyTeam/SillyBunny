@@ -628,7 +628,7 @@ for (const width of [1440, 768, 390, 360]) {
             }));
             expect(failures).toEqual([]);
             await page.locator('[data-sb-editor-field="model_openai_select"] .ds-select-row__trigger').click();
-            await expect(page.locator(width <= 768 ? '.sb-picker-sheet' : '.sb-picker')).toBeVisible();
+            await expect(page.locator(width <= 450 ? '.sb-picker-sheet' : '.sb-picker')).toBeVisible();
         });
 
         test('Featherless keeps its original filters usable without clipping', async ({ page }) => {

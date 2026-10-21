@@ -485,6 +485,26 @@ describe('createSpinRow', () => {
 });
 
 describe('createEntryRow', () => {
+    test('adopts Popup mainInput without changing textarea identity, classes or results', () => {
+        const input = document.createElement('textarea');
+        input.className = 'popup-input';
+        input.name = 'profile-name';
+        input.rows = 1;
+        input.value = 'Original name';
+        const onInput = jest.fn();
+        input.addEventListener('input', onInput);
+        const entry = createEntryRow({ label: 'Profile name:', field: 'name', input });
+        expect(entry.control).toBe(input);
+        expect(entry.row.querySelector('label').htmlFor).toBe(input.id);
+        expect(input.name).toBe('profile-name');
+        expect(input.className).toBe('popup-input');
+        entry.setValue('New name');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(onInput).toHaveBeenCalledTimes(1);
+        expect(entry.getValue()).toBe('New name');
+        expect(() => createEntryRow({ label: 'Name', field: 'name', floating: true, input })).toThrow(TypeError);
+        entry.destroy();
+    });
     test('places the entry below its label, with separate input and change notifications', () => {
         const onInput = jest.fn();
         const onChange = jest.fn();

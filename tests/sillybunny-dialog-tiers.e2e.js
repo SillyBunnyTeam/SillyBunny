@@ -124,6 +124,12 @@ for (const viewport of VIEWPORTS) {
             void window.qaPopup.show().then(result => { window.qaCustomResult = result; });
         });
         await expect(popup.locator('.popup-button-custom')).toBeFocused();
+        await expect(popup.locator('.popup-button-custom')).toHaveCSS('flex-grow', '0');
+        const endGap = await popup.locator('.popup-button-custom').evaluate(button => {
+            const bar = button.closest('.sb-dialog__bottom-bar');
+            return bar.getBoundingClientRect().right - button.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(bar).paddingRight);
+        });
+        expect(endGap).toBeCloseTo(0, 0);
         expect(await page.evaluate(() => window.qaPopup.buttonControls.querySelectorAll('[data-result]').length)).toBe(3);
         expect(await popup.evaluate(node => node.querySelector('.sb-dialog__bottom-bar').getBoundingClientRect().top >= node.querySelector('.popup-body').getBoundingClientRect().bottom - 1)).toBe(true);
         await popup.locator('.popup-button-custom').click();
