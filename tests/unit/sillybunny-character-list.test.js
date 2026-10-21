@@ -88,7 +88,7 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
     toggleGroupFavoriteById, deleteGroupById, groups: groupLibrary, openGroupById,
     getGroupAvatarElement: () => template('<img src="/group.png">'),
-    groupEditorTargetExists: jest.fn(), canPeekGroupMember: jest.fn(), openGroupMemberDefinition: jest.fn(),
+    groupEditorTargetExists: jest.fn(), canPeekGroupMember: jest.fn(), canRestoreGroupMemberPeek: jest.fn(), openGroupMemberDefinition: jest.fn(),
     openGroupEditor: jest.fn(), captureGroupEditorListState: jest.fn(), restoreGroupEditorListState: jest.fn(), selected_group: null,
 }));
 await jest.unstable_mockModule('../../public/scripts/tags.js', () => ({

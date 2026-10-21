@@ -27,6 +27,8 @@ import {
     // SillyBunny: refresh the shared main list after id-based row actions — see docs/ui-migration.md
     printCharactersDebounced,
     characters,
+    // SillyBunny: Back re-peeks the member already peeked over the group chat
+    this_chid,
     default_avatar,
     clearChat,
     Generate,
@@ -3796,13 +3798,24 @@ export function canPeekGroupMember(avatarId) {
 }
 
 /**
+ * True when Back can peek a member again: it is still peekable, or it is the character already peeked over the
+ * selected group chat, even after another group's editor opened. Selecting it instead would replace the group chat.
+ * @param {string} avatarId
+ * @returns {boolean}
+ */
+export function canRestoreGroupMemberPeek(avatarId) {
+    return canPeekGroupMember(avatarId) || Boolean(selected_group && characters[this_chid]?.avatar === avatarId);
+}
+
+/**
  * Opens the character editor for a group member without switching chat.
  * @param {string} avatarId
- * @param {{ isCurrent?: () => boolean }} [options]
+ * @param {{ isCurrent?: () => boolean, restore?: boolean }} [options] restore checks canRestoreGroupMemberPeek for Back.
  * @returns {Promise<boolean>} False when superseded, generating, missing, or not peekable.
  */
-export async function openGroupMemberDefinition(avatarId, { isCurrent } = {}) {
-    if (isCurrent?.() === false || is_group_generating || is_send_press || !canPeekGroupMember(avatarId)) return false;
+export async function openGroupMemberDefinition(avatarId, { isCurrent, restore = false } = {}) {
+    const peekable = restore ? canRestoreGroupMemberPeek(avatarId) : canPeekGroupMember(avatarId);
+    if (isCurrent?.() === false || is_group_generating || is_send_press || !peekable) return false;
     const character = characters.find(character => character.avatar === avatarId);
     if (!character) return false;
     return await openCharacterDefinition(getGroupCharacterBlock(character), { isCurrent });

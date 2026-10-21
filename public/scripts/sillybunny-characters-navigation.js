@@ -2,6 +2,7 @@ import { characters, this_chid, selectCharacterById } from '../script.js';
 import {
     groupEditorTargetExists,
     canPeekGroupMember,
+    canRestoreGroupMemberPeek,
     openGroupMemberDefinition,
     openGroupEditor,
     captureGroupEditorListState,
@@ -67,12 +68,15 @@ objectNavigation.register('character-editor', {
         const index = characters.findIndex(character => character?.avatar === target.id);
         if (index < 0) return false;
 
-        const peek = target.via === 'group-member' && canPeekGroupMember(target.id);
+        // Back over a group chat peeks again, since selecting the character would replace that chat.
+        const peek = restore
+            ? canRestoreGroupMemberPeek(target.id)
+            : target.via === 'group-member' && canPeekGroupMember(target.id);
         if (restore && !peek && characters[this_chid]?.avatar !== target.id) {
             return listDestination('characters', 'character-list').open({ focusAvatar: target.id }, { isCurrent });
         }
         const opened = peek
-            ? await openGroupMemberDefinition(target.id, { isCurrent })
+            ? await openGroupMemberDefinition(target.id, { isCurrent, restore: Boolean(restore) })
             : await selectCharacterById(index, { switchMenu: true });
         // Only a forward open switches chats: Back stays on the selected character and a peek keeps the group chat.
         if (opened && !peek && !restore) rememberOpenedEntity('character', target.id);

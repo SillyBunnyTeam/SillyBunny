@@ -7,6 +7,7 @@ const groups = [{ id: 'qa-group' }];
 const groupEditorTargetExists = jest.fn();
 const selectCharacterById = jest.fn();
 const canPeekGroupMember = jest.fn();
+const canRestoreGroupMemberPeek = jest.fn();
 const openGroupMemberDefinition = jest.fn();
 const openGroupEditor = jest.fn();
 const openGroupById = jest.fn();
@@ -46,6 +47,7 @@ await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
     groups,
     groupEditorTargetExists,
     canPeekGroupMember,
+    canRestoreGroupMemberPeek,
     openGroupMemberDefinition,
     openGroupEditor,
     openGroupById,
@@ -81,6 +83,7 @@ beforeEach(() => {
     groupEditorTargetExists.mockImplementation(id => id === 'create' || groups.some(group => group.id === id));
     confirmActiveEditorLeave.mockResolvedValue(true);
     canPeekGroupMember.mockReturnValue(true);
+    canRestoreGroupMemberPeek.mockReturnValue(false);
     openGroupEditor.mockResolvedValue(true);
     openWorldInfoEditor.mockResolvedValue(true);
     openPersonaEditor.mockResolvedValue(true);
@@ -205,7 +208,7 @@ describe('character and group editor destinations', () => {
     test('peeks an eligible member without switching chats and preserves via through the singleton', async () => {
         expect(await objectNavigation.navigate(target, { from })).toEqual({ ok: true });
         expect(canPeekGroupMember).toHaveBeenCalledWith('Alice.png');
-        expect(openGroupMemberDefinition).toHaveBeenCalledWith('Alice.png', { isCurrent: expect.any(Function) });
+        expect(openGroupMemberDefinition).toHaveBeenCalledWith('Alice.png', { isCurrent: expect.any(Function), restore: false });
         expect(selectCharacterById).not.toHaveBeenCalled();
         expect(objectNavigation.canGoBack(target)).toBe(true);
         expect(rememberOpenedEntity).not.toHaveBeenCalled();
@@ -236,10 +239,56 @@ describe('character and group editor destinations', () => {
         expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'Alice.png']]);
     });
 
-    test('Back to the selected character does not record it again', async () => {
+    test('Back to the selected character outside a group chat does not record it again', async () => {
         expect(await characterEditor.open({ kind: 'character-editor', id: 'Alice.png' }, { restore: { scrollTop: 0 }, ...currentRoute })).toBe(true);
+        expect(canRestoreGroupMemberPeek).toHaveBeenCalledWith('Alice.png');
         expect(selectCharacterById).toHaveBeenCalledWith(1, { switchMenu: true });
+        expect(openGroupMemberDefinition).not.toHaveBeenCalled();
         expect(rememberOpenedEntity).not.toHaveBeenCalled();
+    });
+
+    test.each(['Alice.png', 'Bob.png'])('Back to %s over its group chat peeks again instead of selecting it', async avatar => {
+        canRestoreGroupMemberPeek.mockReturnValue(true);
+        // The peek sets this_chid to the member; the static mock models that by moving it into this_chid's slot.
+        openGroupMemberDefinition.mockImplementation(async id => {
+            characters[1] = { avatar: id };
+            showCharacterEditor();
+            return true;
+        });
+        expect(await characterEditor.open({ kind: 'character-editor', id: avatar }, { restore: { scrollTop: 0 }, ...currentRoute })).toBe(true);
+        expect(canRestoreGroupMemberPeek).toHaveBeenCalledWith(avatar);
+        expect(openGroupMemberDefinition).toHaveBeenCalledWith(avatar, { isCurrent: currentRoute.isCurrent, restore: true });
+        expect(selectCharacterById).not.toHaveBeenCalled();
+        expect(window.SillyBunnyShell.openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
+    });
+
+    test('a refused Back peek does not fall through to selecting the member', async () => {
+        canRestoreGroupMemberPeek.mockReturnValue(true);
+        openGroupMemberDefinition.mockResolvedValue(false);
+        expect(await characterEditor.open({ kind: 'character-editor', id: 'Alice.png' }, { restore: {}, ...currentRoute })).toBe(false);
+        expect(selectCharacterById).not.toHaveBeenCalled();
+        expect(window.SillyBunnyShell.openTab).not.toHaveBeenCalled();
+    });
+
+    test('Back from a peeked member\'s related group editor peeks the member again and keeps the group chat', async () => {
+        canRestoreGroupMemberPeek.mockReturnValue(true);
+        const member = { kind: 'character-editor', id: 'Alice.png' };
+        expect(await objectNavigation.navigate(target, { from })).toEqual({ ok: true });
+        // The character editor pushes its origin without via, as its Related rows and World Info button do.
+        expect(await objectNavigation.navigate(from, { from: member })).toEqual({ ok: true });
+        const fallback = jest.fn();
+        expect(await objectNavigation.back({ current: from, fallback })).toEqual({ ok: true });
+        expect(openGroupMemberDefinition.mock.calls).toEqual([
+            ['Alice.png', { isCurrent: expect.any(Function), restore: false }],
+            ['Alice.png', { isCurrent: expect.any(Function), restore: true }],
+        ]);
+        expect(selectCharacterById).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
+        expect(await objectNavigation.back({ current: member, fallback })).toEqual({ ok: true });
+        expect(openGroupEditor.mock.calls.map(([id, { switchChat }]) => [id, switchChat])).toEqual([['qa-group', false], ['qa-group', false]]);
+        expect(fallback).not.toHaveBeenCalled();
+        expect(selectCharacterById).not.toHaveBeenCalled();
     });
 
     test('a missing character does not invoke either open path', async () => {
@@ -299,6 +348,7 @@ describe('character and group editor destinations', () => {
         const scroller = document.querySelector('#form_create .sb-editor-sheet__content');
         scroller.scrollTop = 84;
         expect(characterEditor.captureState()).toEqual({ scrollTop: 84 });
+        canRestoreGroupMemberPeek.mockReturnValue(true);
         openGroupMemberDefinition.mockResolvedValue(true);
         const result = characterEditor.open(target, { ...currentRoute, restore: { scrollTop: 360 } });
         await jest.advanceTimersByTimeAsync(100);
@@ -363,7 +413,7 @@ describe('character and group editor destinations', () => {
 
         const first = objectNavigation.navigate({ ...target, id: 'Bob.png' }, { from });
         await Promise.resolve();
-        expect(openGroupMemberDefinition).toHaveBeenCalledWith('Bob.png', { isCurrent: expect.any(Function) });
+        expect(openGroupMemberDefinition).toHaveBeenCalledWith('Bob.png', { isCurrent: expect.any(Function), restore: false });
         expect(await objectNavigation.navigate(target, { from })).toEqual({ ok: true });
         pending.resolve();
         expect(await first).toEqual({ ok: false, reason: 'superseded' });
@@ -377,6 +427,7 @@ describe('character and group editor destinations', () => {
         const scroller = document.querySelector('#form_create .sb-editor-sheet__content');
         scroller.scrollTop = 84;
         let current = true;
+        canRestoreGroupMemberPeek.mockReturnValue(true);
         openGroupMemberDefinition.mockResolvedValue(true);
         const result = characterEditor.open(target, { restore: { scrollTop: 360 }, isCurrent: () => current });
         await jest.advanceTimersByTimeAsync(100);
