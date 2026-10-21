@@ -19,10 +19,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.github.sillybunnyteam.sillybunny.update.UpdateActivityHook
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep SillyBunny's asynchronous updater separate from server startup and later activity work.
+        val updates = UpdateActivityHook(this).also { it.attach() }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -49,6 +52,8 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                // The updater owns its lifecycle, source-approval return, and transient dialog.
+                updates.Dialog()
             }
         }
     }
