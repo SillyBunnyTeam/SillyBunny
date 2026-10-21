@@ -65,7 +65,7 @@ async function openFromList(page) {
 }
 
 async function headerMenu(page) {
-    await manager(page).locator('.sb-tag-manager__menu').click();
+    await manager(page).locator('.sb-dialog__menu').click();
     return page.locator('#sb-action-menu:visible').last();
 }
 
@@ -75,7 +75,7 @@ for (const width of [1440, 390]) {
             await prepare(page, width);
             await openFromList(page);
             await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}.png` });
-            await expect(page.locator('.sb-tag-manager-host')).toHaveAttribute('data-mobile', String(width <= 768));
+            await expect(page.locator('.sb-dialog-host:has(> #tag_view_list)')).toHaveAttribute('data-presentation', width <= 450 ? 'sheet' : 'floating');
             const search = manager(page).getByRole('searchbox', { name: 'Search', exact: true });
             await search.fill('Beta');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
@@ -90,15 +90,15 @@ for (const width of [1440, 390]) {
             await field.fill('qa beta');
             await field.press('Enter');
             await expect(field).toHaveAttribute('aria-invalid', 'true');
-            await manager(page).locator('.sb-tag-manager__close').click();
+            await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toBeVisible();
             await expect(field).toBeFocused();
-            if (width <= 768) {
-                await manager(page).locator('.sb-tag-manager__menu').focus();
+            if (width <= 450) {
+                await manager(page).locator('.sb-dialog__menu').focus();
                 await page.keyboard.press('Escape');
                 await expect(manager(page)).toBeVisible();
                 await expect(field).toBeFocused();
-                const handle = await manager(page).locator('.sb-tag-manager__handle').boundingBox();
+                const handle = await manager(page).locator('.sb-dialog__handle').boundingBox();
                 await page.mouse.move(handle.x + handle.width / 2, handle.y + 8);
                 await page.mouse.down();
                 await page.mouse.move(handle.x + handle.width / 2, handle.y + 110, { steps: 4 });
@@ -112,7 +112,7 @@ for (const width of [1440, 390]) {
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/tags.js')).tags.find(tag => tag.id === 'qa-tag-alpha').name)).toBe('QA Alpha');
             await field.press('Enter');
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/tags.js')).tags.find(tag => tag.id === 'qa-tag-alpha').name)).toBe('QA Renamed');
-            await manager(page).locator('.sb-tag-manager__close').click();
+            await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toHaveCount(0);
             await page.locator('.sb-character-list .sb-tag-filter-menu-button').click();
             await page.getByRole('button', { name: 'Manage tags', exact: true }).last().click();
@@ -254,7 +254,7 @@ for (const width of [1440, 768, 390]) {
             expect(styles.nameX).toBe(styles.subtitleX);
             expect(styles.weight).toBe('600');
             await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}-${theme.replaceAll(' ', '-')}.png` });
-            await manager(page).locator('.sb-tag-manager__close').click();
+            await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toHaveCount(0);
             await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'persona'));
             const persona = page.locator('.sb-persona-list-box .ds-entity-row').first();
