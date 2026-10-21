@@ -107,14 +107,16 @@ abstract class SillyBunnyRuntimeTask : DefaultTask() {
             }
             append('"')
         }
-        is Boolean, is Int, is Long -> value.toString()
+        is Boolean, is Int, is Long, is java.math.BigInteger -> value.toString()
+        // JsonSlurper reads every decimal as BigDecimal; the plain form keeps the copied `source` objects byte-stable.
+        is java.math.BigDecimal -> value.toPlainString()
         is Map<*, *> -> if (value.isEmpty()) "{}" else value.entries.joinToString(",\n", "{\n", "\n$indent}") {
             "$indent    ${json(it.key.toString())}: ${json(it.value, "$indent    ")}"
         }
         is List<*> -> if (value.isEmpty()) "[]" else value.joinToString(",\n", "[\n", "\n$indent]") {
             "$indent    ${json(it, "$indent    ")}"
         }
-        is Number -> throw GradleException("Non-integer numbers are not part of the runtime manifest.")
+        is Number -> throw GradleException("Unsupported number type ${value::class} in the runtime manifest.")
         else -> throw GradleException("Unsupported manifest value ${value::class}.")
     }
 
@@ -392,9 +394,13 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
 
     private fun recordJson(record: RuntimeRecord) = sortedMapOf("sha256" to record.sha256, "size" to record.size)
 
-    /** Mirrors the app's entry rules so an unacceptable archive fails the build, not the device. */
+    /**
+     * Applies the app's npm.zip rules and limits (NpmArchive.open and parse), so an archive every device would
+     * reject fails the build instead. Keep the two in step.
+     */
     private fun checkNpmArchive(archive: File, files: Long, contentBytes: Long, problems: RuntimeProblems) {
         val bytes = archive.readBytes()
+        problems.check(bytes.size <= NPM_MAX_ARCHIVE_BYTES) { "$archive is over the app's $NPM_MAX_ARCHIVE_BYTES-byte limit" }
         val eocd = (bytes.size - 22 downTo maxOf(0, bytes.size - 22 - 0xFFFF)).firstOrNull {
             u32(bytes, it) == 0x06054b50L && it + 22 + u16(bytes, it + 20) == bytes.size
         }
@@ -402,10 +408,18 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
             problems.add("$archive has no ZIP end record")
             return
         }
-        var position = u32(bytes, eocd + 16).toInt()
         val total = u16(bytes, eocd + 10)
+        val directoryStart = u32(bytes, eocd + 16)
+        // One disk, and a central directory that ends right at the end record: no ZIP64 records, no other data.
+        if (u16(bytes, eocd + 4) != 0 || u16(bytes, eocd + 6) != 0 || u16(bytes, eocd + 8) != total ||
+            total == 0xFFFF || directoryStart + u32(bytes, eocd + 12) != eocd.toLong()
+        ) {
+            problems.add("$archive spans disks, needs ZIP64 or has data after its central directory")
+            return
+        }
+        var position = directoryStart.toInt()
         val names = mutableSetOf<String>()
-        var fileCount = 0L
+        val filePaths = mutableListOf<String>()
         var sum = 0L
         repeat(total) {
             if (position + 46 > eocd || u32(bytes, position) != 0x02014b50L) {
@@ -414,29 +428,66 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
             }
             val flags = u16(bytes, position + 8)
             val method = u16(bytes, position + 10)
+            val compressed = u32(bytes, position + 20)
             val size = u32(bytes, position + 24)
             val nameLength = u16(bytes, position + 28)
-            val mode = u32(bytes, position + 38) ushr 16
-            val name = String(bytes, position + 46, nameLength, Charsets.UTF_8)
+            val next = position + 46 + nameLength + u16(bytes, position + 30) + u16(bytes, position + 32)
+            val localHeader = u32(bytes, position + 42)
+            if (next > eocd || u16(bytes, position + 34) != 0) {
+                problems.add("$archive has a malformed central directory")
+                return
+            }
+            // ISO-8859-1 keeps every byte, as in the app; the segment rule then rejects anything outside plain ASCII.
+            val name = String(bytes, position + 46, nameLength, Charsets.ISO_8859_1)
             val directory = name.endsWith('/')
-            val segments = name.removeSuffix("/").split('/')
-            problems.check(segments.all { it != "." && it != ".." && SAFE_SEGMENT.matches(it) }) { "unsafe npm.zip entry \"$name\"" }
-            problems.check(names.add(name.removeSuffix("/"))) { "duplicate npm.zip entry \"$name\"" }
+            val path = name.removeSuffix("/")
+            val segments = path.split('/')
+            problems.check(
+                path.isNotEmpty() && path.length <= NPM_MAX_PATH && segments.size <= NPM_MAX_DEPTH &&
+                    segments.all { it != "." && it != ".." && SAFE_SEGMENT.matches(it) },
+            ) { "unsafe npm.zip entry \"$name\"" }
+            problems.check(names.add(path)) { "duplicate npm.zip entry \"$name\"" }
             problems.check((flags and 0x2041) == 0 && (method == 0 || method == 8)) { "unsupported npm.zip entry \"$name\"" }
+            problems.check(compressed != 0xFFFFFFFFL && size != 0xFFFFFFFFL && localHeader != 0xFFFFFFFFL) {
+                "npm.zip entry \"$name\" needs ZIP64"
+            }
             // Like the app, read the upper half of the external attributes as a Unix mode whatever the host.
-            val type = mode and 0xF000
+            val type = (u32(bytes, position + 38) ushr 16) and 0xF000
             problems.check(type == 0L || type == (if (directory) 0x4000L else 0x8000L)) {
                 "npm.zip entry \"$name\" is a link or special file"
             }
-            if (!directory) {
-                fileCount++
+            if (directory) {
+                problems.check(size == 0L) { "npm.zip directory entry \"$name\" has content" }
+            } else {
+                problems.check(method != 0 || compressed == size) { "stored npm.zip entry \"$name\" has mismatched sizes" }
+                problems.check(localHeaderMatches(bytes, localHeader, name, method, compressed, directoryStart)) {
+                    "npm.zip entry \"$name\" does not match its local header"
+                }
+                filePaths += path
                 sum += size
             }
-            position += 46 + nameLength + u16(bytes, position + 30) + u16(bytes, position + 32)
+            position = next
         }
-        problems.check(fileCount == files && sum == contentBytes) {
-            "$archive holds $fileCount files / $sum bytes, npm.json says $files / $contentBytes"
+        problems.check(position.toLong() == eocd.toLong()) { "$archive has data between its central directory and end record" }
+        problems.check(filePaths.size <= NPM_MAX_FILES && sum <= NPM_MAX_CONTENT_BYTES) {
+            "$archive holds ${filePaths.size} files / $sum bytes, over the app's $NPM_MAX_FILES / $NPM_MAX_CONTENT_BYTES limit"
         }
+        // A file may not also be the parent directory of another entry.
+        val parents = names.flatMap { path -> path.indices.filter { path[it] == '/' }.map { path.substring(0, it) } }.toSet()
+        filePaths.filter { it in parents }.forEach { problems.add("npm.zip file \"$it\" is also a directory") }
+        problems.check(filePaths.size.toLong() == files && sum == contentBytes) {
+            "$archive holds ${filePaths.size} files / $sum bytes, npm.json says $files / $contentBytes"
+        }
+    }
+
+    /** The app's local-header check: the same method and name, no unsupported flags, data inside the archive. */
+    private fun localHeaderMatches(bytes: ByteArray, header: Long, name: String, method: Int, compressed: Long, limit: Long): Boolean {
+        if (header + 30 > limit || u32(bytes, header.toInt()) != 0x04034b50L) return false
+        val at = header.toInt()
+        if (u16(bytes, at + 8) != method || (u16(bytes, at + 6) and 0x2041) != 0) return false
+        val nameLength = u16(bytes, at + 26)
+        val start = header + 30 + nameLength + u16(bytes, at + 28)
+        return start + compressed <= limit && String(bytes, at + 30, nameLength, Charsets.ISO_8859_1) == name
     }
 
     private fun u16(bytes: ByteArray, at: Int): Int = (bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8)
@@ -449,6 +500,13 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
         const val NPM_JSON = "runtime/npm.json"
         val NOTICES = listOf("THIRD_PARTY_NOTICES", "THIRD_PARTY_NOTICES.json")
         val TOOL_NATIVES = setOf("libnode.so", "libnpm.so", "libnpx.so")
+
+        // NpmArchive's limits.
+        const val NPM_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+        const val NPM_MAX_FILES = 20_000
+        const val NPM_MAX_CONTENT_BYTES = 512L * 1024 * 1024
+        const val NPM_MAX_PATH = 1024
+        const val NPM_MAX_DEPTH = 64
     }
 }
 

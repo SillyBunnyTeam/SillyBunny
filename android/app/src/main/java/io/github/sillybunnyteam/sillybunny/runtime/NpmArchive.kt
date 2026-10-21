@@ -182,6 +182,7 @@ class NpmArchive private constructor(
     }
 
     companion object {
+        // runtime-packaging.gradle.kts (checkNpmArchive) applies these limits and parse's rules at build time.
         const val MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
         const val MAX_FILES = 20_000
         const val MAX_CONTENT_BYTES = 512L * 1024 * 1024
