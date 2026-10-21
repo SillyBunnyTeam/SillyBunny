@@ -538,13 +538,13 @@ hr {
 }
 
 .standoutHeader,
-h3:not(.popup h3):not(#chat h3),
+h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3),
 .inline-drawer-header {
     letter-spacing: 0;
 }
 
 .standoutHeader,
-h3:not(.popup h3):not(#chat h3) {
+h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
     border-radius: var(--sb-radius-md);
     padding: 10px 14px;
@@ -6910,6 +6910,495 @@ body.reduced-motion .popup[closing] {
         top: max(8px, env(safe-area-inset-top, 0px));
         right: max(8px, env(safe-area-inset-right, 0px));
     }
+}
+
+/* Shared dialog frame (sillybunny-editor/dialog.js): Alert, Dialog and Window tiers over one
+   transparent modal host. DESIGN.md Dialogs. Sheets follow OVERLAY_SHEET_QUERY (AdwDialog). */
+.sb-dialog-host[open] {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 16px 16px calc(16px + var(--sb-dialog-keyboard-inset, 0px));
+    border: 0;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--mainFontFamily);
+    overflow: hidden;
+}
+
+.sb-dialog-host::backdrop {
+    background: transparent;
+}
+
+.sb-dialog-host [hidden] {
+    display: none !important;
+}
+
+.sb-dialog-scrim {
+    position: absolute;
+    inset: 0;
+    background: var(--sb-dialog-backdrop);
+}
+
+.sb-dialog {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    max-height: 100%;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-dialog);
+    box-shadow: var(--sb-shadow-dialog);
+    color: var(--SmartThemeBodyColor);
+    overflow: hidden;
+    isolation: isolate;
+}
+
+/* AdwAlertDialog: 300px preferred, 372px at most (600px with preferWide). */
+.sb-dialog--alert {
+    width: max-content;
+    min-width: min(300px, 100%);
+    max-width: min(372px, 100%);
+    border-radius: var(--sb-radius-alert);
+}
+
+.sb-dialog--alert.sb-dialog--wide {
+    max-width: min(600px, 100%);
+}
+
+/* AdwDialog follows its content, up to AdwPreferencesDialog's 640px. */
+.sb-dialog--dialog {
+    width: min(640px, 100%);
+    min-width: min(360px, 100%);
+    max-height: min(90dvh, 100%);
+}
+
+/* The shell's large pop-out footprint (Tag Manager). */
+.sb-dialog--window {
+    width: min(max(640px, var(--sheldWidth, 64vw)), 100%);
+    height: 90vh;
+    height: 90dvh;
+    max-height: 100%;
+}
+
+.sb-dialog__handle {
+    display: none;
+}
+
+.sb-dialog__pages {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.sb-dialog__page {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    background: var(--sb-layer-dialog);
+}
+
+.sb-dialog--window :is(.sb-dialog__pages, .sb-dialog__page) {
+    flex: 1 1 auto;
+}
+
+/* Pushed pages: the entering page stays in flow so a content-sized dialog follows it. */
+.sb-dialog__page.is-underlay,
+.sb-dialog__page.is-leaving {
+    position: absolute;
+    inset: 0;
+}
+
+.sb-dialog__page.is-leaving {
+    z-index: 1;
+}
+
+/* Header bar: start | centred title | end, as AdwHeaderBar. */
+.sb-dialog__header {
+    display: grid;
+    grid-template-columns: minmax(auto, 1fr) minmax(0, max-content) minmax(auto, 1fr);
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    min-height: 56px;
+    padding: 6px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    background: var(--sb-sidebar-bg);
+}
+
+.sb-dialog__header-start,
+.sb-dialog__header-end {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.sb-dialog__header-start {
+    justify-content: flex-start;
+}
+
+.sb-dialog__header-end {
+    justify-content: flex-end;
+}
+
+.sb-dialog__titles {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    padding-inline: 6px;
+    text-align: center;
+}
+
+.sb-dialog__title {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-title);
+    font-weight: var(--sb-weight-title, 700);
+    line-height: var(--sb-line-title, 1.18);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-dialog__subtitle {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-dialog .sb-dialog__icon-button {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.sb-dialog .sb-dialog__icon-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* Responses keep the primary (suggested, .menu_button_primary) and ghost button families. */
+.sb-dialog .sb-dialog__response {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 38px;
+    margin: 0;
+    padding: 8px 14px;
+    font-size: var(--sb-type-control);
+    font-weight: var(--sb-weight-control, 600);
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: normal;
+}
+
+.sb-dialog__header .sb-dialog__response {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* Mirrors the base .menu_button enabled-state :not() chain so the destructive fill wins on specificity. */
+.menu_button.sb-dialog__response.is-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+    border-color: transparent;
+    background: var(--sb-color-danger);
+    color: var(--sb-on-solid-accent);
+    text-shadow: none;
+}
+
+.menu_button.sb-dialog__response.is-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
+    background: color-mix(in srgb, var(--sb-color-danger) 80%, var(--sb-shell-text));
+}
+
+.sb-dialog .sb-dialog__response:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sb-dialog__search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 8px 16px;
+    background: var(--sb-sidebar-bg);
+    color: var(--sb-muted-fg);
+}
+
+.sb-dialog__search .sb-dialog__search-input {
+    flex: 1;
+    width: 100%;
+    margin: 0;
+}
+
+.sb-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+}
+
+.sb-dialog__bottom-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    background: var(--sb-sidebar-bg);
+}
+
+.sb-dialog__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* Groups inside dialogs: the Tag Manager boxed list (12px, 8% tint). */
+.sb-dialog .ds-pref-group {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-card);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+:root[data-sb-surface-tone='light'] .sb-dialog .ds-pref-group {
+    background: var(--sb-layer-view);
+}
+
+.sb-dialog .ds-pref-group-header {
+    margin: 0 0 8px;
+    padding: 0 4px;
+}
+
+/* Group headings as in Connections: body size, weight 700, no box. */
+.sb-dialog .ds-pref-group-heading {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-body);
+    font-weight: 700;
+}
+
+.sb-dialog .ds-pref-group-subtitle {
+    padding: 0;
+}
+
+.sb-dialog :is(.ds-pref-group, .sb-editor-section) + :is(.ds-pref-group, .sb-editor-section, .ds-pref-group-header) {
+    margin-top: 16px;
+}
+
+.sb-dialog__extra > .ds-row {
+    border-bottom: 0;
+}
+
+/* Alert: centred heading and body, fixed responses below the scrolling body. */
+.sb-dialog--alert .sb-dialog__body {
+    padding: 24px 24px 12px;
+    text-align: center;
+}
+
+.sb-dialog__heading {
+    margin: 0 0 10px;
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
+    line-height: var(--sb-line-title, 1.18);
+}
+
+.sb-dialog__message {
+    margin: 0;
+    font-size: var(--sb-type-body);
+    line-height: var(--sb-line-body, 1.55);
+}
+
+.sb-dialog__extra {
+    margin-top: 16px;
+    text-align: start;
+}
+
+.sb-dialog__responses {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 12px;
+    padding: 12px 24px 24px;
+}
+
+.sb-dialog__responses > .sb-dialog__response {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.sb-dialog__responses.is-measuring > .sb-dialog__response {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* Stacked: affirmative on top, Cancel at the bottom within thumb reach (DESIGN.md Dialogs). */
+.sb-dialog__responses.is-stacked {
+    flex-direction: column-reverse;
+    gap: 8px;
+}
+
+.sb-dialog__responses.is-stacked > .sb-dialog__response {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 44px;
+}
+
+/* Bottom sheets (AdwDialog under max-width 450px or max-height 360px). */
+.sb-dialog-host[data-presentation='sheet'][open] {
+    align-items: flex-end;
+    padding: calc(env(safe-area-inset-top, 0px) + 24px) 0 var(--sb-dialog-keyboard-inset, 0px);
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 100%;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-width: 1px 0 0;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog--window {
+    height: 100%;
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog__handle {
+    display: block;
+    position: absolute;
+    z-index: 2;
+    inset: 0 50% auto auto;
+    width: 80px;
+    height: 20px;
+    translate: 50% 0;
+    touch-action: none;
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog__handle::before {
+    content: '';
+    position: absolute;
+    inset: 8px 19px auto;
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog__header {
+    padding-top: 16px;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog__body {
+    padding: 12px;
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog--alert .sb-dialog__body {
+    padding: 28px 20px 12px;
+}
+
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog__responses {
+    padding: 8px 16px 16px;
+}
+
+.sb-dialog :is(button, input, select, textarea, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sb-dialog .sb-dialog__icon-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .menu_button.sb-dialog__response.is-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 90%, var(--sb-shell-text));
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__response, .sb-dialog__search-input) {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .sb-dialog .sb-dialog__icon-button {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+@media (forced-colors: active) {
+    .sb-dialog {
+        border-color: CanvasText;
+    }
+
+    .sb-dialog .sb-dialog__response:is(.is-suggested, .is-destructive) {
+        border: 1px solid ButtonText;
+    }
+
+    .sb-dialog :is(button, input, select, textarea, [tabindex]):focus-visible {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-dialog-host * {
+        transition: none !important;
+    }
+}
+
+body.reduced-motion .sb-dialog-host * {
+    transition: none !important;
 }
 
 /* Select2 Dropdowns */

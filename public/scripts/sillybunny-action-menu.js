@@ -8,6 +8,7 @@
 import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, animateIn, animateOut, stopMotion } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from './sillybunny-sheet.js';
+import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 
 export const MOBILE_QUERY = '(max-width: 768px)';
 const POPOVER_GAP = 6;
@@ -395,6 +396,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
         frame.subtitle.textContent = subtitle;
         frame.subtitle.hidden = !subtitle;
         frame.body.replaceChildren(menu);
+        hostOverlayLayer(frame.backdrop, frame.element);
         open = { kind: 'sheet', trigger, menu, keyboard, onClose };
         setTriggerExpanded(trigger, true);
         frame.controller.open();
@@ -408,7 +410,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     popover.addEventListener('keydown', handlePopoverKeydown);
     popover.addEventListener('focusout', handlePopoverFocusOut);
     blockUpstreamDrawerClose(popover);
-    document.body.append(popover);
+    hostOverlayLayer(popover);
     const origin = positionPopover(popover, trigger, point, bounds);
     open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds };
     setTriggerExpanded(trigger, true);
