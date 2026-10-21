@@ -99,9 +99,20 @@ function createEntry(searchText, displayText, tabId, tabLabel, dedupeKey, action
     };
 }
 
+async function rememberOpened(kind, key) {
+    try {
+        const { rememberOpenedEntity } = await import('./sillybunny-auto-load.js');
+        rememberOpenedEntity(kind, key);
+    } catch {
+        // The chat is open either way; only the Auto-load Last Chat entity stays behind.
+    }
+}
+
 async function openCharacter(index) {
     try {
         const context = getSearchContext();
+        // Read the avatar before the open: the library can reload while the chat loads.
+        const avatar = String(getCharacterList(context)[index]?.avatar ?? '');
         // The app's own selection path opens the editor, fills its fields and starts a session; the
         // editor renders from that form rather than from data, so opening the session directly would
         // show whatever card was last loaded. A false result means a pending chat save blocked it.
@@ -113,6 +124,7 @@ async function openCharacter(index) {
                 const module = await import('../script.js');
                 if (typeof module?.selectCharacterById === 'function') {
                     if (await module.selectCharacterById(index) === false) return;
+                    if (avatar) await rememberOpened('character', avatar);
                     await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');
                     return;
                 }
@@ -121,6 +133,7 @@ async function openCharacter(index) {
             }
         } else {
             if (await selectById(index) === false) return;
+            if (avatar) await rememberOpened('character', avatar);
             await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');
             return;
         }
@@ -138,7 +151,8 @@ async function openGroup(group) {
         // openGroupChat only swaps the chat file of the group that is already selected, so it would
         // leave the previous character or group selected under this group's messages.
         const { openGroupById } = await import('./group-chats.js');
-        await openGroupById(String(group.id), { switchMenu: false });
+        const groupId = String(group.id);
+        if (await openGroupById(groupId, { switchMenu: false })) await rememberOpened('group', groupId);
         return;
     } catch {
         // Fall through to the groups page if opening the group throws.

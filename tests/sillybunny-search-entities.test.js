@@ -14,7 +14,11 @@ import {
 
 // The module imports these only when a result is activated, so mocking after the import still applies.
 const openGroupById = jest.fn();
+const rememberOpenedEntity = jest.fn();
+const scriptSelectCharacterById = jest.fn();
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ openGroupById }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-auto-load.js', () => ({ rememberOpenedEntity }));
+await jest.unstable_mockModule('../public/script.js', () => ({ selectCharacterById: scriptSelectCharacterById }));
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const entityModuleUrl = pathToFileURL(path.join(repoRoot, 'public/scripts/sillybunny-search-entities.js')).href;
@@ -37,6 +41,8 @@ afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
     openGroupById.mockReset();
+    rememberOpenedEntity.mockReset();
+    scriptSelectCharacterById.mockReset();
     for (const restore of restoreGlobals.splice(0).reverse()) restore();
 });
 
@@ -186,10 +192,12 @@ describe('universal search entity entries', () => {
         expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
         expect(openGroupChat).not.toHaveBeenCalled();
         expect(openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity.mock.calls).toEqual([['group', 'group-action']]);
 
         openGroupById.mockRejectedValueOnce(new Error('Group chats module failed to load'));
         await collectEntitySearchEntries('investigation')[0].action();
         expect(openTab).toHaveBeenCalledWith('characters', 'groups');
+        expect(rememberOpenedEntity).toHaveBeenCalledTimes(1);
     });
 
     test('honours a group selection the app refuses', async () => {
@@ -202,6 +210,7 @@ describe('universal search entity entries', () => {
 
         expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
         expect(openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
     });
 
     test('opens a character through the app selection path, which starts the editor session', async () => {
@@ -222,6 +231,7 @@ describe('universal search entity entries', () => {
         // open a second session on top of it.
         expect(selectCharacterById).toHaveBeenCalledWith(1);
         expect(openTab).toHaveBeenCalledWith('characters', 'editor');
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'target.png']]);
     });
 
     test('honours a selection the app refuses', async () => {
@@ -237,6 +247,34 @@ describe('universal search entity entries', () => {
 
         expect(selectCharacterById).toHaveBeenCalledWith(0);
         expect(openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
+    });
+
+    test('records the searched character even when the library reloads while its chat opens', async () => {
+        const characters = [{ name: 'Other Card', avatar: 'other.png' }, { name: 'Editor Target', avatar: 'target.png' }];
+        const selectCharacterById = jest.fn(async () => {
+            characters.unshift({ name: 'Imported', avatar: 'imported.png' });
+            return true;
+        });
+        replaceGlobal('SillyBunnyShell', { openTab: jest.fn() });
+        setSearchContextAccessor(() => ({ characters, selectCharacterById }));
+
+        await collectEntitySearchEntries('editor target')[0].action();
+
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'target.png']]);
+    });
+
+    test('records a character selected through the module fallback', async () => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        setSearchContextAccessor(() => ({ characters: [{ name: 'Editor Target', avatar: 'target.png' }] }));
+        scriptSelectCharacterById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('editor target')[0].action();
+
+        expect(scriptSelectCharacterById).toHaveBeenCalledWith(0);
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'target.png']]);
+        expect(openTab).toHaveBeenCalledWith('characters', 'editor');
     });
 
     test('waits for the world picker to mount and selects the book by its original index', async () => {
