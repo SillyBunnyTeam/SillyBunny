@@ -135,8 +135,10 @@ export function applyConnectionsGroups(block, { moveNode, addLegacyClass, snapsh
     let frame = null;
     const sync = () => {
         frame = null;
+        const updates = [];
         for (const group of groups.values()) {
             let first = true;
+            const units = [];
             for (const { nodes, unit } of group.units) {
                 const displayed = nodes.some(node => {
                     for (let parent = node.parentElement; parent && parent !== group.group; parent = parent.parentElement) {
@@ -145,18 +147,28 @@ export function applyConnectionsGroups(block, { moveNode, addLegacyClass, snapsh
                     }
                     return hasDisplayedContent(node);
                 });
-                if (unit.hidden === displayed) unit.hidden = !displayed;
-                unit.toggleAttribute('data-sb-connections-first', first && displayed);
+                const firstUnit = first && displayed;
                 if (displayed) first = false;
                 // Rows nested at different depths inside one unit (#vertexai_form) cannot be separated by a sibling selector.
                 let firstRow = true;
-                for (const row of unit.querySelectorAll('.ds-row')) {
+                const rows = [...unit.querySelectorAll('.ds-row')].map(row => {
                     const shown = isDisplayedWithin(row, unit);
-                    row.toggleAttribute('data-sb-connections-row-separator', shown && !firstRow);
+                    const separator = shown && !firstRow;
                     if (shown) firstRow = false;
-                }
+                    return { row, separator };
+                });
+                units.push({ unit, displayed, firstUnit, rows });
             }
-            if (group.section.hidden !== first) group.section.hidden = first;
+            updates.push({ section: group.section, hidden: first, units });
+        }
+        // Read every display state before changing attributes; interleaving them forces a style recalculation per row.
+        for (const { section, hidden, units } of updates) {
+            for (const { unit, displayed, firstUnit, rows } of units) {
+                if (unit.hidden === displayed) unit.hidden = !displayed;
+                unit.toggleAttribute('data-sb-connections-first', firstUnit);
+                for (const { row, separator } of rows) row.toggleAttribute('data-sb-connections-row-separator', separator);
+            }
+            if (section.hidden !== hidden) section.hidden = hidden;
         }
     };
     const schedule = () => { frame ??= requestAnimationFrame(sync); };
