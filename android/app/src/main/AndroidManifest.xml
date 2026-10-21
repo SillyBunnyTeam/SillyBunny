@@ -50,6 +50,17 @@
             </intent-filter>
         </provider>
 
+        <!-- Shares point-in-time snapshots from cacheDir/shared only, such as logs for the share sheet. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
+
         <!-- SillyBunny's explicit PackageInstaller callback must not be externally addressable. -->
         <receiver
             android:name=".update.InstallStatusReceiver"
