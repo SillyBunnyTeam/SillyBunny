@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+// Bundled runtime payload, npm/npx trampoline and packaging checks (plan §2.1, §4.9). Applied via file():
+// lint follows a string `apply(from = ...)` into the script and crashes analysing it (findFirCompiledSymbol).
+apply(from = file("runtime-packaging.gradle.kts"))
 
 val appVersion = Properties().apply {
     rootProject.file("app-version.properties").inputStream().use { load(it) }

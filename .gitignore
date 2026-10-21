@@ -92,3 +92,7 @@ skills-lock.json
 /android/build/
 /android/app/build/
 /android/local.properties
+
+# SillyBunny Android: keep staged Node and npm runtime inputs out of source control.
+/android/runtime/node-out/
+/android/runtime/npm-out/
