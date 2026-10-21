@@ -128,3 +128,46 @@ describe('theme changes guard unsaved Custom CSS', () => {
         expect(deleteSource).toContain('applyTheme(power_user.theme, { applyCss: isCssStoredInThemes(themes, power_user.custom_css) });');
     });
 });
+
+describe('Custom CSS save state', () => {
+    const indexSource = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+
+    test('the Custom CSS toolbar has a keyboard-reachable save state control', () => {
+        const toolbarStart = indexSource.indexOf('<div id="CustomCSS-block"');
+        const toolbarSource = indexSource.slice(toolbarStart, indexSource.indexOf('id="CustomCSS-textAreaBlock"', toolbarStart));
+
+        expect(toolbarStart).toBeGreaterThan(-1);
+        expect(toolbarSource).toContain('<div id="custom_css_save_state" class="menu_button menu_button_icon margin0" role="button" tabindex="0" title="lorum ipsum" aria-label="lorum ipsum">');
+        expect(toolbarSource).toContain('<span class="custom_css_save_state_label"></span>');
+    });
+
+    test('the save state follows Custom CSS edits, theme changes, saves and deletes', () => {
+        const applyCustomCssSource = requireSection('function applyCustomCSS()', 'function updateThemeCssSaveState()');
+        const applyThemeSource = requireSection('function applyTheme(', 'async function applyMovingUIPreset');
+        const saveThemeSource = requireSection('async function saveTheme(', '/**\n * Gets a snapshot of the current theme settings.');
+        const deleteSource = requireSection('async function deleteTheme()', '/**\n * Exports the current theme to a file.');
+
+        expect(applyCustomCssSource).toContain('updateThemeCssSaveState();');
+        expect(applyThemeSource).toContain('updateThemeCssSaveState();');
+        expect(saveThemeSource).toContain('updateThemeCssSaveState();');
+        expect(deleteSource).toContain('updateThemeCssSaveState();');
+    });
+
+    test('the save state compares against the current theme once themes load', () => {
+        const updateSource = requireSection('function updateThemeCssSaveState()', '/**\n * Saves the Custom CSS into the current theme');
+
+        expect(updateSource).toContain('if (!indicator.length || !themes.length) {');
+        expect(updateSource).toContain('isThemeCssDirty(themes.find(x => x.name == power_user.theme), power_user.custom_css)');
+        expect(updateSource).toContain('.attr(\'aria-disabled\', String(!isDirty))');
+    });
+
+    test('activating the save state saves only the Custom CSS into the current theme', () => {
+        const saveSource = requireSection('async function saveCurrentThemeCss()', 'function buildCustomCssAiPopup(');
+        const handlerSource = requireSection('$(\'#custom_css_save_state\').on(\'click\'', '// SillyBunny: Custom CSS AI wand');
+
+        expect(saveSource).toContain('if (await saveThemeCss(power_user.theme)) {');
+        expect(saveSource).not.toContain('updateTheme(');
+        expect(handlerSource).toContain('void saveCurrentThemeCss();');
+        expect(handlerSource).toContain('if (event.key !== \'Enter\' && event.key !== \' \') {');
+    });
+});

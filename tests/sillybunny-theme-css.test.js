@@ -7,6 +7,7 @@ import {
     buildImportedTheme,
     getThemeCustomCss,
     isCssStoredInThemes,
+    isThemeCssDirty,
     mergeThemeUpdate,
     normalizeThemeCss,
     shouldConfirmCssReplace,
@@ -145,6 +146,26 @@ describe('isCssStoredInThemes', () => {
         const remaining = themes.filter(theme => theme.name !== 'Mine');
 
         expect(isCssStoredInThemes(remaining, 'a {}\nb {}')).toBe(false);
+    });
+});
+
+describe('isThemeCssDirty', () => {
+    test('matches the stored copy despite line endings and surrounding whitespace', () => {
+        expect(isThemeCssDirty({ name: 'Mine', custom_css: 'a {}\r\nb {}' }, '\na {}\nb {}  ')).toBe(false);
+    });
+
+    test('an edit the theme does not store is unsaved', () => {
+        expect(isThemeCssDirty({ name: 'Mine', custom_css: 'a {}' }, 'a { color: red; }')).toBe(true);
+    });
+
+    test('a theme without Custom CSS counts as storing none', () => {
+        expect(isThemeCssDirty({ name: 'Palette only' }, '')).toBe(false);
+        expect(isThemeCssDirty({ name: 'Palette only' }, 'a {}')).toBe(true);
+    });
+
+    test('Custom CSS without a current theme is unsaved unless blank', () => {
+        expect(isThemeCssDirty(undefined, ' ')).toBe(false);
+        expect(isThemeCssDirty(undefined, 'a {}')).toBe(true);
     });
 });
 

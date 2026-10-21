@@ -77,7 +77,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
-import { buildImportedTheme, isCssStoredInThemes, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
+import { buildImportedTheme, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
@@ -1852,6 +1852,36 @@ function applyCustomCSS() {
     }
     style.innerHTML = power_user.custom_css;
     applyCustomThemeStyleEntries();
+    updateThemeCssSaveState();
+}
+
+/**
+ * Shows whether the Custom CSS matches the CSS stored in the current theme.
+ */
+function updateThemeCssSaveState() {
+    const indicator = $('#custom_css_save_state');
+
+    // SillyBunny: there is nothing to compare against until the theme list loads.
+    if (!indicator.length || !themes.length) {
+        return;
+    }
+
+    const isDirty = isThemeCssDirty(themes.find(x => x.name == power_user.theme), power_user.custom_css);
+    indicator.toggleClass('custom_css_save_state_dirty', isDirty).attr('aria-disabled', String(!isDirty));
+    indicator.find('.custom_css_save_state_label').text(isDirty ? t`lorum ipsum` : t`lorum ipsum`);
+}
+
+/**
+ * Saves the Custom CSS into the current theme when the theme stores different CSS.
+ */
+async function saveCurrentThemeCss() {
+    if (!isThemeCssDirty(themes.find(x => x.name == power_user.theme), power_user.custom_css)) {
+        return;
+    }
+
+    if (await saveThemeCss(power_user.theme)) {
+        toastr.success('Theme saved.');
+    }
 }
 
 function buildCustomCssAiPopup(currentCss) {
@@ -2210,6 +2240,8 @@ function applyTheme(name, { applyCss = true } = {}) {
         applyCustomCSS();
     }
 
+    // SillyBunny: the Custom CSS save state compares against the theme just applied.
+    updateThemeCssSaveState();
     console.log('theme applied: ' + name);
 }
 
@@ -3447,6 +3479,7 @@ async function deleteTheme() {
             // deleting a theme never wipes the only copy of the user's CSS.
             applyTheme(power_user.theme, { applyCss: isCssStoredInThemes(themes, power_user.custom_css) });
         }
+        updateThemeCssSaveState();
         toastr.success('Theme deleted.');
     }
 }
@@ -3565,6 +3598,8 @@ async function saveTheme(name = undefined, theme = undefined) {
 
     power_user.theme = name;
     saveSettingsDebounced();
+    // SillyBunny: the saved theme may now store the current Custom CSS.
+    updateThemeCssSaveState();
 
     return theme;
 }
@@ -4379,6 +4414,16 @@ jQuery(async () => {
         power_user.custom_css = String($('#customCSS').val());
         saveSettingsDebounced();
         applyCustomCSS();
+    });
+
+    // SillyBunny: the Custom CSS save state saves the CSS into the current theme.
+    $('#custom_css_save_state').on('click', () => { void saveCurrentThemeCss(); });
+    $('#custom_css_save_state').on('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        event.preventDefault();
+        $('#custom_css_save_state').trigger('click');
     });
 
     // SillyBunny: Custom CSS AI wand uses the active Connection Manager profile without swapping global state.

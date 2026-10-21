@@ -76,6 +76,17 @@ export function isCssStoredInThemes(themes, css) {
 }
 
 /**
+ * Checks whether the current Custom CSS differs from the CSS a theme stores. A theme
+ * without Custom CSS counts as storing none.
+ * @param {object|null|undefined} theme Stored theme, if there is one.
+ * @param {unknown} liveCss Current Custom CSS.
+ * @returns {boolean} Whether the Custom CSS has changes the theme does not store.
+ */
+export function isThemeCssDirty(theme, liveCss) {
+    return normalizeThemeCss(getThemeCustomCss(theme) ?? '') !== normalizeThemeCss(liveCss);
+}
+
+/**
  * Checks whether switching to a theme needs confirmation: the theme's Custom CSS would
  * replace the current Custom CSS, and no stored theme keeps a copy of the current CSS.
  * @param {object} nextTheme Theme to switch to.
