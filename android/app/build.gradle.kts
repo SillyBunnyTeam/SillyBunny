@@ -207,11 +207,16 @@ dependencies {
     implementation(libs.compose.foundation.layout)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
+    implementation(libs.androidx.webkit)
+    // Compose UI tests host composables in the library's debug-only ComponentActivity.
+    debugImplementation(libs.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
 
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
