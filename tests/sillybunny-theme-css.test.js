@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { mergeThemeUpdate } from '../public/scripts/sillybunny-theme-css.js';
+import { mergeThemeUpdate, withOwnedThemeCss } from '../public/scripts/sillybunny-theme-css.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,13 +29,14 @@ const PALETTE_SNAPSHOT_KEYS = [
     'sheldBackgroundColor',
 ];
 
+function getSnapshot(name) {
+    return Object.fromEntries(PALETTE_SNAPSHOT_KEYS.map(key => [key, key === 'name' ? name : `live-${key}`]));
+}
+
 describe('mergeThemeUpdate', () => {
-    test('updating a bundled theme keeps its custom CSS and every stored key', () => {
+    test('updating a bundled theme keeps every stored key', () => {
         const stored = readBundledTheme('Catppuccin Mocha');
-        const snapshot = Object.fromEntries(PALETTE_SNAPSHOT_KEYS.map(key => [key, key === 'name' ? stored.name : `live-${key}`]));
-
-        const merged = mergeThemeUpdate(stored, snapshot);
-
+        const merged = mergeThemeUpdate(stored, getSnapshot(stored.name));
         const storedKeys = Object.keys(stored);
 
         expect(typeof stored.custom_css).toBe('string');
@@ -68,5 +69,55 @@ describe('mergeThemeUpdate', () => {
 
         expect(stored).toEqual({ name: 'Mine', main_text_color: 'old' });
         expect(snapshot).toEqual({ name: 'Mine', main_text_color: 'new' });
+    });
+});
+
+describe('withOwnedThemeCss', () => {
+    test('a theme that owns Custom CSS takes the live CSS', () => {
+        const stored = { name: 'Mine', custom_css: 'old {}' };
+
+        expect(withOwnedThemeCss(getSnapshot('Mine'), stored, 'new {}').custom_css).toBe('new {}');
+    });
+
+    test('an empty stored string still counts as owning Custom CSS', () => {
+        const stored = readBundledTheme('Dark V 1.0');
+
+        expect(stored.custom_css).toBe('');
+        expect(withOwnedThemeCss(getSnapshot(stored.name), stored, 'mine {}').custom_css).toBe('mine {}');
+        expect(withOwnedThemeCss(getSnapshot(stored.name), stored, undefined).custom_css).toBe('');
+    });
+
+    test('a theme without Custom CSS stays without it', () => {
+        const snapshot = getSnapshot('Mine');
+
+        expect(withOwnedThemeCss(snapshot, { name: 'Mine', main_text_color: 'c' }, 'live {}')).not.toHaveProperty('custom_css');
+        expect(withOwnedThemeCss(snapshot, undefined, 'live {}')).not.toHaveProperty('custom_css');
+        expect(withOwnedThemeCss(snapshot, null, 'live {}')).not.toHaveProperty('custom_css');
+    });
+
+    test('updating a bundled theme saves the live CSS and keeps every stored key', () => {
+        const stored = readBundledTheme('Catppuccin Mocha');
+        const merged = mergeThemeUpdate(stored, withOwnedThemeCss(getSnapshot(stored.name), stored, 'edited {}'));
+
+        expect(merged.custom_css).toBe('edited {}');
+        expect(Object.keys(merged)).toEqual(expect.arrayContaining(Object.keys(stored)));
+    });
+
+    test('an export of a bundled theme leaves out its legacy layout keys', () => {
+        const stored = readBundledTheme('Catppuccin Mocha');
+        const exported = withOwnedThemeCss(getSnapshot(stored.name), stored, stored.custom_css);
+
+        expect(stored).toHaveProperty('chat_width');
+        expect(Object.keys(exported).sort()).toEqual([...PALETTE_SNAPSHOT_KEYS, 'custom_css'].sort());
+        expect(exported.custom_css).toBe(stored.custom_css);
+    });
+
+    test('leaves the snapshot unchanged', () => {
+        const snapshot = getSnapshot('Mine');
+        const copy = { ...snapshot };
+
+        withOwnedThemeCss(snapshot, { name: 'Mine', custom_css: 'old {}' }, 'new {}');
+
+        expect(snapshot).toEqual(copy);
     });
 });

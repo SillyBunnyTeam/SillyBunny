@@ -77,7 +77,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
-import { mergeThemeUpdate } from './sillybunny-theme-css.js';
+import { mergeThemeUpdate, withOwnedThemeCss } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
@@ -3391,9 +3391,9 @@ function exportTheme() {
         return;
     }
 
-    // SillyBunny: SillyTavern saves the theme before downloading it; exporting here
-    // only downloads, so it never rewrites the stored theme file.
-    const themeFile = getThemeSaveObject(themeName);
+    // SillyBunny: SillyTavern saves the theme before downloading it; exporting here only
+    // downloads, and leaves out legacy layout keys that SillyTavern would apply on import.
+    const themeFile = getThemeSnapshotWithCss(themeName);
     const fileName = `${themeFile.name}.json`;
     download(JSON.stringify(themeFile, null, 4), fileName, 'application/json');
 }
@@ -3510,14 +3510,24 @@ export function getThemeObject(name) {
 }
 
 /**
- * Gets the theme object to save or export from the current settings.
+ * Gets the theme snapshot to save or export, with the live Custom CSS when the stored theme owns Custom CSS.
+ * @param {string} name Name of the theme
+ * @returns {object} Theme snapshot
+ */
+function getThemeSnapshotWithCss(name) {
+    // SillyBunny: a theme that owns Custom CSS saves and exports the user's edits to it.
+    return withOwnedThemeCss(getThemeObject(name), themes.find(x => x.name == name), power_user.custom_css);
+}
+
+/**
+ * Gets the theme object to save from the current settings.
  * @param {string} name Name of the theme
  * @returns {object} Current snapshot merged over the stored theme
  */
 function getThemeSaveObject(name) {
     // SillyBunny: /api/themes/save overwrites the whole file, so merge over the stored
-    // theme to keep keys the snapshot does not carry, such as a bundled theme's custom_css.
-    return mergeThemeUpdate(themes.find(x => x.name == name), getThemeObject(name));
+    // theme to keep keys the snapshot does not carry, such as legacy SillyTavern layout keys.
+    return mergeThemeUpdate(themes.find(x => x.name == name), getThemeSnapshotWithCss(name));
 }
 
 /**

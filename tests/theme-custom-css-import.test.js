@@ -40,7 +40,7 @@ describe('theme custom CSS import wiring', () => {
     });
 
     test('theme normalization only keeps explicitly bundled custom CSS', () => {
-        const getThemeObjectSource = requireSection('export function getThemeObject(name)', '/**\n * Gets the theme object to save or export');
+        const getThemeObjectSource = requireSection('export function getThemeObject(name)', '/**\n * Gets the theme snapshot to save or export');
         const getNewThemeSource = requireSection('function getNewTheme(parsed)', 'async function saveMovingUI');
 
         expect(getThemeObjectSource).toContain('const theme = { name };');
@@ -57,15 +57,22 @@ describe('theme actions keep stored theme data', () => {
 
         expect(saveThemeSource).toContain('theme = getThemeSaveObject(name);');
         expect(saveThemeSource).not.toContain('theme = getThemeObject(name);');
-        expect(getThemeSaveObjectSource).toContain('mergeThemeUpdate(themes.find(x => x.name == name), getThemeObject(name))');
+        expect(getThemeSaveObjectSource).toContain('mergeThemeUpdate(themes.find(x => x.name == name), getThemeSnapshotWithCss(name))');
+    });
+
+    test('a theme that owns Custom CSS saves and exports the live CSS', () => {
+        const snapshotSource = requireSection('function getThemeSnapshotWithCss(name)', '/**\n * Gets the theme object to save from the current settings.');
+
+        expect(snapshotSource).toContain('withOwnedThemeCss(getThemeObject(name), themes.find(x => x.name == name), power_user.custom_css)');
     });
 
     test('export downloads without rewriting the stored theme file', () => {
         const exportThemeSource = requireSection('function exportTheme()', '/**\n * Imports a theme from a file.');
 
-        expect(exportThemeSource).toContain('getThemeSaveObject(themeName)');
+        expect(exportThemeSource).toContain('const themeFile = getThemeSnapshotWithCss(themeName);');
         expect(exportThemeSource).toContain('download(');
         expect(exportThemeSource).not.toContain('saveTheme(');
+        expect(exportThemeSource).not.toContain('getThemeSaveObject(');
     });
 
     test('Reset restores colors without replacing Custom CSS', () => {
