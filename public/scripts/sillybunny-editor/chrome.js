@@ -368,8 +368,7 @@ export function showDraftRecoveryToast(draft, actions, owner = null) {
     if (recoveryToast) toastr.clear(recoveryToast, { force: true });
 
     const when = typeof moment !== 'undefined' ? moment(draft.ts).fromNow() : new Date(draft.ts).toLocaleTimeString();
-    // <!-- HUMAN: replace toast body text -->
-    const body = `<div>lorum ipsum ${when}</div>
+    const body = `<div>${t`Unsaved changes were made ${when}`}</div>
         <div class="sb-draft-toast__actions">
             <button type="button" id="sb_draft_restore_btn" class="menu_button">${t`Restore`}</button>
             <button type="button" id="sb_draft_discard_btn" class="menu_button">${t`Discard`}</button>
