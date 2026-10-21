@@ -41,5 +41,8 @@ export function hostOverlayLayer(...layers) {
 /** Moves hosted layers out of `root` so cached menu frames survive its removal. */
 export function releaseOverlayLayers(root) {
     if (!(root instanceof Element)) return;
-    for (const layer of root.querySelectorAll(`[${LAYER_ATTRIBUTE}]`)) document.body.append(layer);
+    for (const layer of root.querySelectorAll(`[${LAYER_ATTRIBUTE}]`)) {
+        layer.dispatchEvent(new Event('sb-overlay-host-closing'));
+        if (root.contains(layer)) document.body.append(layer);
+    }
 }

@@ -82,6 +82,21 @@ function firstFocusable(root) {
     return all.find(isVisible) ?? all[0] ?? null;
 }
 
+/** Reserve equal button tracks so the title stays centred while its own track can shrink. */
+export function bindHeaderLayout(header) {
+    const sides = [...header.querySelectorAll(':scope > .sb-dialog__header-start, :scope > .sb-dialog__header-end, :scope > .popup-controls > :is(.popup-button-ok, .popup-button-cancel), :scope > .popup-button-close')];
+    const sync = () => {
+        const width = Math.max(0, ...sides.map(node => node.offsetWidth));
+        header.style.setProperty('--sb-dialog-header-side', `${width}px`);
+    };
+    sync();
+    if (typeof ResizeObserver === 'undefined') return () => {};
+    const observer = new ResizeObserver(sync);
+    observer.observe(header);
+    sides.forEach(node => observer.observe(node));
+    return () => observer.disconnect();
+}
+
 function appendContent(target, content) {
     if (typeof content === 'function') content(target);
     else if (content instanceof Node) target.append(content);
@@ -396,6 +411,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
         page.append(bottomBar);
     }
     page.append(status);
+    const unbindHeaderLayout = bindHeaderLayout(header);
 
     return {
         page, header, titleNode, body, bottomBar, status, buttons, menuButton, closeButton,
@@ -409,7 +425,10 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
             const node = buttons.get(id);
             if (node) node.disabled = !enabled;
         },
-        destroy() { searchControl?.destroy(); },
+        destroy() {
+            unbindHeaderLayout();
+            searchControl?.destroy();
+        },
     };
 }
 

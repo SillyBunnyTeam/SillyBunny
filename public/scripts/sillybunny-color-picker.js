@@ -368,8 +368,7 @@ function openColorMenu(picker, button) {
         animateIn(sheet, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
     } else {
         // Popover's top layer escapes clipped cards. WebKit 16.4 falls back inside any open modal.
-        const root = picker.closest('dialog[open]') ?? document.body;
-        root.append(state.menu);
+        hostOverlayLayer(state.menu);
         if (typeof state.menu.showPopover === 'function') {
             state.menu.setAttribute('popover', 'manual');
             state.menu.showPopover();
@@ -377,6 +376,9 @@ function openColorMenu(picker, button) {
         syncPlacement();
         animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     }
+    (state.sheet ?? state.menu).addEventListener('sb-overlay-host-closing', () => {
+        if (active === state) closeColorMenu({ commitPending: false, restoreFocus: false });
+    });
     (state.sheet ? state.menu.querySelector('.sb-color-picker-close') : state.inputs.hex).focus({ preventScroll: true });
 }
 

@@ -388,4 +388,18 @@ describe('Popup focus', () => {
         popup.setAutoFocus();
         expect(document.activeElement).toBe(popup.okButton);
     });
+
+    test('framed custom defaultResult is discoverable and focused after removing native autofocus', async () => {
+        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', {
+            tier: 'window', defaultResult: 7, customButtons: [{ text: 'Custom', result: 7 }],
+        });
+        void popup.show();
+        await settle();
+        const custom = popup.buttonControls.querySelector('[data-result="7"]');
+        expect(custom).not.toBeNull();
+        popup.dlg.querySelectorAll('[autofocus]').forEach(element => element.removeAttribute('autofocus'));
+        popup.setAutoFocus();
+        expect(document.activeElement).toBe(custom);
+        expect(popup.buttonControls.querySelectorAll('[data-result]')).toHaveLength(3);
+    });
 });

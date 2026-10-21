@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
-import { jest, describe, test, expect } from '@jest/globals';
+import { jest, describe, test, expect, afterEach } from '@jest/globals';
 
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     closeActionMenu: jest.fn(),
@@ -16,6 +17,8 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 const { findLeadingHeading, framePopup, resolvePopupTier, shouldPromoteAlert } = await import('../../public/scripts/sillybunny-editor/popup-frame.js');
 const POPUP_TYPE = { TEXT: 1, CONFIRM: 2, INPUT: 3, DISPLAY: 4 };
 const POPUP_RESULT = { AFFIRMATIVE: 1, NEGATIVE: 0 };
+
+afterEach(() => document.body.replaceChildren());
 
 function popupDom({ type = POPUP_TYPE.CONFIRM, contentHtml = '', customInputs = [] } = {}) {
     const dlg = document.createElement('dialog');
@@ -74,10 +77,20 @@ function popupDom({ type = POPUP_TYPE.CONFIRM, contentHtml = '', customInputs = 
     };
 }
 
-function setupDialogMedia() {
-    window.matchMedia ??= query => ({ matches: query.includes('450px') ? false : false, addEventListener() {}, removeEventListener() {} });
+function setupDialogMedia({ sheet = false } = {}) {
+    window.matchMedia = () => ({ matches: sheet, addEventListener() {}, removeEventListener() {} });
     HTMLDialogElement.prototype.showModal ??= function () { this.setAttribute('open', ''); };
     HTMLDialogElement.prototype.close ??= function () { this.removeAttribute('open'); };
+}
+
+function pointerEvent(type, { x = 10, y = 10, id = 1, button = 0 } = {}) {
+    return Object.assign(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button }), { pointerId: id, isPrimary: true });
+}
+
+function clickBackdrop(dialog) {
+    dialog.dispatchEvent(pointerEvent('pointerdown'));
+    dialog.dispatchEvent(pointerEvent('pointerup'));
+    dialog.dispatchEvent(pointerEvent('click'));
 }
 
 function popup({ type = 2, content = '', classes = [], rows = 1, options = {} } = {}) {
@@ -171,7 +184,7 @@ describe('Popup frame adapter', () => {
         expect(heading.dataset.i18n).toBe('Install Extension');
         expect(popupValue.dlg.getAttribute('aria-labelledby')).toBe(heading.id);
         expect(popupValue.buttonControls.parentElement.classList.contains('sb-dialog__header')).toBe(true);
-        expect([...popupValue.buttonControls.children].map(button => button.textContent)).toEqual(['Save', 'Cancel']);
+        expect([...popupValue.buttonControls.querySelectorAll('.menu_button')].map(button => button.textContent)).toEqual(['Save', 'Cancel']);
         expect(popupValue.closeButton.style.display).toBe('none');
         frame.dispose();
     });
@@ -214,6 +227,254 @@ describe('Popup frame adapter', () => {
         expect(input.closest('.ds-row-switch')).not.toBeNull();
         expect(input.id).toBe('custom-delete');
         expect(input.getAttribute('role')).toBe('switch');
+        frame.dispose();
+    });
+
+    test('plain DISPLAY always has a working header Close, including an explicit Alert request', () => {
+        setupDialogMedia();
+        for (const tier of [null, 'alert']) {
+            const value = popupDom({ type: POPUP_TYPE.DISPLAY, contentHtml: '<p>Read-only content</p>' });
+            const close = jest.fn();
+            value.closeButton.addEventListener('click', close);
+            const frame = framePopup(value, { tier });
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.classList.contains('sb-dialog--dialog')).toBe(true);
+            expect(value.closeButton.style.display).not.toBe('none');
+            expect(value.closeButton.parentElement.classList.contains('sb-dialog__header')).toBe(true);
+            expect(value.buttonControls.contains(value.closeButton)).toBe(false);
+            value.closeButton.click();
+            expect(close).toHaveBeenCalledTimes(1);
+            frame.dispose();
+        }
+    });
+
+    test('custom default responses stay inside buttonControls and receive autofocus', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        const custom = document.createElement('button');
+        custom.className = 'popup-button-custom';
+        custom.dataset.result = '7';
+        value.buttonControls.prepend(custom);
+        value.setAutoFocus = () => value.buttonControls.querySelector('[data-result="7"]').focus();
+        const frame = framePopup(value, { tier: 'window' });
+        value.dlg.showModal();
+        frame.opened();
+        expect([...value.buttonControls.querySelectorAll('[data-result]')]).toEqual(expect.arrayContaining([custom, value.okButton, value.cancelButton]));
+        expect(custom.closest('.sb-dialog__bottom-bar')).not.toBeNull();
+        expect(document.activeElement).toBe(custom);
+        expect(value.okButton.compareDocumentPosition(value.cancelButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        frame.dispose();
+    });
+
+    test.each([
+        { sheet: false, allowEscapeClose: true, expected: 1 },
+        { sheet: true, allowEscapeClose: true, expected: 0 },
+        { sheet: false, allowEscapeClose: false, expected: 0 },
+    ])('backdrop clicks cancel only closable floating popups: %o', ({ sheet, allowEscapeClose, expected }) => {
+        setupDialogMedia({ sheet });
+        const value = popupDom();
+        value.dlg.getBoundingClientRect = () => ({ left: 100, right: 400, top: 100, bottom: 400 });
+        const cancel = jest.fn(event => event.preventDefault());
+        value.dlg.addEventListener('cancel', cancel);
+        const frame = framePopup(value, { allowEscapeClose });
+        value.dlg.showModal();
+        frame.opened();
+        value.dlg.dispatchEvent(new MouseEvent('click', { clientX: 150, clientY: 150 }));
+        value.content.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 }));
+        expect(cancel).not.toHaveBeenCalled();
+        clickBackdrop(value.dlg);
+        expect(cancel).toHaveBeenCalledTimes(expected);
+        frame.dispose();
+    });
+
+    test('pushed pages ignore backdrop clicks', () => {
+        setupDialogMedia();
+        const parent = popupDom();
+        const parentFrame = framePopup(parent, { tier: 'window' });
+        parent.dlg.showModal();
+        parentFrame.opened();
+        const child = popupDom();
+        const cancel = jest.fn();
+        child.dlg.addEventListener('cancel', cancel);
+        const childFrame = framePopup(child, { tier: 'dialog' });
+        child.dlg.showModal();
+        childFrame.opened();
+        expect(child.dlg.classList.contains('sb-dialog--page')).toBe(true);
+        clickBackdrop(child.dlg);
+        expect(cancel).not.toHaveBeenCalled();
+        childFrame.dispose();
+        parentFrame.dispose();
+    });
+
+    test.each(['inside start', 'inside release', 'cancelled', 'different pointer', 'secondary button'])('backdrop ignores a %s pointer sequence', sequence => {
+        setupDialogMedia();
+        const value = popupDom();
+        value.dlg.getBoundingClientRect = () => ({ left: 100, right: 400, top: 100, bottom: 400 });
+        const cancel = jest.fn();
+        value.dlg.addEventListener('cancel', cancel);
+        const frame = framePopup(value, { tier: 'dialog' });
+        value.dlg.showModal();
+        frame.opened();
+        const origin = sequence === 'inside start' ? value.content : value.dlg;
+        origin.dispatchEvent(pointerEvent('pointerdown', { button: sequence === 'secondary button' ? 2 : 0 }));
+        if (sequence === 'cancelled') value.dlg.dispatchEvent(pointerEvent('pointercancel'));
+        value.dlg.dispatchEvent(pointerEvent('pointerup', {
+            x: sequence === 'inside release' ? 150 : 10,
+            y: sequence === 'inside release' ? 150 : 10,
+            id: sequence === 'different pointer' ? 2 : 1,
+        }));
+        value.dlg.dispatchEvent(pointerEvent('click'));
+        expect(cancel).not.toHaveBeenCalled();
+        frame.dispose();
+    });
+
+    test.each(['alert', 'dialog'])('%s boolean adoption keeps caller selectors and delegated listeners', tier => {
+        setupDialogMedia();
+        const value = popupDom({ contentHtml: '<label class="checkbox_label"><input id="delegated-option" type="checkbox"><span>Keep data</span></label>' });
+        const label = value.content.querySelector('label.checkbox_label');
+        const delegated = jest.fn();
+        const listener = event => {
+            if (event.target.matches('.checkbox_label input')) delegated(event);
+        };
+        document.addEventListener('change', listener);
+        const frame = framePopup(value, { tier });
+        try {
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.querySelector('label.checkbox_label')).toBe(label);
+            expect(label.matches('.ds-row-switch')).toBe(true);
+            expect(Boolean(label.closest('.sb-dialog__extra'))).toBe(tier === 'alert');
+            label.querySelector('input').dispatchEvent(new Event('change', { bubbles: true }));
+            expect(delegated).toHaveBeenCalledTimes(1);
+        } finally {
+            document.removeEventListener('change', listener);
+            frame.dispose();
+        }
+    });
+
+    test('header and footer reservations use untransformed layout dimensions', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        Object.defineProperty(value.okButton, 'offsetWidth', { value: 120 });
+        value.okButton.getBoundingClientRect = () => ({ width: 96 });
+        const custom = document.createElement('button');
+        custom.className = 'popup-button-custom';
+        value.buttonControls.prepend(custom);
+        const height = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(60);
+        const frame = framePopup(value, { tier: 'dialog' });
+        try {
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.querySelector('.sb-dialog__header').style.getPropertyValue('--sb-dialog-header-side')).toBe('120px');
+            expect(value.dlg.style.getPropertyValue('--sb-popup-response-height')).toBe('60px');
+        } finally {
+            frame.dispose();
+            height.mockRestore();
+        }
+    });
+
+    test('Dialog adopts a plain boolean without losing identity, state, caption or listeners', () => {
+        setupDialogMedia();
+        const value = popupDom({ contentHtml: '<h3>Delete user</h3><label class="checkbox_label"><input id="purge" name="deleteUserData" type="checkbox" checked><span data-i18n="Delete data">Delete data</span></label><input name="deleteUserHandle">' });
+        const input = value.content.querySelector('#purge');
+        const label = input.parentElement;
+        const onInput = jest.fn();
+        const onLabelInput = jest.fn();
+        input.addEventListener('input', onInput);
+        label.addEventListener('input', onLabelInput);
+        const frame = framePopup(value);
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.dlg.classList.contains('sb-dialog--dialog')).toBe(true);
+        expect(value.content.querySelector('.ds-row-switch > input')).toBe(input);
+        expect(input.parentElement).toBe(label);
+        expect(input.name).toBe('deleteUserData');
+        expect(input.checked).toBe(true);
+        expect(value.content.querySelector('.ds-row-label > span').dataset.i18n).toBe('Delete data');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(onInput).toHaveBeenCalledTimes(1);
+        expect(onLabelInput).toHaveBeenCalledTimes(1);
+        frame.dispose();
+    });
+
+    test('Dialog leaves custom forms, existing rows and composite checkbox labels alone', () => {
+        setupDialogMedia();
+        const value = popupDom({ contentHtml: '<form><label class="checkbox_label"><input type="checkbox"></label></form><div class="ds-row"><label class="checkbox_label"><input type="checkbox"></label></div><label class="checkbox_label"><input type="checkbox"><input type="checkbox"></label>' });
+        const labels = [...value.content.querySelectorAll('label')];
+        const frame = framePopup(value, { tier: 'dialog' });
+        value.dlg.showModal();
+        frame.opened();
+        expect([...value.content.querySelectorAll('label')]).toEqual(labels);
+        expect(value.content.querySelector('.ds-row-switch')).toBeNull();
+        frame.dispose();
+    });
+
+    test.each(['custom', 'plain'])('teardown removes the adopted %s switch listener without removing caller listeners', source => {
+        setupDialogMedia();
+        const value = popupDom(source === 'custom'
+            ? { customInputs: [{ id: 'qa-cleanup', label: 'Retain data' }] }
+            : { contentHtml: '<label class="checkbox_label"><input id="qa-cleanup" type="checkbox"><span>Retain data</span></label>' });
+        const input = value.dlg.querySelector('#qa-cleanup');
+        const caller = jest.fn();
+        input.addEventListener('change', caller);
+        const add = jest.spyOn(input, 'addEventListener');
+        const remove = jest.spyOn(input, 'removeEventListener');
+        const frame = framePopup(value, { tier: 'dialog' });
+        value.dlg.showModal();
+        frame.opened();
+        const notify = add.mock.calls.find(([type]) => type === 'change')[1];
+        frame.dispose();
+        expect(remove).toHaveBeenCalledWith('change', notify);
+        input.dispatchEvent(new Event('change'));
+        expect(caller).toHaveBeenCalledTimes(1);
+    });
+
+    test('teardown disconnects the header and custom-response measurement observers', () => {
+        setupDialogMedia();
+        const previousObserver = globalThis.ResizeObserver;
+        const observers = [];
+        globalThis.ResizeObserver = class {
+            observe = jest.fn();
+            disconnect = jest.fn();
+            constructor() { observers.push(this); }
+        };
+        try {
+            const value = popupDom({ contentHtml: '<h3>Responses</h3>' });
+            const custom = document.createElement('button');
+            custom.className = 'popup-button-custom';
+            value.buttonControls.prepend(custom);
+            const frame = framePopup(value, { tier: 'dialog' });
+            value.dlg.showModal();
+            frame.opened();
+            expect(observers).toHaveLength(2);
+            frame.dispose();
+            for (const observer of observers) expect(observer.disconnect).toHaveBeenCalledTimes(1);
+        } finally {
+            globalThis.ResizeObserver = previousObserver;
+        }
+    });
+
+    test('teardown lets hosted layers close before any surviving cached layers are released', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        const frame = framePopup(value, { tier: 'dialog' });
+        value.dlg.showModal();
+        frame.opened();
+        const sheet = document.createElement('dialog');
+        sheet.dataset.sbOverlayLayer = '';
+        const cached = document.createElement('div');
+        cached.dataset.sbOverlayLayer = '';
+        value.dlg.append(sheet, cached);
+        sheet.showModal();
+        sheet.addEventListener('sb-overlay-host-closing', () => {
+            sheet.close();
+            sheet.remove();
+        });
+        frame.closing();
+        expect(sheet.isConnected).toBe(false);
+        expect(sheet.hasAttribute('open')).toBe(false);
+        expect(cached.parentElement).toBe(document.body);
         frame.dispose();
     });
 });

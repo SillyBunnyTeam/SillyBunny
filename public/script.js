@@ -10049,6 +10049,7 @@ export async function deleteCharacterById(chid) {
     const avatar = character.avatar;
     let deleteChats = false;
     const confirmed = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
+        // SillyBunny: destructive confirmations focus Cancel and style Delete in the shared frame.
         defaultResult: 0,
         onOpen: popup => popup.okButton.classList.add('is-destructive'),
         onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },

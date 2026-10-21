@@ -378,6 +378,7 @@ async function deleteUser(handle, callback) {
             cancelButton: 'Cancel',
             wide: false,
             large: false,
+            // SillyBunny: destructive confirmations focus Cancel and style Delete in the shared frame.
             defaultResult: POPUP_RESULT.NEGATIVE,
             onOpen: popup => popup.okButton.classList.add('is-destructive'),
         });
