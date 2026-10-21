@@ -12,6 +12,10 @@ import {
     setSearchContextAccessor,
 } from '../public/scripts/sillybunny-search-entities.js';
 
+// The module imports these only when a result is activated, so mocking after the import still applies.
+const openGroupById = jest.fn();
+await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ openGroupById }));
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const entityModuleUrl = pathToFileURL(path.join(repoRoot, 'public/scripts/sillybunny-search-entities.js')).href;
 const restoreGlobals = [];
@@ -32,6 +36,7 @@ afterEach(() => {
     resetSearchContextAccessor();
     jest.useRealTimers();
     jest.restoreAllMocks();
+    openGroupById.mockReset();
     for (const restore of restoreGlobals.splice(0).reverse()) restore();
 });
 
@@ -167,21 +172,36 @@ describe('universal search entity entries', () => {
         expect(collectEntitySearchEntries('shared name', { limit: 0 })).toEqual([]);
     });
 
-    test('opens the matching group chat or falls back to the groups page', async () => {
+    test('selects the matching group with its chat, or falls back to the groups page when opening it throws', async () => {
         const group = { id: 'group-action', name: 'Investigation Team', chat_id: 'case-one', members: [] };
         const openGroupChat = jest.fn().mockResolvedValue();
         const openTab = jest.fn();
         replaceGlobal('SillyBunnyShell', { openTab });
         setSearchContextAccessor(() => ({ groups: [group], openGroupChat }));
+        openGroupById.mockResolvedValueOnce(true);
 
         await collectEntitySearchEntries('investigation')[0].action();
 
-        expect(openGroupChat).toHaveBeenCalledWith('group-action', 'case-one');
+        // openGroupChat would load the messages without selecting the group.
+        expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
+        expect(openGroupChat).not.toHaveBeenCalled();
         expect(openTab).not.toHaveBeenCalled();
 
-        setSearchContextAccessor(() => ({ groups: [group] }));
+        openGroupById.mockRejectedValueOnce(new Error('Group chats module failed to load'));
         await collectEntitySearchEntries('investigation')[0].action();
         expect(openTab).toHaveBeenCalledWith('characters', 'groups');
+    });
+
+    test('honours a group selection the app refuses', async () => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(false);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
+        expect(openTab).not.toHaveBeenCalled();
     });
 
     test('opens a character through the app selection path, which starts the editor session', async () => {

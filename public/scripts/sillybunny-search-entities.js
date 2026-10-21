@@ -135,18 +135,15 @@ async function openCharacter(index) {
 
 async function openGroup(group) {
     try {
-        const context = getSearchContext();
-        // Opening a chat without an id would fail and leave the user on the current page, so only the
-        // group's own page is a reliable destination when it has no chat yet.
-        const chatId = String(group?.chat_id ?? '');
-        if (chatId && typeof context?.openGroupChat === 'function') {
-            try {
-                await context.openGroupChat(group.id, chatId);
-                return;
-            } catch {
-                // Fall through to the group page if the active chat is unavailable.
-            }
-        }
+        // openGroupChat only swaps the chat file of the group that is already selected, so it would
+        // leave the previous character or group selected under this group's messages.
+        const { openGroupById } = await import('./group-chats.js');
+        await openGroupById(String(group.id), { switchMenu: false });
+        return;
+    } catch {
+        // Fall through to the groups page if opening the group throws.
+    }
+    try {
         await globalThis.SillyBunnyShell?.openTab?.('characters', 'groups');
     } catch {
         // Navigation can be unavailable while the shell is being mounted.
