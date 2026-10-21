@@ -3,7 +3,14 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { mergeThemeUpdate, withOwnedThemeCss } from '../public/scripts/sillybunny-theme-css.js';
+import {
+    buildImportedTheme,
+    getThemeCustomCss,
+    isCssStoredInThemes,
+    mergeThemeUpdate,
+    normalizeThemeCss,
+    shouldConfirmCssReplace,
+} from '../public/scripts/sillybunny-theme-css.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,19 +36,17 @@ const PALETTE_SNAPSHOT_KEYS = [
     'sheldBackgroundColor',
 ];
 
-function getSnapshot(name) {
+function getPaletteSnapshot(name) {
     return Object.fromEntries(PALETTE_SNAPSHOT_KEYS.map(key => [key, key === 'name' ? name : `live-${key}`]));
 }
 
 describe('mergeThemeUpdate', () => {
-    test('updating a bundled theme keeps every stored key', () => {
+    test('updating a bundled theme keeps every stored key and saves the snapshot CSS', () => {
         const stored = readBundledTheme('Catppuccin Mocha');
-        const merged = mergeThemeUpdate(stored, getSnapshot(stored.name));
+        const merged = mergeThemeUpdate(stored, { ...getPaletteSnapshot(stored.name), custom_css: 'edited {}' });
         const storedKeys = Object.keys(stored);
 
-        expect(typeof stored.custom_css).toBe('string');
-        expect(stored.custom_css.length).toBeGreaterThan(0);
-        expect(merged.custom_css).toBe(stored.custom_css);
+        expect(merged.custom_css).toBe('edited {}');
         expect(Object.keys(merged).slice(0, storedKeys.length)).toEqual(storedKeys);
         expect(Object.keys(merged)).toEqual(expect.arrayContaining(PALETTE_SNAPSHOT_KEYS));
     });
@@ -72,52 +77,107 @@ describe('mergeThemeUpdate', () => {
     });
 });
 
-describe('withOwnedThemeCss', () => {
-    test('a theme that owns Custom CSS takes the live CSS', () => {
-        const stored = { name: 'Mine', custom_css: 'old {}' };
-
-        expect(withOwnedThemeCss(getSnapshot('Mine'), stored, 'new {}').custom_css).toBe('new {}');
+describe('Custom CSS values', () => {
+    test('normalization ignores line endings and surrounding whitespace', () => {
+        expect(normalizeThemeCss('  a {}\r\nb {}\n')).toBe('a {}\nb {}');
+        expect(normalizeThemeCss(undefined)).toBe('');
+        expect(normalizeThemeCss(null)).toBe('');
     });
 
-    test('an empty stored string still counts as owning Custom CSS', () => {
-        const stored = readBundledTheme('Dark V 1.0');
+    test('a theme carries Custom CSS only as a string, empty included', () => {
+        expect(getThemeCustomCss({ custom_css: 'a {}' })).toBe('a {}');
+        expect(getThemeCustomCss({ custom_css: '' })).toBe('');
+        expect(getThemeCustomCss({ name: 'Palette only' })).toBeNull();
+        expect(getThemeCustomCss({ custom_css: 42 })).toBeNull();
+        expect(getThemeCustomCss(undefined)).toBeNull();
+    });
+});
 
-        expect(stored.custom_css).toBe('');
-        expect(withOwnedThemeCss(getSnapshot(stored.name), stored, 'mine {}').custom_css).toBe('mine {}');
-        expect(withOwnedThemeCss(getSnapshot(stored.name), stored, undefined).custom_css).toBe('');
+describe('buildImportedTheme', () => {
+    test('takes Custom CSS from the file, empty included', () => {
+        const template = getPaletteSnapshot('Shared');
+
+        expect(buildImportedTheme({ name: 'Shared', custom_css: 'a {}' }, template).custom_css).toBe('a {}');
+        expect(buildImportedTheme({ name: 'Shared', custom_css: '' }, template).custom_css).toBe('');
     });
 
-    test('a theme without Custom CSS stays without it', () => {
-        const snapshot = getSnapshot('Mine');
+    test('never takes Custom CSS from the template', () => {
+        const template = { ...getPaletteSnapshot('Shared'), custom_css: 'importer {}' };
 
-        expect(withOwnedThemeCss(snapshot, { name: 'Mine', main_text_color: 'c' }, 'live {}')).not.toHaveProperty('custom_css');
-        expect(withOwnedThemeCss(snapshot, undefined, 'live {}')).not.toHaveProperty('custom_css');
-        expect(withOwnedThemeCss(snapshot, null, 'live {}')).not.toHaveProperty('custom_css');
+        expect(buildImportedTheme({ name: 'Shared', main_text_color: 'red' }, template)).not.toHaveProperty('custom_css');
     });
 
-    test('updating a bundled theme saves the live CSS and keeps every stored key', () => {
+    test('takes the file values for template keys and drops everything else', () => {
         const stored = readBundledTheme('Catppuccin Mocha');
-        const merged = mergeThemeUpdate(stored, withOwnedThemeCss(getSnapshot(stored.name), stored, 'edited {}'));
+        const theme = buildImportedTheme(stored, getPaletteSnapshot('Placeholder'));
 
-        expect(merged.custom_css).toBe('edited {}');
-        expect(Object.keys(merged)).toEqual(expect.arrayContaining(Object.keys(stored)));
+        expect(theme.name).toBe('Catppuccin Mocha');
+        expect(theme.main_text_color).toBe(stored.main_text_color);
+        expect(theme['sheldBlurStrength']).toBe('live-sheldBlurStrength');
+        expect(theme.custom_css).toBe(stored.custom_css);
+        expect(theme).not.toHaveProperty('chat_width');
+        expect(Object.keys(theme).sort()).toEqual([...PALETTE_SNAPSHOT_KEYS, 'custom_css'].sort());
+    });
+});
+
+describe('isCssStoredInThemes', () => {
+    const themes = [
+        { name: 'Palette only' },
+        { name: 'Empty', custom_css: '' },
+        { name: 'Mine', custom_css: 'a {}\r\nb {}' },
+    ];
+
+    test('blank Custom CSS counts as stored', () => {
+        expect(isCssStoredInThemes([], '')).toBe(true);
+        expect(isCssStoredInThemes([], '  \n')).toBe(true);
+        expect(isCssStoredInThemes([], undefined)).toBe(true);
     });
 
-    test('an export of a bundled theme leaves out its legacy layout keys', () => {
-        const stored = readBundledTheme('Catppuccin Mocha');
-        const exported = withOwnedThemeCss(getSnapshot(stored.name), stored, stored.custom_css);
-
-        expect(stored).toHaveProperty('chat_width');
-        expect(Object.keys(exported).sort()).toEqual([...PALETTE_SNAPSHOT_KEYS, 'custom_css'].sort());
-        expect(exported.custom_css).toBe(stored.custom_css);
+    test('matches a stored copy despite line endings and surrounding whitespace', () => {
+        expect(isCssStoredInThemes(themes, 'a {}\nb {}\n')).toBe(true);
     });
 
-    test('leaves the snapshot unchanged', () => {
-        const snapshot = getSnapshot('Mine');
-        const copy = { ...snapshot };
+    test('unsaved Custom CSS is not stored', () => {
+        expect(isCssStoredInThemes(themes, 'c {}')).toBe(false);
+    });
 
-        withOwnedThemeCss(snapshot, { name: 'Mine', custom_css: 'old {}' }, 'new {}');
+    test('Custom CSS saved only in a deleted theme is not stored in the remaining themes', () => {
+        const remaining = themes.filter(theme => theme.name !== 'Mine');
 
-        expect(snapshot).toEqual(copy);
+        expect(isCssStoredInThemes(remaining, 'a {}\nb {}')).toBe(false);
+    });
+});
+
+describe('shouldConfirmCssReplace', () => {
+    const themes = [
+        { name: 'Mine', custom_css: 'mine {}' },
+        { name: 'Preset', custom_css: 'preset {}' },
+        { name: 'Plain', custom_css: '' },
+        { name: 'Palette only' },
+    ];
+    const getTheme = name => themes.find(theme => theme.name === name);
+
+    test('asks when the switch replaces unsaved Custom CSS', () => {
+        expect(shouldConfirmCssReplace(getTheme('Preset'), 'edited {}', themes)).toBe(true);
+    });
+
+    test('asks when the switch clears unsaved Custom CSS', () => {
+        expect(shouldConfirmCssReplace(getTheme('Plain'), 'edited {}', themes)).toBe(true);
+    });
+
+    test('does not ask when a theme stores the current Custom CSS', () => {
+        expect(shouldConfirmCssReplace(getTheme('Preset'), 'mine {}\n', themes)).toBe(false);
+    });
+
+    test('does not ask when the current Custom CSS is blank', () => {
+        expect(shouldConfirmCssReplace(getTheme('Preset'), '', themes)).toBe(false);
+    });
+
+    test('does not ask when the theme leaves Custom CSS alone', () => {
+        expect(shouldConfirmCssReplace(getTheme('Palette only'), 'edited {}', themes)).toBe(false);
+    });
+
+    test('does not ask when the theme CSS matches the current CSS', () => {
+        expect(shouldConfirmCssReplace({ name: 'Copy', custom_css: 'edited {}' }, ' edited {}\r\n', themes)).toBe(false);
     });
 });

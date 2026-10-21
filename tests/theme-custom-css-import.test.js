@@ -39,14 +39,16 @@ describe('theme custom CSS import wiring', () => {
         expect(importThemeSource).not.toContain('themes.push(parsed);');
     });
 
-    test('theme normalization only keeps explicitly bundled custom CSS', () => {
-        const getThemeObjectSource = requireSection('export function getThemeObject(name)', '/**\n * Gets the theme snapshot to save or export');
+    test('snapshots carry Custom CSS while imports take it only from the file', () => {
+        const getThemeObjectSource = requireSection('export function getThemeObject(name)', '/**\n * Gets a snapshot of the current theme colors and effects.');
+        const getThemePaletteObjectSource = requireSection('function getThemePaletteObject(name)', '/**\n * Gets the theme object to save from the current settings.');
         const getNewThemeSource = requireSection('function getNewTheme(parsed)', 'async function saveMovingUI');
 
-        expect(getThemeObjectSource).toContain('const theme = { name };');
-        expect(getThemeObjectSource).not.toContain('custom_css: power_user.custom_css');
-        expect(getNewThemeSource).toContain('if (typeof parsed.custom_css === \'string\') {');
-        expect(getNewThemeSource).toContain('theme.custom_css = parsed.custom_css;');
+        expect(getThemeObjectSource).toContain('return { ...getThemePaletteObject(name), custom_css: String(power_user.custom_css ?? \'\') };');
+        expect(getThemePaletteObjectSource).toContain('const theme = { name };');
+        expect(getThemePaletteObjectSource).not.toContain('custom_css');
+        expect(getNewThemeSource).toContain('return buildImportedTheme(parsed, getThemePaletteObject(parsed.name));');
+        expect(getNewThemeSource).not.toContain('getThemeObject(');
     });
 });
 
@@ -57,19 +59,13 @@ describe('theme actions keep stored theme data', () => {
 
         expect(saveThemeSource).toContain('theme = getThemeSaveObject(name);');
         expect(saveThemeSource).not.toContain('theme = getThemeObject(name);');
-        expect(getThemeSaveObjectSource).toContain('mergeThemeUpdate(themes.find(x => x.name == name), getThemeSnapshotWithCss(name))');
+        expect(getThemeSaveObjectSource).toContain('mergeThemeUpdate(themes.find(x => x.name == name), getThemeObject(name))');
     });
 
-    test('a theme that owns Custom CSS saves and exports the live CSS', () => {
-        const snapshotSource = requireSection('function getThemeSnapshotWithCss(name)', '/**\n * Gets the theme object to save from the current settings.');
-
-        expect(snapshotSource).toContain('withOwnedThemeCss(getThemeObject(name), themes.find(x => x.name == name), power_user.custom_css)');
-    });
-
-    test('export downloads without rewriting the stored theme file', () => {
+    test('export downloads the theme snapshot without rewriting the stored theme file', () => {
         const exportThemeSource = requireSection('function exportTheme()', '/**\n * Imports a theme from a file.');
 
-        expect(exportThemeSource).toContain('const themeFile = getThemeSnapshotWithCss(themeName);');
+        expect(exportThemeSource).toContain('const themeFile = getThemeObject(themeName);');
         expect(exportThemeSource).toContain('download(');
         expect(exportThemeSource).not.toContain('saveTheme(');
         expect(exportThemeSource).not.toContain('getThemeSaveObject(');
@@ -79,5 +75,56 @@ describe('theme actions keep stored theme data', () => {
         const resetSource = requireSection('.on(\'click\', \'.sb-theme-preset-reset\'', '// Accent color presets');
 
         expect(resetSource).toContain('applyTheme(\'Dark V 1.0\', { applyCss: false });');
+    });
+});
+
+describe('theme changes guard unsaved Custom CSS', () => {
+    test('the theme dropdown keeps the current theme until the switch goes through', () => {
+        const handlerSource = requireSection('$(\'#themes\').on(\'change\'', '$(\'#movingUIPresets\').on(\'change\'');
+
+        expect(handlerSource).toContain('$(this).val(power_user.theme);');
+        expect(handlerSource).toContain('void switchUiTheme(themeSelected);');
+        expect(handlerSource).not.toContain('applyTheme(');
+    });
+
+    test('/theme switches through the same check', () => {
+        const callbackSource = requireSection('async function setThemeCallback(', 'async function setmovingUIPreset');
+
+        expect(callbackSource).toContain('await switchUiTheme(theme.name);');
+        expect(callbackSource).not.toContain('applyTheme(');
+    });
+
+    test('a switch asks before replacing Custom CSS that no theme stores', () => {
+        const switchSource = requireSection('async function switchUiTheme(name)', 'async function deleteTheme()');
+
+        expect(switchSource).toContain('if (!theme || isThemeSwitchPending) {');
+        expect(switchSource).toContain('shouldConfirmCssReplace(theme, power_user.custom_css, themes) && !await confirmThemeCssReplace(power_user.theme)');
+        expect(switchSource).toContain('isThemeSwitchPending = false;');
+        expect(switchSource).toContain('applyTheme(name);');
+    });
+
+    test('the popup defaults to Save, keeps Discard last, and saves only the Custom CSS', () => {
+        const confirmSource = requireSection('async function confirmThemeCssReplace(themeName)', '/**\n * Switches the UI theme');
+        const saveCssSource = requireSection('async function saveThemeCss(name)', '/**\n * Asks what to do with Custom CSS');
+
+        expect(confirmSource).toContain('defaultResult: POPUP_RESULT.AFFIRMATIVE,');
+        expect(confirmSource).toContain('result: POPUP_RESULT.CUSTOM1, classes: [\'red_button\'], appendAtEnd: true');
+        expect(confirmSource).toContain('return Boolean(await saveThemeCss(themeName));');
+        expect(confirmSource).toContain('return result === POPUP_RESULT.CUSTOM1;');
+        expect(saveCssSource).toContain('{ ...storedTheme, custom_css: String(power_user.custom_css ?? \'\') }');
+    });
+
+    test('import asks before saving a theme whose Custom CSS would replace unsaved CSS', () => {
+        const importThemeSource = requireSection('async function importTheme(file)', '/**\n * Saves the current theme to the server.');
+        const guardIndex = importThemeSource.indexOf('shouldConfirmCssReplace(theme, power_user.custom_css, themes) && !await confirmThemeCssReplace(power_user.theme)');
+
+        expect(guardIndex).toBeGreaterThan(-1);
+        expect(guardIndex).toBeLessThan(importThemeSource.indexOf('await saveTheme(parsed.name, theme);'));
+    });
+
+    test('deleting a theme keeps Custom CSS that no remaining theme stores', () => {
+        const deleteSource = requireSection('async function deleteTheme()', '/**\n * Exports the current theme to a file.');
+
+        expect(deleteSource).toContain('applyTheme(power_user.theme, { applyCss: isCssStoredInThemes(themes, power_user.custom_css) });');
     });
 });
