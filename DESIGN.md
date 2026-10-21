@@ -217,6 +217,8 @@ components:
 - **GNOME Design Principles**: https://developer.gnome.org/hig/principles.html
 - **libadwaita documentation** (stable): https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/
 
+**Reference version:** libadwaita 1.7+ (values checked against the 1.10.0 stylesheet); GNOME HIG pages checked 2026-10-19. Where SillyBunny deviates, the deviation is stated next to the value.
+
 SillyBunny follows the HIG unless a rule below says otherwise. Every departure is marked **Deviation:** next to the rule it affects.
 
 # Design System: SillyBunny
@@ -225,23 +227,21 @@ SillyBunny follows the HIG unless a rule below says otherwise. Every departure i
 
 **"Simple by default, powerful when needed"**
 
-SillyBunny is an LLM roleplay client that best embodies KDE Plasma's driving philosophy alongside the HIG (human interface guidelines) of the GNOME project. Although great inspiration is taken from these projects, SillyBunny still stands on its own with a slight sense of whimsy based on its focus on roleplay and storywriting. The shell is deliberately kept out of the way so the user can focus on the main content until configuration and navigation are needed.
+SillyBunny is an LLM roleplay client that best embodies KDE Plasma's driving philosophy alongside the HIG (human interface guidelines) of the GNOME project. Although great inspiration is taken from these projects, SillyBunny still stands on its own with its own personality and branding based on its focus on roleplay and storywriting. The shell is deliberately kept out of the way so the user can focus on the main content until configuration and navigation are needed.
 
-Helpful wording, tactile and easily glanceable feedback, and deliberate purpose define the shell. Complex configuration remains available to the user if they wish to seek it (as per upstream SillyTavern), but a good default experience is mandatory and implied. Configuration remains behind the shell at all times until called for. All elements of the shell must remain themeable with user CSS themes, and be fully compatible with SillyTavern data, presets, extensions, and settings.
+Intuitive wording, tactile and easily glanceable feedback, and deliberate purpose define the shell. Complex configuration remains available to the user if they wish to seek it (as per upstream SillyTavern), but a good default experience is mandatory and implied - the goal is for a new user to navigate the shell with minimal to no difficulty. Configuration remains behind the shell at all times until called for. All elements of the shell must remain themeable with user CSS themes, and be fully compatible with SillyTavern data, presets, extensions, and settings.
 
 The design philosophies of the GNOME project and its HIG should always be taken into consideration. This means accessibility through lack of distractions, animations that guide the user to what is clicked/tapped, responsive layouts, predictable touch targets, and nothing getting in the way of the main user experience. Mobile design must remain purposefully designed alongside the desktop, adapting libadwaita to a smaller and more touch-heavy window.
 
 With this in mind, SillyBunny can inject its own fun in the design too. After all, it is a roleplay and storywriting client at heart. Included tutorial characters are helpful yet creatively fun to interact with.
 
-This system rejects UI creep, nested menu spirals, configuration sprawl, bottom bar bloat, mystery meat navigation, desktop-only assumptions, and generic SaaS polish.
-
-**Reference version:** libadwaita 1.7+ (values checked against the 1.10.0 stylesheet); GNOME HIG pages checked 2026-10-19. Where SillyBunny deviates, the deviation is stated next to the value.
+This project rejects UI creep, nested menu spirals, configuration sprawl, screen bloat, mystery meat navigation, desktop-only assumptions, and generic SaaS polish.
 
 **Key Characteristics:**
 - Content-first chat viewport with no unsolicited permanent configuration panels.
 - Familiar controls that disclose depth through deliberate input, not visual noise.
 - Guided animations that promote accessibility and intuitive motion.
-- Stable desktop and mobile interaction vocabulary, including WebKit-safe shell behavior.
+- Stable desktop and mobile interaction vocabulary, safe shell behaviour for WebKit, Gecko, and Chromium browsers.
 - Personality expressed through usefulness and built-in assistants and characters.
 
 ## 2. Colours

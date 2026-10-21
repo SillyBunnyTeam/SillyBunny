@@ -2,7 +2,7 @@
 
 ## Vision
 
-SillyBunny is a distraction-free environment built for roleplay and conversational AI, based on a primary principle: **simple by default, powerful when needed.**
+SillyBunny is a distraction-free environment built for roleplay and conversational AI interaction, based on a primary principle: **simple by default, powerful when needed.**
 
 The main content surrounding a character card and its interactions is the primary focus. Distractions are kept to a minimum so the user can focus purely on what's important - their roleplay and/or story. Powerful configuration and customisation are readily available to the end user; they simply stay out of the way in easy-to-navigate menus until the user specifically requests them.
 
@@ -12,7 +12,7 @@ The main content surrounding a character card and its interactions is the primar
 
 SillyBunny embodies two distinct design philosophies:
 
-**Simple and Intuitive**: SillyBunny prioritizes simplicity and a focused experience, teaching a user muscle memory through consistent effort. This means anticipating user mistakes, having a consistent design flow that can be memorised, and eliminating unnecessary interruptions. There should be at most one suggested or destructive action per view, and progressive disclosure. This provides a welcoming and intuitive environment for the user while remaining distraction-free.
+**Simple and Intuitive**: SillyBunny prioritizes simplicity and a focused experience, teaching a user muscle memory through consistent effort. This means anticipating user mistakes, having a consistent design flow that can be memorised, and eliminating unnecessary interruptions. There should be at most one suggested or destructive action per view, and progressive disclosure. This provides a welcoming and intuitive environment for the user while remaining distraction-free. A user should not need to rely on tutorials or easy mode toggles to navigate the shell and do their work.
 
 **Powerful when called for** — If a user wishes to, they can delve into vast configuration that's just an easy click away. This allows for maximum flexibility and malleability for the power user, without removing established features. Configuration exists only if the user requests it. Upstream compatibility with the vast SillyTavern extension ecosystem allows a user further customisation and featuresets that are outside the main experience.
 
@@ -52,7 +52,7 @@ Non-destructive and reversible. SillyTavern-compatible config, extensions, prese
 Left:
 - Backend - for interfacing with the connected model backend and configuration. Settings here should be tied to a global preset option.
 - Customize - for changing the graphical shell and SillyBunny configuration. User-created extensions also reside here. Settings here are independent of each other.
-- Global search - allows the user to scour for any setting, character, or chat without needing to hunt through menus.
+- Global search - allows the user to scour for any setting, character, or chat without needing to hunt through menus. Fuzzy-match and all-encompassing.
 - User configurable quick access buttons.
 
 Middle:
@@ -136,6 +136,7 @@ Accessibility is a baseline expectation, not an afterthought. Any contribution t
 
 ## Non-goals
 
-- Replacing or fully diverging from SillyTavern's data formats, extension APIs, or character/preset schemas.
+- Replacing or fully diverging from SillyTavern's data formats, extension APIs, or character/preset schemas. 
+- Using any backend other than Bun or Node.js. The program must support SillyTavern's extensive extension ecosystem.
 - Reducing user customisation; the shell ships with defaults but customisation is a first-class feature.
 - Reducing option count in the name of simplicity. Simplicity is achieved through organisation and disclosure, not removal, unless a direct alternative is provided.
