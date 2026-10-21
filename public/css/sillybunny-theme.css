@@ -7477,7 +7477,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     white-space: nowrap;
 }
 
-/* Groups inside dialogs: the Tag Manager boxed list (12px, 8% tint). */
+/* Groups inside dialogs and windows: boxed list (12px, 8% tint). */
 .sb-dialog .ds-pref-group {
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-card);

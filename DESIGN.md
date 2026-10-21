@@ -286,7 +286,7 @@ Hex values are what the bundled Libadwaita and Libadwaita Light themes render. T
 - **Foreground** (`#ffffff`) and **Dim Foreground** (`#c6c6c7`, `--sb-muted-fg`, 74% body colour). Dim text is never the sole carrier of meaning.
 - **Shadow Ink** (`#000006`): Shade and shadow tint only. Never a text colour.
 
-Preference groups use a 5% body-colour tint (libadwaita dark cards use 8%); the Tag Manager's groups use 8%. Flat controls use the fills in the Flat Fill Vocabulary.
+Preference groups use a 5% body-colour tint (libadwaita dark cards use 8%); groups inside dialogs, windows, and side panels use 8%. Flat controls use the fills in the Flat Fill Vocabulary.
 
 ### Named Rules
 **The Signal Scarcity Rule.** Accent appears for action, selection, focus, or meaningful state. If removing it does not reduce comprehension, remove it.
@@ -420,8 +420,8 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Use:** In-chat agent controls and metadata only; do not turn the bottom bar into a chip collection.
 
 ### Cards / Containers
-- **Corner Style:** Preference groups on settings pages use `--sb-radius-lg` (`16px`). Groups inside editors (List → Split Editor detail panes, editor sheets, Import, Tag Manager) use `--sb-radius-card` (`12px`, libadwaita's card radius). Content cards keep `14px` until pages are migrated. Popovers, menus, dialogs, shell drawers, toasts, and the composer stack use `--sb-radius-overlay` (`15px`). Alert-style confirmation dialogs use `--sb-radius-alert` (`18px`). The welcome surface may use `20px`. Nothing is larger.
-- **Background:** Preference groups are libadwaita boxed lists: a `5%` body-colour tint (`8%` inside dialogs, windows, side panels, and the Tag Manager). Overlays use their layer token from the Layer Ladder so text never shows through.
+- **Corner Style:** Preference groups on settings pages use `--sb-radius-lg` (`16px`). Groups inside editors (List → Split Editor detail panes, editor sheets, Import, dialogs, windows, and side panels) use `--sb-radius-card` (`12px`, libadwaita's card radius). Content cards keep `14px` until pages are migrated. Popovers, menus, dialogs, shell drawers, toasts, and the composer stack use `--sb-radius-overlay` (`15px`). Alert-style confirmation dialogs use `--sb-radius-alert` (`18px`). The welcome surface may use `20px`. Nothing is larger.
+- **Background:** Preference groups are libadwaita boxed lists: a `5%` body-colour tint (`8%` inside dialogs, windows, and side panels). Overlays use their layer token from the Layer Ladder so text never shows through.
 - **Shadow Strategy:** Flat at rest. Only overlays carry a shadow.
 - **Border:** Preference groups carry a `1px` theme-derived border. Overlays keep a one-pixel theme-derived border. Never use a colored side stripe.
 - **Internal Padding:** `12px`, `14px`, `16px`, or `18px` according to density; compact mode reduces padding without changing hierarchy.
