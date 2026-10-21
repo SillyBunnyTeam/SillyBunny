@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- First-run flow (plan §4.3). Every value is placeholder copy for a human to replace. -->
+    <string name="firstrun_loading">lorum ipsum</string>
+    <string name="firstrun_welcome_title">lorum ipsum</string>
+    <string name="firstrun_welcome_body">lorum ipsum</string>
+    <string name="firstrun_notifications_title">lorum ipsum</string>
+    <string name="firstrun_notifications_body">lorum ipsum</string>
+    <string name="firstrun_notifications_allow">lorum ipsum</string>
+    <string name="firstrun_notifications_denied">lorum ipsum</string>
+    <string name="firstrun_notifications_blocked">lorum ipsum</string>
+    <string name="firstrun_notifications_granted">lorum ipsum</string>
+    <string name="firstrun_battery_title">lorum ipsum</string>
+    <string name="firstrun_battery_body">lorum ipsum</string>
+    <string name="firstrun_battery_allow">lorum ipsum</string>
+    <string name="firstrun_battery_skip">lorum ipsum</string>
+    <string name="firstrun_battery_exempt">lorum ipsum</string>
+    <string name="firstrun_battery_skipped">lorum ipsum</string>
+    <string name="firstrun_continue">lorum ipsum</string>
+    <string name="firstrun_checking">lorum ipsum</string>
+    <string name="firstrun_metered_title">lorum ipsum</string>
+    <string name="firstrun_metered_body">lorum ipsum</string>
+    <string name="firstrun_cellular_body">lorum ipsum</string>
+    <!-- %1$s and %2$s: the lowest and highest measured total download (InstallDownloadEstimate). -->
+    <string name="firstrun_download_estimate">lorum ipsum %1$s %2$s</string>
+    <!-- %1$s: the clone; %2$s and %3$s: the lowest and highest npm ci download. -->
+    <string name="firstrun_download_breakdown">lorum ipsum %1$s %2$s %3$s</string>
+    <string name="firstrun_metered_continue">lorum ipsum</string>
+    <string name="firstrun_metered_recheck">lorum ipsum</string>
+    <string name="firstrun_preparing">lorum ipsum</string>
+    <string name="firstrun_waiting">lorum ipsum</string>
+    <string name="firstrun_installing_title">lorum ipsum</string>
+    <string name="firstrun_installing_body">lorum ipsum</string>
+    <string name="firstrun_log_show">lorum ipsum</string>
+    <string name="firstrun_log_hide">lorum ipsum</string>
+    <string name="firstrun_cancel">lorum ipsum</string>
+    <string name="firstrun_cancelling">lorum ipsum</string>
+    <string name="firstrun_cancel_title">lorum ipsum</string>
+    <string name="firstrun_cancel_body">lorum ipsum</string>
+    <string name="firstrun_cancel_confirm">lorum ipsum</string>
+    <string name="firstrun_cancel_dismiss">lorum ipsum</string>
+    <string name="firstrun_busy_title">lorum ipsum</string>
+    <string name="firstrun_busy_body">lorum ipsum</string>
+    <string name="firstrun_retry">lorum ipsum</string>
+    <string name="firstrun_error_title">lorum ipsum</string>
+    <!-- %1$s: available space; %2$s: required space (FirstRunStorage.REQUIRED_FREE_BYTES). -->
+    <string name="firstrun_error_storage">lorum ipsum %1$s %2$s</string>
+    <string name="firstrun_error_offline">lorum ipsum</string>
+    <!-- %1$s: the runtime layout step's reason. -->
+    <string name="firstrun_error_layout">lorum ipsum %1$s</string>
+    <!-- %1$d: install.sh's exit code. -->
+    <string name="firstrun_error_install">lorum ipsum %1$d</string>
+    <string name="firstrun_error_cancelled">lorum ipsum</string>
+    <string name="firstrun_error_interrupted">lorum ipsum</string>
+    <string name="firstrun_error_no_checkout">lorum ipsum</string>
+    <!-- %1$s: why the partial checkout could not be moved aside. -->
+    <string name="firstrun_error_move_aside">lorum ipsum %1$s</string>
+    <!-- %1$s: the unexpected error's message. -->
+    <string name="firstrun_error_unexpected">lorum ipsum %1$s</string>
+    <string name="firstrun_view_logs">lorum ipsum</string>
+    <string name="firstrun_share_logs">lorum ipsum</string>
+    <!-- Warns that logs may contain sensitive details. -->
+    <string name="firstrun_logs_sensitive">lorum ipsum</string>
+    <string name="firstrun_repair">lorum ipsum</string>
+    <string name="firstrun_logs_title">lorum ipsum</string>
+    <string name="firstrun_logs_close">lorum ipsum</string>
+    <string name="firstrun_logs_last_lines">lorum ipsum</string>
+    <string name="firstrun_logs_setup_log">lorum ipsum</string>
+    <string name="firstrun_logs_empty">lorum ipsum</string>
+    <string name="firstrun_installed">lorum ipsum</string>
+</resources>
