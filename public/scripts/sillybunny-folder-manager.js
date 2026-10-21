@@ -1,15 +1,13 @@
 import { t } from './i18n.js';
 import { folderCountLabel } from './sillybunny-editor/folder-row.js';
-import { Popup, POPUP_RESULT } from './popup.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
-import { closePicker, openPicker } from './sillybunny-editor/picker.js';
-import { createListHeader } from './sillybunny-editor/list-header.js';
-import { openActionMenu, closeActionMenu, MOBILE_QUERY } from './sillybunny-action-menu.js';
-import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
-import { animateIn, stopMotion, SPRING_SHEET } from './sillybunny-motion.js';
+import { openPicker } from './sillybunny-editor/picker.js';
+import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
+import { openActionMenu } from './sillybunny-action-menu.js';
 import {
     createFolder,
     deleteFolder,
@@ -26,7 +24,7 @@ import {
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-folder-manager.css?v=20261020a', id: 'deferred-folder-manager-css' },
+    { href: 'css/sillybunny-folder-manager.css?v=20261021a', id: 'deferred-folder-manager-css' },
 ];
 
 let activeManager = null;
@@ -147,43 +145,21 @@ function colorPicker(entry, folder, refresh) {
  */
 export function createFolderManager(scope, adapter) {
     if (!['characters', 'groups'].includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
-    const mobile = window.matchMedia?.(MOBILE_QUERY) ?? { matches: false, addEventListener() {}, removeEventListener() {} };
-    const returnFocus = document.activeElement;
+    const layout = window.matchMedia?.(LAYOUT_MOBILE_QUERY) ?? { matches: false };
     const cache = new Map();
     const entries = new Map();
-    let currentPage = 'folders';
-    let currentFolderId = null;
     let disposed = false;
     let reconciling = false;
     let dragging = false;
     let finish;
     const closed = new Promise(resolve => finish = resolve);
-    const host = element('dialog', 'sb-folder-manager-host');
-    host.setAttribute('aria-labelledby', 'sb-folder-manager-title');
-    const backdrop = element('div', 'sb-folder-manager__backdrop');
-    backdrop.setAttribute('aria-hidden', 'true');
-    backdrop.hidden = true;
-    const root = element('section', 'sb-folder-manager');
-    root.hidden = true;
-    const headerControl = createListHeader({
-        title: t`Folders`,
-        className: 'sb-folder-manager__header',
-        actions: [{ id: 'close', label: t`Close`, icon: 'xmark', onActivate: () => close() }],
-    });
-    const header = headerControl.element;
-    const title = header.querySelector('.sb-list-header__title');
-    title.id = 'sb-folder-manager-title';
-    title.classList.add('sb-folder-manager__title');
-    headerControl.button('close').classList.add('sb-folder-manager__button', 'sb-folder-manager__close');
-    const handle = element('div', 'sb-folder-manager__handle');
-    handle.setAttribute('aria-hidden', 'true');
-    header.prepend(handle);
-    const body = element('div', 'sb-folder-manager__body');
+    /** @type {ReturnType<typeof openDialog>|null} */
+    let frame = null;
+    /** @type {{ folderId: string, page: object, toolbar: HTMLElement, list: HTMLElement }|null} */
+    let members = null;
+
     const status = element('div', 'sb-folder-manager__status');
     status.setAttribute('aria-live', 'polite');
-    root.append(header, body);
-    host.append(backdrop, root);
-
     const list = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__list');
     list.setAttribute('role', 'list');
     const createInput = element('input', 'text_pole sb-folder-manager__new');
@@ -197,16 +173,8 @@ export function createFolderManager(scope, adapter) {
     createEntry.row.querySelector('.ds-row-text')?.remove();
     const createGroup = element('div', 'ds-pref-group sb-folder-manager__create');
     createGroup.append(createEntry.row, createError);
-    body.append(createGroup, list, status);
-
-    const sheet = createSheetController({
-        sheet: root,
-        backdrop,
-        getInitialFocus: () => currentPage === 'members' ? body.querySelector('.sb-folder-manager__back') : createInput,
-        getReturnFocus: () => returnFocus,
-        canAnimateClose: () => mobile.matches,
-        onClose: () => dispose(),
-    });
+    const content = document.createDocumentFragment();
+    content.append(createGroup, list, status);
     let sortable;
     let unbindKeyboard;
     let unsubscribe;
@@ -217,18 +185,12 @@ export function createFolderManager(scope, adapter) {
         createInput.setAttribute('aria-invalid', String(Boolean(message)));
     }
 
-    function refreshOptions() {
-        const folders = getFolders(scope);
-        const folderIds = new Set(folders.map(folder => folder.id));
-        for (const [id] of entries) if (!folderIds.has(id)) entries.delete(id);
-    }
-
     function currentItems() {
         const source = adapter?.getItems?.() ?? [];
         return [...source].filter(item => item && typeof adapter?.getKey?.(item) === 'string');
     }
 
-    function itemRow(item, folderId) {
+    function itemRow(item) {
         const key = String(adapter.getKey(item));
         const name = String(adapter.getName(item) ?? key);
         const avatar = adapter.getAvatar?.(item) ?? null;
@@ -260,8 +222,7 @@ export function createFolderManager(scope, adapter) {
             { label: t`Move Up`, icon: 'fa-solid fa-arrow-up', disabled: index <= 0, onSelect: () => { moveFolder(scope, folder.id, -1); refresh(); } },
             { label: t`Move Down`, icon: 'fa-solid fa-arrow-down', disabled: index < 0 || index >= folders.length - 1, onSelect: () => { moveFolder(scope, folder.id, 1); refresh(); } },
         ] }, { items: [{ label: t`Delete`, icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => confirmDelete(folder) }] }];
-        openActionMenu({ trigger, title: folder.name, sections, bounds: root, forcePopover: mobile.matches });
-        for (const layer of document.querySelectorAll('.sb-action-popover')) host.append(layer);
+        openActionMenu({ trigger, title: folder.name, sections, bounds: frame?.surface ?? null });
     }
 
     function folderRow(folder) {
@@ -318,7 +279,13 @@ export function createFolderManager(scope, adapter) {
         input.addEventListener('keydown', event => {
             if (event.isComposing) return;
             if (event.key === 'Enter') { event.preventDefault(); commitName(true); refresh(); }
-            if (event.key === 'Escape') { event.preventDefault(); input.value = getFolders(scope).find(candidate => candidate.id === folder.id)?.name ?? ''; error.hidden = true; input.removeAttribute('aria-invalid'); }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                input.value = getFolders(scope).find(candidate => candidate.id === folder.id)?.name ?? '';
+                error.hidden = true;
+                input.removeAttribute('aria-invalid');
+            }
         });
         return entity.row;
     }
@@ -334,9 +301,8 @@ export function createFolderManager(scope, adapter) {
     }
 
     function renderFolders() {
-        if (disposed || currentPage !== 'folders' || dragging) return;
+        if (disposed || dragging) return;
         const folders = getFolders(scope);
-        const query = '';
         reconciling = true;
         try {
             reconcileRows({
@@ -363,31 +329,38 @@ export function createFolderManager(scope, adapter) {
                 compact: true,
             }).element);
         } else status.hidden = true;
-        sortable?.setDisabled(Boolean(query));
     }
 
-    function renderMembers(folderId) {
-        const folder = getFolders(scope).find(candidate => candidate.id === folderId);
-        if (!folder) return goBack();
-        currentFolderId = folder.id;
-        currentPage = 'members';
-        title.textContent = folder.name;
-        const back = button(t`Back`, 'arrow-left', goBack, 'sb-folder-manager__back');
-        const add = button(t`Add`, 'plus', () => addMember(folder), 'sb-folder-manager__add-member');
-        const toolbar = element('div', 'sb-folder-manager__members-toolbar');
-        toolbar.append(back, add);
-        const memberList = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__members');
-        memberList.setAttribute('role', 'list');
+    function renderMemberList(folder) {
         const itemMap = new Map(currentItems().map(item => [String(adapter.getKey(item)), item]));
-        const members = getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean);
-        memberList.append(...members.map(item => itemRow(item, folder.id)));
-        if (!members.length) memberList.append(createStatusPage({
+        const rows = getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean).map(itemRow);
+        if (!rows.length) rows.push(createStatusPage({
             icon: 'users',
             title: t`No Members`,
             description: scope === 'groups' ? t`Add groups to this folder to list them under it.` : t`Add characters to this folder to list them under it.`,
             compact: true,
         }).element);
-        body.replaceChildren(toolbar, memberList);
+        members.list.replaceChildren(...rows);
+    }
+
+    /** The members view is a page pushed inside the frame; its header shows Back (DESIGN.md Dialogs, pages). */
+    function openMembers(folderId) {
+        const folder = getFolders(scope).find(candidate => candidate.id === folderId);
+        if (!folder || !frame || members) return;
+        const add = button(t`Add`, 'plus', () => addMember(folder), 'sb-folder-manager__add-member');
+        const toolbar = element('div', 'sb-folder-manager__members-toolbar');
+        toolbar.append(add);
+        const memberList = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__members');
+        memberList.setAttribute('role', 'list');
+        const pageContent = document.createDocumentFragment();
+        pageContent.append(toolbar, memberList);
+        const page = frame.push({ title: folder.name, content: pageContent, initialFocus: () => add });
+        members = { folderId: folder.id, page, toolbar, list: memberList };
+        renderMemberList(folder);
+        page.closed.then(() => {
+            members = null;
+            refresh();
+        });
     }
 
     function addMember(folder) {
@@ -396,40 +369,32 @@ export function createFolderManager(scope, adapter) {
             const key = String(adapter.getKey(item));
             return { value: key, label: String(adapter.getName(item) ?? key), subtitle: assigned.has(key) ? t`In this folder` : undefined };
         });
-        const trigger = body.querySelector('.sb-folder-manager__add-member');
         openPicker({
-            trigger,
+            trigger: members?.toolbar.querySelector('.sb-folder-manager__add-member'),
             title: t`Add to Folder`,
             items,
             selected: null,
             searchLabel: t`Search`,
             emptyText: t`No results`,
-            bounds: root,
-            renderAsPopover: mobile.matches,
-            onSelect: key => { setFolder(scope, [key], folder.id); renderMembers(folder.id); },
+            bounds: frame?.surface ?? null,
+            onSelect: key => { setFolder(scope, [key], folder.id); refresh(); },
         });
-        for (const layer of document.querySelectorAll('.sb-picker')) host.append(layer);
-        for (const layer of document.querySelectorAll('.sb-picker, .sb-picker-sheet, .sb-action-sheet-backdrop')) host.append(layer);
     }
 
     async function confirmDelete(folder) {
-        const bodyText = scope === 'groups'
+        const body = scope === 'groups'
             ? t`The groups in this folder stay in your library. They are no longer in a folder.`
             : t`The characters in this folder stay in your library. They are no longer in a folder.`;
-        const result = await Popup.show.confirm(t`Delete Folder?`, bodyText, {
-            okButton: t`Delete`,
-            cancelButton: t`Cancel`,
-            defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpen: popup => {
-                popup.dlg.classList.add('sb-folder-delete-confirm');
-                popup.buttonControls.insertBefore(popup.cancelButton, popup.okButton);
-                popup.cancelButton.focus({ preventScroll: true });
-                popup.okButton.classList.add('is-destructive');
-            },
+        const response = await openAlert({
+            heading: t`Delete Folder?`,
+            body,
+            responses: [{ id: 'cancel', label: t`Cancel` }, { id: 'delete', label: t`Delete`, appearance: 'destructive' }],
+            closeResponse: 'cancel',
         });
-        if (result !== POPUP_RESULT.AFFIRMATIVE || disposed) return;
+        if (response !== 'delete' || disposed) return;
+        const showing = members?.folderId === folder.id ? members : null;
         deleteFolder(scope, folder.id);
-        if (currentFolderId === folder.id) goBack();
+        if (showing) showing.page.forceClose();
         else refresh();
     }
 
@@ -447,61 +412,58 @@ export function createFolderManager(scope, adapter) {
         entries.get(folder.id)?.input.focus({ preventScroll: true });
     }
 
-    function goBack() {
-        currentPage = 'folders';
-        currentFolderId = null;
-        title.textContent = t`Folders`;
-        body.replaceChildren(createGroup, list);
-        refresh();
-    }
-
     function refresh() {
         if (disposed) return;
-        if (currentPage === 'members') renderMembers(currentFolderId);
-        else renderFolders();
+        renderFolders();
+        if (!members) return;
+        const folder = getFolders(scope).find(candidate => candidate.id === members.folderId);
+        if (!folder) {
+            members.page.forceClose();
+            return;
+        }
+        members.page.setTitle(folder.name);
+        renderMemberList(folder);
     }
 
     function close() {
-        if (disposed) return false;
-        return mobile.matches ? sheet.close() : dispose();
+        if (disposed || !frame) return false;
+        return frame.close('close', 'close');
     }
 
     function dispose() {
-        if (disposed) return false;
+        if (disposed) return;
         disposed = true;
-        closeActionMenu({ animate: false });
-        closePicker({ animate: false, restoreFocus: false });
         sortable?.destroy();
         unbindKeyboard?.();
         unsubscribe?.();
-        headerControl.destroy();
-        host.close();
-        host.remove();
-        if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus({ preventScroll: true });
         finish();
-        return true;
     }
 
     createInput.addEventListener('input', () => { if (folderName(createInput.value).ok) setCreateError(); });
     createInput.addEventListener('keydown', event => {
         if (event.isComposing) return;
         if (event.key === 'Enter') { event.preventDefault(); createPending(); }
-        if (event.key === 'Escape') { event.preventDefault(); createInput.value = ''; setCreateError(); }
+        if (event.key === 'Escape' && createInput.value) {
+            event.preventDefault();
+            event.stopPropagation();
+            createInput.value = '';
+            setCreateError();
+        }
     });
     list.addEventListener('click', event => {
         if (event.target.closest('button, input')) return;
         const row = event.target.closest('.sb-folder-manager__folder-row');
-        if (row) renderMembers(row.dataset.folderId);
+        if (row) openMembers(row.dataset.folderId);
     });
     unbindKeyboard = bindListKeyboard(list, {
         rowSelector: '.sb-folder-manager__folder-row',
-        onOpen: row => { renderMembers(row.dataset.folderId); return true; },
+        onOpen: row => { openMembers(row.dataset.folderId); return true; },
         onRename: row => { row.querySelector('input')?.focus(); return true; },
     });
     sortable = bindSortable(list, {
         handle: '.drag-handle',
         items: '.sb-folder-manager__folder-row',
-        touch: () => mobile.matches,
+        touch: () => layout.matches,
         start: () => { dragging = true; },
         update: () => {
             const desired = [...list.children].map(row => row.dataset.folderId);
@@ -513,45 +475,26 @@ export function createFolderManager(scope, adapter) {
         stop: () => { dragging = false; refresh(); },
     });
     unsubscribe = subscribe(({ scope: changedScope }) => { if (!changedScope || changedScope === scope) refresh(); });
-    backdrop.addEventListener('click', () => { if (!mobile.matches) close(); });
-    host.addEventListener('cancel', event => { event.preventDefault(); close(); });
-    host.addEventListener('close', () => { if (!disposed) dispose(); });
-    blockUpstreamDrawerClose(host);
-    mobile.addEventListener('change', () => {
-        if (disposed) return;
-        host.dataset.mobile = String(mobile.matches);
-        if (mobile.matches) {
-            root.hidden = true;
-            sheet.open();
-        } else {
-            stopMotion(root);
-            stopMotion(backdrop);
-            root.hidden = false;
-            backdrop.hidden = false;
-        }
-    });
-    refreshOptions();
     refresh();
 
     return {
-        host,
-        root,
-        body,
+        /** The dialog surface, available after show(). */
+        get root() { return frame?.surface ?? null; },
+        get host() { return frame?.root ?? null; },
         closed,
         refresh,
         close,
-        focus: () => (currentPage === 'folders' ? createInput : body.querySelector('.sb-folder-manager__add-member'))?.focus({ preventScroll: true }),
+        focus: () => (members ? members.toolbar.querySelector('.sb-folder-manager__add-member') : createInput)?.focus({ preventScroll: true }),
         show() {
-            document.body.append(host);
-            host.showModal();
-            host.dataset.mobile = String(mobile.matches);
-            if (mobile.matches) sheet.open();
-            else {
-                root.hidden = false;
-                backdrop.hidden = false;
-                animateIn(root, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], SPRING_SHEET);
-                createInput.focus({ preventScroll: true });
-            }
+            if (frame) return;
+            frame = openDialog({
+                tier: 'window',
+                title: t`Folders`,
+                className: 'sb-folder-manager',
+                content,
+                initialFocus: () => createInput,
+            });
+            frame.closed.then(dispose);
         },
     };
 }

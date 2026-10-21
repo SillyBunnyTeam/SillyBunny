@@ -8,7 +8,6 @@ const openActionMenu = jest.fn(options => menuOptions = options);
 const closeActionMenu = jest.fn();
 const openPicker = jest.fn(options => pickerOptions = options);
 const closePicker = jest.fn();
-const confirmDelete = jest.fn(async () => 0);
 
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     openActionMenu,
@@ -32,20 +31,12 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () =>
         },
     }),
 }));
-await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateIn: jest.fn(),
-    stopMotion: jest.fn(),
-    SPRING_SHEET: {},
-}));
-await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
-    POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0 },
-    Popup: { show: { confirm: confirmDelete } },
-}));
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
 }));
 
 const folders = await import('../../public/scripts/sillybunny-folders.js');
+const settle = async () => { for (let index = 0; index < 10; index++) await Promise.resolve(); };
 const { createFolderManager } = await import('../../public/scripts/sillybunny-folder-manager.js');
 
 let settings;
@@ -69,7 +60,6 @@ beforeEach(() => {
     folders.configureFolderStore({ powerUser: settings, saveSettingsDebounced: save, idFactory: () => `folder-${++id}` });
     menuOptions = null;
     pickerOptions = null;
-    confirmDelete.mockClear();
 });
 
 afterEach(() => {
@@ -117,17 +107,40 @@ describe('Folder Manager', () => {
         expect(save).toHaveBeenCalled();
     });
 
-    test('delete confirmation leaves members unfiled when affirmed', async () => {
+    test('delete confirmation is a destructive alert with Cancel focused; Delete leaves members unfiled', async () => {
         const folder = folders.createFolder('groups', 'Delete me');
         folders.setFolder('groups', ['g1'], folder.id);
-        confirmDelete.mockResolvedValue(1);
         mount();
-        manager.root.querySelector(`[data-folder-id="${folder.id}"] .sb-folder-manager__row-menu`).click();
-        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Delete').onSelect();
-        await Promise.resolve();
-        await Promise.resolve();
+        const openDelete = () => {
+            manager.root.querySelector(`[data-folder-id="${folder.id}"] .sb-folder-manager__row-menu`).click();
+            menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Delete').onSelect();
+            return document.querySelector('.sb-dialog-host[role="alertdialog"]');
+        };
+        let alert = openDelete();
+        expect(alert.querySelector('.sb-dialog__heading').textContent).toBe('Delete Folder?');
+        expect(document.activeElement).toBe(alert.querySelector('[data-response="cancel"]'));
+        alert.querySelector('[data-response="cancel"]').click();
+        await settle();
+        expect(folders.getFolders('groups')).toHaveLength(1);
+        alert = openDelete();
+        const remove = alert.querySelector('[data-response="delete"]');
+        expect(remove.classList.contains('is-destructive')).toBe(true);
+        remove.click();
+        await settle();
         expect(folders.getFolders('groups')).toEqual([]);
         expect(folders.getFolderId('groups', 'g1')).toBeNull();
+        expect(manager.host.open).toBe(true);
+    });
+
+    test('deleting the folder whose members page is open pops the page', async () => {
+        const folder = folders.createFolder('groups', 'Open');
+        mount();
+        manager.root.querySelector(`[data-folder-id="${folder.id}"]`).click();
+        expect(manager.root.querySelector('.sb-dialog__back')).not.toBeNull();
+        folders.deleteFolder('groups', folder.id);
+        await settle();
+        expect(manager.root.querySelector('.sb-dialog__back')).toBeNull();
+        expect(manager.root.textContent).toContain('No Folders');
     });
 
     test('opens member page, removes members and adds searchable items', () => {
@@ -135,14 +148,33 @@ describe('Folder Manager', () => {
         folders.setFolder('groups', ['g1'], folder.id);
         mount();
         manager.root.querySelector(`[data-folder-id="${folder.id}"]`).click();
-        expect(manager.root.querySelector('.sb-folder-manager__back')).not.toBeNull();
+        expect(manager.root.querySelector('.sb-dialog__back')).not.toBeNull();
+        expect(manager.root.querySelector('.sb-dialog__page:not([hidden]) .sb-dialog__title').textContent).toBe('Members');
         expect(manager.root.querySelectorAll('.sb-folder-manager__member-row')).toHaveLength(1);
         manager.root.querySelector('.sb-folder-manager__remove').click();
         expect(folders.getFolderMembers('groups', folder.id)).toEqual([]);
         manager.root.querySelector('.sb-folder-manager__add-member').click();
         expect(pickerOptions.items).toHaveLength(2);
+        expect(pickerOptions.bounds).toBe(manager.root);
+        expect(pickerOptions.renderAsPopover).toBeUndefined();
         pickerOptions.onSelect('g2');
         expect(folders.getFolderMembers('groups', folder.id)).toEqual(['g2']);
+        expect(manager.root.querySelectorAll('.sb-folder-manager__member-row')).toHaveLength(1);
+        manager.root.querySelector('.sb-dialog__back').click();
+        expect(manager.root.querySelector('.sb-dialog__back')).toBeNull();
+        expect(manager.root.querySelector(`[data-folder-id="${folder.id}"] .sb-folder-manager__count`)).not.toBeNull();
+    });
+
+    test('opens as a Window-tier frame with Close and closes through it', async () => {
+        mount();
+        expect(manager.host.classList.contains('sb-dialog-host')).toBe(true);
+        expect(manager.root.classList.contains('sb-dialog--window')).toBe(true);
+        expect(manager.root.querySelector('.sb-dialog__title').textContent).toBe('Folders');
+        expect(document.activeElement).toBe(manager.root.querySelector('.sb-folder-manager__new'));
+        manager.root.querySelector('.sb-dialog__close').click();
+        await manager.closed;
+        expect(manager.host.isConnected).toBe(false);
+        manager = null;
     });
 
     test('uses scope-specific empty state copy', () => {

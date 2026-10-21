@@ -88,7 +88,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
 
             await list.locator('[data-action-id="more"]').click();
             await page.getByRole('menuitem', { name: 'Manage Folders', exact: true }).click();
-            const manager = page.locator('.sb-folder-manager-host[open]');
+            const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');
             await expect(manager).toBeVisible();
             const name = manager.locator('.sb-folder-manager__new');
             await name.fill('QA Folder');
@@ -101,20 +101,20 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             const deleteFolderRow = manager.locator(`[data-folder-id="${deleteFolderId}"]`);
             await deleteFolderRow.locator('.sb-folder-manager__row-menu').click();
             await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-            const cancelDelete = page.locator('dialog.popup[open]').last();
+            const cancelDelete = page.locator('.sb-dialog-host[role="alertdialog"][open]');
             await expect(cancelDelete).toContainText('Delete Folder?');
             await cancelDelete.getByRole('button', { name: 'Cancel', exact: true }).click();
             await expect(deleteFolderRow).toBeVisible();
             await deleteFolderRow.locator('.sb-folder-manager__row-menu').click();
             await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-            const confirmDelete = page.locator('dialog.popup[open]').last();
+            const confirmDelete = page.locator('.sb-dialog-host[role="alertdialog"][open]');
             await expect(confirmDelete.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
             await expect(confirmDelete).toContainText('The characters in this folder stay in your library.');
             await confirmDelete.getByRole('button', { name: 'Delete', exact: true }).click();
             await expect.poll(() => page.evaluate(async id => (await import('/scripts/sillybunny-folders.js')).getFolders('characters').some(folder => folder.id === id), deleteFolderId)).toBe(false);
 
             await manager.locator(`[data-folder-id="${folderId}"] .sb-folder-manager__count`).click();
-            await expect(manager.locator('.sb-folder-manager__back')).toBeVisible();
+            await expect(manager.locator('.sb-dialog__back')).toBeVisible();
             await manager.locator('.sb-folder-manager__add-member').click();
             const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
             await expect(picker).toBeVisible();
@@ -124,9 +124,9 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-2.png'))).toBe(folderId);
             await manager.locator('.sb-folder-manager__remove').click();
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-2.png'))).toBeNull();
-            await manager.locator('.sb-folder-manager__back').click();
+            await manager.locator('.sb-dialog__back').click();
 
-            await manager.locator('.sb-folder-manager__close').click();
+            await manager.locator('.sb-dialog__close').click();
 
             let firstRow = list.locator('[data-sb-list-key="character:folder-qa-0.png"]');
             await firstRow.getByRole('button', { name: 'Edit', exact: true }).click();
