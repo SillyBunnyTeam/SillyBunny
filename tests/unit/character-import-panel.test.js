@@ -21,6 +21,8 @@ const register = jest.fn();
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: { navigate, register } }));
 const confirmActiveEditorLeave = jest.fn(async () => true);
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/navigation.js', () => ({ confirmActiveEditorLeave }));
+const rememberOpenedEntity = jest.fn();
+await jest.unstable_mockModule('../../public/scripts/sillybunny-auto-load.js', () => ({ rememberOpenedEntity }));
 const { mountCharacterImport, loadCharacterImportStyles } = await import('../../public/scripts/sillybunny-character-import.js');
 const tick = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 let host;
@@ -85,15 +87,26 @@ describe('Import tab', () => {
     });
     test('Chat selects without opening the editor; Edit records Import as the Back destination', async () => {
         runCharacterImport.mockResolvedValue([character]);
+        selectCharacterById.mockResolvedValueOnce(true);
         await mountCharacterImport(host).run({});
         const actions = host.querySelectorAll('.ds-entity-row button');
         actions[0].click();
         await tick();
         expect(selectCharacterById).toHaveBeenCalledWith(0, { switchMenu: false });
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'card.png']]);
         actions[1].click();
         await tick();
         expect(navigate).toHaveBeenCalledWith({ kind: 'character-editor', id: 'card.png', via: 'import' }, { from: { kind: 'import' } });
         expect(register).toHaveBeenCalledWith('import', expect.objectContaining({ open: expect.any(Function) }));
+    });
+    test('a refused Chat leaves the Auto-load Last Chat entity alone', async () => {
+        runCharacterImport.mockResolvedValue([character]);
+        selectCharacterById.mockResolvedValueOnce(false);
+        await mountCharacterImport(host).run({});
+        host.querySelector('.ds-entity-row button').click();
+        await tick();
+        expect(selectCharacterById).toHaveBeenCalledTimes(1);
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
     });
     test('lorebooks route to World Info and never offer character actions', async () => {
         runCharacterImport.mockResolvedValue([{ kind: 'lorebook', id: 'Book', name: 'Book', ok: true }]);
