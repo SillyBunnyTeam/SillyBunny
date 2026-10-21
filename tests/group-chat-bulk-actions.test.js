@@ -15,6 +15,7 @@ await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (strings
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ power_user: {} }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: options => { menu = options; } }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-auto-load.js', () => ({ rememberOpenedEntity: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-motion.js', () => ({ animateListChange: (_rows, update) => update(), play() {}, stopMotion() {}, animateOut() {}, MOTION_SLOW: 0, MOTION_FAST: 200, MOTION_EASE_OUT_CUBIC: 'ease-out', prefersReducedMotion: () => true }));
 await jest.unstable_mockModule('../public/script.js', () => ({
     characterGroupOverlay: overlay, characters: [],
