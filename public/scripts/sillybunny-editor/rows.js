@@ -284,12 +284,23 @@ function numberAttribute(input, name) {
  * @param {number} [options.max]
  * @param {number} [options.step=1]
  * @param {boolean} [options.nullable=false]
+ * @param {boolean} [options.normalize=true]  False keeps an adopted text/number input's upstream validation unchanged.
  * @param {string} [options.placeholder]
  * @param {(value: number|null) => void} [options.onChange]
  * @param {HTMLInputElement} [options.input]
  * @returns {object}
  */
-export function createSpinRow({ label, subtitle, field, id, value, min, max, step = 1, nullable = false, placeholder, onChange, input }) {
+export function createSpinRow({ label, subtitle, field, id, value, min, max, step = 1, nullable = false, normalize: normalizeInput = true, placeholder, onChange, input }) {
+    if (!normalizeInput) {
+        if (!input || input.tagName !== 'INPUT' || !['text', 'number'].includes(input.type)) {
+            throw new TypeError('An unnormalized spin row needs a text or number input.');
+        }
+        ensureId(input, id);
+        input.classList.add('ds-spin');
+        input.inputMode = 'numeric';
+        const row = suffixRow(label, subtitle, field, input);
+        return rowController(row, input);
+    }
     const control = prepareInput(input, 'number', id);
     // Created spin inputs take the app's themed field style; adopted ones keep their own classes.
     if (!input) control.classList.add('text_pole', 'ds-spin');
@@ -345,7 +356,15 @@ function prepareFloatingInput(input, id) {
 
 function prepareEntryInput(input, id) {
     // Popup's public mainInput is a textarea, including its single-line name prompts.
-    if (input?.tagName !== 'TEXTAREA') return prepareInput(input, 'text', id);
+    if (input?.tagName !== 'TEXTAREA') {
+        if (input && (input.tagName !== 'INPUT' || !['text', 'password', 'email', 'url', 'search', 'tel'].includes(input.type))) {
+            throw new TypeError('Expected a text or password entry input.');
+        }
+        const control = input ?? document.createElement('input');
+        if (!input) control.type = 'text';
+        ensureId(control, id);
+        return control;
+    }
     ensureId(input, id);
     return input;
 }

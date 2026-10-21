@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Miscellaneous form dialogs - shared content rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/power-user.js`; `public/script.js`; `public/scripts/extensions.js`; `public/scripts/user.js`. Templates remain unchanged. |
+| Area | Creator Notes CSS scope, external media, AI Custom CSS, message screenshot range, extension install/branch selection, account forms. |
+| Divergence reason | Dialog-tier forms need adopted entry/select/segmented rows, reachable content and safe destructive defaults on desktop and phones. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/misc-dialogs.js`; shared rows, toggle-row, select-row and Popup frame. |
+| Adapter shape | Preserve source inputs, native events, IDs/names/values, password types and autocomplete. Adopt radio inputs rather than mirror them. Move Popup-owned URL/branch and screenshot inputs into the scrolling body; retain mainInput and inputResults. Screenshot rows retain text input/parseInt semantics without new clamping. Dispose select observers while retaining source selects for post-close reads. Reset and delete affirmatives default to Cancel. |
+| Protecting tests | `tests/unit/misc-dialogs.test.js`; `tests/misc-form-dialogs.e2e.js`; existing row/Popup contract, message-screenshot, dialog-tier, popup-scroll, preset/lorebook and Connection Manager suites. |
+| Validation | Root lint; full Jest; frontend budgets; Chromium E2E at 1440×900 and 390×844 with intercepted settings, extension and account writes. |
+| Rollback path | Remove adapter imports/options and install content wrapper; retain all original handlers/templates and shared Popup API. Revert the two reset negative defaults only if restoring upstream destructive behavior deliberately. |
+| Last reviewed | 2026-10-22, PR #870 Phase 3.10–3.14. |
+| Owner | UI integrator. |
+
 ### Preset and lorebook dialogs - shared content rows
 | Field | Value |
 | --- | --- |

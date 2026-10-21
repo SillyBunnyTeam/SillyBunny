@@ -15,12 +15,13 @@ let nextId = 0;
  * @param {string} [options.id]
  * @param {string} [options.subtitle]
  * @param {boolean} [options.fill=false]  Title above full-width segments that may wrap their labels.
+ * @param {HTMLInputElement[]} [options.inputs]  Existing radios to adopt without changing identity.
  * @param {(value: T) => void} [options.onChange]
  * @returns {object}
  */
-export function createToggleRow({ label, subtitle, field, id, choices, value, fill = false, onChange }) {
+export function createToggleRow({ label, subtitle, field, id, choices, value, fill = false, inputs: adoptedInputs, onChange }) {
     if (!Array.isArray(choices) || choices.length < 2) throw new RangeError('A toggle row needs at least two choices.');
-    const group = createSegmentedControl(label, choices, value, chosen => onChange?.(chosen), { compact: true, detachFromForm: true });
+    const group = createSegmentedControl(label, choices, value, chosen => onChange?.(chosen), { compact: true, detachFromForm: true, inputs: adoptedInputs });
     group.classList.add('ds-toggle-row__group');
     if (fill) group.classList.add('ds-toggle-row__group--fill');
     const base = createRow({ label, subtitle, field, id, suffix: group, stacked: fill });

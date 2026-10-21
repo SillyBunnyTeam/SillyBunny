@@ -357,6 +357,8 @@ import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-
 import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
 // SillyBunny: character lorebook rows mirror the existing native selects and Select2 state.
 import { lorebookSelectOptions } from './scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js';
+// SillyBunny: screenshot spin rows preserve the existing parseInt/range-validation contract.
+import { messageScreenshotOptions } from './scripts/sillybunny-editor/adapters/misc-dialogs.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import {
     beginCharacterEditorLoad,
@@ -13581,7 +13583,11 @@ async function promptForMessageScreenshotRange(messageId) {
         <small>${t`Single message: use the same message ID for both fields.`}</small>
     `;
 
+    // SillyBunny: retain one adapter lifecycle for the Popup-owned screenshot fields.
+    const dialogOptions = messageScreenshotOptions({ startId: MESSAGE_SCREENSHOT_INPUT_IDS.start, endId: MESSAGE_SCREENSHOT_INPUT_IDS.end });
     const popup = new Popup(content, POPUP_TYPE.CONFIRM, '', {
+        // SillyBunny: adopt custom inputs into unnormalized spin rows inside the scrolling body.
+        ...dialogOptions,
         okButton: t`Download PNG`,
         cancelButton: t`Cancel`,
         customInputs: [
@@ -13601,7 +13607,9 @@ async function promptForMessageScreenshotRange(messageId) {
             },
         ],
         wider: true,
-        onOpen: function () {
+        onOpen: function (activePopup) {
+            // SillyBunny: compose the adapter lifecycle without changing the initial selection.
+            dialogOptions.onOpen(activePopup);
             const startInput = popup.dlg.querySelector(`#${MESSAGE_SCREENSHOT_INPUT_IDS.start}`);
             if (startInput instanceof HTMLInputElement) {
                 startInput.focus({ preventScroll: true });

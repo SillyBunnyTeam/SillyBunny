@@ -3,6 +3,9 @@ import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from './popup.js';
 import { canViewSecrets } from './secrets.js';
 import { renderTemplateAsync } from './templates.js';
 import { ensureImageFormatSupported, getBase64Async, humanFileSize } from './utils.js';
+// SillyBunny: account rows keep native password types, autocomplete, and upstream request handlers.
+import { accountFormOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+import { t } from './i18n.js';
 
 /**
  * @type {import('../../src/users.js').UserViewModel} Logged in user
@@ -320,7 +323,8 @@ async function changePassword(handle, callback) {
         template.find('input[name="confirm"]').on('input', function () {
             confirmPassword = String($(this).val());
         });
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Change', cancelButton: 'Cancel', wide: false, large: false });
+        // SillyBunny: entry rows adopt the password fields without changing their security attributes.
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Change', cancelButton: 'Cancel', wide: false, large: false, ...accountFormOptions(template, { title: t`Change Password` }) });
         if (result === POPUP_RESULT.CANCELLED || result === POPUP_RESULT.NEGATIVE) {
             throw new Error('Change password cancelled');
         }
@@ -378,9 +382,9 @@ async function deleteUser(handle, callback) {
             cancelButton: 'Cancel',
             wide: false,
             large: false,
-            // SillyBunny: destructive confirmations focus Cancel and style Delete in the shared frame.
+            // SillyBunny: keep Cancel focused; the frame adopts the existing wipe-data switch once.
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+            ...accountFormOptions(template, { destructive: true }),
         });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -423,7 +427,8 @@ async function resetSettings(handle, callback) {
         template.find('input[name="password"]').on('input', function () {
             password = String($(this).val());
         });
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false });
+        // SillyBunny: reset is destructive, never the Return default; password validation stays upstream.
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false, defaultResult: POPUP_RESULT.NEGATIVE, ...accountFormOptions(template, { title: t`Reset Settings`, destructive: true }) });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             throw new Error('Reset settings cancelled');
@@ -664,7 +669,8 @@ async function resetEverything(callback) {
             template,
             POPUP_TYPE.CONFIRM,
             '',
-            { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false },
+            // SillyBunny: preserve the two-step reset flow, with native entries and Cancel as default.
+            { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false, defaultResult: POPUP_RESULT.NEGATIVE, ...accountFormOptions(template, { title: t`Reset Everything`, destructive: true }) },
         );
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {

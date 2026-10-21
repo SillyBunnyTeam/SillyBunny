@@ -11,6 +11,8 @@ import { accountStorage } from './util/AccountStorage.js';
 import { SimpleMutex } from './util/SimpleMutex.js';
 import { loadStylesheetAsync, prefetchAsset } from './dynamic-styles.js';
 import { createExtensionScriptLoadError, formatExtensionLoadError } from './extension-load-errors.js';
+// SillyBunny: shared rows adopt extension inputs without replacing installation or branch handlers.
+import { installExtensionOptions, switchBranchOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
 import {
     EXTENSION_BOOT_ACTIVATION_ACTION,
     normalizeExtensionBootId,
@@ -1938,6 +1940,8 @@ async function onBranchClick() {
     }
 
     const popup = new Popup(selectElement, POPUP_TYPE.CONFIRM, '', {
+        // SillyBunny: mirror the native branch select in a searchable dialog row.
+        ...switchBranchOptions(selectElement),
         okButton: t`Switch`,
         cancelButton: t`Cancel`,
     });
@@ -2715,7 +2719,8 @@ export async function writeExtensionFieldBulk(avatars, key, value, { filterPath 
  */
 export async function openThirdPartyExtensionMenu(suggestUrl = '') {
     const isCurrentUserAdmin = isAdmin();
-    const html = await renderTemplateAsync('installExtension', { isCurrentUserAdmin });
+    // SillyBunny: retain every template node in one adapter-owned content root.
+    const html = $('<div>').append(await renderTemplateAsync('installExtension', { isCurrentUserAdmin }));
     const okButton = isCurrentUserAdmin ? t`Install just for me` : t`Install`;
 
     let global = false;
@@ -2737,7 +2742,8 @@ export async function openThirdPartyExtensionMenu(suggestUrl = '') {
 
     const customButtons = isCurrentUserAdmin ? [installForAllButton] : [];
     const customInputs = [branchNameInput];
-    const popup = new Popup(html, POPUP_TYPE.INPUT, suggestUrl ?? '', { okButton, customButtons, customInputs });
+    // SillyBunny: move Popup-owned URL/branch controls into rows, preserving inputResults.
+    const popup = new Popup(html, POPUP_TYPE.INPUT, suggestUrl ?? '', { okButton, customButtons, customInputs, ...installExtensionOptions(html[0]) });
     const input = await popup.show();
 
     if (!input) {

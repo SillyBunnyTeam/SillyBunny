@@ -57,6 +57,8 @@ import { t } from './i18n.js';
 import { humanizedDateTime } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE, SCROLL_BEHAVIOR, SWIPE_DIRECTION } from './constants.js';
+// SillyBunny: adopt preference radios into shared dialog rows without changing persistence.
+import { creatorStylesPreferenceOptions, externalMediaOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
 
 /**
  * @typedef {Object} FileAttachment
@@ -716,6 +718,8 @@ async function openGlobalStylesPreferenceDialog() {
     const currentValue = preference.get();
 
     const template = $(await renderTemplateAsync('globalStylesPreference'));
+    // SillyBunny: preserve the template controls and immediate-apply result contract.
+    const dialogOptions = creatorStylesPreferenceOptions(template);
 
     const allowedRadio = template.find('#global_styles_allowed');
     const forbiddenRadio = template.find('#global_styles_forbidden');
@@ -735,7 +739,7 @@ async function openGlobalStylesPreferenceDialog() {
     const currentPreferenceRadio = currentValue ? allowedRadio : forbiddenRadio;
     template.find(currentPreferenceRadio).prop('checked', true);
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false });
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false, ...dialogOptions });
 
     // Re-render the notes if the preference changed
     const newValue = preference.get();
@@ -830,6 +834,8 @@ async function openExternalMediaOverridesDialog() {
     }
 
     const template = $(await renderTemplateAsync('forbidMedia'));
+    // SillyBunny: keep delegated input handlers attached to the original radios.
+    const dialogOptions = externalMediaOptions(template);
     template.find('.forbid_media_global_state_forbidden').toggle(power_user.forbid_external_media);
     template.find('.forbid_media_global_state_allowed').toggle(!power_user.forbid_external_media);
 
@@ -841,7 +847,7 @@ async function openExternalMediaOverridesDialog() {
         template.find('#forbid_media_override_global').prop('checked', true);
     }
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false });
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false, ...dialogOptions });
 }
 
 export function getCurrentEntityId() {

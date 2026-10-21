@@ -76,6 +76,10 @@ function installExtensionModuleMocks() {
         renderTemplate: jest.fn(() => ''),
         renderTemplateAsync: jest.fn(async () => ''),
     }));
+    jest.unstable_mockModule('../public/scripts/sillybunny-editor/adapters/misc-dialogs.js', () => ({
+        installExtensionOptions: jest.fn(() => ({})),
+        switchBranchOptions: jest.fn(() => ({})),
+    }));
 
     jest.unstable_mockModule('../public/scripts/utils.js', () => ({
         delay: jest.fn(async () => {}),

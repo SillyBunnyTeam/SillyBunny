@@ -85,6 +85,8 @@ import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './movi
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
 // SillyBunny: persisted one-level Characters and Groups folders.
 import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
+// SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
+import { customCssAiOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -1732,7 +1734,10 @@ async function handleCustomCssAiWandClick() {
 
     const currentCss = String($('#customCSS').val() ?? '');
     const content = buildCustomCssAiPopup(currentCss);
+    // SillyBunny: adopt the textarea, profile select, and apply-mode radios.
+    const dialogOptions = customCssAiOptions(content[0]);
     const result = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', {
+        ...dialogOptions,
         okButton: 'Generate CSS',
         cancelButton: 'Cancel',
         wide: true,
