@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_title">lorum ipsum</string>
+    <string name="update_required_title">lorum ipsum</string>
+    <string name="update_available_body">lorum ipsum</string>
+    <string name="update_required_body">lorum ipsum</string>
+    <string name="update_confirm">lorum ipsum</string>
+    <string name="update_later">lorum ipsum</string>
+    <string name="update_retry">lorum ipsum</string>
+    <string name="update_checking">lorum ipsum</string>
+    <string name="update_downloading">lorum ipsum</string>
+    <string name="update_installing">lorum ipsum</string>
+    <string name="update_unknown_sources">lorum ipsum</string>
+    <string name="update_error">lorum ipsum</string>
+    <string name="update_up_to_date">lorum ipsum</string>
+    <string name="update_updated">lorum ipsum</string>
+    <string name="update_notification_channel">lorum ipsum</string>
+    <string name="update_replaced_title">lorum ipsum</string>
+    <string name="update_replaced_body">lorum ipsum</string>
+    <string name="update_install_title">lorum ipsum</string>
+    <string name="update_install_body">lorum ipsum</string>
+</resources>

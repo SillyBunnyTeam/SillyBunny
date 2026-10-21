@@ -50,6 +50,11 @@
             </intent-filter>
         </provider>
 
+        <!-- SillyBunny's explicit PackageInstaller callback must not be externally addressable. -->
+        <receiver
+            android:name=".update.InstallStatusReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".PackageReplacedReceiver"
             android:exported="false">
