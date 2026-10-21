@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { acceptPopup } from './helpers/popup.js';
 
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
@@ -514,7 +515,7 @@ test.describe('Prompt Manager characterization', () => {
         const popup = page.locator('dialog.popup[open]');
         await expect(popup.locator('.maximized_textarea')).toHaveValue('Relative fixture content');
         await popup.locator('.maximized_textarea').fill('Expanded prompt content');
-        await popup.locator('.popup-button-ok').click();
+        await acceptPopup(popup);
         await expect(textarea).toHaveValue('Expanded prompt content');
         await expect(expand).toBeFocused();
         await expect(page.locator('.sb-prompt-dirty')).toBeVisible();
@@ -907,7 +908,7 @@ test.describe('Prompt Manager characterization', () => {
         await ui.openEditor('sbFixtureRelative');
         await ui.fill({ content: 'Saved through the leave guard' });
         await page.getByRole('button', { name: 'Back to prompt list', exact: true }).click();
-        await page.locator('dialog.popup[open] .popup-button-ok').click();
+        await acceptPopup(page.locator('dialog.popup[open]'));
         await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureRelative')?.content === 'Saved through the leave guard');
         await expect(page.locator('.sb-prompt-editor')).toHaveAttribute('data-open', 'false');
         await expect(ui.row('sbFixtureRelative')).toBeFocused();

@@ -63,9 +63,10 @@ function menuLabels(page, selector) {
     return page.locator(`${selector} .sb-action-menu-item .sb-action-menu-label`).allTextContents();
 }
 
-test('mobile row shows Edit and the menu button, which opens a labelled sheet', async ({ page, isMobile }) => {
+test('mobile row shows Edit and the menu button, which opens a labelled overlay', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'The sheet is mobile-only.');
     await seedChat(page, { longName: true });
+    const menu = page.viewportSize().width <= 450 ? sheet : popover;
 
     const message = page.locator(target);
     const hint = message.locator('.mes_buttons > .extraMesButtonsHint');
@@ -77,32 +78,34 @@ test('mobile row shows Edit and the menu button, which opens a labelled sheet', 
     expect(hintBox.height).toBeGreaterThanOrEqual(44);
 
     await hint.click();
-    await expect(page.locator(sheet)).toBeVisible();
+    await expect(page.locator(menu)).toBeVisible();
     await expect(hint).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.locator(`${sheet} [role="menu"]`)).toBeVisible();
-    const labels = await menuLabels(page, sheet);
+    await expect(page.locator(`${menu} [role="menu"]`)).toBeVisible();
+    const labels = await menuLabels(page, menu);
     expect(labels).toContain('Copy');
     expect(labels).toContain('Checkpoint');
     expect(labels.at(-1)).toBe('Delete');
-    await expect(page.locator(`${sheet} .sb-action-menu-item.is-danger`)).toHaveCount(1);
+    await expect(page.locator(`${menu} .sb-action-menu-item.is-danger`)).toHaveCount(1);
 
     await page.keyboard.press('Escape');
-    await expect(page.locator(sheet)).toBeHidden();
+    await expect(page.locator(menu)).toBeHidden();
     await expect(hint).toHaveAttribute('aria-expanded', 'false');
 
     await hint.click();
-    await expect(page.locator(sheet)).toBeVisible();
-    await page.mouse.click(20, 40);
-    await expect(page.locator(sheet)).toBeHidden();
+    await expect(page.locator(menu)).toBeVisible();
+    // Keep the outside click below the top bar and beside any notification toast.
+    await page.mouse.click(page.viewportSize().width - 2, 100);
+    await expect(page.locator(menu)).toBeHidden();
 
     await hint.click();
-    await page.locator(`${sheet} .sb-action-menu-item`, { hasText: /^Copy$/ }).click();
-    await expect(page.locator(sheet)).toBeHidden();
+    await page.locator(`${menu} .sb-action-menu-item`, { hasText: /^Copy$/ }).click();
+    await expect(page.locator(menu)).toBeHidden();
 });
 
-test('mobile edit row leads with Cancel and Confirm and keeps the rest in the sheet', async ({ page, isMobile }) => {
+test('mobile edit row leads with Cancel and Confirm and keeps the rest in the overlay', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'The edit sheet is mobile-only.');
     await seedChat(page);
+    const menu = page.viewportSize().width <= 450 ? sheet : popover;
 
     const message = page.locator(target);
     await message.locator('.mes_buttons .mes_edit').click();
@@ -115,13 +118,13 @@ test('mobile edit row leads with Cancel and Confirm and keeps the rest in the sh
     expect(editRow).toEqual(['mes_edit_cancel', 'mes_edit_done', 'sb-mes-edit-more']);
 
     await message.locator('.mes_edit_buttons > .sb-mes-edit-more').click();
-    await expect(page.locator(sheet)).toBeVisible();
-    const labels = await menuLabels(page, sheet);
+    await expect(page.locator(menu)).toBeVisible();
+    const labels = await menuLabels(page, menu);
     expect(labels[0]).toBe('Copy this message');
     expect(labels.at(-1)).toBe('Delete this message');
 
     await page.keyboard.press('Escape');
-    await expect(page.locator(sheet)).toBeHidden();
+    await expect(page.locator(menu)).toBeHidden();
     await expect(message.locator('.edit_textarea')).toBeVisible();
 
     await message.locator('.mes_edit_cancel').click();
@@ -133,6 +136,7 @@ test('press-and-hold shows the action label without activating it', async ({ pag
     await seedChat(page);
 
     const edit = page.locator(`${target} .mes_buttons .mes_edit`);
+    await edit.click({ trial: true });
     const box = await edit.boundingBox();
     const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     const cdp = await page.context().newCDPSession(page);

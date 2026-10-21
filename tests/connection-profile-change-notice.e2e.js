@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { acceptPopup } from './helpers/popup.js';
 
 // End-to-end coverage for the connection profile change notice: one summary toast per user switch,
 // silent scripted switches, the "Also sets" card line, and the id-keyed View popup.
@@ -675,7 +676,7 @@ test('legacy exclude entries survive View and Edit', async ({ page }) => {
     await selectProfileMenuAction(page, 'View Details');
     const view = page.locator('dialog[open]', { has: page.locator('.profile-summary-scope') });
     await expect(view.locator('div.margin5', { hasText: 'Omitted Settings:' }).locator('span')).toHaveText('Instruct Template, System Prompt, sb-unknown');
-    await view.locator('.popup-button-ok').click();
+    await acceptPopup(view);
     await expect(page.locator('dialog[open]')).toHaveCount(0);
 
     await selectProfileMenuAction(page, 'Edit…');

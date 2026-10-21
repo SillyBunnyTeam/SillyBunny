@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { acceptPopup } from './helpers/popup.js';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -215,7 +216,7 @@ function getPresetFixture(api) {
 }
 
 async function confirmPresetExport(page, api) {
-    if (api === 'openai') await page.locator('dialog[open] .popup-button-ok').click();
+    if (api === 'openai') await acceptPopup(page.locator('dialog[open]'));
 }
 
 function expectPresetMetadata(exported, preset, api) {
@@ -889,7 +890,7 @@ test('Mobile Sampling follows provider and manual sampler visibility', async ({ 
     await expect(card('#temp_textgenerationwebui')).toBeHidden();
     await temperature.check();
     await expect(card('#temp_textgenerationwebui')).toBeVisible();
-    await page.locator('dialog[open] .popup-button-ok').click();
+    await acceptPopup(page.locator('dialog[open]'));
     const bannedTokens = sampling.locator('#send_banned_tokens_textgenerationwebui');
     const enabled = await bannedTokens.isChecked();
     await sampling.locator('#send_banned_tokens_label .menu_button').click();

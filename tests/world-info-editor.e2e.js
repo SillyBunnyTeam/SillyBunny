@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { acceptPopup } from './helpers/popup.js';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
@@ -197,7 +198,7 @@ test.describe('World Info editor', () => {
         const popup = page.locator('dialog.popup[open]');
         await expect(popup.locator('.maximized_textarea')).toHaveValue('Alpha content');
         await popup.locator('.maximized_textarea').fill('Expanded WI content');
-        await popup.locator('.popup-button-ok').click();
+        await acceptPopup(popup);
         await expect(textarea).toHaveValue('Expanded WI content');
         await expect(expand).toBeFocused();
         await expect(entry.locator('.sb-wi-entry-dirty')).toBeVisible();
@@ -483,7 +484,7 @@ test.describe('World Info selection mode', () => {
         await editor.locator('[data-action-id="delete"]').click();
         const popup = page.locator('dialog.popup[open]');
         await expect(popup).toContainText('(2)');
-        await popup.locator('.popup-button-ok').click();
+        await acceptPopup(popup);
         await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
         expect(saves).toHaveLength(1);
         await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);

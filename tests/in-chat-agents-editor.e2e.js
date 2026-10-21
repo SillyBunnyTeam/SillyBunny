@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { acceptPopup } from './helpers/popup.js';
 import { mkdir, readFile } from 'node:fs/promises';
 import { q56Screenshot } from './helpers/q56-review.js';
 import {
@@ -94,7 +95,7 @@ test('q56 dropdown sweep toggles each trigger closed on its second pointer click
             const dialog = page.locator('dialog[open]');
             await dialog.getByRole('textbox', { name: 'Script Name', exact: true }).fill('QA toggle');
             await dialog.getByRole('textbox', { name: 'Find', exact: true }).fill('/QA/g');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await check(editor.detail.getByRole('button', { name: 'Regex Script', exact: true }), 'Regex row menu');
             await editor.discard.click();
         }
@@ -418,7 +419,7 @@ test('round2 More survives saved, switched, preview, helper, template and create
         await check(`${width} saved`);
         await activateAgentEditorAction(page, editor.detail, 'Preview Prompt in Context');
         await expect(page.locator('dialog[open]')).toBeVisible();
-        await page.locator('dialog[open] .popup-button-ok').click();
+        await acceptPopup(page.locator('dialog[open]'));
         await check(`${width} after helper`);
         const preview = editor.detail.getByRole('radio', { name: 'Preview', exact: true });
         if (await preview.isVisible()) await preview.check();
@@ -861,7 +862,7 @@ for (const width of [1440, 390]) {
             }).click();
             const dialog = page.locator('dialog[open]');
             await dialog.locator('.maximized_textarea').fill('Expanded locally');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(editor.prompt).toHaveValue('Expanded locally');
             await editor.discard.click();
             await page.emulateMedia({
@@ -910,7 +911,7 @@ for (const width of [1440, 390]) {
                     name: 'Find',
                     exact: true,
                 }).fill('/QA/g');
-                await dialog.locator('.popup-button-ok').click();
+                await acceptPopup(dialog);
             }
             await rows.first().getByRole('button', {
                 name: 'Regex Script',
@@ -925,7 +926,7 @@ for (const width of [1440, 390]) {
                 name: 'Replace',
                 exact: true,
             }).fill('replacement');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await rows.first().getByRole('switch').uncheck();
             await rows.first().getByRole('button', {
                 name: 'Regex Script',
@@ -1092,7 +1093,7 @@ for (const width of [1440, 390]) {
             expect(editor.saves()).toHaveLength(0);
             await editor.name.fill('Explicitly saved');
             await more('Duplicate');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect.poll(() => editor.saves().length).toBe(2);
             expect(editor.saves()[0]).toMatchObject({
                 id: 'editor-replace',
@@ -1102,7 +1103,7 @@ for (const width of [1440, 390]) {
             expect(editor.saves()[1].name).toBe('Explicitly saved');
             await editor.prompt.fill(' ');
             await more('Duplicate');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(editor.prompt).toHaveAttribute('aria-invalid', 'true');
             expect(editor.saves()).toHaveLength(2);
         },
@@ -1122,13 +1123,13 @@ for (const width of [1440, 390]) {
             await activateAgentEditorAction(page, editor.detail, 'Preview Prompt in Context');
             await expect(dialog).toHaveCount(1);
             await expect(dialog.locator('pre')).toContainText('Unsaved preview marker');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await activateAgentEditorAction(page, editor.detail, 'Refine…');
             await expect(dialog.locator('[name="ica-refine-mode"]')).toHaveCount(5);
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(dialog.locator('h4').last()).toHaveText('Refined');
             await expect(dialog.locator('pre').last()).toHaveText('Mock refined prompt');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(editor.prompt).toHaveValue('Mock refined prompt');
             await editor.detail.getByRole('button', {
                 name: 'Add Regex Script',
@@ -1139,11 +1140,11 @@ for (const width of [1440, 390]) {
                 exact: true,
             });
             await find.fill('');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(find).toHaveAttribute('aria-invalid', 'true');
             await expect(find).toBeFocused();
             await find.fill('/QA/g');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(editor.detail.locator('.ica-agent-regex-list .ds-row')).toHaveCount(1);
             await editor.detail.getByRole('textbox', {
                 name: 'Format Example',
@@ -1160,7 +1161,7 @@ for (const width of [1440, 390]) {
             await dialog.getByText('Regenerate', { exact: true }).click();
             await expect.poll(() => page.evaluate(() => window.__editorModelCalls)).toBe(3);
             await expect(dialog).toHaveAttribute('data-qa-tracker-preview', 'same-popup');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(editor.prompt).toHaveValue('Mock tracker prompt');
             expect(editor.saves()).toHaveLength(0);
             await editor.discard.click();
@@ -1174,16 +1175,16 @@ for (const width of [1440, 390]) {
                 exact: true,
             }).click();
             await dialog.locator('#ica--companion-maker-goal').fill('QA helper');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(dialog.locator('pre')).toHaveText('Mock companion prompt');
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             await expect(editor.prompt).toHaveValue('Mock companion prompt');
             await editor.detail.getByRole('button', {
                 name: 'Preview Feedback',
                 exact: true,
             }).click();
             await expect(dialog).toHaveCount(1);
-            await dialog.locator('.popup-button-ok').click();
+            await acceptPopup(dialog);
             expect(editor.saves()).toHaveLength(0);
             await editor.save.click();
             await expect(editor.save).toBeDisabled();
