@@ -58,6 +58,7 @@
       {"name": "row-subtitle", "class": ".ds-row-subtitle", "value": "--sb-type-meta; colour --sb-input-placeholder", "libadwaita": "AdwActionRow subtitle", "purpose": "Visible description promoted verbatim from title= text; lorum ipsum until final copy."},
       {"name": "row-suffix", "class": ".ds-row-suffix", "value": "flex 0 0 auto; gap 12px", "purpose": "Trailing control: select, input, switch, button."},
       {"name": "row-switch", "class": ".ds-row-switch", "value": "whole-row label; native checkbox carries role=switch and its checked state; no aria-checked (ARIA in HTML forbids it on input type=checkbox)", "libadwaita": "AdwSwitchRow", "purpose": "Boolean settings."},
+      {"name": "row-check", "class": ".ds-row-check", "value": "whole-row label; native checkbox at end, no role=switch", "libadwaita": "AdwActionRow with check button", "purpose": "Pick-several lists; a one-option boolean uses row-switch."},
       {"name": "row-entry-floating", "class": ".ds-row-entry--floating", "value": "linked single-line title inside a filled input; --sb-composer-input-bg, transparent 1px border, --sb-radius-button, min-height max(48px, 3.4em); focus ring on the input, suffix outside", "libadwaita": "AdwEntryRow (adapted)", "purpose": "Connections single-line entries. Float on focus, value or autofill; placeholder text appears only on focus. Adopt the input without changing its type."},
       {"name": "row-entry-secret", "class": ".ds-row-entry__status / .ds-row-entry__reveal", "value": "placeholder MutationObserver supplies saved/missing icon and visually hidden aria-describedby text; unknown status hidden; -webkit-text-security: disc and Reveal only where supported", "libadwaita": "AdwPasswordEntryRow (adapted)", "purpose": "API keys without changing the upstream text input type or invoking password-manager behaviour. Deviation: entry, reveal and key management may exceed two controls."},
       {"name": "row-entry-caption", "class": ".ds-row-entry__caption", "value": "dimmed caption below the field, linked by aria-describedby; multi-line instructions remain above; preserve help nodes and gated warnings", "purpose": "Deviation: AdwEntryRow has no subtitle; the floating factory uses its subtitle option as the caption to retain upstream help."},
@@ -76,9 +77,9 @@
       {"name": "ease-out-quad", "token": "--sb-ease-out-quad", "value": "cubic-bezier(0.25, 0.46, 0.45, 0.94)", "purpose": "State changes."},
       {"name": "ease", "token": "--sb-ease", "value": "cubic-bezier(0.25, 0.1, 0.25, 1)", "libadwaita": "ADW_EASE", "purpose": "Timed animations."},
       {"name": "ease-out-cubic", "token": "--sb-ease-out-cubic", "value": "cubic-bezier(0.33, 1, 0.68, 1)", "purpose": "Exits and fades."},
-      {"name": "spring-dialog", "value": "damping 0.62, mass 1, stiffness 500 (~510ms, peak 1.08)", "libadwaita": "AdwDialog floating sheet", "purpose": "Dialog open: scale 0.8 to 1 and fade from centre. The only overshoot."},
-      {"name": "spring-sheet", "value": "damping 0.8, mass 1, stiffness 400 (~470ms)", "libadwaita": "AdwBottomSheet", "purpose": "Shell drawers and mobile sheets: fade and scale 0.96 to 1 from the trigger."},
-      {"name": "spring-navigation", "value": "damping 1, mass 1, stiffness 1000 (~330ms)", "libadwaita": "AdwNavigationView", "purpose": "Mobile page push and pop."},
+      {"name": "spring-dialog", "value": "damping 0.62, mass 1, stiffness 500 (~510ms, peak 1.08)", "libadwaita": "AdwAlertDialog and AdwDialog floating", "purpose": "Alert/Dialog open: scale 0.8 to 1 and fade from centre; clamped 200ms close to scale 0.9. The only overshoot."},
+      {"name": "spring-sheet", "value": "damping 0.8, mass 1, stiffness 400 (~470ms)", "libadwaita": "AdwBottomSheet", "purpose": "Window open: scale 0.96 to 1 and fade; Window closes to 0.98. Mobile sheets slide from bottom; shell drawers use fade and scale 0.96 to 1."},
+      {"name": "spring-navigation", "value": "damping 1, mass 1, stiffness 1000 (~330ms)", "libadwaita": "AdwNavigationView", "purpose": "Pushed dialog-page and mobile navigation push/pop."},
       {"name": "popover", "value": "200ms fade + scale 0.96 to 1 from the trigger edge; 150ms fade out", "purpose": "Options, extensions, select dropdowns, search results, context menus. GTK4 popovers do not animate; this is a deliberate origin cue."},
       {"name": "toast", "value": "300ms slide from own height + fade in; 300ms fade + scale to 0.95 out", "libadwaita": "AdwToastOverlay", "purpose": "Toasts."},
       {"name": "spring-fallback", "value": "cubic-bezier fallback where CSS linear() is unsupported (Safari < 17.2)", "purpose": "Springs are sampled into linear() easings."},
@@ -86,7 +87,8 @@
     ],
     "breakpoints": [
       {"name": "compact-desktop", "value": "1000px", "purpose": "Compact desktop contract; fork mobile chrome does not start yet."},
-      {"name": "mobile", "value": "768px", "purpose": "Mobile shell and touch-target contract."},
+      {"name": "overlay-sheet", "value": "max-width: 450px or max-height: 360px", "purpose": "AdwDialog condition for alerts, dialogs, windows, menus and pickers; independent of the 768px shell layout breakpoint."},
+      {"name": "mobile", "value": "768px", "purpose": "Shell layout breakpoint: settings/sidebar collapse, List → Split Editor, message action row, mobile-styles.css and coarse layout. Overlays use the separate 450px/360px sheet condition."},
       {"name": "narrow-mobile", "value": "620px", "purpose": "Dense phone layout tuning."},
       {"name": "small-mobile", "value": "420px", "purpose": "Tightest phone layout tuning."},
       {"name": "hig-phone-minimum", "value": "360×294px", "purpose": "Smallest size every layout must support (HIG Scaling & Adaptiveness)."},
@@ -103,7 +105,7 @@
     ],
     "radii": [
       {"name": "control", "token": "--sb-radius-control", "value": "9px", "libadwaita": "$button_radius", "purpose": "Menu rows, search result rows, tooltips, and new non-pill shell controls."},
-      {"name": "card", "token": "--sb-radius-card", "value": "12px", "libadwaita": "$card_radius", "purpose": "Target for content cards when pages are migrated."},
+      {"name": "card", "token": "--sb-radius-card", "value": "12px", "libadwaita": "$card_radius", "purpose": "12px boxed groups inside editors, dialogs, alerts, windows, and side panels; 8% body-colour tint in these surfaces."},
       {"name": "overlay", "token": "--sb-radius-overlay", "value": "15px", "libadwaita": "popover contents, $dialog_radius", "purpose": "Popovers, menus, dialogs, shell drawers, toasts, and the composer stack."},
       {"name": "alert", "token": "--sb-radius-alert", "value": "18px", "libadwaita": "$alert_radius", "purpose": "Confirmation dialogs."},
       {"name": "legacy-content", "token": "--sb-radius-sm / md / lg / xl / button", "value": "10px / 14px / 16px / 20px / 14px", "purpose": "Existing page content until each page is migrated."}
@@ -138,7 +140,7 @@
       "name": "Preferences Group",
       "kind": "card",
       "refersTo": "pref-group",
-      "description": "libadwaita boxed list for settings: 5% tint, 1px border, 16px radius (12px inside editors), rows with 6px 16px padding and 1px separators. The bold heading and optional description sit above the list in .ds-pref-group-header, as in AdwPreferencesGroup; headings and row titles use header capitalisation. The dimmed heading icon is a SillyBunny addition; libadwaita group titles have none.",
+      "description": "libadwaita boxed list for settings: 5% tint, 1px border, 16px radius (12px inside editors, dialogs, windows and side panels; these use 8% tint), rows with 6px 16px padding and 1px separators. The bold heading and optional description sit above the list in .ds-pref-group-header, as in AdwPreferencesGroup; headings and row titles use header capitalisation. The dimmed heading icon is a SillyBunny addition; libadwaita group titles have none.",
       "html": "<section class=\"sb-editor-section\"><div class=\"ds-pref-group-header\"><h3 class=\"ds-pref-group-heading\" id=\"ds-memory-heading\"><span aria-hidden=\"true\">&#9881;</span>Memory</h3><p class=\"ds-pref-group-subtitle\">Keep a running summary of this conversation</p></div><div class=\"ds-pref-group\" role=\"group\" aria-labelledby=\"ds-memory-heading\"><label class=\"ds-row ds-row-switch\"><span class=\"ds-row-text\">Summarise Chats</span><input type=\"checkbox\" role=\"switch\" checked></label><label class=\"ds-row ds-row-switch\"><span class=\"ds-row-text\">Include Personas</span><input type=\"checkbox\" role=\"switch\"></label></div></section>",
       "css": ".ds-pref-group-header { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; padding: 0 4px; } .ds-pref-group-heading { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 16px 4px; font: 700 13px/1.3 Adwaita Sans, system-ui, Noto Sans, sans-serif; color: var(--sb-shell-text-secondary, #c6c6c7); text-transform: none; letter-spacing: 0; } .ds-pref-group-heading span { color: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 62%, transparent); } .ds-pref-group-subtitle { margin: 0; padding: 0 16px 8px; font-size: 12px; line-height: 1.4; color: var(--sb-input-placeholder, #c6c6c7); } .ds-pref-group { display: flex; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--sb-shell-border, #000006) 72%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 5%, transparent); color: var(--SmartThemeBodyColor, #ffffff); font-family: Adwaita Sans, system-ui, Noto Sans, sans-serif; } .ds-pref-group > .ds-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 16px; border-bottom: 1px solid var(--sb-shell-border, #000006); } .ds-pref-group > .ds-row:last-child { border-bottom: 0; } .ds-pref-group .ds-row-text { flex: 1 1 0; min-width: 0; } .sb-list-editor .ds-pref-group, .sb-editor-sheet .ds-pref-group { border-radius: 12px; }"
     },
@@ -146,9 +148,25 @@
       "name": "Popover List",
       "kind": "card",
       "refersTo": "popover-surface",
-      "description": "Opaque popover for menus, search results, persona picking, and message overflow. One border, one popover shadow, flat 9px rows filled only on hover, press, or keyboard selection.",
+      "description": "Opaque popover for menus, search results, persona picking, and message overflow. One border, one popover shadow, flat 9px rows filled only on hover, press, or keyboard selection. Menus and pickers become sheets at max-width 450px or max-height 360px; Deviation: GTK popovers stay popovers on mobile.",
       "html": "<div class=\"ds-popover\" role=\"listbox\" aria-label=\"Results\"><div class=\"ds-popover-row\" role=\"option\" aria-selected=\"true\">Aster</div><div class=\"ds-popover-row\" role=\"option\">Bramble</div></div>",
       "css": ".ds-popover { display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #000006) 86%, transparent); border-radius: 15px; background: var(--sb-layer-popover, #38383c); box-shadow: var(--sb-shadow-popover, 0 1px 5px 1px rgb(0 0 6 / 9%), 0 2px 14px 3px rgb(0 0 6 / 5%)); color: var(--SmartThemeBodyColor, #ffffff); font-family: Adwaita Sans, system-ui, Noto Sans, sans-serif; } .ds-popover-row { min-height: 34px; padding: 0 12px; display: flex; align-items: center; border-radius: 9px; cursor: pointer; } @media (hover: hover) { .ds-popover-row:hover { background: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 7%, transparent); } } .ds-popover-row:active { background: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 16%, transparent); } .ds-popover-row[aria-selected='true'] { background: color-mix(in srgb, var(--SmartThemeBodyColor, #ffffff) 10%, transparent); } @media (pointer: coarse) { .ds-popover-row { min-height: 44px; } }"
+    },
+    {
+      "name": "Dialog Tiers",
+      "kind": "overlay",
+      "refersTo": "dialogs",
+      "description": "Alert: 300px preferred, 372px max (600px wide), one optional boolean, centred heading/body. Dialog: forms up to 640px with header and one scrolling body. Window: lists/editors/viewers at clamp(640px, var(--sheldWidth), 100% - 32px) × 90dvh. Promote an Alert for >1 boolean, any non-boolean control beyond main input/customInputs, INPUT rows >3, or content taller than half the viewport. Header title is explicit or the first leading heading. Explicit action puts Cancel first and affirmative last; immediate apply shows Close. OK-only Text hides OK and Close returns its affirmative. An Alert may overlay; nested Dialog/Window is a page. Sheets use max-width 450px or max-height 360px.",
+      "html": "<dialog class=\"sb-dialog-host\" role=\"alertdialog\"><section class=\"sb-dialog sb-dialog--alert\"><h2 class=\"sb-dialog__heading\">Delete Character?</h2><div class=\"sb-dialog__message\">This action cannot be undone.</div><div class=\"sb-dialog__responses\"><button>Cancel</button><button class=\"is-destructive\">Delete</button></div></section></dialog>",
+      "css": ".sb-dialog { border: 1px solid var(--SmartThemeBorderColor); border-radius: var(--sb-radius-overlay); background: var(--sb-layer-dialog); box-shadow: var(--sb-shadow-dialog); } .sb-dialog--alert { width: max-content; min-width: min(300px, 100%); max-width: min(372px, 100%); border-radius: var(--sb-radius-alert); } .sb-dialog--dialog { width: min(640px, 100%); } .sb-dialog--window { width: min(max(640px, var(--sheldWidth)), 100%); height: 90dvh; } @media (max-width: 450px), (max-height: 360px) { .sb-dialog { width: 100%; border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0; } }"
+    },
+    {
+      "name": "Side Panels",
+      "kind": "utility-pane",
+      "refersTo": "side-panels",
+      "description": "Non-modal Author's Note, CFG, Token Probabilities and Recent Chats panes dock beside the chat at 280–420px, moving the chat as little as possible and never covering it or the top bar. Default sides: Author's Note/CFG left, Token Probabilities/Recent Chats right. Same-side panes split height. Under 360px of chat space, use a persistent non-blocking sheet above the composer, at most 50dvh and one panel at a time. Persist side with existing movingUIState geometry keys; do not persist open state. In visual-novel mode the sprite area follows the free chat area.",
+      "html": "<aside class=\"sb-side-panel\" role=\"complementary\" aria-labelledby=\"panel-title\"><header><h2 id=\"panel-title\">Author's Note</h2><button aria-label=\"Close\">×</button></header><div class=\"sb-side-panel__body\"></div></aside>",
+      "css": ".sb-side-panel { background: var(--sb-layer-drawer); border: 1px solid var(--SmartThemeBorderColor); } @media (max-width: 768px) { .sb-side-panel[data-presentation=\"sheet\"] { max-height: 50dvh; } }"
     },
     {
       "name": "Text Field",
