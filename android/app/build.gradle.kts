@@ -21,6 +21,8 @@ val defaultRef = providers.gradleProperty("defaultRef").getOrElse("staging").als
 val officialRepoUrl = "https://github.com/SillyBunnyTeam/SillyBunny.git"
 val officialUpdateManifestUrl =
     "https://github.com/SillyBunnyTeam/SillyBunny/releases/latest/download/android-update.json"
+// SillyBunny's prerelease updater uses the official API outside debug fixtures.
+val officialReleasesApiUrl = "https://api.github.com/repos/SillyBunnyTeam/SillyBunny/releases?per_page=20"
 
 fun buildConfigString(value: String): String = "\"" + buildString {
     value.forEach { character ->
@@ -93,6 +95,8 @@ android {
         buildConfigField("String", "DEFAULT_REF", buildConfigString(defaultRef))
         buildConfigField("String", "REPO_URL", buildConfigString(officialRepoUrl))
         buildConfigField("String", "UPDATE_MANIFEST_URL", buildConfigString(officialUpdateManifestUrl))
+        // Keep the prerelease endpoint pinned in production builds.
+        buildConfigField("String", "RELEASES_API_URL", buildConfigString(officialReleasesApiUrl))
     }
 
     signingConfigs {
@@ -122,6 +126,14 @@ android {
                 "UPDATE_MANIFEST_URL",
                 buildConfigString(
                     providers.gradleProperty("debugUpdateManifestUrl").getOrElse(officialUpdateManifestUrl),
+                ),
+            )
+            // Permit loopback release fixtures without changing the production endpoint.
+            buildConfigField(
+                "String",
+                "RELEASES_API_URL",
+                buildConfigString(
+                    providers.gradleProperty("debugReleasesApiUrl").getOrElse(officialReleasesApiUrl),
                 ),
             )
         }
