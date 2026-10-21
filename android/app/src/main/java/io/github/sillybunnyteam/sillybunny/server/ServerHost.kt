@@ -25,9 +25,34 @@ sealed interface ServerState {
     data class Failed(val lastLines: List<String>, val canRestart: Boolean) : ServerState
 }
 
+/** A long Bash job that must survive backgrounding: the first-run install or Repair (plan §4.3, §4.7). */
+class SetupJob(val script: File, val args: List<String>, val workingDir: File)
+
+/** Progress of the one setup job the foreground service may run while the server is stopped. */
+sealed interface SetupState {
+    data object Idle : SetupState
+
+    /** [lines] is a bounded tail of merged stdout/stderr for streamed progress. */
+    data class Running(val job: SetupJob, val lines: List<String>) : SetupState
+
+    data class Finished(val job: SetupJob, val exitCode: Int, val lines: List<String>) : SetupState
+}
+
 /** The single process-wide owner of the server process group (task 5.4). */
 interface ServerHost {
     val state: StateFlow<ServerState>
+
+    val setup: StateFlow<SetupState>
+
+    /**
+     * Runs [job] under the same foreground service as the server, so clone and npm work survives
+     * backgrounding. The server must already be stopped. Call only from a visible activity or a user
+     * action. Returns false, without starting anything, while the server or another job is running.
+     */
+    fun runSetup(context: Context, job: SetupJob): Boolean
+
+    /** Stops the running setup job's whole process group; [setup] then reports it finished. */
+    fun cancelSetup()
 
     /** Starts the foreground service. Call only from a visible activity or a user action. */
     fun start(context: Context)
