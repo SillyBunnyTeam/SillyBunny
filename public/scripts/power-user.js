@@ -77,6 +77,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
+import { mergeThemeUpdate } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
@@ -2171,7 +2172,13 @@ function isMediaDisplayReloadNeeded() {
     return hasUnprocessedMediaMessages;
 }
 
-function applyTheme(name) {
+/**
+ * Applies a UI theme.
+ * @param {string} name Theme name
+ * @param {object} [options]
+ * @param {boolean} [options.applyCss=true] Whether the theme's custom CSS replaces the current Custom CSS
+ */
+function applyTheme(name, { applyCss = true } = {}) {
     const theme = themes.find(x => x.name == name);
 
     if (!theme) {
@@ -2196,7 +2203,7 @@ function applyTheme(name) {
     }
     applyThemeEffects();
 
-    if (typeof theme.custom_css === 'string') {
+    if (applyCss && typeof theme.custom_css === 'string') {
         power_user.custom_css = theme.custom_css;
         applyCustomCSS();
     }
@@ -3376,8 +3383,17 @@ async function deleteTheme() {
 /**
  * Exports the current theme to a file.
  */
-async function exportTheme() {
-    const themeFile = await saveTheme(power_user.theme);
+function exportTheme() {
+    const themeName = power_user.theme;
+
+    if (!themeName) {
+        toastr.info('No theme selected.');
+        return;
+    }
+
+    // SillyBunny: SillyTavern saves the theme before downloading it; exporting here
+    // only downloads, so it never rewrites the stored theme file.
+    const themeFile = getThemeSaveObject(themeName);
     const fileName = `${themeFile.name}.json`;
     download(JSON.stringify(themeFile, null, 4), fileName, 'application/json');
 }
@@ -3440,7 +3456,7 @@ async function saveTheme(name = undefined, theme = undefined) {
     }
 
     if (typeof theme !== 'object') {
-        theme = getThemeObject(name);
+        theme = getThemeSaveObject(name);
     }
 
     const response = await fetch('/api/themes/save', {
@@ -3491,6 +3507,17 @@ export function getThemeObject(name) {
     }
 
     return theme;
+}
+
+/**
+ * Gets the theme object to save or export from the current settings.
+ * @param {string} name Name of the theme
+ * @returns {object} Current snapshot merged over the stored theme
+ */
+function getThemeSaveObject(name) {
+    // SillyBunny: /api/themes/save overwrites the whole file, so merge over the stored
+    // theme to keep keys the snapshot does not carry, such as a bundled theme's custom_css.
+    return mergeThemeUpdate(themes.find(x => x.name == name), getThemeObject(name));
 }
 
 /**
@@ -5148,7 +5175,8 @@ jQuery(async () => {
     });
 
     $(document).on('click', '.sb-theme-preset-reset', function () {
-        applyTheme('Dark V 1.0');
+        // SillyBunny: Reset restores colors only and leaves Custom CSS alone.
+        applyTheme('Dark V 1.0', { applyCss: false });
         saveSettingsDebounced();
         toastr.info('Theme colors reset to Dark V 1.0.', 'SillyBunny palette');
     });
