@@ -1,3 +1,4 @@
+/* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
 /* global globalThis */
 
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
@@ -34,6 +35,15 @@ function replaceGlobal(name, value) {
             delete globalThis[name];
         }
     });
+}
+
+function stubCharacterPanel({ open = true, menuType, phone = false, phoneContent = false } = {}) {
+    const elements = {
+        'right-nav-panel': { classList: { contains: name => open && name === 'openDrawer' }, dataset: { menuType } },
+        'sb-settings-page': { classList: { contains: name => phoneContent && name === 'sb-settings-page--content' } },
+    };
+    replaceGlobal('document', { getElementById: id => elements[id] ?? null });
+    replaceGlobal('matchMedia', query => ({ matches: phone && query === '(max-width: 768px)' }));
 }
 
 afterEach(() => {
@@ -203,6 +213,7 @@ describe('universal search entity entries', () => {
     test('honours a group selection the app refuses', async () => {
         const openTab = jest.fn();
         replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel({ menuType: 'character_edit' });
         setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
         openGroupById.mockResolvedValueOnce(false);
 
@@ -211,6 +222,54 @@ describe('universal search entity entries', () => {
         expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
         expect(openTab).not.toHaveBeenCalled();
         expect(rememberOpenedEntity).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['a character', { menuType: 'character_edit' }],
+        ['the no-chat empty state', { menuType: 'editor_empty' }],
+        ['a character on a phone', { menuType: 'character_edit', phone: true, phoneContent: true }],
+    ])('re-resolves an open Editor tab showing %s once the group opens', async (_label, panel) => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel(panel);
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openTab.mock.calls).toEqual([['characters', 'editor']]);
+    });
+
+    test.each([
+        ['another Characters tab', { menuType: 'groups' }],
+        ['a group editor', { menuType: 'group_edit' }],
+        ['a closed page', { open: false, menuType: 'character_edit' }],
+        ['a phone section list', { menuType: 'character_edit', phone: true }],
+    ])('leaves %s alone when a group opens', async (_label, panel) => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel(panel);
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openTab).not.toHaveBeenCalled();
+    });
+
+    test('a failed editor refresh does not fall back to the groups page', async () => {
+        const openTab = jest.fn(async (_shell, tabId) => {
+            if (tabId === 'editor') throw new Error('Shell is mounting');
+        });
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel({ menuType: 'character_edit' });
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openTab.mock.calls).toEqual([['characters', 'editor']]);
+        expect(rememberOpenedEntity.mock.calls).toEqual([['group', 'group-action']]);
     });
 
     test('opens a character through the app selection path, which starts the editor session', async () => {

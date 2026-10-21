@@ -108,6 +108,23 @@ async function rememberOpened(kind, key) {
     }
 }
 
+// Groups open without switchMenu so search leaves the Characters page where it was, but an Editor tab
+// still showing a character, or the no-chat empty state, no longer matches the open chat.
+async function refreshStaleCharacterEditor() {
+    try {
+        const panel = globalThis.document?.getElementById('right-nav-panel');
+        if (!panel?.classList.contains('openDrawer') || !['character_edit', 'editor_empty'].includes(panel.dataset.menuType)) return;
+        // A phone page on its section list keeps the Editor off-screen, and opening the tab would slide it in.
+        // Choosing Editor there resolves the open chat anyway.
+        const onPhoneSectionList = Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches)
+            && !globalThis.document.getElementById('sb-settings-page')?.classList.contains('sb-settings-page--content');
+        if (onPhoneSectionList) return;
+        await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');
+    } catch {
+        // Navigation can be unavailable while the shell is being mounted.
+    }
+}
+
 async function openCharacter(index) {
     try {
         const context = getSearchContext();
@@ -152,7 +169,10 @@ async function openGroup(group) {
         // leave the previous character or group selected under this group's messages.
         const { openGroupById } = await import('./group-chats.js');
         const groupId = String(group.id);
-        if (await openGroupById(groupId, { switchMenu: false })) await rememberOpened('group', groupId);
+        if (await openGroupById(groupId, { switchMenu: false })) {
+            await rememberOpened('group', groupId);
+            await refreshStaleCharacterEditor();
+        }
         return;
     } catch {
         // Fall through to the groups page if opening the group throws.
