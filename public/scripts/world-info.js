@@ -28,6 +28,8 @@ import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAu
 import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
 // SillyBunny: failed transfers must not leak optimistic entries into later saves — see docs/ui-migration.md
 import { captureWorldInfoMutation } from './sillybunny-world-info-model.js';
+// SillyBunny: native lorebook controls retain their handlers and results inside shared rows.
+import { embeddedLorebookOptions, lorebookSelectOptions, lorebookSortingOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 
 // SillyBunny divergence: World Info is integrated with the fork shell and auxiliary lorebook sources while retaining upstream scan helpers.
 export const world_info_insertion_strategy = {
@@ -2767,6 +2769,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
                 min: 0,
                 step: 1,
                 autoFocus: true,
+                // SillyBunny: retain empty and invalid edits for the validation after Apply.
+                clampToBounds: false,
             },
             {
                 id: 'wi_sort_step',
@@ -2776,6 +2780,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
                 defaultState: '1',
                 min: 1,
                 step: 1,
+                // SillyBunny: Step 0 must reach caller validation rather than become 1 on blur.
+                clampToBounds: false,
             },
             {
                 id: 'wi_sort_ascending',
@@ -2787,6 +2793,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         ];
 
         const popup = new Popup(contentEl, POPUP_TYPE.TEXT, null, {
+            // SillyBunny: collect the same customInput IDs from one scrollable group of rows.
+            ...lorebookSortingOptions(contentEl, customInputs),
             okButton: t`Apply`,
             cancelButton: t`Cancel`,
             customInputs,
@@ -6621,16 +6629,9 @@ export async function importEmbeddedWorldInfoBatch() {
         listEl.appendChild(label);
     }
 
-    toggleAll.addEventListener('change', () => {
-        listEl.querySelectorAll('input.batch_wi_import_candidate').forEach(input => {
-            if (input instanceof HTMLInputElement) {
-                input.checked = toggleAll.checked;
-            }
-        });
-    });
-
     const content = $(contentEl);
-    const confirm = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', { okButton: t`Import`, wide: true });
+    // SillyBunny: the adapter owns Select All/mixed state and removes the nested scrolling list.
+    const confirm = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', { ...embeddedLorebookOptions(contentEl), okButton: t`Import`, cancelButton: t`Cancel`, wide: true });
 
     if (!confirm) {
         return;
@@ -7012,7 +7013,8 @@ export async function assignLorebookToChat({ shiftKey, altKey }) {
         saveMetadata();
     });
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT);
+    // SillyBunny: immediate-apply select row; the header Close keeps TEXT's affirmative result.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', lorebookSelectOptions(template[0]));
 }
 
 /**

@@ -88,6 +88,7 @@ export const POPUP_RESULT = {
  * @property {number?} [min] - The minimum value for number inputs
  * @property {number?} [max] - The maximum value for number inputs
  * @property {number?} [step] - The step value for number inputs
+ * @property {boolean} [clampToBounds=true] - SillyBunny: allow caller-owned numeric validation without changing native bounds
  * @property {boolean?} [disabled=false] - Whether the input should be disabled
  * @property {boolean?} [autoFocus=false] - Whether this input should be auto-focused when the popup opens
  */
@@ -424,6 +425,8 @@ export class Popup {
                 setTitleFromTooltip(inputElement, input.tooltip);
 
                 inputElement.addEventListener('change', () => {
+                    // SillyBunny: sorting validates raw values after collecting inputResults.
+                    if (input.clampToBounds === false) return;
                     const value = parseFloat(inputElement.value);
                     if (isNaN(value)) return;
 

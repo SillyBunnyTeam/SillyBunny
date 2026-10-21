@@ -355,6 +355,8 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
+// SillyBunny: character lorebook rows mirror the existing native selects and Select2 state.
+import { lorebookSelectOptions } from './scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import {
     beginCharacterEditorLoad,
@@ -16060,6 +16062,8 @@ async function openCharacterWorldPopup() {
     });
 
     const popup = new Popup(template, POPUP_TYPE.TEXT, '', {
+        // SillyBunny: adopt both selects before the existing desktop Select2 initialization.
+        ...lorebookSelectOptions(template[0], { character: true }),
         onOpen: function (popup) {
             const popupDialog = $(popup.dlg);
 

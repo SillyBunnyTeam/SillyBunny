@@ -61,6 +61,8 @@ import { debounce_timeout } from './constants.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { groups, selected_group } from './group-chats.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+// SillyBunny: mirror the native lorebook select while retaining persona persistence upstream.
+import { lorebookSelectOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 import { t } from './i18n.js';
 import { openWorldInfoEditor, world_info, world_names } from './world-info.js';
 import { renderTemplateAsync } from './templates.js';
@@ -1740,7 +1742,8 @@ async function onPersonaLoreButtonClick({ shiftKey, altKey }) {
         }
     });
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT);
+    // SillyBunny: immediate-apply select row and a shared Dialog-tier Close header.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', lorebookSelectOptions(template[0]));
 }
 
 async function onPersonaDescriptionPositionInput() {

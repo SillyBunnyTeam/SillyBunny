@@ -25,6 +25,8 @@ import { kai_settings } from './kai-settings.js';
 import { convertNovelPreset } from './nai-settings.js';
 import { getChatCompletionPreset, getPresetApplicationPromise, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from './popup.js';
+// SillyBunny: adopt preset choices into shared dialog rows without changing their values.
+import { presetChoicesOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 import { context_presets, getContextSettings, power_user } from './power-user.js';
 import {
     createPresetSelectTouchGuardState,
@@ -411,6 +413,8 @@ class PresetManager {
 
         const html = $(await renderTemplateAsync('masterImport', { sections: sectionNames }));
         const popup = new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: templates remain the source of translated captions and native controls.
+            ...presetChoicesOptions(html.filter('div')[0]),
             okButton: t`Import`,
             cancelButton: t`Cancel`,
         });
@@ -423,7 +427,8 @@ class PresetManager {
         }
 
         const importedSections = [];
-        const confirmedSections = html.find('input:checked').map((_, el) => el instanceof HTMLInputElement && el.value).get();
+        // SillyBunny: Select All is presentation, not an imported section.
+        const confirmedSections = html.find('input:checked:not([data-sb-select-all])').map((_, el) => el instanceof HTMLInputElement && el.value).get();
 
         if (confirmedSections.length === 0) {
             toastr.info(t`No sections selected for import`);
@@ -454,6 +459,8 @@ class PresetManager {
         const html = $(await renderTemplateAsync('masterExport', { sections: sectionNames }));
 
         const popup = new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: preserve upstream export defaults and checked section values.
+            ...presetChoicesOptions(html.filter('div')[0]),
             okButton: t`Export`,
             cancelButton: t`Cancel`,
         });
@@ -465,7 +472,8 @@ class PresetManager {
             return;
         }
 
-        const confirmedSections = html.find('input:checked').map((_, el) => el instanceof HTMLInputElement && el.value).get();
+        // SillyBunny: Select All must never become an exported settings key.
+        const confirmedSections = html.find('input:checked:not([data-sb-select-all])').map((_, el) => el instanceof HTMLInputElement && el.value).get();
         const data = {};
 
         if (confirmedSections.length === 0) {
@@ -1300,6 +1308,9 @@ class PresetManager {
         );
 
         const result = await new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: trailing checks, Select All and a Cancel-focused destructive response.
+            ...presetChoicesOptions(html[0], { deletion: true }),
+            defaultResult: POPUP_RESULT.NEGATIVE,
             okButton: t`Delete selected`,
             cancelButton: t`Cancel`,
             wide: true,
@@ -1309,7 +1320,8 @@ class PresetManager {
             return [];
         }
 
-        return html.find('input:checked').map((_, el) => String($(el).val())).get();
+        // SillyBunny: only real preset choices contribute deletion results.
+        return html.find('input:checked:not([data-sb-select-all])').map((_, el) => String($(el).val())).get();
     }
 
     /**
@@ -1724,6 +1736,8 @@ export async function initPresetManager() {
         const confirm = await Popup.show.confirm(
             t`Delete selected ${pluralNoun}?`,
             t`This will permanently delete ${presetNames.length} selected ${pluralNoun} for this section. The built-in GUI preset is kept.`,
+            // SillyBunny: Return must cancel the final destructive confirmation too.
+            { defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') },
         );
 
         if (!confirm) {

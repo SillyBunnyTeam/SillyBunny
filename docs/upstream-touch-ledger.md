@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Preset and lorebook dialogs - shared content rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/preset-manager.js`; `public/scripts/world-info.js`; `public/scripts/personas.js`; `public/script.js`; `public/scripts/popup.js`. Templates and `index.html` remain unchanged. |
+| Area | Master settings import/export, preset deletion, embedded lorebook batch import, sorting, character/persona/chat lorebook assignment. |
+| Divergence reason | Dialog-tier surfaces need trailing check/switch controls, spin/select rows, reachable content, and Cancel-focused destructive responses. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js`; shared row, select-row and Popup-frame modules. |
+| Adapter shape | Prepare native choices before Popup construction; show Select All only above five candidates and exclude it from preset results. Move custom sorting inputs into the content onOpen without changing inputResults; nullable spin rows and an opt-out from Popup/row clamping leave sorting validation upstream. Mirror existing lorebook selects, reuse the auxiliary Select2 placeholder and hide only its picker sentinel, retain desktop Select2 initialization, release observers/IDs onClose. Keep section writes, sorting, imports and assignment persistence upstream. Final preset deletion also defaults to Cancel. |
+| Protecting tests | `tests/unit/preset-lorebook-dialogs.test.js`; `tests/unit/sillybunny-editor-rows.test.js`; `tests/unit/popup-contract.test.js`; `tests/preset-lorebook-dialogs.e2e.js`; WorldInfoSorting, world-info-editor, persona-editor, sillybunny-preset-autosave, character-list, sillybunny-dialog-tiers and popup-scroll E2E. |
+| Validation | Root lint; full Jest; frontend budgets; Chromium E2E at 1440×900 and 390×844 with intercepted writes. |
+| Rollback path | Remove adapter imports/calls/options and Select All result filters; restore the batch Select All listener. Keep templates, persistence handlers and shared frame unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 3.5–3.9. |
+| Owner | UI integrator. |
+
 ### `public/scripts/extensions/connection-manager/index.js` and `style.css` - profile dialog rows
 | Field | Value |
 | --- | --- |

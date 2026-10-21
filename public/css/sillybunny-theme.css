@@ -7200,6 +7200,25 @@ dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
     margin-inline-start: auto;
 }
 
+/* Shared content adapters own the layout instead of upstream range-block wrappers. */
+.sb-dialog-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.sb-dialog .ds-row-suffix input[type='number'] {
+    width: 6em;
+    min-width: 0;
+    text-align: end;
+}
+
+/* Select2 remains initialized beside the source select; the shared picker owns presentation. */
+.sb-dialog .ds-select-row .select2-container {
+    display: none !important;
+}
+
 /* Adopted rows retain caller selectors without inheriting generic checkbox-label spacing. */
 .sb-dialog .ds-row.checkbox_label {
     min-height: 44px;
