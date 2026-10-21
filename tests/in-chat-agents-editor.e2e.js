@@ -168,6 +168,7 @@ for (const width of [360, 390, 430, 768]) {
                 const dialog = page.locator('dialog[open]');
                 const fields = await dialog.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({ field: node.getAttribute('aria-label'), height: node.getBoundingClientRect().height })));
                 heights.push({ id: 'regex-dialog', fields });
+                await expect(dialog.locator('.sb-dialog__title')).toHaveText('Add Regex Script');
                 for (const field of fields) expect.soft(field.height, `regex: ${field.field}`).toBeGreaterThanOrEqual(160);
                 await dialog.locator('.popup-button-cancel').click();
             }
@@ -177,6 +178,7 @@ for (const width of [360, 390, 430, 768]) {
                     await editor.detail.getByRole('button', { name: 'Generate Kit…', exact: true }).click();
                 } else await editor.detail.getByRole('button', { name: 'AI Maker…', exact: true }).click();
                 const dialog = page.locator('dialog[open]');
+                if (id === 'companion') await expect(dialog.locator('.sb-dialog__title')).toHaveText('AI Maker');
                 const fields = await dialog.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({ field: node.id, height: node.getBoundingClientRect().height })));
                 expect(fields.length).toBeGreaterThan(0);
                 heights.push({ id: `${id}-dialog`, fields });
@@ -1126,7 +1128,9 @@ for (const width of [1440, 390]) {
             await acceptPopup(dialog);
             await activateAgentEditorAction(page, editor.detail, 'Refine…');
             await expect(dialog.locator('[name="ica-refine-mode"]')).toHaveCount(5);
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Refine');
             await acceptPopup(dialog);
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Refine');
             await expect(dialog.locator('h4').last()).toHaveText('Refined');
             await expect(dialog.locator('pre').last()).toHaveText('Mock refined prompt');
             await acceptPopup(dialog);
@@ -1154,6 +1158,7 @@ for (const width of [1440, 390]) {
                 name: 'Generate Kit…',
                 exact: true,
             }).click();
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Generate Kit');
             await expect(dialog.locator('#ica--tracker-builder-extra-instructions')).toBeVisible();
             await expect(dialog.locator('.editor_maximize, .ica--textarea-fullscreen-toggle')).toHaveCount(0);
             await dialog.evaluate(node => node.dataset.qaTrackerPreview = 'same-popup');
@@ -1175,7 +1180,9 @@ for (const width of [1440, 390]) {
                 exact: true,
             }).click();
             await dialog.locator('#ica--companion-maker-goal').fill('QA helper');
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('AI Maker');
             await acceptPopup(dialog);
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Generate Companion');
             await expect(dialog.locator('pre')).toHaveText('Mock companion prompt');
             await acceptPopup(dialog);
             await expect(editor.prompt).toHaveValue('Mock companion prompt');
@@ -1203,6 +1210,7 @@ for (const width of [1440, 390]) {
             });
             await editor.detail.getByRole('textbox', { name: 'Format Example', exact: true }).fill('[TRACKER|Field]');
             await editor.detail.getByRole('button', { name: 'Generate Kit…', exact: true }).click();
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Generate Kit');
             await expect(dialog).toContainText('Fallback scaffold used.');
             await dialog.locator('.popup-button-cancel').click();
             await expect(editor.prompt).not.toHaveValue('Mock tracker prompt');

@@ -40,6 +40,8 @@ import { ChutesTtsProvider } from './chutes.js';
 import { VolcengineTtsProvider } from './volcengine.js';
 import { applyLocale, t } from '/scripts/i18n.js';
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
+// SillyBunny: voice previews use shared action rows while preserving upstream TTS controls and IDs.
+import { createButtonRow, createPrefGroup, releaseRowIds } from '../../sillybunny-editor/rows.js';
 
 const UPDATE_INTERVAL = 1000;
 const wrapper = new ModuleWorkerWrapper(moduleWorker);
@@ -580,28 +582,66 @@ globalThis.tts_preview = function (id) {
     }
 };
 
+function cleanupVoicePreviewContent(content) {
+    content.querySelectorAll('audio').forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.removeAttribute('src');
+        audio.load?.();
+    });
+    releaseRowIds(content);
+}
+
 async function onTtsVoicesClick() {
-    let popupText = '';
+    let voiceIds = [];
+    let error = null;
 
     try {
-        const voiceIds = await ttsProvider.fetchTtsVoiceObjects();
-
-        for (const voice of voiceIds) {
-            popupText += `
-            <div class="voice_preview">
-                <span class="voice_lang">${voice.lang || ''}</span>
-                <b class="voice_name">${voice.name}</b>
-                <i onclick="tts_preview('${voice.voice_id}')" class="fa-solid fa-play"></i>
-            </div>`;
-            if (voice.preview_url) {
-                popupText += `<audio id="${voice.voice_id}" src="${voice.preview_url}" data-disabled="${voice.preview_url == false}"></audio>`;
-            }
-        }
+        voiceIds = await ttsProvider.fetchTtsVoiceObjects();
     } catch {
-        popupText = 'Could not load voices list. Check your API key.';
+        error = t`Could not load voices list. Check your API key.`;
     }
 
-    callGenericPopup(popupText, POPUP_TYPE.TEXT, '', { allowVerticalScrolling: true });
+    const content = document.createElement('div');
+    content.className = 'sb-dialog-rows';
+    if (error) {
+        content.textContent = error;
+    } else {
+        const rows = voiceIds.map((voice, index) => {
+            const row = createButtonRow({
+                label: voice.name || voice.voice_id || String(index + 1),
+                icon: 'play',
+                field: `tts-voice-${index}`,
+                onActivate: () => globalThis.tts_preview?.(voice.voice_id),
+            });
+            row.row.classList.add('voice_preview');
+            const label = row.row.querySelector('.ds-row-label');
+            const language = document.createElement('span');
+            language.className = 'voice_lang';
+            language.textContent = voice.lang || '';
+            const name = document.createElement('b');
+            name.className = 'voice_name';
+            name.textContent = voice.name || voice.voice_id || '';
+            label.replaceChildren(language, name);
+            if (voice.preview_url) {
+                const audio = document.createElement('audio');
+                audio.id = voice.voice_id;
+                audio.src = voice.preview_url;
+                audio.dataset.disabled = String(voice.preview_url == false);
+                audio.hidden = true;
+                row.row.append(audio);
+            }
+            return row;
+        });
+        content.append(createPrefGroup({ field: 'tts-voices', rows }).section);
+    }
+    // SillyBunny: keep preview audio from playing after the voice Dialog closes.
+    void callGenericPopup(content, POPUP_TYPE.TEXT, '', {
+        tier: 'dialog',
+        title: t`Available voices`,
+        allowVerticalScrolling: true,
+        onClose: () => cleanupVoicePreviewContent(content),
+    });
 }
 
 function updateUiAudioPlayState() {

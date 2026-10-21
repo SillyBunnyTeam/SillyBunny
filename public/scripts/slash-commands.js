@@ -93,6 +93,8 @@ import { SlashCommandAbortController } from './slash-commands/SlashCommandAbortC
 import { SlashCommandNamedArgumentAssignment } from './slash-commands/SlashCommandNamedArgumentAssignment.js';
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+// SillyBunny: slash-command button lists use the shared trailing-action rows.
+import { createButtonRow } from './sillybunny-editor/rows.js';
 import { commonEnumProviders, enumIcons, commonEnumMatchProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { SlashCommandBreakController } from './slash-commands/SlashCommandBreakController.js';
 import { SlashCommandExecutionError } from './slash-commands/SlashCommandExecutionError.js';
@@ -4118,36 +4120,28 @@ async function buttonsCallback(args, text) {
             scrollableContainer.classList.add('scrollable-buttons-container');
 
             for (const [result, button] of resultToButtonMap) {
-                const buttonElement = document.createElement('div');
-                buttonElement.classList.add('menu_button', 'wide100p');
-
-                if (multiple) {
-                    buttonElement.classList.add('toggleable');
-                    buttonElement.dataset.toggleValue = String(result);
-                    buttonElement.addEventListener('click', async () => {
-                        buttonElement.classList.toggle('toggled');
-                        if (buttonElement.classList.contains('toggled')) {
+                const buttonRow = createButtonRow({
+                    label: button.text,
+                    icon: button.icon?.replace(/^fa-/, ''),
+                    field: `slash-button-${result}`,
+                    onActivate: multiple ? () => {
+                        buttonRow.row.classList.toggle('toggled');
+                        if (buttonRow.row.classList.contains('toggled')) {
                             multipleToggledState.add(result);
                         } else {
                             multipleToggledState.delete(result);
                         }
-                    });
+                    } : undefined,
+                });
+                const buttonElement = buttonRow.row;
+                buttonElement.classList.add('wide100p');
+
+                if (multiple) {
+                    buttonElement.classList.add('toggleable');
+                    buttonElement.dataset.toggleValue = String(result);
                 } else {
                     buttonElement.classList.add('result-control');
                     buttonElement.dataset.result = String(result);
-                }
-
-                // Add icon if provided
-                if (button.icon) {
-                    const icon = document.createElement('i');
-                    icon.className = `fa-solid ${button.icon}`;
-                    icon.style.marginRight = '0.5em';
-                    buttonElement.appendChild(icon);
-                    const textSpan = document.createElement('span');
-                    textSpan.textContent = button.text;
-                    buttonElement.appendChild(textSpan);
-                } else {
-                    buttonElement.innerText = button.text;
                 }
 
                 // Add tooltip if provided
@@ -4179,7 +4173,12 @@ async function buttonsCallback(args, text) {
                 return typeof result === 'number' ? resultToButtonMap.get(result)?.text ?? '' : '';
             };
 
-            popup = new Popup(popupContainer, POPUP_TYPE.TEXT, '', { okButton: multiple ? t`Ok` : t`Cancel`, allowVerticalScrolling: true });
+            popup = new Popup(popupContainer, POPUP_TYPE.TEXT, '', {
+                okButton: multiple ? t`Ok` : t`Cancel`,
+                allowVerticalScrolling: true,
+                // SillyBunny: /buttons content is an action Dialog, not an Alert full of loose controls.
+                tier: 'dialog',
+            });
             popup.show()
                 .then((result => resolve(getResult(result))))
                 .catch(() => resolve(''));

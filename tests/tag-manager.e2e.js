@@ -216,11 +216,45 @@ for (const width of [1440, 390]) {
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
             await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
             await expect(page.locator('#merge_tag_select')).toBeAttached();
-            await page.keyboard.press('Escape');
+            const deleteDialog = page.locator('dialog.popup[open]').last();
+            await expect(deleteDialog.locator('.popup-button-cancel')).toBeFocused();
+            await page.keyboard.press('Enter');
+            await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
             await expect(row(page, fixtureTag)).toBeVisible();
         });
     });
 }
+
+test('tag import custom responses stay visible and return their mapped command results', async ({ page }) => {
+    await prepare(page, 390);
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        app.characters[0].tags = ['QA Beta', 'QA New'];
+    });
+
+    const runImport = page.evaluate(async () => {
+        const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
+        return (await executeSlashCommandsWithOptions('/tag-import name="QA tag character" mode=ask')).pipe;
+    });
+    const popup = page.locator('dialog[open]').last();
+    await expect(popup.locator('.popup-button-custom')).toHaveText(['Import None', 'Import All', 'Import Existing']);
+    await popup.locator('.popup-button-custom').filter({ hasText: 'Import None' }).click();
+    expect(await runImport).toBe('false');
+
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        app.characters[0].tags = ['QA Beta', 'QA New'];
+    });
+    const existingImport = page.evaluate(async () => {
+        const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
+        return (await executeSlashCommandsWithOptions('/tag-import name="QA tag character" mode=ask')).pipe;
+    });
+    const existingPopup = page.locator('dialog[open]').last();
+    await expect(existingPopup.locator('.popup-button-custom')).toHaveText(['Import None', 'Import All', 'Import Existing']);
+    await existingPopup.locator('.popup-button-custom').filter({ hasText: 'Import Existing' }).click();
+    expect(await existingImport).toBe('true');
+    await expect.poll(() => page.evaluate(async () => (await import('/scripts/tags.js')).tag_map['qa-tag-character.png'])).toContain('qa-tag-beta');
+});
 
 for (const width of [1440, 768, 390]) {
     test(`${width}px tag surface stays framed and contained in both bundled themes`, async ({ page }) => {

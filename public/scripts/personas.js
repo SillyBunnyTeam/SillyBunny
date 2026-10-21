@@ -1206,7 +1206,12 @@ export async function askForPersonaSelection(title, text, personas, { okButton =
         });
     }
 
-    const popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: okButton, customButtons: customButtons });
+    const popup = new Popup(content, POPUP_TYPE.TEXT, '', {
+        okButton: okButton,
+        customButtons: customButtons,
+        // SillyBunny: persona selection is an action list, so keep it in the Dialog tier at every list size.
+        tier: 'dialog',
+    });
     const result = await popup.show();
     return Number(result) >= 100 ? personas[Number(result) - 100] : null;
 }

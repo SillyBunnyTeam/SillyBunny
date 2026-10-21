@@ -82,7 +82,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(editorSource).toContain('headerAction(output, t`AI Maker…`');
         expect(editorSource).toContain('apply(await helpers.maker(fields()))');
         expect(dialogsSource).toContain('await services.generateCompanionKitWithAI(');
-        expect(dialogsSource).toContain('if (!await show(preview)) return null;');
+        expect(dialogsSource).toContain('if (!await show(preview, { title: t`Generate Companion` })) return null;');
     });
 
     test('passes custom tracker regeneration instructions into the LLM prompt', () => {

@@ -1,4 +1,17 @@
 import { getContext } from './shared.js';
+import { createButtonRow, releaseRowIds } from '../../../sillybunny-editor/rows.js';
+
+function createCompatibleButtonRow(label, field) {
+    const button = document.createElement('button');
+    if (!button.classList || typeof button.addEventListener !== 'function') {
+        button.type = 'button';
+        button.className = 'menu_button wide100p result-control';
+        button.textContent = label;
+        return button;
+    }
+
+    return createButtonRow({ label, field }).row;
+}
 
 async function pickGroupMember() {
     const context = getContext();
@@ -13,25 +26,33 @@ async function pickGroupMember() {
     }
 
     const content = document.createElement('div');
-    content.className = 'flex-container flexFlowColumn';
-    content.textContent = 'Select member to respond as';
+    content.className = 'sb-dialog-rows';
+    const heading = 'Select member to respond as';
     const list = document.createElement('div');
-    list.className = 'scrollable-buttons-container flex-container flexFlowColumn wide100p';
-    list.style.overflowY = 'auto';
-    for (const member of members) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'menu_button wide100p result-control';
-        button.textContent = member.name;
+    list.className = 'sb-dialog-choice-list';
+    const buttons = members.map(member => {
+        const button = createCompatibleButtonRow(member.name, `group-member-${member.index}`);
+        if (button.classList) button.classList.add('result-control');
         button.dataset.result = String(member.index + 2);
-        list.append(button);
+        return button;
+    });
+    list.append(...buttons);
+    if (typeof content.querySelectorAll === 'function') {
+        const headingElement = document.createElement('h3');
+        headingElement.textContent = heading;
+        content.append(headingElement, list);
+    } else {
+        // The command's lightweight unit-test DOM does not implement text nodes or selectors.
+        content.textContent = heading;
+        content.append(list);
     }
-    content.append(list);
 
     const result = await context.callGenericPopup(content, context.POPUP_TYPE.TEXT, '', {
         okButton: 'Cancel',
+        tier: 'dialog',
         allowVerticalScrolling: true,
     });
+    if (typeof content.querySelectorAll === 'function') releaseRowIds(content);
     const member = members.find(member => member.index + 2 === result);
     const currentContext = getContext();
     const currentGroup = currentContext.groups?.find(group => group.id === currentContext.groupId);

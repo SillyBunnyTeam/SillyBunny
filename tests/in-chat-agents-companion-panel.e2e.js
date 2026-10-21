@@ -84,5 +84,44 @@ for (const width of [1440, 390]) {
             expect(driver.saves()).toHaveLength(0);
             expect(driver.writes.filter(write => /\/generate(?:[-/]|$)|\/(?:chat\/)?completions?$/.test(write.path))).toEqual([]);
         });
+
+        test('destructive companion actions default to Cancel and ignore Return', async ({ page, baseURL }) => {
+            const driver = await openEditorAgents(page, baseURL, width);
+            await seedCompanionPanel(page);
+            await page.locator('#sb-settings-close').click();
+            const card = page.locator('.ica--companion-card').first();
+            await card.locator('[data-action="delete"]').click();
+            const deleteDialog = page.locator('dialog[open]').last();
+            await expect(deleteDialog.locator('.popup-button-cancel')).toBeFocused();
+            await page.keyboard.press('Enter');
+            await expect(deleteDialog).toHaveCount(0);
+            await expect(card).toBeVisible();
+
+            await page.evaluate(async () => {
+                const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+                const app = await import('/script.js');
+                const panel = await import('/scripts/extensions/in-chat-agents/companion/companion-panel.js');
+                store.getAgentById('qa-scene').sourceTemplateId = 'tpl-memory-shard-companion';
+                app.chat.splice(0, app.chat.length, ...Array.from({ length: 3 }, (_, index) => ({
+                    is_user: false,
+                    is_system: false,
+                    name: 'QA Assistant',
+                    mes: `Message ${index}`,
+                    extra: { inChatAgentCompanionResults: {
+                        'qa-scene': { status: 'done', agentName: 'Memory Shard', content: `State ${index}` },
+                    } },
+                })));
+                panel.refreshCompanionPanel();
+            });
+            await page.locator('#ica_tracker_panel_wand_item').evaluate(node => node.click());
+            const trackerPanel = page.locator('#ica--tracker-panel');
+            await expect(trackerPanel).toHaveClass(/is-open/);
+            await trackerPanel.locator('[data-action="panel-hide-before"]').click();
+            const hideDialog = page.locator('dialog[open]').last();
+            await expect(hideDialog.locator('.popup-button-cancel')).toBeFocused();
+            await page.keyboard.press('Enter');
+            await expect(hideDialog).toHaveCount(0);
+            expect(driver.saves()).toHaveLength(0);
+        });
     });
 }

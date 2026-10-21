@@ -2256,12 +2256,18 @@ async function onTagDeleteClick() {
         }).val(null).trigger('change');
     }
 
-    const result = await callGenericPopup(popupContent, POPUP_TYPE.CONFIRM);
+    const result = await callGenericPopup(popupContent, POPUP_TYPE.CONFIRM, '', {
+        // SillyBunny: merging/deleting a tag is a Dialog with a destructive affirmative.
+        tier: 'dialog',
+        defaultResult: POPUP_RESULT.NEGATIVE,
+        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+    });
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return;
     }
 
-    const mergeTagId = $('#merge_tag_select').val() ? String($('#merge_tag_select').val()) : null;
+    const mergeValue = popupContent.find('#merge_tag_select').val();
+    const mergeTagId = mergeValue ? String(mergeValue) : null;
 
     // Remove the tag from all entities that use it
     // If we have a replacement tag, add that one instead

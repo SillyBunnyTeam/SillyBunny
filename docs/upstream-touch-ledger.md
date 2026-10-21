@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 3.22–3.23 dialog action rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/personas.js`; `public/scripts/tags.js`; `public/scripts/slash-commands.js`; `public/scripts/extensions/tts/index.js`; `public/scripts/extensions/guided-generations/scripts/groupSelection.js`. |
+| Area | Persona and tag actions, slash-command buttons, TTS voice previews and guided group selection. |
+| Divergence reason | First-party action lists need explicit Dialog framing, trailing button rows and safe destructive confirmation defaults without changing returned values or source controls. |
+| Target seam | Shared Popup frame and `public/scripts/sillybunny-editor/rows.js`. |
+| Adapter shape | Keep persona/tag data, slash-command result mapping, TTS preview IDs/audio and guided-generation member indexes unchanged; adopt only the presentation, give the voice list an explicit `Available voices` Dialog title, and pass explicit Dialog/destructive options. |
+| Protecting tests | Dialog-tier, tag-manager, persona-editor, slash-command, TTS and guided-generation regression suites; `tests/unit/in-chat-agents-dialog-adapters.test.js`. |
+| Validation | Root lint; focused and full Jest; diff check; frontend budgets; Chromium desktop/phone dialog screenshots. |
+| Rollback path | Remove the explicit Popup tier/options and row construction, restoring the original inline action markup while leaving feature handlers unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 3.22–3.23. |
+| Owner | UI integrator. |
+
 ### Utility dialogs - shared content rows
 | Field | Value |
 | --- | --- |

@@ -746,10 +746,13 @@ test('saved extra copies update and restore by ID; Update keeps order while Rest
     const copy = root.locator('[data-sb-list-key="agent:qa-copy-two"]');
     await menu(page, copy, 'Agent Menu');
     await page.getByRole('menuitem', { name: /^Update to v/ }).click();
-    await page.locator('dialog[open] .popup-button-cancel').click();
+    const updateDialog = page.locator('dialog.popup[open]').last();
+    await expect(updateDialog).toHaveClass(/sb-dialog--alert/);
+    await updateDialog.locator('.popup-button-cancel').click();
     expect(saves()).toHaveLength(0);
     await menu(page, copy, 'Agent Menu');
     await page.getByRole('menuitem', { name: /^Update to v/ }).click();
+    await expect(page.locator('dialog.popup[open]').last()).toHaveClass(/sb-dialog--alert/);
     await page.locator('dialog[open] .popup-button-ok').click();
     await expect.poll(() => saves().length).toBe(1);
     expect(JSON.parse(saves()[0].body)).toMatchObject({ id: 'qa-copy-two', name: fixture.name, favorite: true, enabled: true, phaseLocked: false, injection: { order: 777 }, connectionProfile: 'qa-profile', modelOverride: 'qa-model' });
@@ -762,6 +765,57 @@ test('saved extra copies update and restore by ID; Update keeps order while Rest
     expect(JSON.parse(saves()[1].body).injection.order).not.toBe(777);
     expect(await page.evaluate(async () => (await import('/scripts/extensions/in-chat-agents/agent-store.js')).getAgentById('qa-copy-one').prompt)).toBe(fixture.prompt);
     expect(await page.evaluate(() => window.__agentsMaxDialogs)).toBeLessThanOrEqual(1);
+});
+
+for (const width of [1440, 390]) {
+    test(`${width}px Update All stays an Alert and scrolls a long update list`, async ({ page, baseURL }) => {
+        const { root } = await openAgents(page, baseURL, width);
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        await page.evaluate(async () => {
+            const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+            const catalogue = await import('/scripts/extensions/in-chat-agents/catalogue.js');
+            const templates = await (await fetch('/scripts/extensions/in-chat-agents/templates/index.json')).json();
+            const template = templates.find(item => item.id === 'tpl-drift-tracker');
+            const agents = Array.from({ length: 48 }, (_, index) => {
+                const agent = catalogue.buildAgentFromTemplate(template);
+                agent.id = `qa-outdated-${index}`;
+                agent.name = `QA outdated ${index}`;
+                agent.version = 0;
+                return agent;
+            });
+            store.loadAgents(agents);
+            (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+        });
+        await menu(page, root);
+        await page.getByRole('menuitem', { name: /^Update All/ }).click();
+        const dialog = page.locator('dialog.popup[open]').last();
+        await expect(dialog).toHaveClass(/sb-dialog--alert/);
+        await expect(dialog).not.toHaveClass(/sb-dialog--dialog/);
+        await expect(dialog.locator('.ica--update-all-list li')).toHaveCount(48);
+        await expect(dialog.locator('.popup-body')).toHaveCSS('overflow-y', 'auto');
+        const updateList = dialog.locator('.ica--update-all-list');
+        await expect(updateList).toHaveCSS('overflow-y', 'auto');
+        await expect.poll(() => updateList.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+        await dialog.locator('.popup-button-cancel').click();
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
+    });
+}
+
+test('Convert Trackers confirmation stays an Alert', async ({ page, baseURL }) => {
+    const { root, saves } = await openAgents(page, baseURL);
+    await page.evaluate(async () => {
+        const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+        const tracker = store.getAgentById('qa-alpha');
+        tracker.category = 'tracker';
+        tracker.execution = 'inline';
+        (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+    });
+    await menu(page, root);
+    await page.getByRole('menuitem', { name: 'Convert Trackers to Companions…', exact: true }).click();
+    const dialog = page.locator('dialog.popup[open]').last();
+    await expect(dialog).toHaveClass(/sb-dialog--alert/);
+    await dialog.locator('.popup-button-cancel').click();
+    expect(saves()).toHaveLength(0);
 });
 
 test('template editor Save materialises once and a later saved edit retains its ID', async ({ page, baseURL }) => {

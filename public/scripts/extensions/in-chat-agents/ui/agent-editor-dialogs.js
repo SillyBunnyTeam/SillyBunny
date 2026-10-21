@@ -42,6 +42,7 @@ export function createAgentEditorDialogs({
         const result = await showPopup(new Popup(content, POPUP_TYPE.CONFIRM, '', {
             okButton: t`Apply`,
             cancelButton: t`Discard`,
+            tier: 'dialog',
             wide: true,
             ...options,
         }));
@@ -155,6 +156,7 @@ export function createAgentEditorDialogs({
                 const accepted = await show(
                     form,
                     {
+                        title: draft.scriptName || t`Add Regex Script`,
                         onClosing: popup => {
                             if (popup.result !== POPUP_RESULT.AFFIRMATIVE) return true;
                             const invalid = validateAgentRegexScript(draft).length > 0;
@@ -173,49 +175,60 @@ export function createAgentEditorDialogs({
         }),
         maker: agent => run(async () => {
             const form = element('div');
-            const note = element('p', t`Describe the side note this companion should produce`);
             const goal = element('textarea');
             goal.id = 'ica--companion-maker-goal';
             goal.className = 'text_pole';
             goal.rows = 8;
             goal.setAttribute('aria-label', t`AI Maker`);
-            form.append(note, goal);
-            if (!await show(form, {
-                okButton: t`Generate Companion`,
-                cancelButton: t`Cancel`,
-            })) return null;
-            if (!goal.value.trim() && !agent.prompt.trim() && !agent.description.trim()) {
-                globalThis.toastr?.warning(t`Describe what this companion should watch for`);
-                return null;
-            }
-            const kit = await services.generateCompanionKitWithAI({
-                agentName: agent.name,
-                description: agent.description,
-                currentPrompt: agent.prompt,
-                goalText: goal.value.trim(),
-                connectionProfile: agent.connectionProfile,
+            const goalRow = createEntryRow({
+                label: t`Describe the side note this companion should produce`,
+                field: goal.id,
+                input: goal,
             });
-            if (!current()) return null;
-            const preview = element('div');
-            preview.append(element('h3', kit.name), element('p', kit.description), element('pre', kit.prompt));
-            if (!await show(preview)) return null;
-            return {
-                ...agent,
-                name: agent.name || kit.name,
-                description: agent.description || kit.description,
-                category: agent.category === 'custom' ? 'companion' : agent.category,
-                execution: 'companion',
-                phase: 'post',
-                prompt: kit.prompt,
-                companion: {
-                    ...agent.companion,
-                    ...kit.companion,
-                    includeInChatHistory: agent.companion.includeInChatHistory,
-                    chatHistoryDepth: agent.companion.chatHistoryDepth,
-                    includeAllChatHistory: agent.companion.includeAllChatHistory,
-                    keepInChatHistoryWhenHostHidden: agent.companion.keepInChatHistoryWhenHostHidden,
-                },
-            };
+            goalRow.row.classList.add('ds-row--stacked');
+            form.append(goalRow.row);
+            try {
+                if (!await show(form, {
+                    okButton: t`Generate Companion`,
+                    cancelButton: t`Cancel`,
+                    title: t`AI Maker`,
+                })) return null;
+                if (!goal.value.trim() && !agent.prompt.trim() && !agent.description.trim()) {
+                    globalThis.toastr?.warning(t`Describe what this companion should watch for`);
+                    return null;
+                }
+                const kit = await services.generateCompanionKitWithAI({
+                    agentName: agent.name,
+                    description: agent.description,
+                    currentPrompt: agent.prompt,
+                    goalText: goal.value.trim(),
+                    connectionProfile: agent.connectionProfile,
+                });
+                if (!current()) return null;
+                const preview = element('div');
+                preview.append(element('h3', kit.name), element('p', kit.description), element('pre', kit.prompt));
+                if (!await show(preview, { title: t`Generate Companion` })) return null;
+                return {
+                    ...agent,
+                    name: agent.name || kit.name,
+                    description: agent.description || kit.description,
+                    category: agent.category === 'custom' ? 'companion' : agent.category,
+                    execution: 'companion',
+                    phase: 'post',
+                    prompt: kit.prompt,
+                    companion: {
+                        ...agent.companion,
+                        ...kit.companion,
+                        includeInChatHistory: agent.companion.includeInChatHistory,
+                        chatHistoryDepth: agent.companion.chatHistoryDepth,
+                        includeAllChatHistory: agent.companion.includeAllChatHistory,
+                        keepInChatHistoryWhenHostHidden: agent.companion.keepInChatHistoryWhenHostHidden,
+                    },
+                };
+            } finally {
+                goalRow.destroy();
+                releaseRowIds(form);
+            }
         }),
         tracker: (agent, notes) => run(async () => {
             if (!services.parseTrackerFormat(notes.format)) {
@@ -240,6 +253,7 @@ export function createAgentEditorDialogs({
                 {
                     okButton: t`Apply`,
                     cancelButton: t`Discard`,
+                    title: t`Generate Kit`,
                     wide: true,
                     large: true,
                     customButtons: [
