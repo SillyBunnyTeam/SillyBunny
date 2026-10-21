@@ -155,19 +155,24 @@ test('sorting reuses the frame-converted switch without leaving duplicate descri
     options.onClose();
 });
 
-test.each(['wi_sort_start', 'wi_sort_step'])('%s preserves empty and out-of-range edits for upstream validation', id => {
+test.each([
+    ['wi_sort_start', '', ''],
+    ['wi_sort_start', '-5', '0'],
+    ['wi_sort_start', '0', '0'],
+    ['wi_sort_step', '', ''],
+    ['wi_sort_step', '0', '1'],
+    ['wi_sort_step', '5', '5'],
+])('%s changes %j to %j with upstream empty-value and clamping semantics', (id, value, expected) => {
     const node = root('<div class="warning"></div>');
     const dlg = root(`<div class="popup-inputs"><input id="${id}" type="number" min="${id === 'wi_sort_step' ? 1 : 0}" value="100"></div>`);
     dlg.append(node);
     const options = lorebookSortingOptions(node, [{ id, type: 'number', label: id }]);
     options.onOpen({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
     const input = dlg.querySelector('input');
-    for (const value of ['', '0', '-1']) {
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        expect(input.value).toBe(value);
-    }
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(input.value).toBe(expected);
     options.onClose();
 });
 

@@ -2769,8 +2769,6 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
                 min: 0,
                 step: 1,
                 autoFocus: true,
-                // SillyBunny: retain empty and invalid edits for the validation after Apply.
-                clampToBounds: false,
             },
             {
                 id: 'wi_sort_step',
@@ -2780,8 +2778,6 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
                 defaultState: '1',
                 min: 1,
                 step: 1,
-                // SillyBunny: Step 0 must reach caller validation rather than become 1 on blur.
-                clampToBounds: false,
             },
             {
                 id: 'wi_sort_ascending',

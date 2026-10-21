@@ -284,28 +284,6 @@ describe('Popup results', () => {
 });
 
 describe('Popup custom inputs', () => {
-    test.each([
-        [undefined, '1'],
-        [true, '1'],
-        [false, '0'],
-    ])('numeric clamping %s retains native bounds and collected results', async (clampToBounds, expected) => {
-        const popup = new Popup('x', POPUP_TYPE.TEXT, '', {
-            customInputs: [{ id: 'contract-step', label: 'Step', type: 'number', defaultState: '1', min: 1, clampToBounds }],
-        });
-        const result = popup.show();
-        const input = popup.dlg.querySelector('#contract-step');
-        expect(input.min).toBe('1');
-        input.value = '';
-        input.dispatchEvent(new Event('change'));
-        expect(input.value).toBe('');
-        input.value = '0';
-        input.dispatchEvent(new Event('change'));
-        expect(input.value).toBe(expected);
-        popup.okButton.click();
-        await expect(result).resolves.toBe(POPUP_RESULT.AFFIRMATIVE);
-        expect(popup.inputResults.get('contract-step')).toBe(expected);
-    });
-
     test('inputResults are keyed by id for every input type', async () => {
         const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', {
             customInputs: [

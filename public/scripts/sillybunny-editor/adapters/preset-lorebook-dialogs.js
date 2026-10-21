@@ -89,7 +89,7 @@ export function lorebookSortingOptions(root, definitions) {
                 const adoptedSwitch = input.closest('.ds-row-switch');
                 if (adoptedSwitch) return { row: adoptedSwitch, control: input };
                 const options = { label: definition.label, subtitle: definition.tooltip, field: definition.id, input };
-                return definition.type === 'checkbox' ? createSwitchRow(options) : createSpinRow({ ...options, nullable: true, clampToBounds: false });
+                return definition.type === 'checkbox' ? createSwitchRow(options) : createSpinRow({ ...options, nullable: true });
             });
             root.classList.add('sb-dialog-rows');
             warning.before(createPrefGroup({ field: 'sorting', rows }).section);

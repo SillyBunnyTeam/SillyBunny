@@ -450,21 +450,6 @@ describe('createSpinRow', () => {
         expect(onChange).toHaveBeenCalledWith(null);
     });
 
-    test('nullable rows can leave numeric bounds to caller validation without rewriting edits', () => {
-        const onChange = jest.fn();
-        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 1, max: 8, nullable: true, clampToBounds: false, onChange });
-        for (const value of ['0', '-1', '99']) {
-            change(result.control, value);
-            expect(result.control.value).toBe(value);
-            expect(result.getValue()).toBe(Number(value));
-            expect(onChange).toHaveBeenLastCalledWith(Number(value));
-        }
-        change(result.control, '');
-        expect(result.control.value).toBe('');
-        expect(result.getValue()).toBeNull();
-        expect(onChange).toHaveBeenLastCalledWith(null);
-    });
-
     test('clamps initial values and rewrites invalid edits without an onChange callback', () => {
         const result = createSpinRow({ label: 'Count', field: 'count', value: 99, min: 2, max: 8 });
         expect(result.getValue()).toBe(8);

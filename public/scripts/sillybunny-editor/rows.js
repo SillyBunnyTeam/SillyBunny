@@ -284,13 +284,12 @@ function numberAttribute(input, name) {
  * @param {number} [options.max]
  * @param {number} [options.step=1]
  * @param {boolean} [options.nullable=false]
- * @param {boolean} [options.clampToBounds=true]  Disable when the caller owns numeric validation.
  * @param {string} [options.placeholder]
  * @param {(value: number|null) => void} [options.onChange]
  * @param {HTMLInputElement} [options.input]
  * @returns {object}
  */
-export function createSpinRow({ label, subtitle, field, id, value, min, max, step = 1, nullable = false, clampToBounds = true, placeholder, onChange, input }) {
+export function createSpinRow({ label, subtitle, field, id, value, min, max, step = 1, nullable = false, placeholder, onChange, input }) {
     const control = prepareInput(input, 'number', id);
     // Created spin inputs take the app's themed field style; adopted ones keep their own classes.
     if (!input) control.classList.add('text_pole', 'ds-spin');
@@ -302,7 +301,7 @@ export function createSpinRow({ label, subtitle, field, id, value, min, max, ste
     const lower = numberAttribute(control, 'min') ?? -Infinity;
     const upper = numberAttribute(control, 'max') ?? Infinity;
     if (lower > upper) throw new RangeError('The spin row minimum must not exceed its maximum.');
-    const clamp = number => clampToBounds ? Math.min(upper, Math.max(lower, number)) : number;
+    const clamp = number => Math.min(upper, Math.max(lower, number));
     let previousValue = nullable ? null : clamp(0);
     const normalize = raw => {
         if (raw === null || raw === undefined || String(raw).trim() === '') {

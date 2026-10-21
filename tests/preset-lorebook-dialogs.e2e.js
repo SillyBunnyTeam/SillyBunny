@@ -167,22 +167,49 @@ for (const viewport of PL_VIEWPORTS) {
         expect([...state.worlds[0].data.originalData.entries].sort(byComment).map(entry => entry.insertion_order)).toEqual([0, 5, 10]);
     });
 
-    for (const value of ['', '0']) {
-        test(`Step ${JSON.stringify(value)} survives blur and is rejected upstream at ${size}`, async ({ page }) => {
-            const state = await bootPresetLorebookDialogs(page, viewport);
-            await showToasts(page);
-            const popup = await openPresetLorebookDialog(page, 'sorting');
-            const step = popup.locator('#wi_sort_step');
-            await step.fill(value);
-            await step.blur();
-            await expect(step).toHaveValue(value);
-            await popup.locator('.popup-button-ok').click();
-            await expect(popup).toHaveCount(0);
-            await expect(page.locator('#toast-container .toast-error').filter({ hasText: 'Invalid step value: 0' })).toHaveCount(1);
-            expect(state.worlds).toHaveLength(0);
-            expect(Object.values(state.books.get('Book 0').entries).map(entry => entry.order)).toEqual([100, 100, 100]);
-        });
-    }
+    test(`Clearing Step survives blur and is rejected upstream at ${size}`, async ({ page }) => {
+        const state = await bootPresetLorebookDialogs(page, viewport);
+        await showToasts(page);
+        const popup = await openPresetLorebookDialog(page, 'sorting');
+        const step = popup.locator('#wi_sort_step');
+        await step.fill('');
+        await step.blur();
+        await expect(step).toHaveValue('');
+        await popup.locator('.popup-button-ok').click();
+        await expect(popup).toHaveCount(0);
+        await expect(page.locator('#toast-container .toast-error').filter({ hasText: 'Invalid step value: 0' })).toHaveCount(1);
+        expect(state.worlds).toHaveLength(0);
+        expect(Object.values(state.books.get('Book 0').entries).map(entry => entry.order)).toEqual([100, 100, 100]);
+    });
+
+    test(`Step 0 clamps to 1 on blur and sorting applies with step 1 at ${size}`, async ({ page }) => {
+        const state = await bootPresetLorebookDialogs(page, viewport);
+        const popup = await openPresetLorebookDialog(page, 'sorting');
+        const step = popup.locator('#wi_sort_step');
+        await step.fill('0');
+        await step.blur();
+        await expect(step).toHaveValue('1');
+        await popup.locator('.popup-button-ok').click();
+        await expect.poll(() => state.worlds.length).toBe(1);
+        const byComment = (a, b) => a.comment.localeCompare(b.comment);
+        expect(Object.values(state.worlds[0].data.entries).sort(byComment).map(entry => entry.order)).toEqual([100, 99, 98]);
+        expect([...state.worlds[0].data.originalData.entries].sort(byComment).map(entry => entry.insertion_order)).toEqual([100, 99, 98]);
+    });
+
+    test(`Starting value -5 clamps to 0 on blur before sorting applies at ${size}`, async ({ page }) => {
+        const state = await bootPresetLorebookDialogs(page, viewport);
+        const popup = await openPresetLorebookDialog(page, 'sorting');
+        const start = popup.locator('#wi_sort_start');
+        await start.fill('-5');
+        await start.blur();
+        await expect(start).toHaveValue('0');
+        await popup.locator('#wi_sort_ascending').check();
+        await popup.locator('.popup-button-ok').click();
+        await expect.poll(() => state.worlds.length).toBe(1);
+        const byComment = (a, b) => a.comment.localeCompare(b.comment);
+        expect(Object.values(state.worlds[0].data.entries).sort(byComment).map(entry => entry.order)).toEqual([0, 1, 2]);
+        expect([...state.worlds[0].data.originalData.entries].sort(byComment).map(entry => entry.insertion_order)).toEqual([0, 1, 2]);
+    });
 
     for (const surface of ['character', 'persona', 'chat']) {
         test(`${surface} lorebooks mirror selects and persist immediate changes at ${size}`, async ({ page }) => {
