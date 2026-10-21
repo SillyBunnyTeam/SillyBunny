@@ -1,5 +1,6 @@
 import { t } from '../i18n.js';
-import { MOBILE_QUERY, positionPopover } from '../sillybunny-action-menu.js';
+import { positionPopover } from '../sillybunny-action-menu.js';
+import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { animateIn, animateOut, stopMotion, MOTION_FAST, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from '../sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from '../sillybunny-sheet.js';
 import { hostOverlayLayer } from './overlay-host.js';
@@ -27,7 +28,7 @@ function createIcon(icon, fallback = 'fa-solid fa-puzzle-piece') {
 }
 
 function isMobileLayout() {
-    return window.matchMedia(MOBILE_QUERY).matches;
+    return window.matchMedia(OVERLAY_SHEET_QUERY).matches;
 }
 
 function setTriggerExpanded(trigger, expanded) {

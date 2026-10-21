@@ -3122,40 +3122,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         padding-block-end: max(16px, env(safe-area-inset-bottom));
     }
 
-    /* Pickers become bottom sheets over a dialog backdrop. */
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker-backdrop[data-open='true'] {
-        position: absolute;
-        inset: 0;
-        z-index: var(--sb-z-dropdown);
-        display: block;
-        background: var(--sb-dialog-backdrop);
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden]) {
-        inset: auto 0 0;
-        z-index: calc(var(--sb-z-dropdown) + 1);
-        inline-size: 100%;
-        max-block-size: min(80%, 560px);
-        padding: 12px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-        border-inline: 0;
-        border-block-end: 0;
-        border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
-        background: var(--sb-layer-drawer);
-        box-shadow: var(--sb-shadow-dialog);
-        animation: sb-conversation-sheet-in var(--sb-spring-sheet-duration, 472ms) var(--sb-spring-sheet);
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])::before {
-        content: '';
-        display: block;
-        inline-size: 32px;
-        block-size: 4px;
-        margin: 0 auto 10px;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
-        flex: 0 0 auto;
-    }
-
     #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-add-dm-option, .sb-conversation-group-member-option, .sb-conversation-persona-option, .sb-conversation-status-option) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
@@ -3288,6 +3254,43 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         grid-column: 1 / -1;
         inline-size: 100%;
         max-inline-size: 100%;
+    }
+}
+
+/* Overlay rule (sillybunny-editor/breakpoints.js OVERLAY_SHEET_QUERY): pickers become bottom
+   sheets under the AdwDialog condition; 451-768px keeps the anchored popover. */
+@media (max-width: 450px), (max-height: 360px) {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker-backdrop[data-open='true'] {
+        position: absolute;
+        inset: 0;
+        z-index: var(--sb-z-dropdown);
+        display: block;
+        background: var(--sb-dialog-backdrop);
+    }
+
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden]) {
+        inset: auto 0 0;
+        z-index: calc(var(--sb-z-dropdown) + 1);
+        inline-size: 100%;
+        max-block-size: min(80%, 560px);
+        padding: 12px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+        border-inline: 0;
+        border-block-end: 0;
+        border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+        background: var(--sb-layer-drawer);
+        box-shadow: var(--sb-shadow-dialog);
+        animation: sb-conversation-sheet-in var(--sb-spring-sheet-duration, 472ms) var(--sb-spring-sheet);
+    }
+
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])::before {
+        content: '';
+        display: block;
+        inline-size: 32px;
+        block-size: 4px;
+        margin: 0 auto 10px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+        flex: 0 0 auto;
     }
 }
 

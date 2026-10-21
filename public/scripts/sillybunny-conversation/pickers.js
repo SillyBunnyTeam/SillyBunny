@@ -7,6 +7,7 @@ import {
 } from '../../script.js';
 import { user_avatar } from '../personas.js';
 import { selectConversationThread } from './chrome.js';
+import { OVERLAY_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
 import {
     createConversationBranch,
@@ -124,7 +125,8 @@ export function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
 }
 
-const PICKER_MOBILE_QUERY = '(max-width: 768px)';
+// Overlay rule: pickers are bottom sheets under the AdwDialog condition (sillybunny-conversation.css).
+const PICKER_MOBILE_QUERY = OVERLAY_SHEET_QUERY;
 const PICKER_GAP = 6;
 const PICKER_MARGIN = 8;
 let activePicker = null;

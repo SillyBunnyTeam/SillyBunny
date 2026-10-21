@@ -96,7 +96,8 @@ import {
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
-import { MOBILE_QUERY, openActionMenu } from '../sillybunny-action-menu.js';
+import { openActionMenu } from '../sillybunny-action-menu.js';
+import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
 const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261003o';
 
@@ -469,7 +470,7 @@ function openConversationOverflowMenu(trigger) {
                     { label: 'Edit schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
                     { label: 'Mark all as read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
                     // The header gear covers settings on desktop; mobile hides the gear, so the menu keeps it there.
-                    ...(typeof window !== 'undefined' && window.matchMedia?.(MOBILE_QUERY)?.matches
+                    ...(typeof window !== 'undefined' && window.matchMedia?.(LAYOUT_MOBILE_QUERY)?.matches
                         ? [{ label: 'Conversation settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
                         : []),
                 ],

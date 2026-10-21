@@ -9,7 +9,8 @@
 
 import { eventSource, event_types } from './events.js';
 import { translate } from './i18n.js';
-import { MOBILE_QUERY, closeActionMenu, getActionMenuTrigger, isActionMenuOpen, openActionMenu } from './sillybunny-action-menu.js';
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
+import { closeActionMenu, getActionMenuTrigger, isActionMenuOpen, openActionMenu } from './sillybunny-action-menu.js';
 import { initializeConversationMessageMenu } from './sillybunny-conversation/message-menu.js';
 import { animateIn, MOTION_FAST, MOTION_EASE_OUT_QUAD, stopMotion } from './sillybunny-motion.js';
 
@@ -703,7 +704,8 @@ export function initializeMessageActions() {
         return;
     }
     initialized = true;
-    mobileQuery = window.matchMedia(MOBILE_QUERY);
+    // Row layout follows the 768px layout breakpoint; the menu surface follows the overlay rule in sillybunny-action-menu.js.
+    mobileQuery = window.matchMedia(LAYOUT_MOBILE_QUERY);
     mobileQuery.addEventListener('change', handleLayoutChange);
 
     window.addEventListener('pointerdown', handlePointerDownCapture, true);

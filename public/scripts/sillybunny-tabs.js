@@ -3059,7 +3059,8 @@ function getMobilePopupDialogForKeyboard(element) {
         return null;
     }
 
-    const dialog = element.closest('dialog.popup');
+    // Framed popups keep themselves above the keyboard (bindKeyboardInset in sillybunny-editor/dialog.js).
+    const dialog = element.closest('dialog.popup:not(.sb-dialog)');
     return dialog instanceof HTMLElement && dialog.open ? dialog : null;
 }
 

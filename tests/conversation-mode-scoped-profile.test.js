@@ -187,7 +187,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(pickersSource).toContain('class="sb-conversation-switch sb-conv-weekly-enabled-check"');
         expect(palsRailSource).toContain('Messaging-app order: newest message first');
         expect(palsRailSource).not.toContain('first.key === activeKey');
-        expect(chromeSource).toContain('window.matchMedia?.(MOBILE_QUERY)?.matches');
+        expect(chromeSource).toContain('window.matchMedia?.(LAYOUT_MOBILE_QUERY)?.matches');
         expect(timelineSource).toContain('sb-conversation-composer-attach');
         expect(timelineSource).toContain('sb-conversation-composer-actions');
         expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');

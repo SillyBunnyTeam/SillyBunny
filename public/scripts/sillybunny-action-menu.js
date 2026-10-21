@@ -1,7 +1,7 @@
 /*
  * Labelled message menu shared by Roleplay and Conversation message actions.
  * Desktop: a popover anchored to its trigger (or a pointer position).
- * Mobile (<=768px): a bottom sheet built on sillybunny-sheet.js.
+ * Under the overlay sheet breakpoint (AdwDialog: max-width 450px or max-height 360px): a bottom sheet built on sillybunny-sheet.js.
  * Callers pass sections of rows; each row's onSelect runs after the menu has closed.
  */
 
@@ -9,8 +9,10 @@ import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, animateIn, animateOut, stopMotion } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from './sillybunny-sheet.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
+import { OVERLAY_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
 
-export const MOBILE_QUERY = '(max-width: 768px)';
+/** @deprecated Use OVERLAY_SHEET_QUERY or LAYOUT_MOBILE_QUERY from sillybunny-editor/breakpoints.js. */
+export const MOBILE_QUERY = OVERLAY_SHEET_QUERY;
 const POPOVER_GAP = 6;
 const POPOVER_MARGIN = 8;
 const POPOVER_MIN_HEIGHT = 120;
@@ -47,7 +49,7 @@ let open = null;
 let initialized = false;
 
 function isMobileLayout() {
-    mobileQuery ??= window.matchMedia(MOBILE_QUERY);
+    mobileQuery ??= window.matchMedia(OVERLAY_SHEET_QUERY);
     return mobileQuery.matches;
 }
 
@@ -520,7 +522,7 @@ function initialize() {
         return;
     }
     initialized = true;
-    mobileQuery ??= window.matchMedia(MOBILE_QUERY);
+    mobileQuery ??= window.matchMedia(OVERLAY_SHEET_QUERY);
     mobileQuery.addEventListener('change', handleLayoutChange);
     window.addEventListener('pointerdown', handlePointerDownCapture, true);
     window.addEventListener('wheel', handleScrollIntent, { capture: true, passive: true });

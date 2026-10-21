@@ -1,5 +1,7 @@
 import { animateIn, MOTION_FAST, SPRING_SHEET } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
+import { OVERLAY_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
+import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 
 const PICKER_SELECTOR = 'toolcool-color-picker';
 const MENU_ID = 'sb-color-picker-menu';
@@ -306,7 +308,7 @@ function syncPlacement() {
     if (!active) return;
     const state = active;
     if (!state.picker.isConnected || !state.button.getClientRects().length
-        || Boolean(state.sheet) !== window.matchMedia('(max-width: 768px)').matches) {
+        || Boolean(state.sheet) !== window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
         closeColorMenu();
         return;
     }
@@ -339,14 +341,14 @@ function openColorMenu(picker, button) {
     bindControls(state);
     render(state);
     button.setAttribute('aria-expanded', 'true');
-    if (window.matchMedia('(max-width: 768px)').matches) {
+    if (window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
         const sheet = node('dialog', 'sb-color-picker-sheet');
         sheet.setAttribute('aria-labelledby', state.title.id);
         state.menu.removeAttribute('role');
         state.menu.removeAttribute('aria-labelledby');
         sheet.append(state.menu);
         state.sheet = sheet;
-        document.body.append(sheet);
+        hostOverlayLayer(sheet);
         sheet.addEventListener('cancel', event => {
             event.preventDefault();
             closeColorMenu({ commitPending: false });

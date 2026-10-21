@@ -5,7 +5,8 @@
  */
 
 import { translate } from '../i18n.js';
-import { MOBILE_QUERY, openActionMenu } from '../sillybunny-action-menu.js';
+import { openActionMenu } from '../sillybunny-action-menu.js';
+import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
 const MESSAGE_SELECTOR = '.sb-conversation-message';
 const TRIGGER_SELECTOR = `${MESSAGE_SELECTOR} [data-sb-conversation-menu]`;
@@ -165,7 +166,7 @@ export function initializeConversationMessageMenu() {
         return;
     }
     initialized = true;
-    mobileQuery = window.matchMedia(MOBILE_QUERY);
+    mobileQuery = window.matchMedia(LAYOUT_MOBILE_QUERY);
     window.addEventListener('click', handleClickCapture, true);
     window.addEventListener('keydown', handleMenuKey, true);
     document.addEventListener('contextmenu', handleContextMenu);

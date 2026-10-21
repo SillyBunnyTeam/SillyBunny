@@ -88,7 +88,9 @@ describe('Conversation mobile controls', () => {
         expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-actions")).toMatchObject({
             display: 'none',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])")).toMatchObject({
+        const overlayMedia = findMediaRule(query => query.includes('max-width: 450px') && query.includes('max-height: 360px'));
+        expect(overlayMedia).toBeDefined();
+        expect(getDeclarations(overlayMedia, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])")).toMatchObject({
             inset: 'auto 0 0',
         });
         expect(getDeclarations(media, '.sb-conversation-mobile-menu-trigger')).toMatchObject({
