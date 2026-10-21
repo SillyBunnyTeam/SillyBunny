@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### `public/scripts/popup.js` and `public/css/popup.css` - shared dialog frame hook
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/popup.js`; `public/css/popup.css` (cascade override only; unchanged). |
+| Area | Popup lifecycle and dialog presentation. |
+| Divergence reason | First-party and extension popups need a shared Alert/Dialog/Window frame, reliable scrolling, mobile sheets, and trailing switch rows while preserving the public Popup API and result semantics. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; tier CSS in `public/css/sillybunny-theme.css`. |
+| Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. Popup classes and element properties remain stable. The cascade override corrects the upstream `min-height: fit-content` and hidden overflow without editing `popup.css`. |
+| Protecting tests | `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/unit/sillybunny-dialog.test.js`, `tests/popup-scroll.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, and the popup-touching suites in the dialogs plan §2.10. |
+| Validation | `npm run lint`; focused Jest suites for Popup contract/frame/dialog/rows and Tag/Folder Managers; `popup-scroll`, dialog-frame, Tag Manager and Folder Manager Chromium E2E; frontend budget check. WebKit unavailable on this host because Playwright's system dependencies are missing; track in Phase 9. |
+| Rollback path | Remove the four `framePopup` calls and `tier`/`title` options from `popup.js`, then remove `popup-frame.js` and its tier override rules. Leave upstream `popup.css` unchanged. Keep the independent dialog module and Tag/Folder Manager migration if still desired. |
+| Last reviewed | 2026-10-21, PR #870 dialog work. |
+| Owner | UI integrator. |
+
 ### `public/script.js` - chat render lifecycle
 | Field | Value |
 | --- | --- |

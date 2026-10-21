@@ -1636,6 +1636,8 @@ async function showExtensionsDetails() {
             okButton: t`Close`,
             customButtons: [],
             allowVerticalScrolling: true,
+            // SillyBunny: the Extensions manager is a Window-tier dialog (docs/dialogs.md).
+            tier: 'window',
             onClosing: async () => {
                 if (waitingForSave) {
                     return false;
@@ -1670,7 +1672,6 @@ async function showExtensionsDetails() {
                 return true;
             },
         });
-        popup.dlg.classList.add('sb-popup-fullscreen');
         popup.dlg.setAttribute('aria-label', t`Extensions`);
         popupPromise = popup.show();
         popup.content.scrollTop = initialScrollTop;

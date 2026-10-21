@@ -3,6 +3,8 @@ import { shouldSendOnEnter } from './RossAscends-mods.js';
 import { t } from './i18n.js';
 import { power_user, toastPositionClasses } from './power-user.js';
 import { clamp, removeFromArray, runAfterAnimation, uuidv4 } from './utils.js';
+// SillyBunny: frames popups in the shared Alert/Dialog/Window tiers (docs/upstream-touch-ledger.md).
+import { framePopup } from './sillybunny-editor/popup-frame.js';
 
 /** @readonly */
 /** @enum {Number} */
@@ -60,6 +62,8 @@ export const POPUP_RESULT = {
  * @property {(popup: Popup) => Promise<void?>|void?} [onOpen=null] - Handler called after the popup opens
  * @property {number?} [cropAspect=null] - Aspect ratio for the crop popup
  * @property {string?} [cropImage=null] - Image URL to display in the crop popup
+ * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: dialog tier; null maps the size options (docs/dialogs.md)
+ * @property {string?} [title=null] - SillyBunny: header title; null promotes the content's leading heading
  */
 
 /**
@@ -216,6 +220,9 @@ export class Popup {
         onOpen = null,
         cropAspect = null,
         cropImage = null,
+        // SillyBunny: tier and title for the shared dialog frame.
+        tier = null,
+        title = null,
     } = {}) {
         Popup.util.popups.push(this);
 
@@ -668,6 +675,9 @@ export class Popup {
             }
         };
         this.dlg.addEventListener('keydown', keyListener.bind(this));
+
+        // SillyBunny: the frame lays itself out in show(), once the popup is in the DOM.
+        this.sbFrame = framePopup(this, { tier, title, allowEscapeClose });
     }
 
     /**
@@ -683,6 +693,8 @@ export class Popup {
         this.dlg.setAttribute('opening', '');
 
         this.dlg.showModal();
+        // SillyBunny: tier and layout are applied before the first paint; promotion needs layout.
+        this.sbFrame?.opened();
 
         // We need to fix the toastr to be present inside this dialog
         fixToastrForDialogs();
@@ -820,6 +832,8 @@ export class Popup {
     #hide() {
         // We close the dialog, first running the animation
         this.dlg.setAttribute('closing', '');
+        // SillyBunny: uncover a parent page and release menus hosted in this dialog.
+        this.sbFrame?.closing();
 
         // Once the hiding starts, we need to fix the toastr to the layer below
         fixToastrForDialogs();
@@ -836,6 +850,8 @@ export class Popup {
 
             // Remove it from the dom
             this.dlg.remove();
+            // SillyBunny: unbind the frame's listeners.
+            this.sbFrame?.dispose();
 
             // Remove it from the popup references
             removeFromArray(Popup.util.popups, this);

@@ -373,7 +373,14 @@ async function deleteUser(handle, callback) {
             confirmHandle = String($(this).val());
         });
 
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Delete', cancelButton: 'Cancel', wide: false, large: false });
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', {
+            okButton: 'Delete',
+            cancelButton: 'Cancel',
+            wide: false,
+            large: false,
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             throw new Error('Delete user cancelled');
