@@ -291,14 +291,15 @@ class RuntimeLayoutInstallerTest {
 
     @Test
     fun everySyncModeLaysOutTheSameTree() {
-        val digests = NpmSyncMode.entries.map { mode ->
+        val trees = NpmSyncMode.entries.map { mode ->
             val local = RuntimeTestPayload(temporary.newFolder("mode-$mode"))
             val installed = ready(local.installer(mode).ensure()).installed
             assertEquals(mode, installed.npmSyncMode)
             assertEquals("lorum\n", File(local.paths.npmPackageDir, ".npmrc").readText())
-            installed.npmDigest
+            treeOf(local.paths.npmPackageDir)
         }
-        assertEquals(1, digests.toSet().size)
+        assertTrue(trees.first().contains("bin/"))
+        trees.drop(1).forEach { assertEquals(trees.first(), it) }
     }
 
     @Test
@@ -317,6 +318,12 @@ class RuntimeLayoutInstallerTest {
         assertEquals(listOf(after), generations())
         assertTrue(ready(payload.installer().ensure()).refreshReasons.isEmpty())
     }
+
+    /** Every directory and file under [root] by relative path, with each file's size and SHA-256. */
+    private fun treeOf(root: File): List<String> = root.walkTopDown().filter { it != root }.map { file ->
+        val path = file.relativeTo(root).invariantSeparatorsPath
+        if (file.isDirectory) "$path/" else "$path ${file.length()} ${RuntimeManifest.sha256(file.readBytes())}"
+    }.sorted().toList()
 
     private fun generations(): List<String> = payload.filesDir.list()!!.filter { GENERATION.matches(it) }.sorted()
 

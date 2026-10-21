@@ -4,9 +4,12 @@ import android.os.Bundle
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -23,6 +26,12 @@ class RuntimeLayoutDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val arguments = InstrumentationRegistry.getArguments()
+
+    /** A debug build without the runtime inputs has nothing to lay out, so these tests are skipped there. */
+    @Before
+    fun requireRuntime() {
+        assumeTrue(BuildConfig.HAS_RUNTIME)
+    }
 
     @Test
     fun layoutMatchesTheInstalledApk() {
