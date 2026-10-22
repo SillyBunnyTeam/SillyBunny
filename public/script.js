@@ -352,6 +352,7 @@ import {
     createDelegatedResizeObserver,
     createMessageUpdateQueue,
     createMobileViewportObserver,
+    createOffscreenMessageTracker,
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
@@ -666,6 +667,7 @@ let mobileMessageUpdateFlushResolvers = [];
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
+let offscreenChatMessageTracker = null;
 const chatMessageResizeStates = new Map();
 const pendingChatMessageResizeBlocks = new Set();
 let pendingChatMessageResizeFrame = 0;
@@ -2749,6 +2751,10 @@ function unobserveChatMessageResize(messageElement) {
     const messageBlock = getMessageBlockElement(messageElement);
 
     unobserveChatMessageResizeBlock(messageBlock);
+
+    if (messageElement instanceof HTMLElement) {
+        offscreenChatMessageTracker?.untrack(messageElement.closest('.mes') ?? messageElement);
+    }
 }
 
 function disposeChatMessageResizeObserver() {
@@ -2761,6 +2767,33 @@ function disposeChatMessageResizeObserver() {
     chatMessageResizeObserver?.dispose();
     chatMessageResizeObserver = null;
     chatMessageResizeStates.clear();
+    offscreenChatMessageTracker?.dispose();
+    offscreenChatMessageTracker = null;
+}
+
+function getOffscreenChatMessageTracker() {
+    if (!offscreenChatMessageTracker && chatElement[0]) {
+        offscreenChatMessageTracker = createOffscreenMessageTracker({ container: chatElement[0] });
+    }
+
+    return offscreenChatMessageTracker;
+}
+
+/**
+ * Lets a chat message skip rendering while it is far off screen, once it has been laid out (#911).
+ * The CSS rule for `.sb-mes-sized` keeps the newest messages fully rendered.
+ * @param {JQuery<HTMLElement>|HTMLElement} messageElement Message element.
+ */
+function trackOffscreenChatMessage(messageElement) {
+    if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.OFFSCREEN_MESSAGES) || !canObserveChatMessageResize()) {
+        return;
+    }
+
+    const element = messageElement?.jquery ? messageElement[0] : messageElement;
+
+    if (element instanceof HTMLElement) {
+        getOffscreenChatMessageTracker()?.track(element);
+    }
 }
 
 function updateMessageBlockThroughLifecycle(messageId, message, { rerenderMessage }) {
@@ -5223,6 +5256,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     }
 
     observeChatMessageResize(messageElement);
+    trackOffscreenChatMessage(messageElement);
     return messageElement;
 }
 

@@ -673,6 +673,35 @@ describe('chat render lifecycle script wiring', () => {
         expect(getSource(onChatMessageResize)).toContain('unobserveChatMessageResizeBlock(element);');
     });
 
+    test('off-screen message skipping stays behind its lifecycle route and follows message cleanup', () => {
+        expect(scriptSource).toContain('createOffscreenMessageTracker,');
+        expect(scriptSource).toContain('let offscreenChatMessageTracker = null;');
+
+        const updateMessageElement = findExportedFunction('updateMessageElement');
+        expect(getSource(updateMessageElement)).toContain('trackOffscreenChatMessage(messageElement);');
+
+        const trackSource = getSource(findFunctionDeclaration('trackOffscreenChatMessage'));
+        expect(trackSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.OFFSCREEN_MESSAGES) || !canObserveChatMessageResize())');
+        expect(trackSource).toContain('getOffscreenChatMessageTracker()?.track(element);');
+
+        const getTrackerSource = getSource(findFunctionDeclaration('getOffscreenChatMessageTracker'));
+        expect(getTrackerSource).toContain('createOffscreenMessageTracker({ container: chatElement[0] })');
+
+        expect(getSource(findFunctionDeclaration('unobserveChatMessageResize'))).toContain('offscreenChatMessageTracker?.untrack(messageElement.closest(\'.mes\') ?? messageElement);');
+
+        const disposeSource = getSource(findFunctionDeclaration('disposeChatMessageResizeObserver'));
+        expect(disposeSource).toContain('offscreenChatMessageTracker?.dispose();');
+        expect(disposeSource).toContain('offscreenChatMessageTracker = null;');
+    });
+
+    test('off-screen message skipping CSS only skips laid-out history and never collapses it', () => {
+        const styleSource = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+
+        expect(styleSource).toMatch(/#chat > \.mes \{[^}]*flex-shrink: 0;/);
+        expect(styleSource).toContain('#chat > .mes.sb-mes-sized:not(.last_mes):not(:nth-last-child(-n + 20)) {\n    content-visibility: auto;\n}');
+        expect(styleSource).toMatch(/\n\.mes \{[^}]*contain-intrinsic-size: auto 180px;/);
+    });
+
     test('guard-on mobile viewport events route through the lifecycle observer helper', () => {
         expect(scriptSource).toContain('createMobileViewportObserver,');
         expect(scriptSource).toContain('let mobileChatViewportObserver = null;');
