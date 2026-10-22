@@ -117,6 +117,7 @@ This is the largest class by a wide margin.
   - Card scripts need user confirmation before they run (`confirmCardScriptExecution()`). This gate applies only to card scripts; other imported behaviour has no general gate.
 - **Tests:** `tests/card-script-runtime.test.js`, `tests/card-script-sandbox-wrapper.test.js`, `tests/openai-prompt-logging-wiring.test.js`, `tests/openai-preset-utils.test.js`.
 - **Fixes:** #110 (sandbox helpers), #144 (block remote loads from the sandbox), #348 (gate verbose prompt logging), #560 (bind custom endpoint profiles to their saved secrets).
+- **Order matters:** at startup, `readSecretState()` (`public/scripts/secrets.js`) runs before `getSettings()` calls `accountStorage.init()`, and `accountStorage.getItem()` returns `null` until then. Call `checkOpenRouterAuth()` only after `getSettings()` (`public/script.js`). An earlier call does not find the PKCE code verifier and removes the OAuth query from the URL, so the OpenRouter key exchange never happens. SillyTavern moved the call out of `readSecretState()` in `97dba399e`; the SillyTavern 1.18 port (`9fe08ef34`) kept it. Test: `tests/openrouter-oauth-return.test.js`.
 
 ### CI and workflows
 
