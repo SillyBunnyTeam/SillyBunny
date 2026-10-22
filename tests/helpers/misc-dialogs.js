@@ -11,7 +11,7 @@ function payload(request) {
     return body ? JSON.parse((request.headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString()) : {};
 }
 
-export async function bootMiscDialogs(page, viewport, { admin = false } = {}) {
+export async function bootMiscDialogs(page, viewport, { admin = false, configureSettings } = {}) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -48,6 +48,7 @@ export async function bootMiscDialogs(page, viewport, { admin = false } = {}) {
             selectedProfile: 'misc-profile-0', folders: [],
             profiles: Array.from({ length: 6 }, (_, index) => ({ id: `misc-profile-${index}`, name: `Profile ${index}`, mode: 'cc', api: 'openai', preset: 'Default', model: 'gpt-4o', exclude: [], folderId: null })),
         };
+        configureSettings?.(settings);
         body.settings = JSON.stringify(settings);
         return route.fulfill({ json: body });
     });

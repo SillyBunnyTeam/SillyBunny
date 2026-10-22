@@ -670,8 +670,10 @@ async function openKeyManagerDialog(key) {
         let result = POPUP_RESULT.CANCELLED;
         // SillyBunny: preserve the source textarea and collection without mirroring its value.
         const dialogOptions = utilityFormOptions({ mainLabel: t`Secret value (can be empty):`, clearContent: true });
+        // SillyBunny: Add Secret is an Alert above the key-manager Window, not another page.
         const value = await Popup.show.input(t`Add Secret`, t`Secret value (can be empty):`, '', {
             ...dialogOptions,
+            tier: 'alert',
             customInputs: [{
                 id: 'newSecretLabel',
                 type: 'text',
@@ -700,7 +702,8 @@ async function openKeyManagerDialog(key) {
     });
 
     await renderSecretsList();
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, onOpen: scrollToActive });
+    // SillyBunny: the key manager is a Window with Alerts for Add and Rename.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { tier: 'window', title: name, wide: true, large: true, onOpen: scrollToActive });
 
     async function renderSecretsList() {
         const secrets = secret_state[key] ?? [];
@@ -731,7 +734,8 @@ async function openKeyManagerDialog(key) {
                 toastr.info(t`Secret value copied to clipboard.`);
             });
             itemTemplate.find('button[data-action="rename-secret"]').on('click', async function () {
-                const label = await Popup.show.input(t`Rename Secret`, t`Enter new label for the secret:`, secret?.label || getLabel());
+                // SillyBunny: Rename Secret is an Alert above the key-manager Window, not another page.
+                const label = await Popup.show.input(t`Rename Secret`, t`Enter new label for the secret:`, secret?.label || getLabel(), { tier: 'alert' });
                 if (!label) {
                     return;
                 }

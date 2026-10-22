@@ -211,9 +211,9 @@ mark.red_hl {
 /* Styles for the expanded view with navigation */
 .expanded-regex-container {
     display: flex;
-    height: 75vh;
-    /* Give the container a good height */
-    overflow: hidden;
+    min-height: 0;
+    /* SillyBunny: the shared Popup frame body is the single scrolling area. */
+    overflow: visible;
 }
 
 .expanded-regex-nav {
@@ -221,7 +221,7 @@ mark.red_hl {
     /* Fixed width for the nav bar */
     border-right: 1px solid var(--SmartThemeBorderColor);
     padding: 5px;
-    overflow-y: auto;
+    overflow: visible;
     background-color: var(--black30a);
 }
 
@@ -247,7 +247,8 @@ mark.red_hl {
 
 .expanded-regex-content {
     flex-grow: 1;
-    overflow-y: auto;
+    min-width: 0;
+    overflow: visible;
     padding-left: 10px;
 }
 

@@ -1174,7 +1174,8 @@ async function openFilePopup(attachment) {
     modalTemplate.addClass('file_modal').addClass('textarea_compact').addClass('fontsize90p');
     addCopyToCodeBlocks(modalTemplate);
 
-    callGenericPopup(modalTemplate, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    // SillyBunny: keep attachment viewing in the Data Bank Window tier so it is presented as a page.
+    callGenericPopup(modalTemplate, POPUP_TYPE.TEXT, '', { tier: 'window', title: attachment.name, wide: true, large: true });
 }
 
 /**
@@ -1197,7 +1198,8 @@ async function editAttachment(attachment, source, callback) {
         editedFileName = String($(this).val());
     });
 
-    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: 'Save', cancelButton: 'Cancel' });
+    // SillyBunny: present the notepad as a Window page above the Data Bank manager.
+    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { tier: 'window', title: attachment.name, wide: true, large: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return;
@@ -1632,7 +1634,8 @@ async function openAttachmentManager() {
     const cleanupFn = await renderButtons();
     await verifyAttachments();
     await renderAttachments();
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true });
+    // SillyBunny: make the manager an explicit Window while retaining its .popup drop target.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { tier: 'window', wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true });
 
     cleanupFn();
     dragDropHandler.destroy();

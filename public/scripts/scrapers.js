@@ -125,7 +125,8 @@ class Notepad {
             text = String($(this).val());
         });
 
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: 'Save', cancelButton: 'Cancel' });
+        // SillyBunny: the notepad opened from Data Bank is a Window-tier page.
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { tier: 'window', title: this.name, wide: true, large: true, okButton: 'Save', cancelButton: 'Cancel' });
 
         if (!result || text === '') {
             return;

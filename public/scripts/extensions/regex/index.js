@@ -845,7 +845,8 @@ async function onRegexEditorOpenClick(existingId, scriptType) {
     editorHtml.find('input, textarea, select').on('input', updateTestResult);
     updateInfoBlock(editorHtml);
 
-    const popupResult = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: t`Save`, cancelButton: t`Cancel`, allowVerticalScrolling: true });
+    // SillyBunny: the editor is a Window-tier surface and becomes a page when opened from another Window.
+    const popupResult = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { tier: 'window', okButton: t`Save`, cancelButton: t`Cancel`, allowVerticalScrolling: true });
     if (popupResult) {
         const newRegexScript = {
             id: existingId ? String(existingId) : uuidv4(),
@@ -1313,8 +1314,11 @@ async function onRegexDebuggerOpenClick() {
                 const targetElement = contentPanel.find(`#${targetId}`);
 
                 if (targetElement.length) {
-                    const scrollTo = contentPanel.scrollTop() + targetElement.position().top;
-                    contentPanel.animate({ scrollTop: scrollTo }, 300);
+                    const frameBody = popupContainer.closest('.popup-content').get(0);
+                    const scrollTo = frameBody
+                        ? frameBody.scrollTop + targetElement[0].getBoundingClientRect().top - frameBody.getBoundingClientRect().top
+                        : 0;
+                    frameBody?.scrollTo({ top: scrollTo, behavior: 'smooth' });
 
                     targetElement.css('transition', 'background-color 0.5s').css('background-color', 'var(--highlight_color)');
                     setTimeout(() => targetElement.css('background-color', ''), 1000);
@@ -1325,16 +1329,19 @@ async function onRegexDebuggerOpenClick() {
         });
 
         popupContainer.append(navPanel).append(contentPanel);
-        callGenericPopup(popupContainer, POPUP_TYPE.TEXT, t`Step-by-step Transformation`, { wide: true, allowVerticalScrolling: false });
+        // SillyBunny: expanded debugger views are Window-tier pages; the shared frame owns scrolling.
+        callGenericPopup(popupContainer, POPUP_TYPE.TEXT, t`Step-by-step Transformation`, { tier: 'window', title: t`Step-by-step Transformation`, wide: true, allowVerticalScrolling: false });
     });
 
     debuggerHtml.find('#regex_debugger_expand_final').on('click', function () {
         const content = $('#regex_debugger_final_output').html();
         const popupContent = $('<div class="regex-popup-content"></div>').html(content);
-        callGenericPopup(popupContent, POPUP_TYPE.TEXT, t`Final Output`, { wide: true, large: true, allowVerticalScrolling: true });
+        // SillyBunny: expanded debugger views are Window-tier pages; the shared frame owns scrolling.
+        callGenericPopup(popupContent, POPUP_TYPE.TEXT, t`Final Output`, { tier: 'window', title: t`Final Output`, wide: true, large: true, allowVerticalScrolling: true });
     });
 
-    await callGenericPopup(debuggerHtml.children(), POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    // SillyBunny: keep the debugger in the Window tier so expanded views can be pushed pages.
+    await callGenericPopup(debuggerHtml.children(), POPUP_TYPE.TEXT, '', { tier: 'window', title: t`Advanced Regex Debugger`, wide: true, allowVerticalScrolling: true });
 }
 
 /**

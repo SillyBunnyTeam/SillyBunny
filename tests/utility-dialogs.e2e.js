@@ -56,7 +56,7 @@ for (const viewport of UTILITY_VIEWPORTS) {
     test(`Add Secret preserves input identity, labels, Cancel and empty-secret confirmation at ${size}`, async ({ page }) => {
         const state = await bootUtilityDialogs(page, viewport);
         let popup = await openUtilityDialog(page, 'secret');
-        await expectUtilityFrame(popup, viewport, expect);
+        await expectUtilityFrame(popup, viewport, expect, 'alert');
         // This upstream call uses Popup's textarea, not a password input; the adapter must not replace it.
         await expect(popup.locator('textarea.popup-input')).toHaveCount(1);
         const secret = 'fixture-secret-only';

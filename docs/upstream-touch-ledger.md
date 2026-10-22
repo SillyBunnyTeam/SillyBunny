@@ -24,6 +24,22 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 4.1–4.3 Window-tier content adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/scrapers.js`; `public/scripts/secrets.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/extensions/regex/debugger.css`. |
+| Area | Data Bank manager, attachment viewer/notepad, scraper notepad, Regex editor/debugger/expanded views and API Keys manager. |
+| Divergence reason | Window-tier surfaces need a shared large frame with reachable content; nested editors and debugger views must become pushed pages, while API key Add and Rename remain Alerts above the manager. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; feature-local shared frame CSS. |
+| Adapter shape | Keep Popup content, IDs, listeners, drop target, result values and persistence unchanged; pass explicit Window tiers and titles, let nested Dialog/Window Popups use the existing page presentation, route expanded Regex navigation to the frame body, and preserve the debugger's internal result lists. |
+| Protecting tests | `tests/window-dialogs.e2e.js` with `tests/helpers/window-dialogs.js` exercises production Data Bank/viewer/notepad/scraper, Regex editor/debugger/expanded views, and API Keys manager/Add/Rename surfaces at 1440×900 and 390×844. Regression suites: `tests/sillybunny-dialog-tiers.e2e.js`, `tests/popup-scroll.e2e.js`, `tests/utility-dialogs.e2e.js`; unit contracts: `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/secrets.test.js`, `tests/secret-inputs.test.js`. |
+| Validation | 2026-10-22: `npm run lint` and `git diff --check` pass. `npm run check:frontend-budgets` passes (16 blocking stylesheets, 1003.8 KiB; 24 startup scripts, 2029.3 KiB). From `tests/`, `npm run test:unit -- --runInBand`: 419 suites pass; 6,392 tests pass, 2 skipped; 1 snapshot passes. Chromium `npx playwright test <suite>.e2e.js --browser=chromium --workers=2`: `window-dialogs` 12 pass; `sillybunny-dialog-tiers` 18 pass; `popup-scroll` 2 pass; `utility-dialogs` 26 pass. File uploads/deletes, settings saves and every secrets endpoint are intercepted in the Window suite; assertions cover decoded upload payloads, actual scraper File returns, saved Regex settings, transient DOM/console secret leaks, parent identity, result equality and the shared frame scroller. `PHASE4_SCREENSHOTS=/tmp/opencode/phase4a-shots` captures 22 screenshots (11 desktop/phone pairs), visually reviewed. |
+| Related validation | With `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4455`, `npx playwright test <suite>.e2e.js --browser=chromium --workers=2 --grep-invert 'in firefox\|in webkit'`: `tests/sillybunny-connections-layout.e2e.js` 49 pass; `tests/sillybunny-editor-rows-layout.e2e.js` 11 pass; `tests/sillybunny-debugger.e2e.js` 11 pass; `tests/in-chat-agents-editor.e2e.js` 50 pass, 1 fails its explicit saved-tracker prerequisite at line 204 (the isolated server has no saved tracker). A single-test rerun with `--workers=1 --grep 'real saved long tracker'` reproduces that prerequisite failure; no saved agents or unrelated tests are changed to mask it. |
+| Coverage notes | Transactional attachment/scraper notepads keep the existing Cancel/Save header; Cancel and Escape return without saving. Viewer and expanded Regex pages exercise literal Back and Escape. The expanded Steps last-link test exposed a jQuery/DOM mismatch; unwrap `.closest('.popup-content')` with `.get(0)` before native `scrollTo`. Mobile screenshots retain the existing narrow Data Bank name wrapping and expanded Steps metric clipping; no layout redesign is claimed. |
+| Rollback path | Remove the explicit tier/title options and Regex scroller override, leaving upstream Popup calls and feature behavior unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 4.1–4.3. |
+| Owner | UI integrator. |
+
 ### Phase 3.22–3.23 dialog action rows
 | Field | Value |
 | --- | --- |

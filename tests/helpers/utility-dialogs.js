@@ -111,8 +111,8 @@ export async function openUtilityDialog(page, surface) {
     return page.locator(`dialog.popup[data-id="${await popup.getAttribute('data-id')}"]`);
 }
 
-export async function expectUtilityFrame(popup, viewport, expect) {
-    await expect(popup).toHaveClass(/sb-dialog--dialog/);
+export async function expectUtilityFrame(popup, viewport, expect, tier = 'dialog') {
+    await expect(popup).toHaveClass(new RegExp(`sb-dialog--${tier}`));
     const pushed = await popup.evaluate(node => node.classList.contains('sb-dialog--page'));
     await expect(popup).toHaveAttribute('data-presentation', pushed ? 'floating' : viewport.presentation);
     if (await popup.locator('.popup-button-ok').evaluate(node => node.style.display === 'none')) {
