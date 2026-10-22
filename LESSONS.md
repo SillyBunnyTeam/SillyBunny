@@ -112,14 +112,15 @@ This is the largest class by a wide margin.
 
 ### CI and workflows
 
-- **Breaks:** a workflow change merged to `staging` has no effect on pull requests, or the `staging` and `release` copies of a workflow drift apart.
-- **Files:** `.github/workflows/pr-auto-manager.yml`, `.github/pr-auto-comments.yml`, `.github/pr-auto-labels-by-branch.yml`, `.github/workflows/pr-metadata.yml`, `.github/workflows/pr-checks.yml`, `.github/workflows/nightly.yml`.
+- **Breaks:** a workflow change merged to `staging` has no effect on pull requests, or the `staging` and `release` copies of a workflow drift apart, or `ubuntu-latest` moves to an Ubuntu release the pinned Playwright cannot install Chromium on.
+- **Files:** `.github/workflows/pr-auto-manager.yml`, `.github/pr-auto-comments.yml`, `.github/pr-auto-labels-by-branch.yml`, `.github/workflows/pr-metadata.yml`, `.github/workflows/pr-checks.yml`, `.github/workflows/nightly.yml`, `.github/workflows/release-e2e.yml`.
 - **Guards:**
   - `pull_request_target` workflows (`pr-auto-manager.yml`, which reads `pr-auto-comments.yml` and `pr-auto-labels-by-branch.yml`) and scheduled workflows (`nightly.yml`) run from `release`, the default branch. Their changes also need an `actions/*` PR into `release`; `pr-metadata.yml` limits those branches to `.github/`, `tests/`, `scripts/bump-version.js` and `scripts/update-changelog-merged-prs.js`.
   - `pull_request` workflows (`pr-checks.yml`, `pr-metadata.yml`) run from the PR's merge ref, so a PR into `release` uses the `release` copy unless the PR changes it.
   - Required check names come from rulesets; renaming a job such as `✅ Check Bun Runtime` blocks every PR.
-- **Tests:** `tests/pr-auto-manager-workflow.test.js`, `tests/pr-checks-workflow.test.js`, `tests/nightly-workflow.test.js`, `tests/release-workflows.test.js`, `tests/sillybunny-launcher-smol.test.js`.
-- **Fixes:** #888, #892, #895 and #903 carried workflow and test changes to `release` through `actions/*` branches. `label-by-branches` in `pr-auto-manager.yml` waited for a `synchronize` event with `changes.base`, which never arrives; a base-branch change is an `edited` event. On 2026-10-23 the `release` copy of `pr-metadata.yml` still rejected `hotfix:` titles.
+  - Jobs that run `playwright install --with-deps` (`checks` in `nightly.yml`, `run-release-e2e` in `release-e2e.yml`) pin `runs-on` to an Ubuntu release, because each Playwright version installs only on the releases it lists. `@playwright/test` 1.60.0 has no Chromium build for Ubuntu 26.04 (1.61.0 added one), so move the pin together with the `tests/package.json` version.
+- **Tests:** `tests/pr-auto-manager-workflow.test.js`, `tests/pr-checks-workflow.test.js`, `tests/nightly-workflow.test.js`, `tests/release-workflows.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/playwright-runner-workflows.test.js`.
+- **Fixes:** #888, #892, #895 and #903 carried workflow and test changes to `release` through `actions/*` branches. `label-by-branches` in `pr-auto-manager.yml` waited for a `synchronize` event with `changes.base`, which never arrives; a base-branch change is an `edited` event. On 2026-10-23 the `release` copy of `pr-metadata.yml` still rejected `hotfix:` titles. #920: `ubuntu-latest` began moving to Ubuntu 26.04 on 2026-10-19, and on 2026-10-22 the nightly and Release E2E Validation both stopped at `Install Chromium` with `Playwright does not support chromium on ubuntu26.04-x64`; both jobs now run on `ubuntu-24.04`, where the 2026-10-17 and 2026-10-19 nightlies passed.
 
 ### Upstream compatibility and sync
 
