@@ -327,9 +327,9 @@ describe('in-chat agent bundled templates', () => {
     });
 
     test('keeps draft companion template versions at v1', () => {
-        // Memory Shard shipped a full prompt rewrite, so it carries a real version bump to hand
-        // installed copies the update pill. Everything else is still a v1 draft.
-        const bumpedCompanionVersions = new Map([['memory-shard-companion.json', 2]]);
+        // Memory Shard shipped a full prompt rewrite and Level Up added a -webkit-user-select companion,
+        // so both carry a real version bump to hand installed copies the update pill. Everything else is still a v1 draft.
+        const bumpedCompanionVersions = new Map([['memory-shard-companion.json', 2], ['level-up-companion.json', 2]]);
         const companionFilenames = sourceFilenames.filter(filename => filename.includes('companion') || filename === 'npc-motivator.json');
 
         for (const filename of companionFilenames) {

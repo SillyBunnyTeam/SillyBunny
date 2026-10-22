@@ -1,4 +1,3 @@
-/* global document, window, navigator, getComputedStyle */
 import fs from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 

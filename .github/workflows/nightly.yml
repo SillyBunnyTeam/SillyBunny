@@ -95,7 +95,9 @@ jobs:
         run: npm ci --ignore-scripts --prefix tests
 
       - name: Lint
-        run: npm run lint
+        run: |
+          npm run lint
+          npm run lint --prefix tests
 
       - name: Unit tests
         run: npm run test:unit --prefix tests

@@ -1,5 +1,5 @@
 /* eslint-disable playwright/no-duplicate-hooks, playwright/no-standalone-expect */
-/* global document, globalThis */
+/* global globalThis */
 import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
 function createEventSource() {

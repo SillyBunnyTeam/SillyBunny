@@ -1,4 +1,3 @@
-/* global document, HTMLElement, requestAnimationFrame, window, WheelEvent */
 import { testSetup } from './frontend/frontent-test-utils.js';
 
 export const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
