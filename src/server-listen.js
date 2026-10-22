@@ -6,8 +6,8 @@ import { stripVTControlCharacters } from 'node:util';
 
 // A relaunched server races the previous process for the listen port: the old
 // socket can still be encumbered for a moment after that process is gone,
-// especially on Windows where libuv binds with SO_EXCLUSIVEADDRUSE. Worse,
-// released Bun versions create inheritable socket handles on Windows
+// especially on Windows where libuv binds with SO_EXCLUSIVEADDRUSE. Worse, Bun
+// versions before 1.4.0 create inheritable socket handles on Windows
 // (oven-sh/bun#36936), so a process spawned during an update can keep the port
 // bound until it exits. Retrying for about thirty seconds outlasts the typical
 // straggler instead of permanently breaking the restart after five seconds.
@@ -93,8 +93,9 @@ export async function closeListeningServers({ timeoutMs = LISTEN_CLOSE_TIMEOUT_M
         }
 
         // Long-lived streaming responses keep server.close() pending forever,
-        // so drop the connections instead of waiting them out. Bun does not
-        // implement closeAllConnections, hence the tracked-socket fallback.
+        // so drop the connections instead of waiting them out. Before Bun 1.4.3
+        // (oven-sh/bun#43557), closeAllConnections does not drop them once
+        // close() has run, hence the tracked-socket fallback.
         try {
             server.closeAllConnections?.();
         } catch {
