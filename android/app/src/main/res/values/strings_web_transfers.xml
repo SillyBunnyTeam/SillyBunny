@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Toast when a file picker result is unusable or no picker can open. -->
+    <string name="web_files_rejected">lorum ipsum</string>
+    <!-- Toasts after a page export or download finishes or fails. -->
+    <string name="web_transfer_saved">lorum ipsum</string>
+    <string name="web_transfer_failed">lorum ipsum</string>
+    <!-- Dialog offered when this WebView cannot capture a page export. -->
+    <string name="web_transfer_unsupported_title">lorum ipsum</string>
+    <string name="web_transfer_unsupported_message">lorum ipsum</string>
+    <string name="web_transfer_open_in_browser">lorum ipsum</string>
+    <string name="web_transfer_dismiss">lorum ipsum</string>
+</resources>
