@@ -341,7 +341,9 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
-import { fetchResumable } from './scripts/resumable-generation.js';
+import { fetchResumable, registerGenerationCommitPlan, settleGenerationCommit } from './scripts/resumable-generation.js';
+import { GENERATION_PLACEHOLDER_KEY, getMessageIdentity } from './scripts/generation-commit-plan.js';
+import { createGenerationCommitPlan, initServerGenerations, reloadServerCommittedReply } from './scripts/server-generations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
@@ -1230,6 +1232,7 @@ async function firstLoadInit() {
         initSettingsSearch();
         initBulkEdit();
         initReasoning();
+        initServerGenerations();
         initWelcomeScreen();
         initQuickContextSizeEnhancer();
         await initScrapers();
@@ -6572,6 +6575,10 @@ class StreamingProcessor {
             this.messageId = messageId;
             this.message = chat[messageId];
             this.swipeId = this.message?.swipe_id;
+            // SillyBunny: marks the unfinished reply, which the server may replace if this page goes away.
+            if (this.message?.extra) {
+                this.message.extra[GENERATION_PLACEHOLDER_KEY] = new Date(this.timeStarted).toISOString();
+            }
             await saving;
             if (!this.#isCurrent(messageId)) return -1;
             this.swipeId = this.message.swipe_id;
@@ -6765,6 +6772,8 @@ class StreamingProcessor {
      */
     async finalizeIntermediaryMessage(messageId, text, { unlockUI = true }) {
         if (!this.#isCurrent(messageId)) return;
+        // SillyBunny: the reply is finished, so the server must no longer replace this message.
+        delete this.message?.extra?.[GENERATION_PLACEHOLDER_KEY];
         await this.onProgressStreaming(messageId, text, true);
         if (!this.#isCurrent(messageId)) return;
         const messageElement = chatElement.find(`.mes[mesid="${messageId}"]`);
@@ -7611,6 +7620,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
         let textareaText = '';
         let renderedUserMessage = false;
+        // SillyBunny: a regenerated reply may still be on disk when the server writes its replacement.
+        let replacedMessageIdentity = null;
 
         if (!(dryRun || depth || suppressUserMessage || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
             const interruptedByCommand = await processCommands(String($('#send_textarea').val()));
@@ -7640,6 +7651,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         requestMobileChatBottomPin();
                     }
                     const deletedMessageId = chat.length - 1;
+                    replacedMessageIdentity = getMessageIdentity(chat[deletedMessageId]);
                     deleteItemizedPromptForMessage(deletedMessageId);
                     chat.length = deletedMessageId;
                     await removeLastMessage(deletedMessageId);
@@ -8925,6 +8937,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                     const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
                     if (!isCurrent()) return;
+                    // SillyBunny: lets the server write this reply into the chat if the page goes away.
+                    if (!isImpersonate) {
+                        registerGenerationCommitPlan(activeStreamingProcessor.requestAbortController.signal, createGenerationCommitPlan({ type, started: generation_started, replaces: replacedMessageIdentity }));
+                    }
                     activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
                     if (!isCurrent()) return;
 
@@ -8932,6 +8948,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     let getMessage = shouldBufferOutput
                         ? await activeStreamingProcessor.generateBuffered()
                         : await activeStreamingProcessor.generate();
+                    if (!isCurrent()) return;
+                    // SillyBunny: the server kept its own copy of this reply, so saving this one would overwrite a newer chat file.
+                    if (await settleGenerationCommit(activeStreamingProcessor.requestAbortController.signal) === 'committed') {
+                        if (!isCurrent()) return;
+                        clearStreamingProcessorIfCurrent(activeStreamingProcessor);
+                        unblockGeneration(type);
+                        reloadServerCommittedReply();
+                        return;
+                    }
                     if (!isCurrent()) return;
                     let messageChunk = cleanUpMessage({
                         getMessage: getMessage,
@@ -9067,7 +9092,17 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     }
                 }
             } else {
-                return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
+                // SillyBunny: lets the server write this reply into the chat if the page goes away.
+                if (!isImpersonate && type !== 'quiet' && signal) {
+                    registerGenerationCommitPlan(signal, createGenerationCommitPlan({ type, started: generation_started, replaces: replacedMessageIdentity }));
+                }
+                const result = await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
+                // SillyBunny: the server kept its own copy of this reply; onSuccess() unblocks on no data instead of saving.
+                if (await settleGenerationCommit(signal) === 'committed') {
+                    reloadServerCommittedReply();
+                    return null;
+                }
+                return result;
             }
         }
 
@@ -18880,7 +18915,13 @@ jQuery(async function () {
         disposeChatMessageResizeObserver();
         disposeMobileChatViewportObserver();
         cancelTtsPlay();
-        if (streamingProcessor) {
+    });
+
+    // SillyBunny: stop the stream on pagehide, after resumable-generation.js hands chat replies to the
+    // server. A leave-site prompt can cancel beforeunload, and a page kept in the back/forward cache
+    // keeps reading its reply when it is shown again.
+    $(window).on('pagehide', (event) => {
+        if (streamingProcessor && !event.originalEvent?.persisted) {
             console.log('Page reloaded. Aborting streaming...');
             streamingProcessor.onStopStreaming();
         }

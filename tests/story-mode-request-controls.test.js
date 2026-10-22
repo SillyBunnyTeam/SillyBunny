@@ -142,6 +142,8 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         getMessageTimeStamp: () => '2026-09-05',
         updateMessageTokenAccounting: async message => ({ outputTokens: 0, reasoningTokens: message.extra?.reasoning_tokens ?? 0 }),
         saveChatConditional: jest.fn(async () => true),
+        createGenerationCommitPlan: () => null, registerGenerationCommitPlan: () => undefined, getMessageIdentity: () => null,
+        settleGenerationCommit: async () => null, reloadServerCommittedReply: () => undefined, GENERATION_PLACEHOLDER_KEY: 'server_generation_placeholder',
         getPositiveTokenCount: value => Number(value) || 0,
         formatGenerationTimer: () => ({}), messageFormatting: value => value,
         balanceStreamingMarkdown: value => value,
@@ -811,6 +813,34 @@ describe('owned host generation flow', () => {
         expect(context.saveChatConditional).not.toHaveBeenCalled();
         expect(received).not.toHaveBeenCalled();
         expect(context.chat[0].mes).toBe(buffer ? 'Existing prose. ' : 'Existing prose. abcd');
+    });
+
+    test.each(['nonstream', 'stream', 'buffer'])('reloads the copy of a reply the server kept instead of saving its own: %s', async mode => {
+        const { context, requests, eventSource } = makeRuntime({ api: 'textgenerationwebui', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
+        context.chunks = [{ text: context.reply }];
+        context.settleGenerationCommit = jest.fn(async () => 'committed');
+        context.reloadServerCommittedReply = jest.fn();
+        const received = jest.fn();
+        eventSource.on(event_types.MESSAGE_RECEIVED, received);
+        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
+        expect(context.settleGenerationCommit).toHaveBeenCalledWith(requests[0].signal);
+        expect(context.reloadServerCommittedReply).toHaveBeenCalledTimes(1);
+        expect(context.saveChatConditional).not.toHaveBeenCalled();
+        expect(received).not.toHaveBeenCalled();
+        expect(context.is_send_press).toBe(false);
+        expect(context.streamingProcessor).toBeNull();
+    });
+
+    test.each(['nonstream', 'stream'])('saves the reply itself when the server let the page claim it: %s', async mode => {
+        const { context, requests } = makeRuntime({ api: 'textgenerationwebui', stream: mode === 'stream' });
+        context.chunks = [{ text: context.reply }];
+        context.settleGenerationCommit = jest.fn(async () => 'claimed');
+        context.reloadServerCommittedReply = jest.fn();
+        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
+        expect(context.settleGenerationCommit).toHaveBeenCalledWith(requests[0].signal);
+        expect(context.reloadServerCommittedReply).not.toHaveBeenCalled();
+        expect(context.chat[0].mes).toBe('Existing prose. New prose. ');
+        expect(context.chat[0].extra).not.toHaveProperty('server_generation_placeholder');
     });
 });
 
