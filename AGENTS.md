@@ -12,7 +12,7 @@ Read the docs below in full before you start; they change more often than this f
 | Always | `PRODUCT.md` | The design direction and featureset for the program, both user-facing and used by agents for a primer on SillyBunny's philosophy. |
 | Any UI, CSS, markup or copy-placement change | `DESIGN.md`, `DESIGN.json` | The design direction for SillyBunny's user interface and user experience, and a companion reference for UI parameters. |
 | Server routes, file or path handling, updater or launchers, secrets, extensions, sanitisation, remote requests | `SECURITY.md` | Security best practices for user safety. |
-| Fixing bugs in known hotspots, or any non-trivial change | `lessons.md` | Dynamically edited. |
+| Fixing bugs in known hotspots, or any non-trivial change | `LESSONS.md` | Dynamically edited. |
 | Install, launcher or update flows, or anything else README covers | `README.md` | Primary user-facing documentation for the project description, installation procedure, credits, and so on. |
 | Upstream SillyTavern sync | `docs/upstream-sync.md` | Documentation for sync behaviour. |
 | Editing an upstream-origin file | `docs/upstream-touch-ledger.md` | |
@@ -72,7 +72,7 @@ Run what applies, then report what you verified and what you did not. → CONTRI
 7. Changed an upstream-origin file: `SillyBunny:` marker and ledger entry.
 8. Nothing from `data/default-user/**` or `dist/` is staged.
 9. List every placeholder you added, with its file and location.
-10. Fixed a bug, or the user corrected a mistake that could recur: update `lessons.md` (see § Copy and docs).
+10. Fixed a bug, or the user corrected a mistake that could recur: update `LESSONS.md` (see § Copy and docs).
 
 ## Commits, branches and PRs
 
@@ -87,5 +87,5 @@ Run what applies, then report what you verified and what you did not. → CONTRI
 - When code needs text the user has not supplied, use the placeholder `TODO(copy)`; in markup, also add `data-sb-copy-placeholder="true"`. Report every location.
 - `lorum ipsum` marks older placeholders. Leave them for maintainers, never add new ones, and list any you find in your report.
 - Comments follow CONTRIBUTING § Best Code Practices. Never use comments as hidden documentation drafts.
-- Every root `*.md` file except `lessons.md`, plus `DESIGN.json` and `docs/**`, is human-written, including this file. Only make mechanical edits there (paths, command names, links, versions) when asked, unless a contributor explicitly authorises or supplies the wording.
-- Keep `lessons.md` current. Add each new fix, guard or test to its area's section, and add a section for a new recurring bug class. Remove or correct entries the code no longer supports. Use the file's existing format, and record only facts you verified in code, tests or git history, citing files, tests, PRs or commits.
+- Every root `*.md` file except `LESSONS.md`, plus `DESIGN.json` and `docs/**`, is human-written, including this file. Only make mechanical edits there (paths, command names, links, versions) when asked, unless a contributor explicitly authorises or supplies the wording.
+- Keep `LESSONS.md` current. Add each new fix, guard or test to its area's section, and add a section for a new recurring bug class. Remove or correct entries the code no longer supports. Use the file's existing format, and record only facts you verified in code, tests or git history, citing files, tests, PRs or commits.
