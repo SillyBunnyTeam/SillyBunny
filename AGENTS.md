@@ -78,7 +78,7 @@ Run what applies, then report what you verified and what you did not. → CONTRI
 
 - Branches: `<type>/<short-slug>`, using the PR title types (for example `fix/group-rename`).
 - Commits: Conventional Commits, `type(scope): summary`, with an imperative, lowercase summary. Any type the spec allows; mark breaking changes with `!` or a `BREAKING CHANGE:` footer.
-- PR titles: `fix`, `chore`, `feat`, `sync`, `docs` or `hotfix`, with an optional `(scope)`; CI rejects other types.
+- PR titles: `fix`, `chore`, `feat`, `sync`, `docs`, `hotfix`, `refactor`, `perf`, `test`, `ci`, `build`, `style` or `revert`, with an optional `(scope)`; CI rejects other types.
 - You may prepare branches, commits and a ready-to-open PR link. The user writes every PR title and body, without AI assistance.
 
 ## Copy and docs
