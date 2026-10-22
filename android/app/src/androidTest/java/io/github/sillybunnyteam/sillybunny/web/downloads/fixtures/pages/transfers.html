@@ -1,0 +1,156 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000}iframe{width:10px;height:10px;border:0}</style>
+<title>fixture-transfers</title></head><body>
+<a class="b" id="tapExport" href="#" download="tapped.json">tap export</a>
+<form id="post" method="post" action="/attachment?name=posted.json&amp;n=1500&amp;seed=4"><input type="hidden" name="x" value="1"></form>
+<iframe id="cross" src="http://127.0.0.1:{{OTHER}}/frame.html"></iframe>
+<script>
+'use strict';
+window.results = {};
+window.addEventListener('message', (event) => { results.frame = JSON.stringify(event.data); });
+
+// Byte i of a body with seed s is (i * 31 + s) & 0xff, the same formula the server and the tests use.
+function bytes(length, seed) {
+    const body = new Uint8Array(length);
+    for (let index = 0; index < length; index++) {
+        body[index] = (index * 31 + seed) & 0xff;
+    }
+    return body;
+}
+
+// The shared helper from public/scripts/utils.js:406-412: a detached anchor, click, immediate revoke.
+function helper(content, name, type) {
+    const blob = content instanceof Blob ? content : new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+}
+
+document.getElementById('tapExport').addEventListener('click', (event) => {
+    // A real tap on an attached anchor: swap in a Blob URL first, as pages that build exports on click do.
+    const anchor = event.currentTarget;
+    const url = URL.createObjectURL(new Blob([bytes(3000, 21)], { type: 'application/json' }));
+    anchor.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}, true);
+
+window.fx = {
+    helper(length, seed, name, type) {
+        helper(bytes(length, seed), name, type);
+        return 'ok';
+    },
+    // Archive (0 ms), QIG (1 s) and debugger (60 s) revocation timers.
+    revokeLater(length, seed, name, delay) {
+        const url = URL.createObjectURL(new Blob([bytes(length, seed)], { type: 'application/octet-stream' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = name;
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), delay);
+        return 'ok';
+    },
+    // Character export: appended anchor, click, remove, revoke (public/script.js:18326-18356).
+    appended(length, seed, name) {
+        const url = URL.createObjectURL(new Blob([bytes(length, seed)], { type: 'image/png' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        return 'ok';
+    },
+    // A non-cancelable synthetic click: the page script cannot take it, so the WebView's download path does.
+    nonCancelable(length, seed, name) {
+        const url = URL.createObjectURL(new Blob([bytes(length, seed)], { type: 'text/plain' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = name;
+        anchor.dispatchEvent(new MouseEvent('click'));
+        URL.revokeObjectURL(url);
+        return 'ok';
+    },
+    dataBase64(text, name) {
+        const anchor = document.createElement('a');
+        anchor.href = 'data:text/plain;base64,' + btoa(text);
+        anchor.download = name;
+        anchor.click();
+        return 'ok';
+    },
+    dataPercent(text, name) {
+        const anchor = document.createElement('a');
+        anchor.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+        anchor.download = name;
+        anchor.click();
+        return 'ok';
+    },
+    dataNonCancelable(text, name) {
+        const anchor = document.createElement('a');
+        anchor.href = 'data:text/plain;base64,' + btoa(text);
+        anchor.download = name;
+        anchor.dispatchEvent(new MouseEvent('click'));
+        return 'ok';
+    },
+    // QIG Save All: individual downloads, 300 ms apart, not a ZIP.
+    saveAll(count, length, gap) {
+        let index = 0;
+        const next = () => {
+            helper(bytes(length, index + 1), `generated-1700000000000-${index + 1}.png`, 'image/png');
+            index++;
+            if (index < count) {
+                setTimeout(next, gap);
+            }
+        };
+        next();
+        return 'ok';
+    },
+    // Backup and character export: fetch an attachment response, then save the Blob (public/scripts/user.js).
+    fetchAttachment(name, length, seed) {
+        results.fetched = null;
+        fetch(`/attachment?name=${encodeURIComponent(name)}&n=${length}&seed=${seed}&type=application%2Fzip`, {
+            method: 'POST',
+            body: 'payload',
+        }).then(async (response) => {
+            const disposition = response.headers.get('Content-Disposition');
+            const blob = await response.blob();
+            helper(blob, name, blob.type);
+            results.fetched = disposition;
+        }).catch((error) => { results.fetched = 'error ' + error; });
+        return 'ok';
+    },
+    // Data Maid and Conversation file links: a same-origin HTTP URL with a name hint, no attachment header.
+    httpAnchor(path, name) {
+        const anchor = document.createElement('a');
+        anchor.href = path;
+        anchor.download = name;
+        anchor.click();
+        return 'ok';
+    },
+    navigate(path) {
+        location.href = path;
+        return 'ok';
+    },
+    postForm() {
+        document.getElementById('post').submit();
+        return 'ok';
+    },
+    // A frame on the other loopback port posts a form into the app origin (fixtures/pages/post.html).
+    postFromOtherPort(name) {
+        const frame = document.createElement('iframe');
+        frame.src = `http://127.0.0.1:{{OTHER}}/post.html?name=${encodeURIComponent(name)}`;
+        document.body.appendChild(frame);
+        return 'ok';
+    },
+    state() {
+        return JSON.stringify({
+            api: typeof globalThis[Symbol.for('sillybunny.transfers')],
+            bridge: typeof globalThis.sillybunnyTransfers,
+        });
+    },
+};
+</script>
+</body></html>
