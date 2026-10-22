@@ -19,15 +19,15 @@ is_truthy() {
     esac
 }
 
-# SillyBunny: the Android app (android/) sets this and bundles git, Node.js and
-# npm, so the Termux, prerequisites and runtime auto-detection paths are skipped
-# for it. Every other install keeps its current behaviour.
+# SillyBunny: the Android app (android/) sets this. It bundles git, Node.js and
+# npm, so it skips the Termux, prerequisite and runtime detection paths.
 is_android_app() {
     [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]
 }
 
 is_termux() {
-    # SillyBunny: the Android app runs on Android but is never a Termux install.
+    # SillyBunny: the Android app ships its own tools and paths, so it never takes
+    # the Termux paths, even with a Termux variable set.
     if is_android_app; then
         return 1
     fi
@@ -61,7 +61,7 @@ prefer_node_runtime() {
         return 1
     fi
 
-    # SillyBunny: the Android app always passes its runtime choice; Node.js is its default.
+    # SillyBunny: the APK bundles Node.js but not Bun.
     if is_android_app; then
         return 0
     fi
