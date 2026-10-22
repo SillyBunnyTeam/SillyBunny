@@ -79,6 +79,27 @@ describe('openDialog structure', () => {
         expect(dialog.body.querySelector('#built')).not.toBeNull();
     });
 
+    test('nested dialog className is applied to its pushed page', async () => {
+        const parent = openDialog({ title: 'Parent' });
+        const content = document.createElement('div');
+        const nested = openDialog({ title: 'History', content, className: 'sb-chat-history-dialog' });
+
+        try {
+            expect(nested.page.classList.contains('sb-dialog__page')).toBe(true);
+            expect(nested.page.classList.contains('sb-chat-history-dialog')).toBe(true);
+            expect(nested.surface).toBe(parent.surface);
+            expect(nested.root).toBe(parent.root);
+            expect(content.parentElement).toBe(nested.body);
+            escape(parent.root);
+            await expect(nested.closed).resolves.toEqual({ response: 'back' });
+            expect(nested.page.isConnected).toBe(false);
+            expect(parent.isOpen).toBe(true);
+        } finally {
+            parent.forceClose();
+            await parent.closed;
+        }
+    });
+
     test('immediate apply: Close at the end, optional ⋯ before it, no responses', () => {
         const sections = [{ items: [] }];
         const menu = jest.fn(() => sections);

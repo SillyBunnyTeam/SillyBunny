@@ -1205,42 +1205,30 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         display: none !important;
     }
 
-    #sb-mobile-chat-tools {
-        position: fixed;
-        inset: var(--sb-topbar-layout-offset) 0 0;
-        box-sizing: border-box;
-        height: calc(100dvh - var(--sb-topbar-layout-offset));
-        min-height: calc(100dvh - var(--sb-topbar-layout-offset));
-        z-index: -1;
-        padding: 8px;
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity var(--sb-transition-fast);
-        background: transparent;
-    }
-
-    #sb-mobile-chat-tools.sb-chat-tools-open[aria-hidden='false'] {
-        display: block;
-        opacity: 1;
-        visibility: visible;
-        pointer-events: auto;
-        z-index: var(--sb-z-modal-content);
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-    }
-
-    #sb-mobile-chat-tools[hidden],
-    #sb-mobile-chat-tools[aria-hidden='true'] {
-        display: none !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-        z-index: -1 !important;
-    }
-
-    #sb-mobile-chat-tools-panel {
-        max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 32px);
+    .sb-dialog.sb-mobile-chat-tools-dialog .sb-dialog__body {
+        padding: 0;
         overflow-y: auto;
+    }
+
+    .sb-dialog.sb-mobile-chat-tools-dialog .sb-mobile-chat-tools-content {
+        display: flex;
+        min-width: 0;
+    }
+
+    .sb-dialog.sb-mobile-chat-tools-dialog #sb-mobile-chat-tools-panel {
+        width: 100%;
+        max-height: none;
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .sb-dialog.sb-mobile-chat-tools-dialog #sb-mobile-chat-tools-panel > .sb-chatbar-field {
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     .sb-mobile-panel-header {
@@ -1289,6 +1277,17 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         text-transform: none;
         color: var(--sb-muted-fg);
         overflow-wrap: anywhere;
+    }
+
+    .sb-mobile-quick-actions-trigger {
+        width: 100%;
+        min-height: 44px;
+        border: 0;
+        border-radius: var(--sb-radius-control);
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: start;
     }
 
     .sb-mobile-section-list {
@@ -2030,7 +2029,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 }
 
 @media screen and (max-width: 768px) and (prefers-reduced-motion: reduce) {
-    #sb-mobile-chat-tools,
 .sb-nav-item {
         transition: none;
     }

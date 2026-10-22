@@ -371,7 +371,7 @@ test.describe('World Info editor on mobile', () => {
         await expect(summary).toBeVisible();
         await expect(entry.locator(':scope > .sb-wi-properties')).toBeHidden();
         await summary.click();
-        const sheet = page.locator('.sb-wi-property-sheet');
+        const sheet = page.locator('.sb-dialog.sb-world-info-properties-dialog');
         await expect(sheet).toBeVisible();
         await sheet.getByRole('button', { name: 'Position', exact: true }).click();
         await page.getByRole('option', { name: '➡️ Outlet', exact: true }).click();

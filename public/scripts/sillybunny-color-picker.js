@@ -1,7 +1,8 @@
-import { animateIn, MOTION_FAST, SPRING_SHEET } from './sillybunny-motion.js';
+import { animateIn, MOTION_FAST } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
 import { OVERLAY_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
+import { openDialog } from './sillybunny-editor/dialog.js';
 
 const PICKER_SELECTOR = 'toolcool-color-picker';
 const MENU_ID = 'sb-color-picker-menu';
@@ -140,7 +141,7 @@ function buildMenu(picker, button) {
     blockUpstreamDrawerClose(menu);
     return {
         picker, button, menu, title, body, plane, cursor, saturation, brightness, hue, alpha,
-        value, inputs, hsv: picker.color.toHsv(), writing: false, sheet: null,
+        value, inputs, hsv: picker.color.toHsv(), writing: false, dialog: null,
         hexPending: false, hexAlpha: picker.color.toRgb().a, finalizeHex: null,
     };
 }
@@ -263,19 +264,7 @@ function bindControls(state) {
         pointerId = null;
     });
     state.menu.addEventListener('keydown', event => {
-        if (event.key === 'Tab' && state.sheet) {
-            const controls = [...state.menu.querySelectorAll('button, input')];
-            const first = controls[0];
-            const last = controls.at(-1);
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-            return;
-        }
+        if (state.dialog) return;
         if (event.key !== 'Escape' || event.isComposing) return;
         event.preventDefault();
         event.stopPropagation();
@@ -284,7 +273,7 @@ function bindControls(state) {
     state.menu.addEventListener('focusout', event => {
         if (state.menu.contains(event.relatedTarget) || event.relatedTarget === state.picker) return;
         queueMicrotask(() => {
-            if (active !== state || state.sheet) return;
+            if (active !== state || state.dialog) return;
             if (!state.menu.contains(document.activeElement) && document.activeElement !== state.picker) {
                 closeColorMenu({ restoreFocus: false });
             }
@@ -308,18 +297,16 @@ function syncPlacement() {
     if (!active) return;
     const state = active;
     if (!state.picker.isConnected || !state.button.getClientRects().length
-        || Boolean(state.sheet) !== window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
+        || Boolean(state.dialog) !== window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
         closeColorMenu();
         return;
     }
     const bounds = viewportBounds();
-    const height = Math.max(0, bounds.bottom - bounds.top - MARGIN * 2);
-    if (state.sheet) {
-        state.sheet.style.maxBlockSize = `${height}px`;
-        state.sheet.style.bottom = `${Math.max(0, window.innerHeight - bounds.bottom)}px`;
+    if (state.dialog) {
         revealFocusedControl(state);
         return;
     }
+    const height = Math.max(0, bounds.bottom - bounds.top - MARGIN * 2);
     state.menu.style.maxBlockSize = `${height}px`;
     state.menu.style.maxInlineSize = `${Math.max(0, bounds.right - bounds.left - MARGIN * 2)}px`;
     const rect = state.menu.getBoundingClientRect();
@@ -342,30 +329,28 @@ function openColorMenu(picker, button) {
     render(state);
     button.setAttribute('aria-expanded', 'true');
     if (window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
-        const sheet = node('dialog', 'sb-color-picker-sheet');
-        sheet.setAttribute('aria-labelledby', state.title.id);
+        const header = state.menu.querySelector('.sb-color-picker-header');
+        const closeButton = state.menu.querySelector('.sb-color-picker-close');
         state.menu.removeAttribute('role');
         state.menu.removeAttribute('aria-labelledby');
-        sheet.append(state.menu);
-        state.sheet = sheet;
-        hostOverlayLayer(sheet);
-        sheet.addEventListener('cancel', event => {
-            event.preventDefault();
-            closeColorMenu({ commitPending: false });
+        const dialog = openDialog({
+            tier: 'dialog',
+            title: state.title.textContent,
+            content: state.menu,
+            className: 'sb-color-picker-dialog',
+            initialFocus: () => state.inputs.hex,
         });
-        sheet.addEventListener('close', () => {
-            if (active === state) closeColorMenu();
+        state.title.classList.add('sb-dialog__title');
+        dialog.header.querySelector('.sb-dialog__title')?.replaceWith(state.title);
+        dialog.root.setAttribute('aria-labelledby', state.title.id);
+        header?.remove();
+        closeButton?.classList.add('sb-dialog__icon-button');
+        dialog.header.querySelector('.sb-dialog__close')?.remove();
+        dialog.header.querySelector('.sb-dialog__header-end')?.append(closeButton);
+        state.dialog = dialog;
+        dialog.closed.then(() => {
+            if (active === state) closeColorMenu({ commitPending: false, restoreFocus: false });
         });
-        sheet.addEventListener('click', event => {
-            if (event.target !== sheet) return;
-            const rect = sheet.getBoundingClientRect();
-            if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
-                closeColorMenu();
-            }
-        });
-        sheet.showModal();
-        syncPlacement();
-        animateIn(sheet, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
     } else {
         // Popover's top layer escapes clipped cards. WebKit 16.4 falls back inside any open modal.
         hostOverlayLayer(state.menu);
@@ -376,10 +361,10 @@ function openColorMenu(picker, button) {
         syncPlacement();
         animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     }
-    (state.sheet ?? state.menu).addEventListener('sb-overlay-host-closing', () => {
+    (state.dialog?.root ?? state.menu).addEventListener('sb-overlay-host-closing', () => {
         if (active === state) closeColorMenu({ commitPending: false, restoreFocus: false });
     });
-    (state.sheet ? state.menu.querySelector('.sb-color-picker-close') : state.inputs.hex).focus({ preventScroll: true });
+    if (!state.dialog) state.inputs.hex.focus({ preventScroll: true });
 }
 
 function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
@@ -388,8 +373,8 @@ function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
     if (commitPending) state.finalizeHex();
     active = null;
     state.button.setAttribute('aria-expanded', 'false');
-    state.sheet?.close();
-    (state.sheet ?? state.menu).remove();
+    if (state.dialog) state.dialog.close('close');
+    else state.menu.remove();
     if (restoreFocus && state.button.isConnected && state.button.getClientRects().length) {
         state.button.focus({ preventScroll: true });
     }
@@ -464,12 +449,12 @@ export function initializeColorPickers() {
         });
         observer.observe(document.body, { childList: true, subtree: true });
         document.addEventListener('pointerdown', event => {
-            if (!active || active.sheet) return;
+            if (!active || active.dialog) return;
             const path = event.composedPath();
             if (!path.includes(active.menu) && !path.includes(active.picker)) closeColorMenu({ restoreFocus: false });
         }, true);
         document.addEventListener('scroll', event => {
-            if (active && !active.sheet && !active.menu.contains(event.target)) closeColorMenu({ restoreFocus: false });
+            if (active && !active.dialog && !active.menu.contains(event.target)) closeColorMenu({ restoreFocus: false });
         }, true);
         window.addEventListener('resize', syncPlacement);
         window.visualViewport?.addEventListener('resize', syncPlacement);

@@ -327,13 +327,15 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor input.sb-switch,
-.sb-prompt-sheet input.sb-switch {
+.sb-prompt-sheet input.sb-switch,
+.sb-dialog.sb-prompt-properties-dialog input.sb-switch {
     transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
     transition-timing-function: var(--sb-ease);
 }
 
 #sb-settings-page .sb-prompt-editor input.sb-switch::after,
-.sb-prompt-sheet input.sb-switch::after {
+.sb-prompt-sheet input.sb-switch::after,
+.sb-dialog.sb-prompt-properties-dialog input.sb-switch::after {
     transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
     transition-timing-function: var(--sb-ease);
 }
@@ -478,7 +480,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-dropdown,
-:is(.sb-prompt-sheet, .sb-prompt-popover) .sb-prompt-dropdown {
+:is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-dropdown {
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
@@ -500,7 +502,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-property input[type='number'],
-.sb-prompt-sheet .sb-prompt-property input[type='number'] {
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input[type='number'] {
     width: 66px;
     min-height: 36px;
     margin: 0;
@@ -512,7 +514,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-group,
-.sb-prompt-sheet .sb-boolean-radio-group {
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-group {
     display: inline-flex;
     flex: none;
     align-items: center;
@@ -526,7 +528,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option,
-.sb-prompt-sheet .sb-boolean-radio-option {
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option {
     display: inline-flex;
     position: relative;
     flex: none;
@@ -536,7 +538,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span,
-.sb-prompt-sheet .sb-boolean-radio-option > span {
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span {
     padding: 6px 9px;
     min-height: 30px;
     border: 0;
@@ -551,12 +553,12 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span:hover,
-.sb-prompt-sheet .sb-boolean-radio-option > span:hover {
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span:hover {
     background: var(--sb-flat-hover-bg);
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > input:checked + span,
-.sb-prompt-sheet .sb-boolean-radio-option > input:checked + span {
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > input:checked + span {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -770,6 +772,23 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     background: transparent;
 }
 
+.sb-dialog.sb-prompt-properties-dialog .sb-dialog__body {
+    padding: 0;
+}
+
+.sb-dialog.sb-prompt-properties-dialog .sb-prompt-properties {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.sb-dialog.sb-prompt-properties-dialog .sb-prompt-property {
+    min-height: 44px;
+    justify-content: space-between;
+}
+
 .sb-prompt-sheet .sb-prompt-property {
     min-height: 44px;
     justify-content: space-between;
@@ -824,12 +843,12 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     accent-color: var(--sb-accent);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(button, .sb-prompt-row):focus-visible {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) :is(button, .sb-prompt-row):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
     outline: none;
     border-color: var(--sb-composer-focus-border) !important;
     box-shadow: var(--sb-composer-focus-ring) !important;
@@ -840,11 +859,11 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     box-shadow: none !important;
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet) .sb-boolean-radio-option > input:focus-visible + span {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > input:focus-visible + span {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) button:active {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) button:active {
     transform: scale(0.97);
 }
 
@@ -913,7 +932,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
 
 @media (hover: hover) {
     #sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):hover,
-    :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button:hover,
+    :is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .menu_button:hover,
     .sb-prompt-row:hover,
     .sb-prompt-option:hover,
     .sb-prompt-trigger-row:hover {
@@ -984,17 +1003,17 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     }
 }
 
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *,
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::before,
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::after {
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *,
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::before,
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::after {
     transition: none !important;
     animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *,
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::before,
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) *::after {
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *,
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::before,
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::after {
         transition: none !important;
         animation: none !important;
     }

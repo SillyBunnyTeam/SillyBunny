@@ -185,7 +185,15 @@ test('a delayed custom quick action preserves later navigation', async ({ page }
     });
     await openApp(page);
     const importStarted = page.waitForRequest(serverToolsScript);
-    await page.locator('#sb-mobile-nav button[aria-label="Open Delayed server"]').evaluate(button => button.click());
+    await page.evaluate(() => {
+        const nav = document.getElementById('sb-mobile-nav');
+        nav.hidden = false;
+        nav.inert = false;
+        nav.classList.add('sb-nav-open');
+        nav.setAttribute('aria-hidden', 'false');
+    });
+    await page.locator('#sb-mobile-nav .sb-mobile-quick-actions-trigger').evaluate(trigger => trigger.click());
+    await page.getByRole('menuitem', { name: 'Delayed server', exact: true }).click();
     await importStarted;
     await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
     releaseImport();

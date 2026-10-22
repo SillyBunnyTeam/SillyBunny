@@ -7,7 +7,7 @@
 
 import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, animateHeightFrom, animateIn, originFrom, play, stopMotion } from './sillybunny-motion.js';
-import { createSheetController } from './sillybunny-sheet.js';
+import { openDialog } from './sillybunny-editor/dialog.js';
 
 const SHEET_ID = 'sb-bottom-chat-sheet';
 const SHEET_TITLE_ID = 'sb-bottom-chat-sheet-title';
@@ -26,10 +26,10 @@ const state = {
     searchClose: null,
     sheet: null,
     sheetTitle: null,
+    sheetCloseButton: null,
     sheetSelectSlot: null,
     sheetActions: null,
-    backdrop: null,
-    sheetController: null,
+    dialogFrame: null,
     moved: [],
     selectObserver: null,
     barObserver: null,
@@ -77,7 +77,7 @@ function isVisible(element) {
 }
 
 function isSheetOpen() {
-    return Boolean(state.sheetController?.isOpen());
+    return Boolean(state.dialogFrame?.isOpen);
 }
 
 function openSheet() {
@@ -85,32 +85,40 @@ function openSheet() {
         return;
     }
     state.chip.setAttribute('aria-expanded', 'true');
-    state.sheetController.open();
+    const dialog = openDialog({
+        tier: 'dialog',
+        title: state.sheetTitle.textContent,
+        content: body => body.append(state.sheetSelectSlot, state.sheetActions),
+        className: 'sb-bottom-chat-sheet',
+        initialFocus: () => state.sheetTitle,
+    });
+    dialog.header.querySelector('.sb-dialog__title')?.replaceWith(state.sheetTitle);
+    state.sheetTitle.classList.add('sb-dialog__title');
+    dialog.root.setAttribute('aria-labelledby', SHEET_TITLE_ID);
+    state.sheetCloseButton.classList.add('sb-dialog__icon-button');
+    dialog.header.querySelector('.sb-dialog__close')?.remove();
+    dialog.header.querySelector('.sb-dialog__header-end')?.append(state.sheetCloseButton);
+    dialog.surface.id = SHEET_ID;
+    state.sheet = dialog.surface;
+    state.dialogFrame = dialog;
+    dialog.closed.then(() => {
+        if (state.dialogFrame !== dialog) return;
+        state.dialogFrame = null;
+        state.sheet = null;
+        state.chip?.setAttribute('aria-expanded', 'false');
+    });
 }
 
 function closeSheet({ animate = true } = {}) {
-    state.sheetController?.close({ animate });
+    if (animate) state.dialogFrame?.close('close');
+    else state.dialogFrame?.forceClose();
+    state.chip?.setAttribute('aria-expanded', 'false');
 }
 
 function ensureSheet() {
     if (state.sheet) {
         return;
     }
-
-    const backdrop = document.createElement('button');
-    backdrop.type = 'button';
-    backdrop.className = 'sb-bottom-chat-sheet-backdrop';
-    backdrop.tabIndex = -1;
-    backdrop.hidden = true;
-    backdrop.setAttribute('aria-label', translate('Close chat actions'));
-
-    const sheet = document.createElement('div');
-    sheet.id = SHEET_ID;
-    sheet.className = 'sb-bottom-chat-sheet';
-    sheet.hidden = true;
-    sheet.setAttribute('role', 'dialog');
-    sheet.setAttribute('aria-modal', 'true');
-    sheet.setAttribute('aria-labelledby', SHEET_TITLE_ID);
 
     const header = document.createElement('div');
     header.className = 'sb-bottom-chat-sheet-header';
@@ -137,19 +145,7 @@ function ensureSheet() {
     });
     selectSlot.addEventListener('change', () => closeSheet());
 
-    sheet.append(header, selectSlot, actions);
-    document.body.append(backdrop, sheet);
-
-    const sheetController = createSheetController({
-        sheet,
-        backdrop,
-        getInitialFocus: () => title,
-        getReturnFocus: () => state.chip,
-        // Sheet styles are mobile-scoped, so a desktop switch must hide it at once.
-        canAnimateClose: () => state.mobile,
-        onClose: () => state.chip?.setAttribute('aria-expanded', 'false'),
-    });
-    Object.assign(state, { sheet, sheetTitle: title, sheetSelectSlot: selectSlot, sheetActions: actions, backdrop, sheetController });
+    Object.assign(state, { sheetTitle: title, sheetCloseButton: closeButton, sheetSelectSlot: selectSlot, sheetActions: actions });
 }
 
 function syncChipLabel() {

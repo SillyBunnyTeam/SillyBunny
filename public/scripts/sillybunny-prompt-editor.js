@@ -2,15 +2,17 @@ import { eventSource, event_types, getRequestHeaders, main_api } from '../script
 import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS } from './sillybunny-prompt-editor-model.js';
 import { promptManager } from './openai.js';
 import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
-import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
+import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
 import { play, stopMotion, animateOut, MOTION_FAST, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
 import { Popup } from './popup.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
+import { openDialog } from './sillybunny-editor/dialog.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
+import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 
 const mountedEditors = new WeakSet();
 let countingEditorContent = false;
@@ -109,8 +111,7 @@ export function initializePromptEditor(column) {
     let headerMeasuredText = '';
     let overlay = null;
     let dragScope = '';
-    let propertySheet = null;
-    let sheetController = null;
+    let propertyDialog = null;
     let tokenTimer = null;
     let listTokenTimer = null;
     let tokenRequest = 0;
@@ -795,7 +796,7 @@ export function initializePromptEditor(column) {
         closeActionMenu({ animate: false, restoreFocus: false });
         overlay = { trigger, node };
         trigger.setAttribute('aria-expanded', 'true');
-        document.body.append(node);
+        hostOverlayLayer(node);
         blockUpstreamDrawerClose(node);
         const rect = trigger.getBoundingClientRect();
         const width = Math.min(Math.max(208, rect.width), innerWidth - 16);
@@ -993,42 +994,44 @@ export function initializePromptEditor(column) {
     function refreshProperties() {
         closePopover(false);
         editor.querySelector('.sb-prompt-properties')?.replaceWith(properties());
-        propertySheet?.querySelector('.sb-prompt-properties')?.replaceWith(properties());
+        propertyDialog?.body.querySelector('.sb-prompt-properties')?.replaceWith(properties());
         refreshSummary();
     }
 
     function openProperties(trigger) {
         closeOverlays();
-        const scrim = element('button', 'sb-prompt-sheet-backdrop');
-        scrim.type = 'button';
-        scrim.tabIndex = -1;
-        scrim.hidden = true;
-        scrim.setAttribute('aria-label', t`Close prompt properties`);
-        const sheet = element('div', 'sb-prompt-sheet');
-        sheet.hidden = true;
-        sheet.setAttribute('role', 'dialog');
-        sheet.setAttribute('aria-modal', 'true');
-        sheet.setAttribute('aria-labelledby', 'sb-prompt-properties-title');
         const heading = element('h2', '', t`Prompt properties`);
         heading.id = 'sb-prompt-properties-title';
         heading.tabIndex = -1;
-        const header = element('header', 'sb-prompt-sheet-header');
-        header.append(heading, button(t`Close prompt properties`, 'xmark', () => sheetController.close()));
-        sheet.append(header, properties());
-        document.body.append(scrim, sheet);
-        propertySheet = sheet;
-        sheetController = createSheetController({ sheet, backdrop: scrim, getInitialFocus: () => heading, getReturnFocus: () => trigger, onClose: () => { closePopover(false); if (draft) refreshProperties(); } });
-        sheetController.open();
+        const content = document.createDocumentFragment();
+        content.append(heading, properties());
+        const dialog = openDialog({
+            tier: 'dialog',
+            title: heading.textContent,
+            content,
+            className: 'sb-prompt-properties-dialog',
+            initialFocus: () => heading,
+        });
+        dialog.header.querySelector('.sb-dialog__title')?.replaceWith(heading);
+        heading.classList.add('sb-dialog__title');
+        const closeButton = dialog.header.querySelector('.sb-dialog__close');
+        closeButton?.setAttribute('aria-label', t`Close prompt properties`);
+        closeButton?.setAttribute('title', t`Close prompt properties`);
+        dialog.root.setAttribute('aria-labelledby', heading.id);
+        propertyDialog = dialog;
+        dialog.closed.then(() => {
+            if (propertyDialog !== dialog) return;
+            propertyDialog = null;
+            closePopover(false);
+            if (draft) refreshProperties();
+        });
     }
 
     function closeOverlays() {
         closeActionMenu({ animate: false, restoreFocus: false });
         closePopover(false);
-        sheetController?.close({ animate: false, restoreFocus: false });
-        sheetController = null;
-        propertySheet?.remove();
-        propertySheet = null;
-        document.querySelectorAll('.sb-prompt-sheet-backdrop').forEach(node => node.remove());
+        propertyDialog?.forceClose();
+        propertyDialog = null;
     }
 
     function setMode(value) {

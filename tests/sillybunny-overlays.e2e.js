@@ -86,16 +86,23 @@ async function openChatActions(page, width) {
     return page.locator('#sb-bottom-chat-bar .sb-bottom-chat-management-actions');
 }
 
+function massDeleteFrame(page, width) {
+    const selector = width <= 768
+        ? '.sb-dialog-host[data-tier="dialog"]:has(.sb-dialog__page.sb-chat-mass-delete)'
+        : '.sb-dialog-host[data-tier="window"]:has(.sb-dialog.sb-chat-mass-delete)';
+    return page.locator(selector);
+}
+
 for (const width of [1440, 390]) {
     test.describe(`${width}px SillyBunny chat overlays`, () => {
         test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390 });
 
-        test('mass delete uses a Window, trailing checks and a Cancel-default destructive alert', async ({ page }) => {
+        test('mass delete preserves its Dialog tier, trailing checks and a Cancel-default destructive alert', async ({ page }) => {
             const { context, deleteRequests } = await prepareChat(page);
             const actions = await openChatActions(page, width);
             await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
 
-            const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-mass-delete)');
+            const frame = massDeleteFrame(page, width);
             await expect(frame).toBeVisible();
             await expect(frame.locator('#sb-chat-delete-title')).toBeHidden();
             const rows = frame.locator('.sb-chat-delete-row');
@@ -126,7 +133,7 @@ for (const width of [1440, 390]) {
             expect(deleteRequests).toHaveLength(0);
 
             await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
-            const reopened = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-mass-delete)');
+            const reopened = massDeleteFrame(page, width);
             await reopened.locator('.sb-chat-delete-row').filter({ hasText: 'QA History Chat 01' }).click();
             await reopened.getByRole('button', { name: 'Delete selected', exact: true }).click();
             await page.locator('dialog[role="alertdialog"] [data-response="delete"]').click();
@@ -134,7 +141,7 @@ for (const width of [1440, 390]) {
             expect(deleteRequests[0].chatfile).toBe('QA History Chat 01.jsonl');
 
             await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
-            const olderFrame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-mass-delete)');
+            const olderFrame = massDeleteFrame(page, width);
             await expect(olderFrame).toBeVisible();
             await olderFrame.getByRole('button', { name: 'Delete older', exact: true }).click();
             const olderConfirm = page.locator('dialog[role="alertdialog"]');

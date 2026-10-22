@@ -14,9 +14,10 @@ import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mob
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import { initializeColorPickers } from './sillybunny-color-picker.js';
+import { openActionMenu } from './sillybunny-action-menu.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
-import { openAlert } from './sillybunny-editor/dialog.js';
+import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
     animateIn,
@@ -1467,6 +1468,7 @@ const sbState = {
     mobileNav: {
         lastOpenedAt: 0,
         quickActionContainer: null,
+        quickActionTrigger: null,
         quickActionSection: null,
         quickActionDivider: null,
     },
@@ -1490,7 +1492,6 @@ const sbState = {
         sourceChangeHandler: null,
         sidebarOpen: false,
         mobileToolsOpen: false,
-        mobileToolsReturnFocus: null,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -3291,6 +3292,19 @@ function syncExistingMobileNavQuickActions(overlay) {
         const quickActionSection = list.closest('.sb-mobile-quick-action-section');
         if (quickActionSection instanceof HTMLElement) {
             sbState.mobileNav.quickActionSection = quickActionSection;
+            let trigger = quickActionSection.querySelector('.sb-mobile-quick-actions-trigger');
+            if (!(trigger instanceof HTMLButtonElement)) {
+                const title = quickActionSection.querySelector('.sb-mobile-section-title');
+                trigger = createElement('button', {
+                    className: 'sb-mobile-section-title sb-mobile-quick-actions-trigger',
+                    text: title?.textContent?.trim() || 'Quick Actions',
+                    attrs: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
+                });
+                if (title) title.replaceWith(trigger);
+                else quickActionSection.prepend(trigger);
+            }
+            sbState.mobileNav.quickActionTrigger = trigger;
+            bindMobileQuickActionTrigger(trigger);
         }
         refreshMobileNavQuickActions();
     }
@@ -5654,7 +5668,7 @@ function buildMobileChatTools() {
         return existingMobileTools;
     }
 
-    const overlay = createElement('div', { id: 'sb-mobile-chat-tools' });
+    const overlay = createElement('div', { className: 'sb-mobile-chat-tools-content' });
     const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel', attrs: { tabindex: '-1' } });
     const header = createElement('div', { className: 'sb-mobile-chat-header' });
     const dismissButton = createTopBarIconButton(
@@ -5664,7 +5678,7 @@ function buildMobileChatTools() {
             title: 'Close chat tools',
             className: 'sb-mobile-chat-close',
         },
-        () => closeMobileChatTools(),
+        () => closeMobileChatTools({ restoreFocus: true }),
     );
     const chatSelectField = createChatField({
         id: 'sb-mobile-chat-select-field',
@@ -5719,13 +5733,6 @@ function buildMobileChatTools() {
     searchStatus.hidden = true;
     connectionSection.hidden = true;
 
-    overlay.hidden = true;
-    overlay.setAttribute('aria-hidden', 'true');
-
-    if ('inert' in overlay) {
-        overlay.inert = true;
-    }
-
     chatSelectField.appendChild(chatSelect);
     searchField.append(searchInput, searchStatus);
     connectionField.appendChild(connectionSelect);
@@ -5752,12 +5759,7 @@ function buildMobileChatTools() {
     panel.append(header, chatSelectField, actions, connectionSection, recentSection);
     overlay.appendChild(panel);
 
-    overlay.addEventListener('click', event => {
-        if (event.target === overlay) {
-            closeMobileChatTools();
-        }
-    });
-    overlay.addEventListener('keydown', event => {
+    panel.addEventListener('keydown', event => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || !getChatbarState().mobileToolsOpen) {
             return;
         }
@@ -5790,7 +5792,8 @@ function buildMobileChatTools() {
     document.body.appendChild(overlay);
 
     getChatbarState().mobileTools = {
-        overlay,
+        overlay: null,
+        content: overlay,
         panel,
         chatSelect,
         searchInput,
@@ -5799,6 +5802,7 @@ function buildMobileChatTools() {
         connectionSection,
         connectionSelect,
         connectionStatus,
+        restoreFocusAfterClose: false,
         ...buttons,
     };
 
@@ -5809,55 +5813,60 @@ function setMobileChatToolsOpenState(shouldOpen, { restoreFocus = false } = {}) 
     const refs = buildMobileChatTools();
     const isOpen = Boolean(shouldOpen) && isMobileViewport();
 
-    if (!refs?.overlay) {
+    if (!refs?.content) {
         return;
     }
 
     const wasOpen = getChatbarState().mobileToolsOpen;
     getChatbarState().mobileToolsOpen = isOpen;
     if (isOpen && !wasOpen) {
-        const activeElement = document.activeElement;
-        getChatbarState().mobileToolsReturnFocus = activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
-    }
-    if (isOpen || !wasOpen) {
-        refs.overlay.hidden = !isOpen;
-    }
-    refs.overlay.classList.toggle('sb-chat-tools-open', isOpen);
-    refs.overlay.setAttribute('aria-hidden', String(!isOpen));
-
-    if ('inert' in refs.overlay) {
-        refs.overlay.inert = !isOpen;
+        const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        refs.restoreFocusAfterClose = false;
+        const dialog = openDialog({
+            tier: 'dialog',
+            title: t`Chat actions`,
+            content: refs.content,
+            className: 'sb-mobile-chat-tools-dialog',
+            initialFocus: () => refs.panel,
+        });
+        const sourceHeader = refs.content.querySelector('.sb-mobile-chat-header');
+        const searchField = sourceHeader?.querySelector('#sb-mobile-chat-search-field');
+        const closeButton = sourceHeader?.querySelector('#sb-mobile-chat-close');
+        if (searchField) refs.panel.prepend(searchField);
+        sourceHeader?.remove();
+        dialog.header.querySelector('.sb-dialog__close')?.remove();
+        if (closeButton) dialog.header.querySelector('.sb-dialog__header-end')?.append(closeButton);
+        dialog.root.id = 'sb-mobile-chat-tools';
+        dialog.root.classList.add('sb-chat-tools-open');
+        dialog.root.setAttribute('aria-hidden', 'false');
+        refs.overlay = dialog.root;
+        refs.dialog = dialog;
+        dialog.root.addEventListener('cancel', () => { refs.restoreFocusAfterClose = true; });
+        dialog.closed.then(() => {
+            if (refs.dialog !== dialog) return;
+            const shouldRestoreFocus = refs.restoreFocusAfterClose;
+            refs.restoreFocusAfterClose = false;
+            refs.dialog = null;
+            refs.overlay = null;
+            getChatbarState().mobileToolsOpen = false;
+            queueMobileModalStateSync();
+            if (shouldRestoreFocus && returnFocus?.isConnected) {
+                window.requestAnimationFrame(() => {
+                    if (!returnFocus.isConnected || returnFocus.closest('[inert]')) return;
+                    returnFocus.focus({ preventScroll: true });
+                });
+            }
+        });
+        scheduleChatbarRefresh(0);
+    } else if (wasOpen) {
+        refs.overlay?.setAttribute('aria-hidden', 'true');
+        refs.overlay?.classList.remove('sb-chat-tools-open');
+        refs.restoreFocusAfterClose = restoreFocus;
+        if (restoreFocus) refs.dialog?.close('close');
+        else refs.dialog?.forceClose();
     }
 
     queueMobileModalStateSync();
-
-    if (isOpen) {
-        if (!wasOpen) {
-            stopMotion(refs.panel);
-            animateIn(refs.panel, [
-                { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
-                { opacity: 1, transform: 'none' },
-            ], SPRING_SHEET);
-            // Escape is handled on the sheet, so focus has to be inside it.
-            window.requestAnimationFrame(() => refs.panel.focus({ preventScroll: true }));
-        }
-        scheduleChatbarRefresh(0);
-    } else if (wasOpen) {
-        refs.overlay.hidden = false;
-        animateOut(refs.panel, [
-            { opacity: 1, transform: 'none' },
-            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
-        ], () => {
-            refs.overlay.hidden = true;
-        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
-
-        const returnFocus = getChatbarState().mobileToolsReturnFocus;
-        getChatbarState().mobileToolsReturnFocus = null;
-        if (restoreFocus && returnFocus?.isConnected) {
-            // Wait for the modal sync frame, which lifts inert from the chat column.
-            window.requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
-        }
-    }
 }
 
 function openMobileChatTools() {
@@ -13645,6 +13654,41 @@ function updateMobileNavButtonLabel() {
     button.setAttribute('aria-label', title);
 }
 
+function runMobileQuickAction(action) {
+    closeMobileNav();
+
+    if (action.type === 'custom') {
+        void activateMobileQuickAction(action);
+    } else if (action.type === 'shell') {
+        openShell(action.shellKey);
+    } else if (action.shellKey === 'characters') {
+        openCharacterPanelTab(action.tabId);
+    } else {
+        toggleShellPanel(action.shellKey, action.tabId);
+    }
+}
+
+function openMobileQuickActionMenu(trigger, event) {
+    const actions = sbState.mobileQuickActions.map(normalizeMobileQuickAction).filter(Boolean);
+    openActionMenu({
+        trigger,
+        title: trigger.textContent.trim(),
+        keyboard: event.detail === 0,
+        bounds: document.getElementById('sb-mobile-nav-content'),
+        sections: [{ items: actions.map(action => ({
+            label: action.label,
+            icon: `fa-solid ${action.icon || SB_MOBILE_QUICK_ACTION_ICON_FALLBACK}`,
+            onSelect: () => runMobileQuickAction(action),
+        })) }],
+    });
+}
+
+function bindMobileQuickActionTrigger(trigger) {
+    if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.sbBound === 'true') return;
+    trigger.dataset.sbBound = 'true';
+    trigger.addEventListener('click', event => openMobileQuickActionMenu(trigger, event));
+}
+
 function createMobileQuickActionButton(item) {
     const action = normalizeMobileQuickAction(item);
     if (!action) {
@@ -13668,19 +13712,7 @@ function createMobileQuickActionButton(item) {
     const label = createElement('span', { text: action.label });
 
     button.append(icon, label);
-    button.addEventListener('click', () => {
-        closeMobileNav();
-
-        if (action.type === 'custom') {
-            activateMobileQuickAction(action);
-        } else if (action.type === 'shell') {
-            openShell(action.shellKey);
-        } else if (action.shellKey === 'characters') {
-            openCharacterPanelTab(action.tabId);
-        } else {
-            toggleShellPanel(action.shellKey, action.tabId);
-        }
-    });
+    button.addEventListener('click', () => runMobileQuickAction(action));
 
     return button;
 }
@@ -13693,15 +13725,21 @@ function refreshMobileNavQuickActions() {
     }
 
     sbState.mobileNav.quickActionContainer = list;
+    const trigger = sbState.mobileNav.quickActionTrigger;
     list.replaceChildren();
 
     if (!sbState.mobileQuickActions.length) {
+        list.hidden = false;
+        if (trigger) trigger.hidden = true;
         list.appendChild(createElement('div', {
             className: 'sb-mobile-quick-action-empty',
             text: 'No mobile Quick Actions selected yet.',
         }));
         return;
     }
+
+    list.hidden = true;
+    if (trigger) trigger.hidden = false;
 
     for (const action of sbState.mobileQuickActions) {
         const button = createMobileQuickActionButton(action);
@@ -13733,13 +13771,20 @@ function buildMobileNav() {
     }
 
     const sectionBlock = createElement('section', { className: 'sb-mobile-section' });
-    const quickActionTitle = createElement('span', { className: 'sb-mobile-section-title', text: 'Quick Actions' });
+    const quickActionTitle = createElement('button', {
+        className: 'sb-mobile-section-title sb-mobile-quick-actions-trigger',
+        text: 'Quick Actions',
+        attrs: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
+    });
     const list = createElement('div', { className: 'sb-mobile-section-list sb-mobile-quick-action-list' });
+    list.hidden = true;
+    bindMobileQuickActionTrigger(quickActionTitle);
 
     sectionBlock.classList.add('sb-mobile-quick-action-section');
     sectionBlock.append(quickActionTitle, list);
     content.append(sectionBlock);
     sbState.mobileNav.quickActionContainer = list;
+    sbState.mobileNav.quickActionTrigger = quickActionTitle;
     sbState.mobileNav.quickActionSection = sectionBlock;
     sbState.mobileNav.quickActionDivider = null;
     refreshMobileNavQuickActions();

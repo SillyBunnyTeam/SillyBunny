@@ -1149,7 +1149,7 @@ test.describe('mobile chat tools with a chat at iPhone 390x844', () => {
         const search = page.locator('#sb-mobile-chat-search');
         const chatFilesButton = page.locator('#sb-mobile-chat-tools-panel .sb-mobile-chat-actions button[title="View chat files"]');
         // The shared Window owns Chat History; the legacy shadow id stays attached but hidden for compatibility.
-        const chatFiles = page.locator('.sb-dialog.sb-chat-history-dialog');
+        const chatFiles = page.locator('.sb-dialog-host .sb-dialog__page.sb-chat-history-dialog');
         const authorsNote = page.locator('#floatingPrompt');
 
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());

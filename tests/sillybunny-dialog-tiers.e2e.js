@@ -233,7 +233,7 @@ for (const width of [1440, 390]) {
         await page.locator('dialog.popup[open] toolcool-color-picker .button').click();
         await expect(page.locator('.sb-color-picker-menu')).toBeVisible();
         await page.evaluate(() => window.qaPopup.completeCancelled());
-        await expect(page.locator('.sb-color-picker-menu, .sb-color-picker-sheet')).toHaveCount(0);
+        await expect(page.locator('.sb-color-picker-menu, .sb-dialog.sb-color-picker-dialog')).toHaveCount(0);
         await expect(page.locator('dialog[open]')).toHaveCount(0);
     });
 }

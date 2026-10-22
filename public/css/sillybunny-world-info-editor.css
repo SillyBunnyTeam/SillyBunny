@@ -677,7 +677,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
 
 #sb-settings-page .sb-wi-entry .sb-wi-entry-footer .editor_maximize[data-for],
 #sb-settings-page .sb-wi-entry .sb-wi-dropdown,
-.sb-wi-property-sheet .menu_button {
+:is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button {
     display: inline-flex;
     flex: none;
     align-items: center;
@@ -694,7 +694,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
 }
 
 #sb-settings-page .sb-wi-entry .sb-wi-entry-footer .editor_maximize[data-for],
-.sb-wi-property-sheet .menu_button_icon {
+:is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button_icon {
     width: 40px;
     min-width: 40px;
     height: 40px;
@@ -725,7 +725,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
 }
 
 #sb-settings-page .sb-wi-entry .sb-wi-dropdown,
-.sb-wi-property-sheet .sb-wi-dropdown {
+:is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .sb-wi-dropdown {
     justify-content: space-between;
     width: auto;
     min-width: 128px;
@@ -745,7 +745,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
 }
 
 #sb-settings-page .sb-wi-entry .sb-wi-property input,
-.sb-wi-property-sheet .sb-wi-property input {
+:is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .sb-wi-property input {
     box-sizing: border-box;
     width: 66px;
     min-height: 36px;
@@ -849,6 +849,22 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
     justify-content: space-between;
 }
 
+.sb-dialog.sb-world-info-properties-dialog .sb-dialog__body {
+    padding: 0;
+}
+
+.sb-dialog.sb-world-info-properties-dialog .sb-wi-properties {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    border: 0;
+}
+
+.sb-dialog.sb-world-info-properties-dialog .sb-wi-property {
+    min-height: 44px;
+    justify-content: space-between;
+}
+
 .sb-wi-property-popover {
     position: fixed;
     z-index: calc(var(--sb-z-modal) + 1);
@@ -898,27 +914,27 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-wi-property-sheet input:focus-visible {
+:is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) input:focus-visible {
     outline: none;
     border-color: var(--sb-composer-focus-border);
     box-shadow: var(--sb-composer-focus-ring);
 }
 
 @media (hover: hover) {
-    .sb-wi-property-sheet .menu_button:hover {
+    :is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
 @media (pointer: coarse) {
     #sb-settings-page .sb-wi-entry :is(.sb-wi-dropdown, .sb-wi-entry-expand, .sb-wi-property input),
-    .sb-wi-property-sheet :is(.menu_button, .sb-wi-property input),
+    :is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) :is(.menu_button, .sb-wi-property input),
     .sb-wi-property-option {
         min-height: 44px;
     }
 
     #sb-settings-page .sb-wi-entry .sb-wi-entry-footer .editor_maximize[data-for],
-    .sb-wi-property-sheet .menu_button_icon {
+    :is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button_icon {
         min-width: 44px;
     }
 }

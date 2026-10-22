@@ -12,7 +12,9 @@ import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
 import { animateIn, stopMotion, MOTION_FAST } from './sillybunny-motion.js';
-import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
+import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
+import { openDialog } from './sillybunny-editor/dialog.js';
+import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 
 let nextEntryId = 0;
 
@@ -82,9 +84,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     let showingPreview = false;
     let session;
     let dropdown = null;
-    let propertySheet = null;
-    let sheetBackdrop = null;
-    let sheetController = null;
+    let propertyDialog = null;
+    let propertyContent = null;
     const propertyViews = [];
     let lastState = { dirty: false, saving: false };
     const fields = new Map();
@@ -128,7 +129,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     summary.setAttribute('aria-expanded', 'false');
     summary.addEventListener('click', openProperties);
     header.append(back, title, dirtyDot, modes, modeToggle, cancel, saveButton);
-    root.append(header, summary, createProperties(), banner, body);
+    propertyContent = createProperties();
+    root.append(header, summary, propertyContent, banner, body);
     host.replaceChildren(root);
 
     const storage = createEditorDraftStore({
@@ -257,7 +259,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             dropdown = { trigger, node };
             trigger.setAttribute('aria-expanded', 'true');
             trigger.setAttribute('aria-controls', node.id);
-            document.body.append(node);
+            hostOverlayLayer(node);
             blockUpstreamDrawerClose(node);
             const rect = trigger.getBoundingClientRect();
             const width = Math.min(Math.max(208, rect.width), innerWidth - 16);
@@ -322,41 +324,33 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
 
     function openProperties() {
         closeDropdown();
-        if (!sheetController) {
-            sheetBackdrop = element('button', 'sb-wi-sheet-backdrop');
-            sheetBackdrop.type = 'button';
-            sheetBackdrop.tabIndex = -1;
-            sheetBackdrop.hidden = true;
-            sheetBackdrop.setAttribute('aria-label', t`Close`);
-            propertySheet = element('div', 'sb-wi-property-sheet');
-            propertySheet.hidden = true;
-            propertySheet.setAttribute('role', 'dialog');
-            propertySheet.setAttribute('aria-modal', 'true');
-            const heading = element('h2', '', t`World Info`);
-            heading.id = `${instanceId}-properties-title`;
-            heading.tabIndex = -1;
-            propertySheet.setAttribute('aria-labelledby', heading.id);
-            const sheetHeader = element('header', 'sb-wi-sheet-header');
-            const close = button('', 'menu_button_icon');
-            close.title = t`Close`;
-            close.setAttribute('aria-label', t`Close`);
-            const glyph = element('i', 'fa-solid fa-xmark');
-            glyph.setAttribute('aria-hidden', 'true');
-            close.append(glyph);
-            close.addEventListener('click', () => sheetController.close());
-            sheetHeader.append(heading, close);
-            propertySheet.append(sheetHeader, createProperties());
-            propertySheet.addEventListener('keydown', event => {
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') onKeydown(event);
-            });
-            document.body.append(sheetBackdrop, propertySheet);
-            sheetController = createSheetController({
-                sheet: propertySheet, backdrop: sheetBackdrop, getInitialFocus: () => heading, getReturnFocus: () => summary,
-                onClose: () => { closeDropdown(); summary.setAttribute('aria-expanded', 'false'); refreshProperties(); },
-            });
-        }
+        const heading = element('h2', '', t`World Info`);
+        heading.id = `${instanceId}-properties-title`;
+        heading.tabIndex = -1;
+        propertyContent ??= createProperties();
+        const content = document.createDocumentFragment();
+        content.append(heading, propertyContent);
+        const dialog = openDialog({
+            tier: 'dialog',
+            title: heading.textContent,
+            content,
+            className: 'sb-world-info-properties-dialog',
+            initialFocus: () => heading,
+        });
+        dialog.header.querySelector('.sb-dialog__title')?.replaceWith(heading);
+        heading.classList.add('sb-dialog__title');
+        dialog.root.setAttribute('aria-labelledby', heading.id);
+        dialog.surface.addEventListener('keydown', onKeydown, true);
+        propertyDialog = dialog;
         summary.setAttribute('aria-expanded', 'true');
-        sheetController.open();
+        dialog.closed.then(() => {
+            if (propertyDialog !== dialog) return;
+            propertyDialog = null;
+            closeDropdown();
+            summary.setAttribute('aria-expanded', 'false');
+            root.insertBefore(propertyContent, banner);
+            refreshProperties();
+        });
     }
 
     function writeField(field, value) {
@@ -749,6 +743,10 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         if (event.key !== 'Escape') return;
         event.preventDefault();
         event.stopPropagation();
+        if (propertyDialog?.surface.contains(event.target)) {
+            void propertyDialog.close('close', 'escape');
+            return;
+        }
         const field = event.target.closest('input, textarea, select, [contenteditable="true"]');
         if (field) {
             field.blur();
@@ -807,9 +805,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             tokenRequest++;
             chrome.dispose();
             closeDropdown();
-            sheetController?.close({ animate: false, restoreFocus: false });
-            propertySheet?.remove();
-            sheetBackdrop?.remove();
+            propertyDialog?.forceClose();
+            propertyDialog = null;
             $(contentField.textarea).off('.sbWiEntry');
             stopMotion(contentField.textarea);
             stopMotion(contentField.pane);

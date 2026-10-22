@@ -936,10 +936,6 @@ body:not(.movingUI) .drawer-content.maximized {
     line-height: var(--sb-line-body);
 }
 
-#sb-mobile-chat-tools {
-    display: none;
-}
-
 #sb-mobile-chat-tools-panel {
     position: relative;
     isolation: isolate;
@@ -4386,17 +4382,17 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     text-shadow: 0 0 8px var(--active), 0 0 14px color-mix(in srgb, var(--active) 50%, transparent);
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-note,
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-status {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-note,
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-status {
     margin: 0;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-note,
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-status {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-note,
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-status {
     opacity: 0.75;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-age {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-age {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -4404,28 +4400,28 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     gap: 8px;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-age-entry {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-age-entry {
     flex: 1 1 220px;
     min-width: 0;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-age-entry input {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-age-entry input {
     width: min(9rem, 100%);
     text-align: center;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets .menu_button {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button {
     min-height: 40px;
     margin: 0;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-list {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-list {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -4434,11 +4430,11 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     overflow: visible;
 }
 
-.sb-dialog.sb-chat-mass-delete .sb-chat-delete-row .ds-row-text {
+:is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-row .ds-row-text {
     overflow-wrap: anywhere;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -4462,92 +4458,92 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     overflow: visible;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup [name='selectChatPopupHeader'] {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup [name='selectChatPopupHeader'] {
     flex-wrap: wrap;
 }
 
-.sb-dialog.sb-chat-history-dialog :is(#selectChatPopupHeaderText, #select_chat_search, #select_chat_cross)[hidden] {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) :is(#selectChatPopupHeaderText, #select_chat_search, #select_chat_cross)[hidden] {
     display: none !important;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_div {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_div {
     flex: 0 0 auto;
     height: auto;
     overflow: visible;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_group {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_group {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-start;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_checkbox {
     flex: 1 1 100%;
     width: 100%;
     min-height: 44px;
     margin: 0;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox .ds-row-text {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_checkbox .ds-row-text {
     min-width: 0;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox .ds-row-label {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_checkbox .ds-row-label {
     white-space: normal;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_management_tools,
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_management_group {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_management_tools,
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_management_group {
     min-width: 0;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .select_chat_block_filename {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .select_chat_block_filename {
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .select_chat_block_wrapper {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .select_chat_block_wrapper {
     flex: 0 0 auto;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_status {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_status {
     overflow-wrap: anywhere;
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_preview_list {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_preview_list {
     max-height: min(45vh, 24rem);
 }
 
-.sb-dialog.sb-chat-history-dialog #select_chat_div {
+:is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_div {
     display: flex;
     flex-direction: column;
     gap: 5px;
 }
 
 @media screen and (max-width: 700px) {
-    .sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_group {
+    :is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_group {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox {
+    :is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_checkbox {
         grid-column: 1 / -1;
     }
 }
 
 @media screen and (max-width: 450px) {
-    .sb-dialog.sb-chat-mass-delete .sb-chat-delete-age {
+    :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-age {
         align-items: stretch;
     }
 
-    .sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets {
+    :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         width: 100%;
     }
 
-    .sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets .menu_button {
+    :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button {
         min-width: 0;
         padding-inline: 6px;
     }

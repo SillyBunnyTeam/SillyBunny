@@ -4,13 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 const publicRoot = path.resolve(fileURLToPath(new URL('../public/', import.meta.url)));
+const appBaseUrl = process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4455';
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
 async function mountPicker(page, { accent = false, fallback = false } = {}) {
     if (fallback) {
         await page.addInitScript(() => { HTMLElement.prototype.showPopover = undefined; });
     }
-    await page.route('http://colors.test/**', route => {
+    await page.route('http://colors.test/**', async route => {
         const pathname = new URL(route.request().url()).pathname;
         if (pathname === '/') {
             return route.fulfill({
@@ -38,6 +39,16 @@ async function mountPicker(page, { accent = false, fallback = false } = {}) {
                     </body></html>`,
             });
         }
+        if (pathname === '/lib.js') {
+            const response = await route.fetch({ url: new URL('/lib.js', appBaseUrl).href });
+            return route.fulfill({ response });
+        }
+        if (pathname === '/scripts/i18n.js') {
+            return route.fulfill({
+                contentType: 'text/javascript',
+                body: 'export const t = (strings, ...values) => Array.isArray(strings) ? strings.reduce((text, part, index) => text + part + (values[index] ?? ""), "") : strings; export const translate = value => value;',
+            });
+        }
         const filePath = path.resolve(publicRoot, `.${pathname}`);
         if (!filePath.startsWith(`${publicRoot}${path.sep}`)) {
             return route.abort();
@@ -58,6 +69,19 @@ async function mountPicker(page, { accent = false, fallback = false } = {}) {
 }
 
 async function expectUnclippedPicker(page) {
+    const dialog = page.locator('.sb-dialog.sb-color-picker-dialog');
+    if (await dialog.isVisible()) {
+        const geometry = await dialog.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: window.innerWidth, height: window.innerHeight };
+        });
+        expect(geometry.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.right).toBeLessThanOrEqual(geometry.width);
+        expect(geometry.bottom).toBeLessThanOrEqual(geometry.height);
+        return;
+    }
+
     const surface = page.locator('.sb-color-picker-menu, toolcool-color-picker-popup .popup');
     await expect(surface).toBeVisible();
     const geometry = await surface.evaluate(element => {
@@ -249,7 +273,7 @@ test('keeps mobile controls reachable on short screens and traps focus in its sh
     await alpha.press('Tab');
     await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
     await page.keyboard.press('Escape');
-    await expect(page.locator('.sb-color-picker-sheet')).toHaveCount(0);
+    await expect(page.locator('.sb-dialog.sb-color-picker-dialog')).toHaveCount(0);
 });
 
 test('clamps the fallback desktop menu near the bottom-right corner', async ({ page }) => {
@@ -285,14 +309,14 @@ test('finishes sheet motion without clipping and respects reduced motion', async
     await mountPicker(page);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.locator('toolcool-color-picker .button').click();
-    await page.locator('.sb-color-picker-sheet').evaluate(async sheet => {
+    await page.locator('.sb-dialog.sb-color-picker-dialog').evaluate(async sheet => {
         await Promise.all(sheet.getAnimations().map(animation => animation.finished));
     });
     await expectUnclippedPicker(page);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.locator('toolcool-color-picker .button').click();
-    expect(await page.locator('.sb-color-picker-sheet').evaluate(sheet => sheet.getAnimations().length)).toBe(0);
+    expect(await page.locator('.sb-dialog.sb-color-picker-dialog').evaluate(sheet => sheet.getAnimations().length)).toBe(0);
 });
 
 test.describe('Touch colour controls', () => {
@@ -312,7 +336,7 @@ test.describe('Touch colour controls', () => {
         expect(target.width).toBeGreaterThanOrEqual(44);
         expect(target.height).toBeGreaterThanOrEqual(44);
         await close.tap();
-        await expect(page.locator('.sb-color-picker-sheet')).toHaveCount(0);
+        await expect(page.locator('.sb-dialog.sb-color-picker-dialog')).toHaveCount(0);
     });
 });
 

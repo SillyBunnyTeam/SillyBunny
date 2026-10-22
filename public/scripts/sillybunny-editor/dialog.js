@@ -321,8 +321,9 @@ function wrapTab(host, event) {
  * Builds one page: header bar, optional search row, scrolling body and optional bottom bar.
  * @returns {object}
  */
-function createPage({ title, subtitle = '', content = null, search = null, menu = null, menuLabel = t`Menu`, responses = null, nested = false, onResponse, onBack }) {
+function createPage({ title, subtitle = '', content = null, search = null, menu = null, menuLabel = t`Menu`, responses = null, className = '', nested = false, onResponse, onBack }) {
     const page = element('section', 'sb-dialog__page');
+    if (className) page.classList.add(...className.split(/\s+/).filter(Boolean));
     const header = element('header', 'sb-dialog__header');
     const start = element('div', 'sb-dialog__header-start');
     const titles = element('div', 'sb-dialog__titles');
@@ -449,7 +450,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * @param {(reason: string) => boolean|Promise<boolean>} [o.canClose] Reasons: 'close', 'cancel', 'affirmative',
  *     'escape', 'scrim', 'swipe', 'programmatic', or an extra response id.
  * @param {() => HTMLElement|null} [o.initialFocus]
- * @param {string} [o.className] Added to the surface.
+ * @param {string} [o.className] Added to the surface or, when pushed, to the page.
  */
 export function openDialog({
     tier = 'dialog', title, subtitle = '', content = null, search = null, menu = null, menuLabel,
@@ -457,7 +458,7 @@ export function openDialog({
 }) {
     const parentHost = getTopmostDialog();
     const parent = parentHost ? frames.get(/** @type {HTMLDialogElement} */ (parentHost)) : null;
-    if (parent) return parent.pushPage({ title, subtitle, content, search, menu, menuLabel, responses, canClose, initialFocus });
+    if (parent) return parent.pushPage({ title, subtitle, content, search, menu, menuLabel, responses, canClose, initialFocus, className });
 
     const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className });
     const { host, scrim, surface, query, isSheet, syncPresentation } = frame;

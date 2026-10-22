@@ -1,5 +1,8 @@
-import { describe, expect, test } from '@jest/globals';
-import { parsePickerHex, positionColorMenu } from '../public/scripts/sillybunny-color-picker.js';
+import { describe, expect, jest, test } from '@jest/globals';
+
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ openDialog: jest.fn() }));
+
+const { parsePickerHex, positionColorMenu } = await import('../public/scripts/sillybunny-color-picker.js');
 
 describe('colour picker hex input', () => {
     test('retains opacity when changing only the colour', () => {

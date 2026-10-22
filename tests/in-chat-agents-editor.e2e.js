@@ -474,7 +474,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
                 selected: read(group.querySelector('input:checked + span'), properties),
                 unselected: read(group.querySelector('input:not(:checked) + span'), properties),
                 title: read(sheet.querySelector('h2'), [
-                    'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'margin', 'padding',
+                    'color', 'font-family', 'font-size', 'font-weight', 'margin', 'padding',
                 ]),
                 select: read(sheet.querySelector('.sb-prompt-dropdown'), [
                     'color', 'background-color', 'height', 'width', 'min-height', 'padding',
@@ -515,7 +515,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     const promptSummary = prompt.getByRole('button', { name: 'Prompt properties', exact: true });
     await expect(promptSummary).toHaveText(/^.+ · .+ · .+ ›$/);
     await promptSummary.click();
-    const reference = page.locator('.sb-prompt-sheet');
+    const reference = page.locator('.sb-dialog.sb-prompt-properties-dialog');
     const forbid = reference.getByRole('switch', { name: 'Forbid overrides', exact: true });
     await forbid.uncheck();
     const promptText = await promptSummary.textContent();

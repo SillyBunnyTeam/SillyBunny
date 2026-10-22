@@ -124,6 +124,8 @@ for (const width of [1440, 390]) {
             await openFromList(page);
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
             await page.locator('#sb-action-menu:visible [role="menuitem"]').filter({ hasText: 'lorum ipsum' }).first().click();
+            const pickerPage = page.locator('.sb-dialog-host .sb-dialog__page.sb-color-picker-dialog');
+            if (width <= 450) await expect(pickerPage).toBeVisible();
             const picker = page.locator('.sb-color-picker-menu:visible');
             await expect(picker).toBeVisible();
             const hex = picker.getByRole('textbox', { name: 'Hex', exact: true });
@@ -131,7 +133,10 @@ for (const width of [1440, 390]) {
             await hex.press('Enter');
             const token = () => page.locator('.sb-character-list .ds-tag-chips .tag[id="qa-tag-alpha"]').evaluate(node => node.style.getPropertyValue('--sb-tag-color'));
             await expect.poll(token).toMatch(/34.*204.*136/);
-            await picker.getByRole('button', { name: 'Close', exact: true }).click();
+            const closePicker = width <= 450
+                ? page.locator('.sb-dialog-host .sb-color-picker-close')
+                : picker.getByRole('button', { name: 'Close', exact: true });
+            await closePicker.click();
             await page.evaluate(async () => {
                 const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
                 await executeSlashCommandsWithOptions('/tag-add name="QA tag character" QA External');

@@ -13,11 +13,13 @@ await jest.unstable_mockModule('../../public/scripts/user.js', () => ({ getCurre
 const countTokens = jest.fn(async () => 12);
 await jest.unstable_mockModule('../../public/scripts/tokenizers.js', () => ({ getTokenCountAsync: countTokens }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
-    openActionMenu: jest.fn(), closeActionMenu: jest.fn(), isActionMenuOpen: () => false,
+    openActionMenu: jest.fn(), closeActionMenu: jest.fn(), isActionMenuOpen: () => false, positionPopover: jest.fn(),
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
     animateIn: jest.fn(), animateOut: (_node, _frames, finish) => finish(), animateHeightFrom: jest.fn(),
-    stopMotion: jest.fn(), prefersReducedMotion: () => true, MOTION_EASE_OUT_QUAD: 'linear', MOTION_FAST: 0, SPRING_SHEET: {},
+    play: jest.fn((_node, _frames, options) => options?.onEnd?.()), stopMotion: jest.fn(), prefersReducedMotion: () => true,
+    MOTION_EASE_OUT_QUAD: 'linear', MOTION_EASE_OUT_CUBIC: 'linear', MOTION_FAST: 0,
+    MOTION_SLOW: 0, MOTION_POPOVER_CLOSE: 0, SPRING_DIALOG: {}, SPRING_NAVIGATION: {}, SPRING_SHEET: {},
 }));
 
 const { mountWorldInfoEntry, worldInfoDraftKey } = await import('../../public/scripts/sillybunny-world-info-entry.js');
@@ -88,6 +90,10 @@ function keydown(target, key, extra = {}) {
     return event;
 }
 
+async function settle() {
+    for (let index = 0; index < 10; index++) await Promise.resolve();
+}
+
 function draftKey(name = 'My book', uid = 0) {
     return `sb-wi-editor-draft-test-user-${encodeURIComponent(name)}-${uid}`;
 }
@@ -103,6 +109,8 @@ function backup(harness) {
 
 beforeEach(() => {
     jest.useFakeTimers();
+    HTMLDialogElement.prototype.showModal ??= function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close ??= function () { this.removeAttribute('open'); };
     document.body.replaceChildren();
     localStorage.clear();
     translate.mockClear();
@@ -211,38 +219,43 @@ describe('World Info schema form', () => {
         expect(controller.isDirty()).toBe(false);
     });
 
-    test('sheet edits synchronize existing controls, retain input focus, and Escape closes only the sheet', async () => {
+    test('property dialog edits retain the controls and Escape closes only the dialog', async () => {
         const { host, controller, requestClose } = mount();
         const summary = host.querySelector('.sb-wi-property-summary');
-        summary.getClientRects = () => [{}];
-        summary.click();
-        const sheet = document.querySelector('.sb-wi-property-sheet');
         const position = control(host, 'position');
-        edit(sheet, 'position', '7');
-        const outlet = control(sheet, 'outletName');
+        summary.focus();
+        summary.click();
+        const dialog = document.querySelector('.sb-world-info-properties-dialog');
+        expect(dialog).not.toBeNull();
+        expect(control(dialog, 'position')).toBe(position);
+        edit(dialog, 'position', '7');
+        const outlet = control(dialog, 'outletName');
         outlet.focus();
-        edit(sheet, 'outletName', 'sheet-outlet');
+        edit(dialog, 'outletName', 'sheet-outlet');
         expect(document.activeElement).toBe(outlet);
-        expect(control(sheet, 'outletName')).toBe(outlet);
-        expect(control(host, 'position')).toBe(position);
-        expect(control(host, 'outletName').value).toBe('sheet-outlet');
+        expect(control(dialog, 'outletName')).toBe(outlet);
+        expect(control(dialog, 'outletName').value).toBe('sheet-outlet');
         expect(summary.textContent).toContain('sheet-outlet');
         expect(controller.isDirty()).toBe(true);
         const outer = jest.fn();
         document.body.addEventListener('keydown', outer);
         const event = keydown(outlet, 'Escape');
         expect(event.defaultPrevented).toBe(true);
-        expect(sheet.hidden).toBe(true);
+        await settle();
+        expect(document.querySelector('.sb-world-info-properties-dialog')).toBeNull();
+        expect(control(host, 'position')).toBe(position);
+        expect(control(host, 'outletName')).toBe(outlet);
         expect(summary.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(summary);
         expect(outer).not.toHaveBeenCalled();
         expect(requestClose).not.toHaveBeenCalled();
         document.body.removeEventListener('keydown', outer);
         summary.click();
-        expect(control(sheet, 'outletName').value).toBe('sheet-outlet');
+        const reopened = document.querySelector('.sb-world-info-properties-dialog');
+        expect(control(reopened, 'outletName').value).toBe('sheet-outlet');
         controller.destroy();
-        expect(document.querySelector('.sb-wi-property-sheet')).toBeNull();
-        expect(document.querySelector('.sb-wi-sheet-backdrop')).toBeNull();
+        expect(document.querySelector('.sb-world-info-properties-dialog')).toBeNull();
+        expect(document.querySelector('.sb-dialog-host')).toBeNull();
     });
 
     test('discard restores focused bar inputs as well as their sheet counterparts', () => {

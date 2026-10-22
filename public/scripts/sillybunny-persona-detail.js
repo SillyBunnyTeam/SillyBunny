@@ -20,9 +20,11 @@ import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { createEntityRow } from './sillybunny-editor/entity-row.js';
 import { bindListKeyboard, reconcileRows, rowEntry } from './sillybunny-editor/list-rows.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
+import { openDialog } from './sillybunny-editor/dialog.js';
+import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
 import { animateIn, stopMotion, MOTION_FAST } from './sillybunny-motion.js';
-import { createSheetController, blockUpstreamDrawerClose } from './sillybunny-sheet.js';
+import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
 
 let nextDetailId = 0;
 
@@ -97,9 +99,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     let tokenTimer = null;
     let tokenRequest = 0;
     let dropdown = null;
-    let propertySheet = null;
-    let sheetBackdrop = null;
-    let sheetController = null;
+    let propertyDialog = null;
+    let propertyContent = null;
     let picker = null;
     const connectionRows = new Map();
     const connectionViews = new WeakMap();
@@ -156,7 +157,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         { id: 'depth', label: t`Depth` },
         { id: 'role', label: t`Role`, options: model.ROLE_OPTIONS },
     ];
-    root.append(header, summary, createProperties(), banner, body);
+    propertyContent = createProperties();
+    root.append(header, summary, propertyContent, banner, body);
     host.replaceChildren(root);
 
     const storage = createEditorDraftStore({ keyFor: personaDraftKey });
@@ -666,7 +668,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             dropdown = { trigger, node };
             trigger.setAttribute('aria-expanded', 'true');
             trigger.setAttribute('aria-controls', node.id);
-            document.body.append(node);
+            hostOverlayLayer(node);
             blockUpstreamDrawerClose(node);
             const rect = trigger.getBoundingClientRect();
             const width = Math.min(Math.max(208, rect.width), innerWidth - 16);
@@ -730,38 +732,36 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     }
 
     function openProperties() {
-        if (sheetController?.isOpen()) return sheetController.close();
+        if (propertyDialog?.isOpen) return propertyDialog.close('close');
         closeDropdown();
-        if (!sheetController) {
-            sheetBackdrop = button('', 'sb-persona-sheet-backdrop');
-            sheetBackdrop.tabIndex = -1;
-            sheetBackdrop.hidden = true;
-            sheetBackdrop.setAttribute('aria-label', t`Close`);
-            propertySheet = element('div', 'sb-persona-property-sheet');
-            propertySheet.hidden = true;
-            propertySheet.setAttribute('role', 'dialog');
-            propertySheet.setAttribute('aria-modal', 'true');
-            const heading = element('h2', '', t`Persona`);
-            heading.id = `${instanceId}-properties-title`;
-            heading.tabIndex = -1;
-            propertySheet.setAttribute('aria-labelledby', heading.id);
-            const sheetHeader = element('header', 'sb-persona-sheet-header');
-            const close = iconButton(t`Close`, 'xmark');
-            close.addEventListener('click', () => sheetController.close());
-            sheetHeader.append(heading, close);
-            propertySheet.append(sheetHeader, createProperties());
-            propertySheet.addEventListener('keydown', event => {
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') onKeydown(event);
-            });
-            document.body.append(sheetBackdrop, propertySheet);
-            sheetController = createSheetController({
-                sheet: propertySheet, backdrop: sheetBackdrop, getInitialFocus: () => heading, getReturnFocus: () => summary,
-                onClose: () => { closeDropdown(); summary.setAttribute('aria-expanded', 'false'); refreshProperties(true); },
-            });
-        }
         refreshProperties(true);
         summary.setAttribute('aria-expanded', 'true');
-        sheetController.open();
+        const heading = element('h2', '', t`Persona`);
+        heading.id = `${instanceId}-properties-title`;
+        heading.tabIndex = -1;
+        propertyContent ??= createProperties();
+        const content = document.createDocumentFragment();
+        content.append(heading, propertyContent);
+        const dialog = openDialog({
+            tier: 'dialog',
+            title: heading.textContent,
+            content,
+            className: 'sb-persona-properties-dialog',
+            initialFocus: () => heading,
+        });
+        dialog.header.querySelector('.sb-dialog__title')?.replaceWith(heading);
+        heading.classList.add('sb-dialog__title');
+        dialog.root.setAttribute('aria-labelledby', heading.id);
+        dialog.surface.addEventListener('keydown', onKeydown, true);
+        propertyDialog = dialog;
+        dialog.closed.then(() => {
+            if (propertyDialog !== dialog) return;
+            propertyDialog = null;
+            closeDropdown();
+            summary.setAttribute('aria-expanded', 'false');
+            root.insertBefore(propertyContent, banner);
+            refreshProperties(true);
+        });
     }
 
     function renderBanner() {
@@ -959,6 +959,10 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         if (event.key !== 'Escape') return;
         event.preventDefault();
         event.stopPropagation();
+        if (propertyDialog?.surface.contains(event.target)) {
+            void propertyDialog.close('close', 'escape');
+            return;
+        }
         const field = event.target.closest('input, textarea, select, [contenteditable="true"]');
         if (field) {
             field.blur();
@@ -1018,9 +1022,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             unbindConnections();
             picker?.close();
             closeDropdown();
-            sheetController?.close({ animate: false, restoreFocus: false });
-            propertySheet?.remove();
-            sheetBackdrop?.remove();
+            propertyDialog?.forceClose();
+            propertyDialog = null;
             $(description).off('.sbPersonaDetail');
             for (const view of noteViews.values()) $(view.textarea).off('.sbPersonaDetail');
             stopMotion(description);

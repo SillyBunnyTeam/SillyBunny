@@ -282,11 +282,14 @@ test('mobile settings page and chat tools use WAAPI motion with reduced-motion f
     await expect(settingsPage).toHaveAttribute('hidden');
 
     await page.locator('.sb-bottom-chat-chip').click();
-    await expect.poll(() => page.locator('#sb-bottom-chat-sheet').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
-    await expect(page.locator('#sb-bottom-chat-sheet')).toBeVisible();
+    const sheet = page.locator('#sb-bottom-chat-sheet');
+    const surface = await sheet.elementHandle();
+    expect(surface).not.toBeNull();
+    await expect.poll(() => sheet.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
+    await expect(sheet).toBeVisible();
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.locator('#sb-bottom-chat-sheet .sb-bottom-chat-sheet-close').click();
-    await expect(page.locator('#sb-bottom-chat-sheet')).toBeHidden();
-    expect(await page.locator('#sb-bottom-chat-sheet').evaluate(element => element.getAnimations().length)).toBe(0);
+    await page.locator('.sb-dialog-host .sb-bottom-chat-sheet-close').click();
+    await expect(page.locator('.sb-dialog-host')).toHaveCount(0);
+    expect(await surface.evaluate(element => element.getAnimations().length)).toBe(0);
 });

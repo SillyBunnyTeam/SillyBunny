@@ -27,7 +27,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js',
 }));
 const pickerClose = jest.fn();
 const openPicker = jest.fn(() => ({ close: pickerClose }));
-await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ openPicker, isPickerOpen: () => false }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ openPicker, closePicker: jest.fn(), isPickerOpen: () => false }));
 const popupShow = jest.fn();
 await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     POPUP_TYPE: { CONFIRM: 'confirm' },
@@ -38,8 +38,9 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     }),
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateIn: jest.fn(), animateOut: (_node, _frames, finish) => finish(), stopMotion: jest.fn(),
-    prefersReducedMotion: () => true, MOTION_EASE_OUT_QUAD: 'linear', MOTION_FAST: 0, SPRING_SHEET: {},
+    animateIn: jest.fn(), animateOut: (_node, _frames, finish) => finish(), play: jest.fn((_node, _frames, options) => options?.onEnd?.()), stopMotion: jest.fn(),
+    prefersReducedMotion: () => true, MOTION_EASE_OUT_QUAD: 'linear', MOTION_EASE_OUT_CUBIC: 'linear', MOTION_FAST: 0,
+    MOTION_SLOW: 0, MOTION_POPOVER_CLOSE: 0, SPRING_DIALOG: {}, SPRING_NAVIGATION: {}, SPRING_SHEET: {},
 }));
 
 let state;
@@ -208,6 +209,8 @@ async function settle() {
 beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    HTMLDialogElement.prototype.showModal ??= function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close ??= function () { this.removeAttribute('open'); };
     objectNavigation.clear();
     popupShow.mockReset();
     document.body.replaceChildren();
@@ -326,29 +329,37 @@ describe('Persona detail structure and explicit content edits', () => {
         expect(host.querySelector('[data-sb-editor-field="role"]').hidden).toBe(true);
     });
 
-    test('properties sheet and dropdown toggle, retain controls, and consume Escape', () => {
+    test('properties dialog and dropdown toggle, retain controls, and consume Escape', async () => {
         const { host, requestClose } = mount();
         const summary = host.querySelector('.sb-persona-property-summary');
-        summary.getClientRects = () => [{}];
+        const position = field(host, 'position');
+        summary.focus();
         summary.click();
-        const sheet = document.querySelector('.sb-persona-property-sheet');
-        choose(sheet, 'position', 4);
-        const depth = field(sheet, 'depth');
+        const dialog = document.querySelector('.sb-persona-properties-dialog');
+        expect(dialog).not.toBeNull();
+        expect(field(dialog, 'position')).toBe(position);
+        choose(dialog, 'position', 4);
+        const depth = field(dialog, 'depth');
         depth.focus();
-        edit(sheet, 'depth', '8');
-        expect(field(host, 'depth').value).toBe('8');
-        expect(field(sheet, 'depth')).toBe(depth);
+        edit(dialog, 'depth', '8');
+        expect(field(dialog, 'depth').value).toBe('8');
+        expect(field(dialog, 'depth')).toBe(depth);
         const outer = jest.fn();
         document.body.addEventListener('keydown', outer);
-        keydown(depth, 'Escape');
-        expect(sheet.hidden).toBe(true);
+        const escape = keydown(depth, 'Escape');
+        expect(escape.defaultPrevented).toBe(true);
+        await settle();
+        expect(document.querySelector('.sb-persona-properties-dialog')).toBeNull();
+        expect(field(host, 'depth')).toBe(depth);
+        expect(field(host, 'depth').value).toBe('8');
+        expect(summary.getAttribute('aria-expanded')).toBe('false');
         expect(outer).not.toHaveBeenCalled();
         expect(requestClose).not.toHaveBeenCalled();
         document.body.removeEventListener('keydown', outer);
         summary.click();
         summary.click();
-        expect(sheet.hidden).toBe(true);
-        const position = host.querySelector('[data-sb-editor-field="position"] button');
+        await settle();
+        expect(document.querySelector('.sb-persona-properties-dialog')).toBeNull();
         position.click();
         expect(document.querySelector('.sb-persona-property-popover')).not.toBeNull();
         position.click();
@@ -892,8 +903,8 @@ describe('Keyboard and disposal', () => {
         controller.destroy({ keepDraft: true });
         expect(stored().snapshot.draft.description).toBe('Keep me');
         expect(host.children).toHaveLength(0);
-        expect(document.querySelector('.sb-persona-property-sheet')).toBeNull();
-        expect(document.querySelector('.sb-persona-sheet-backdrop')).toBeNull();
+        expect(document.querySelector('.sb-persona-properties-dialog')).toBeNull();
+        expect(document.querySelector('.sb-dialog-host')).toBeNull();
         expect(pickerClose).toHaveBeenCalled();
         expect(controller.focusTarget()).toBeNull();
     });

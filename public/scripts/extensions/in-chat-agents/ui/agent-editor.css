@@ -62,6 +62,12 @@
 }
 
 @media (max-width: 768px) {
+    .ica-agent-property-sheet .sb-prompt-dropdown {
+        min-height: 44px;
+        padding: 6px 16px;
+        font-family: var(--mainFontFamily), sans-serif;
+    }
+
     /* Persona's phone touch-target rule also overrides auxiliary textarea minimums. */
     #sb-settings-page .ica-agent-detail textarea.text_pole,
     .ica-agent-editor-dialog textarea {
