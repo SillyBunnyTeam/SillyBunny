@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    These two checks only report that a newer Android Gradle plugin or library exists, so their result changes
+    with new upstream releases rather than with this code. Versions are pinned in gradle/libs.versions.toml and
+    updated on purpose, together with the library license table in android/runtime/licenses/android/.
+-->
+<lint>
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="GradleDependency" severity="ignore" />
+</lint>
