@@ -82,6 +82,8 @@ import { persona_description_positions as _persona_description_positions } from 
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
+// SillyBunny: registered side panels persist a side preference without applying draggable geometry.
+import { applyMovingUIState, configureMovingUIState, resetSidePanelSides } from './sillybunny-editor/side-panel.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
 // SillyBunny: persisted one-level Characters and Groups folders.
 import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
@@ -604,6 +606,14 @@ export const power_user = {
     media_display: MEDIA_DISPLAY.LIST,
     image_overswipe: IMAGE_OVERSWIPE.GENERATE,
 };
+
+configureMovingUIState({
+    getState: () => power_user.movingUIState,
+    setState: state => {
+        power_user.movingUIState = state;
+        saveSettingsDebounced();
+    },
+});
 
 setSlashCommandParserSettingsGetter(() => ({
     experimentalMacroEngine: power_user.experimental_macro_engine,
@@ -2679,6 +2689,11 @@ export function loadMovingUIState() {
                 for (const targetName of targetNames) {
                     var elmnt = $('#' + $.escapeSelector(targetName));
                     if (elmnt.length) {
+                        // SillyBunny: side-panel state stores a dock side, not draggable pixel geometry.
+                        if (applyMovingUIState(targetName, elmntState)) {
+                            applied = true;
+                            continue;
+                        }
                         console.debug(`loading state for ${targetName} from ${elmntName}`);
                         applyMovingUIStateStyles(elmnt[0], elmntState);
                         // Persisted geometry must never enlarge the document or
@@ -3534,6 +3549,8 @@ async function resetMovablePanels(type) {
     await delay(50);
 
     power_user.movingUIState = {};
+    // SillyBunny: clearing MovingUI preferences restores registered side panels to their declared defaults.
+    resetSidePanelSides();
     syncMovingUIOffscreenWarning(false);
 
     //if user manually resets panels, deselect the current preset
@@ -4009,6 +4026,10 @@ jQuery(async () => {
                     const targetElements = [];
                     let sharedStateChanged = false;
                     let applied = false;
+                    // SillyBunny: viewport scaling must not turn a saved panel side into pixel geometry.
+                    if (applyMovingUIState(elmntName, elmntState)) {
+                        continue;
+                    }
                     Object.assign(elmntState, scaleMovingUIViewportState(elmntState, { scaleX, scaleY }));
 
                     for (const targetName of targetNames) {

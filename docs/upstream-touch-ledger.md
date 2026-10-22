@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 5.1 / 5.6 Side-panel engine and MovingUI seam
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/RossAscends-mods.js`; `public/scripts/power-user.js`. |
+| Area | MovingUI and side-panel layout. |
+| Divergence reason | Registered side panels use dock sides rather than user-defined geometry; MovingUI drag and resize would conflict with the layout engine. |
+| Target seam | `public/scripts/sillybunny-editor/side-panel.js`. |
+| Adapter shape | Keep MovingUI calls compatible while guarding registered panel descendants; route their existing state entries through the side controller and persist only `{ left, right }`. Reset and MovingUI off restore declared defaults. |
+| Protecting tests | `tests/unit/side-panel.test.js`; `tests/side-panel-engine.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. |
+| Validation | 2026-10-23: root lint and `git diff --check` pass; frontend budgets pass at 16 blocking stylesheets / 1005.3 KiB and 24 startup scripts / 2029.8 KiB. Full Jest: 423 suites passed; 6,419 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: side-panel engine, MovingUI shell smoke, dialog tiers and Popup scroll 43/43 passed. Desktop 1440×900 and phone 390×844 screenshots were visually reviewed in `/tmp/opencode/side-panel-engine-shots/`. |
+| Rollback path | Remove the MovingUI guard and side-panel state hooks, then remove the side-panel module and its tests; persisted state remains in the existing `movingUIState` shape. |
+| Last reviewed | 2026-10-23, PR #870 Phase 5.1 / 5.6. |
+| Owner | UI integrator. |
+
 ### Phase 4.5–4.9 Window-tier tools
 | Field | Value |
 | --- | --- |

@@ -547,6 +547,8 @@ const saveUserInputDebounced = debounce(saveUserInput);
  * @param {JQuery} $elmnt - The element to make draggable.
  */
 export function dragElement($elmnt) {
+    // SillyBunny: registered panels use dock geometry and must not enter MovingUI's pointer workflow.
+    if ($elmnt.closest('.sb-side-panel').length) return;
     let actionType = null; // "drag" or "resize"
     let isMouseDown = false;
 
@@ -711,6 +713,7 @@ export function dragElement($elmnt) {
 
     // Setup event listeners using event delegation to support dynamic header elements like #sb_conversation_header
     $(document).off('mousedown', headerSelector).on('mousedown', headerSelector, (e) => {
+        if ($elmnt.closest('.sb-side-panel').length) return;
         const isHeader = $(e.target).closest('#sb_conversation_header').length > 0;
         const isInteractive = $(e.target).closest('button, input, select, textarea, [role="button"], a, i').length > 0;
         if ($(e.target).hasClass('drag-grabber') || (isHeader && !isInteractive)) {
@@ -722,6 +725,8 @@ export function dragElement($elmnt) {
     });
 
     $elmnt.off('mousedown').on('mousedown', (e) => {
+        // SillyBunny: this also covers a panel registered after MovingUI installed its handlers.
+        if ($elmnt.closest('.sb-side-panel').length) return;
         const rect = $elmnt[0].getBoundingClientRect();
         const resizeMargin = 16;
         const isNearRight = e.clientX > rect.right - resizeMargin;
@@ -1312,6 +1317,11 @@ export function initRossMods() {
                 // portraits stay laid out but unseen under the open settings page. Remove the topmost one in view.
                 const draggablesInView = $('.draggable:visible').filter((_, element) => getComputedStyle(element).visibility !== 'hidden');
                 draggablesInView.last().remove();
+                return;
+            }
+
+            // SillyBunny: docked panels defer to the ordered legacy Escape surfaces above.
+            if (globalThis.SillyBunnySidePanels?.closeTopmostSidePanelOnEscape?.(event)) {
                 return;
             }
         }
