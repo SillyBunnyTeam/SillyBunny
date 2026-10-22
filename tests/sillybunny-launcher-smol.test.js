@@ -224,10 +224,10 @@ describe('launcher parity', () => {
             bun: '>= 1.3.14',
             node: '>= 20',
         });
-        expect(packageJson.packageManager).toBe('bun@1.3.14');
-        expect(dockerfileSource).toMatch(/^FROM oven\/bun:1\.3\.14-alpine$/m);
-        expect(prChecksSource).toContain('bun-version: 1.3.14');
-        expect(releaseE2ESource).toContain('bun-version: 1.3.14');
+        expect(packageJson.packageManager).toBe('bun@1.4.4');
+        expect(dockerfileSource).toMatch(/^FROM oven\/bun:1\.4\.4-alpine$/m);
+        expect(prChecksSource).toContain('bun-version: 1.4.4');
+        expect(releaseE2ESource).toContain('bun-version: 1.4.4');
         expect(packageJson.scripts['debug:node']).toBe('node --inspect server.js');
         expect(packageJson.scripts['start:global:node']).toBe('node --no-warnings server.js --global');
         expect(packageJson.scripts['start:no-csrf:node']).toBe('node --no-warnings server.js --disableCsrf');
