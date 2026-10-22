@@ -5606,6 +5606,25 @@ input[type='range']::-moz-range-thumb {
     line-height: 1.45;
 }
 
+#custom_css_save_state {
+    gap: 6px;
+}
+
+/* Outranks the settings drawer rule that lets button labels wrap. */
+#user-settings-block #custom_css_save_state {
+    white-space: nowrap;
+}
+
+#custom_css_save_state:not(.custom_css_save_state_dirty) {
+    cursor: default;
+    opacity: 0.65;
+}
+
+#custom_css_save_state.custom_css_save_state_dirty {
+    border-color: color-mix(in srgb, var(--sb-accent) 60%, transparent);
+    color: var(--sb-accent-ink);
+}
+
 #AppearanceLayoutSection [name="FontBlurChatWidthBlock"] {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -5923,6 +5942,10 @@ input[type='range']::-moz-range-thumb {
     .sb-settings-subdrawer-toolbar {
         align-items: center;
         flex-wrap: wrap;
+    }
+
+    #custom_css_save_state .custom_css_save_state_label {
+        display: none;
     }
 
     #user-settings-utility-actions {
