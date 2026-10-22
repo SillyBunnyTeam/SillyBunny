@@ -100,7 +100,7 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
         `const sbMobileShellLifecycle = {
             viewportSync: { step: MOBILE_SHELL_VIEWPORT_SYNC_STEP, resolveSyncPlan: resolveMobileViewportSyncPlan },
         };`,
-        `function hasOpenMobileShellDrawer() { return document.getElementById('sb-settings-page')?.hasAttribute('hidden') === false; }`,
+        'function hasOpenMobileShellDrawer() { return document.getElementById(\'sb-settings-page\')?.hasAttribute(\'hidden\') === false; }',
         bindings,
         'syncMobileViewportState();',
     ].join('\n') });
