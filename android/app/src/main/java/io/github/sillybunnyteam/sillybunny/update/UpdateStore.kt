@@ -58,14 +58,16 @@ class UpdateStore(context: Context) {
             if (resetCallback) clearPendingUserAction()
             preferences.edit {
                 putOptionalInt(ACTIVE_SESSION, value)
-                if (resetCallback) remove(CALLBACK_ACTION).remove(ACTIVE_VERSION).remove(USER_ACTION_PRESENTED)
+                if (resetCallback) {
+                    remove(CALLBACK_ACTION).remove(ACTIVE_VERSION).remove(USER_ACTION_PRESENTED).remove(CONSENT_WAIT)
+                }
             }
         }
 
     var downloadedApk: String?
         get() = preferences.getString(DOWNLOADED_APK, null)
         set(value) = synchronized(lock) {
-            preferences.edit { putString(DOWNLOADED_APK, ownedDownload(value)?.path) }
+            preferences.edit { putString(DOWNLOADED_APK, ownedDownload(value)?.path).remove(DOWNLOADED_VERSION) }
         }
 
     fun recordReplacement(versionCode: Long) = synchronized(lock) {
@@ -82,7 +84,7 @@ class UpdateStore(context: Context) {
             remove(USER_ACTION_PRESENTED)
             if (replacesActiveSession) {
                 putResult(InstallResult(InstallOutcome.SUCCESS, sessionId = sessionId))
-                    .removeSession().remove(DOWNLOADED_APK)
+                    .removeSession().removeDownload()
             }
         }
         download?.delete()
@@ -98,9 +100,31 @@ class UpdateStore(context: Context) {
 
     fun clearDownload() = synchronized(lock) {
         val download = ownedDownload(downloadedApk)
-        preferences.edit { remove(DOWNLOADED_APK) }
+        preferences.edit { removeDownload() }
         download?.delete()
         Unit
+    }
+
+    /**
+     * Durably records a verified download that waits for the install-source grant. Android 11 kills the app
+     * when that grant changes, so the next process resumes the install from this record.
+     */
+    @SuppressLint("UseKtx", "ApplySharedPref")
+    internal fun rememberVerifiedDownload(apk: File, versionCode: Long): Boolean = synchronized(lock) {
+        val download = ownedDownload(apk.path)?.takeIf { it.isFile } ?: return@synchronized false
+        if (versionCode <= 0) return@synchronized false
+        preferences.edit()
+            .putString(DOWNLOADED_APK, download.path)
+            .putLong(DOWNLOADED_VERSION, versionCode)
+            .commit()
+    }
+
+    /** The verified download recorded by [rememberVerifiedDownload], while no installer session owns it. */
+    internal fun verifiedDownload(): VerifiedDownload? = synchronized(lock) {
+        if (activeSessionId != null) return@synchronized null
+        val versionCode = preferences.getLong(DOWNLOADED_VERSION, -1).takeIf { it > 0 } ?: return@synchronized null
+        val download = ownedDownload(downloadedApk)?.takeIf { it.isFile } ?: return@synchronized null
+        VerifiedDownload(download, versionCode)
     }
 
     internal fun ownedDownload(path: String?): File? {
@@ -144,7 +168,9 @@ class UpdateStore(context: Context) {
             .putString(CALLBACK_ACTION, callbackAction)
             .putLong(ACTIVE_VERSION, versionCode)
             .putBoolean(USER_ACTION_PRESENTED, false)
+            .remove(CONSENT_WAIT)
             .putString(DOWNLOADED_APK, download.path)
+            .remove(DOWNLOADED_VERSION)
             .putResult(InstallResult(InstallOutcome.VERIFYING, sessionId = sessionId))
             .commit()
     }
@@ -162,8 +188,8 @@ class UpdateStore(context: Context) {
         clearPendingUserAction()
         // Receiver work is limited to a small preferences write and at most one cache-file unlink.
         preferences.edit(commit = true) {
-            putResult(result.copy(sessionId = callback.sessionId))
-            if (terminal) removeSession().remove(DOWNLOADED_APK)
+            putResult(result.copy(sessionId = callback.sessionId)).remove(CONSENT_WAIT)
+            if (terminal) removeSession().removeDownload()
             else if (result.outcome == InstallOutcome.AWAITING_USER_ACTION) putBoolean(USER_ACTION_PRESENTED, false)
         }
         download?.delete()
@@ -176,7 +202,7 @@ class UpdateStore(context: Context) {
         val download = ownedDownload(downloadedApk)
         preferences.edit {
             putResult(InstallResult(InstallOutcome.FAILED, sessionId = sessionId))
-                .removeSession().remove(DOWNLOADED_APK)
+                .removeSession().removeDownload()
         }
         download?.delete()
         Unit
@@ -244,6 +270,26 @@ class UpdateStore(context: Context) {
         preferences.getLong(ACTIVE_VERSION, -1).takeIf { it > 0 }
     }
 
+    /**
+     * Moves a presented confirmation to [InstallOutcome.VERIFYING] while the platform has not yet shown the
+     * user's answer, and records when that wait started ([android.os.SystemClock.elapsedRealtime]).
+     */
+    @SuppressLint("UseKtx", "ApplySharedPref")
+    internal fun beginConsentWait(callback: InstallCallback, expectedResult: InstallResult, startedAt: Long): Boolean =
+        synchronized(lock) {
+            if (activeCallback() != callback || lastInstallResult != expectedResult) return@synchronized false
+            clearPendingUserAction()
+            preferences.edit()
+                .putResult(InstallResult(InstallOutcome.VERIFYING, sessionId = callback.sessionId))
+                .putLong(CONSENT_WAIT, startedAt)
+                .commit()
+        }
+
+    internal fun consentWaitStartedAt(callback: InstallCallback): Long? = synchronized(lock) {
+        if (activeCallback() != callback || !preferences.contains(CONSENT_WAIT)) null
+        else preferences.getLong(CONSENT_WAIT, 0)
+    }
+
     private fun SharedPreferences.optionalInt(key: String): Int? =
         if (contains(key)) getInt(key, 0) else null
 
@@ -261,8 +307,14 @@ class UpdateStore(context: Context) {
 
     private fun SharedPreferences.Editor.removeSession(): SharedPreferences.Editor =
         remove(ACTIVE_SESSION).remove(CALLBACK_ACTION).remove(ACTIVE_VERSION).remove(USER_ACTION_PRESENTED)
+            .remove(CONSENT_WAIT)
+
+    private fun SharedPreferences.Editor.removeDownload(): SharedPreferences.Editor =
+        remove(DOWNLOADED_APK).remove(DOWNLOADED_VERSION)
 
     internal data class InstallCallback(val sessionId: Int, val action: String)
+
+    internal data class VerifiedDownload(val apk: File, val versionCode: Long)
 
     internal class PendingUserAction(
         val callback: InstallCallback,
@@ -285,6 +337,8 @@ class UpdateStore(context: Context) {
         const val CALLBACK_ACTION = "callback_action"
         const val USER_ACTION_PRESENTED = "user_action_presented"
         const val DOWNLOADED_APK = "downloaded_apk"
+        const val DOWNLOADED_VERSION = "downloaded_version"
+        const val CONSENT_WAIT = "consent_wait_started"
         const val REPLACEMENT = "replacement_version"
         val lock = Any()
         var pendingAction: PendingUserAction? = null

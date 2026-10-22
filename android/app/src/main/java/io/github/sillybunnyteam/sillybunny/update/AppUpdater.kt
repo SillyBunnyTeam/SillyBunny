@@ -7,15 +7,19 @@ import android.os.FileObserver
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.io.File
+import java.io.IOException
 import java.io.InterruptedIOException
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 
 enum class UpdatePhase {
     IDLE,
@@ -43,10 +47,14 @@ data class UpdateUiState(
     val initialized: Boolean = false,
 )
 
-class AppUpdater(application: Application) : AndroidViewModel(application) {
+class AppUpdater internal constructor(
+    application: Application,
+    private val repository: UpdateRepository,
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, UpdateRepository(application))
+
     private val context: Application = application
     private val store = UpdateStore(context)
-    private val repository = UpdateRepository(context)
     private val main = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor { work ->
         Thread(work, "apk-updater").apply { isDaemon = true }
@@ -66,10 +74,18 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
     private var cancelDownload = false
     private var lastInstallResult: InstallResult? = null
     private var permissionScreenLaunched = false
+    private var sourceApprovalBeforeLaunch = false
 
     @Volatile
     var serverController: ServerController = NoOpServerController
-    private val installer = UpdateInstaller(context, ServerController { serverController.stopForUpdate() })
+    private val installer = UpdateInstaller(
+        context,
+        object : ServerController {
+            override fun stopForUpdate() = serverController.stopForUpdate()
+
+            override fun resumeAfterAbandonedUpdate() = serverController.resumeAfterAbandonedUpdate()
+        },
+    )
 
     var state by mutableStateOf(UpdateUiState(enabled = store.enabled))
         private set
@@ -106,11 +122,13 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
             }
             if (closed) return@enqueue
             installer.reconcileAfterLaunch()
+            // A verified download can outlive its process while the install-source grant is pending.
+            val verified = store.verifiedDownload()
             if (store.activeSessionId == null) {
-                store.clearDownload()
+                if (verified == null) store.clearDownload()
                 File(context.cacheDir, "updates").listFiles()?.forEach { file ->
                     if (file.name.startsWith("update-") && file.extension in setOf("part", "apk")) {
-                        store.ownedDownload(file.absolutePath)?.delete()
+                        store.ownedDownload(file.absolutePath)?.takeIf { it != verified?.apk }?.delete()
                     }
                 }
             }
@@ -126,7 +144,10 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 refreshInstallResult()
-                if (enabled) check(automatic = true)
+                val approved = sourceApprovalBeforeLaunch
+                sourceApprovalBeforeLaunch = false
+                val resumed = verified != null && resumeVerifiedDownload(verified, approved)
+                if (enabled && !resumed) check(automatic = true)
             }
         }
     }
@@ -168,7 +189,10 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
                         post { state = state.copy(downloadedBytes = received, totalBytes = total) }
                     }
                 }
-                store.downloadedApk = apk.absolutePath
+                if (!store.rememberVerifiedDownload(apk, candidate.manifest.versionCode)) {
+                    apk.delete()
+                    throw IOException()
+                }
                 if (closed || cancelDownload) {
                     store.clearDownload()
                     post {
@@ -184,7 +208,7 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
                         state = state.copy(phase = UpdatePhase.AVAILABLE)
                         return@post
                     }
-                    if (installer.canInstall()) beginInstall(apk, candidate) else {
+                    if (installer.canInstall()) beginInstall(apk, candidate.manifest.versionCode) else {
                         state = state.copy(phase = UpdatePhase.AWAITING_SOURCE_PERMISSION)
                     }
                 }
@@ -208,12 +232,18 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
     fun unknownSourcesIntent() = installer.unknownSourcesIntent()
 
     fun resumeAfterSourceApproval() {
+        if (!state.initialized) {
+            // Android 11 kills the app when the grant changes. The new process gets the Settings result
+            // during its first resume, before the launch work restores the verified download from the store.
+            sourceApprovalBeforeLaunch = true
+            return
+        }
         if (state.phase != UpdatePhase.AWAITING_SOURCE_PERMISSION) return
         permissionScreenLaunched = false
         val candidate = state.candidate
         val apk = store.downloadedApk?.let(::File)
         if (installer.canInstall() && candidate != null && apk?.isFile == true) {
-            beginInstall(apk, candidate)
+            beginInstall(apk, candidate.manifest.versionCode)
         } else {
             enqueue { store.clearDownload() }
             state = state.copy(visible = true, phase = UpdatePhase.ERROR)
@@ -273,12 +303,28 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun beginInstall(apk: File, candidate: UpdateCandidate) {
+    /** Continues a download that waited for the install-source grant in an earlier process. */
+    private fun resumeVerifiedDownload(download: UpdateStore.VerifiedDownload, approved: Boolean): Boolean {
+        if (!approved || busy || state.phase in installingPhases) {
+            enqueue { if (store.verifiedDownload() == download) store.clearDownload() }
+            return false
+        }
+        if (installer.canInstall()) {
+            state = state.copy(visible = true)
+            beginInstall(download.apk, download.versionCode)
+        } else {
+            enqueue { store.clearDownload() }
+            state = state.copy(visible = true, phase = UpdatePhase.ERROR)
+        }
+        return true
+    }
+
+    private fun beginInstall(apk: File, versionCode: Long) {
         busy = true
         state = state.copy(phase = UpdatePhase.INSTALLING)
         enqueue {
             try {
-                installer.install(apk, candidate.manifest.versionCode)
+                installer.install(apk, versionCode)
                 post { busy = false }
             } catch (_: UnknownSourcesRequiredException) {
                 post {
@@ -297,7 +343,9 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadBlockedStatus() {
-        val blocked = BlockedUpdateStatus.read(context.filesDir)
+        val blocked = BlockedUpdateStatus.read(context.filesDir)?.takeUnless {
+            it.satisfiedBy(ApkVerifier.installedVersionCode(context))
+        }
         post {
             val appeared = blocked != null && blocked != state.blocked
             state = state.copy(
@@ -333,6 +381,16 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
         if (result.outcome in setOf(InstallOutcome.SUCCESS, InstallOutcome.FAILED, InstallOutcome.ABORTED)) {
             store.lastInstallResult = InstallResult()
         }
+        if (result.outcome == InstallOutcome.FAILED || result.outcome == InstallOutcome.ABORTED) {
+            // The install stopped the server before the user could decline or the session could fail.
+            enqueue {
+                try {
+                    serverController.resumeAfterAbandonedUpdate()
+                } catch (_: Exception) {
+                    // The server controller reports its own failures; the updater stays usable.
+                }
+            }
+        }
     }
 
     override fun onCleared() {
@@ -343,6 +401,13 @@ class AppUpdater(application: Application) : AndroidViewModel(application) {
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         executor.shutdownNow()
         if (store.activeSessionId == null) store.clearDownload()
+    }
+
+    @VisibleForTesting
+    internal fun awaitWorkerForTest() {
+        val done = CountDownLatch(1)
+        enqueue { done.countDown() }
+        done.await(10, TimeUnit.SECONDS)
     }
 
     private fun enqueue(work: () -> Unit) {

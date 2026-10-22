@@ -2,8 +2,10 @@ package io.github.sillybunnyteam.sillybunny.update
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -60,6 +62,22 @@ class BlockedUpdateStatusTest {
     fun unreadableStatusIsStillTreatedAsBlocked() {
         File(temporaryFolder.root, "status/update-blocked.json").mkdirs()
         assertEquals(BlockedUpdateStatus(), BlockedUpdateStatus.read(temporaryFolder.root))
+    }
+
+    @Test
+    fun onlyAMetNewerRequirementIsSatisfiedByTheInstalledVersion() {
+        val newer = BlockedUpdateStatus.parse("""{"required":7,"installed":6,"reason":"newer"}""")
+        assertFalse(newer.satisfiedBy(6))
+        assertTrue(newer.satisfiedBy(7))
+        assertTrue(newer.satisfiedBy(8))
+        assertFalse(newer.satisfiedBy(null))
+        listOf(
+            """{"required":null,"installed":7,"reason":"missing"}""",
+            """{"required":7,"installed":7,"reason":"invalid"}""",
+            """{"required":7,"installed":7}""",
+            """{"installed":7,"reason":"newer"}""",
+            "{",
+        ).forEach { assertFalse(it, BlockedUpdateStatus.parse(it).satisfiedBy(Long.MAX_VALUE)) }
     }
 
     @Test

@@ -11,6 +11,14 @@ data class BlockedUpdateStatus(
     val upstream: String? = null,
     val branch: String? = null,
 ) {
+    /**
+     * True when the app already meets a "newer" requirement. The status file is rewritten only when the
+     * server starts again, so it still names the old requirement right after the update that satisfied it.
+     */
+    fun satisfiedBy(currentVersionCode: Long?): Boolean =
+        reason == "newer" && requiredVersionCode != null && currentVersionCode != null &&
+            currentVersionCode >= requiredVersionCode
+
     companion object {
         private const val MAX_STATUS_BYTES = 65_536
         private val integer = Regex("0|[1-9][0-9]*")

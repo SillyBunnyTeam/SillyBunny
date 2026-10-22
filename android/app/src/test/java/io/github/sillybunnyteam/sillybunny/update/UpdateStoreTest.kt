@@ -276,5 +276,56 @@ class UpdateStoreTest {
         assertTrue(File(store.downloadedApk!!).exists())
     }
 
+    @Test
+    fun verifiedDownloadStaysDurableUntilAnInstallOrCleanupTakesIt() {
+        val apk = download()
+        assertTrue(store.rememberVerifiedDownload(apk, 2))
+        assertEquals(UpdateStore.VerifiedDownload(apk.canonicalFile, 2), UpdateStore(context).verifiedDownload())
+        // A plain path update drops the version, so a different file cannot inherit it.
+        store.downloadedApk = apk.path
+        assertNull(store.verifiedDownload())
+        assertTrue(store.rememberVerifiedDownload(apk, 2))
+        assertTrue(store.beginInstall(5, "token", apk, 2))
+        assertNull(store.verifiedDownload())
+        assertEquals(apk.canonicalPath, store.downloadedApk)
+        store.failInstall(5)
+        assertFalse(apk.exists())
+
+        val next = download()
+        assertTrue(store.rememberVerifiedDownload(next, 3))
+        store.clearDownload()
+        assertNull(store.verifiedDownload())
+        assertFalse(next.exists())
+        assertFalse(store.rememberVerifiedDownload(File(context.filesDir, "outside.apk"), 3))
+        assertFalse(store.rememberVerifiedDownload(download(), 0))
+        assertNull(store.verifiedDownload())
+    }
+
+    @Test
+    fun consentWaitIsConditionalAndEndsWithAnyNewResultOrSession() {
+        val apk = download()
+        assertTrue(store.beginInstall(5, "token", apk, 2))
+        val callback = store.activeCallback()!!
+        val awaiting = InstallResult(InstallOutcome.AWAITING_USER_ACTION, -1, sessionId = 5)
+        assertTrue(store.recordInstallResult(callback, awaiting, false))
+        assertFalse(store.beginConsentWait(callback, awaiting.copy(status = 0), 100))
+        assertFalse(store.beginConsentWait(UpdateStore.InstallCallback(5, "foreign"), awaiting, 100))
+        assertNull(store.consentWaitStartedAt(callback))
+
+        assertTrue(store.beginConsentWait(callback, awaiting, 100))
+        assertEquals(InstallResult(InstallOutcome.VERIFYING, sessionId = 5), UpdateStore(context).lastInstallResult)
+        assertEquals(100L, UpdateStore(context).consentWaitStartedAt(callback))
+        assertNull(store.consentWaitStartedAt(UpdateStore.InstallCallback(5, "foreign")))
+        assertTrue(store.recordInstallResult(callback, InstallResult(InstallOutcome.VERIFYING), false))
+        assertNull(store.consentWaitStartedAt(callback))
+
+        assertTrue(store.beginConsentWait(callback, store.lastInstallResult, 200))
+        assertEquals(200L, store.consentWaitStartedAt(callback))
+        store.activeSessionId = null
+        assertTrue(store.beginInstall(6, "next-token", apk, 3))
+        assertNull(store.consentWaitStartedAt(store.activeCallback()!!))
+        assertFalse(context.getSharedPreferences("app_updates", Context.MODE_PRIVATE).contains("consent_wait_started"))
+    }
+
     private fun download(): File = File(updates, "candidate.apk").apply { writeText("apk") }
 }

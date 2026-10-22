@@ -3,13 +3,19 @@ package io.github.sillybunnyteam.sillybunny.update
 import android.app.Application
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.ClosingFileObserver
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -19,17 +25,20 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [29, 37])
+@Config(sdk = [29, 37], shadows = [ClosingFileObserver::class])
 class AppUpdaterTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
     private val controller = Robolectric.buildActivity(ComponentActivity::class.java)
+    private val stoppedActivities = mutableListOf<ActivityController<ComponentActivity>>()
     private lateinit var updater: AppUpdater
 
     @Before
     fun resetState() {
+        UpdateInstaller.resetForTest()
         context.getSharedPreferences("app_updates", 0).edit().clear().commit()
         File(context.filesDir, "status/update-blocked.json").delete()
         controller.setup()
@@ -39,10 +48,17 @@ class AppUpdaterTest {
 
     @After
     fun close() {
+        UpdateInstaller.awaitBackgroundWork()
         UpdateForeground.detach(controller.get())
         controller.get().viewModelStore.clear()
         controller.pause().stop().destroy()
+        // Release the status observers of the updaters that simulated process death.
+        stoppedActivities.forEach {
+            it.get().viewModelStore.clear()
+            it.destroy()
+        }
         File(context.filesDir, "status/update-blocked.json").delete()
+        UpdateInstaller.resetForTest()
     }
 
     @Test
@@ -180,6 +196,10 @@ class AppUpdaterTest {
 
     @Test
     fun notificationDeniedPendingConfirmationCannotLeaveTheForegroundUiStuck() {
+        // As in UpdateActivityHook, launch first: recovery now reports back through the store's listener.
+        updater.enabled = false
+        updater.onLaunch()
+        waitForWorker()
         val store = UpdateStore(context)
         val apk = File(context.cacheDir, "updates/pending.apk")
         apk.parentFile!!.mkdirs()
@@ -193,11 +213,209 @@ class AppUpdaterTest {
         UpdateForeground.attach(controller.get())
         try {
             updater.onForeground()
-            assertEquals(UpdatePhase.ERROR, updater.state.phase)
+            UpdateInstaller.awaitBackgroundWork()
+            await { updater.state.phase == UpdatePhase.ERROR }
             assertNull(store.activeSessionId)
             assertFalse(apk.exists())
         } finally {
             UpdateForeground.detach(controller.get())
+        }
+    }
+
+    @Test
+    fun aSatisfiedRequirementKeepsThePostUpdateNoticeInsteadOfDemandingAnUpdate() {
+        installedVersion(2)
+        blockedStatus("""{"required":2,"installed":1,"reason":"newer"}""")
+        UpdateStore(context).recordReplacement(2)
+        updater.enabled = false
+        updater.onLaunch()
+        await { updater.state.initialized }
+        assertNull(updater.state.blocked)
+        assertEquals(UpdatePhase.UPDATED, updater.state.phase)
+        assertTrue(updater.state.visible)
+        updater.onForeground()
+        waitForWorker()
+        assertNull(updater.state.blocked)
+        assertEquals(UpdatePhase.UPDATED, updater.state.phase)
+    }
+
+    @Test
+    fun aSatisfiedRequirementIsNotShownOnAPlainLaunch() {
+        installedVersion(3)
+        blockedStatus("""{"required":2,"installed":1,"reason":"newer"}""")
+        updater.enabled = false
+        updater.onLaunch()
+        waitForWorker()
+        assertNull(updater.state.blocked)
+        assertFalse(updater.state.visible)
+        assertEquals(UpdatePhase.IDLE, updater.state.phase)
+    }
+
+    @Test
+    fun anUnmetRequirementStillShowsTheRequiredPromptAfterAnUpdate() {
+        installedVersion(2)
+        blockedStatus("""{"required":3,"installed":2,"reason":"newer"}""")
+        UpdateStore(context).recordReplacement(2)
+        updater.enabled = false
+        updater.onLaunch()
+        await { updater.state.initialized }
+        assertEquals(3L, updater.state.blocked!!.requiredVersionCode)
+        assertEquals(UpdatePhase.REQUIRED, updater.state.phase)
+    }
+
+    @Test
+    fun requirementsThatTheInstalledVersionCannotSatisfyStayBlocking() {
+        installedVersion(5)
+        blockedStatus("""{"required":null,"installed":5,"reason":"missing"}""")
+        updater.enabled = false
+        updater.onLaunch()
+        await { updater.state.blocked != null }
+        assertEquals(UpdatePhase.REQUIRED, updater.state.phase)
+        assertEquals("missing", updater.state.blocked!!.reason)
+    }
+
+    @Test
+    fun aCancelledOrFailedInstallRestoresTheServerThatTheUpdateStopped() {
+        val resumes = AtomicInteger()
+        updater.serverController = object : ServerController {
+            override fun stopForUpdate() = Unit
+
+            override fun resumeAfterAbandonedUpdate() {
+                assertNotSame(Looper.getMainLooper(), Looper.myLooper())
+                resumes.incrementAndGet()
+            }
+        }
+        updater.enabled = false
+        updater.onLaunch()
+        waitForWorker()
+        listOf(InstallOutcome.ABORTED, InstallOutcome.FAILED).forEachIndexed { index, outcome ->
+            UpdateStore(context).lastInstallResult = InstallResult(outcome = outcome)
+            updater.onForeground()
+            await { resumes.get() == index + 1 }
+            assertEquals(UpdatePhase.ERROR, updater.state.phase)
+        }
+        UpdateStore(context).lastInstallResult = InstallResult(outcome = InstallOutcome.SUCCESS)
+        updater.onForeground()
+        assertEquals(UpdatePhase.UPDATED, updater.state.phase)
+        updater.awaitWorkerForTest()
+        assertEquals(2, resumes.get())
+    }
+
+    @Test
+    @Config(shadows = [ApkVerifierTest.ArchivePackageManager::class, ApkVerifierTest.ArchiveFlagsPackageManager::class])
+    fun sourceApprovalSurvivesTheProcessDeathThatAndroid11CausesWhenTheGrantChanges() {
+        UpdateTestServer().use { server ->
+            server.json("/latest/android-update.json", CoreTestFixtures.manifest(version = 2).toString())
+            server.bytes("/latest/${CoreTestFixtures.APK_NAME}", CoreTestFixtures.payload)
+            val manager = shadowOf(context.packageManager)
+            manager.installPackage(CoreTestFixtures.packageInfo(context, 1))
+            manager.setCanRequestPackageInstalls(false)
+            val store = UpdateStore(context)
+            val apk = withActivity { activity ->
+                val first = updaterFor(activity, repository(server))
+                first.enabled = false
+                first.onLaunch()
+                await { first.state.initialized }
+                first.checkNow()
+                await { first.state.phase == UpdatePhase.AVAILABLE }
+                first.requestUpdate()
+                await { first.state.phase == UpdatePhase.AWAITING_SOURCE_PERMISSION }
+                File(store.downloadedApk!!)
+            }
+            assertTrue(apk.isFile)
+            manager.setPackageArchiveInfo(apk.absolutePath, CoreTestFixtures.packageInfo(context, 2))
+
+            // Android 11 kills the app when the user allows installs from it, so nothing in memory survives;
+            // the activity is recreated in a new process and the Settings result is delivered before onResume.
+            manager.setCanRequestPackageInstalls(true)
+            withActivity { activity ->
+                val stops = AtomicInteger()
+                val second = updaterFor(activity, repository(server))
+                second.serverController = ServerController { stops.incrementAndGet() }
+                second.enabled = false
+                second.onLaunch()
+                second.resumeAfterSourceApproval()
+                await { store.activeSessionId != null }
+                assertEquals(1, stops.get())
+                assertEquals(2L, store.activeVersionCode(store.activeCallback()!!))
+                assertEquals(UpdatePhase.INSTALLING, second.state.phase)
+                assertTrue(second.state.visible)
+                assertTrue(apk.isFile)
+                store.failInstall(store.activeSessionId)
+            }
+        }
+    }
+
+    @Test
+    fun aStaleSourceApprovalIsDroppedOnALaunchWithoutTheSettingsResult() {
+        UpdateTestServer().use { server ->
+            server.json("/latest/android-update.json", CoreTestFixtures.manifest(version = 2).toString())
+            server.bytes("/latest/${CoreTestFixtures.APK_NAME}", CoreTestFixtures.payload)
+            shadowOf(context.packageManager).setCanRequestPackageInstalls(false)
+            val apk = withActivity { activity ->
+                val first = updaterFor(activity, repository(server))
+                first.enabled = false
+                first.onLaunch()
+                await { first.state.initialized }
+                first.checkNow()
+                await { first.state.phase == UpdatePhase.AVAILABLE }
+                first.requestUpdate()
+                await { first.state.phase == UpdatePhase.AWAITING_SOURCE_PERMISSION }
+                File(UpdateStore(context).downloadedApk!!)
+            }
+            withActivity { activity ->
+                val second = updaterFor(activity, repository(server))
+                second.enabled = false
+                second.onLaunch()
+                await { second.state.initialized && !apk.exists() }
+                assertNull(UpdateStore(context).downloadedApk)
+                assertFalse(second.state.visible)
+                second.resumeAfterSourceApproval()
+                assertNotEquals(UpdatePhase.INSTALLING, second.state.phase)
+            }
+        }
+    }
+
+    private fun <T> withActivity(block: (ComponentActivity) -> T): T {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        stoppedActivities += activity
+        try {
+            return block(activity.get())
+        } finally {
+            // Process death never calls onCleared, so keep the ViewModel and only drop the activity.
+            activity.pause().stop()
+        }
+    }
+
+    private fun updaterFor(activity: ComponentActivity, repository: UpdateRepository): AppUpdater =
+        ViewModelProvider(
+            activity,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = AppUpdater(context, repository) as T
+            },
+        )[AppUpdater::class.java]
+
+    private fun repository(server: UpdateTestServer) = UpdateRepository(
+        context,
+        manifestUrl = server.url("/latest/android-update.json"),
+        releasesApiUrl = server.url("/releases"),
+        http = UpdateHttpClient(allowDebugLoopback = true),
+        primaryAbi = CoreTestFixtures.ABI,
+        defaultRef = "release",
+        installedVersionCode = { 1 },
+        installedSigner = { CoreTestFixtures.signer },
+        archiveVerifier = { _, _, _ -> true },
+    )
+
+    private fun installedVersion(version: Long) {
+        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName).longVersionCode = version
+    }
+
+    private fun blockedStatus(json: String) {
+        File(context.filesDir, "status/update-blocked.json").apply {
+            parentFile!!.mkdirs()
+            writeText(json)
         }
     }
 

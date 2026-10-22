@@ -7,10 +7,15 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import androidx.annotation.VisibleForTesting
 import androidx.core.net.toUri
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class UnknownSourcesRequiredException : IllegalStateException()
 
@@ -50,9 +55,10 @@ class UpdateInstaller(
                 if (store.activeSessionId != null || result.outcome == InstallOutcome.VERIFYING ||
                     result.outcome == InstallOutcome.AWAITING_USER_ACTION
                 ) failUnauthenticatedInstall()
-                return
+            } else {
+                reconcileSession(callback, result, preserveAvailableAction = true)
             }
-            reconcileSession(callback, result, preserveAvailableAction = true)
+            abandonUntrackedSessions()
         }
     }
 
@@ -64,11 +70,13 @@ class UpdateInstaller(
         if (result.outcome != InstallOutcome.AWAITING_USER_ACTION) return false
         val callback = store.activeCallback()
         if (callback == null) {
-            failUnauthenticatedInstall()
+            inBackground {
+                if (store.activeCallback() == null && store.lastInstallResult == result) failUnauthenticatedInstall()
+            }
             return false
         }
         if (result.sessionId != callback.sessionId) {
-            reconcileSession(callback, result)
+            inBackground { reconcileSession(callback, result) }
             return false
         }
 
@@ -90,12 +98,37 @@ class UpdateInstaller(
                 return true
             } catch (_: RuntimeException) {
                 store.setUserActionPresented(callback, false)
-                reconcileSession(callback, result, nonresumableOutcome = InstallOutcome.FAILED)
+                inBackground { reconcileSession(callback, result, nonresumableOutcome = InstallOutcome.FAILED) }
                 return false
             }
         }
-        reconcileSession(callback, result)
+        inBackground { reconcileSession(callback, result) }
         return false
+    }
+
+    // Session queries and abandons wait on the platform's per-session lock, which installation holds
+    // while it extracts native libraries, so they never run on the main thread.
+    private fun inBackground(work: () -> Unit) {
+        background.execute { synchronized(installLock) { work() } }
+    }
+
+    /** getMySessions lists only sessions this app created, so an untracked one for this package was leaked. */
+    private fun abandonUntrackedSessions() {
+        try {
+            val installer = context.packageManager.packageInstaller
+            val tracked = store.activeSessionId
+            installer.mySessions.filter {
+                it.sessionId != tracked && it.appPackageName == context.packageName
+            }.forEach { session ->
+                try {
+                    installer.abandonSession(session.sessionId)
+                } catch (_: Exception) {
+                    // A session that finished or was released meanwhile needs nothing more.
+                }
+            }
+        } catch (_: Exception) {
+            // Best effort: the platform expires sessions that stay untouched for three days.
+        }
     }
 
     private fun failUnauthenticatedInstall() {
@@ -151,16 +184,9 @@ class UpdateInstaller(
             // without deactivating the session. Only the current prompt's durable presentation counts.
             val canContinue = expectedResult.outcome == InstallOutcome.VERIFYING ||
                 (waitingForAction && store.userActionPresented(callback))
-            if (ownedSession != null && ownedSession.isSealed && ownedSession.isActive && canContinue) {
-                if (store.recordInstallResult(
-                        callback,
-                        InstallResult(InstallOutcome.VERIFYING),
-                        terminal = false,
-                        expectedResult = expectedResult,
-                    )
-                ) UpdateNotifications.cancelInstall(context)
-                return
-            }
+            if ((ownedSession == null || ownedSession.isSealed) && canContinue &&
+                keepForConsent(callback, expectedResult, ownedSession, waitingForAction)
+            ) return
             if (ownedSession != null) installer.abandonSession(callback.sessionId)
             val outcome = when (expectedResult.outcome) {
                 InstallOutcome.SUCCESS, InstallOutcome.FAILED, InstallOutcome.ABORTED -> expectedResult.outcome
@@ -169,6 +195,63 @@ class UpdateInstaller(
             finishInstall(callback, outcome, expectedResult)
         } catch (_: Exception) {
             finishInstall(callback, InstallOutcome.FAILED, expectedResult)
+        }
+    }
+
+    /**
+     * Decides whether a sealed session that may hold the user's consent stays. Android 14 and later
+     * re-activate the session after consent; Android 10-13 leave it inactive. On every version the
+     * session's progress moves from 0.8 to 0.9 only when installation starts after consent. A prompt
+     * that returns before either sign waits up to [consentGraceMillis], because the installer UI can
+     * also close without answering, and is released after that. A missing [session] waits the same
+     * way: the platform drops a finished session before its final status reaches the receiver.
+     */
+    private fun keepForConsent(
+        callback: UpdateStore.InstallCallback,
+        expectedResult: InstallResult,
+        session: PackageInstaller.SessionInfo?,
+        promptReturned: Boolean,
+    ): Boolean {
+        if (session != null && (session.isActive || session.progress > CONSENTED_PROGRESS)) {
+            if (store.recordInstallResult(
+                    callback,
+                    InstallResult(InstallOutcome.VERIFYING),
+                    terminal = false,
+                    expectedResult = expectedResult,
+                )
+            ) UpdateNotifications.cancelInstall(context)
+            return true
+        }
+        val now = clock()
+        if (promptReturned) {
+            if (store.beginConsentWait(callback, expectedResult, now)) {
+                UpdateNotifications.cancelInstall(context)
+                scheduleConsentRecheck(consentGraceMillis)
+            }
+            return true
+        }
+        val startedAt = store.consentWaitStartedAt(callback) ?: return false
+        val elapsed = now - startedAt
+        // elapsedRealtime restarts at boot, so a negative wait has expired as well.
+        if (elapsed < 0 || elapsed >= consentGraceMillis) return false
+        scheduleConsentRecheck(consentGraceMillis - elapsed)
+        return true
+    }
+
+    private fun scheduleConsentRecheck(delayMillis: Long) {
+        consentRecheck?.cancel(false)
+        consentRecheck = background.schedule(
+            Runnable { recheckConsent() },
+            delayMillis.coerceAtLeast(0),
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
+    private fun recheckConsent() = synchronized(installLock) {
+        val callback = store.activeCallback() ?: return@synchronized
+        val result = store.lastInstallResult
+        if (result.outcome == InstallOutcome.VERIFYING && result.sessionId == callback.sessionId) {
+            reconcileSession(callback, result)
         }
     }
 
@@ -293,6 +376,35 @@ class UpdateInstaller(
 
     companion object {
         private val installLock = Any()
+        private const val CONSENTED_PROGRESS = 0.85f
+        private val background = ScheduledThreadPoolExecutor(1) { work ->
+            Thread(work, "apk-update-installer").apply { isDaemon = true }
+        }
+        private var consentRecheck: ScheduledFuture<*>? = null
+
+        @Volatile
+        @VisibleForTesting
+        internal var clock: () -> Long = SystemClock::elapsedRealtime
+
+        @Volatile
+        @VisibleForTesting
+        internal var consentGraceMillis = 60_000L
+
+        /** Waits for session work already handed to the background thread; scheduled rechecks keep waiting. */
+        @VisibleForTesting
+        internal fun awaitBackgroundWork() {
+            background.submit(Runnable {}).get(10, TimeUnit.SECONDS)
+        }
+
+        @VisibleForTesting
+        internal fun resetForTest() {
+            synchronized(installLock) {
+                consentRecheck?.cancel(false)
+                consentRecheck = null
+            }
+            clock = SystemClock::elapsedRealtime
+            consentGraceMillis = 60_000L
+        }
 
         fun callbackPendingIntentFlags(): Int = PendingIntent.FLAG_UPDATE_CURRENT or
             if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0

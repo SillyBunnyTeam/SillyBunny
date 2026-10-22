@@ -75,13 +75,16 @@ class UpdateInstallerTest {
         }
         setArchive()
         state = InstallState()
+        UpdateInstaller.resetForTest()
     }
 
     @After
     fun tearDown() {
+        UpdateInstaller.awaitBackgroundWork()
         UpdateForeground.currentActivity()?.let(UpdateForeground::detach)
         store.failInstall(store.activeSessionId)
         File(context.cacheDir, "updates").deleteRecursively()
+        UpdateInstaller.resetForTest()
     }
 
     @Test
@@ -360,6 +363,7 @@ class UpdateInstallerTest {
         state.sessionPackage = context.packageName
         val activity = foregroundActivity()
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(1, state.abandons)
         assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
@@ -378,6 +382,7 @@ class UpdateInstallerTest {
         state.sessionSealed = true
         val activity = foregroundActivity()
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(0, state.abandons)
         assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
         assertEquals(47, store.activeSessionId)
@@ -395,6 +400,7 @@ class UpdateInstallerTest {
         store.clearPendingUserAction()
         val activity = foregroundActivity()
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(1, state.abandons)
         assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
@@ -524,6 +530,7 @@ class UpdateInstallerTest {
         assertEquals(0, state.abandons)
         assertEquals(47, store.activeSessionId)
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
     }
 
@@ -557,20 +564,38 @@ class UpdateInstallerTest {
     }
 
     @Test
-    fun launchRecoveryIsIdleWithoutAnActiveSessionAndReleasesUnauthenticatedVerifyingState() {
+    fun launchRecoveryReleasesUntrackedOwnedSessionsAndUnauthenticatedVerifyingState() {
         state.sessionPresent = true
         state.sessionPackage = context.packageName
         worker { UpdateInstaller(context).reconcileAfterLaunch() }
         assertEquals(InstallResult(), store.lastInstallResult)
-        assertEquals(0, state.abandons)
+        // getMySessions lists only sessions this app created, so one that no install tracks is a leak.
+        assertEquals(1, state.abandons)
+        state.sessionPresent = true
         store.activeSessionId = 47
         store.downloadedApk = apk.path
         store.lastInstallResult = InstallResult(InstallOutcome.VERIFYING, sessionId = 47)
         worker { UpdateInstaller(context).reconcileAfterLaunch() }
         assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
-        assertEquals(1, state.abandons)
+        assertEquals(2, state.abandons)
         assertNull(store.activeSessionId)
         assertFalse(apk.exists())
+    }
+
+    @Test
+    fun launchRecoveryAbandonsASessionLeftUntrackedByProcessDeathWhileStreaming() {
+        state.failAt = "death-after-create"
+        assertThrows(SimulatedProcessDeath::class.java) { worker { UpdateInstaller(context).install(apk, 2) } }
+        assertNull(store.activeSessionId)
+        assertTrue(state.sessionPresent)
+        state.orphans += 52 to "other.package"
+        state.orphans += 53 to context.packageName
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(1, state.abandons)
+        assertFalse(state.sessionPresent)
+        assertEquals(listOf(53), state.abandonedOrphans)
+        assertEquals(listOf(52), state.orphans.map { it.first })
+        assertEquals(InstallResult(), store.lastInstallResult)
     }
 
     @Test
@@ -667,6 +692,7 @@ class UpdateInstallerTest {
         state.sessionPackage = "unrelated.package"
         val activity = foregroundActivity()
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(0, state.abandons)
         assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
@@ -683,6 +709,7 @@ class UpdateInstallerTest {
             state.failAt = failure
             val activity = foregroundActivity()
             assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+            UpdateInstaller.awaitBackgroundWork()
             assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
             assertNull(store.activeSessionId)
             assertFalse(apk.exists())
@@ -695,10 +722,204 @@ class UpdateInstallerTest {
         shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName).longVersionCode = 2
         val activity = foregroundActivity()
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.SUCCESS, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
         assertFalse(apk.exists())
         assertEquals(0, state.abandons)
+    }
+
+    @Test
+    fun approvedConfirmationIsKeptWhenTheSessionStaysInactiveAfterConsentAsOnAndroid10To13() {
+        installAndPresentConfirmation()
+        platformAppliesConsent(reactivates = false)
+        val activity = foregroundActivity()
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(0, state.abandons)
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        assertEquals(47, store.activeSessionId)
+        assertTrue(apk.exists())
+        assertNull(shadowOf(activity).nextStartedActivity)
+
+        // A later launch, for example after the process died, must not abandon it either.
+        store.clearPendingUserAction()
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(0, state.abandons)
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        assertEquals(47, store.activeSessionId)
+    }
+
+    @Test
+    fun processDeathAfterConsentDoesNotAbandonTheApprovedSessionAtLaunch() {
+        installAndPresentConfirmation()
+        platformAppliesConsent(reactivates = false)
+        store.clearPendingUserAction()
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(0, state.abandons)
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        assertEquals(47, store.activeSessionId)
+        assertTrue(apk.exists())
+    }
+
+    @Test
+    fun confirmationThatReturnsBeforeThePlatformAppliesConsentWaitsInsteadOfAbandoning() {
+        var now = 1_000L
+        UpdateInstaller.clock = { now }
+        installAndPresentConfirmation()
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(foregroundActivity()))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(0, state.abandons)
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        assertEquals(47, store.activeSessionId)
+
+        platformAppliesConsent(reactivates = Build.VERSION.SDK_INT >= 34)
+        now += UpdateInstaller.consentGraceMillis
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(0, state.abandons)
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        assertEquals(47, store.activeSessionId)
+        assertTrue(apk.exists())
+    }
+
+    @Test
+    fun unansweredConfirmationIsReleasedOnlyAfterTheConsentGracePeriod() {
+        var now = 1_000L
+        UpdateInstaller.clock = { now }
+        installAndPresentConfirmation()
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(foregroundActivity()))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+
+        now += UpdateInstaller.consentGraceMillis - 1
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(0, state.abandons)
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+
+        now += 1
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(1, state.abandons)
+        assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
+        assertNull(store.activeSessionId)
+        assertFalse(apk.exists())
+    }
+
+    @Test
+    fun scheduledRecheckReleasesAnUnansweredConfirmationWithoutAnotherLaunch() {
+        UpdateInstaller.clock = { TimeUnit.NANOSECONDS.toMillis(System.nanoTime()) }
+        UpdateInstaller.consentGraceMillis = 200
+        installAndPresentConfirmation()
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(foregroundActivity()))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (store.lastInstallResult.outcome == InstallOutcome.VERIFYING && System.nanoTime() < deadline) {
+            Thread.sleep(20)
+        }
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
+        assertEquals(1, state.abandons)
+        assertNull(store.activeSessionId)
+    }
+
+    @Test
+    fun approvedSessionThatFinishedBeforeItsResultArrivedEndsWithThePlatformResult() {
+        UpdateInstaller.clock = { 1_000L }
+        installAndPresentConfirmation()
+        // The platform drops a finished session before its final status reaches the receiver.
+        state.sessionPresent = false
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(foregroundActivity()))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        assertEquals(47, store.activeSessionId)
+
+        InstallStatusReceiver().onReceive(
+            context,
+            Intent(context, InstallStatusReceiver::class.java)
+                .setAction(store.activeCallback()!!.action)
+                .putExtra(PackageInstaller.EXTRA_SESSION_ID, 47)
+                .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE_CONFLICT),
+        )
+        assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
+        assertEquals(PackageInstaller.STATUS_FAILURE_CONFLICT, store.lastInstallResult.status)
+        assertEquals(0, state.abandons)
+        assertNull(store.activeSessionId)
+    }
+
+    @Test
+    fun sessionThatVanishedAfterItsConfirmationWithoutAResultIsReleasedAfterTheGracePeriod() {
+        var now = 1_000L
+        UpdateInstaller.clock = { now }
+        installAndPresentConfirmation()
+        state.sessionPresent = false
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(foregroundActivity()))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+
+        now += UpdateInstaller.consentGraceMillis - 1
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+
+        now += 1
+        worker { UpdateInstaller(context).reconcileAfterLaunch() }
+        assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
+        assertEquals(0, state.abandons)
+        assertNull(store.activeSessionId)
+        assertFalse(apk.exists())
+    }
+
+    @Test
+    fun confirmationRecoveryQueriesAndAbandonsSessionsOffTheMainThread() {
+        beginPendingRecovery()
+        state.sessionPresent = true
+        state.sessionPackage = context.packageName
+        val activity = foregroundActivity()
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(1, state.abandons)
+        assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
+        assertEquals(0, state.mainThreadSessionCalls)
+
+        // A confirmation callback without an intent reaches the same recovery from the receiver.
+        apk.writeText("apk")
+        assertTrue(store.beginInstall(47, "receiver-callback", apk, 2))
+        state.sessionPresent = true
+        InstallStatusReceiver().onReceive(
+            context,
+            Intent(context, InstallStatusReceiver::class.java)
+                .setAction("receiver-callback")
+                .putExtra(PackageInstaller.EXTRA_SESSION_ID, 47)
+                .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_PENDING_USER_ACTION),
+        )
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(2, state.abandons)
+        assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
+        assertEquals(0, state.mainThreadSessionCalls)
+
+        // Lost callback authentication is released off the main thread as well.
+        state.sessionPresent = true
+        store.activeSessionId = 47
+        store.lastInstallResult = InstallResult(InstallOutcome.AWAITING_USER_ACTION, sessionId = 47)
+        assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
+        assertEquals(3, state.abandons)
+        assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
+        assertEquals(0, state.mainThreadSessionCalls)
+    }
+
+    private fun installAndPresentConfirmation() {
+        assertEquals(47, worker { UpdateInstaller(context).install(apk, 2) })
+        // AOSP 10-17 drop the commit's active reference when they send the confirmation intent.
+        state.sessionActive = false
+        presentPendingConfirmation()
+        assertEquals(InstallOutcome.AWAITING_USER_ACTION, store.lastInstallResult.outcome)
+    }
+
+    // Installation starts only after consent and moves the session's progress from 0.8 to 0.9.
+    // Only Android 14 and later also re-activate the session (PackageInstallerSession.handleInstall).
+    private fun platformAppliesConsent(reactivates: Boolean) {
+        state.sessionProgress = 0.9f
+        state.sessionActive = reactivates
     }
 
     private fun beginPendingRecovery() {
@@ -813,11 +1034,17 @@ class UpdateInstallerTest {
         fun openSession(sessionId: Int): PackageInstaller.Session {
             check(sessionId == 47)
             if (state.failAt == "open") throw IOException("private detail")
+            if (state.failAt == "death-after-create") throw SimulatedProcessDeath()
             return Shadow.newInstanceOf(PackageInstaller.Session::class.java)
         }
 
         @Implementation
         fun abandonSession(sessionId: Int) {
+            if (Looper.myLooper() == Looper.getMainLooper()) state.mainThreadSessionCalls++
+            if (state.orphans.removeAll { it.first == sessionId }) {
+                state.abandonedOrphans += sessionId
+                return
+            }
             check(sessionId == 47)
             if (state.failAt == "abandon") throw SecurityException("private detail")
             state.abandons++
@@ -826,27 +1053,39 @@ class UpdateInstallerTest {
 
         @Implementation
         fun getMySessions(): List<PackageInstaller.SessionInfo> {
+            if (Looper.myLooper() == Looper.getMainLooper()) state.mainThreadSessionCalls++
             if (state.failAt == "query") throw SecurityException("private detail")
             state.onQuery?.invoke()
-            return if (state.sessionPresent) {
-                listOf(Shadow.newInstanceOf(PackageInstaller.SessionInfo::class.java))
-            } else emptyList()
+            val sessions = mutableListOf<PackageInstaller.SessionInfo>()
+            if (state.sessionPresent) sessions += Shadow.newInstanceOf(PackageInstaller.SessionInfo::class.java)
+            state.orphans.forEach { orphan ->
+                sessions += Shadow.newInstanceOf(PackageInstaller.SessionInfo::class.java).also {
+                    Shadow.extract<RecordingSessionInfo>(it).orphan = orphan
+                }
+            }
+            return sessions
         }
     }
 
+    // Session 47 follows InstallState; orphans are other sessions this app owns and nothing tracks.
     @Implements(PackageInstaller.SessionInfo::class)
     class RecordingSessionInfo {
-        @Implementation
-        fun getSessionId(): Int = 47
+        var orphan: Pair<Int, String?>? = null
 
         @Implementation
-        fun getAppPackageName(): String? = state.sessionPackage
+        fun getSessionId(): Int = orphan?.first ?: 47
 
         @Implementation
-        fun isActive(): Boolean = state.sessionActive
+        fun getAppPackageName(): String? = orphan.let { if (it != null) it.second else state.sessionPackage }
 
         @Implementation
-        fun isSealed(): Boolean = state.sessionSealed
+        fun isActive(): Boolean = orphan == null && state.sessionActive
+
+        @Implementation
+        fun isSealed(): Boolean = orphan == null && state.sessionSealed
+
+        @Implementation
+        fun getProgress(): Float = if (orphan == null) state.sessionProgress else 0f
     }
 
     @Implements(PackageInstaller.Session::class)
@@ -890,6 +1129,8 @@ class UpdateInstallerTest {
             state.commits++
             state.sessionSealed = true
             state.sessionActive = true
+            // Commit sets the client progress to 1; the session reports it as 0.8 of the total.
+            state.sessionProgress = 0.8f
             state.onCommit?.invoke(statusReceiver)
         }
 
@@ -921,6 +1162,10 @@ class UpdateInstallerTest {
         var sessionPackage: String? = null
         var sessionActive = false
         var sessionSealed = false
+        var sessionProgress = 0f
+        var mainThreadSessionCalls = 0
+        val orphans = mutableListOf<Pair<Int, String?>>()
+        val abandonedOrphans = mutableListOf<Int>()
     }
 
     private class SimulatedProcessDeath : Error()

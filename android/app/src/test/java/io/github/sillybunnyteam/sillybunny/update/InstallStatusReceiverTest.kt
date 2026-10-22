@@ -38,6 +38,7 @@ class InstallStatusReceiverTest {
 
     @Before
     fun setUp() {
+        UpdateInstaller.resetForTest()
         context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
         context.getSharedPreferences("app_updates", Context.MODE_PRIVATE).edit().clear().commit()
         store = UpdateStore(context)
@@ -52,10 +53,12 @@ class InstallStatusReceiverTest {
 
     @After
     fun tearDown() {
+        UpdateInstaller.awaitBackgroundWork()
         UpdateForeground.currentActivity()?.let(UpdateForeground::detach)
         store.failInstall(store.activeSessionId)
         File(context.cacheDir, "updates").deleteRecursively()
         notifications.cancelAll()
+        UpdateInstaller.resetForTest()
     }
 
     @Test
@@ -206,6 +209,10 @@ class InstallStatusReceiverTest {
         UpdateForeground.detach(activity)
         UpdateForeground.attach(activity)
         assertFalse(installer.resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
+        // The session is already gone, so the platform's final status is still on its way.
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        receiver.onReceive(context, callback(PackageInstaller.STATUS_FAILURE_ABORTED))
         assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
         assertFalse(apk.exists())
@@ -244,7 +251,11 @@ class InstallStatusReceiverTest {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         UpdateForeground.attach(activity)
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertNull(shadowOf(activity).nextStartedActivity)
+        // The tapped confirmation's session is already gone, so its final status is still on its way.
+        assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
+        receiver.onReceive(context, callback(PackageInstaller.STATUS_FAILURE_ABORTED))
         assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
         assertNull(shadowOf(notifications).getNotification(UpdateNotifications.INSTALL_ID))
@@ -269,6 +280,7 @@ class InstallStatusReceiverTest {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         UpdateForeground.attach(activity)
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
         assertNull(platform.getSessionInfo(ownedId))
         assertNull(store.activeSessionId)
@@ -289,6 +301,7 @@ class InstallStatusReceiverTest {
         val activity = Robolectric.buildActivity(RejectingActivity::class.java).setup().get()
         UpdateForeground.attach(activity)
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
         assertFalse(apk.exists())
@@ -378,6 +391,7 @@ class InstallStatusReceiverTest {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         UpdateForeground.attach(activity)
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.FAILED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
         assertFalse(apk.exists())
@@ -399,6 +413,7 @@ class InstallStatusReceiverTest {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         UpdateForeground.attach(activity)
         assertFalse(UpdateInstaller(context).resumePendingUserAction(activity))
+        UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.ABORTED, store.lastInstallResult.outcome)
         assertNull(store.activeSessionId)
         assertFalse(apk.exists())
