@@ -219,6 +219,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-11 PR 2.1 mobile breakpoint ledger. |
 | Owner | Refactor integrator and mobile shell owner. |
 
+### `public/index.html` - Data & Security Usage Stats row
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-settings-content.js` (`SB_DATA_SECURITY_SECTIONS` and the Data & Security `general` category). |
+| Adapter shape | Keep one static `#user_stats_controls` row after `#account_controls`. Its button keeps the upstream `user_stats_button` class and `Usage Stats` i18n key, so the upstream binding in `public/script.js` opens `userStatsHandler()`. |
+| Protecting tests | `tests/unit/sillybunny-settings-content.test.js`, `tests/startup-on-demand.e2e.js` (`Data & Security opens Usage Stats`). |
+| Validation | `npm run test:unit --prefix tests -- unit/sillybunny-settings-content.test.js`, `npm run test:e2e --prefix tests -- startup-on-demand.e2e.js -g "Data & Security"`, `npm run lint`, `npm run check:frontend-budgets`, browser check at 1440px and 390px. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 PR `#870` Data & Security Usage Stats row. |
+| Owner | TODO(copy) |
+
 ### `public/css/backgrounds.css` - background image transparency
 | Field | Value |
 | --- | --- |
