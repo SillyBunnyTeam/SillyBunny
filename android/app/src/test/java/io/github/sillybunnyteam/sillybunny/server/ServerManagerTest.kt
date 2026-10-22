@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.Notification
 import android.app.Service
 import android.content.Intent
+import android.os.CancellationSignal
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.sun.net.httpserver.HttpServer
@@ -29,6 +30,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
 import java.net.InetSocketAddress
+import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -796,6 +798,186 @@ class ServerManagerTest {
         val finished = await("finished") { manager.setup.value as? SetupState.Finished }
         assertNotEquals(0, finished.exitCode)
     }
+
+    @Test
+    fun anAbandonedUpdateRestoresTheServerItStoppedWhileAnActivityIsVisible() {
+        build()
+        manager.onActivityStarted(context)
+        manager.start(context)
+        awaitRunning(1)
+        onUpdaterThread { manager.serverController.stopForUpdate() }
+        assertEquals(ServerState.Stopped(userStopped = true), manager.state.value)
+
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+
+        awaitRunning(2)
+        assertTrue(manager.recentLogLines().contains("${ServerManager.MARKER} update-abandoned restore=start"))
+        // The same result again, or a later one, restores nothing more.
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+        settle()
+        assertEquals(2, servers.size)
+        assertEquals(listOf(ServerService.ACTION_START, ServerService.ACTION_START), starts)
+    }
+
+    @Test
+    fun anAbandonedUpdateWithoutAVisibleActivityRestoresAtTheNextActivityStart() {
+        build()
+        manager.onActivityStarted(context)
+        manager.start(context)
+        awaitRunning(1)
+        manager.onActivityStopped()
+        assertFalse(manager.activityVisible)
+        onUpdaterThread { manager.serverController.stopForUpdate() }
+
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+
+        // No foreground-service start from the background: the platform would refuse it.
+        settle()
+        assertEquals(listOf(ServerService.ACTION_START), starts)
+        assertEquals(1, servers.size)
+        assertEquals(ServerState.Stopped(userStopped = true), manager.state.value)
+
+        manager.onActivityStarted(context)
+        assertTrue(manager.activityVisible)
+        awaitRunning(2)
+        assertEquals(listOf(ServerService.ACTION_START, ServerService.ACTION_START), starts)
+        manager.onActivityStopped()
+        manager.onActivityStarted(context)
+        settle()
+        assertEquals(2, servers.size)
+    }
+
+    @Test
+    fun anAbandonedUpdateRestoresOnlyAServerThatTheUpdateStopped() {
+        build()
+        manager.onActivityStarted(context)
+        // Nothing ran when the update stopped everything.
+        onUpdaterThread { manager.serverController.stopForUpdate() }
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+        settle()
+        assertTrue(starts.isEmpty())
+
+        // A result without any stop for an update leaves a running server alone.
+        manager.start(context)
+        awaitRunning(1)
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+        settle()
+        assertEquals(listOf(ServerService.ACTION_START), starts)
+        assertEquals(1, servers.size)
+        assertTrue(manager.state.value is ServerState.Running)
+    }
+
+    @Test
+    fun anExplicitStartReplacesAPendingRestore() {
+        build()
+        manager.onActivityStarted(context)
+        manager.start(context)
+        awaitRunning(1)
+        manager.onActivityStopped()
+        onUpdaterThread { manager.serverController.stopForUpdate() }
+        onUpdaterThread { manager.serverController.resumeAfterAbandonedUpdate() }
+
+        manager.start(context)
+        awaitRunning(2)
+        manager.onActivityStarted(context)
+
+        settle()
+        assertEquals(2, servers.size)
+        assertFalse(manager.recentLogLines().any { it.contains("update-abandoned") })
+    }
+
+    @Test
+    fun aStaleGitLockIsRemovedRightBeforeTheServerIsSpawned() {
+        val lock = gitLock()
+        build().start(context)
+
+        awaitRunning(1)
+
+        assertFalse(lock.exists())
+        assertTrue(manager.recentLogLines().contains("${ServerManager.MARKER} stale-git-lock removed"))
+    }
+
+    @Test
+    fun aStaleGitLockIsRemovedRightBeforeASetupJobIsSpawned() {
+        val lock = gitLock()
+        build()
+        configureScript = { it.exit(0) }
+
+        assertTrue(manager.runSetup(context, job()))
+
+        await("finished") { manager.setup.value as? SetupState.Finished }
+        assertFalse(lock.exists())
+        val setupLog = File(paths.logsDir, ServerManager.SETUP_LOG).readLines()
+        assertTrue(setupLog.contains("${ServerManager.MARKER} stale-git-lock removed"))
+    }
+
+    @Test
+    fun aGitLockIsKeptWhileTheServerRuns() {
+        build().start(context)
+        awaitRunning(1)
+        val lock = gitLock()
+        configureScript = { it.exit(0) }
+
+        assertEquals(0, runScript())
+
+        assertTrue(lock.exists())
+        assertFalse(manager.recentLogLines().any { it.contains("stale-git-lock") })
+    }
+
+    @Test
+    fun aGitLockIsKeptWhileASetupJobRuns() {
+        build()
+        assertTrue(manager.runSetup(context, job()))
+        await("script") { scripts.firstOrNull() }
+        val lock = gitLock()
+        configureScript = { it.exit(0) }
+
+        assertEquals(0, runScript())
+        assertTrue(lock.exists())
+
+        // Once the job is gone, nothing holds the lock any more.
+        manager.cancelSetup()
+        await("finished") { manager.setup.value as? SetupState.Finished }
+        assertEquals(0, runScript())
+        assertFalse(lock.exists())
+    }
+
+    @Test
+    fun onlyARegularLockFileInARealGitDirectoryIsRemoved() {
+        val target = File(temporary.root, "elsewhere.lock").apply { writeText("") }
+        val git = File(paths.checkoutDir, ".git").apply { mkdirs() }
+        val link = File(git, "index.lock")
+        Files.createSymbolicLink(link.toPath(), target.toPath())
+        build().start(context)
+
+        awaitRunning(1)
+
+        assertTrue(Files.isSymbolicLink(link.toPath()))
+        assertTrue(target.exists())
+    }
+
+    /** Runs [block] on its own thread, as the APK updater's worker does, and waits for it. */
+    private fun onUpdaterThread(block: () -> Unit) {
+        val thread = Thread(block, "apk-updater").apply { start() }
+        thread.join(15_000)
+        assertFalse(thread.isAlive)
+    }
+
+    /** Gives a wrongly started server time to appear before the test checks that none did. */
+    private fun settle() {
+        Thread.sleep(150)
+        idleMain()
+    }
+
+    private fun gitLock(): File = File(paths.checkoutDir, ".git/index.lock").apply {
+        parentFile!!.mkdirs()
+        writeText("")
+    }
+
+    private fun runScript(): Int = manager.scriptRunner.run(
+        File(paths.filesDir, "check.sh"), emptyList(), paths.filesDir, {}, CancellationSignal(),
+    )
 
     private fun job() = SetupJob(
         File(paths.checkoutDir, "scripts/bootstrap/install.sh"),

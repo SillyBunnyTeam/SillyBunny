@@ -11,6 +11,8 @@ import android.os.SystemClock
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import io.github.sillybunnyteam.sillybunny.ServerService
+import io.github.sillybunnyteam.sillybunny.runtime.RuntimeLayout
+import io.github.sillybunnyteam.sillybunny.runtime.RuntimeLayoutResult
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import io.github.sillybunnyteam.sillybunny.settings.AppSettings
 import io.github.sillybunnyteam.sillybunny.update.ServerController
@@ -21,6 +23,8 @@ import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.lang.ref.WeakReference
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -28,6 +32,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /** Starts [ServerService] with an action; unit tests replace it. */
@@ -70,7 +75,14 @@ internal data class ServerDependencies(
             val stable = RuntimePaths(app.filesDir, app.cacheDir, File(app.applicationInfo.nativeLibraryDir.orEmpty()))
             val controlDir = File(stable.cacheDir, "server-process")
             return ServerDependencies(
-                paths = { RuntimePaths(app) },
+                // A START_STICKY recreation can launch without MainActivity, so this ensures the layout too
+                // (plan §2.4 step 1).
+                paths = {
+                    when (val layout = RuntimeLayout.ensure(app)) {
+                        is RuntimeLayoutResult.Ready -> layout.paths
+                        else -> throw LaunchUnavailableException("runtime-layout")
+                    }
+                },
                 logsDir = stable.logsDir,
                 controlDir = controlDir,
                 launcher = SessionLauncher(controlDir),
@@ -100,7 +112,9 @@ internal data class ServerDependencies(
  * setup job, all kept alive by [ServerService].
  *
  * - Obtain it with [ServerManager.get].
- * - Wire [serverController] into `AppUpdater.serverController`.
+ * - Wire [serverController] into `AppUpdater.serverController`, and report every activity's start and stop
+ *   ([onActivityStarted], [onActivityStopped]): a server that an abandoned update stopped comes back only from
+ *   a visible activity.
  * - [start], [restart] and [runSetup] start a foreground service: call them only while an activity is
  *   visible or from a user action. [stop] blocks: never call it on the main thread.
  * - Every state change happens on one worker thread, in call order.
@@ -113,8 +127,9 @@ class ServerManager internal constructor(
     context: Context,
     internal val dependencies: ServerDependencies,
 ) : ServerHost {
-    // No Context field: the manager lives in a static field for the whole process.
-    private val store = ServerStateStore(context.applicationContext)
+    // Only the application context is kept: the manager lives in a static field for the whole process.
+    private val appContext: Context = context.applicationContext
+    private val store = ServerStateStore(appContext)
     private val policy = RestartPolicy(dependencies.restart, dependencies.clock)
     private val ports = PortPolicy(store, dependencies.portFree, busyDelayMillis = dependencies.portBusyDelayMillis)
     private val escalation = StopEscalation(dependencies.stop)
@@ -136,6 +151,13 @@ class ServerManager internal constructor(
     private var mode: ServiceMode? = null
     private var pendingServerRequests = 0
     private var pendingSetup: PendingSetup? = null
+
+    // Guarded by lock too: started activities, and the restore of a server that stopForUpdate stopped.
+    private var visibleActivities = 0
+    private var updateRestore = UpdateRestore.NONE
+
+    // Script processes started and not yet released; read before a spawn, to tell a stale git lock.
+    private val liveScripts = AtomicInteger()
 
     @Volatile
     private var setupCancel: CancellationSignal? = null
@@ -162,16 +184,31 @@ class ServerManager internal constructor(
     private val mutableSetup = MutableStateFlow<SetupState>(SetupState.Idle)
     override val setup: StateFlow<SetupState> = mutableSetup.asStateFlow()
 
-    /** The awaited, bounded stop that the APK updater calls on its worker thread; never throws. */
-    val serverController: ServerController = ServerController { stopForUpdate() }
+    /**
+     * What the APK updater calls on its worker thread: the awaited, bounded [stopForUpdate], and
+     * [resumeAfterAbandonedUpdate] once an install ended without replacing the app. Neither throws.
+     */
+    val serverController: ServerController = object : ServerController {
+        override fun stopForUpdate() = this@ServerManager.stopForUpdate()
+
+        override fun resumeAfterAbandonedUpdate() = this@ServerManager.resumeAfterAbandonedUpdate()
+    }
+
+    /** True while an activity of this app is started ([onActivityStarted]); safe on any thread. */
+    val activityVisible: Boolean
+        get() = synchronized(lock) { visibleActivities > 0 }
 
     /**
      * Runs one bundled-Bash script with the §2.5 environment (no launch token) in its own process group.
      * [runSetup] uses it under the foreground service; it blocks, so never call it on the main thread.
      */
-    val scriptRunner: ScriptRunner = BashScriptRunner(dependencies.launcher, dependencies.scriptStop) {
+    val scriptRunner: ScriptRunner = BashScriptRunner(
+        TrackingLauncher(dependencies.launcher, liveScripts),
+        dependencies.scriptStop,
+    ) {
         val paths = dependencies.paths()
         prepareDirectories(paths)
+        removeStaleGitLock(paths, ::setupMarker)
         ScriptLaunch(
             dependencies.scriptInterpreter(paths),
             ProcessEnvironment.build(
@@ -263,7 +300,7 @@ class ServerManager internal constructor(
     /**
      * Stops everything before an APK install (plan §5.5): cancels a setup job, then stops the server
      * (as a user stop, so nothing restarts it), and blocks until both are gone or [UPDATE_STOP_MILLIS]
-     * passes. Never throws into the updater.
+     * passes. Never throws into the updater. A server it stops is restored by [resumeAfterAbandonedUpdate].
      */
     fun stopForUpdate() {
         try {
@@ -271,12 +308,63 @@ class ServerManager internal constructor(
             setupCancel?.cancel()
             while (mutableSetup.value is SetupState.Running && System.nanoTime() - deadline < 0) Thread.sleep(50)
             val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
-            if (remaining > 0) stop(remaining)
+            if (remaining > 0) {
+                // Starting also covers a scheduled restart. A second install attempt finds the server already
+                // stopped, so it never disarms the first one's restore.
+                val serverUp = mutableState.value.let { it is ServerState.Starting || it is ServerState.Running }
+                if (serverUp) synchronized(lock) { updateRestore = UpdateRestore.ARMED }
+                stop(remaining)
+            }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         } catch (_: RuntimeException) {
             // The updater must be able to continue whatever happened here.
         }
+    }
+
+    /**
+     * After an install that did not replace the app (declined, failed or abandoned), starts the server again,
+     * but only one that [stopForUpdate] stopped: further calls, and calls without such a stop, do nothing. It runs
+     * on the updater's worker thread, possibly while no activity is visible; a foreground-service start would
+     * then be refused, so the restore waits for the next [onActivityStarted].
+     */
+    fun resumeAfterAbandonedUpdate() {
+        val start = synchronized(lock) {
+            when {
+                updateRestore != UpdateRestore.ARMED -> false
+                visibleActivities == 0 -> {
+                    updateRestore = UpdateRestore.PENDING
+                    false
+                }
+                else -> {
+                    updateRestore = UpdateRestore.NONE
+                    true
+                }
+            }
+        }
+        if (start) restoreAfterUpdate(appContext)
+    }
+
+    /**
+     * Call from every activity's `onStart`. Repair checks [activityVisible] before it moves anything, and a restore
+     * that waited for a visible activity ([resumeAfterAbandonedUpdate]) starts the server now, from [context].
+     */
+    fun onActivityStarted(context: Context) {
+        val restore = synchronized(lock) {
+            visibleActivities++
+            (updateRestore == UpdateRestore.PENDING).also { if (it) updateRestore = UpdateRestore.NONE }
+        }
+        if (restore) restoreAfterUpdate(context)
+    }
+
+    /** Call from every activity's `onStop`. */
+    fun onActivityStopped() {
+        synchronized(lock) { if (visibleActivities > 0) visibleActivities-- }
+    }
+
+    private fun restoreAfterUpdate(context: Context) {
+        execute { marker("update-abandoned restore=start") }
+        start(context)
     }
 
     /** The current run's process IDs, for device tests. */
@@ -332,6 +420,8 @@ class ServerManager internal constructor(
             }
             mode = ServiceMode.SERVER
             pendingServerRequests++
+            // An explicit start supersedes the restore of a server that an update stopped.
+            updateRestore = UpdateRestore.NONE
         }
         val started = try {
             dependencies.serviceStarter.start(context, action)
@@ -427,11 +517,12 @@ class ServerManager internal constructor(
 
     private fun launch(attempt: Int) {
         publish(ServerState.Starting(attempt))
+        val paths: RuntimePaths
         val session: LaunchSession
         val originChanged: Boolean
         val spec: LaunchSpec
         try {
-            val paths = dependencies.paths()
+            paths = dependencies.paths()
             prepareDirectories(paths)
             val choice = ports.choose()
             session = LaunchSession(choice.port, LaunchTokens.generate())
@@ -458,6 +549,7 @@ class ServerManager internal constructor(
             return
         }
         marker("start attempt=$attempt port=${session.port} originChanged=$originChanged")
+        removeStaleGitLock(paths, ::marker)
         // Taken before the spawn, so the native-log query also covers reports from the first moments.
         val launchedEpochMillis = System.currentTimeMillis()
         val process = try {
@@ -697,6 +789,27 @@ class ServerManager internal constructor(
         }
     }
 
+    /**
+     * Right before a server or script process is spawned: removes the checkout's `.git/index.lock` when no run
+     * and no script of this app is alive. Only this app's processes reach that `.git`, so such a lock is left
+     * over from one that was stopped mid-update (a Stop during `start.sh`'s git update), and keeping it makes
+     * every later `self-update.sh --optional` fail quietly.
+     */
+    private fun removeStaleGitLock(paths: RuntimePaths, log: (String) -> Unit) {
+        if (run != null || liveScripts.get() > 0) return
+        val git = File(paths.checkoutDir, ".git").toPath()
+        val lock = git.resolve("index.lock")
+        // A real directory and a regular file only: links are neither followed nor removed.
+        if (!Files.isDirectory(git, LinkOption.NOFOLLOW_LINKS)) return
+        if (!Files.isRegularFile(lock, LinkOption.NOFOLLOW_LINKS)) return
+        try {
+            Files.delete(lock)
+            log("stale-git-lock removed")
+        } catch (_: IOException) {
+            log("stale-git-lock remove-failed")
+        }
+    }
+
     private fun appendServerLine(line: String) {
         serverLog.append(line)
         tail.add(line)
@@ -787,6 +900,37 @@ class ServerManager internal constructor(
     }
 
     private class PendingSetup(val job: SetupJob, val cancel: CancellationSignal)
+
+    private enum class UpdateRestore {
+        NONE,
+
+        /** [stopForUpdate] stopped a running or starting server. */
+        ARMED,
+
+        /** The update was abandoned while no activity was visible; the next [onActivityStarted] restores. */
+        PENDING,
+    }
+
+    /** Counts the processes [launcher] started in [live] until each is released. */
+    private class TrackingLauncher(
+        private val launcher: ProcessLauncher,
+        private val live: AtomicInteger,
+    ) : ProcessLauncher {
+        override fun launch(spec: LaunchSpec): ServerProcess {
+            val process = launcher.launch(spec)
+            live.incrementAndGet()
+            val released = AtomicBoolean(false)
+            return object : ServerProcess by process {
+                override fun release() {
+                    try {
+                        process.release()
+                    } finally {
+                        if (released.compareAndSet(false, true)) live.decrementAndGet()
+                    }
+                }
+            }
+        }
+    }
 
     companion object {
         const val SERVER_LOG = "server.log"
