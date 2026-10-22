@@ -23,7 +23,8 @@ concurrency:
 jobs:
   run-release-e2e:
     name: Run Chromium E2E suite
-    runs-on: ubuntu-latest
+    # `@playwright/test` 1.60.0 cannot install Chromium on Ubuntu 26.04, which `ubuntu-latest` now resolves to. Move this pin with Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       CI: 'true'

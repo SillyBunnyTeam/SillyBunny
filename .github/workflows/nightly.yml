@@ -59,7 +59,8 @@ jobs:
     name: 🌙 Lint, tests, budgets, boot smoke and e2e
     needs: gate
     if: needs.gate.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    # `@playwright/test` 1.60.0 cannot install Chromium on Ubuntu 26.04, which `ubuntu-latest` now resolves to. Move this pin with Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       CI: 'true'
