@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const checkWorldInfo = jest.fn();
-const getMaxPromptTokens = jest.fn(responseLength => 8000 - (responseLength ?? 1000));
+const getMaxPromptTokens = jest.fn(() => 7000);
+const FULL_KAGUYA = { name: 'Kaguya', avatar: 'kaguya.png', description: 'Moon princess.', data: { extensions: { world: 'Kaguya Book' } } };
+const unshallowCharacter = jest.fn(async (characterId) => {
+    if (characters[characterId]?.shallow) {
+        characters[characterId] = { ...FULL_KAGUYA };
+    }
+});
 const characters = [
     { name: 'Tewi', avatar: 'tewi.png' },
     {
@@ -12,12 +18,14 @@ const characters = [
         scenario: 'Eientei clinic.',
         data: { creator_notes: 'Creator notes.', extensions: { depth_prompt: { prompt: 'Depth note.' } } },
     },
+    { name: 'Kaguya', avatar: 'kaguya.png', shallow: true, data: { extensions: {} } },
 ];
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters,
     extension_prompt_roles: { SYSTEM: 0, USER: 1, ASSISTANT: 2 },
     getMaxPromptTokens,
+    unshallowCharacter,
 }));
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
     power_user: { persona_descriptions: { 'persona-a.png': { description: 'Persona A description.', lorebook: 'Persona Book' } } },
@@ -48,6 +56,7 @@ describe('Conversation World Info scan', () => {
     beforeEach(() => {
         checkWorldInfo.mockReset().mockResolvedValue(SCAN_RESULT);
         getMaxPromptTokens.mockClear();
+        unshallowCharacter.mockClear();
     });
 
     test('scans the transcript messages newest first, with or without speaker names', () => {
@@ -65,10 +74,10 @@ describe('Conversation World Info scan', () => {
     test('scans the speaker with the thread override, the persona book and the persona name', async () => {
         const messages = [{ name: 'Moon Fan', mes: 'Tell me about the lexicon.' }];
 
-        await getConversationWorldInfo(messages, { lorebook_override: 'Override Book' }, { avatar: 'reisen.png', personaId: 'persona-a.png', responseLength: 300, trigger: 'regenerate' });
+        await getConversationWorldInfo(messages, { lorebook_override: 'Override Book' }, { avatar: 'reisen.png', personaId: 'persona-a.png', trigger: 'regenerate' });
 
-        expect(getMaxPromptTokens).toHaveBeenCalledWith(300);
-        expect(checkWorldInfo).toHaveBeenCalledWith(['Moon Fan: Tell me about the lexicon.'], 7700, true, {
+        expect(getMaxPromptTokens).toHaveBeenCalledWith();
+        expect(checkWorldInfo).toHaveBeenCalledWith(['Moon Fan: Tell me about the lexicon.'], 7000, true, {
             personaDescription: 'Persona A description.',
             characterDescription: 'Lunar rabbit.',
             characterPersonality: 'Earnest.',
@@ -87,9 +96,17 @@ describe('Conversation World Info scan', () => {
     test('scans without an override or persona book when none is set', async () => {
         await getConversationWorldInfo([], {}, { avatar: 'tewi.png', personaId: 'persona-b.png' });
 
-        expect(getMaxPromptTokens).toHaveBeenCalledWith(null);
         expect(checkWorldInfo.mock.calls[0][3]).toMatchObject({ characterDescription: '', personaDescription: '', trigger: 'normal' });
         expect(checkWorldInfo.mock.calls[0][4]).toEqual({ characterId: 0, chatWorld: '', personaWorld: '', userName: 'User' });
+    });
+
+    test('fetches a lazy-loaded card before the scan reads its linked book', async () => {
+        await getConversationWorldInfo([], {}, { avatar: 'kaguya.png', personaId: 'persona-a.png' });
+
+        expect(unshallowCharacter).toHaveBeenCalledWith(2);
+        expect(characters[2]).toEqual(FULL_KAGUYA);
+        expect(checkWorldInfo.mock.calls[0][3]).toMatchObject({ characterDescription: 'Moon princess.' });
+        expect(checkWorldInfo.mock.calls[0][4]).toMatchObject({ characterId: 2 });
     });
 
     test('returns the entries for each Conversation prompt slot', async () => {

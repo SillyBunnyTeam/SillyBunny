@@ -112,7 +112,7 @@ describe('Conversation core generated reply regressions', () => {
             speakerName: 'Partner',
         })).resolves.toBe('reply');
 
-        expect(getConversationWorldInfo).toHaveBeenCalledWith(threadMessages, settings, { avatar: 'partner.png', personaId: 'persona-a.png', responseLength: 100 });
+        expect(getConversationWorldInfo).toHaveBeenCalledWith(threadMessages, settings, { avatar: 'partner.png', personaId: 'persona-a.png' });
         expect(buildConversationPromptMessages).toHaveBeenCalledWith(threadMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { threadAvatar: 'char.png', branchId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 100 }));

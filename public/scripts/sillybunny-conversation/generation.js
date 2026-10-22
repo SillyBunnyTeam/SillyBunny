@@ -108,7 +108,7 @@ export async function generateConversationReply(directive, settings, { responseL
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
         ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
         : getConversationReplyMaxTokens(settings);
-    const worldInfo = await getConversationWorldInfo(messages, settings, { avatar: speakerAvatar, personaId, responseLength: resolvedResponseLength });
+    const worldInfo = await getConversationWorldInfo(messages, settings, { avatar: speakerAvatar, personaId });
     const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo });
 
     return generateConversationRaw({

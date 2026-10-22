@@ -1024,11 +1024,9 @@ export async function regenerateConversationMessage(messageId) {
 
     try {
         const transcript = sourceMessages.slice(0, -1);
-        const responseLength = getConversationReplyMaxTokens(settings);
         const worldInfo = await getConversationWorldInfo(transcript, settings, {
             avatar: speakerAvatar,
             personaId: context.personaId,
-            responseLength,
             trigger: 'regenerate',
         });
         const prompt = await buildConversationPromptMessages(
@@ -1048,7 +1046,7 @@ export async function regenerateConversationMessage(messageId) {
                     personaId: context.personaId,
                     worldInfo,
                 }),
-                responseLength,
+                responseLength: getConversationReplyMaxTokens(settings),
                 trimNames: true,
                 cacheScope: 'conversation-mode',
             }, settings),

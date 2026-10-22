@@ -311,7 +311,6 @@ describe('conversation timeline operation identity', () => {
         expect(getConversationWorldInfo).toHaveBeenCalledWith([messages[0]], {}, {
             avatar: 'char.png',
             personaId: 'persona-a.png',
-            responseLength: 100,
             trigger: 'regenerate',
         });
         expect(buildConversationPromptMessages.mock.calls[0][3]).toEqual({ groupId: '', personaId: 'persona-a.png', worldInfo });

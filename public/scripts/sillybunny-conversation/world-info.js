@@ -1,4 +1,4 @@
-import { characters, extension_prompt_roles, getMaxPromptTokens } from '../../script.js';
+import { characters, extension_prompt_roles, getMaxPromptTokens, unshallowCharacter } from '../../script.js';
 import { power_user } from '../power-user.js';
 import { checkWorldInfo, world_info_include_names } from '../world-info.js';
 import { TRANSCRIPT_MESSAGE_LIMIT } from './constants.js';
@@ -11,6 +11,10 @@ const EMPTY_CONVERSATION_WORLD_INFO = Object.freeze({
     authorsNoteAfter: '',
     depth: Object.freeze([]),
 });
+
+function findCharacterIndex(avatar) {
+    return characters.findIndex(character => character?.avatar === avatar);
+}
 
 function getConversationPromptRole(role) {
     switch (role) {
@@ -51,24 +55,27 @@ export function buildConversationWorldInfoScanChat(messages, includeNames = worl
  * @param {object} options
  * @param {string} options.avatar Avatar of the character who replies.
  * @param {string} options.personaId Persona that the user speaks as.
- * @param {number|null} [options.responseLength] Reply token limit. The World Info budget is a share of the context that is left.
  * @param {string} [options.trigger] Generation type that entry trigger filters match.
  * @returns {Promise<{ before: string, after: string, authorsNoteBefore: string, authorsNoteAfter: string, depth: { depth: number, role: string, content: string }[] }>}
  */
-export async function getConversationWorldInfo(messages, settings, { avatar, personaId, responseLength = null, trigger = 'normal' } = {}) {
-    if (settings?.lorebooks_enabled === false) {
+export async function getConversationWorldInfo(messages, settings, { avatar, personaId, trigger = 'normal' } = {}) {
+    if (settings?.lorebooks_enabled === false || findCharacterIndex(avatar) < 0) {
         return EMPTY_CONVERSATION_WORLD_INFO;
     }
 
-    const characterId = characters.findIndex(character => character?.avatar === avatar);
-    if (characterId < 0) {
-        return EMPTY_CONVERSATION_WORLD_INFO;
-    }
-
-    const character = characters[characterId];
     const persona = power_user?.persona_descriptions?.[personaId];
     try {
-        const result = await checkWorldInfo(buildConversationWorldInfoScanChat(messages), getMaxPromptTokens(responseLength), true, {
+        // A lazy-loaded card leaves out its linked book until the full card is fetched.
+        await unshallowCharacter(findCharacterIndex(avatar));
+        const characterId = findCharacterIndex(avatar);
+        const character = characters[characterId];
+        if (!character) {
+            return EMPTY_CONVERSATION_WORLD_INFO;
+        }
+
+        // The Conversation reply limit is a cap that can be larger than the main API context, not room
+        // kept free in it, so the budget uses the prompt size that a Roleplay reply scans with.
+        const result = await checkWorldInfo(buildConversationWorldInfoScanChat(messages), getMaxPromptTokens(), true, {
             personaDescription: String(persona?.description ?? ''),
             characterDescription: String(character.description ?? ''),
             characterPersonality: String(character.personality ?? ''),
