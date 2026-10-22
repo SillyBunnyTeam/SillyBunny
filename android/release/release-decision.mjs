@@ -4,7 +4,7 @@
 // Usage:
 //   node android/release/release-decision.mjs --prerelease <true|false>
 //       (--previous <file.json> | --github-repository <owner/repo> [--exclude-tag <tag>] [--github-api-url <url>])
-//       [--allow-unpinned-runtime] [--commit <rev>] [--repo <dir>]
+//       [--allow-unpinned-runtime | --skip-unpinned-runtime] [--commit <rev>] [--repo <dir>]
 //     --prerelease         the release's channel (steps.tag.outputs.prerelease); true builds with defaultRef
 //                          staging, false with release
 //     --allow-unpinned-runtime
@@ -13,6 +13,14 @@
 //                          be a build: a release whose inputsHash matches still fails and asks for a
 //                          versionCode bump. Without this flag an unpinned lock fails the decision. The flag
 //                          can stay in the release job; it has no effect once both are pinned
+//     --skip-unpinned-runtime
+//                          what release.yml passes. While android/runtime.lock does not pin the node or npm
+//                          payload, nothing can fetch the published Node binaries, so no APK can be built:
+//                          decide "skip" when no previous release carries an android-update.json (the release
+//                          is drafted without APKs), and fail otherwise, because this release would become the
+//                          newest one without android-update.json and installed apps check for updates through
+//                          the official latest URL. No effect once both are pinned. Cannot be combined with
+//                          --allow-unpinned-runtime
 //     --previous           a JSON array of earlier releases, [] when there are none. Each item is either
 //                          { "tag", "draft", "prerelease", "publishedAt", "manifest" } (only "manifest" is
 //                          required; it is the android-update.json object or, for exact checks, its raw text)
@@ -27,7 +35,7 @@
 //                          min-app-version and the runtime.lock pins are read from it
 //     --repo               the repository directory (default: the checkout that contains this script)
 //   Prints the decision as JSON:
-//     { "action": "reattach" | "build", "previous": <the most recent same-channel release or null>,
+//     { "action": "reattach" | "build" | "skip", "previous": <the most recent same-channel release or null>,
 //       "reasons": [...], "prerelease", "defaultRef", "inputsHash", "versionCode", "versionName",
 //       "minAppVersion", "highestPreviousVersionCode", "unpinnedRuntime", "commit" }
 //   "unpinnedRuntime" lists node and npm while android/runtime.lock does not pin their payloads ([] once it does).
@@ -47,7 +55,9 @@
 //     published binary's OCI digest, SHA-256 and size for each release ABI, which stay null until
 //     android-runtime.yml first publishes; npm is pinned through the Node source it comes from
 //     (unpinnedRuntimePayloads in common.mjs). While either is unpinned the decision fails, unless
-//     --allow-unpinned-runtime is given; then only a build is allowed, never a re-attach.
+//     --allow-unpinned-runtime is given; then only a build is allowed, never a re-attach. With
+//     --skip-unpinned-runtime instead, the decision is "skip" when no previous release has an
+//     android-update.json, and it fails otherwise.
 //   - Every previous manifest must pass the app's parser rules (manifest-rules.mjs); a non-prerelease one
 //     must also pass the stable channel's rules, and a release's own prerelease flag must match its
 //     manifest's.
@@ -208,6 +218,7 @@ export function decideRelease({
     minAppVersion,
     runtimeLock,
     allowUnpinnedRuntime = false,
+    skipUnpinnedRuntime = false,
     previous = [],
 } = {}) {
     if (typeof prerelease !== 'boolean') {
@@ -215,6 +226,12 @@ export function decideRelease({
     }
     if (typeof allowUnpinnedRuntime !== 'boolean') {
         throw new UsageError('allowUnpinnedRuntime must be true or false');
+    }
+    if (typeof skipUnpinnedRuntime !== 'boolean') {
+        throw new UsageError('TODO(copy) {"code":"invalid-option","option":"skipUnpinnedRuntime"}');
+    }
+    if (allowUnpinnedRuntime && skipUnpinnedRuntime) {
+        throw new UsageError('TODO(copy) {"code":"conflicting-options","options":["allowUnpinnedRuntime","skipUnpinnedRuntime"]}');
     }
     if (typeof inputsHash !== 'string' || !/^[0-9a-f]{64}$/.test(inputsHash)) {
         throw new ReleaseToolError('inputsHash must be 64 lowercase hex digits');
@@ -229,10 +246,33 @@ export function decideRelease({
     const minimum = toMinAppVersion(minAppVersion);
     const unpinned = unpinnedRuntimePayloads(runtimeLock);
     const unpinnedNames = unpinned.join(' and ');
+    const defaultRef = defaultRefFor(prerelease);
+    if (unpinned.length > 0 && skipUnpinnedRuntime) {
+        const withManifest = normalizePreviousReleases(previous);
+        if (withManifest.length > 0) {
+            const newest = mostRecentRelease(withManifest);
+            // This release would become the newest one without android-update.json, and installed apps check
+            // for updates through the official latest URL: pin the runtime first.
+            throw new ReleaseToolError(`TODO(copy) ${JSON.stringify({ code: 'unpinned-runtime-after-android-release', unpinned, release: newest.tag, draft: newest.draft })}`);
+        }
+        return {
+            action: 'skip',
+            previous: null,
+            // Nothing can fetch unpinned Node binaries, and no earlier release has android-update.json.
+            reasons: [`TODO(copy) ${JSON.stringify({ code: 'unpinned-runtime-skip', unpinned })}`],
+            prerelease,
+            defaultRef,
+            inputsHash,
+            versionCode,
+            versionName,
+            minAppVersion: bigintToJson(minimum),
+            highestPreviousVersionCode: null,
+            unpinnedRuntime: unpinned,
+        };
+    }
     if (unpinned.length > 0 && !allowUnpinnedRuntime) {
         throw new ReleaseToolError(`android/runtime.lock does not pin ${unpinnedNames} yet, so inputsHash cannot show that the bundled ${unpinnedNames} payloads are unchanged; pin them, or pass --allow-unpinned-runtime to allow a build (never a re-attach)`);
     }
-    const defaultRef = defaultRefFor(prerelease);
     const channel = prerelease ? 'prerelease' : 'stable';
     const entries = normalizePreviousReleases(previous);
     const highest = mostRecentRelease(entries);
@@ -441,10 +481,14 @@ async function main(argv) {
         'exclude-tag': { type: 'string' },
         'github-api-url': { type: 'string' },
         'allow-unpinned-runtime': { type: 'boolean' },
+        'skip-unpinned-runtime': { type: 'boolean' },
         'commit': { type: 'string' },
         'repo': { type: 'string' },
     });
     const prerelease = parseBooleanOption(requireOption(values, 'prerelease'), 'prerelease');
+    if (values['allow-unpinned-runtime'] === true && values['skip-unpinned-runtime'] === true) {
+        throw new UsageError('TODO(copy) {"code":"conflicting-options","options":["--allow-unpinned-runtime","--skip-unpinned-runtime"]}');
+    }
     const fromGitHub = values['github-repository'] !== undefined;
     if (fromGitHub === (values.previous !== undefined)) {
         throw new UsageError('pass exactly one of --previous and --github-repository');
@@ -487,6 +531,7 @@ async function main(argv) {
         minAppVersion: parseMinAppVersion(minimum),
         runtimeLock,
         allowUnpinnedRuntime: values['allow-unpinned-runtime'] === true,
+        skipUnpinnedRuntime: values['skip-unpinned-runtime'] === true,
         previous,
     });
     process.stdout.write(`${JSON.stringify({ ...decision, commit }, null, 2)}\n`);
