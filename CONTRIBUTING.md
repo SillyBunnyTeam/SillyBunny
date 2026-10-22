@@ -71,6 +71,13 @@ Pull requests should use the following [Conventional Commits](https://www.conven
 - `feat` - a new feature implementation.
 - `sync` - synchronising with upstream.
 - `docs` - new documentation or modifications to documentation.
+- `refactor` - a code change that neither fixes a bug nor adds a feature.
+- `perf` - a code change that improves performance.
+- `test` - new tests or corrections to existing tests.
+- `ci` - changes to CI configuration and workflows, such as GitHub Actions.
+- `build` - changes to the build system or dependencies.
+- `style` - code formatting changes that do not change behaviour, such as whitespace or semicolons. Use `fix` or `feat` for CSS and UI changes.
+- `revert` - reverts an earlier change.
 
 Commits follow Conventional Commits as well: `type(scope): summary`, using any type the specification allows (for example `refactor`, `perf`, `test`, `ci`, `build`, `revert`). Mark breaking changes with `!` after the type or scope, or with a `BREAKING CHANGE:` footer. Upstream SillyTavern commits brought in by a sync are exempt.
 

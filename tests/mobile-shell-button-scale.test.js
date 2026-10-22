@@ -20,7 +20,7 @@ describe('mobile shell button scale', () => {
     test('mobile vertical rail wrapper uses scale variable instead of hard-coded 78px', () => {
         // Match the mobile vertical rail media query block
         const mobileVerticalMatch = cssSource.match(
-            /@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?data-sb-mobile-nav-layout='vertical'[\s\S]*?\.sb-shell-nav-wrapper[\s\S]*?\}/
+            /@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?data-sb-mobile-nav-layout='vertical'[\s\S]*?\.sb-shell-nav-wrapper[\s\S]*?\}/,
         );
         expect(mobileVerticalMatch).not.toBeNull();
 
@@ -33,7 +33,7 @@ describe('mobile shell button scale', () => {
     test('mobile vertical rail action uses scale variable instead of hard-coded 44px', () => {
         // Match the specific .sb-shell-rail-action rule block within mobile vertical layout
         const mobileRailActionMatch = cssSource.match(
-            /:root\[data-sb-mobile-nav-layout='vertical'\][^\{]*\.sb-shell-rail-action\s*\{[^}]*\}/
+            /:root\[data-sb-mobile-nav-layout='vertical'\][^{]*\.sb-shell-rail-action\s*\{[^}]*\}/,
         );
         expect(mobileRailActionMatch).not.toBeNull();
 
@@ -45,7 +45,7 @@ describe('mobile shell button scale', () => {
 
     test('mobile vertical rail tab uses scale variable instead of hard-coded 50px', () => {
         const mobileRailTabMatch = cssSource.match(
-            /@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?data-sb-mobile-nav-layout='vertical'[\s\S]*?\.sb-shell-tab\s*\{[^}]*\}/
+            /@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?data-sb-mobile-nav-layout='vertical'[\s\S]*?\.sb-shell-tab\s*\{[^}]*\}/,
         );
         expect(mobileRailTabMatch).not.toBeNull();
 

@@ -63,9 +63,9 @@ describe('graceful shutdown', () => {
     test('does not wire process signals directly to the exit function', () => {
         const source = readFileSync(SERVER_MAIN_SOURCE, 'utf8');
 
-        expect(source).toContain("process.on('SIGINT', () => exitProcess(0));");
-        expect(source).toContain("process.on('SIGTERM', () => exitProcess(0));");
-        expect(source).not.toContain("process.on('SIGINT', exitProcess);");
-        expect(source).not.toContain("process.on('SIGTERM', exitProcess);");
+        expect(source).toContain('process.on(\'SIGINT\', () => exitProcess(0));');
+        expect(source).toContain('process.on(\'SIGTERM\', () => exitProcess(0));');
+        expect(source).not.toContain('process.on(\'SIGINT\', exitProcess);');
+        expect(source).not.toContain('process.on(\'SIGTERM\', exitProcess);');
     });
 });

@@ -54,6 +54,12 @@ describe('nightly workflow', () => {
         }
     });
 
+    test('lints the root and tests packages', () => {
+        const lintStep = source.slice(source.indexOf('- name: Lint'), source.indexOf('- name: Unit tests'));
+        expect(lintStep).toContain('npm run lint\n');
+        expect(lintStep).toContain('npm run lint --prefix tests');
+    });
+
     test('pins every action to a full commit SHA; the one local call is the shared Android smoke', () => {
         const pinned = /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/;
         const jobs = Object.values(workflow.jobs);
