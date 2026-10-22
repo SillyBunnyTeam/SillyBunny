@@ -1,7 +1,54 @@
 {
-    "node": null,
-    "npm": null,
-    "runtimeLockSha256": "a2ed99d33233dc40d619f35bf1865cbdecf5a8d50dcca578d6dc9da0d1a76a31",
+    "node": {
+        "keyring": {
+            "filename": "node-release-keys.kbx",
+            "sha256": "140f2ad5260fd62773b6243ce8e1d3009645d558f121b8262c55e383dc285932",
+            "url": "https://raw.githubusercontent.com/nodejs/release-keys/481637f813e912c4aa3622d7964ab426c97b8e8d/gpg-only-active-keys/pubring.kbx"
+        },
+        "patches": [
+            {
+                "path": "android/runtime/patches/node/0001-v8-x64-posix-trap-sources.patch",
+                "sha256": "39b3b68ff959c2a6420359487917d1269fcf6122dac5d6e4ceb629fbbaa57fd0"
+            },
+            {
+                "path": "android/runtime/patches/node/0002-zlib-android-getauxval.patch",
+                "sha256": "f67f824c02822d7e2efdfe7233cd39389d2a23eb284140bec234b75cb7cd5dc9"
+            },
+            {
+                "path": "android/runtime/patches/node/0003-v8-arm64-host-trap-sources.patch",
+                "sha256": "c5224a6a2b7f30615476ce8f6b80e8b35c12dc8552e8adde8451172b7549e0be"
+            },
+            {
+                "path": "android/runtime/patches/node/LICENSE.ST-android",
+                "sha256": "a113c5d7af3e817ebda3a4d0dd26c0ac8a30398fd346c85f2f60ca09c652fd73"
+            },
+            {
+                "path": "android/runtime/patches/node/series",
+                "sha256": "603eabcb6f8e991c9b0a616aa5418083b7b6b73cf9aebe2583d3a996178690ed"
+            }
+        ],
+        "shasums": {
+            "filename": "SHASUMS256.txt",
+            "sha256": "8912ada1431af8390bb3e30328d30bca701b59c7a6d5396b491293515c092c46",
+            "url": "https://nodejs.org/dist/v24.22.0/SHASUMS256.txt"
+        },
+        "signature": {
+            "filename": "SHASUMS256.txt.sig",
+            "sha256": "e59640b2e5b7cbcb5951ba2d6fee5921a349070c2a6163dc15dff4bd3404ad42",
+            "url": "https://nodejs.org/dist/v24.22.0/SHASUMS256.txt.sig"
+        },
+        "source": {
+            "filename": "node-v24.22.0.tar.xz",
+            "sha256": "41f97cff2c666f1f8293dc5f85c65e8dd605c16b43fd9febd49ede32ee1e0329",
+            "url": "https://nodejs.org/dist/v24.22.0/node-v24.22.0.tar.xz"
+        },
+        "version": "24.22.0"
+    },
+    "npm": {
+        "source": "node",
+        "version": "11.19.1"
+    },
+    "runtimeLockSha256": "90ce0d86ff81dfed650fcd7c8ce7ba9304955a59be53345624862a1a633cf21b",
     "schema": 1,
     "termux": {
         "buildSystems": [

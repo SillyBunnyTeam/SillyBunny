@@ -2,7 +2,7 @@
 import { describe, expect, test } from '@jest/globals';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 
 const REPOSITORY = 'https://github.com/termux/termux-packages';
@@ -803,7 +803,44 @@ describe('Android sources lock', () => {
         expect(() => validateSourcesLock(fixture.lock, Buffer.from(JSON.stringify(fixture.runtime)))).toThrow(code);
     });
 
-    test('accepts coherent future Node and npm metadata with official integrity pins', () => {
+    test('pins every file of the checked-in Node patch directory in path order', () => {
+        const lock = JSON.parse(readFileSync(new URL('../android/runtime/sources.lock', import.meta.url), 'utf8'));
+        const directory = new URL('../android/runtime/patches/node/', import.meta.url);
+        // Like sources.node_patch_pins(): every regular file below the directory, no links or other types.
+        const list = (prefix = '') => readdirSync(new URL(prefix, directory), { withFileTypes: true }).flatMap(entry => {
+            if (entry.isDirectory()) {
+                return list(`${prefix}${entry.name}/`);
+            }
+            expect([entry.name, entry.isFile()]).toEqual([entry.name, true]);
+            return [`${prefix}${entry.name}`];
+        });
+        const pins = list().map(relative => ({
+            path: `android/runtime/patches/node/${relative}`,
+            sha256: sha256(readFileSync(new URL(relative, directory))),
+        })).sort((left, right) => byCodePoint(left.path, right.path));
+        expect(pins.map(pin => pin.path.split('/').pop())).toEqual([
+            '0001-v8-x64-posix-trap-sources.patch',
+            '0002-zlib-android-getauxval.patch',
+            '0003-v8-arm64-host-trap-sources.patch',
+            'LICENSE.ST-android',
+            'series',
+        ]);
+        expect(lock.node.patches).toEqual(pins);
+    });
+
+    test('pins the Node tarball and npm version that android/runtime.lock names', () => {
+        const runtime = JSON.parse(readFileSync(new URL('../android/runtime.lock', import.meta.url), 'utf8'));
+        const lock = JSON.parse(readFileSync(new URL('../android/runtime/sources.lock', import.meta.url), 'utf8'));
+        expect(lock.node.version).toBe(runtime.node.version);
+        expect(lock.node.source).toEqual({
+            filename: runtime.node.source.tarball,
+            url: `https://nodejs.org/dist/v${runtime.node.version}/${runtime.node.source.tarball}`,
+            sha256: runtime.node.source.tarballSha256,
+        });
+        expect(lock.npm).toEqual({ version: runtime.npm.version, source: 'node' });
+    });
+
+    test('accepts coherent Node and npm metadata with official integrity pins', () => {
         const fixture = createFixture();
         addNodeFixture(fixture);
         expect(() => validateSourcesLock(fixture.lock, Buffer.from(JSON.stringify(fixture.runtime)))).not.toThrow();
@@ -829,7 +866,7 @@ describe('Android sources lock', () => {
         ['malformed patch digest', fixture => fixture.lock.node.patches[0].sha256 = 'invalid', 'node-patch-pin'],
         ['npm from another source', fixture => fixture.lock.npm.source = 'registry', 'npm-source-mismatch'],
         ['npm without Node', fixture => { fixture.runtime.node = null; fixture.lock.node = null; }, 'npm-source-mismatch'],
-    ])('rejects incoherent future metadata: %s', (label, mutate, code) => {
+    ])('rejects incoherent Node and npm metadata: %s', (label, mutate, code) => {
         const fixture = createFixture();
         addNodeFixture(fixture);
         mutate(fixture);

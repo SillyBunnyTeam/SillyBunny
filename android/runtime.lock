@@ -300,7 +300,60 @@
             }
         ]
     },
-    "node": null,
+    "node": {
+        "version": "24.22.0",
+        "source": {
+            "repository": "https://github.com/nodejs/node.git",
+            "tag": "v24.22.0",
+            "commit": "f14cd3aa7bf9ca8df2cc5b8bb14beb0f335b1d93",
+            "tarball": "node-v24.22.0.tar.xz",
+            "tarballSha256": "41f97cff2c666f1f8293dc5f85c65e8dd605c16b43fd9febd49ede32ee1e0329"
+        },
+        "ndk": {
+            "revision": "30.0.16248370",
+            "url": "https://dl.google.com/android/repository/android-ndk-r30-linux.zip",
+            "size": 738633529,
+            "sha1": "5107f898313790e449e87eee2183d9a20602dee9",
+            "sha256": "753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2"
+        },
+        "api": 29,
+        "icu": "full-icu",
+        "patchSet": {
+            "directory": "android/runtime/patches/node",
+            "sha256": "1494da0071c0b069a58a3d546376ce7d751c3b2a2ebfb59685c573e34626aa4a",
+            "series": [
+                "0001-v8-x64-posix-trap-sources.patch",
+                "0002-zlib-android-getauxval.patch",
+                "0003-v8-arm64-host-trap-sources.patch"
+            ]
+        },
+        "binaries": {
+            "arm64-v8a": {
+                "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime",
+                "tag": "node-24.22.0-1494da0071c0-arm64-v8a",
+                "digest": null,
+                "sha256": null,
+                "size": null
+            },
+            "armeabi-v7a": {
+                "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime",
+                "tag": "node-24.22.0-1494da0071c0-armeabi-v7a",
+                "digest": null,
+                "sha256": null,
+                "size": null
+            },
+            "x86_64": {
+                "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime",
+                "tag": "node-24.22.0-1494da0071c0-x86_64",
+                "digest": null,
+                "sha256": null,
+                "size": null
+            }
+        }
+    },
     "bun": null,
-    "npm": null
+    "npm": {
+        "version": "11.19.1",
+        "source": "node"
+    }
 }
