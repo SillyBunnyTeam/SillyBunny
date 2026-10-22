@@ -196,7 +196,9 @@ async function showPromptInspector(input) {
             await popup.complete(POPUP_RESULT.CANCELLED);
         },
     };
-    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: 'Save changes', cancelButton: 'Discard changes', customButtons: [customButton] });
+    // SillyBunny: the prompt textarea owns scrolling in its shared Window frame.
+    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, tier: 'window', okButton: 'Save changes', cancelButton: 'Discard changes', customButtons: [customButton] });
+    popup.dlg.classList.add('sb-prompt-inspector-window');
     const result = await popup.show();
 
     // If the user cancels, return the original input

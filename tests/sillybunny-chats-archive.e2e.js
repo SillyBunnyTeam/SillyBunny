@@ -1,4 +1,3 @@
-/* global getComputedStyle, innerHeight, innerWidth */
 import { expect, test } from '@playwright/test';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -205,7 +204,7 @@ test('owns the popup frame spacing and keeps mobile controls inside the viewport
         const content = dialog.querySelector('.popup-content');
         const root = dialog.querySelector('.sbca-root');
         const controls = dialog.querySelector('.popup-controls');
-        const close = dialog.querySelector('.popup-button-close');
+        const close = dialog.querySelector(':is(.sb-dialog__close, .popup-button-close)');
         const dialogStyle = getComputedStyle(dialog);
         const bodyStyle = getComputedStyle(body);
         const contentStyle = getComputedStyle(content);
@@ -220,10 +219,10 @@ test('owns the popup frame spacing and keeps mobile controls inside the viewport
             bodyPaddingLeft: parseFloat(bodyStyle.paddingLeft),
             bodyPaddingRight: parseFloat(bodyStyle.paddingRight),
             bodyPaddingTop: parseFloat(bodyStyle.paddingTop),
-            closeHeight: closeRect.height,
+            closeTargetHeight: closeRect.height,
             closeRight: dialogRect.right - closeRect.right,
             closeTop: closeRect.top - dialogRect.top,
-            closeWidth: closeRect.width,
+            closeTargetWidth: closeRect.width,
             contentMarginTop: contentStyle.marginTop,
             contentPaddingLeft: contentStyle.paddingLeft,
             controlsInsideBody: controlsRect.bottom <= bodyRect.bottom + 0.5,
@@ -243,8 +242,8 @@ test('owns the popup frame spacing and keeps mobile controls inside the viewport
     expect(frame.bodyPaddingRight).toBeGreaterThanOrEqual(12);
     expect(frame.bodyPaddingBottom).toBeGreaterThanOrEqual(8);
     expect(frame.bodyPaddingLeft).toBeGreaterThanOrEqual(12);
-    expect(frame.closeHeight).toBeGreaterThanOrEqual(44);
-    expect(frame.closeWidth).toBeGreaterThanOrEqual(44);
+    expect(frame.closeTargetHeight).toBeGreaterThanOrEqual(44);
+    expect(frame.closeTargetWidth).toBeGreaterThanOrEqual(44);
     expect(frame.closeTop).toBeGreaterThanOrEqual(4);
     expect(frame.closeRight).toBeGreaterThanOrEqual(4);
     expect(frame.controlsInsideBody).toBe(true);

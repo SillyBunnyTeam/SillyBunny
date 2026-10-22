@@ -4820,7 +4820,9 @@ async function onComfyOpenWorkflowEditorClick() {
         workflow = $('#sd_comfy_workflow_editor_workflow').val().toString();
         return true;
     };
-    const popup = new Popup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Save', cancelButton: 'Cancel', wide: true, large: true, onClosing: saveValue });
+    // SillyBunny: the JSON editor owns its scroll, so the Window body must not scroll it again.
+    const popup = new Popup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Save', cancelButton: 'Cancel', wide: true, large: true, tier: 'window', onClosing: saveValue });
+    popup.dlg.classList.add('sd-comfy-workflow-window');
     const popupResult = popup.show();
     const checkPlaceholders = () => {
         workflow = $('#sd_comfy_workflow_editor_workflow').val().toString();

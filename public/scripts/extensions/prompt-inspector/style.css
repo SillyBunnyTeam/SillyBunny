@@ -10,6 +10,28 @@
     min-width: 8em;
 }
 
+/* SillyBunny: keep the prompt editor's textarea as its only scrolling surface. */
+dialog.popup.sb-dialog--window.sb-prompt-inspector-window > .popup-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+dialog.popup.sb-dialog--window.sb-prompt-inspector-window .popup-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+dialog.popup.sb-dialog--window.sb-prompt-inspector-window #inspectPrompt {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
 @media screen and (max-width: 1000px) {
     #inspectPromptHeader {
         display: flex;

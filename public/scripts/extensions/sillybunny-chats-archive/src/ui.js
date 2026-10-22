@@ -465,6 +465,7 @@ export async function openArchive(ctx, opener = null) {
     const instance = new ctx.Popup(ui.root, ctx.POPUP_TYPE.TEXT, '', {
         wide: true,
         large: true,
+        tier: 'window',
         allowVerticalScrolling: false,
         okButton: tr(ctx, 'Close'),
     });
