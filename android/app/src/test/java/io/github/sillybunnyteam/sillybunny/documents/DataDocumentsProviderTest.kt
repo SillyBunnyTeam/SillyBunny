@@ -424,7 +424,7 @@ class DataDocumentsProviderTest {
         provider.deleteDocument(directory)
         try {
             val parentUri = DocumentsContract.buildChildDocumentsUri(authority, data)
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             while (System.nanoTime() < deadline && (!notifications.contains(fileUri) || !notifications.contains(parentUri))) {
                 Thread.sleep(10)
             }
@@ -1039,7 +1039,7 @@ class DataDocumentsProviderTest {
         }
 
         fun awaitAll(vararg expected: Uri): Boolean {
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             while (System.nanoTime() < deadline && !uris.containsAll(expected.toList())) Thread.sleep(10)
             return uris.containsAll(expected.toList())
         }

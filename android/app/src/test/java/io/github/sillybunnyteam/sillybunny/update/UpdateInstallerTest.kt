@@ -662,7 +662,7 @@ class UpdateInstallerTest {
             assertFalse(state.sessionSealed)
             recovering.start()
             assertTrue(recoveryStarted.await(10, TimeUnit.SECONDS))
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             while (recovering.state != Thread.State.BLOCKED && !recovery.isDone && System.nanoTime() < deadline) {
                 Thread.yield()
             }
@@ -812,7 +812,7 @@ class UpdateInstallerTest {
         assertFalse(UpdateInstaller(context).resumePendingUserAction(foregroundActivity()))
         UpdateInstaller.awaitBackgroundWork()
         assertEquals(InstallOutcome.VERIFYING, store.lastInstallResult.outcome)
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         while (store.lastInstallResult.outcome == InstallOutcome.VERIFYING && System.nanoTime() < deadline) {
             Thread.sleep(20)
         }

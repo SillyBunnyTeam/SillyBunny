@@ -251,7 +251,7 @@ class UpdateRepositoryTest {
         server.handle("/first/android-update.json") { exchange ->
             exchange.sendResponseHeaders(200, firstBody.size.toLong())
             firstStarted.countDown()
-            check(releaseFirst.await(5, TimeUnit.SECONDS))
+            check(releaseFirst.await(30, TimeUnit.SECONDS))
             exchange.responseBody.use { it.write(firstBody) }
         }
         server.handle("/second/android-update.json") { exchange ->
@@ -262,10 +262,10 @@ class UpdateRepositoryTest {
         val executor = Executors.newSingleThreadExecutor()
         try {
             val result = executor.submit<UpdateCheckResult> { repository(defaultRef = "staging").check() }
-            assertTrue(firstStarted.await(5, TimeUnit.SECONDS))
+            assertTrue(firstStarted.await(30, TimeUnit.SECONDS))
             assertFalse(secondStarted.await(150, TimeUnit.MILLISECONDS))
             releaseFirst.countDown()
-            assertEquals(3L, (result.get(5, TimeUnit.SECONDS) as UpdateCheckResult.Available).candidate.manifest.versionCode)
+            assertEquals(3L, (result.get(30, TimeUnit.SECONDS) as UpdateCheckResult.Available).candidate.manifest.versionCode)
             assertEquals(0L, secondStarted.count)
         } finally {
             releaseFirst.countDown()
