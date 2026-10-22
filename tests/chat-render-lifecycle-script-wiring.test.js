@@ -552,12 +552,24 @@ describe('chat render lifecycle script wiring', () => {
 
         expect(observeSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE) || !canObserveChatMessageResize())');
         expect(observeSource).toContain('const messageBlock = getMessageBlockElement(messageElement);');
-        expect(observeSource).toContain('requestAnimationFrame(() =>');
-        expect(observeSource).toContain('const observer = getChatMessageResizeObserver();');
-        expect(observeSource).toContain('unobserveChatMessageResizeBlock(messageBlock);');
-        expect(observeSource).toContain('const metadata = captureChatMessageResizeState(messageBlock);');
-        expect(observeSource).toContain('observer.observe(messageBlock, metadata)');
-        expect(observeSource).toContain('chatMessageResizeStates.set(messageBlock, metadata);');
+        expect(observeSource).toContain('pendingChatMessageResizeBlocks.add(messageBlock);');
+        expect(observeSource).toContain('pendingChatMessageResizeFrame = requestAnimationFrame(observePendingChatMessageResizeBlocks);');
+        expect(observeSource).not.toContain('captureChatMessageResizeState(');
+
+        // One frame callback and one viewport capture cover every block rendered in that frame.
+        const observePendingSource = getSource(findFunctionDeclaration('observePendingChatMessageResizeBlocks'));
+        expect(observePendingSource).toContain('pendingChatMessageResizeFrame = 0;');
+        expect(observePendingSource).toContain('.filter(messageBlock => messageBlock.isConnected)');
+        expect(observePendingSource).toContain('pendingChatMessageResizeBlocks.clear();');
+        expect(observePendingSource).toContain('!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE)');
+        expect(observePendingSource).toContain('const observer = getChatMessageResizeObserver();');
+        expect(observePendingSource).toContain('const viewportState = captureChatMessageResizeViewportState();');
+        expect(observePendingSource).toContain('unobserveChatMessageResizeBlock(messageBlock);');
+        expect(observePendingSource).toContain('const metadata = captureChatMessageResizeState(messageBlock, null, viewportState);');
+        expect(observePendingSource).toContain('observer.observe(messageBlock, metadata)');
+        expect(observePendingSource).toContain('chatMessageResizeStates.set(messageBlock, metadata);');
+        expect(observePendingSource.indexOf('const viewportState = captureChatMessageResizeViewportState();'))
+            .toBeLessThan(observePendingSource.indexOf('for (const messageBlock of messageBlocks)'));
 
         const getMessageBlockElement = findFunctionDeclaration('getMessageBlockElement');
         expect(getSource(getMessageBlockElement)).toContain('element.matches(\'.mes_block\') ? element : element.querySelector(\'.mes_block\')');
@@ -582,6 +594,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE))');
         expect(source).toContain('const resizeState = metadata ?? captureChatMessageResizeState(element, entry);');
         expect(source).toContain('if (isActiveStreamingMessageResizeBlock(element))');
+        expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
         expect(source).toContain('intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE');
         expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
@@ -594,6 +607,23 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('action.action === CHAT_SCROLL_ACTION.PRESERVE_ANCHOR');
         expect(source).toContain('await settleVisibleChatMessageAnchor(resizeState.anchor);');
         expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
+    });
+
+    test('message resize deliveries share one viewport capture', () => {
+        const deliverySource = getSource(findFunctionDeclaration('captureChatMessageResizeDeliveryViewportState'));
+
+        expect(scriptSource).toContain('let chatMessageResizeDeliveryViewportState = null;');
+        expect(deliverySource).toContain('if (!chatMessageResizeDeliveryViewportState)');
+        expect(deliverySource).toContain('chatMessageResizeDeliveryViewportState = captureChatMessageResizeViewportState();');
+        expect(deliverySource).toContain('queueMicrotask(() => {');
+        expect(deliverySource).toContain('chatMessageResizeDeliveryViewportState = null;');
+
+        const captureSource = getSource(findFunctionDeclaration('captureChatMessageResizeState'));
+        expect(captureSource).toContain('viewportState = captureChatMessageResizeViewportState()');
+        expect(captureSource).toContain('...viewportState,');
+
+        const refreshSource = getSource(findFunctionDeclaration('refreshChatMessageResizeState'));
+        expect(refreshSource).toContain('captureChatMessageResizeState(element, entry, viewportState)');
     });
 
     test('message resize metadata refreshes viewport anchors on chat scroll', () => {
@@ -620,9 +650,14 @@ describe('chat render lifecycle script wiring', () => {
         const disposeChatMessageResizeObserver = findFunctionDeclaration('disposeChatMessageResizeObserver');
         const disposeSource = getSource(disposeChatMessageResizeObserver);
 
+        expect(disposeSource).toContain('cancelAnimationFrame(pendingChatMessageResizeFrame);');
+        expect(disposeSource).toContain('pendingChatMessageResizeBlocks.clear();');
         expect(disposeSource).toContain('chatMessageResizeObserver?.dispose();');
         expect(disposeSource).toContain('chatMessageResizeObserver = null;');
         expect(disposeSource).toContain('chatMessageResizeStates.clear();');
+
+        const unobserveBlockSource = getSource(findFunctionDeclaration('unobserveChatMessageResizeBlock'));
+        expect(unobserveBlockSource).toContain('pendingChatMessageResizeBlocks.delete(messageBlock);');
 
         expect(getSource(findExportedFunction('redisplayChat'))).toContain('unobserveChatMessageResize(removedMessageElements);');
         expect(getSource(findExportedFunction('clearChat'))).toContain('disposeChatMessageResizeObserver();');
@@ -636,6 +671,47 @@ describe('chat render lifecycle script wiring', () => {
 
         const onChatMessageResize = findFunctionDeclaration('onChatMessageResize');
         expect(getSource(onChatMessageResize)).toContain('unobserveChatMessageResizeBlock(element);');
+    });
+
+    test('off-screen message skipping stays behind its lifecycle route and follows message cleanup', () => {
+        expect(scriptSource).toContain('createOffscreenMessageTracker,');
+        expect(scriptSource).toContain('let offscreenChatMessageTracker = null;');
+
+        const updateMessageElement = findExportedFunction('updateMessageElement');
+        expect(getSource(updateMessageElement)).toContain('trackOffscreenChatMessage(messageElement);');
+
+        const trackSource = getSource(findFunctionDeclaration('trackOffscreenChatMessage'));
+        expect(trackSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.OFFSCREEN_MESSAGES) || !canObserveChatMessageResize())');
+        expect(trackSource).toContain('getOffscreenChatMessageTracker()?.track(element);');
+
+        const getTrackerSource = getSource(findFunctionDeclaration('getOffscreenChatMessageTracker'));
+        expect(getTrackerSource).toContain('createOffscreenMessageTracker({ container: chatElement[0] })');
+
+        expect(getSource(findFunctionDeclaration('unobserveChatMessageResize'))).toContain('offscreenChatMessageTracker?.untrack(messageElement.closest(\'.mes\') ?? messageElement);');
+
+        const disposeSource = getSource(findFunctionDeclaration('disposeChatMessageResizeObserver'));
+        expect(disposeSource).toContain('offscreenChatMessageTracker?.dispose();');
+        expect(disposeSource).toContain('offscreenChatMessageTracker = null;');
+    });
+
+    test('off-screen message skipping CSS only skips laid-out history and never collapses it', () => {
+        const styleSource = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+
+        expect(styleSource).toMatch(/#chat > \.mes \{[^}]*flex-shrink: 0;/);
+        expect(styleSource).toContain('#chat > .mes.sb-mes-sized:not(.last_mes):not(:nth-last-child(-n + 20)) {\n    content-visibility: auto;\n}');
+        expect(styleSource).toMatch(/\n\.mes \{[^}]*contain-intrinsic-size: auto 180px;/);
+    });
+
+    test('swipe refreshes only toggle controls whose inline display has to change', () => {
+        const toggleSource = getSource(findFunctionDeclaration('toggleSwipeControl'));
+        expect(toggleSource).toContain('if ((control.style.display === \'none\') !== visible) {');
+        expect(toggleSource).toContain('$(control).toggle(visible);');
+
+        const refreshSource = getSource(findExportedFunction('refreshSwipeButtons'));
+        expect(refreshSource).toContain('toggleSwipeControl(swipePickerButton, canOpenSwipePicker);');
+        expect(refreshSource).toContain('toggleSwipeControl(deleteAddSwipeButton, canDeleteAddSwipe(messageId, message));');
+        expect(refreshSource).toContain('toggleSwipeControl($(div).find(\'.mes_swipe_picker\'), canOpenSwipePickerForMessage(messageId));');
+        expect(refreshSource).not.toMatch(/\.toggle\((?:canOpenSwipePicker|canDeleteAddSwipe)/);
     });
 
     test('guard-on mobile viewport events route through the lifecycle observer helper', () => {
