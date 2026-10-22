@@ -5247,6 +5247,15 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
     -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
 }
 
+/* SillyBunny: legacy visibility checks still track the window while its source nodes live in the shared frame. */
+#shadow_select_chat_popup.sb-chat-history-compat-open {
+    pointer-events: none;
+    visibility: hidden;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
 #select_chat_popup {
     display: flex;
     flex-direction: column;

@@ -1148,7 +1148,8 @@ test.describe('mobile chat tools with a chat at iPhone 390x844', () => {
         await clearToasts(page);
         const search = page.locator('#sb-mobile-chat-search');
         const chatFilesButton = page.locator('#sb-mobile-chat-tools-panel .sb-mobile-chat-actions button[title="View chat files"]');
-        const chatFiles = page.locator('#shadow_select_chat_popup');
+        // The shared Window owns Chat History; the legacy shadow id stays attached but hidden for compatibility.
+        const chatFiles = page.locator('.sb-dialog.sb-chat-history-dialog');
         const authorsNote = page.locator('#floatingPrompt');
 
         await page.evaluate(() => window.SillyBunnyShell.openChatTools());
@@ -1165,7 +1166,8 @@ test.describe('mobile chat tools with a chat at iPhone 390x844', () => {
         await expect(chatFiles).toBeVisible();
         await chatFilesButton.focus();
         await page.keyboard.press('Escape');
-        await expect(chatFiles).toBeHidden();
+        await expect(chatFiles).toHaveCount(0);
+        await expect(page.locator('#shadow_select_chat_popup')).toBeHidden();
         await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
 
         await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('floatingPrompt'));

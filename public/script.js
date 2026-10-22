@@ -94,6 +94,9 @@ import {
     deleteGroupChatByName,
     waitForQueuedGroupChatSaves,
 } from './scripts/group-chats.js';
+// SillyBunny: chat-history and chat-file confirmations use the shared frame so legacy controls keep their identities without owning modal geometry.
+import { openAlert } from './scripts/sillybunny-editor/dialog.js';
+import { openChatHistoryDialog } from './scripts/sillybunny-chat-dialogs.js';
 
 import {
     collapseNewlines,
@@ -18035,8 +18038,15 @@ jQuery(async function () {
             return;
         }
 
-        const result = await callGenericPopup('<h3>' + t`Delete the Chat File?` + '</h3>', POPUP_TYPE.CONFIRM);
-        if (result === POPUP_RESULT.AFFIRMATIVE) {
+        // SillyBunny: Return must not activate a committed chat-file deletion, so the shared alert focuses Cancel and has no destructive default.
+        const result = await openAlert({
+            heading: t`Delete the Chat File?`,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'delete', label: t`Delete`, appearance: 'destructive' },
+            ],
+        });
+        if (result === 'delete') {
             await handleDeleteChat(deleteFileName, selected_group, false);
         }
     });
@@ -18283,17 +18293,9 @@ jQuery(async function () {
             }
             if ((selected_group && !is_group_generating) || (this_chid !== undefined && !is_send_press) || fromSlashCommand) {
                 await displayPastChats();
-                //this is just to avoid the shadow for past chat view when using /delchat
-                //however, the dialog popup still gets one..
                 if (!fromSlashCommand) {
-                    console.log('displaying shadow');
-                    $('#shadow_select_chat_popup').css('display', 'block');
-                    $('#shadow_select_chat_popup').css('opacity', 0.0);
-                    $('#shadow_select_chat_popup').transition({
-                        opacity: 1.0,
-                        duration: animation_duration,
-                        easing: animation_easing,
-                    });
+                    // SillyBunny: the adapter moves the existing controls into the Window and returns them to the hidden compatibility wrapper on close.
+                    openChatHistoryDialog();
                 }
             }
         } else if (id == 'option_start_new_chat') {

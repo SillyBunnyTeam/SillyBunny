@@ -24,6 +24,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 6.2–6.3 Chat History and file-deletion dialogs
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`; `public/style.css`. |
+| Area | Chat History and saved-chat deletion. |
+| Divergence reason | Chat History needs the shared Window and its frame search while existing chat selection, rename, delete, export, and cleanup handlers continue to use their source nodes; committed file deletion must keep Cancel focused and Return non-destructive. |
+| Target seam | `public/scripts/sillybunny-chat-dialogs.js`; `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Move the existing `#select_chat_popup` node into the shared Window, adopt the existing `Dated only` input into a switch row, proxy frame-search changes through the existing input handler, and restore the node to the hidden compatibility wrapper on close. Keep the wrapper's legacy display state observable while the frame owns the visible surface. Use a Cancel-first destructive Alert for `.PastChat_cross`. |
+| Protecting tests | `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. |
+| Validation | 2026-10-23: root lint, `git diff --check`, and frontend budgets pass (16 blocking stylesheets / 1005.4 KiB). Full Jest: 425 suites passed; 6,425 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: overlays, character-list, mobile-shell smoke, dialog tiers, and Popup scroll 103/103; the foundation message-actions Chromium desktop project passed 6 tests and skipped 3. Chat load, export, delete, rename, save, and settings-save requests were intercepted. Desktop 1440×844 and phone 390×844 screenshots were reviewed in `/tmp/opencode/dialogs-phase6-shots/`. |
+| Rollback path | Restore the original shadow transition and confirmation Popup call, then remove the chat-dialog adapter and its scoped frame styles; all source markup and handlers remain in place. |
+| Last reviewed | 2026-10-23, PR #870 Phase 6.2–6.3. |
+| Owner | UI integrator. |
+
+### Phase 6.4 Bulk Tag Editor Dialog
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/BulkEditOverlay.js`; `public/css/character-group-overlay.css`. |
+| Area | Bulk character and group tag editing. |
+| Divergence reason | The immediate-apply bulk editor needs the shared Dialog frame without replacing its source controls, IDs, listeners, or tag mutations. |
+| Target seam | `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Parse the existing bulk-tag markup into a fragment, move its wrapper into a Dialog, use the frame title and Close action, and keep existing action controls and IDs in the content. |
+| Protecting tests | `tests/unit/bulk-edit-overlay.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/character-list.e2e.js`. |
+| Validation | 2026-10-23: root lint, `git diff --check`, and frontend budgets pass (16 blocking stylesheets / 1005.4 KiB). Full Jest: 425 suites passed; 6,425 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: overlays, character-list, mobile-shell smoke, dialog tiers, and Popup scroll 103/103. Bulk tag add/remove persisted through intercepted settings saves; the surface screenshot pair was reviewed in `/tmp/opencode/dialogs-phase6-shots/`. |
+| Rollback path | Remove the shared Dialog import and restore the original `insertAdjacentHTML` and wrapper removal; tag handlers and model writes stay unchanged. |
+| Last reviewed | 2026-10-23, PR #870 Phase 6.4. |
+| Owner | UI integrator. |
+
 ### Phase 5.1 / 5.6 Side-panel engine and MovingUI seam
 | Field | Value |
 | --- | --- |

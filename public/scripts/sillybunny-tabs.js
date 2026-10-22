@@ -16,6 +16,8 @@ import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import { initializeColorPickers } from './sillybunny-color-picker.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
+import { openAlert } from './sillybunny-editor/dialog.js';
+import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
     animateIn,
     animateOut,
@@ -5203,8 +5205,15 @@ async function handleDeleteChat() {
         return;
     }
 
-    const confirmed = await chatContext.context?.Popup?.show?.confirm?.('Delete chat?', 'This action cannot be undone.');
-    if (!confirmed) {
+    const confirmed = await openAlert({
+        heading: t`Delete chat?`,
+        body: t`This action cannot be undone.`,
+        responses: [
+            { id: 'cancel', label: t`Cancel` },
+            { id: 'delete', label: t`Delete`, appearance: 'destructive' },
+        ],
+    });
+    if (confirmed !== 'delete') {
         return;
     }
 
@@ -5256,197 +5265,10 @@ function getMassDeleteOlderThanDays(files, days, currentChatId) {
     return files.filter(chatFile => chatFile.fileName !== currentChatId && chatFile.sortTimestamp > 0 && chatFile.sortTimestamp < cutoff);
 }
 
-function bindChatDeleteVisualViewport(overlay) {
-    const visualViewport = window.visualViewport;
-    if (!(overlay instanceof HTMLElement) || !isMobileViewport() || !visualViewport) {
-        return () => {};
-    }
-
-    let animationFrame = 0;
-
-    function readViewportNumber(value, fallback = 0) {
-        const number = Number(value);
-        return Number.isFinite(number) && number > 0 ? number : fallback;
-    }
-
-    function update() {
-        animationFrame = 0;
-        const fallbackWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-        const fallbackHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-        const isKeyboardClosed = Math.abs(readViewportNumber(visualViewport.height, fallbackHeight) - fallbackHeight) <= 2
-            && Math.abs(readViewportNumber(visualViewport.offsetTop) || 0) <= 2
-            && Math.abs(readViewportNumber(visualViewport.offsetLeft) || 0) <= 2;
-
-        if (isKeyboardClosed) {
-            overlay.style.removeProperty('--sb-chat-delete-vv-left');
-            overlay.style.removeProperty('--sb-chat-delete-vv-top');
-            overlay.style.removeProperty('--sb-chat-delete-vv-width');
-            overlay.style.removeProperty('--sb-chat-delete-vv-height');
-            overlay.classList.remove('sb-chat-delete-overlay--keyboard-open');
-            return;
-        }
-
-        const viewportLeft = Math.max(0, readViewportNumber(visualViewport.offsetLeft));
-        const viewportTop = Math.max(0, readViewportNumber(visualViewport.offsetTop));
-        const viewportWidth = Math.max(1, readViewportNumber(visualViewport.width, fallbackWidth));
-        const viewportHeight = Math.max(1, readViewportNumber(visualViewport.height, fallbackHeight));
-
-        overlay.classList.add('sb-chat-delete-overlay--keyboard-open');
-        overlay.style.setProperty('--sb-chat-delete-vv-left', `${viewportLeft}px`);
-        overlay.style.setProperty('--sb-chat-delete-vv-top', `${viewportTop}px`);
-        overlay.style.setProperty('--sb-chat-delete-vv-width', `${viewportWidth}px`);
-        overlay.style.setProperty('--sb-chat-delete-vv-height', `${viewportHeight}px`);
-    }
-
-    function scheduleUpdate() {
-        if (animationFrame) {
-            return;
-        }
-
-        animationFrame = window.requestAnimationFrame(update);
-    }
-
-    overlay.classList.add('sb-chat-delete-overlay--visual-viewport');
-    update();
-    visualViewport.addEventListener('resize', scheduleUpdate);
-    visualViewport.addEventListener('scroll', scheduleUpdate);
-    window.addEventListener('resize', scheduleUpdate, { passive: true });
-    window.addEventListener('orientationchange', scheduleUpdate);
-
-    return () => {
-        if (animationFrame) {
-            window.cancelAnimationFrame(animationFrame);
-        }
-
-        visualViewport.removeEventListener('resize', scheduleUpdate);
-        visualViewport.removeEventListener('scroll', scheduleUpdate);
-        window.removeEventListener('resize', scheduleUpdate);
-        window.removeEventListener('orientationchange', scheduleUpdate);
-        overlay.classList.remove('sb-chat-delete-overlay--visual-viewport');
-        overlay.style.removeProperty('--sb-chat-delete-vv-left');
-        overlay.style.removeProperty('--sb-chat-delete-vv-top');
-        overlay.style.removeProperty('--sb-chat-delete-vv-width');
-        overlay.style.removeProperty('--sb-chat-delete-vv-height');
-    };
-}
-
 function showBottomChatMassDeleteDialog(files, currentChatId) {
-    return new Promise(resolve => {
-        const overlay = createElement('div', { className: 'sb-chat-delete-overlay' });
-        const dialog = createElement('div', {
-            className: 'sb-chat-delete-dialog',
-            attrs: {
-                role: 'dialog',
-                'aria-modal': 'true',
-                'aria-labelledby': 'sb-chat-delete-title',
-            },
-        });
-        const title = createElement('h3', { id: 'sb-chat-delete-title', text: 'Mass delete chats' });
-        const note = createElement('p', {
-            className: 'sb-chat-delete-note',
-            text: 'Delete saved chats for the current character or group. The open chat is protected.',
-        });
-        const list = createElement('div', { className: 'sb-chat-delete-list' });
-        const ageRow = createElement('div', { className: 'sb-chat-delete-age' });
-        const ageLabel = createElement('label', { text: 'Older than' });
-        const ageInput = createElement('input', {
-            className: 'text_pole',
-            attrs: { type: 'number', min: '1', step: '1', value: '30', inputmode: 'numeric' },
-        });
-        const dayText = createElement('span', { text: 'days' });
-        const presets = createElement('div', { className: 'sb-chat-delete-presets' });
-        const status = createElement('small', { className: 'sb-chat-delete-status' });
-        const actions = createElement('div', { className: 'sb-chat-delete-actions' });
-        const deleteSelectedButton = createElement('button', { className: 'menu_button', text: 'Delete selected', attrs: { type: 'button' } });
-        const deleteOlderButton = createElement('button', { className: 'menu_button', text: 'Delete older', attrs: { type: 'button' } });
-        const cancelButton = createElement('button', { className: 'menu_button', text: 'Cancel', attrs: { type: 'button' } });
-        const checkboxes = [];
-        let cleanupVisualViewport = () => {};
-        let isFinished = false;
-
-        function finish(result) {
-            if (isFinished) {
-                return;
-            }
-
-            isFinished = true;
-            document.removeEventListener('keydown', handleKeydown);
-            cleanupVisualViewport();
-            overlay.remove();
-            resolve(result);
-        }
-
-        function getSelectedNames() {
-            return checkboxes.filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
-        }
-
-        function updateStatus() {
-            const selectedCount = getSelectedNames().length;
-            const olderCount = getMassDeleteOlderThanDays(files, ageInput.value, currentChatId).length;
-            status.textContent = `${selectedCount} selected. ${olderCount} older than ${ageInput.value || 0} day(s).`;
-            deleteSelectedButton.disabled = selectedCount === 0;
-            deleteOlderButton.disabled = olderCount === 0;
-        }
-
-        function handleKeydown(event) {
-            if (event.key === 'Escape') {
-                finish(null);
-            }
-        }
-
-        for (const days of [7, 30, 90, 180]) {
-            const button = createElement('button', { className: 'menu_button', text: String(days), attrs: { type: 'button' } });
-            button.addEventListener('click', () => {
-                ageInput.value = String(days);
-                updateStatus();
-            });
-            presets.appendChild(button);
-        }
-
-        for (const chatFile of files) {
-            const row = createElement('label', { className: 'sb-chat-delete-row' });
-            const checkbox = createElement('input', {
-                attrs: {
-                    type: 'checkbox',
-                    value: chatFile.fileName,
-                },
-            });
-            checkbox.disabled = chatFile.fileName === currentChatId;
-            const text = createElement('span', { className: 'sb-chat-delete-row-text' });
-            const name = createElement('strong', { text: chatFile.fileName });
-            const meta = createElement('small', { text: [formatChatTimestamp(chatFile.lastMessage), chatFile.chatItems ? `${chatFile.chatItems} msg` : ''].filter(Boolean).join(' - ') });
-
-            text.append(name, meta);
-            row.append(checkbox, text);
-            list.appendChild(row);
-            if (checkbox instanceof HTMLInputElement && !checkbox.disabled) {
-                checkbox.addEventListener('change', updateStatus);
-                checkboxes.push(checkbox);
-            }
-        }
-
-        ageInput.addEventListener('input', updateStatus);
-        deleteSelectedButton.addEventListener('click', () => finish({ mode: 'selected', names: getSelectedNames() }));
-        deleteOlderButton.addEventListener('click', () => finish({ mode: 'older', days: Number(ageInput.value) }));
-        cancelButton.addEventListener('click', () => finish(null));
-        overlay.addEventListener('click', event => {
-            if (event.target === overlay) {
-                finish(null);
-            }
-        });
-
-        ageLabel.append(ageInput, dayText);
-        ageRow.append(ageLabel, presets);
-        actions.append(deleteSelectedButton, deleteOlderButton, cancelButton);
-        dialog.append(title, note, ageRow, status, list, actions);
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-        cleanupVisualViewport = bindChatDeleteVisualViewport(overlay);
-        document.addEventListener('keydown', handleKeydown);
-        updateStatus();
-        if (!isMobileViewport()) {
-            ageInput.focus({ preventScroll: true });
-        }
+    return openMassDeleteChatDialog(files, currentChatId, {
+        getOlderCount: days => getMassDeleteOlderThanDays(files, days, currentChatId).length,
+        formatChatTimestamp,
     });
 }
 
@@ -5494,9 +5316,15 @@ async function handleMassDeleteChats() {
             return;
         }
 
-        const confirmed = await chatContext.context?.Popup?.show?.confirm?.('Delete chats?', `Delete ${names.length} chat(s)? This cannot be undone.`)
-            ?? window.confirm(`Delete ${names.length} chat(s)? This cannot be undone.`);
-        if (!confirmed) {
+        const confirmed = await openAlert({
+            heading: t`Delete chats?`,
+            body: t`Delete ${names.length} chat(s)? This cannot be undone.`,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'delete', label: t`Delete`, appearance: 'destructive' },
+            ],
+        });
+        if (confirmed !== 'delete') {
             return;
         }
 

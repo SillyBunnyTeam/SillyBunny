@@ -4380,186 +4380,177 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 }
 
-.sb-chat-delete-overlay {
-    --sb-chat-delete-vv-left: 0px;
-    --sb-chat-delete-vv-top: 0px;
-    --sb-chat-delete-vv-width: 100vw;
-    --sb-chat-delete-vv-height: 100dvh;
-    position: fixed;
-    inset: 0;
-    z-index: var(--sb-z-loader);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    padding: 16px;
-    background: color-mix(in srgb, var(--SmartThemeShadowColor) 42%, transparent);
-    overscroll-behavior: contain;
-}
-
-.sb-chat-delete-overlay.sb-chat-delete-overlay--visual-viewport {
-    inset: auto;
-    top: var(--sb-chat-delete-vv-top);
-    left: var(--sb-chat-delete-vv-left);
-    width: var(--sb-chat-delete-vv-width);
-    height: var(--sb-chat-delete-vv-height);
-}
-
-.sb-chat-delete-dialog {
-    width: min(560px, 100%);
-    max-height: min(720px, calc(var(--sb-chat-delete-vv-height, 100dvh) - 32px));
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-    gap: 12px;
-    padding: 16px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
-    border-radius: var(--sb-radius-xl, 22px);
-    color: var(--SmartThemeBodyColor);
-    background: var(--SmartThemeBlurTintColor);
-    box-shadow: 0 24px 70px color-mix(in srgb, var(--SmartThemeShadowColor) 34%, transparent);
-    overscroll-behavior: contain;
-}
-
-@supports (-webkit-touch-callout: none) {
-    .sb-chat-delete-overlay {
-        padding-top: max(16px, env(safe-area-inset-top, 0px));
-        padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
-    }
-
-    .sb-chat-delete-dialog {
-        max-height: min(720px, calc(var(--sb-chat-delete-vv-height, 100dvh) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 32px));
-    }
-}
-
-@media screen and (max-width: 480px) {
-    .sb-chat-delete-overlay {
-        inset: 0;
-        align-items: center;
-        overflow: hidden;
-        padding-top: max(16px, env(safe-area-inset-top, 0px));
-        padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
-        padding-left: 12px;
-        padding-right: 12px;
-    }
-
-    .sb-chat-delete-dialog {
-        gap: 10px;
-        height: calc(100vh - 32px);
-        height: min(720px, calc(var(--sb-chat-delete-vv-height, 100dvh) - max(16px, env(safe-area-inset-top, 0px)) - max(12px, env(safe-area-inset-bottom, 0px)) - 24px));
-        max-height: none;
-        min-height: 0;
-        overflow: hidden;
-        padding: 12px;
-    }
-
-    .sb-chat-delete-age,
-    .sb-chat-delete-presets,
-    .sb-chat-delete-actions {
-        width: 100%;
-    }
-
-    .sb-chat-delete-presets,
-    .sb-chat-delete-actions {
-        justify-content: stretch;
-    }
-
-    .sb-chat-delete-presets .menu_button,
-    .sb-chat-delete-actions .menu_button {
-        flex: 1 1 auto;
-        width: auto;
-        min-width: 0;
-    }
-}
-
 .char-button-group #world_button.world_set,
 .char-button-group .chat_lorebook_button.world_set {
     color: var(--active) !important;
     text-shadow: 0 0 8px var(--active), 0 0 14px color-mix(in srgb, var(--active) 50%, transparent);
 }
 
-.sb-chat-delete-dialog h3,
-.sb-chat-delete-note {
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-note,
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-status {
     margin: 0;
 }
 
-.sb-chat-delete-note,
-.sb-chat-delete-status {
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-note,
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-status {
     opacity: 0.75;
 }
 
-.sb-chat-delete-age,
-.sb-chat-delete-age label,
-.sb-chat-delete-presets,
-.sb-chat-delete-actions {
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-age {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
 }
 
-.sb-chat-delete-age {
-    flex-wrap: wrap;
-    justify-content: space-between;
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-age-entry {
+    flex: 1 1 220px;
+    min-width: 0;
 }
 
-.sb-chat-delete-age input {
-    width: 88px;
-    margin: 0 4px;
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-age-entry input {
+    width: min(9rem, 100%);
+    text-align: center;
 }
 
-.sb-chat-delete-list {
-    flex: 1 1 0;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 2px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
-.sb-chat-delete-row {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 44%, transparent);
-    border-radius: 12px;
-    cursor: pointer;
-}
-
-.sb-chat-delete-row input[type='checkbox'] {
-    flex: 0 0 auto;
-    justify-self: center;
-    align-self: center;
-    width: 18px;
-    height: 18px;
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets .menu_button {
+    min-height: 40px;
     margin: 0;
 }
 
-.sb-chat-delete-row-text {
-    min-width: 0;
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
 }
 
-.sb-chat-delete-row-text strong,
-.sb-chat-delete-row-text small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.sb-dialog.sb-chat-mass-delete .sb-chat-delete-row .ds-row-text {
+    overflow-wrap: anywhere;
 }
 
-.sb-chat-delete-row-text small {
-    opacity: 0.68;
+.sb-dialog.sb-chat-history-dialog #select_chat_popup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: static;
+    z-index: auto;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    overflow: visible;
 }
 
-.sb-chat-delete-actions {
-    justify-content: flex-end;
+.sb-dialog.sb-chat-history-dialog #select_chat_popup [name='selectChatPopupHeader'] {
     flex-wrap: wrap;
+}
+
+.sb-dialog.sb-chat-history-dialog :is(#selectChatPopupHeaderText, #select_chat_search, #select_chat_cross)[hidden] {
+    display: none !important;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_div {
+    flex: 0 0 auto;
+    height: auto;
+    overflow: visible;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox .ds-row-text {
+    min-width: 0;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox .ds-row-label {
+    white-space: normal;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_management_tools,
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_management_group {
+    min-width: 0;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .select_chat_block_filename {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .select_chat_block_wrapper {
+    flex: 0 0 auto;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_status {
+    overflow-wrap: anywhere;
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_preview_list {
+    max-height: min(45vh, 24rem);
+}
+
+.sb-dialog.sb-chat-history-dialog #select_chat_div {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+@media screen and (max-width: 700px) {
+    .sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_group {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sb-dialog.sb-chat-history-dialog #select_chat_popup .chat_cleanup_checkbox {
+        grid-column: 1 / -1;
+    }
+}
+
+@media screen and (max-width: 450px) {
+    .sb-dialog.sb-chat-mass-delete .sb-chat-delete-age {
+        align-items: stretch;
+    }
+
+    .sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .sb-dialog.sb-chat-mass-delete .sb-chat-delete-presets .menu_button {
+        min-width: 0;
+        padding-inline: 6px;
+    }
 }
 
 /* Persona quick-access bubble */
