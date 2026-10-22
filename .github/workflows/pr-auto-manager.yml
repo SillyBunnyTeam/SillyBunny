@@ -104,7 +104,7 @@ jobs:
     name: 🏷️ Label PR by Branches
     runs-on: ubuntu-latest
     # Only label once when PR is created or when base branch is changed, to allow manual label removal
-    if: always() && (github.event.action == 'opened' || (github.event.action == 'synchronize' && github.event.changes.base))
+    if: always() && (github.event.action == 'opened' || (github.event.action == 'edited' && github.event.changes.base))
 
     steps:
       - name: Check GitHub App Configuration
