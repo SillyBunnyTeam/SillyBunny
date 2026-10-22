@@ -105,8 +105,28 @@ function commitAll(repo, message = 'change') {
     return git(repo, 'rev-parse', 'HEAD');
 }
 
-// A runtime.lock whose node and npm pins are set, as release-decision.mjs requires by default.
-const PINNED_LOCK = { schema: 1, node: { version: '24.22.0' }, npm: { version: '11.10.0' } };
+// A runtime.lock whose node and npm pins fix their payloads, as release-decision.mjs requires by default.
+const pinnedBinary = abi => ({
+    repository: 'ghcr.io/sillybunnyteam/sillybunny-android-runtime',
+    tag: `node-24.22.0-1494da0071c0-${abi}`,
+    digest: `sha256:${'d'.repeat(64)}`,
+    sha256: 'e'.repeat(64),
+    size: 94787384,
+});
+const PINNED_LOCK = {
+    schema: 1,
+    node: {
+        version: '24.22.0',
+        source: { tarball: 'node-v24.22.0.tar.xz', tarballSha256: 'f'.repeat(64) },
+        binaries: { 'arm64-v8a': pinnedBinary('arm64-v8a'), 'armeabi-v7a': pinnedBinary('armeabi-v7a') },
+    },
+    npm: { version: '11.10.0', source: 'node' },
+};
+// PINNED_LOCK with some fields of one Node binary replaced.
+const withNodeBinary = (abi, changes) => ({
+    ...PINNED_LOCK,
+    node: { ...PINNED_LOCK.node, binaries: { ...PINNED_LOCK.node.binaries, [abi]: { ...PINNED_LOCK.node.binaries[abi], ...changes } } },
+});
 
 const BASE_FILES = {
     'android/runtime.lock': `${JSON.stringify(PINNED_LOCK)}\n`,
@@ -623,9 +643,11 @@ describe('release decision (§6.1)', () => {
 
     test('refuses an unpinned node or npm in android/runtime.lock unless allowed, and then only builds', () => {
         const unpinned = { schema: 1, node: null, npm: null };
+        // Task 4.1 leaves a binary's digest, SHA-256 and size null until android-runtime.yml first publishes it.
+        const unpublished = withNodeBinary('arm64-v8a', { digest: null, sha256: null, size: null });
         expect(() => decide({ runtimeLock: unpinned })).toThrow('android/runtime.lock does not pin node and npm yet, so inputsHash cannot show that the bundled node and npm payloads are unchanged; pin them, or pass --allow-unpinned-runtime to allow a build (never a re-attach)');
         expect(() => decide({ runtimeLock: { ...PINNED_LOCK, npm: null } })).toThrow(/^android\/runtime\.lock does not pin npm yet/);
-        expect(() => decide({ runtimeLock: { schema: 1, npm: { version: '11.10.0' } } })).toThrow(/^android\/runtime\.lock does not pin node yet/);
+        expect(() => decide({ runtimeLock: unpublished })).toThrow(/^android\/runtime\.lock does not pin node yet/);
         expect(decide()).toMatchObject({ action: 'build', unpinnedRuntime: [] });
 
         const built = decide({ runtimeLock: unpinned, allowUnpinnedRuntime: true });
@@ -637,12 +659,41 @@ describe('release decision (§6.1)', () => {
         // A matching inputsHash cannot prove that the unpinned payloads are unchanged, so there is no re-attach.
         const matching = [releaseOf(manifestFixture({ versionCode: 2, inputsHash: HASH_B, versionName: '1.2.0' }))];
         expect(decide({ previous: matching })).toMatchObject({ action: 'reattach' });
-        expect(() => decide({ previous: matching, runtimeLock: { ...PINNED_LOCK, node: null }, allowUnpinnedRuntime: true }))
+        expect(() => decide({ previous: matching, runtimeLock: unpublished, allowUnpinnedRuntime: true }))
             .toThrow('inputsHash matches the most recent stable release v2.2.0, but android/runtime.lock does not pin node, so a re-attach could skip a change to those payloads; bump versionCode in android/app-version.properties to build');
 
         for (const lock of [undefined, null, [], { schema: 2, node: null, npm: null }, { schema: 1, node: { digest: 'x' } }, { schema: 1, npm: '11.10.0' }, { schema: 1, node: { version: '' } }]) {
             expect(() => decide({ runtimeLock: lock, allowUnpinnedRuntime: true }))
                 .toThrow(/^android\/runtime\.lock (must be a schema 1 lock|pins (node|npm) without a "version" string)$/);
+        }
+    });
+
+    test('counts node and npm as pinned only once android/runtime.lock fixes their payload bytes', () => {
+        const unpinnedIn = runtimeLock => decide({ runtimeLock, allowUnpinnedRuntime: true }).unpinnedRuntime;
+        const withNode = changes => ({ ...PINNED_LOCK, node: { ...PINNED_LOCK.node, ...changes } });
+        expect(unpinnedIn(PINNED_LOCK)).toEqual([]);
+
+        // Each release ABI needs the published binary's OCI digest, SHA-256 and size.
+        for (const abi of ['arm64-v8a', 'armeabi-v7a']) {
+            for (const changes of [{ digest: null }, { sha256: null }, { size: null }, { digest: 'd'.repeat(64) }, { digest: `sha256:${'D'.repeat(64)}` },
+                { sha256: 'e'.repeat(63) }, { size: 0 }, { size: 1.5 }, { size: '94787384' }]) {
+                expect(unpinnedIn(withNodeBinary(abi, changes))).toEqual(['node']);
+            }
+            const others = Object.fromEntries(Object.entries(PINNED_LOCK.node.binaries).filter(([name]) => name !== abi));
+            expect(unpinnedIn(withNode({ binaries: others }))).toEqual(['node']);
+        }
+        expect(unpinnedIn(withNode({ binaries: null }))).toEqual(['node']);
+        expect(unpinnedIn(withNode({ binaries: undefined }))).toEqual(['node']);
+        // Release APKs bundle only the ARM binaries, so an unpublished x86_64 test binary does not count.
+        expect(unpinnedIn(withNode({ binaries: { ...PINNED_LOCK.node.binaries, x86_64: { digest: null, sha256: null, size: null } } }))).toEqual([]);
+
+        // npm comes from the Node source's deps/npm, so the source tarball's SHA-256 pins both.
+        for (const source of [undefined, null, {}, { tarballSha256: null }, { tarballSha256: 'F'.repeat(64) }]) {
+            expect(unpinnedIn(withNode({ source }))).toEqual(['node', 'npm']);
+        }
+        expect(unpinnedIn({ ...PINNED_LOCK, node: null })).toEqual(['node', 'npm']);
+        for (const npm of [{ version: '11.10.0' }, { version: '11.10.0', source: 'registry' }]) {
+            expect(unpinnedIn({ ...PINNED_LOCK, npm })).toEqual(['npm']);
         }
     });
 });

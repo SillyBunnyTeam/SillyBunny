@@ -18,7 +18,7 @@
 //   section to the runtime-manifest.json that every split APK carries (update-manifest.mjs refuses such
 //   APKs), and notices.py --android-libraries changes the bundled notices. The generated Node and npm payloads
 //   are covered only through their android/runtime.lock pins, and release-decision.mjs refuses to re-attach
-//   while those pins are null.
+//   until those pins fix the payload bytes (unpinnedRuntimePayloads in common.mjs).
 //
 // Definition, format v2:
 //   inputs     The entries of `git ls-tree -r <commit>` (mode, object id, path) at these paths, plus defaultRef:

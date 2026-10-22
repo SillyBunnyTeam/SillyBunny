@@ -8,11 +8,11 @@
 //     --prerelease         the release's channel (steps.tag.outputs.prerelease); true builds with defaultRef
 //                          staging, false with release
 //     --allow-unpinned-runtime
-//                          decide although android/runtime.lock pins node or npm as null. inputsHash cannot
-//                          cover those generated payloads then, so the decision can only be a build: a release
-//                          whose inputsHash matches still fails and asks for a versionCode bump. Without this
-//                          flag an unpinned lock fails the decision. The flag can stay in the release job; it
-//                          has no effect once both are pinned
+//                          decide although android/runtime.lock does not pin the node or npm payload yet
+//                          (see Rules). inputsHash cannot cover those payloads then, so the decision can only
+//                          be a build: a release whose inputsHash matches still fails and asks for a
+//                          versionCode bump. Without this flag an unpinned lock fails the decision. The flag
+//                          can stay in the release job; it has no effect once both are pinned
 //     --previous           a JSON array of earlier releases, [] when there are none. Each item is either
 //                          { "tag", "draft", "prerelease", "publishedAt", "manifest" } (only "manifest" is
 //                          required; it is the android-update.json object or, for exact checks, its raw text)
@@ -30,7 +30,7 @@
 //     { "action": "reattach" | "build", "previous": <the most recent same-channel release or null>,
 //       "reasons": [...], "prerelease", "defaultRef", "inputsHash", "versionCode", "versionName",
 //       "minAppVersion", "highestPreviousVersionCode", "unpinnedRuntime", "commit" }
-//   "unpinnedRuntime" lists the runtime.lock pins that are still null ([] once node and npm are pinned).
+//   "unpinnedRuntime" lists node and npm while android/runtime.lock does not pin their payloads ([] once it does).
 //   "versionCode" and "versionName" are the ones this release carries. "previous" names the release's
 //   "tag" and its "assets" (ABI -> APK asset name). To re-attach, download android-update.json and those
 //   APKs from the release "previous.tag", confirm them with
@@ -42,8 +42,11 @@
 // Rules (§6.1):
 //   - versionName must pass the app's android-update.json rule (1 to 128 characters, not blank, no control
 //     characters), so a name the manifest cannot carry fails before the APK build.
-//   - android/runtime.lock must pin node and npm, because inputsHash covers the generated Node and npm
-//     payloads only through those pins. While either pin is null the decision fails, unless
+//   - android/runtime.lock must pin the node and npm payloads, because inputsHash covers them only through
+//     those pins. A version alone does not pin them: node also needs its source tarball's SHA-256 and the
+//     published binary's OCI digest, SHA-256 and size for each release ABI, which stay null until
+//     android-runtime.yml first publishes; npm is pinned through the Node source it comes from
+//     (unpinnedRuntimePayloads in common.mjs). While either is unpinned the decision fails, unless
 //     --allow-unpinned-runtime is given; then only a build is allowed, never a re-attach.
 //   - Every previous manifest must pass the app's parser rules (manifest-rules.mjs); a non-prerelease one
 //     must also pass the stable channel's rules, and a release's own prerelease flag must match its
@@ -79,8 +82,7 @@ import {
     ReleaseToolError,
     requireOption,
     runCli,
-    RUNTIME_PINS,
-    runtimeLockPins,
+    unpinnedRuntimePayloads,
     UsageError,
 } from './common.mjs';
 import { inputsHashAtCommit, RUNTIME_LOCK_PATH } from './inputs-hash.mjs';
@@ -225,8 +227,7 @@ export function decideRelease({
         throw new ReleaseToolError(`versionName ${describeText(versionName)} must be a non-blank string of at most 128 characters without control characters, as android-update.json requires`);
     }
     const minimum = toMinAppVersion(minAppVersion);
-    const pins = runtimeLockPins(runtimeLock);
-    const unpinned = RUNTIME_PINS.filter(name => pins[name] === null);
+    const unpinned = unpinnedRuntimePayloads(runtimeLock);
     const unpinnedNames = unpinned.join(' and ');
     if (unpinned.length > 0 && !allowUnpinnedRuntime) {
         throw new ReleaseToolError(`android/runtime.lock does not pin ${unpinnedNames} yet, so inputsHash cannot show that the bundled ${unpinnedNames} payloads are unchanged; pin them, or pass --allow-unpinned-runtime to allow a build (never a re-attach)`);

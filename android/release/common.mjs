@@ -41,6 +41,12 @@ export function isPlainObject(value) {
 /** The runtime.lock pins that inputsHash can cover only once they are set (the Node and npm payloads). */
 export const RUNTIME_PINS = Object.freeze(['node', 'npm']);
 
+/** The ABIs of the release APKs (§5.4); update-manifest.mjs takes exactly these. */
+export const RELEASE_ABIS = Object.freeze(['arm64-v8a', 'armeabi-v7a']);
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const OCI_DIGEST = /^sha256:[0-9a-f]{64}$/;
+
 /**
  * The node and npm pins of a parsed android/runtime.lock: { node, npm }, each the pin's "version" string,
  * or null while the lock pins it as null. Task 4.1 replaces the nulls with objects that carry "version".
@@ -61,6 +67,29 @@ export function runtimeLockPins(lock) {
         }
     }
     return pins;
+}
+
+/**
+ * The RUNTIME_PINS whose payload bytes a parsed android/runtime.lock does not fix yet, in RUNTIME_PINS order.
+ * A version is not enough. Node needs the SHA-256 of its source tarball and, for each release ABI, the
+ * published binary's OCI digest, SHA-256 and size; android-runtime.yml fills those in after its first
+ * publish, and until then they are null. npm comes from the Node source's deps/npm (source "node"), so
+ * the source tarball's SHA-256 fixes it.
+ */
+export function unpinnedRuntimePayloads(lock) {
+    const pins = runtimeLockPins(lock);
+    const node = pins.node === null ? null : lock.node;
+    const sourcePinned = node !== null && isPlainObject(node.source) && SHA256_HEX.test(String(node.source.tarballSha256));
+    const binaries = node !== null && isPlainObject(node.binaries) ? node.binaries : {};
+    const binaryPinned = binary => isPlainObject(binary)
+        && OCI_DIGEST.test(String(binary.digest))
+        && SHA256_HEX.test(String(binary.sha256))
+        && Number.isSafeInteger(binary.size) && binary.size > 0;
+    const pinned = {
+        node: sourcePinned && RELEASE_ABIS.every(abi => Object.hasOwn(binaries, abi) && binaryPinned(binaries[abi])),
+        npm: pins.npm !== null && lock.npm.source === 'node' && sourcePinned,
+    };
+    return RUNTIME_PINS.filter(name => !pinned[name]);
 }
 
 /** True when `moduleUrl` (the caller's import.meta.url) is the script Node or Bun was started with. */

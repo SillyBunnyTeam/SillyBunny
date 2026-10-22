@@ -77,6 +77,7 @@ import {
     parseBooleanOption,
     parseCliArgs,
     parsePositiveIntegerOption,
+    RELEASE_ABIS,
     ReleaseToolError,
     requireOption,
     runCli,
@@ -92,7 +93,7 @@ import {
     validateManifestBytes,
 } from './manifest-rules.mjs';
 
-export const RELEASE_ABIS = Object.freeze(['arm64-v8a', 'armeabi-v7a']);
+export { RELEASE_ABIS };
 export const RELEASE_PACKAGE = 'io.github.sillybunnyteam.sillybunny';
 const VERIFY_MODES = ['auto', 'require', 'skip'];
 
