@@ -39,7 +39,9 @@ async function doTokenCounter() {
     }, debounce_timeout.relaxed);
     dialog.find('#token_counter_textarea').on('input', () => countDebounced());
 
-    callGenericPopup(dialog, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
+    // SillyBunny: group the live tokenizer fields in the shared Window without replacing controls.
+    const { tokenCounterOptions } = await import('../../sillybunny-editor/adapters/window-tools-dialogs.js');
+    callGenericPopup(dialog, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true, ...tokenCounterOptions(dialog) });
 }
 
 /**

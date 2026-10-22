@@ -1,7 +1,7 @@
 import { getRequestHeaders } from '../script.js';
 import { VIDEO_EXTENSIONS } from './constants.js';
 import { t } from './i18n.js';
-import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { renderTemplateAsync } from './templates.js';
 import { humanFileSize, timestampToMoment } from './utils.js';
 
@@ -240,7 +240,11 @@ export class DataMaidDialog {
         categoryElement.querySelectorAll('.dataMaidDeleteAll').forEach(button => {
             button.addEventListener('click', async (event) => {
                 event.stopPropagation();
-                const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete all files in this category. THIS CANNOT BE UNDONE!`);
+                const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete all files in this category. THIS CANNOT BE UNDONE!`, {
+                    // SillyBunny: destructive cleanup must focus Cancel and never confirm on Return.
+                    defaultResult: POPUP_RESULT.NEGATIVE,
+                    onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                });
                 if (!confirm) {
                     return;
                 }
@@ -257,7 +261,11 @@ export class DataMaidDialog {
                 const item = button.closest('.dataMaidItem');
                 const hash = item?.getAttribute('data-hash');
                 if (hash) {
-                    const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete the file. THIS CANNOT BE UNDONE!`);
+                    const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete the file. THIS CANNOT BE UNDONE!`, {
+                        // SillyBunny: destructive cleanup must focus Cancel and never confirm on Return.
+                        defaultResult: POPUP_RESULT.NEGATIVE,
+                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                    });
                     if (!confirm) {
                         return;
                     }
@@ -318,7 +326,8 @@ export class DataMaidDialog {
         const element = isImage
             ? await this.getViewElement(url, name)
             : await this.getTextViewElement(url);
-        await callGenericPopup(element, POPUP_TYPE.DISPLAY, '', { large: true, wide: true });
+        // SillyBunny: keep the viewer in the shared Window page stack.
+        await callGenericPopup(element, POPUP_TYPE.DISPLAY, '', { large: true, wide: true, tier: 'window', title: name });
     }
 
     /**
@@ -385,7 +394,9 @@ export class DataMaidDialog {
      */
     async open() {
         await this.setupDialogUI();
-        await callGenericPopup(this.container, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+        // SillyBunny: present the cleanup report in the shared Window frame.
+        const title = document.getElementById('data_maid_button')?.textContent.trim();
+        await callGenericPopup(this.container, POPUP_TYPE.TEXT, '', { wide: true, large: true, tier: 'window', title });
 
         if (this.token) {
             await this.finalize();

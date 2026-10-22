@@ -23,6 +23,17 @@ const SELECT_SAMPLER = {
 const textGenObjectStore = localforage.createInstance({ name: 'SillyTavern_TextCompletions' });
 let selectedSamplers = {};
 let selectedSamplersStorageReady = true;
+// SillyBunny: dispose the current adopted rows when Reset rebuilds the source list.
+let activeSamplerRows = null;
+
+async function renderSamplerRows(listContainer, markup) {
+    // SillyBunny: load presentation only for the visibility window, not sampler storage startup.
+    const { adaptSamplerSelectList } = await import('./sillybunny-editor/adapters/window-tools-dialogs.js');
+    activeSamplerRows?.destroy();
+    listContainer.empty().append(markup);
+    activeSamplerRows = adaptSamplerSelectList(listContainer.get(0));
+    return activeSamplerRows;
+}
 
 // Goal 1: show popup with all samplers for active API
 async function showSamplerSelectPopup() {
@@ -33,10 +44,21 @@ async function showSamplerSelectPopup() {
 
     const listContainer = $('<div id="apiSamplersList" class="flex-container flexNoGap"></div>');
     const APISamplers = await listSamplers(main_api);
-    listContainer.append(APISamplers.toString());
+    // SillyBunny: adopt the source choices before binding the original sampler handlers.
+    await renderSamplerRows(listContainer, APISamplers.toString());
     html.append(listContainer);
 
-    const showPromise = new Popup(html, POPUP_TYPE.TEXT, null, { wide: true, large: true, allowVerticalScrolling: true }).show();
+    // SillyBunny: present the pick-several list in the shared Window frame.
+    const showPromise = new Popup(html, POPUP_TYPE.TEXT, null, {
+        wide: true,
+        large: true,
+        allowVerticalScrolling: true,
+        tier: 'window',
+        onClose() {
+            activeSamplerRows?.destroy();
+            activeSamplerRows = null;
+        },
+    }).show();
 
     setSamplerListListeners();
 
@@ -167,8 +189,9 @@ function getRelatedDOMElement(samplerName) {
 
 function setSamplerListListeners() {
     // Goal 2: hide unchecked samplers from DOM
-    let listContainer = $('#apiSamplersList');
-    listContainer.find('input').off('change').on('change', async function () {
+    const listContainer = $('#apiSamplersList');
+    // SillyBunny: Select All is presentation-only; bind persistence only to original sampler choices.
+    listContainer.find('.sampler_view_list_item input[type="checkbox"]').off('change').on('change', async function () {
         const samplerName = this.name.replace('_checkbox', '');
         const { relatedDOMElement, targetDisplayType } = getRelatedDOMElement(samplerName);
 
@@ -306,8 +329,9 @@ export async function validateDisabledSamplers(redraw = false) {
     }
 
     if (redraw) {
-        let samplersHTML = await listSamplers(main_api);
-        $('#apiSamplersList').empty().append(samplersHTML.toString());
+        // SillyBunny: rebuilding must retain shared check rows and mixed Select All state.
+        const samplersHTML = await listSamplers(main_api);
+        await renderSamplerRows($('#apiSamplersList'), samplersHTML.toString());
         setSamplerListListeners();
     }
 

@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 4.5–4.9 Window-tier tools
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/token-counter/index.js`; `public/scripts/samplerSelect.js`; `public/scripts/power-user.js`; `public/css/sillybunny-theme.css`; `public/scripts/data-maid-dialog.js`; `public/css/data-maid.css`. |
+| Area | Token Counter, Extensions manager, sampler visibility, Data Maid and viewer, Debug Menu. |
+| Divergence reason | Window-tier tool surfaces need one reachable frame-body scroller, trailing pick-several controls, a pushed viewer/branch/install flow, and non-accidental destructive cleanup. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/window-tools-dialogs.js`; shared Popup frame and row factories. |
+| Adapter shape | Keep Token Counter, sampler visibility, debug actions and Data Maid results on their existing sources of truth; adopt sampler checkboxes and delegated debug action nodes, set explicit Window tiers, and let the Popup frame push nested Window/Dialog pages. Data Maid delete confirmations default to Cancel. The Extensions manager keeps its existing Window tier and row identities; its shared frame body owns scrolling and its sticky toolbar uses an opaque theme surface. |
+| Protecting tests | `tests/unit/window-tools-dialogs.test.js`; `tests/window-tools-dialogs.e2e.js` at 1440×900 and 390×844; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/sillybunny-backend-settings.e2e.js`, `tests/misc-form-dialogs.e2e.js`, `tests/startup-on-demand.e2e.js`, and `tests/sillybunny-chats-archive.e2e.js`. Destructive Data Maid and debug actions are intercepted and never executed. |
+| Validation | 2026-10-22: `npm run lint`, test-file ESLint, and `git diff --check` pass. `npm run check:frontend-budgets` passes (16 blocking stylesheets / 1003.9 KiB; 24 startup scripts / 2029.3 KiB). From `tests/`, full Jest: 421 suites passed; 6,404 tests passed, 2 skipped; 1 snapshot passed. Chromium: new surface E2E + `sillybunny-dialog-tiers` + `popup-scroll` 30/30; the temporary screenshot suite 3/3; misc-form-dialogs + startup-on-demand + dialog tiers + Popup scroll 50/50; Data Maid and all remaining Chat Archive cases 14/14 when excluding its pre-existing close-target failure at line 246. Backend settings: 21/22 pass; its pre-existing unsaved-template discard alert failure at line 729 remains. Original archive run: the line 246 close target is 24px (expected ≥44px), 1 passed and 13 did not run; excluding that test yields 14/14. All destructive routes/actions are intercepted. Visually reviewed 29 desktop, phone, and landscape screenshots. |
+| Rollback path | Remove the three explicit Window tiers and adapter imports/calls, restore the original sampler labels and Data Maid internal list scrolling, and revert the local opaque toolbar override. Data formats, event handlers, and upstream settings remain unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 4.5–4.9. |
+| Owner | UI integrator. |
+
 ### Phase 4.4 Quick Reply editor window
 | Field | Value |
 | --- | --- |

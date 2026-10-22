@@ -1,14 +1,15 @@
+/* SillyBunny: the shared Window body owns report scrolling, not a nested results scroller. */
 .dataMaidDialogContainer {
-    height: 100%;
-    overflow: hidden;
+    min-height: 100%;
+    overflow: visible;
 }
 
 .dataMaidDialog {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    height: 100%;
-    overflow: hidden;
+    min-height: 100%;
+    overflow: visible;
 }
 
 .dataMaidDialogHeader {
@@ -61,9 +62,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    overflow-y: auto;
-    height: 100%;
-    flex-grow: 1;
+    overflow: visible;
 }
 
 .dataMaidCategory {

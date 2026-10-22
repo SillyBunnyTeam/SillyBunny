@@ -87,6 +87,8 @@ import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALI
 import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
 // SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
 import { customCssAiOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
+import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -2079,8 +2081,11 @@ export function registerDebugFunction(functionId, name, description, func) {
 }
 
 async function showDebugMenu() {
-    const template = await renderTemplateAsync('debug', { functions: debug_functions });
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
+    // SillyBunny: adopt the source actions while retaining the delegated #debug_table contract.
+    const template = $('<div>').append(await renderTemplateAsync('debug', { functions: debug_functions }));
+    adaptDebugMenu(template.get(0));
+    // SillyBunny: present diagnostic actions in the shared Window frame.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true, tier: 'window' });
 }
 
 export function applyPowerUserSettings() {

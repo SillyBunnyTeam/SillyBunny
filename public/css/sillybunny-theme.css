@@ -7176,8 +7176,46 @@ dialog.popup.sb-dialog .extensions_toolbar {
     margin-bottom: 16px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
     border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--sb-layer-window) 94%, transparent);
+    /* SillyBunny: keep the sticky toolbar opaque while it overlays extension rows. */
+    background: var(--sb-layer-window);
     box-shadow: none;
+}
+
+/* SillyBunny: lay the debug menu's preserved table/action contract out as shared preference rows. */
+dialog.popup.sb-dialog--window .sb-debug-menu {
+    display: block;
+    margin: 0;
+    border: 0;
+    border-collapse: collapse;
+}
+
+dialog.popup.sb-dialog--window .sb-debug-menu > tbody {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.popup.sb-dialog--window .sb-debug-menu tr,
+dialog.popup.sb-dialog--window .sb-debug-menu td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    border: 0;
+}
+
+dialog.popup.sb-dialog--window .sb-debug-menu td {
+    padding: 0;
+}
+
+dialog.popup.sb-dialog--window .sb-debug-menu .ds-row-debug {
+    word-break: normal;
+    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+}
+
+dialog.popup.sb-dialog--window .sb-debug-menu .ds-row-suffix > [data-debug-function] {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
 }
 
 /* Fallback for content no adapter has converted (third-party included): checkbox labels become
