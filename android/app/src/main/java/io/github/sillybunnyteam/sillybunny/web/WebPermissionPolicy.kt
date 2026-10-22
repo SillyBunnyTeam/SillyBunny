@@ -12,8 +12,8 @@ import android.webkit.PermissionRequest
  */
 internal class WebPermissionPolicy(val allowedResources: Set<String> = emptySet()) {
     /** Requested resources this policy could grant, before Android permissions are considered. */
-    fun candidates(requestOrigin: Uri?, appPort: Int, resources: Array<String>): List<String> {
-        if (!WebNavigationPolicy.isAppUrl(requestOrigin, appPort)) return emptyList()
+    fun candidates(requestOrigin: Uri?, app: AppOrigin, resources: Array<String>): List<String> {
+        if (!WebNavigationPolicy.isAppUrl(requestOrigin, app)) return emptyList()
         return resources.filter { it in allowedResources }.distinct()
     }
 

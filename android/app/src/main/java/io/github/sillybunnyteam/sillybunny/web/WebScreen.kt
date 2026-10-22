@@ -54,19 +54,28 @@ import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import io.github.sillybunnyteam.sillybunny.web.downloads.rememberWebDownloads
+import io.github.sillybunnyteam.sillybunny.web.files.rememberWebFileChooser
 
 /**
  * The app's WebView screen (plan §4.5): shows the SillyBunny UI of [session] full screen.
  *
- * - Loads `session.origin + "/"` only after the launch cookie was set and the provider reported success;
- *   [WebDownloads.attach] runs before that first load.
+ * - Pages load from [address]'s per-install web origin `http://<label>.localhost:<port>`, never from
+ *   [LaunchSession.origin]. `origin + "/"` loads only after the launch cookie was set for that origin and
+ *   the provider reported success; [WebDownloads.attach] runs before that first load.
  * - Survives configuration changes without a reload: the WebView belongs to a `ViewModel` of the
  *   nearest `ViewModelStoreOwner` (the activity), not to this composition. Leaving and re-entering
  *   composition, and activity recreation, keep the page, its history, open dialogs and fullscreen.
- *   A different [session] replaces the WebView; so does renderer death. One screen per activity.
- * - [fileChooser]: the latest instance serves new `<input type=file>` requests. [downloads]: the
- *   instance passed when a WebView is created serves that WebView until it is destroyed. Teardown
- *   calls [WebFileChooser.cancelPending] and then [WebDownloads.detach].
+ *   A different [session] or [address] replaces the WebView; so does renderer death. One screen per
+ *   activity.
+ * - [fileChooser] and [downloads] default to the app's SAF chooser ([rememberWebFileChooser]) and
+ *   downloads ([rememberWebDownloads], whose missing-feature fallback is Open in browser). Both are kept
+ *   in the same activity `ViewModelStore` as the WebView, so a pending picker request or export survives
+ *   activity recreation together with it; leaving the composition without a configuration change cancels
+ *   an open picker, whose result can no longer arrive. Tests pass their own. The latest [fileChooser]
+ *   serves new `<input type=file>` requests; the [downloads] passed when a WebView is created serve that
+ *   WebView until it is destroyed. Teardown calls [WebFileChooser.cancelPending] and then
+ *   [WebDownloads.detach].
  * - Back leaves fullscreen first, then goes back in WebView history; with neither, Back is not
  *   intercepted, so the system handles it. The server keeps running either way.
  */
@@ -74,15 +83,27 @@ import io.github.sillybunnyteam.sillybunny.server.LaunchSession
 fun WebScreen(
     session: LaunchSession,
     modifier: Modifier = Modifier,
-    fileChooser: WebFileChooser = NoWebFileChooser,
-    downloads: WebDownloads = NoWebDownloads,
+    address: WebAddress = WebAddress.forInstall(LocalContext.current),
+    fileChooser: WebFileChooser = rememberWebFileChooser(),
+    downloads: WebDownloads = rememberWebDownloads(openInBrowserAction(session, address), address),
 ) {
     val view = LocalView.current
     val shell = remember(view) {
         val owner = checkNotNull(view.findViewTreeViewModelStoreOwner()) { "WebScreen needs a ViewModelStoreOwner" }
         retainedWebShell(owner, view.context)
     }
-    WebScreenContent(shell, session, fileChooser, downloads, modifier)
+    WebScreenContent(shell, session, address, fileChooser, downloads, modifier)
+}
+
+/** Open in browser for [session], with a toast when no browser could be started. */
+@Composable
+private fun openInBrowserAction(session: LaunchSession, address: WebAddress): () -> Unit {
+    val context = LocalContext.current
+    return {
+        if (!openInBrowser(context, session, address)) {
+            Toast.makeText(context, R.string.web_no_browser, Toast.LENGTH_SHORT).show()
+        }
+    }
 }
 
 /** The [WebShell] kept for [owner]; created on first use and released when [owner] is destroyed for good. */
@@ -112,12 +133,13 @@ internal object WebScreenTags {
 internal fun WebScreenContent(
     shell: WebShell,
     session: LaunchSession,
+    address: WebAddress,
     fileChooser: WebFileChooser,
     downloads: WebDownloads,
     modifier: Modifier = Modifier,
 ) {
     // After every composition, so the WebView starts once the container below exists.
-    SideEffect { shell.bind(session, fileChooser, downloads) }
+    SideEffect { shell.bind(session, address, fileChooser, downloads) }
     val context = LocalContext.current
     val openInBrowser = {
         if (!shell.openInBrowser(context)) {

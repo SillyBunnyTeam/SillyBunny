@@ -13,8 +13,9 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [37])
 class WebPermissionPolicyTest {
-    private val port = 41_234
-    private val app = Uri.parse("http://127.0.0.1:41234/")
+    private val host = "sb-abcdefghijklmnopqrstuvwxyz.localhost"
+    private val origin = AppOrigin(host, 41_234)
+    private val app = Uri.parse("http://$host:41234/")
     private val everything = arrayOf(
         PermissionRequest.RESOURCE_AUDIO_CAPTURE,
         PermissionRequest.RESOURCE_VIDEO_CAPTURE,
@@ -24,7 +25,7 @@ class WebPermissionPolicyTest {
 
     @Test
     fun theShippedPolicyGrantsNothing() {
-        assertTrue(WebPermissionPolicy.DEFAULT.candidates(app, port, everything).isEmpty())
+        assertTrue(WebPermissionPolicy.DEFAULT.candidates(app, origin, everything).isEmpty())
     }
 
     @Test
@@ -34,16 +35,18 @@ class WebPermissionPolicyTest {
         )
         assertEquals(
             listOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE, PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID),
-            policy.candidates(app, port, everything + PermissionRequest.RESOURCE_AUDIO_CAPTURE),
+            policy.candidates(app, origin, everything + PermissionRequest.RESOURCE_AUDIO_CAPTURE),
         )
         listOf(
-            "http://127.0.0.1:41235/",
-            "https://127.0.0.1:41234/",
+            "http://$host:41235/",
+            "https://$host:41234/",
+            "http://127.0.0.1:41234/",
             "http://localhost:41234/",
+            "https://openrouter.ai/",
             "https://example.com/",
             "null",
-        ).forEach { assertTrue(it, policy.candidates(Uri.parse(it), port, everything).isEmpty()) }
-        assertTrue(policy.candidates(null, port, everything).isEmpty())
+        ).forEach { assertTrue(it, policy.candidates(Uri.parse(it), origin, everything).isEmpty()) }
+        assertTrue(policy.candidates(null, origin, everything).isEmpty())
     }
 
     @Test

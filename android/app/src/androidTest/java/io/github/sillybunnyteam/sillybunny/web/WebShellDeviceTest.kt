@@ -3,6 +3,7 @@ package io.github.sillybunnyteam.sillybunny.web
 import android.content.ClipboardManager
 import android.content.Intent
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -13,10 +14,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import io.github.sillybunnyteam.sillybunny.web.downloads.DISMISS_TAG
+import java.net.InetAddress
+import java.util.regex.Pattern
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -33,13 +39,15 @@ import org.junit.runner.RunWith
 
 /**
  * The WebView shell on a device, against the host fixture server (`fixtures/fixture-server.mjs`): the
- * repository's launch-token middleware in front of `fixtures/pages`, plus a second loopback listener that
- * must never receive anything the shell can see. Run with `-e fixturePort <p> -e fixtureOther <q>
- * -e fixtureToken <hex>` after `adb reverse tcp:<p> tcp:<p>` and `adb reverse tcp:<q> tcp:<q>`. Optional:
- * `-e fixtureExternalRedirector <url prefix>`, an https redirector whose URL takes the encoded target last
- * (for example `https://httpbin.org/redirect-to?status_code=302&url=`), adds an external hop to the
- * measured redirect cases; `-e fixtureBrowser <package>` runs [openInBrowserWithTheDevicesBrowser] with that
- * browser, which is skipped without it.
+ * repository's launch-token middleware in front of `fixtures/pages`, a second loopback listener that must
+ * never receive anything the shell can see, and a stand-in for the OpenRouter sign-in. The shell loads the
+ * pages from the app's per-install web origin `http://<label>.localhost:<port>`; the label never appears in
+ * test output (see [FixtureServer.redacted]). Run with `-e fixturePort <p> -e fixtureOther <q>
+ * -e fixtureProvider <r> -e fixtureToken <hex>` after `adb reverse tcp:<p> tcp:<p>` and the same for `<q>`
+ * and `<r>`. Optional: `-e fixtureExternalRedirector <url prefix>`, an https redirector whose URL takes the
+ * encoded target last (for example `https://httpbin.org/redirect-to?status_code=302&url=`), adds an external
+ * hop to the measured redirect cases (never for the label); `-e fixtureBrowser <package>` runs
+ * [openInBrowserWithTheDevicesBrowser] with that browser, which is skipped without it.
  */
 @RunWith(AndroidJUnit4::class)
 class WebShellDeviceTest {
@@ -82,9 +90,12 @@ class WebShellDeviceTest {
         }
     }
 
-    /** Shows the shell for the fixture session and waits until the home page is loaded. */
-    private fun launch(dismissVersionWarning: Boolean = true): WebScreenHost {
-        val launched = WebScreenHost(fixture.session).launch()
+    /**
+     * Shows the shell for the fixture session and waits until the home page is loaded. [defaults] and
+     * [openRouter] as in [WebScreenHost].
+     */
+    private fun launch(dismissVersionWarning: Boolean = true, defaults: Boolean = false, openRouter: String? = null): WebScreenHost {
+        val launched = WebScreenHost(fixture.session, defaults, openRouter).launch()
         host = launched
         Web.waitFor("home page", 30_000) { launched.webViewOrNull()?.let(Web::title) == "fixture-home" }
         if (dismissVersionWarning) {
@@ -129,6 +140,10 @@ class WebShellDeviceTest {
         try {
             Web.onMain { bare.loadUrl("${fixture.origin}/?bare") }
             Web.waitFor("bare WebView refused") { fixture.requests().any { it.url == "/?bare" && it.status == 403 && !it.anyCookie } }
+            Web.onMain { bare.loadUrl("${fixture.webOrigin}/?bare-label") }
+            Web.waitFor("bare WebView refused on the web origin") {
+                fixture.requests().any { it.url == "/?bare-label" && it.host == "label" && it.status == 403 && !it.anyCookie }
+            }
         } finally {
             Web.onMain { bare.destroy() }
         }
@@ -136,12 +151,18 @@ class WebShellDeviceTest {
 
         val launched = launch()
         // The bare WebView's requests are marked, in case one of them is logged late.
-        val requests = fixture.requests().filter { it.url != "/?bare" }
+        val requests = fixture.requests().filter { !it.url.startsWith("/?bare") }
         assertTrue(requests.toString(), requests.isNotEmpty())
         val first = requests.first()
-        assertEquals(requests.toString(), "app GET / 200 true", "${first.listener} ${first.method} ${first.url} ${first.status} ${first.launchCookie}")
-        // Every later request passed the gate too (the fixture has no favicon, so that one is a 404 behind it).
-        assertTrue(requests.toString(), requests.all { it.listener == "app" && it.launchCookie && it.status != 403 })
+        assertEquals(
+            requests.toString(),
+            "app GET / 200 true label",
+            "${first.listener} ${first.method} ${first.url} ${first.status} ${first.launchCookie} ${first.host}",
+        )
+        // Every later request passed the gate too (the fixture has no favicon, so that one is a 404 behind it), on the
+        // web origin, over plain HTTP: no TLS handshake (an HTTPS upgrade) reached the port.
+        assertTrue(requests.toString(), requests.all { it.listener == "app" && it.launchCookie && it.status != 403 && it.host == "label" })
+        assertTrue(requests.toString(), requests.none { it.method == "TLS" })
         // WebDownloads was attached once, before that load.
         assertEquals(launched.downloads.events.toString(), 1, launched.downloads.events.count { it.startsWith("attach ") })
 
@@ -153,12 +174,45 @@ class WebShellDeviceTest {
             assertFalse(settings.allowFileAccess)
             assertFalse(settings.allowContentAccess)
         }
+        // The page runs on the web origin, which Chromium counts as a secure context.
+        val origin = Web.text(view, "location.origin")
+        assertTrue(fixture.redacted(origin), origin == fixture.webOrigin)
+        assertEquals("true", Web.text(view, "String(window.isSecureContext)"))
         // Origin-keyed storage works and survives a reload of the same origin.
         Web.eval(view, "probeStorage('kept-1'); 1")
         assertEquals("kept-1", settled(view, "ls"))
         assertEquals("kept-1", settled(view, "idb"))
         assertEquals("held", settled(view, "locks"))
         assertEquals("true", settled(view, "quota"))
+    }
+
+    /**
+     * The web origin needs no network: Chromium resolves `*.localhost` names itself, so the app loads with the device
+     * off every network, where no DNS server could answer; over plain HTTP, with no HTTPS upgrade attempt reaching the
+     * server; and the page is a secure context.
+     */
+    @Test
+    fun theWebOriginLoadsWithoutANetwork() {
+        val network = DeviceNetwork()
+        network.off()
+        try {
+            // A public name no longer resolves (measured): nothing could have answered a DNS query for the label either.
+            val dns = runCatching { InetAddress.getByName("example.com") }.isSuccess
+            val launched = launch()
+            val view = launched.webView()
+            val origin = Web.text(view, "location.origin")
+            assertTrue(fixture.redacted(origin), origin == fixture.webOrigin)
+            assertEquals("true", Web.text(view, "String(window.isSecureContext)"))
+            val requests = fixture.requests()
+            Web.note(
+                "offline api=${Build.VERSION.SDK_INT} webview=${WebViewVersion.currentPackage(instrumentation.targetContext)?.versionName} " +
+                    "publicNameResolved=$dns requests=$requests",
+            )
+            assertTrue(requests.toString(), requests.isNotEmpty())
+            assertTrue(requests.toString(), requests.all { it.listener == "app" && it.host == "label" && it.launchCookie && it.method != "TLS" })
+        } finally {
+            network.restore()
+        }
     }
 
     @Test
@@ -182,22 +236,24 @@ class WebShellDeviceTest {
         val handedOff = intents.intents.size
         // Web.tap confirms that each link saw the click. That is the delivery check for data:, which Chromium refuses
         // before any WebView callback; the other three are also offered to WebDownloads (asserted below).
-        for (id in listOf("other-port", "intent", "blob", "data")) {
+        for (id in listOf("other-port", "other-port-label", "intent", "blob", "data")) {
             Web.tap(view, id)
             Web.settle(800)
         }
         Web.settle()
-        assertEquals(intents.data().toString(), handedOff, intents.intents.size)
+        assertEquals(fixture.redacted(intents.data()), handedOff, intents.intents.size)
         assertEquals("fixture-links", Web.title(view))
         assertTrue(fixture.escaped().toString(), fixture.escaped().isEmpty())
 
         // Main-frame navigations are offered to WebDownloads before routing.
         val offers = launched.downloads.events.filter { it.startsWith("offer ") }
         Web.note("link offers api=${Build.VERSION.SDK_INT}: $offers")
-        assertTrue(offers.toString(), "offer https://example.com/ext main=true gesture=true" in offers)
-        assertTrue(offers.toString(), offers.any { it.startsWith("offer http://127.0.0.1:${fixture.otherPort}/link main=true") })
-        assertTrue(offers.toString(), offers.any { it.startsWith("offer intent://scan/") })
-        assertTrue(offers.toString(), offers.any { it.startsWith("offer blob:http://127.0.0.1:${fixture.port}/") })
+        val shown = fixture.redacted(offers)
+        assertTrue(shown, "offer https://example.com/ext main=true gesture=true" in offers)
+        assertTrue(shown, offers.any { it.startsWith("offer http://127.0.0.1:${fixture.otherPort}/link main=true") })
+        assertTrue(shown, offers.any { it.startsWith("offer http://${fixture.address.host}:${fixture.otherPort}/link-label main=true") })
+        assertTrue(shown, offers.any { it.startsWith("offer intent://scan/") })
+        assertTrue(shown, offers.any { it.startsWith("offer blob:${fixture.webOrigin}/") })
 
         // A navigation that WebDownloads takes goes no further.
         launched.downloads.takes = { it.host == "example.com" }
@@ -230,19 +286,23 @@ class WebShellDeviceTest {
         val handedOff = intents.intents.size
         Web.tap(view, "open-blob")
         Web.waitFor("blob popup offered") {
-            launched.downloads.events.any { it.startsWith("offer blob:http://127.0.0.1:${fixture.port}/") && it.contains("main=true") }
+            launched.downloads.events.any { it.startsWith("offer blob:${fixture.webOrigin}/") && it.contains("main=true") }
         }
         // A new window for another loopback port is offered like a main-frame navigation, then blocked.
         Web.tap(view, "open-other")
         Web.waitFor("other-port popup offered") {
             launched.downloads.events.any { it.startsWith("offer http://127.0.0.1:${fixture.otherPort}/popup main=true") }
         }
+        Web.tap(view, "open-other-label")
+        Web.waitFor("other-port popup on the app host offered") {
+            launched.downloads.events.any { it.startsWith("offer http://${fixture.address.host}:${fixture.otherPort}/popup-label main=true") }
+        }
         // Chromium refuses a new window for a data: URL before any WebView callback; measured, not asserted. Web.tap
         // confirms that the button saw the click.
         Web.tap(view, "open-data")
         Web.settle()
         Web.note("data popup api=${Build.VERSION.SDK_INT} offered=${launched.downloads.events.any { it.startsWith("offer data:") }}")
-        assertEquals(intents.data().toString(), handedOff, intents.intents.size)
+        assertEquals(fixture.redacted(intents.data()), handedOff, intents.intents.size)
         assertTrue(fixture.escaped().toString(), fixture.escaped().isEmpty())
         assertEquals("fixture-popups", Web.title(view))
 
@@ -544,16 +604,16 @@ class WebShellDeviceTest {
         try {
             Web.eval(view, "registerWorker(); 1")
             Web.waitFor("worker settled", 30_000) {
-                Web.result(view, "registered")?.startsWith("err") == true || Web.result(view, "leak") != null
+                Web.result(view, "registered")?.startsWith("err") == true || Web.result(view, "leakLabel") != null
             }
             assertEquals("ok", Web.result(view, "registered"))
             assertEquals("sw:probe ?via=sw", Web.result(view, "probe"))
             val app = fixture.requests().filter { it.listener == "app" }
             assertTrue(app.toString(), app.any { it.url.startsWith("/sw.js") && it.status == 200 && it.launchCookie })
             assertTrue(app.toString(), app.any { it.url == "/sw-probe?via=sw" && it.status == 200 && it.launchCookie })
-            // The worker's own fetch to another loopback port was answered locally.
+            // The worker's own fetches to another loopback port, as 127.0.0.1 and as the app's host, were answered locally.
             assertTrue(fixture.escaped().toString(), fixture.escaped().isEmpty())
-            Web.note("service worker api=${Build.VERSION.SDK_INT} leak=${Web.result(view, "leak")}")
+            Web.note("service worker api=${Build.VERSION.SDK_INT} leak=${Web.result(view, "leak")} leakLabel=${Web.result(view, "leakLabel")}")
 
             // A reload under the worker keeps the launch cookie. The marker tells the new document from the old one.
             fixture.reset()
@@ -576,74 +636,111 @@ class WebShellDeviceTest {
         }
     }
 
+    /**
+     * Containment per request kind and host name (plan §4.5). The other loopback listener is reached as `127.0.0.1`,
+     * `localhost`, `other.localhost` and as the app's own label host on that other port:
+     * - requests the shell sees (`d-`), main-frame redirects (`m-`) and first hops to another local origin (`x-`)
+     *   never arrive;
+     * - WebSocket handshakes (`ws-`) and the redirect hops of subresource requests (`r-`, and `e-` through an
+     *   external redirector) reach no WebView hook, so they are measured: what arrived, with which `Referer` and
+     *   `Origin`, and whether it carried the launch cookie. The cookie is host-only on the label, so nothing that
+     *   arrives under the other three names may carry it; only a page that knows the label can aim a request at the
+     *   label host on another port.
+     */
     @Test
     fun otherLoopbackPortsNeverReceiveRequestsTheShellCanSee() {
         val launched = launch()
         val view = launched.webView()
         Web.navigate(view, "/containment.html", "fixture-containment")
-        Web.waitFor("page requests settled") {
-            Web.result(view, "form") == "submitted" && Web.result(view, "xhr") != null && Web.result(view, "fetch") != null
-        }
+        fixture.reset()
+        // Image, stylesheet, script, frame, form POST, fetch, XHR and beacon straight to the other port: none arrived.
+        Web.eval(view, "direct(); 1")
+        val direct = HOSTS.flatMap { host -> REDIRECT_KINDS.map { "d-$host-$it" } }
+        Web.waitFor("direct requests settled", 30_000) { allSettled(view, direct) }
         Web.settle(2_000)
-        // Image, frame, form POST, fetch, XHR and beacon straight to another port: none arrived there.
         assertTrue(fixture.escaped().toString(), fixture.escaped().isEmpty())
-        Web.note(
-            "containment api=${Build.VERSION.SDK_INT} fetch=${Web.result(view, "fetch")} xhr=${Web.result(view, "xhr")} " +
-                "beacon=${Web.result(view, "beacon")}",
-        )
+        for (host in HOSTS) {
+            Web.note("direct api=${Build.VERSION.SDK_INT} " + REDIRECT_KINDS.joinToString(" ") { "d-$host-$it=${Web.result(view, "d-$host-$it")}" })
+        }
 
         // A main-frame redirect from the app to another port is offered and routed like a navigation, so it is
         // dropped before the browser follows it: after a script navigation, a window.open and a form POST.
-        fun mainFrameRedirect(label: String, target: String, start: () -> Unit) {
+        fun mainFrameRedirect(label: String, path: String, offered: String, start: () -> Unit) {
             fixture.reset()
             start()
-            Web.waitFor("$label: redirect answered") {
-                fixture.requests().any { it.url == "/redirect-other?to=$target" && it.status == 302 }
-            }
-            Web.waitFor("$label: redirect target offered") {
-                launched.downloads.events.any { it.startsWith("offer http://127.0.0.1:${fixture.otherPort}$target main=true") }
-            }
+            Web.waitFor("$label: redirect answered") { fixture.requests().any { it.url == path && it.status == 302 } }
+            Web.waitFor("$label: redirect target offered") { launched.downloads.events.any { it.startsWith("offer $offered main=true") } }
             Web.settle()
             assertTrue("$label: ${fixture.escaped()}", fixture.escaped().isEmpty())
             assertEquals(label, "fixture-containment", Web.title(view))
         }
-        mainFrameRedirect("location", "/m-location") { Web.eval(view, "location.href = '/redirect-other?to=/m-location'; 1") }
-        mainFrameRedirect("window.open", "/m-open") { Web.tap(view, "open-redirect") }
-        mainFrameRedirect("form POST", "/m-post") { Web.eval(view, "postSelf(); 1") }
-        assertTrue(intents.data().toString(), intents.intents.isEmpty())
+        val bases = mapOf(
+            "ip" to "http://127.0.0.1:${fixture.otherPort}",
+            "localhost" to "http://localhost:${fixture.otherPort}",
+            "named" to "http://other.localhost:${fixture.otherPort}",
+            "label" to "http://${fixture.address.host}:${fixture.otherPort}",
+        )
+        for ((host, base) in bases) {
+            val path = "/redirect-other?host=$host&to=/m-location-$host"
+            mainFrameRedirect("location, $host", path, "$base/m-location-$host") { Web.eval(view, "location.href = ${JSONObject.quote(path)}; 1") }
+        }
+        mainFrameRedirect("window.open", "/redirect-other?to=/m-open", "${bases["ip"]}/m-open") { Web.tap(view, "open-redirect") }
+        mainFrameRedirect("window.open, app host", "/redirect-other?host=label&to=/m-open-label", "${bases["label"]}/m-open-label") {
+            Web.tap(view, "open-redirect-label")
+        }
+        mainFrameRedirect("form POST", "/redirect-other?to=/m-post", "${bases["ip"]}/m-post") { Web.eval(view, "postSelf(false); 1") }
+        mainFrameRedirect("form POST, app host", "/redirect-other?host=label&to=/m-post-label", "${bases["label"]}/m-post-label") {
+            Web.eval(view, "postSelf(true); 1")
+        }
+        assertTrue(fixture.redacted(intents.data()), intents.intents.isEmpty())
 
-        // Residual exposure, measured only. A WebSocket handshake and the redirect hops of subresource requests
-        // never reach a WebView hook, so what they carry to another port is outside the shell's control.
+        // Residual exposure, measured. A WebSocket handshake and the redirect hops of subresource requests never reach
+        // a WebView hook, so what they carry to another port is outside the shell's control.
         fixture.reset()
         val external = InstrumentationRegistry.getArguments().getString("fixtureExternalRedirector").orEmpty()
         Web.eval(view, "residual(${JSONObject.quote(external)}); 1")
-        val local = listOf("ws") + REDIRECT_KINDS.map { "r-$it" } + HOP_KINDS.map { "x-$it" }
-        Web.waitFor("residual cases settled", 30_000) { allSettled(view, local) }
-        val remote = if (external.isEmpty()) emptyList() else HOP_KINDS.map { "e-$it" }
+        val local = HOSTS.flatMap { host -> listOf("ws-$host") + REDIRECT_KINDS.map { "r-$host-$it" } } +
+            listOf("ip", "localhost").flatMap { name -> HOP_KINDS.map { "x-$name-$it" } }
+        Web.waitFor("residual cases settled", 60_000) { allSettled(view, local) }
+        // Never with the label, which must not reach a third party.
+        val remote = if (external.isEmpty()) emptyList() else HOSTS.filter { it != "label" }.flatMap { host -> HOP_KINDS.map { "e-$host-$it" } }
         if (remote.isNotEmpty()) {
             // Best effort: the external host may be slow or unreachable; unsettled cases are reported as pending.
-            runCatching { Web.waitFor("external hops settled", 60_000) { allSettled(view, remote) } }
+            runCatching { Web.waitFor("external hops settled", 90_000) { allSettled(view, remote) } }
         }
         Web.settle(2_000)
         val log = fixture.requests()
         // Every same-origin probe reached the app first, so each one measured a real redirect.
-        for (kind in REDIRECT_KINDS) {
-            assertTrue("r-$kind: $log", log.any { it.listener == "app" && it.url == "/redirect-other?to=/r-$kind" && it.status == 302 })
+        for (host in HOSTS) {
+            for (kind in REDIRECT_KINDS) {
+                val path = "/redirect-other?host=$host&to=/r-$host-$kind"
+                assertTrue("r-$host-$kind: $log", log.any { it.listener == "app" && it.url == path && it.status == 302 })
+            }
         }
+        // The shell refused every first hop to another local origin, so the fixture's redirector saw none.
+        assertTrue(log.toString(), log.none { it.listener == "hop" })
         val escaped = log.filter { it.listener.startsWith("other") }
+        fun arrivals(key: String) = escaped.filter { it.url == "/$key" }
         fun outcome(key: String): String {
-            val reached = escaped.filter { if (key == "ws") it.listener == "other-ws" else it.url == "/$key" }
-            val hop = if (key.startsWith("x-")) " hop=${log.any { it.listener == "hop" && it.url.endsWith("to=/$key") }}" else ""
-            val arrived = if (reached.isEmpty()) "none" else reached.joinToString("+") { "${it.method}:cookie=${it.launchCookie}/${it.anyCookie}" }
-            return "$key=${Web.result(view, key)}$hop arrived=$arrived"
+            val reached = arrivals(key)
+            val arrived = if (reached.isEmpty()) {
+                "none"
+            } else {
+                reached.joinToString("+") { "${it.method}:cookie=${it.launchCookie}/${it.anyCookie}:ref=${it.referer}:origin=${it.origin}" }
+            }
+            return "$key=${Web.result(view, key)} arrived=$arrived"
         }
-        for (group in listOf(listOf("ws"), REDIRECT_KINDS.map { "r-$it" }, HOP_KINDS.map { "x-$it" }, remote)) {
-            if (group.isNotEmpty()) Web.note("residual api=${Build.VERSION.SDK_INT} ${group.joinToString(" ") { outcome(it) }}")
+        for (host in HOSTS) {
+            val keys = listOf("ws-$host") + REDIRECT_KINDS.map { "r-$host-$it" }
+            Web.note("residual api=${Build.VERSION.SDK_INT} ${keys.joinToString(" ") { outcome(it) }}")
         }
-        val withToken = (local + remote).filter { key ->
-            escaped.any { it.launchCookie && (if (key == "ws") it.listener == "other-ws" else it.url == "/$key") }
-        }
+        Web.note("residual api=${Build.VERSION.SDK_INT} ${local.filter { it.startsWith("x-") }.joinToString(" ") { outcome(it) }}")
+        if (remote.isNotEmpty()) Web.note("residual api=${Build.VERSION.SDK_INT} ${remote.joinToString(" ") { outcome(it) }}")
+        val withToken = (local + remote).filter { key -> arrivals(key).any { it.launchCookie } }
         Web.note("residual api=${Build.VERSION.SDK_INT} launch cookie reached another port: $withToken; external=${external.isNotEmpty()}")
+        // Host-only on the label: no request under another name carried the cookie, and no Referer named the app.
+        assertTrue(withToken.toString(), withToken.all { it.endsWith("-label") || it.contains("-label-") })
+        assertTrue(escaped.toString(), escaped.none { it.referer == "label" })
     }
 
     @Test
@@ -655,13 +752,17 @@ class WebShellDeviceTest {
         val intent = intents.intents.single()
         assertTrue(intent.hasCategory(Intent.CATEGORY_BROWSABLE))
         val uri = checkNotNull(intent.data)
-        assertEquals("${fixture.origin}/__sillybunny/handoff", "${uri.scheme}://${uri.authority}${uri.path}")
-        assertEquals(BrowserHandoff.CODE_LENGTH, checkNotNull(uri.getQueryParameter("c")).length)
+        // The handoff goes to the web origin, so the browser keeps the cookie for the label host too.
+        assertTrue(fixture.redacted(uri), "${uri.scheme}://${uri.authority}${uri.path}" == "${fixture.webOrigin}${BrowserHandoff.PATH}")
+        val code = checkNotNull(uri.getQueryParameter("c"))
+        assertEquals(BrowserHandoff.CODE_LENGTH, code.length)
         assertFalse(uri.toString().contains(fixture.token))
 
-        // The repository's middleware accepts the Kotlin code once, then refuses its replay. It answers with a page
-        // that moves the browser to / by meta refresh (plan §3.3), not with a redirect.
-        val redeemed = Web.get(uri.toString())
+        // Redeemed here at the server's native address with the same path and query: Android's resolver does not
+        // resolve the label. The repository's middleware accepts the Kotlin code once, then refuses its replay. It
+        // answers with a page that moves the browser to / by meta refresh (plan §3.3), not with a redirect.
+        val redeem = "${fixture.origin}${BrowserHandoff.PATH}?c=$code"
+        val redeemed = Web.get(redeem)
         assertEquals(200, redeemed.status)
         assertEquals(null, redeemed.location)
         assertEquals("no-store", redeemed.cacheControl)
@@ -673,13 +774,15 @@ class WebShellDeviceTest {
             "unexpected Set-Cookie",
             redeemed.setCookie == "${LaunchSession.COOKIE_NAME}=${fixture.token}; Path=/; HttpOnly; SameSite=Strict",
         )
-        assertEquals(403, Web.get(uri.toString()).status)
+        assertEquals(403, Web.get(redeem).status)
 
         // The public entry point for Settings and the downloads fallback does the same with a fresh code.
         assertTrue(openInBrowser(activity, fixture.session))
-        val second = checkNotNull(intents.intents.last().dataString)
-        assertNotEquals(uri.toString(), second)
-        assertEquals(200, Web.get(second).status)
+        val second = checkNotNull(intents.intents.last().data)
+        assertTrue(fixture.redacted(second), second.toString().startsWith("${fixture.webOrigin}${BrowserHandoff.PATH}?c="))
+        val secondCode = checkNotNull(second.getQueryParameter("c"))
+        assertNotEquals(code, secondCode)
+        assertEquals(200, Web.get("${fixture.origin}${BrowserHandoff.PATH}?c=$secondCode").status)
     }
 
     /**
@@ -689,14 +792,20 @@ class WebShellDeviceTest {
      * browser's data, so run it only on a test device or emulator. The app's own [openInBrowser] starts the browser
      * from an app activity, as Settings and the WebView screen do. The fixture logs whether each request carried the
      * launch cookie:
-     * 1. Open in browser from a cleared browser: the middleware answers the handoff with a page that moves to `/`;
+     * 1. Open in browser from a cleared browser: the browser asks the web origin `http://<label>.localhost:<port>`,
+     *    and the middleware answers the handoff with a page that moves to `/`;
      * 2. a reload (F5) of the tab that step 1 left;
-     * 3. another app's `ACTION_VIEW` for a page on another loopback port, with the cookie from step 1 in the browser;
-     * 4. the same once the browser's process was stopped.
+     * 3. another app's `ACTION_VIEW` for a page on another loopback port, with the cookie from step 1 in the browser,
+     *    as `127.0.0.1`, `localhost` and `other.localhost`, and (measured only) as the label host, which another app
+     *    would have to know;
+     * 4. the same once the browser's process was stopped;
+     * 5. the OpenRouter return in the browser: the provider's page sends the browser back to the app's callback.
      *
-     * Asserted: the browser redeemed the code without any cookie and landed on the app (`/` answered 200 and carried
-     * the launch cookie), and no request URL carried the token. Steps 2 to 4 are browser behaviour, so they are
-     * measured, not asserted. Steps 3 and 4 are the cross-port baseline on 127.0.0.1.
+     * Asserted: the browser redeemed the code without any cookie on the label host and landed on the app (`/`
+     * answered 200 and carried the launch cookie); in steps 3 and 4 nothing under the three other names carried the
+     * cookie (the page, its image, its WebSocket and the favicon); no request URL carried the token. The rest is
+     * browser behaviour, so it is measured, not asserted. Steps 3 to 5 put the label into the `ACTION_VIEW` that the
+     * test sends, which the system logs as it logs the handoff itself.
      */
     @Test
     fun openInBrowserWithTheDevicesBrowser() {
@@ -721,16 +830,18 @@ class WebShellDeviceTest {
         fun measured(label: String): List<FixtureServer.Request> {
             val requests = requests()
             seen += requests
-            val summary = requests.joinToString(" | ") { "${it.listener} ${it.method} ${it.url.substringBefore('?')} ${it.status} cookie=${it.launchCookie}" }
+            val summary = requests.joinToString(" | ") {
+                "${it.listener} ${it.method} ${it.host} ${it.url.substringBefore('?')} ${it.status} cookie=${it.launchCookie}"
+            }
             Web.note("browser api=${Build.VERSION.SDK_INT} $name $label: ${summary.ifEmpty { "nothing" }}")
             return requests
         }
 
         // Another app asks the browser for a page on another loopback port; the page's own image and WebSocket show
         // what the browser sends there by itself.
-        fun anotherApp(label: String, path: String) {
+        fun anotherApp(label: String, host: String, path: String): List<FixtureServer.Request> {
             fixture.reset()
-            browser.viewFromAnotherApp("http://127.0.0.1:${fixture.otherPort}$path")
+            browser.viewFromAnotherApp("http://$host:${fixture.otherPort}$path")
             Web.waitFor("$label: the page", BROWSER_TIMEOUT_MILLIS) { requests().any { it.listener == "other" && it.url == path } }
             runCatching {
                 Web.waitFor("$label: its image and WebSocket") {
@@ -738,7 +849,16 @@ class WebShellDeviceTest {
                 }
             }
             Web.settle(BROWSER_SETTLE_MILLIS)
-            measured(label)
+            return measured(label)
+        }
+
+        // The three names another app can use; then the label host, which it would have to know.
+        fun otherNames(round: String) {
+            for ((kind, host) in listOf("ip" to "127.0.0.1", "localhost" to "localhost", "named" to "other.localhost")) {
+                val requests = anotherApp("another app, other port, $kind$round", host, "/b-$kind")
+                assertTrue("$kind$round: $requests", requests.none { it.launchCookie })
+            }
+            anotherApp("another app, other port, label host$round", fixture.address.host, "/b-label")
         }
 
         browser.prepare()
@@ -756,11 +876,39 @@ class WebShellDeviceTest {
             val opened = measured("open in browser")
             val redeemed = opened.first { it.url.startsWith(handoff) }
             assertEquals(opened.toString(), 200, redeemed.status)
+            assertEquals(opened.toString(), "label", redeemed.host)
             // The cleared browser came without the cookie, so the cookie it sends next came from this handoff.
             assertFalse(opened.toString(), redeemed.anyCookie)
             // The page's own move to / carries the cookie; with a 302 there, Chrome landed on the gate's 403.
             val landed = opened.first { it.url == "/" }
-            assertTrue(opened.toString(), landed.status == 200 && landed.launchCookie)
+            assertTrue(opened.toString(), landed.status == 200 && landed.launchCookie && landed.host == "label")
+            // Plain HTTP on the label host: no TLS handshake (an HTTPS upgrade) reached the port.
+            assertTrue(opened.toString(), opened.none { it.method == "TLS" })
+            // The landing page is a secure context in the browser too (the fixture's home page reports it there).
+            Web.waitFor("the browser reported its context", BROWSER_TIMEOUT_MILLIS) { requests().any { it.url.startsWith(SECURE_REPORT) } }
+            val context = requests().first { it.url.startsWith(SECURE_REPORT) }
+            Web.note("browser api=${Build.VERSION.SDK_INT} $name secure context: ${context.url.substringAfter('=')} host=${context.host}")
+            assertEquals("${SECURE_REPORT}true", context.url)
+
+            // Chromium resolves the label itself: the handoff also lands with no network at all.
+            val network = DeviceNetwork()
+            network.off()
+            try {
+                fixture.reset()
+                ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
+                    scenario.onActivity { assertTrue("no browser started", openInBrowser(it, fixture.session)) }
+                    Web.waitFor("offline: the browser asked for /", BROWSER_TIMEOUT_MILLIS) { requests().any { it.url == "/" } }
+                    Web.settle(BROWSER_SETTLE_MILLIS)
+                    browser.dismissPrompts()
+                }
+            } finally {
+                network.restore()
+            }
+            val offline = measured("open in browser, no network")
+            assertTrue(offline.toString(), offline.any { it.url.startsWith(handoff) && it.status == 200 && it.host == "label" })
+            val landedOffline = offline.first { it.url == "/" }
+            assertTrue(offline.toString(), landedOffline.status == 200 && landedOffline.launchCookie && landedOffline.host == "label")
+            assertTrue(offline.toString(), offline.none { it.method == "TLS" })
 
             fixture.reset()
             browser.reload()
@@ -768,9 +916,19 @@ class WebShellDeviceTest {
             Web.settle(1_000)
             measured(if (reloaded) "reload" else "reload (no request)")
 
-            anotherApp("another app, other port", "/b-intent")
+            otherNames("")
             browser.stop()
-            anotherApp("another app, other port, browser restarted", "/b-restart")
+            otherNames(", browser restarted")
+
+            // The OpenRouter return: a cross-site navigation from the provider's page to the app's callback.
+            fixture.reset()
+            val callback = Uri.encode("${fixture.webOrigin}${WebNavigationPolicy.OPENROUTER_CALLBACK_PATH}")
+            browser.viewFromAnotherApp("${fixture.providerOrigin}/auth?auto=1&callback_url=$callback")
+            runCatching {
+                Web.waitFor("openrouter: the callback", BROWSER_TIMEOUT_MILLIS) { requests().any { it.url.startsWith("/callback/") } }
+            }
+            Web.settle(BROWSER_SETTLE_MILLIS)
+            measured("openrouter return")
             // The code keeps the token out of every URL the browser asked for.
             assertTrue("a request URL carried the token", seen.none { fixture.token in it.url })
         } finally {
@@ -804,11 +962,115 @@ class WebShellDeviceTest {
         ScreenUi.click(WebScreenTags.VERSION_UPDATE)
         Web.waitFor("store link") { "market://details?id=${checkNotNull(provider).packageName}" in intents.data() }
         ScreenUi.click(WebScreenTags.OPEN_IN_BROWSER)
-        Web.waitFor("browser handoff") { intents.data().any { it.startsWith("${fixture.origin}/__sillybunny/handoff?c=") } }
+        Web.waitFor("browser handoff") { intents.data().any { it.startsWith("${fixture.webOrigin}/__sillybunny/handoff?c=") } }
         ScreenUi.click(WebScreenTags.VERSION_DISMISS)
         assertTrue(ScreenUi.gone(WebScreenTags.VERSION_WARNING))
         // Not a block: the page loaded and kept working underneath.
         assertEquals("fixture-home", Web.title(launched.webView()))
+    }
+
+    /**
+     * The screen as the app's activity calls it, with no chooser or downloads passed: the real SAF chooser and the
+     * real downloads serve the page. A file input opens the system's picker; a page export is captured by the page
+     * script and asks for a destination where the WebView supports it, and offers the browser where it does not.
+     */
+    @Test
+    fun theDefaultScreenUsesTheRealChooserAndDownloads() {
+        val launched = launch(defaults = true)
+        val view = launched.webView()
+        val app = instrumentation.targetContext.packageName
+        // DocumentsUI, or the photo picker of the media provider.
+        val picker = By.pkg(Pattern.compile(".*(documentsui|media).*"))
+        fun closePicker(what: String) {
+            assertTrue("$what: the system picker", device.wait(Until.hasObject(picker), PICKER_TIMEOUT_MILLIS))
+            device.pressBack()
+            Web.waitFor("$what: back in the app", PICKER_TIMEOUT_MILLIS) { device.currentPackageName == app }
+        }
+
+        val bridged = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+        val api = Web.text(view, "typeof globalThis[Symbol.for('sillybunny.transfers')]")
+        Web.note("defaults api=${Build.VERSION.SDK_INT} bridgeFeatures=$bridged pageScript=$api")
+        assertEquals(if (bridged) "object" else "undefined", api)
+        Web.eval(
+            view,
+            "(function () { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['x'], { type: 'text/plain' }));" +
+                " a.download = 'defaults.txt'; document.body.appendChild(a); a.click(); a.remove(); })(); 1",
+        )
+        if (bridged) {
+            closePicker("export")
+        } else {
+            assertTrue("the browser is offered", ScreenUi.shown(DISMISS_TAG))
+            ScreenUi.click(DISMISS_TAG)
+            assertTrue(ScreenUi.gone(DISMISS_TAG))
+        }
+
+        Web.navigate(view, "/file.html", "fixture-file")
+        Web.tap(view, "pick")
+        closePicker("file input")
+        Web.settle()
+        assertEquals("0", Web.result(view, "changes"))
+        assertTrue(fixture.redacted(intents.data()), intents.intents.isEmpty())
+    }
+
+    /**
+     * The OpenRouter sign-in (integration item 7) against the fixture's stand-in provider, which the shell treats as
+     * the OpenRouter origin. The frontend's start loads the provider in the app WebView; the provider's own pages stay
+     * there and its other links go to the browser; its return to the app's callback is a cross-site navigation, which
+     * would not carry the `SameSite=Strict` launch cookie, so the shell cancels it and loads where the server's
+     * callback route leads, with the cookie. A sign-in with another callback is not the app's: it goes to the browser.
+     */
+    @Test
+    fun theOpenRouterSignInReturnsWithTheLaunchCookie() {
+        val launched = launch(openRouter = fixture.providerOrigin)
+        val view = launched.webView()
+        val returned = "/?source=openrouter&query=code%3Dfixture-code"
+        fun returnedWithTheCookie(label: String) {
+            Web.waitFor("$label: back on the app") { Web.title(view) == "fixture-home" && Web.text(view, "location.search") != "" }
+            assertEquals(label, returned.removePrefix("/"), Web.text(view, "location.search"))
+            val log = fixture.requests()
+            assertTrue("$label: $log", log.any { it.listener == "app" && it.url == returned && it.status == 200 && it.launchCookie })
+            // The cancelled callback never reached the server, and nothing was refused.
+            assertTrue("$label: $log", log.none { it.url.startsWith("/callback") })
+            assertTrue("$label: $log", log.none { it.status == 403 })
+            assertTrue("$label: $log", log.none { it.listener == "provider" && it.anyCookie })
+        }
+
+        Web.navigate(view, "/openrouter.html", "fixture-openrouter")
+        fixture.reset()
+        Web.eval(view, "signIn(); 1")
+        Web.waitFor("the provider's page in the app") { Web.title(view) == "fixture-provider" }
+        // The provider's page gets no bridge or page script.
+        assertEquals("undefined", Web.result(view, "bridge"))
+        assertEquals("undefined", Web.result(view, "api"))
+        Web.tap(view, "sign-in")
+        Web.waitFor("the provider's next page in the app") { Web.title(view) == "fixture-provider-sign-in" }
+        Web.tap(view, "elsewhere")
+        Web.waitFor("the provider's other link handed off") { "https://example.com/provider-elsewhere" in intents.data() }
+        assertEquals("fixture-provider-sign-in", Web.title(view))
+        Web.eval(view, "fx.back(); 1")
+        returnedWithTheCookie("page return")
+        val handedOff = intents.intents.size
+
+        // The provider answers the start with a redirect straight back.
+        Web.navigate(view, "/openrouter.html", "fixture-openrouter")
+        fixture.reset()
+        Web.eval(view, "signIn('302'); 1")
+        returnedWithTheCookie("redirect return")
+
+        // A sign-in with another callback is not the app's own: it is routed like any other page, so it does not load
+        // in the app. The real provider would go to the browser; this one, on a local name, is blocked.
+        Web.navigate(view, "/openrouter.html", "fixture-openrouter")
+        fixture.reset()
+        Web.eval(view, "signInElsewhere(); 1")
+        Web.waitFor("a foreign sign-in routed") {
+            launched.downloads.events.any { it.startsWith("offer ${fixture.providerOrigin}/auth?") && it.contains("127.0.0.1") }
+        }
+        Web.settle()
+        assertEquals("fixture-openrouter", Web.title(view))
+        assertEquals(fixture.redacted(intents.data()), handedOff, intents.intents.size)
+        assertTrue(fixture.requests().toString(), fixture.requests().none { it.listener == "provider" })
+        assertTrue(fixture.escaped().toString(), fixture.escaped().isEmpty())
     }
 
     @Test
@@ -951,9 +1213,16 @@ class WebShellDeviceTest {
         /** Longer than the system waits before it shows the immersive-mode confirmation (about a second). */
         const val CONFIRMATION_DELAY_MILLIS = 2_500L
 
-        /** The subresource kinds of the redirect probes in `containment.html`. */
+        /** The request kinds of the probes in `containment.html`, and the host names they use for the other port. */
         val REDIRECT_KINDS = listOf("img", "css", "script", "frame", "form", "nocors", "cors", "xhr", "beacon")
         val HOP_KINDS = listOf("img", "css", "script", "frame", "form", "nocors", "beacon")
+        val HOSTS = listOf("ip", "localhost", "named", "label")
+
+        /** The system picker can take a while to start cold. */
+        const val PICKER_TIMEOUT_MILLIS = 20_000L
+
+        /** The request with which the fixture's home page reports `isSecureContext` in the browser. */
+        const val SECURE_REPORT = "/png?secure="
 
         /** At the AVDs' 440 dpi this gives a smallest width of about 650 dp. */
         const val LARGE_WIDTH = 1800

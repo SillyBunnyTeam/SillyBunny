@@ -45,30 +45,35 @@ object BrowserHandoff {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(payload + mac)
     }
 
-    /** A fresh single-use handoff URL for [session]; it expires [LIFETIME_MILLIS] after [nowMillis]. */
-    fun uri(session: LaunchSession, nowMillis: Long = System.currentTimeMillis()): Uri {
+    /**
+     * A fresh single-use handoff URL for [session] on [address]'s web origin; it expires [LIFETIME_MILLIS]
+     * after [nowMillis].
+     */
+    fun uri(session: LaunchSession, address: WebAddress, nowMillis: Long = System.currentTimeMillis()): Uri {
         val nonce = ByteArray(NONCE_BYTES).also { random.nextBytes(it) }
         val code = code(session.token, nonce, nowMillis + LIFETIME_MILLIS)
-        return "${session.origin}$PATH?c=$code".toUri()
+        return "${address.origin(session)}$PATH?c=$code".toUri()
     }
 }
 
 /**
- * Opens the app's UI in the user's browser through a fresh handoff code (plan §3.3, §4.5). Returns false
- * when no browser could be started. Settings and the WebView screen's fallbacks call this.
+ * Opens the app's UI in the user's browser through a fresh handoff code (plan §3.3, §4.5), on the app's
+ * per-install web origin `http://<label>.localhost:<port>` ([WebAddress]). Returns false when no browser
+ * could be started. Settings and the WebView screen's fallbacks call this.
  *
- * What follows in the browser, measured with Chrome 145 on API 37:
- * - The code keeps the token out of the URL, but redeeming it gives the browser the launch token itself,
- *   as the session cookie `sillybunny_launch` for 127.0.0.1. Cookies are not port-isolated, so the browser
- *   sends the token to every 127.0.0.1 port for as long as its process keeps the cookie. A page that any
- *   app opens there on another loopback port receives it with its image, WebSocket and favicon requests.
- *   The app's navigation controls do not reach the browser.
- * - The server answers the code with a page that moves to `/` itself, and that same-origin navigation
- *   carries the `SameSite=Strict` cookie. A 302 to `/` landed Chrome on the gate's 403 page instead: the
- *   redirect belonged to a navigation that another app started, so Chrome did not send the cookie with it.
+ * What the browser gets, measured with Chrome 145 on API 37 (integration track p56int):
+ * - The `ACTION_VIEW` URL carries the label and a single-use code, never the token. Whoever handles the
+ *   intent (the default browser, or the app the user picks) can redeem the code once, within
+ *   [BrowserHandoff.LIFETIME_MILLIS], and so obtain the token.
+ * - The server answers the code with a page that moves to `/` itself and sets the launch token as the
+ *   host-only session cookie `sillybunny_launch` for `<label>.localhost`. The browser sends it to that host
+ *   on every port, and to no other host: not to `127.0.0.1`, `localhost` or other `*.localhost` names. A
+ *   page that another app opens on its own loopback port receives the cookie only if that app knows the
+ *   label. The cookie lasts while the browser keeps its session cookies; the token is valid for the whole
+ *   server run. The app's navigation controls do not reach the browser.
  */
-fun openInBrowser(context: Context, session: LaunchSession): Boolean =
-    startViewIntent(context, BrowserHandoff.uri(session))
+fun openInBrowser(context: Context, session: LaunchSession, address: WebAddress = WebAddress.forInstall(context)): Boolean =
+    startViewIntent(context, BrowserHandoff.uri(session, address))
 
 /** Starts `ACTION_VIEW` for [uri] as a browsable link; false when nothing can handle it. */
 internal fun startViewIntent(context: Context, uri: Uri): Boolean {

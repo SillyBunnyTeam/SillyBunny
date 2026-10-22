@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.view.View
+import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
@@ -43,19 +44,28 @@ class WebShellTest {
     private val downloads = RecordingDownloads(log)
     private val token = "ab".repeat(32)
     private val session = LaunchSession(41_234, token)
-    private val origin = "http://127.0.0.1:41234"
+    private val address = WebAddress(LABEL)
+    private val host = "$LABEL.localhost"
+
+    /** The web origin: the per-install label, never the server's native `http://127.0.0.1:41234`. */
+    private val origin = "http://$host:41234"
     private var now = 1_000_000L
     private val shells = mutableListOf<WebShell>()
 
-    private fun shell(policy: WebPermissionPolicy = WebPermissionPolicy.DEFAULT): WebShell =
-        WebShell(context, platform, policy) { now }.also { shells += it }
+    private fun shell(
+        policy: WebPermissionPolicy = WebPermissionPolicy.DEFAULT,
+        openRouter: Uri = Uri.parse(WebNavigationPolicy.OPENROUTER_ORIGIN),
+    ): WebShell = WebShell(context, platform, policy, { now }, openRouter).also { shells += it }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
     /** A shell showing [session] with its page loaded. */
-    private fun loaded(policy: WebPermissionPolicy = WebPermissionPolicy.DEFAULT): WebShell {
-        val shell = shell(policy)
-        shell.bind(session, chooser, downloads)
+    private fun loaded(
+        policy: WebPermissionPolicy = WebPermissionPolicy.DEFAULT,
+        openRouter: Uri = Uri.parse(WebNavigationPolicy.OPENROUTER_ORIGIN),
+    ): WebShell {
+        val shell = shell(policy, openRouter)
+        shell.bind(session, address, chooser, downloads)
         platform.cookies.last().done(true)
         return shell
     }
@@ -72,7 +82,7 @@ class WebShellTest {
     @Test
     fun attachesDownloadsThenLoadsOnlyAfterTheCookieWasAccepted() {
         val shell = shell()
-        shell.bind(session, chooser, downloads)
+        shell.bind(session, address, chooser, downloads)
         assertEquals(listOf("attach downloads w1 41234", "cookie $origin"), log.events)
         assertEquals("sillybunny_launch=$token; HttpOnly; SameSite=Strict; Path=/", platform.cookies.single().value)
         assertNull(shadowOf(platform.views[0]).lastLoadedUrl)
@@ -86,7 +96,7 @@ class WebShellTest {
     @Test
     fun aRejectedCookieNeverLoadsAndRetryStartsOver() {
         val shell = shell()
-        shell.bind(session, chooser, downloads)
+        shell.bind(session, address, chooser, downloads)
         platform.cookies.single().done(false)
         assertTrue(shell.loadFailed)
         assertTrue(log.events.none { it.startsWith("load") })
@@ -104,7 +114,7 @@ class WebShellTest {
     @Test
     fun aCookieTimeoutFailsAndALateAnswerIsIgnored() {
         val shell = shell()
-        shell.bind(session, chooser, downloads)
+        shell.bind(session, address, chooser, downloads)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(WebShell.COOKIE_TIMEOUT_MILLIS))
         assertTrue(shell.loadFailed)
         platform.cookies.single().done(true)
@@ -139,7 +149,7 @@ class WebShellTest {
     fun theSameSessionKeepsItsWebViewAndTheLatestChooserServesRequests() {
         val shell = loaded()
         val second = RecordingChooser(log, "chooser2")
-        shell.bind(session, second, RecordingDownloads(log, "downloads2"))
+        shell.bind(session, address, second, RecordingDownloads(log, "downloads2"))
         assertEquals(1, platform.views.size)
         val view = platform.views.single()
         val callback = RecordingValueCallback<Array<Uri>>()
@@ -164,19 +174,32 @@ class WebShellTest {
         val shell = loaded()
         val mark = log.size
         val next = LaunchSession(41_300, "cd".repeat(32))
-        shell.bind(next, chooser, RecordingDownloads(log, "downloads2"))
+        shell.bind(next, address, chooser, RecordingDownloads(log, "downloads2"))
         assertEquals(
             listOf(
                 "cancel chooser",
                 "detach downloads w1",
                 "destroy w1",
                 "attach downloads2 w2 41300",
-                "cookie http://127.0.0.1:41300",
+                "cookie http://$host:41300",
             ),
             log.since(mark),
         )
         platform.cookies.last().done(true)
-        assertEquals("load w2 http://127.0.0.1:41300/", log.events.last())
+        assertEquals("load w2 http://$host:41300/", log.events.last())
+    }
+
+    @Test
+    fun aNewAddressReplacesTheWebViewToo() {
+        val shell = loaded()
+        val other = WebAddress("sb-zyxwvutsrqponmlkjihgfedcba")
+        val mark = log.size
+        shell.bind(session, other, chooser, downloads)
+        assertEquals(
+            listOf("cancel chooser", "detach downloads w1", "destroy w1", "attach downloads w2 41234", "cookie http://${other.host}:41234"),
+            log.since(mark),
+        )
+        assertEquals(other.appOrigin(41_234), shell.appOrigin)
     }
 
     @Test
@@ -240,7 +263,7 @@ class WebShellTest {
     fun aMissingProviderShowsTheFailureInsteadOfCrashing() {
         platform.failNewWebView = true
         val shell = shell()
-        shell.bind(session, chooser, downloads)
+        shell.bind(session, address, chooser, downloads)
         assertTrue(shell.loadFailed)
         assertTrue(log.events.isEmpty())
         platform.failNewWebView = false
@@ -253,7 +276,7 @@ class WebShellTest {
         loaded()
         val view = platform.views.single()
         downloads.takes = { it.scheme == "blob" }
-        val blob = "blob:http://127.0.0.1:41234/9b1c"
+        val blob = "blob:$origin/9b1c"
         val mark = log.size
         assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest(blob)))
         assertEquals(listOf("offer downloads w1 $blob main=true gesture=true"), log.since(mark))
@@ -270,7 +293,15 @@ class WebShellTest {
         assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/next")))
         assertEquals("offer downloads w1 $origin/next main=true gesture=true", log.events.last())
 
-        val blocked = listOf("http://127.0.0.1:41235/", "intent://scan/#Intent;scheme=zxing;end", "file:///sdcard/a")
+        val blocked = listOf(
+            "http://127.0.0.1:41235/",
+            // The server's native address and other local names are not the web origin.
+            "http://127.0.0.1:41234/",
+            "http://localhost:41234/",
+            "http://$host:41235/",
+            "intent://scan/#Intent;scheme=zxing;end",
+            "file:///sdcard/a",
+        )
         blocked.forEach { assertTrue(it, view.client.shouldOverrideUrlLoading(view, FakeRequest(it))) }
         assertTrue(log.events.none { it.startsWith("open") && !it.endsWith("example.com/a") })
 
@@ -281,17 +312,21 @@ class WebShellTest {
     }
 
     @Test
-    fun requestsToOtherLoopbackPortsAreAnsweredLocally() {
+    fun requestsToOtherLocalNamesAreAnsweredLocally() {
         loaded()
         val view = platform.views.single()
         val blocked = view.client.shouldInterceptRequest(view, FakeRequest("http://127.0.0.1:9/x", mainFrame = false))
         assertEquals(403, blocked!!.statusCode)
         assertEquals(0, blocked.data.available())
+        listOf("http://127.0.0.1:41234/x", "http://localhost:41234/x", "http://$host:9/x", "http://other.localhost:41234/x", "http://[::1]:41234/x")
+            .forEach { assertEquals(it, 403, view.client.shouldInterceptRequest(view, FakeRequest(it, mainFrame = false))?.statusCode) }
         assertNull(view.client.shouldInterceptRequest(view, FakeRequest("$origin/x", mainFrame = false)))
         assertNull(view.client.shouldInterceptRequest(view, FakeRequest("https://example.com/x", mainFrame = false)))
         // Service worker fetches get the same check through the process-wide client.
         val serviceWorker = checkNotNull(platform.blockRequest)
         assertTrue(serviceWorker(Uri.parse("http://127.0.0.1:9/x")))
+        assertTrue(serviceWorker(Uri.parse("http://127.0.0.1:41234/sw.js")))
+        assertTrue(serviceWorker(Uri.parse("http://$host:9/x")))
         assertFalse(serviceWorker(Uri.parse("$origin/sw.js")))
         assertFalse(serviceWorker(Uri.parse("https://example.com/x")))
     }
@@ -321,7 +356,7 @@ class WebShellTest {
         open("$origin/page")
         assertTrue(log.events.contains("load w1 $origin/page"))
 
-        val blob = "blob:http://127.0.0.1:41234/77"
+        val blob = "blob:$origin/77"
         open(blob)
         assertTrue(log.events.contains("offer downloads w1 $blob main=true gesture=true"))
 
@@ -339,6 +374,9 @@ class WebShellTest {
         val catcher = checkNotNull(transport.webView)
         val response = catcher.client.shouldInterceptRequest(catcher, FakeRequest("https://example.com/x", mainFrame = false))
         assertEquals(403, response!!.statusCode)
+        // Its console messages are taken, so Chromium does not log them with the opener's URL.
+        val message = ConsoleMessage("blocked", "http://sb-aaaaaaaaaaaaaaaaaaaaaaaaaa.localhost:1/", 1, ConsoleMessage.MessageLevel.LOG)
+        assertTrue(checkNotNull(catcher.chrome).onConsoleMessage(message))
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(WebShell.POPUP_TIMEOUT_MILLIS))
         assertTrue(shadowOf(catcher).wasDestroyCalled())
         assertTrue(log.events.none { it.startsWith("open") })
@@ -365,7 +403,7 @@ class WebShellTest {
     fun aStaleWebViewCannotOpenWindows() {
         val shell = loaded()
         val old = platform.views.single()
-        shell.bind(LaunchSession(41_300, "cd".repeat(32)), chooser, downloads)
+        shell.bind(LaunchSession(41_300, "cd".repeat(32)), address, chooser, downloads)
         val transport = old.WebViewTransport()
         assertFalse(old.chrome.onCreateWindow(old, false, true, Message.obtain(Handler(Looper.getMainLooper()), 0, transport)))
     }
@@ -539,7 +577,7 @@ class WebShellTest {
         assertFalse(shell.openInBrowser(context))
         assertTrue(shell.openWebViewUpdate(context))
         assertEquals(Uri.parse("market://details?id=com.google.android.webview"), platform.opened.single())
-        shell.bind(session, chooser, downloads)
+        shell.bind(session, address, chooser, downloads)
         assertTrue(shell.openInBrowser(context))
         val handoff = platform.opened.last()
         assertEquals("$origin/__sillybunny/handoff", "${handoff.scheme}://${handoff.authority}${handoff.path}")
@@ -553,5 +591,126 @@ class WebShellTest {
         loaded()
         val view = platform.views.single()
         assertTrue(view.chrome.onConsoleMessage(android.webkit.ConsoleMessage("m", "s", 1, android.webkit.ConsoleMessage.MessageLevel.LOG)))
+    }
+
+    @Test
+    fun navigationsFromAnotherPageAreNotOfferedToDownloads() {
+        loaded()
+        val view = platform.views.single()
+        downloads.takes = { true }
+        view.loadUrl("https://openrouter.ai/auth")
+        val mark = log.size
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("blob:https://openrouter.ai/x")))
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("data:text/plain,x")))
+        assertTrue(log.since(mark).none { it.startsWith("offer") })
+    }
+
+    @Test
+    fun theOpenRouterSignInLoadsInAppAndItsReturnIsReloadedWithTheCookie() {
+        loaded()
+        val view = platform.views.single()
+        val start = "https://openrouter.ai/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}&code_challenge=c&code_challenge_method=S256"
+        val mark = log.size
+        // authorizeOpenRouter() sets location.href after awaited work, so without a gesture.
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest(start, gesture = false)))
+        view.loadUrl(start)
+        // The provider's own pages stay in-app; other sites still leave.
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest("https://openrouter.ai/sign-in?redirect=1")))
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("https://accounts.example.com/login")))
+        assertEquals("open https://accounts.example.com/login", log.events.last())
+        // Requests to the provider are not local, so the containment lets them through.
+        assertNull(view.client.shouldInterceptRequest(view, FakeRequest("https://openrouter.ai/api/x", mainFrame = false)))
+        // The redirect back is cancelled and replaced by the URL the server's callback route leads to.
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/callback/openrouter?code=abc-1")))
+        idle()
+        assertEquals("load w1 $origin/?source=openrouter&query=code%3Dabc-1", log.events.last())
+        assertTrue(log.since(mark).none { it.startsWith("offer") })
+        assertEquals(1, log.since(mark).count { it.startsWith("open") })
+    }
+
+    @Test
+    fun aRedirectStraightBackIsReplacedToo() {
+        loaded()
+        val view = platform.views.single()
+        val start = "https://openrouter.ai/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}"
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest(start)))
+        // No provider page committed: its answer redirected to the callback at once.
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/callback/openrouter?code=2")))
+        idle()
+        assertEquals("load w1 $origin/?source=openrouter&query=code%3D2", log.events.last())
+    }
+
+    @Test
+    fun onlyTheAppsOwnOpenRouterStartLoadsInApp() {
+        loaded()
+        val view = platform.views.single()
+        listOf(
+            "https://openrouter.ai/auth?callback_url=${Uri.encode("http://127.0.0.1:41234/callback/openrouter")}",
+            "https://openrouter.ai/auth?callback_url=${Uri.encode("https://evil.example/callback/openrouter")}",
+            "https://openrouter.ai/keys",
+            "https://openrouter.ai.evil.example/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}",
+        ).forEach {
+            assertTrue(it, view.client.shouldOverrideUrlLoading(view, FakeRequest(it)))
+            assertEquals("open $it", log.events.last())
+        }
+        // Not in a sign-in: a callback navigation is an ordinary app navigation.
+        val mark = log.size
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/callback/openrouter?code=1")))
+        idle()
+        assertTrue(log.since(mark).none { it.startsWith("load") })
+        // A start from a subframe is not a sign-in either.
+        val start = "https://openrouter.ai/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}"
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest(start, mainFrame = false)))
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/callback/openrouter?code=3")))
+        idle()
+        assertTrue(log.since(mark).none { it.startsWith("load") })
+    }
+
+    @Test
+    fun theAppOriginLoadingAgainEndsTheSignIn() {
+        loaded()
+        val view = platform.views.single()
+        val start = "https://openrouter.ai/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}"
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest(start)))
+        view.client.onPageStarted(view, "$origin/", null)
+        val mark = log.size
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/callback/openrouter?code=1")))
+        idle()
+        assertTrue(log.since(mark).none { it.startsWith("load") })
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("https://openrouter.ai/sign-in")))
+        assertEquals("open https://openrouter.ai/sign-in", log.events.last())
+    }
+
+    @Test
+    fun aSignInStartedInANewWindowOpensInPlace() {
+        loaded()
+        val opener = platform.views.single()
+        val start = "https://openrouter.ai/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}"
+        val transport = opener.WebViewTransport()
+        assertTrue(opener.chrome.onCreateWindow(opener, false, true, Message.obtain(Handler(Looper.getMainLooper()), 0, transport)))
+        val catcher = transport.webView as RecordingWebView
+        assertTrue(catcher.client.shouldOverrideUrlLoading(catcher, FakeRequest(start)))
+        idle()
+        assertTrue(log.events.contains("load w1 $start"))
+        assertTrue(log.events.none { it.startsWith("open") })
+    }
+
+    @Test
+    fun aFixtureProviderOnALocalNameIsLetThroughTheContainment() {
+        val provider = Uri.parse("http://provider.localhost:45678")
+        loaded(openRouter = provider)
+        val view = platform.views.single()
+        assertNull(view.client.shouldInterceptRequest(view, FakeRequest("http://provider.localhost:45678/auth", mainFrame = false)))
+        assertEquals(403, view.client.shouldInterceptRequest(view, FakeRequest("http://provider.localhost:45679/", mainFrame = false))?.statusCode)
+        val start = "http://provider.localhost:45678/auth?callback_url=${Uri.encode("$origin/callback/openrouter")}"
+        assertFalse(view.client.shouldOverrideUrlLoading(view, FakeRequest(start)))
+        view.loadUrl(start)
+        assertTrue(view.client.shouldOverrideUrlLoading(view, FakeRequest("$origin/callback/openrouter?code=f")))
+        idle()
+        assertEquals("load w1 $origin/?source=openrouter&query=code%3Df", log.events.last())
+    }
+
+    private companion object {
+        const val LABEL = "sb-abcdefghijklmnopqrstuvwxyz"
     }
 }

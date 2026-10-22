@@ -40,5 +40,9 @@ function probeStorage(value) {
     results.quota = 'absent';
   }
 }
+// In the browser, where the test cannot run script, the page reports whether it is a secure context.
+if (!/; wv\)/.test(navigator.userAgent)) {
+  new Image().src = '/png?secure=' + window.isSecureContext;
+}
 </script>
 </body></html>

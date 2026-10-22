@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.app.Instrumentation
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +19,8 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
+import androidx.core.net.toUri
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -40,27 +43,50 @@ import org.json.JSONTokener
 /**
  * The host fixture server (`fixtures/fixture-server.mjs` next to this file): the real launch-token
  * middleware in front of the fixture pages, reached through `adb reverse`. Its ports and token come from
- * the instrumentation arguments `fixturePort`, `fixtureOther` and `fixtureToken`.
+ * the instrumentation arguments `fixturePort`, `fixtureOther`, `fixtureProvider` (optional) and
+ * `fixtureToken`. The app loads the pages from its per-install web origin [webOrigin]; the fixture's
+ * control requests use the native address [origin], because Android's resolver does not resolve the label.
  */
 internal class FixtureServer {
     private val args = InstrumentationRegistry.getArguments()
     val port: Int = requireNotNull(args.getString("fixturePort")) { "run with -e fixturePort <port>" }.toInt()
     val otherPort: Int = requireNotNull(args.getString("fixtureOther")) { "run with -e fixtureOther <port>" }.toInt()
     val token: String = requireNotNull(args.getString("fixtureToken")) { "run with -e fixtureToken <hex>" }
+    private val providerPort: Int? = args.getString("fixtureProvider")?.toInt()
     val session = LaunchSession(port, token)
+
+    /** The server's native address, `http://127.0.0.1:<port>`. */
     val origin = session.origin
+
+    /** The app's per-install address; its label must stay out of test output ([redacted]). */
+    val address = WebAddress.forInstall(InstrumentationRegistry.getInstrumentation().targetContext)
+
+    /** The web origin of the app's pages, `http://<label>.localhost:<port>`. */
+    val webOrigin: String = address.origin(session)
+
+    /** The stand-in for https://openrouter.ai: `http://provider.localhost:<port>`. */
+    val providerOrigin: String get() = "http://provider.localhost:${requireNotNull(providerPort) { "run with -e fixtureProvider <port>" }}"
+
+    /** [text] with the label replaced by `<label>`, for assertion messages and notes. */
+    fun redacted(text: Any?): String = WebAddress.redact(text.toString())
 
     class Request(
         val listener: String,
         val method: String,
+        /** The request URL; the fixture replaces the label in it with `<label>`. */
         val url: String,
         val status: Int,
         val launchCookie: Boolean,
         val anyCookie: Boolean,
         /** A WebView sent it (its user agent has `; wv)`), not the device's browser. */
         val webView: Boolean,
+        /** The kind of host name it used: `ip`, `localhost`, `named` (other.localhost), `provider` or `label`. */
+        val host: String,
+        /** The kind of host in its `Referer` and `Origin` headers, `none` without one, `opaque` for `null`. */
+        val referer: String,
+        val origin: String,
     ) {
-        override fun toString() = "$listener $method $url $status cookie=$launchCookie/$anyCookie"
+        override fun toString() = "$listener $method $host $url $status cookie=$launchCookie/$anyCookie ref=$referer origin=$origin"
     }
 
     fun requests(): List<Request> {
@@ -75,6 +101,9 @@ internal class FixtureServer {
                 entry.getBoolean("launchCookie"),
                 entry.getBoolean("anyCookie"),
                 entry.optBoolean("webView"),
+                entry.optString("host"),
+                entry.optString("referer"),
+                entry.optString("origin"),
             )
         }
     }
@@ -155,9 +184,15 @@ internal class ViewIntents : Instrumentation.ActivityMonitor() {
 /**
  * Hosts [WebScreen] in the debug `ComponentActivity` from `ui-test-manifest`. The content is set on every
  * new instance of the activity, so recreation behaves as it does for an app activity calling setContent in
- * onCreate.
+ * onCreate. By default the screen gets [chooser] and [downloads]; with [defaults] it gets nothing, as the
+ * app's activity calls it, so it uses the real SAF chooser and downloads. With [openRouter] the activity's
+ * shell lets that origin's sign-in load in-app instead of https://openrouter.ai.
  */
-internal class WebScreenHost(private val session: LaunchSession) : Application.ActivityLifecycleCallbacks, AutoCloseable {
+internal class WebScreenHost(
+    private val session: LaunchSession,
+    private val defaults: Boolean = false,
+    private val openRouter: String? = null,
+) : Application.ActivityLifecycleCallbacks, AutoCloseable {
     val chooser = DeviceChooser()
     val downloads = DeviceDownloads()
     private val app = ApplicationProvider.getApplicationContext<Application>()
@@ -173,8 +208,18 @@ internal class WebScreenHost(private val session: LaunchSession) : Application.A
 
     override fun onActivityPostCreated(activity: Activity, savedInstanceState: Bundle?) {
         // Only the test host activity, never an app activity that happens to start meanwhile.
-        if (activity.javaClass == ComponentActivity::class.java) {
-            (activity as ComponentActivity).setContent { WebScreen(session, fileChooser = chooser, downloads = downloads) }
+        if (activity.javaClass != ComponentActivity::class.java) return
+        val host = activity as ComponentActivity
+        openRouter?.let { provider ->
+            // The activity's first shell, which WebScreen then finds in the same ViewModelStore.
+            val app = host.applicationContext
+            val factory = WebShellHolder.factory { WebShell(app, openRouter = provider.toUri()) }
+            ViewModelProvider(host, factory)[WebShellHolder.KEY, WebShellHolder::class.java]
+        }
+        if (defaults) {
+            host.setContent { WebScreen(session) }
+        } else {
+            host.setContent { WebScreen(session, fileChooser = chooser, downloads = downloads) }
         }
     }
 
@@ -242,7 +287,7 @@ internal object Web {
         val latch = CountDownLatch(1)
         var value: String? = null
         onMain { view.evaluateJavascript(script) { value = it; latch.countDown() } }
-        check(latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) { "evaluateJavascript timed out: $script" }
+        check(latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) { "evaluateJavascript timed out: ${WebAddress.redact(script)}" }
         return value ?: "null"
     }
 
@@ -397,9 +442,11 @@ internal object Web {
     /** The window manager's current focus line, for example `mCurrentFocus=Window{... <package>/<activity>}`. */
     fun focusedWindow(): String = shell("dumpsys window").lineSequence().firstOrNull { "mCurrentFocus" in it }?.trim().orEmpty()
 
+    /** Logs [message] with every label redacted. */
     fun note(message: String) {
-        Log.i("p56a", message)
-        println("p56a: $message")
+        val redacted = WebAddress.redact(message)
+        Log.i("p56a", redacted)
+        println("p56a: $redacted")
     }
 
     /** One tap and one retry. */
@@ -413,6 +460,40 @@ internal object Web {
 
     /** Lets the selection handles and toolbar of a long press go away before the next tap. */
     private const val TAP_RETRY_PAUSE_MILLIS = 500L
+}
+
+/**
+ * Takes the device off every network, so no DNS server can answer, and puts it back: airplane mode from
+ * API 30 (`cmd connectivity airplane-mode`), Wi-Fi and mobile data off before (`svc`), because API 29's
+ * shell cannot announce an airplane mode change. `adb reverse` keeps working: adb does not use the device's
+ * network.
+ */
+internal class DeviceNetwork {
+    private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+    private val connectivity get() = context.getSystemService(ConnectivityManager::class.java)
+    private var airplane: String? = null
+
+    fun off() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            airplane = Web.shell("settings get global airplane_mode_on").trim()
+            Web.shell("cmd connectivity airplane-mode enable")
+        } else {
+            Web.shell("svc wifi disable")
+            Web.shell("svc data disable")
+        }
+        val off = runCatching { Web.waitFor("no network", 30_000) { connectivity.activeNetwork == null } }.isSuccess
+        check(off) { "still on a network: ${connectivity.getNetworkCapabilities(connectivity.activeNetwork)}" }
+    }
+
+    fun restore() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            if (airplane != "1") Web.shell("cmd connectivity airplane-mode disable")
+        } else {
+            Web.shell("svc wifi enable")
+            Web.shell("svc data enable")
+        }
+        runCatching { Web.waitFor("network back", 30_000) { connectivity.activeNetwork != null } }
+    }
 }
 
 /**

@@ -25,6 +25,7 @@ class BrowserHandoffTest {
     private val token = "0123456789abcdef".repeat(4)
     private val nonce = ByteArray(16) { it.toByte() }
     private val expiry = 1_700_000_030_000L
+    private val address = WebAddress("sb-abcdefghijklmnopqrstuvwxyz")
 
     @Test
     fun matchesTheServerImplementation() {
@@ -68,10 +69,11 @@ class BrowserHandoffTest {
     fun uriIsFreshShortLivedAndFreeOfTheToken() {
         val session = LaunchSession(41_234, token)
         val now = 1_800_000_000_000L
-        val first = BrowserHandoff.uri(session, now)
-        val second = BrowserHandoff.uri(session, now)
+        val first = BrowserHandoff.uri(session, address, now)
+        val second = BrowserHandoff.uri(session, address, now)
         assertEquals("http", first.scheme)
-        assertEquals("127.0.0.1", first.host)
+        // The per-install web origin, so the browser holds the cookie host-only on the label.
+        assertEquals("sb-abcdefghijklmnopqrstuvwxyz.localhost", first.host)
         assertEquals(41_234, first.port)
         assertEquals("/__sillybunny/handoff", first.path)
         assertEquals(setOf("c"), first.queryParameterNames)
@@ -90,13 +92,22 @@ class BrowserHandoffTest {
     @Test
     fun openInBrowserStartsABrowsableViewIntentForTheHandoff() {
         val app = ApplicationProvider.getApplicationContext<Application>()
-        assertTrue(openInBrowser(app, LaunchSession(41_234, token)))
+        assertTrue(openInBrowser(app, LaunchSession(41_234, token), address))
         val intent = shadowOf(app).nextStartedActivity
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertTrue(intent.hasCategory(Intent.CATEGORY_BROWSABLE))
         assertTrue(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
         assertEquals("/__sillybunny/handoff", intent.data!!.path)
+        assertEquals("http://${address.host}:41234", "${intent.data!!.scheme}://${intent.data!!.authority}")
         assertFalse(intent.dataString!!.contains(token))
+    }
+
+    @Test
+    fun openInBrowserDefaultsToThisInstallsAddress() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        assertTrue(openInBrowser(app, LaunchSession(41_234, token)))
+        val uri = shadowOf(app).nextStartedActivity.data!!
+        assertEquals("${WebAddress.forInstall(app).host}:41234", uri.authority)
     }
 
     @Test

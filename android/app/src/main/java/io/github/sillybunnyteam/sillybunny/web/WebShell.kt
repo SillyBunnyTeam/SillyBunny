@@ -47,20 +47,34 @@ import io.github.sillybunnyteam.sillybunny.server.LaunchSession
  * view and pending callbacks; nothing reloads. The WebView is built on a [MutableContextWrapper] whose
  * base is the application context, so the provider never binds an Activity that later goes stale; the
  * base becomes the current Activity only while the view is mounted in that Activity's window. The
- * WebView is destroyed when the shell is released, when [bind] receives a different [LaunchSession],
- * and after renderer death (a fresh WebView replaces it).
+ * WebView is destroyed when the shell is released, when [bind] receives a different [LaunchSession] or
+ * [WebAddress], and after renderer death (a fresh WebView replaces it).
+ *
+ * Origin: pages load from the per-install web origin `http://<label>.localhost:<port>` ([WebAddress]),
+ * never from the server's native address [LaunchSession.origin]. The launch cookie is set for that origin
+ * only, so it is host-only on the label.
  *
  * Hook order, as `WebIntegrations.kt` documents: [WebDownloads.attach] before the first load, then the
  * launch cookie, then `origin/` once the cookie callback reports success; navigations are offered to
- * [WebDownloads.handleNavigation] before routing; teardown calls [WebFileChooser.cancelPending] and
- * [WebDownloads.detach] before the WebView is destroyed. The [WebDownloads] attached to a WebView serves
- * it for its whole life; the latest [WebFileChooser] passed to [bind] serves new chooser requests.
+ * [WebDownloads.handleNavigation] before routing, but only while the main frame shows the app origin;
+ * teardown calls [WebFileChooser.cancelPending] and [WebDownloads.detach] before the WebView is destroyed.
+ * The [WebDownloads] attached to a WebView serves it for its whole life; the latest [WebFileChooser]
+ * passed to [bind] serves new chooser requests.
+ *
+ * OpenRouter sign-in (integration item 7): the frontend's navigation to [openRouter]`/auth` with the app's
+ * own `callback_url` loads in this WebView, and so do the provider's own navigations while its page is
+ * shown; everything else external still goes to `ACTION_VIEW`. The provider's redirect back to
+ * `/callback/openrouter` is a cross-site navigation, which does not carry the `SameSite=Strict` launch
+ * cookie, so the shell cancels it and loads the URL that the server's callback route leads to itself. The
+ * provider page gets no bridge, downloads, file chooser or permissions: those serve the app origin only.
  */
 internal class WebShell(
     private val appContext: Context,
     private val platform: WebShellPlatform = AndroidWebShellPlatform,
     private val permissionPolicy: WebPermissionPolicy = WebPermissionPolicy.DEFAULT,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
+    /** The OpenRouter origin whose sign-in may load in-app; device tests pass a fixture origin. */
+    private val openRouter: Uri = WebNavigationPolicy.OPENROUTER_ORIGIN.toUri(),
 ) {
     /** Increments whenever the shell switches to a different WebView instance. */
     var generation by mutableIntStateOf(0)
@@ -91,6 +105,13 @@ internal class WebShell(
     var session: LaunchSession? = null
         private set
 
+    var address: WebAddress? = null
+        private set
+
+    /** The exact origin of the current session's pages; null before the first [bind]. */
+    var appOrigin: AppOrigin? = null
+        private set
+
     var isReleased = false
         private set
 
@@ -103,6 +124,9 @@ internal class WebShell(
     private val popups = mutableSetOf<WebView>()
     private val rendererDeaths = ArrayDeque<Long>()
 
+    /** Set when the frontend started the OpenRouter sign-in in-app; cleared once the app origin loads again. */
+    private var openRouterArmed = false
+
     init {
         val provider = platform.currentWebViewPackage(appContext)
         val major = WebViewVersion.parseMajor(provider?.versionName)
@@ -111,15 +135,18 @@ internal class WebShell(
         }
     }
 
-    /** Shows [session]; called on every composition, so it only acts on changes. */
-    fun bind(session: LaunchSession, fileChooser: WebFileChooser, downloads: WebDownloads) {
+    /** Shows [session] on [address]'s web origin; called on every composition, so it only acts on changes. */
+    fun bind(session: LaunchSession, address: WebAddress, fileChooser: WebFileChooser, downloads: WebDownloads) {
         check(!isReleased) { "released" }
         this.fileChooser = fileChooser
         requestedDownloads = downloads
-        if (session == this.session) return
+        if (session == this.session && address == this.address) return
         teardownWebView()
         this.session = session
-        LaunchCookieContainment.port = session.port
+        this.address = address
+        val app = address.appOrigin(session.port)
+        appOrigin = app
+        LaunchCookieContainment.app = app
         rendererDeaths.clear()
         startWebView()
     }
@@ -190,7 +217,8 @@ internal class WebShell(
      */
     fun openInBrowser(context: Context): Boolean {
         val current = session ?: return false
-        return platform.openExternal(context, BrowserHandoff.uri(current))
+        val web = address ?: return false
+        return platform.openExternal(context, BrowserHandoff.uri(current, web))
     }
 
     /** Opens the store page of the current WebView provider; false when none could be opened. */
@@ -215,6 +243,7 @@ internal class WebShell(
 
     private fun startWebView() {
         val current = checkNotNull(session)
+        val app = checkNotNull(appOrigin)
         loadFailed = false
         val wrapper = MutableContextWrapper(appContext)
         val view = try {
@@ -226,7 +255,7 @@ internal class WebShell(
             loadFailed = true
             return
         }
-        configure(view, current.port)
+        configure(view, app)
         contextWrapper = wrapper
         webView = view
         canGoBack = false
@@ -243,17 +272,18 @@ internal class WebShell(
             }
         }
         handler.postDelayed(timeout, COOKIE_TIMEOUT_MILLIS)
-        platform.setCookie(current.origin, launchCookie(current)) { accepted ->
+        // Set for the web origin only and without a Domain attribute, so the cookie is host-only on the label.
+        platform.setCookie(app.url, launchCookie(current)) { accepted ->
             handler.removeCallbacks(timeout)
             // A late answer after the timeout is ignored; Retry starts over with a fresh WebView.
             if (settled || webView !== view || isReleased) return@setCookie
             settled = true
-            if (accepted) view.loadUrl(current.origin + "/") else loadFailed = true
+            if (accepted) view.loadUrl(app.url + "/") else loadFailed = true
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled") // The frontend is a JavaScript app; only its exact origin loads.
-    private fun configure(view: WebView, port: Int) {
+    private fun configure(view: WebView, app: AppOrigin) {
         view.setBackgroundColor(ContextCompat.getColor(appContext, R.color.charcoal_canvas))
         view.settings.apply {
             javaScriptEnabled = true
@@ -270,14 +300,15 @@ internal class WebShell(
             // TTS, previews and notification sounds start after async work, without a fresh gesture.
             mediaPlaybackRequiresUserGesture = false
         }
-        view.webViewClient = ShellWebViewClient(port)
-        view.webChromeClient = ShellChromeClient(port)
+        view.webViewClient = ShellWebViewClient(app)
+        view.webChromeClient = ShellChromeClient(app)
     }
 
     private fun teardownWebView() {
         val view = webView ?: return
         webView = null
         canGoBack = false
+        openRouterArmed = false
         dialog?.let {
             dialog = null
             it.complete(false)
@@ -302,12 +333,19 @@ internal class WebShell(
 
     /** Routes a navigation; true when the WebView must not load it itself. */
     private fun onNavigation(view: WebView, url: Uri, isMainFrame: Boolean, hasGesture: Boolean, newWindow: Boolean): Boolean {
-        val port = session?.port
-        if (view !== webView || port == null) return true
-        if ((isMainFrame || newWindow) && attachedDownloads.handleNavigation(view, url, isMainFrame || newWindow, hasGesture)) {
-            return true
+        val app = appOrigin
+        if (view !== webView || app == null) return true
+        val topLevel = isMainFrame || newWindow
+        if (topLevel) {
+            // The page that started it: the main frame's current document (the opener's, for a new window).
+            val page = view.url?.toUri()
+            routeOpenRouter(view, url, page, app, newWindow)?.let { return it }
+            // Downloads serve the app origin only, never the OpenRouter page.
+            if (WebNavigationPolicy.isAppUrl(page, app) && attachedDownloads.handleNavigation(view, url, true, hasGesture)) {
+                return true
+            }
         }
-        return when (WebNavigationPolicy.route(url, port, isMainFrame || newWindow, hasGesture)) {
+        return when (WebNavigationPolicy.route(url, app, topLevel, hasGesture)) {
             WebRoute.InApp -> {
                 // A new window for the app origin opens in place; there is one app window.
                 if (newWindow) view.loadUrl(url.toString())
@@ -319,6 +357,30 @@ internal class WebShell(
             }
             WebRoute.Block -> true
         }
+    }
+
+    /**
+     * The OpenRouter exception (integration item 7) for a top-level navigation that [page] started; null
+     * when it does not apply. Only the exact [openRouter] origin loads in-app, and only once the app origin
+     * started the sign-in or while the provider's page is shown. The redirect back to the app's callback is
+     * replaced by an app-initiated load, which carries the launch cookie.
+     */
+    private fun routeOpenRouter(view: WebView, url: Uri, page: Uri?, app: AppOrigin, newWindow: Boolean): Boolean? {
+        val inFlow = openRouterArmed || WebNavigationPolicy.isSameOrigin(page, openRouter)
+        if (WebNavigationPolicy.isSameOrigin(url, openRouter)) {
+            val starts = WebNavigationPolicy.isAppUrl(page, app) && WebNavigationPolicy.isOpenRouterStart(url, openRouter, app)
+            if (!inFlow && !starts) return null
+            openRouterArmed = true
+            // A new window for it opens in place, like one for the app origin.
+            if (newWindow) view.loadUrl(url.toString())
+            return newWindow
+        }
+        if (!inFlow) return null
+        val target = WebNavigationPolicy.openRouterReturn(url, app) ?: return null
+        openRouterArmed = false
+        // Not from inside shouldOverrideUrlLoading: the cancelled navigation ends first.
+        handler.post { if (webView === view && !isReleased) view.loadUrl(target) }
+        return true
     }
 
     private fun onRendererGone(view: WebView) {
@@ -364,6 +426,9 @@ internal class WebShell(
             setGeolocationEnabled(false)
         }
         catcher.webViewClient = PopupCatcherClient(::settle)
+        // Chromium logs the console messages that no client takes, with the opener's URL (and so the label) as
+        // their source; a blocked data: popup adds one.
+        catcher.webChromeClient = SilentChromeClient
         popups += catcher
         transport.webView = catcher
         resultMsg.sendToTarget()
@@ -379,6 +444,11 @@ internal class WebShell(
 
     private fun isGranted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(appContext, permission) == PackageManager.PERMISSION_GRANTED
+
+    /** Takes a popup catcher's console messages, so that Chromium does not log them; see [catchPopup]. */
+    private object SilentChromeClient : WebChromeClient() {
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean = true
+    }
 
     /** Learns a caught popup's target without loading anything; see [catchPopup]. */
     // MissingOnRenderProcessGone also flags the supertype constructor call of a Kotlin WebViewClient
@@ -414,13 +484,22 @@ internal class WebShell(
     // MissingOnRenderProcessGone also flags the supertype constructor call of a Kotlin WebViewClient
     // subclass. This client implements onRenderProcessGone and returns true.
     @SuppressLint("MissingOnRenderProcessGone")
-    private inner class ShellWebViewClient(private val port: Int) : WebViewClient() {
+    private inner class ShellWebViewClient(private val app: AppOrigin) : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
             onNavigation(view, request.url, request.isForMainFrame, request.hasGesture(), newWindow = false)
 
-        // Runs off the main thread; reads only [port].
-        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-            if (WebNavigationPolicy.leaksLaunchCookie(request.url, port)) blockedResponse() else null
+        // Runs off the main thread; reads only [app] and [openRouter]. The real OpenRouter origin is never a
+        // local name; device tests serve a fixture provider on one.
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            val url = request.url
+            val refused = WebNavigationPolicy.refusesRequest(url, app) && !WebNavigationPolicy.isSameOrigin(url, openRouter)
+            return if (refused) blockedResponse() else null
+        }
+
+        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            // Back on the app origin: the OpenRouter sign-in is over, or was left.
+            if (view === webView && WebNavigationPolicy.isAppUrl(url?.toUri(), app)) openRouterArmed = false
+        }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             if (view === webView) canGoBack = view.canGoBack()
@@ -441,7 +520,7 @@ internal class WebShell(
         }
     }
 
-    private inner class ShellChromeClient(private val port: Int) : WebChromeClient() {
+    private inner class ShellChromeClient(private val app: AppOrigin) : WebChromeClient() {
         override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean =
             show(view, JsDialog.Alert(message.orEmpty(), result))
 
@@ -481,7 +560,7 @@ internal class WebShell(
         }
 
         override fun onPermissionRequest(request: PermissionRequest) {
-            val candidates = permissionPolicy.candidates(request.origin, port, request.resources)
+            val candidates = permissionPolicy.candidates(request.origin, app, request.resources)
             if (candidates.isEmpty()) {
                 request.deny()
                 return
@@ -504,7 +583,8 @@ internal class WebShell(
 
         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "${consoleMessage.messageLevel()} ${consoleMessage.lineNumber()}: ${consoleMessage.message()}")
+                // Chromium's messages can name the page's origin, and so the label.
+                Log.d(TAG, "${consoleMessage.messageLevel()} ${consoleMessage.lineNumber()}: ${WebAddress.redact(consoleMessage.message())}")
             }
             return true
         }
@@ -514,7 +594,7 @@ internal class WebShell(
             filePathCallback: ValueCallback<Array<Uri>>,
             fileChooserParams: FileChooserParams,
         ): Boolean {
-            if (webView !== this@WebShell.webView || !WebNavigationPolicy.isAppUrl(webView.url?.let(Uri::parse), port)) {
+            if (webView !== this@WebShell.webView || !WebNavigationPolicy.isAppUrl(webView.url?.toUri(), app)) {
                 filePathCallback.onReceiveValue(null)
                 return true
             }
@@ -579,21 +659,14 @@ internal class WebShell(
 }
 
 /**
- * Process-wide launch-cookie containment for requests that bypass [WebViewClient]: service worker
- * fetches. The port is the current session's; without one, every `127.0.0.1` request is refused.
+ * Process-wide request containment for requests that bypass [WebViewClient]: service worker fetches.
+ * The app origin is the current session's; without one, every request to a local name is refused.
  */
 internal object LaunchCookieContainment {
     @Volatile
-    var port: Int = -1
+    var app: AppOrigin? = null
 
-    fun blocks(url: Uri): Boolean {
-        val current = port
-        return if (current > 0) {
-            WebNavigationPolicy.leaksLaunchCookie(url, current)
-        } else {
-            url.host == WebNavigationPolicy.LOOPBACK_HOST
-        }
-    }
+    fun blocks(url: Uri): Boolean = WebNavigationPolicy.refusesRequest(url, app)
 }
 
 /** Keeps one [WebShell] per Activity across configuration changes. */

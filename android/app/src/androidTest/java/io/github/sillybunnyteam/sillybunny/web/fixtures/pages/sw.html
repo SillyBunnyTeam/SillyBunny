@@ -12,6 +12,7 @@ async function registerWorker() {
     results.registered = 'ok';
     results.probe = await fetch('/sw-probe?via=sw').then((r) => r.text());
     results.leak = await fetch('/sw-leak').then((r) => r.text(), (e) => 'err:' + e.name);
+    results.leakLabel = await fetch('/sw-leak-label').then((r) => r.text(), (e) => 'err:' + e.name);
   } catch (e) {
     results.registered = 'err:' + e.name + ':' + e.message;
   }
