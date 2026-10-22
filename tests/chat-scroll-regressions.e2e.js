@@ -52,6 +52,23 @@ test.describe('issue 167 chat scroll regressions', () => {
         expect(snapshot.firstEditDownDisabled).toBe(false);
     });
 
+    test('a dry-run generation keeps redisplay follow-up hooks applied', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 36, visibleCount: 12 });
+
+        // Prompt Manager token counts start dry runs on their own timers, so one can land right after a redisplay.
+        await page.evaluate(async () => {
+            const context = window.SillyTavern.getContext();
+
+            await context.redisplayChat({ startIndex: 24, fade: false });
+            await context.generate('normal', {}, true);
+        });
+
+        const snapshot = await getRedisplayCompatibilitySnapshot(page);
+
+        expect(snapshot.renderedMessageIds).toEqual(Array.from({ length: 12 }, (_, index) => String(24 + index)));
+        expect(snapshot.fadeClassCount).toBe(0);
+    });
+
     test('show more preserves the first visible message anchor', async ({ page }) => {
         await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
         const renderedIds = await getRenderedMessageIds(page);
