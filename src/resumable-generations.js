@@ -19,9 +19,10 @@ const loadGenerationCommit = () => import('./generation-commit.js');
  *
  * A request may also carry a commit plan (X-Generation-Commit). Then the reply does not need the
  * page at all: if the page goes away (POST /detach) or never claims the finished reply (POST
- * /claim), the server writes it into the chat itself (generation-commit.js). Pages with a chat open
- * follow its generations over GET /events, and generation-journal.js remembers which replies are
- * in flight so a restart can report the ones it lost.
+ * /claim), the server writes it into the chat itself (generation-commit.js). A stop from that page
+ * (POST /cancel) keeps the reply out of the chat, even when the upstream had already finished it.
+ * Pages with a chat open follow its generations over GET /events, and generation-journal.js
+ * remembers which replies are in flight so a restart can report the ones it lost.
  */
 
 export const RESUMABLE_GENERATION_HEADER = 'x-generation-id';
@@ -106,7 +107,8 @@ function runCancelHook(hook) {
 
 /**
  * @typedef {'running'|'waiting'|'committing'|'committed'|'claimed'|'failed'|'cancelled'} CommitState
- * running: generating; waiting: finished, commit scheduled; claimed: the page saved it itself.
+ * running: generating; waiting: finished, commit scheduled; claimed: the page saved it itself;
+ * cancelled: stopped, and never written by the server.
  */
 
 /**
@@ -398,11 +400,12 @@ export class ResumableGeneration {
     }
 
     /**
-     * The page received the whole reply and saves it itself. A commit that already happened is
-     * taken back, unless something saved over it since.
-     * @returns {Promise<CommitState|null>} State after the claim; `committed` means the page must not save its copy
+     * The page decided what happens to the reply, so the server must not write it. A commit that
+     * already happened is taken back, unless something saved over it since.
+     * @param {'claimed'|'cancelled'} outcome The page saves the reply itself, or the user stopped it
+     * @returns {Promise<CommitState|null>} State afterwards; `committed` means the server's copy stays in the chat
      */
-    async claim() {
+    async takeBack(outcome) {
         const commit = this.commit;
         if (!commit) {
             return null;
@@ -410,7 +413,7 @@ export class ResumableGeneration {
         if (commit.state === 'running' || commit.state === 'waiting') {
             clearTimeout(commit.timer ?? undefined);
             commit.timer = null;
-            this.setCommitState('claimed');
+            this.setCommitState(outcome);
             return commit.state;
         }
         if (commit.work) {
@@ -426,11 +429,30 @@ export class ResumableGeneration {
                     return false;
                 });
             if (reverted) {
-                console.info(`Took back the commit of generation ${this.id}; its page saves the reply itself`);
-                this.setCommitState('claimed');
+                console.info(`Took back the commit of generation ${this.id}; its page ${outcome === 'claimed' ? 'saves the reply itself' : 'stopped it'}`);
+                this.setCommitState(outcome);
             }
         }
         return commit.state;
+    }
+
+    /**
+     * The page received the whole reply and saves it itself.
+     * @returns {Promise<CommitState|null>} State after the claim; `committed` means the page must not save its copy
+     */
+    claim() {
+        return this.takeBack('claimed');
+    }
+
+    /**
+     * The user stopped the reply on the page that started it. Stops the upstream work, and keeps the
+     * reply out of the chat even when the upstream had already finished it while the page was still
+     * showing it: the page keeps what it showed.
+     * @returns {Promise<CommitState|null>} State afterwards; `committed` means the server's copy stays in the chat
+     */
+    stop() {
+        this.cancel();
+        return this.takeBack('cancelled');
     }
 
     /**
@@ -831,7 +853,7 @@ router.post('/resume', async (request, response) => {
     response.on('close', unsubscribe);
 });
 
-router.post('/cancel', (request, response) => {
+router.post('/cancel', async (request, response) => {
     const generation = findGeneration(request);
     if (!generation) {
         return response.sendStatus(404);
@@ -839,7 +861,7 @@ router.post('/cancel', (request, response) => {
     if (request.body?.commitPartial === true) {
         generation.stopAndCommit();
     } else {
-        generation.cancel();
+        await generation.stop();
     }
     return response.sendStatus(204);
 });

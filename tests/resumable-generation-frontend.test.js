@@ -165,6 +165,54 @@ describe('fetchResumable', () => {
         expect(JSON.parse(cancelInit.body)).toEqual({ id: fetchMock.mock.calls[0][1].headers['X-Generation-Id'] });
     });
 
+    test('keeps sending a cancel the server did not get', async () => {
+        const controller = new AbortController();
+        const answers = [() => Promise.reject(new TypeError('Load failed')), () => new Response(null, { status: 502 }), () => new Response(null, { status: 204 })];
+        fetchMock.mockImplementation(async (url, init) => {
+            if (url === CANCEL_URL) {
+                return answers.shift()();
+            }
+            return new Response(bodyFrom(['data: a\n\n'], { hang: true, signal: init.signal }), { status: 200 });
+        });
+
+        const response = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal });
+        response.text().catch(() => undefined);
+        await new Promise(resolve => setTimeout(resolve, 10));
+        jest.useFakeTimers();
+        try {
+            controller.abort();
+            await jest.advanceTimersByTimeAsync(60000);
+        } finally {
+            jest.useRealTimers();
+        }
+
+        const generationId = fetchMock.mock.calls[0][1].headers['X-Generation-Id'];
+        expect(callsTo(CANCEL_URL).map(([, init]) => JSON.parse(init.body).id)).toEqual([generationId, generationId, generationId]);
+    });
+
+    test('gives up on a cancel the server does not know', async () => {
+        const controller = new AbortController();
+        fetchMock.mockImplementation(async (url, init) => {
+            if (url === CANCEL_URL) {
+                return new Response(null, { status: 404 });
+            }
+            return new Response(bodyFrom(['data: a\n\n'], { hang: true, signal: init.signal }), { status: 200 });
+        });
+
+        const response = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal });
+        response.text().catch(() => undefined);
+        await new Promise(resolve => setTimeout(resolve, 10));
+        jest.useFakeTimers();
+        try {
+            controller.abort();
+            await jest.advanceTimersByTimeAsync(60000);
+        } finally {
+            jest.useRealTimers();
+        }
+
+        expect(callsTo(CANCEL_URL)).toHaveLength(1);
+    });
+
     test('reconnects a stalled stream when the page wakes up', async () => {
         fetchMock.mockImplementation(async (url, init) => {
             if (url === RESUME_URL) {
@@ -259,5 +307,26 @@ describe('server-owned chat generations', () => {
         await (await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal })).text();
         expect(callsTo('/generate')[1][1].headers['x-generation-commit']).toBeUndefined();
         expect(callsTo(CLAIM_URL)).toHaveLength(1);
+    });
+
+    test('retries a claim the server did not get before the reply ends', async () => {
+        const controller = new AbortController();
+        registerGenerationCommitPlan(controller.signal, PLAN);
+        const order = [];
+        let claims = 0;
+        fetchMock.mockImplementation(async (url) => {
+            order.push(url);
+            if (url === '/generate') {
+                return new Response(bodyFrom(['data: a\n\n', 'data: [DONE]\n\n']), { status: 200 });
+            }
+            if (++claims === 1) {
+                throw new TypeError('Load failed');
+            }
+            return new Response(JSON.stringify({ state: 'claimed' }), { status: 200 });
+        });
+
+        const response = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal });
+        await expect(response.text()).resolves.toBe('data: a\n\ndata: [DONE]\n\n');
+        expect(order).toEqual(['/generate', CLAIM_URL, CLAIM_URL]);
     });
 });

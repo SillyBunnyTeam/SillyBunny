@@ -21,6 +21,10 @@ const CLAIM_URL = '/api/resumable-generations/claim';
 const CONTROL_HEADERS_EXCLUDED = new Set([GENERATION_ID_HEADER.toLowerCase(), GENERATION_COMMIT_HEADER]);
 const RESUME_RETRY_DELAYS_MS = Object.freeze([0, 1000, 2000, 5000]);
 const MAX_RESUME_ATTEMPTS = 60;
+/** Retries of a cancel or detach the server did not get: a lost cancel lets the server write a stopped reply. */
+const CONTROL_RETRY_DELAYS_MS = Object.freeze([1000, 2000, 5000, 10000, 20000]);
+/** Retries of a claim; the end of the reply waits for it, so it gives up sooner. */
+const CLAIM_RETRY_DELAYS_MS = Object.freeze([250, 1000, 2000]);
 /** A stream with no bytes for this long when the page becomes visible again gets reconnected. */
 const STALE_STREAM_MS = 5000;
 const SKIPPED_RESPONSE_HEADERS = new Set(['content-encoding', 'content-length', 'transfer-encoding']);
@@ -76,6 +80,30 @@ function sleep(ms, signal) {
         const timer = setTimeout(finish, ms);
         signal?.addEventListener('abort', finish, { once: true });
     });
+}
+
+/**
+ * Sends a control call, retrying while the server cannot be reached or fails.
+ * @param {string} url Control endpoint
+ * @param {RequestInit} init Fetch options
+ * @param {readonly number[]} retryDelays Wait before each retry
+ * @returns {Promise<Response|null>} The server's answer, or null if none came
+ */
+async function sendControl(url, init, retryDelays) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            const response = await fetch(url, init);
+            if (response.status < 500) {
+                return response;
+            }
+        } catch {
+            // Offline for now; try again.
+        }
+        if (attempt >= retryDelays.length) {
+            return null;
+        }
+        await sleep(retryDelays[attempt], null);
+    }
 }
 
 /**
@@ -329,15 +357,14 @@ class ResumableRequest {
         if (!this.commitPlan) {
             return;
         }
-        try {
-            await fetch(CLAIM_URL, {
-                method: 'POST',
-                headers: this.controlHeaders,
-                body: JSON.stringify({ id: this.id }),
-                cache: 'no-store',
-            });
-        } catch (error) {
-            console.warn('Could not claim a finished generation; the server may also write it into the chat.', error);
+        const response = await sendControl(CLAIM_URL, {
+            method: 'POST',
+            headers: this.controlHeaders,
+            body: JSON.stringify({ id: this.id }),
+            cache: 'no-store',
+        }, CLAIM_RETRY_DELAYS_MS);
+        if (!response) {
+            console.warn('Could not claim a finished generation; the server may also write it into the chat.');
         }
     }
 
@@ -345,12 +372,12 @@ class ResumableRequest {
      * @param {string} url Control endpoint
      */
     control(url) {
-        fetch(url, {
+        void sendControl(url, {
             method: 'POST',
             headers: this.controlHeaders,
             body: JSON.stringify({ id: this.id }),
             keepalive: true,
-        }).catch(() => undefined);
+        }, CONTROL_RETRY_DELAYS_MS);
     }
 
     finish() {

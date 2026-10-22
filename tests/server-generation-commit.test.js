@@ -521,6 +521,91 @@ describe('server-owned generation lifecycle', () => {
         expect(readChat()).toEqual(records);
     });
 
+    test('a stop from the page keeps a reply out of the chat even when the upstream already finished it', async () => {
+        jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+        const { generation, finish } = startGeneration('5'.repeat(32));
+        finish();
+        expect(generation.commit.state).toBe('waiting');
+        await expect(generation.stop()).resolves.toBe('cancelled');
+
+        // Neither the page going away nor the grace period writes it any more.
+        generation.detach();
+        jest.advanceTimersByTime(registry.testExports.COMMIT_GRACE_MS + 1);
+        await settled(generation);
+        expect(readChat()).toHaveLength(3);
+    });
+
+    test('a stop takes back a reply the server wrote while its page was away', async () => {
+        jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+        const original = readChat();
+        const { generation, finish } = startGeneration('6'.repeat(32));
+        finish();
+        jest.advanceTimersByTime(registry.testExports.COMMIT_GRACE_MS + 1);
+        await settled(generation);
+        expect(readChat()).toHaveLength(4);
+
+        await expect(generation.stop()).resolves.toBe('cancelled');
+        expect(readChat()).toEqual(original);
+    });
+
+    test('a stop while the reply runs stops the upstream request', async () => {
+        const { generation, response } = startGeneration('7'.repeat(32));
+        // The provider handler ends the response once its upstream request is aborted.
+        const abortUpstream = jest.fn(() => response.end());
+        generation.onCancel(abortUpstream);
+        response.write('data: {"choices":[{"delta":{"content":"The forest"}}]}\n\n');
+
+        await expect(generation.stop()).resolves.toBe('cancelled');
+        expect(abortUpstream).toHaveBeenCalledTimes(1);
+        generation.detach();
+        await settled(generation);
+        expect(readChat()).toHaveLength(3);
+    });
+
+    test('POST /cancel stops a finished reply, and pages following the chat drop it', async () => {
+        const id = '8'.repeat(32);
+        const { generation, finish } = startGeneration(id);
+        const owner = await followChatEvents('page-a');
+        const other = await followChatEvents('page-b');
+        const app = express();
+        app.use(express.json());
+        app.use((request, _response, next) => {
+            request.user = user;
+            next();
+        });
+        app.use('/api/resumable-generations', registry.router);
+        const server = await new Promise(resolve => {
+            const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+        });
+        try {
+            await other.next();
+            finish();
+            let pending;
+            do {
+                pending = await other.next();
+            } while (pending[0]?.state !== 'waiting');
+
+            const response = await fetch(`http://127.0.0.1:${server.address().port}/api/resumable-generations/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+            });
+            expect(response.status).toBe(204);
+            expect(generation.commit.state).toBe('cancelled');
+            expect(await other.next()).toEqual([]);
+
+            // The page that stopped it leaving the chat does not get it written either.
+            await owner.close();
+            await settled(generation);
+            expect(readChat()).toHaveLength(3);
+        } finally {
+            server.closeAllConnections?.();
+            await new Promise(resolve => server.close(resolve));
+            await owner.close().catch(() => undefined);
+            await other.close();
+        }
+    });
+
     test('stop-and-keep commits what was generated before the stop', async () => {
         const { generation, response } = startGeneration('0'.repeat(31) + '1');
         response.write('data: {"choices":[{"delta":{"content":"The forest"}}]}\n\n');
