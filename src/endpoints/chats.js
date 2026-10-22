@@ -1219,6 +1219,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     const incomingIntegrity = chatData?.[0]?.chat_metadata?.integrity;
     const chatIntegritySlug = doIntegrityCheck && typeof incomingIntegrity === 'string' ? incomingIntegrity : '';
 
+    // SillyBunny: taking back a server-written reply restores the chat's earlier slug, so the save of the page that claimed it still passes.
     const nextIntegrity = typeof integrity === 'string' && integrity ? integrity : uuidv4();
     const savedChatData = Array.isArray(chatData)
         ? chatData.map((message, index) => index === 0

@@ -1639,6 +1639,7 @@ export function removeReasoningFromString(str) {
     return parsedReasoning?.content ?? str;
 }
 
+// SillyBunny: server-generations.js parses the reasoning of a server-written reply as a live reply would.
 /**
  * Splits a reasoning block off a reply the way live streaming does, if auto-parsing is enabled.
  * @param {string} str Reply text

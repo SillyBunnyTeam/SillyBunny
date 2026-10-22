@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const {
     fetchResumable,
+    onActiveGenerationsChange,
+    onServerOwnedReplyMissing,
     reattachActiveGenerations,
     reconnectStaleGenerations,
     registerGenerationCommitPlan,
@@ -413,6 +415,48 @@ describe('server-owned chat generations', () => {
 
         expect(callsTo(DETACH_URL).map(([, init]) => JSON.parse(init.body).id)).toEqual([generationId]);
         expect(callsTo(CANCEL_URL).map(([, init]) => JSON.parse(init.body).id)).toEqual([generationId]);
+    });
+
+    test('tells listeners when the page starts and stops reading a generation', async () => {
+        const changes = jest.fn();
+        const unsubscribe = onActiveGenerationsChange(changes);
+        try {
+            fetchMock.mockImplementation(async () => new Response(bodyFrom(['data: a\n\n']), { status: 200 }));
+            const response = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}' });
+            expect(changes).toHaveBeenCalledTimes(1);
+            await response.text();
+            expect(changes).toHaveBeenCalledTimes(2);
+        } finally {
+            unsubscribe();
+        }
+    });
+
+    test('tells listeners when the server no longer has a chat reply whose stream broke', async () => {
+        const missing = jest.fn();
+        const unsubscribe = onServerOwnedReplyMissing(missing);
+        try {
+            const failure = new TypeError('Load failed');
+            fetchMock.mockImplementation(async (url) => {
+                if (url === RESUME_URL) {
+                    return new Response(null, { status: 404 });
+                }
+                return new Response(bodyFrom(['data: a\n\n', 'data: b\n\n'], { errorAfter: 1, error: failure }), { status: 200 });
+            });
+
+            const controller = new AbortController();
+            registerGenerationCommitPlan(controller.signal, PLAN);
+            const chatReply = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}', signal: controller.signal });
+            await expect(chatReply.text()).rejects.toBe(failure);
+            expect(missing).toHaveBeenCalledTimes(1);
+            expect(missing.mock.calls[0][0]).toMatchObject({ file: PLAN.file });
+
+            // A reply without a commit plan was never the server's to write.
+            const otherReply = await fetchResumable('/generate', { method: 'POST', headers: {}, body: '{}' });
+            await expect(otherReply.text()).rejects.toBe(failure);
+            expect(missing).toHaveBeenCalledTimes(1);
+        } finally {
+            unsubscribe();
+        }
     });
 });
 

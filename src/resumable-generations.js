@@ -405,7 +405,7 @@ export class ResumableGeneration {
 
     /**
      * The page decided what happens to the reply, so the server must not write it. A commit that
-     * already happened is taken back, unless something saved over it since.
+     * already happened is taken back, unless something saved over it since or a page has shown it.
      * @param {'claimed'|'cancelled'} outcome The page saves the reply itself, or the user stopped it
      * @returns {Promise<CommitState|null>} State afterwards; `committed` means the server's copy stays in the chat
      */
@@ -785,6 +785,34 @@ function findGeneration(request) {
     return generations.get(getGenerationKey(request, id)) ?? null;
 }
 
+/**
+ * Runs `onGone` once, when a streamed response ends or its client goes away. Bun (checked with
+ * 1.3.12 and 1.3.14) emits no 'close' on the response when the client disconnects; the socket's
+ * 'close' fires on both runtimes.
+ * @param {import('express').Request} request Express request
+ * @param {import('express').Response} response Express response
+ * @param {() => void} onGone Cleanup
+ */
+function whenClientGone(request, response, onGone) {
+    const socket = request.socket;
+    let isGone = false;
+    const gone = () => {
+        // Node emits the response's 'close' from inside the socket's, so removing the socket
+        // listener here does not stop that emit from calling it too.
+        if (isGone) {
+            return;
+        }
+        isGone = true;
+        response.off('close', gone);
+        response.off('finish', gone);
+        socket?.off?.('close', gone);
+        onGone();
+    };
+    response.on('close', gone);
+    response.on('finish', gone);
+    socket?.on?.('close', gone);
+}
+
 export const router = express.Router();
 
 router.post('/resume', async (request, response) => {
@@ -806,7 +834,7 @@ router.post('/resume', async (request, response) => {
     }
 
     const wait = generation.waitForHeaders();
-    response.on('close', () => wait.cancel());
+    whenClientGone(request, response, () => wait.cancel());
     await wait.promise;
 
     if (response.destroyed || response.writableEnded) {
@@ -854,7 +882,7 @@ router.post('/resume', async (request, response) => {
         },
         onFail: () => response.destroy(),
     });
-    response.on('close', unsubscribe);
+    whenClientGone(request, response, unsubscribe);
 });
 
 router.post('/cancel', async (request, response) => {
@@ -991,7 +1019,7 @@ router.get('/events', (request, response) => {
     watcher.push();
     const keepAlive = setInterval(() => response.write(': keep-alive\n\n'), EVENTS_KEEPALIVE_MS);
     keepAlive.unref?.();
-    response.on('close', () => {
+    whenClientGone(request, response, () => {
         clearInterval(keepAlive);
         chatWatchers.delete(watcher);
         // Replies this page left unclaimed can now be committed by the pages still watching.
@@ -1006,6 +1034,9 @@ router.post('/acknowledge', (request, response) => {
         const generation = generations.get(getGenerationKey(request, id));
         if (generation?.commit) {
             generation.commit.acknowledged = true;
+            // A written reply a page has shown stays in the chat, and that page has usually saved over
+            // it, so the copy of the whole chat kept to take the commit back is dropped.
+            generation.commit.undo = null;
         }
     }
     acknowledgeLostGenerations(request.user, valid);
@@ -1023,6 +1054,7 @@ export const testExports = {
     MAX_RESUME_CLIENTS,
     generations,
     sweepGenerations,
+    whenClientGone,
     get totalBufferedBytes() {
         return totalBufferedBytes;
     },

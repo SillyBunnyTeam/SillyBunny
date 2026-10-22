@@ -125,6 +125,7 @@ let groups = [];
 /** @type {string|null} */
 let selected_group = null;
 let group_generation_id = null;
+// SillyBunny: a server-written reply records the rest of its round, so the round can go on when the chat is opened.
 /** Avatars of the members still to speak after the current one in the running round. */
 let groupRoundRemaining = [];
 let fav_grp_checked = false;
@@ -670,6 +671,7 @@ async function regenerateGroup() {
     return generateGroupWrapper(false, 'normal', { signal: abortController.signal, isRegenerate: true });
 }
 
+// SillyBunny: server-generations.js puts the rest of the round in a commit plan and resumes it from there.
 /**
  * @returns {string[]} Avatars of the members still to speak after the current one in the running round
  */
@@ -1800,6 +1802,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         }
         await eventSource.emit(event_types.GROUP_WRAPPER_STARTED, { selected_group, type });
         // now the real generation begins: cycle through every activated character
+        // SillyBunny: the turn index gives the members still to speak, for server-written replies.
         for (const [turn, chId] of activatedMembers.entries()) {
             throwIfAborted();
             const avatar = characters[chId]?.avatar;
@@ -1809,6 +1812,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
             }
             deactivateSendButtons();
             setCharacterId(chId);
+            // SillyBunny: recorded before the reply starts, so its commit plan carries the rest of the round.
             groupRoundRemaining = activatedMembers.slice(turn + 1).map(id => characters[id]?.avatar).filter(Boolean);
             setCharacterName(characters[chId].name);
             setGroupTypingIndicator(characters[chId].name);
@@ -1864,6 +1868,7 @@ async function generateGroupWrapper(byAutoMode, type = null, params = {}) {
         // SillyBunny: a routed turn always ends, even when Stop or an error cuts it short.
         routedTurn?.finish(params.signal?.aborted ? 'cancelled' : 'failed');
         setGroupTypingIndicator('');
+        // SillyBunny: the round is over, so later commit plans carry no members still to speak.
         groupRoundRemaining = [];
         is_group_generating = false;
         setSendButtonState(false);

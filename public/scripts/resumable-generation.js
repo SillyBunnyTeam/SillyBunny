@@ -33,6 +33,45 @@ const SKIPPED_RESPONSE_HEADERS = new Set(['content-encoding', 'content-length', 
 
 /** @type {Map<string, ResumableRequest>} */
 const activeRequests = new Map();
+/** @type {Set<() => void>} */
+const activeChangeListeners = new Set();
+/** @type {Set<(plan: import('./generation-commit-plan.js').GenerationCommitPlan) => void>} */
+const missingReplyListeners = new Set();
+
+/**
+ * @template {any[]} T
+ * @param {Set<(...args: T) => void>} listeners Listeners
+ * @param {T} args Arguments
+ */
+function notify(listeners, ...args) {
+    for (const listener of listeners) {
+        try {
+            listener(...args);
+        } catch (error) {
+            console.warn('A resumable generation listener failed:', error);
+        }
+    }
+}
+
+/**
+ * @param {() => void} listener Called when this page starts or stops reading a generation
+ * @returns {() => void} Unsubscribe
+ */
+export function onActiveGenerationsChange(listener) {
+    activeChangeListeners.add(listener);
+    return () => activeChangeListeners.delete(listener);
+}
+
+/**
+ * @param {(plan: import('./generation-commit-plan.js').GenerationCommitPlan) => void} listener Called
+ * when a chat reply's stream broke and the server no longer has the reply: it may have written it
+ * into the chat long ago, while this page was frozen
+ * @returns {() => void} Unsubscribe
+ */
+export function onServerOwnedReplyMissing(listener) {
+    missingReplyListeners.add(listener);
+    return () => missingReplyListeners.delete(listener);
+}
 
 /**
  * @returns {string} Random id; crypto.randomUUID needs a secure context, this does not.
@@ -177,6 +216,7 @@ class ResumableRequest {
         this.handleAbort = () => this.cancel();
         this.outerSignal?.addEventListener('abort', this.handleAbort, { once: true });
         activeRequests.set(this.id, this);
+        notify(activeChangeListeners);
     }
 
     get aborted() {
@@ -289,6 +329,7 @@ class ResumableRequest {
      * @returns {Promise<{ status: number, statusText: string, headers: Headers, body: ReadableStream<Uint8Array> }>}
      */
     async resume(cause) {
+        let isMissing = false;
         for (let attempt = 0; attempt < MAX_RESUME_ATTEMPTS; attempt++) {
             const delay = RESUME_RETRY_DELAYS_MS[Math.min(attempt, RESUME_RETRY_DELAYS_MS.length - 1)];
             if (delay) {
@@ -326,11 +367,15 @@ class ResumableRequest {
             if (response.status >= 500) {
                 continue;
             }
+            isMissing = response.status === 404;
             break;
         }
 
         // The reply is gone, or never arrived. Let the original failure surface.
         this.finish();
+        if (isMissing && this.commitPlan) {
+            notify(missingReplyListeners, this.commitPlan);
+        }
         throw cause;
     }
 
@@ -416,6 +461,7 @@ class ResumableRequest {
         this.finished = true;
         activeRequests.delete(this.id);
         this.outerSignal?.removeEventListener('abort', this.handleAbort);
+        notify(activeChangeListeners);
     }
 
     /**

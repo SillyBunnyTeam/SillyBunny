@@ -273,6 +273,42 @@ describe('applyGenerationReply', () => {
     });
 });
 
+describe('whenClientGone', () => {
+    function stream() {
+        const socket = new EventEmitter();
+        return { request: { socket }, response: new EventEmitter(), socket };
+    }
+
+    test('cleans up when only the socket says the client left, as under Bun', () => {
+        const { request, response, socket } = stream();
+        const onGone = jest.fn();
+        registry.testExports.whenClientGone(request, response, onGone);
+        socket.emit('close');
+        response.emit('close');
+        expect(onGone).toHaveBeenCalledTimes(1);
+        expect(socket.listenerCount('close')).toBe(0);
+        expect(response.listenerCount('finish')).toBe(0);
+    });
+
+    test('cleans up once when the response closes from inside the socket close, as under Node', () => {
+        const { request, response, socket } = stream();
+        socket.on('close', () => response.emit('close'));
+        const onGone = jest.fn();
+        registry.testExports.whenClientGone(request, response, onGone);
+        socket.emit('close');
+        expect(onGone).toHaveBeenCalledTimes(1);
+    });
+
+    test('lets go of a kept-alive socket once the response finished', () => {
+        const { request, response, socket } = stream();
+        const onGone = jest.fn();
+        registry.testExports.whenClientGone(request, response, onGone);
+        response.emit('finish');
+        expect(onGone).toHaveBeenCalledTimes(1);
+        expect(socket.listenerCount('close')).toBe(0);
+    });
+});
+
 describe('normalizeCommitPlan', () => {
     test('keeps the remaining group round and rejects a malformed one', () => {
         expect(normalizeCommitPlan(plan({ round: ['Lyra.png'] }))?.round).toEqual(['Lyra.png']);
@@ -556,6 +592,41 @@ describe('server-owned generation lifecycle', () => {
         records[0].chat_metadata.integrity = 'someone-else';
         fs.writeFileSync(chatFile, records.map(record => JSON.stringify(record)).join('\n'));
 
+        await expect(generation.claim()).resolves.toBe('committed');
+        expect(readChat()).toHaveLength(4);
+    });
+
+    test('a written reply a page has shown stays, and its copy of the chat is dropped', async () => {
+        const id = 'a1'.repeat(16);
+        const { generation, finish } = startGeneration(id);
+        generation.detach();
+        finish();
+        await settled(generation);
+        expect(generation.commit.undo).not.toBeNull();
+
+        const app = express();
+        app.use(express.json());
+        app.use((request, _response, next) => {
+            request.user = user;
+            next();
+        });
+        app.use('/api/resumable-generations', registry.router);
+        const server = await new Promise(resolve => {
+            const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+        });
+        try {
+            const response = await fetch(`http://127.0.0.1:${server.address().port}/api/resumable-generations/acknowledge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [id] }),
+            });
+            expect(response.status).toBe(204);
+        } finally {
+            server.closeAllConnections?.();
+            await new Promise(resolve => server.close(resolve));
+        }
+
+        expect(generation.commit.undo).toBeNull();
         await expect(generation.claim()).resolves.toBe('committed');
         expect(readChat()).toHaveLength(4);
     });
