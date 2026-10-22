@@ -6,10 +6,25 @@ const PAGE_ID = 'page-a';
 const CHAT_CHANGED = 'chat_id_changed';
 
 const scriptEvents = new EventEmitter();
+/** The open message editor, as document.getElementById('curEditTextarea') finds it. */
+const dom = { editor: null };
+
+/**
+ * @param {number} mesId Message being edited
+ * @param {string} value Text in the editor
+ */
+function fakeEditor(mesId, value) {
+    return { value, style: {}, scrollHeight: 40, closest: () => ({ getAttribute: () => String(mesId) }) };
+}
+
 const script = {
     chat: [],
     reloadCurrentChat: jest.fn(async () => scriptEvents.emit(CHAT_CHANGED)),
     isGenerating: jest.fn(() => false),
+    messageEdit: jest.fn(async (mesId) => {
+        dom.editor = fakeEditor(mesId, String(script.chat[mesId]?.mes ?? ''));
+    }),
+    setEditedMessageId: jest.fn(),
 };
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'Seraphina.png', chat: 'Seraphina - chat' }],
@@ -24,9 +39,11 @@ await jest.unstable_mockModule('../public/script.js', () => ({
     getThumbnailUrl: () => '',
     isGenerating: script.isGenerating,
     main_api: 'openai',
+    messageEdit: script.messageEdit,
     name2: 'Seraphina',
     reloadCurrentChat: script.reloadCurrentChat,
     saveChatConditional: jest.fn(async () => true),
+    setEditedMessageId: script.setEditedMessageId,
     swipe: jest.fn(),
     this_chid: 0,
     updateMessageBlock: jest.fn(async () => {}),
@@ -103,6 +120,7 @@ const documentEvents = new EventEmitter();
 globalThis.document = {
     visibilityState: 'visible',
     addEventListener: (name, handler) => documentEvents.on(name, handler),
+    getElementById: (id) => (id === 'curEditTextarea' ? dom.editor : null),
 };
 globalThis.EventSource = FakeEventSource;
 const toast = { append: () => toast, text: () => toast, on: () => toast };
@@ -140,6 +158,8 @@ function acknowledged() {
 beforeEach(async () => {
     setVisibility('visible');
     resumable.activeIds = [];
+    dom.editor = null;
+    script.chat.length = 0;
     script.isGenerating.mockReturnValue(false);
     scriptEvents.emit(CHAT_CHANGED);
     await settle();
@@ -233,5 +253,42 @@ describe('server-generations event stream', () => {
         FakeEventSource.open[0].push([lost]);
         expect(globalThis.toastr.warning).toHaveBeenCalledTimes(1);
         expect(acknowledged()).toEqual([failed.id, lost.id]);
+    });
+
+    test('reopens a message edit that the reload for a server-written reply closed', async () => {
+        script.chat.push({ name: 'Seraphina', is_user: false, send_date: '2026-10-03T09:00:00.000Z', mes: 'Greetings.', extra: {} });
+        dom.editor = fakeEditor(0, 'Greetings, traveller');
+        script.reloadCurrentChat.mockImplementationOnce(async () => {
+            dom.editor = null;
+            // The server appended its reply after the message being edited.
+            script.chat.push({ name: 'Seraphina', is_user: false, send_date: '2026-10-03T10:00:30.000Z', mes: 'The forest stirs.', extra: {} });
+            scriptEvents.emit(CHAT_CHANGED);
+        });
+
+        FakeEventSource.open[0].push([{ id: 'a2'.repeat(16), state: 'committed', kind: 'append', page: 'page-b' }]);
+        await settle();
+
+        expect(script.reloadCurrentChat).toHaveBeenCalledTimes(1);
+        expect(script.setEditedMessageId).toHaveBeenCalledWith(undefined);
+        expect(script.messageEdit).toHaveBeenCalledWith(0);
+        expect(dom.editor.value).toBe('Greetings, traveller');
+    });
+
+    test('leaves the edit closed when the server-written reply changed the message being edited', async () => {
+        script.chat.push({ name: 'Seraphina', is_user: false, send_date: '2026-10-03T09:00:00.000Z', mes: 'The forest', extra: {} });
+        dom.editor = fakeEditor(0, 'The meadow');
+        script.reloadCurrentChat.mockImplementationOnce(async () => {
+            dom.editor = null;
+            // A continue written by the server gives the message a new send date.
+            script.chat[0] = { ...script.chat[0], send_date: '2026-10-03T10:00:30.000Z', mes: 'The forest stirs.' };
+            scriptEvents.emit(CHAT_CHANGED);
+        });
+
+        FakeEventSource.open[0].push([{ id: 'a3'.repeat(16), state: 'committed', kind: 'continue', page: 'page-b' }]);
+        await settle();
+
+        expect(script.reloadCurrentChat).toHaveBeenCalledTimes(1);
+        expect(script.setEditedMessageId).toHaveBeenCalledWith(undefined);
+        expect(script.messageEdit).not.toHaveBeenCalled();
     });
 });

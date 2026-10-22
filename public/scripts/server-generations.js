@@ -22,9 +22,11 @@ import {
     getThumbnailUrl,
     isGenerating,
     main_api,
+    messageEdit,
     name2,
     reloadCurrentChat,
     saveChatConditional,
+    setEditedMessageId,
     swipe,
     this_chid,
     updateMessageBlock,
@@ -342,8 +344,52 @@ function reloadWhenIdle(chatKey, ids = []) {
         reloadedIds.add(id);
     }
     pendingReloadIds.clear();
+    const edit = captureOpenEdit();
     // The reload fires CHAT_CHANGED, which finalizes the reply and reconnects the event stream.
-    reloadCurrentChat().catch(error => console.warn('Could not load a server-written reply:', error));
+    reloadCurrentChat()
+        .then(() => restoreOpenEdit(edit))
+        .catch(error => console.warn('Could not load a server-written reply:', error));
+}
+
+/**
+ * @returns {{ mesId: number, identity: string|null, text: string }|null} The message edit open on
+ * this page, with its unsaved text
+ */
+function captureOpenEdit() {
+    const textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('curEditTextarea'));
+    const mesId = Number(textarea?.closest?.('.mes')?.getAttribute('mesid'));
+    if (typeof textarea?.value !== 'string' || !Number.isInteger(mesId) || !chat[mesId]) {
+        return null;
+    }
+    return { mesId, identity: getMessageIdentity(chat[mesId]), text: textarea.value };
+}
+
+/**
+ * Reopens a message edit that a reload closed, with its unsaved text. The edit stays closed when the
+ * server's reply changed that message, because the edit was made to the text the reply replaced.
+ * @param {ReturnType<typeof captureOpenEdit>} edit Edit open before the reload
+ */
+async function restoreOpenEdit(edit) {
+    if (!edit || document.getElementById('curEditTextarea')) {
+        return;
+    }
+    // The reload removed the editor, but not the id of the message it was editing.
+    setEditedMessageId(undefined);
+    if (getMessageIdentity(chat[edit.mesId]) !== edit.identity) {
+        console.warn('A server-written reply changed the message being edited, so its edit was closed.');
+        return;
+    }
+    await messageEdit(edit.mesId);
+    const textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('curEditTextarea'));
+    if (typeof textarea?.value !== 'string') {
+        return;
+    }
+    textarea.value = edit.text;
+    // messageEdit() sized the box for the saved text where CSS cannot size it to its content.
+    if (!globalThis.CSS?.supports?.('field-sizing', 'content')) {
+        textarea.style.height = '0px';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+    }
 }
 
 /**

@@ -145,6 +145,25 @@ test.describe('server-owned chat generations', () => {
         }
     });
 
+    test('a message edit stays open, with its unsaved text, across the reload for a server-written reply', async ({ page }) => {
+        test.setTimeout(120_000);
+        await openChat(page);
+        const original = await page.evaluate(() => window.SillyTavern.getContext().chat[0]?.mes ?? '');
+        await page.evaluate(async () => (await import('/script.js')).messageEdit(0));
+        const unsaved = `unsaved edit ${Date.now()}`;
+        await page.locator('#curEditTextarea').fill(unsaved);
+        await page.evaluate(() => {
+            document.getElementById('curEditTextarea').dataset.beforeReload = 'true';
+        });
+
+        await page.evaluate(async () => (await import('/scripts/server-generations.js')).reloadServerCommittedReply());
+
+        const reopened = page.locator('#curEditTextarea:not([data-before-reload])');
+        await expect(reopened).toHaveValue(unsaved, { timeout: 30_000 });
+        await expect(page.locator('.mes[mesid="0"] #curEditTextarea')).toHaveCount(1);
+        expect(await page.evaluate(() => window.SillyTavern.getContext().chat[0]?.mes)).toBe(original);
+    });
+
     test('hidden tabs leave the browser\'s connections to the server free', async ({ context }) => {
         test.setTimeout(240_000);
         // Over HTTP/1.1 a browser opens about 6 connections per server, shared by every tab.
