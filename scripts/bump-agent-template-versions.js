@@ -15,22 +15,39 @@ const indexRel = `${templatesDirRel}/index.json`;
 const skippedTemplateFiles = new Set(['groups.json', 'index.json', 'regex-bundles.json']);
 
 function printHelp() {
-    console.log(`Usage: node scripts/bump-agent-template-versions.js [--dry-run] [--file <path>]...
+    console.log(`Usage: node scripts/bump-agent-template-versions.js [--dry-run] [--base <ref>] [--file <path>]...
+       node scripts/bump-agent-template-versions.js --check --base <ref> [--head <ref>]
 
 Bumps changed bundled in-chat agent template versions based on Git file changes.
 
 Options:
   --dry-run       Show what would be bumped without writing files.
   --file <path>   Check a specific template JSON file or index.json entry source.
+  --base <ref>    Compare against this commit instead of HEAD.
+  --check         Write nothing; exit with an error when a template changed between
+                  --base and --head without a version bump.
+  --head <ref>    Commit to check with --check. Defaults to HEAD.
   --help          Show this help message.
 
-When no --file is provided, changed files under ${templatesDirRel} are detected from git status.
-Version-only changes are ignored; template content changes are bumped to HEAD version + 1.`);
+When no --file is provided, changed files under ${templatesDirRel} are detected from git
+(git status against HEAD, or git diff against --base).
+Version-only changes are ignored; template content changes are bumped to base version + 1.`);
+}
+
+function readOptionValue(argv, index, name) {
+    const value = argv[index + 1];
+    if (!value || value.startsWith('-')) {
+        throw new Error(`Missing value for ${name}.`);
+    }
+    return value;
 }
 
 function parseArgs(argv) {
     const options = {
         dryRun: false,
+        check: false,
+        base: null,
+        head: null,
         files: [],
     };
 
@@ -42,22 +59,41 @@ function parseArgs(argv) {
             continue;
         }
 
+        if (arg === '--check') {
+            options.check = true;
+            continue;
+        }
+
         if (arg === '--help' || arg === '-h') {
             options.help = true;
             continue;
         }
 
         if (arg === '--file' || arg === '-f') {
-            const file = argv[index + 1];
-            if (!file) {
-                throw new Error('Missing value for --file.');
-            }
-            options.files.push(file);
+            options.files.push(readOptionValue(argv, index, '--file'));
+            index += 1;
+            continue;
+        }
+
+        if (arg === '--base' || arg === '--head') {
+            options[arg.slice(2)] = readOptionValue(argv, index, arg);
             index += 1;
             continue;
         }
 
         throw new Error(`Unknown argument: ${arg}`);
+    }
+
+    if (options.check && !options.base) {
+        throw new Error('--check needs --base <ref>.');
+    }
+
+    if (options.check && (options.dryRun || options.files.length > 0)) {
+        throw new Error('--check cannot be combined with --dry-run or --file.');
+    }
+
+    if (options.head && !options.check) {
+        throw new Error('--head works only with --check.');
     }
 
     return options;
@@ -98,7 +134,30 @@ function resolveFileArg(fileArg) {
     throw new Error(`Template file not found: ${fileArg}`);
 }
 
-function getChangedFilesFromGit() {
+function git(args) {
+    return execFileSync('git', args, {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+    });
+}
+
+function resolveCommit(ref, optionName) {
+    try {
+        return git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).trim();
+    } catch {
+        throw new Error(`${optionName} ${ref} is not a commit.`);
+    }
+}
+
+function getChangedFilesFromGit(baseCommit) {
+    if (baseCommit) {
+        return git(['diff', '--name-only', '--no-renames', baseCommit, '--', templatesDirRel])
+            .split('\n')
+            .filter(Boolean)
+            .map(filePath => path.resolve(repoRoot, filePath));
+    }
+
     const output = execFileSync('git', ['status', '--porcelain', '--', templatesDirRel], {
         cwd: repoRoot,
         encoding: 'utf8',
@@ -119,14 +178,9 @@ function readJsonFile(filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
-function readHeadJson(relativePath) {
+function readGitJson(ref, relativePath) {
     try {
-        const content = execFileSync('git', ['show', `HEAD:${relativePath}`], {
-            cwd: repoRoot,
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-        return JSON.parse(content);
+        return JSON.parse(git(['show', `${ref}:${relativePath}`]));
     } catch {
         return null;
     }
@@ -183,7 +237,7 @@ function addVersionTarget(versionTargets, templateId, targetVersion, source) {
     });
 }
 
-function collectIndividualTemplateTarget(filePath, versionTargets) {
+function collectIndividualTemplateTarget(filePath, versionTargets, baseRef) {
     const relativePath = getRelativePath(filePath);
 
     if (!fs.existsSync(filePath)) {
@@ -192,7 +246,7 @@ function collectIndividualTemplateTarget(filePath, versionTargets) {
     }
 
     const currentTemplate = readJsonFile(filePath);
-    const baseTemplate = readHeadJson(relativePath);
+    const baseTemplate = readGitJson(baseRef, relativePath);
 
     if (!baseTemplate) {
         console.log(`Skipping new template ${relativePath}; new templates should start at their declared version.`);
@@ -207,7 +261,7 @@ function collectIndividualTemplateTarget(filePath, versionTargets) {
         return;
     }
 
-    const targetVersion = getTemplateVersion(baseTemplate, `HEAD:${relativePath}`) + 1;
+    const targetVersion = getTemplateVersion(baseTemplate, `${baseRef}:${relativePath}`) + 1;
     addVersionTarget(versionTargets, currentTemplate.id, targetVersion, relativePath);
 }
 
@@ -219,13 +273,13 @@ function getEntriesById(templates) {
     );
 }
 
-function collectIndexTargets(versionTargets) {
+function collectIndexTargets(versionTargets, baseRef) {
     if (!fs.existsSync(indexPath)) {
         return;
     }
 
     const currentEntries = readJsonFile(indexPath);
-    const baseEntries = readHeadJson(indexRel);
+    const baseEntries = readGitJson(baseRef, indexRel);
 
     if (!Array.isArray(currentEntries) || !Array.isArray(baseEntries)) {
         return;
@@ -243,7 +297,7 @@ function collectIndexTargets(versionTargets) {
             continue;
         }
 
-        const targetVersion = getTemplateVersion(baseEntry, `HEAD:${indexRel} entry ${currentEntry.id}`) + 1;
+        const targetVersion = getTemplateVersion(baseEntry, `${baseRef}:${indexRel} entry ${currentEntry.id}`) + 1;
         addVersionTarget(versionTargets, currentEntry.id, targetVersion, indexRel);
     }
 }
@@ -309,6 +363,73 @@ function applyVersions(versionTargets, dryRun) {
     }
 }
 
+function findUnbumpedTemplates(baseCommit, headCommit) {
+    const problems = [];
+    const requireBump = (label, currentTemplate, baseTemplate) => {
+        if (!hasTemplateContentChanged(currentTemplate, baseTemplate)) {
+            return;
+        }
+
+        const baseVersion = getTemplateVersion(baseTemplate, `${label} at --base`);
+        const currentVersion = getTemplateVersion(currentTemplate, `${label} at --head`);
+        if (currentVersion <= baseVersion) {
+            problems.push(`${label} changed but stays at v${currentVersion}; it needs at least v${baseVersion + 1}.`);
+        }
+    };
+
+    const changedPaths = git(['diff', '--name-only', '--no-renames', baseCommit, headCommit, '--', templatesDirRel])
+        .split('\n')
+        .filter(Boolean);
+
+    for (const relativePath of changedPaths) {
+        if (relativePath === indexRel) {
+            const currentEntries = readGitJson(headCommit, indexRel);
+            const baseEntries = readGitJson(baseCommit, indexRel);
+            if (!Array.isArray(currentEntries) || !Array.isArray(baseEntries)) {
+                continue;
+            }
+
+            const baseEntriesById = getEntriesById(baseEntries);
+            for (const currentEntry of currentEntries) {
+                const baseEntry = currentEntry?.id ? baseEntriesById.get(currentEntry.id) : null;
+                if (baseEntry) {
+                    requireBump(`${indexRel} entry ${currentEntry.id}`, currentEntry, baseEntry);
+                }
+            }
+            continue;
+        }
+
+        if (!isTemplateJsonPath(path.resolve(repoRoot, relativePath))) {
+            continue;
+        }
+
+        const currentTemplate = readGitJson(headCommit, relativePath);
+        const baseTemplate = readGitJson(baseCommit, relativePath);
+        if (currentTemplate && baseTemplate) {
+            requireBump(relativePath, currentTemplate, baseTemplate);
+        }
+    }
+
+    return problems;
+}
+
+function runCheck(options) {
+    const baseCommit = resolveCommit(options.base, '--base');
+    const headCommit = resolveCommit(options.head ?? 'HEAD', '--head');
+    const problems = findUnbumpedTemplates(baseCommit, headCommit);
+
+    if (problems.length === 0) {
+        console.log('Bundled agent template versions are up to date.');
+        return;
+    }
+
+    for (const problem of problems) {
+        console.error(problem);
+    }
+    console.error(`Bump them with \`npm run agents:bump-template-versions -- --base ${options.base}\` and commit the result.`);
+    process.exitCode = 1;
+}
+
 function main() {
     const options = parseArgs(process.argv.slice(2));
 
@@ -317,9 +438,16 @@ function main() {
         return;
     }
 
+    if (options.check) {
+        runCheck(options);
+        return;
+    }
+
+    const baseCommit = options.base ? resolveCommit(options.base, '--base') : null;
+    const baseRef = baseCommit ?? 'HEAD';
     const inputFiles = options.files.length > 0
         ? options.files.map(resolveFileArg)
-        : getChangedFilesFromGit();
+        : getChangedFilesFromGit(baseCommit);
 
     const candidateFiles = [...new Set(inputFiles.map(filePath => path.resolve(filePath)))];
     const versionTargets = new Map();
@@ -330,14 +458,14 @@ function main() {
         }
 
         if (isTemplateJsonPath(filePath)) {
-            collectIndividualTemplateTarget(filePath, versionTargets);
+            collectIndividualTemplateTarget(filePath, versionTargets, baseRef);
         }
     }
 
     const shouldCollectIndexTargets = options.files.length === 0 ||
         candidateFiles.some(filePath => getRelativePath(filePath) === indexRel);
     if (shouldCollectIndexTargets) {
-        collectIndexTargets(versionTargets);
+        collectIndexTargets(versionTargets, baseRef);
     }
 
     if (versionTargets.size === 0) {

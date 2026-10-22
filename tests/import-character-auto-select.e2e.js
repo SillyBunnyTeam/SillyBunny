@@ -1,4 +1,3 @@
-/* global document, window */
 import { expect, test } from '@playwright/test';
 
 test.describe('character import selection', () => {
