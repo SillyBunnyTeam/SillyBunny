@@ -110,7 +110,7 @@ class ApkVerifierTest {
         assertEquals("archive overload", Build.VERSION.SDK_INT >= 33, archiveManager.usedFlagsOverload)
         @Suppress("DEPRECATION")
         val expectedFlags = PackageManager.GET_SIGNING_CERTIFICATES.toLong() or
-            (if (Build.VERSION.SDK_INT == 29) PackageManager.GET_SIGNATURES.toLong() else 0L)
+            (if (Build.VERSION.SDK_INT < 34) PackageManager.GET_SIGNATURES.toLong() else 0L)
         assertEquals(expectedFlags, archiveManager.archiveFlags)
         assertTrue(verified)
         assertFalse(ApkVerifier.verifyArchive(context, apk, version - 1, expected))
@@ -136,6 +136,33 @@ class ApkVerifierTest {
         assertFalse(ApkVerifier.verifyArchive(context, apk, version, expected))
     }
 
+    // No Robolectric runtime for API 33 is available, so this runs the API 33 code path on the API 34
+    // runtime and makes the archive shadow behave like base Android 13 (android13-release, tags r1-r15):
+    // PackageManager.getPackageArchiveInfo collects certificates only when GET_SIGNATURES is set.
+    @Test
+    @Config(sdk = [34])
+    fun android13BaseFrameworkStillYieldsArchiveCertificates() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val apk = temporary.newFile("candidate.part")
+        val version = 7L
+        val manager = shadowOf(context.packageManager)
+        manager.setPackageArchiveInfo(apk.absolutePath, CoreTestFixtures.packageInfo(context, version))
+        val archiveManager = manager as ArchivePackageManager
+        archiveManager.certificatesOnlyForLegacySignatures = true
+        val runtimeSdk = Build.VERSION.SDK_INT
+        ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", 33)
+        try {
+            assertTrue(ApkVerifier.verifyArchive(context, apk, version, CoreTestFixtures.signer))
+            assertTrue(archiveManager.usedFlagsOverload)
+            @Suppress("DEPRECATION")
+            val expectedFlags = PackageManager.GET_SIGNING_CERTIFICATES.toLong() or
+                PackageManager.GET_SIGNATURES.toLong()
+            assertEquals(expectedFlags, archiveManager.archiveFlags)
+        } finally {
+            ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", runtimeSdk)
+        }
+    }
+
     @Test
     fun rejectsMissingUnreadableOrInvalidArchiveAndWrongFingerprintLength() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -152,6 +179,7 @@ class ApkVerifierTest {
     class ArchivePackageManager : ShadowApplicationPackageManager() {
         var usedFlagsOverload = false
         var archiveFlags = 0L
+        var certificatesOnlyForLegacySignatures = false
 
         @Implementation
         override fun getPackageArchiveInfo(path: String, flags: Int): PackageInfo? {
@@ -161,7 +189,15 @@ class ApkVerifierTest {
         fun archiveInfo(path: String, flags: Long, flagsOverload: Boolean): PackageInfo? {
             usedFlagsOverload = flagsOverload
             archiveFlags = flags
-            return getShadowPackageArchiveInfo(path, flags.toInt())
+            val info = getShadowPackageArchiveInfo(path, flags.toInt()) ?: return null
+            @Suppress("DEPRECATION")
+            val legacySignatures = flags and PackageManager.GET_SIGNATURES.toLong() != 0L
+            if (!certificatesOnlyForLegacySignatures || legacySignatures) return info
+            // PackageParser.generatePackageInfo leaves signingInfo null for uncollected certificates.
+            return PackageInfo().apply {
+                packageName = info.packageName
+                longVersionCode = info.longVersionCode
+            }
         }
     }
 

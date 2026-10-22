@@ -86,17 +86,16 @@ object ApkVerifier {
     }
 
     @Suppress("DEPRECATION")
-    private fun archivePackage(manager: PackageManager, apk: File): PackageInfo? =
-        if (Build.VERSION.SDK_INT >= 33) {
-            manager.getPackageArchiveInfo(
-                apk.absolutePath,
-                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
-            )
+    private fun archivePackage(manager: PackageManager, apk: File): PackageInfo? {
+        // API 29 and base Android 13 (android13-release, tags r1-r15) collect archive certificates only when
+        // GET_SIGNATURES is also set; API 30-32 accept either flag. The returned legacy signatures are never
+        // used for verification.
+        val flags = PackageManager.GET_SIGNING_CERTIFICATES or
+            (if (Build.VERSION.SDK_INT < 34) PackageManager.GET_SIGNATURES else 0)
+        return if (Build.VERSION.SDK_INT >= 33) {
+            manager.getPackageArchiveInfo(apk.absolutePath, PackageManager.PackageInfoFlags.of(flags.toLong()))
         } else {
-            // API 29 only collects archive certificates when GET_SIGNATURES is also set.
-            // The returned legacy signatures are never used for verification.
-            val flags = PackageManager.GET_SIGNING_CERTIFICATES or
-                (if (Build.VERSION.SDK_INT == 29) PackageManager.GET_SIGNATURES else 0)
             manager.getPackageArchiveInfo(apk.absolutePath, flags)
         }
+    }
 }
