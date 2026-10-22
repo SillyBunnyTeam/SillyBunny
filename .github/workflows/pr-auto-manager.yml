@@ -74,10 +74,10 @@ jobs:
               return total + file.additions + file.deletions;
             }, 0);
             const sizes = [
-              { label: '🟩 ⬤○○○○', max: 20 },
-              { label: '🟩 ⬤⬤○○○', max: 100 },
-              { label: '🟨 ⬤⬤⬤○○', max: 500 },
-              { label: '🟧 ⬤⬤⬤⬤○', max: 1000 },
+              { label: '🟩 ⬤○○○○', max: 50 },
+              { label: '🟩 ⬤⬤○○○', max: 500 },
+              { label: '🟨 ⬤⬤⬤○○', max: 1000 },
+              { label: '🟧 ⬤⬤⬤⬤○', max: 3000 },
               { label: '🟥 ⬤⬤⬤⬤⬤', max: Infinity },
             ];
             const selected = sizes.find(size => changes < size.max).label;
@@ -104,7 +104,7 @@ jobs:
     name: 🏷️ Label PR by Branches
     runs-on: ubuntu-latest
     # Only label once when PR is created or when base branch is changed, to allow manual label removal
-    if: always() && (github.event.action == 'opened' || (github.event.action == 'synchronize' && github.event.changes.base))
+    if: always() && (github.event.action == 'opened' || (github.event.action == 'edited' && github.event.changes.base))
 
     steps:
       - name: Check GitHub App Configuration
