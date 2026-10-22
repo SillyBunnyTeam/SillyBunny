@@ -667,6 +667,9 @@ let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
 const chatMessageResizeStates = new Map();
+const pendingChatMessageResizeBlocks = new Set();
+let pendingChatMessageResizeFrame = 0;
+let chatMessageResizeDeliveryViewportState = null;
 
 let dialogueResolve = null;
 let dialogueCloseStop = false;
@@ -2551,19 +2554,34 @@ function captureChatMessageResizeViewportState() {
     };
 }
 
-function captureChatMessageResizeState(element, entry = null) {
+/**
+ * Captures the viewport once per resize-observer delivery. One delivery can carry every message block
+ * in the chat, and scanning for the visible anchor once per block made long chat loads quadratic (#911).
+ */
+function captureChatMessageResizeDeliveryViewportState() {
+    if (!chatMessageResizeDeliveryViewportState) {
+        chatMessageResizeDeliveryViewportState = captureChatMessageResizeViewportState();
+        queueMicrotask(() => {
+            chatMessageResizeDeliveryViewportState = null;
+        });
+    }
+
+    return chatMessageResizeDeliveryViewportState;
+}
+
+function captureChatMessageResizeState(element, entry = null, viewportState = captureChatMessageResizeViewportState()) {
     return {
-        ...captureChatMessageResizeViewportState(),
+        ...viewportState,
         blockHeight: getObservedElementHeight(element, entry),
     };
 }
 
-function refreshChatMessageResizeState(element, metadata, entry = null) {
+function refreshChatMessageResizeState(element, metadata, entry = null, viewportState = undefined) {
     if (!metadata) {
         return;
     }
 
-    Object.assign(metadata, captureChatMessageResizeState(element, entry));
+    Object.assign(metadata, captureChatMessageResizeState(element, entry, viewportState));
 }
 
 function refreshObservedChatMessageResizeViewportStates() {
@@ -2605,13 +2623,13 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
     const previousHeight = Number(resizeState.blockHeight ?? nextHeight);
 
     if (Math.abs(nextHeight - previousHeight) < 1) {
-        refreshChatMessageResizeState(element, metadata, entry);
+        refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());
         return;
     }
 
     // SillyBunny: streaming progress owns the live message's scroll lane; skip resize scrolls for that block.
     if (isActiveStreamingMessageResizeBlock(element)) {
-        refreshChatMessageResizeState(element, metadata, entry);
+        refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());
         return;
     }
 
@@ -2675,6 +2693,7 @@ function getMessageBlockElement(messageElement) {
 
 function unobserveChatMessageResizeBlock(messageBlock) {
     if (messageBlock instanceof HTMLElement) {
+        pendingChatMessageResizeBlocks.delete(messageBlock);
         chatMessageResizeObserver?.unobserve(messageBlock);
         chatMessageResizeStates.delete(messageBlock);
     }
@@ -2691,19 +2710,34 @@ function observeChatMessageResize(messageElement) {
         return;
     }
 
-    requestAnimationFrame(() => {
-        if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE) || !messageBlock.isConnected) {
-            return;
-        }
+    // SillyBunny: blocks rendered in the same frame share one frame callback and one viewport capture (#911).
+    pendingChatMessageResizeBlocks.add(messageBlock);
 
-        const observer = getChatMessageResizeObserver();
+    if (!pendingChatMessageResizeFrame) {
+        pendingChatMessageResizeFrame = requestAnimationFrame(observePendingChatMessageResizeBlocks);
+    }
+}
+
+function observePendingChatMessageResizeBlocks() {
+    pendingChatMessageResizeFrame = 0;
+    const messageBlocks = [...pendingChatMessageResizeBlocks].filter(messageBlock => messageBlock.isConnected);
+    pendingChatMessageResizeBlocks.clear();
+
+    if (messageBlocks.length === 0 || !isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE)) {
+        return;
+    }
+
+    const observer = getChatMessageResizeObserver();
+    const viewportState = captureChatMessageResizeViewportState();
+
+    for (const messageBlock of messageBlocks) {
         unobserveChatMessageResizeBlock(messageBlock);
 
-        const metadata = captureChatMessageResizeState(messageBlock);
+        const metadata = captureChatMessageResizeState(messageBlock, null, viewportState);
         if (observer.observe(messageBlock, metadata)) {
             chatMessageResizeStates.set(messageBlock, metadata);
         }
-    });
+    }
 }
 
 function unobserveChatMessageResize(messageElement) {
@@ -2718,6 +2752,12 @@ function unobserveChatMessageResize(messageElement) {
 }
 
 function disposeChatMessageResizeObserver() {
+    if (pendingChatMessageResizeFrame) {
+        cancelAnimationFrame(pendingChatMessageResizeFrame);
+        pendingChatMessageResizeFrame = 0;
+    }
+
+    pendingChatMessageResizeBlocks.clear();
     chatMessageResizeObserver?.dispose();
     chatMessageResizeObserver = null;
     chatMessageResizeStates.clear();
