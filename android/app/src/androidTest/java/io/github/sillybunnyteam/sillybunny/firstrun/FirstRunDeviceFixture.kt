@@ -212,7 +212,8 @@ internal class FirstRunDeviceFixture(context: Context, name: String) {
 
         private val SCRIPT = """
             here="${'$'}{0%/*}"
-            if [ "${'$'}1" != --no-start ] || [ "${'$'}2" != --dir ] || [ "${'$'}4" != --ref ] || [ -z "${'$'}5" ] || [ "${'$'}6" != --use-node ] || [ "${'$'}#" != 6 ]; then
+            if [ "${'$'}1" != --no-start ] || [ "${'$'}2" != --dir ] || [ "${'$'}4" != --ref ] || [ -z "${'$'}5" ] ||
+                [ "${'$'}6" != --use-node ] || [ "${'$'}7" != --repo ] || [ -z "${'$'}8" ] || [ "${'$'}#" != 8 ]; then
                 echo "unexpected arguments: ${'$'}*"
                 exit 2
             fi

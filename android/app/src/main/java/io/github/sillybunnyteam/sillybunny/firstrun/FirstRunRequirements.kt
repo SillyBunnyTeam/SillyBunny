@@ -1,14 +1,21 @@
 package io.github.sillybunnyteam.sillybunny.firstrun
 
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import io.github.sillybunnyteam.sillybunny.server.SetupJob
 import java.io.File
 
 /** The first-run `install.sh` job (plan §4.3 step 4). There is no runtime picker and no branch picker. */
 object FirstRunInstall {
-    /** `install.sh --no-start --dir <checkoutDir> --ref <ref> --use-node`. */
+    /**
+     * `install.sh --no-start --dir <checkoutDir> --ref <ref> --use-node --repo <BuildConfig.REPO_URL>`. The
+     * explicit `--repo` lets debug builds clone the fixture remote that `-PdebugRepoUrl` names; release builds
+     * pass the official URL, which is also install.sh's default.
+     */
     fun args(paths: RuntimePaths, ref: String): List<String> =
-        listOf("--no-start", "--dir", paths.checkoutDir.path, "--ref", ref, "--use-node")
+        listOf(
+            "--no-start", "--dir", paths.checkoutDir.path, "--ref", ref, "--use-node", "--repo", BuildConfig.REPO_URL,
+        )
 
     fun job(script: File, paths: RuntimePaths, ref: String): SetupJob =
         SetupJob(script = script, args = args(paths, ref), workingDir = paths.filesDir)

@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.firstrun
 
 import android.os.Bundle
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
 import io.github.sillybunnyteam.sillybunny.server.ServerState
 import io.github.sillybunnyteam.sillybunny.server.SetupJob
@@ -247,7 +248,10 @@ class FirstRunControllerTest {
     fun theInstallJobHasTheExactArguments() = runTest {
         val (_, job) = installing()
         assertEquals(
-            listOf("--no-start", "--dir", fixture.paths.checkoutDir.path, "--ref", FirstRunFixture.REF, "--use-node"),
+            listOf(
+                "--no-start", "--dir", fixture.paths.checkoutDir.path, "--ref", FirstRunFixture.REF, "--use-node",
+                "--repo", BuildConfig.REPO_URL,
+            ),
             job.args,
         )
         assertEquals(fixture.filesDir, job.workingDir)

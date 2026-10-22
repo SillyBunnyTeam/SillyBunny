@@ -64,7 +64,10 @@ class FirstRunDeviceTest {
         assertTrue(FirstRunUi.shown("firstrun_install_latest"))
         val job = fixture.host.jobs.single()
         assertEquals(
-            listOf("--no-start", "--dir", fixture.paths.checkoutDir.path, "--ref", BuildConfig.DEFAULT_REF, "--use-node"),
+            listOf(
+                "--no-start", "--dir", fixture.paths.checkoutDir.path, "--ref", BuildConfig.DEFAULT_REF, "--use-node",
+                "--repo", BuildConfig.REPO_URL,
+            ),
             job.args,
         )
         assertEquals(fixture.script, job.script)

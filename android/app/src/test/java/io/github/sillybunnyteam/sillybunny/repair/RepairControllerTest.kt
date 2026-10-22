@@ -2,6 +2,7 @@ package io.github.sillybunnyteam.sillybunny.repair
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.checkout.BrokenCheckouts
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import io.github.sillybunnyteam.sillybunny.server.ServerHost
@@ -98,7 +99,7 @@ class RepairControllerTest {
     private fun broken(): List<File> = BrokenCheckouts.list(paths)
 
     private fun argsFor(source: File, ref: String) = listOf(
-        "--no-start", "--dir", paths.checkoutDir.path, "--ref", ref, "--use-node",
+        "--no-start", "--dir", paths.checkoutDir.path, "--ref", ref, "--use-node", "--repo", BuildConfig.REPO_URL,
         "--migrate-from", source.path, "--allow-git-source",
     )
 

@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import io.github.sillybunnyteam.sillybunny.server.SetupJob
 import java.io.File
@@ -218,7 +219,10 @@ class FirstRunAdaptersTest {
         val script = File("/data/files/runtime/install.sh")
         val job = FirstRunInstall.job(script, paths, "release")
         assertEquals(
-            listOf("--no-start", "--dir", "/data/files/SillyBunny", "--ref", "release", "--use-node"),
+            listOf(
+                "--no-start", "--dir", "/data/files/SillyBunny", "--ref", "release", "--use-node",
+                "--repo", BuildConfig.REPO_URL,
+            ),
             job.args,
         )
         assertEquals(File("/data/files"), job.workingDir)

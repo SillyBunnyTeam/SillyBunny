@@ -617,7 +617,10 @@ class RepairController internal constructor(
         return if (inside) RepairRefusal.DATA_ROOT_INSIDE_CHECKOUT else null
     }
 
-    /** The exact `install.sh` arguments (plan §4.7 step 3). */
+    /**
+     * The exact `install.sh` arguments (plan §4.7 step 3). `--repo` is the same URL as the first run's, so debug
+     * builds reinstall from the fixture remote that `-PdebugRepoUrl` names.
+     */
     internal fun setupArgs(source: File, ref: String): List<String> = listOf(
         "--no-start",
         "--dir",
@@ -625,6 +628,8 @@ class RepairController internal constructor(
         "--ref",
         ref,
         "--use-node",
+        "--repo",
+        BuildConfig.REPO_URL,
         "--migrate-from",
         source.path,
         "--allow-git-source",

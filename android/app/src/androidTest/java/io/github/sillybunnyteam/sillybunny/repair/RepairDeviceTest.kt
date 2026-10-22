@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.DataDocumentsProvider
 import io.github.sillybunnyteam.sillybunny.checkout.BrokenCheckouts
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
@@ -446,7 +447,7 @@ class RepairDeviceTest {
     }
 
     private fun expectedArgs(source: File, ref: String = "release") = listOf(
-        "--no-start", "--dir", paths.checkoutDir.path, "--ref", ref, "--use-node",
+        "--no-start", "--dir", paths.checkoutDir.path, "--ref", ref, "--use-node", "--repo", BuildConfig.REPO_URL,
         "--migrate-from", source.path, "--allow-git-source",
     )
 
