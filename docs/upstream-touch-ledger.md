@@ -474,12 +474,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/endpoints/content-manager.js`, `src/server-init.js`, `src/server-main.js`, `src/util.js`, `src/plugin-loader.js`. |
 | Area | Install, defaults, server lifecycle, runtime utilities, and Android app runtime. |
-| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. APK loopback access also needs token authentication independent of account sessions, including after cookie clearing. |
+| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. TODO(copy) |
 | Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, the bundled-content helpers in `content-manager.js`, and `src/middleware/launchToken.js` for launch authentication, health probes, and browser handoff. |
 | Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. In `src/server-main.js`, mount `createLaunchTokenMiddleware()` immediately after helmet and exempt `LAUNCH_COOKIE_NAME` from `/api/cookies/clear` only while enabled. Both hooks are inert unless `SILLYBUNNY_LAUNCH_TOKEN` is non-empty. |
 | Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/launch-token.test.js`, `tests/launch-token-server-wiring.test.js`, and root lint. |
 | Validation | Android hooks: `node --check src/server-main.js`, `npm run test:unit --prefix tests -- launch-token.test.js launch-token-server-wiring.test.js`. Existing initialization checks: `npm run init`, `node --check src/server-init.js`, `npm run lint`. |
-| Rollback path | Revert default/content reconciliation independently. For launch-token regressions, stop APK use before removing the middleware import/mount and cookie exemption together; disabling the token exposes the Android loopback server to other apps. Preserve account sessions and user data. |
+| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. TODO(copy) |
 | Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918 (Android hooks; prior initialization review 2026-07-28). |
 | Owner | Runtime and release integrator. |
 
@@ -501,14 +501,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Android app runtime. |
-| Divergence reason | The APK supplies its runtimes and tools, so desktop prerequisite installation, Termux detection, and host-based runtime selection must stay off its launch path. |
+| Divergence reason | TODO(copy) |
 | Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependencies; no separate seam yet for APK runtime selection. |
 | Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, and the prerequisite call. Honor Node/Bun overrides, otherwise default APK launches to Node; keep existing update/dependency helper calls. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
 | Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
 | Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
-| Rollback path | Stop APK use before reverting the APK guards; desktop and Termux launch paths remain unchanged with the flag unset. Keep the checkout, configuration, and user data. |
+| Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918. |
-| Owner | Runtime and release integrator. |
+| Owner | TODO(copy) |
 
 ### Repository policy, launchers, packaging, and build infrastructure
 | Field | Value |
