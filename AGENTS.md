@@ -12,12 +12,12 @@ Read the docs below in full before you start; they change more often than this f
 | Always | `PRODUCT.md` | The design direction and featureset for the program, both user-facing and used by agents for a primer on SillyBunny's philosophy. |
 | Any UI, CSS, markup or copy-placement change | `DESIGN.md`, `DESIGN.json` | The design direction for SillyBunny's user interface and user experience, and a companion reference for UI parameters. |
 | Server routes, file or path handling, updater or launchers, secrets, extensions, sanitisation, remote requests | `SECURITY.md` | Security best practices for user safety. |
-| Upstream SillyTavern sync | `docs/upstream-sync.md` | |
+| Fixing bugs in known hotspots, or any non-trivial change | `lessons.md` | Dynamically edited. |
+| Install, launcher or update flows, or anything else README covers | `README.md` | Primary user-facing documentation for the project description, installation procedure, credits, and so on. |
+| Upstream SillyTavern sync | `docs/upstream-sync.md` | Documentation for sync behaviour. |
 | Editing an upstream-origin file | `docs/upstream-touch-ledger.md` | |
 | Build, cache or generated-asset changes | `docs/frontend-build.md` | |
-| Install, launcher or update flows, or anything else README covers | `README.md` | Primary user-facing documentation for the project description, installation procedure, credits, and so on. |
 | Release, RC, hotfix, tagging or CI workflow work | `CONTRIBUTING.md` § Release process | |
-| Fixing bugs in known hotspots, or any non-trivial change | `lessons.md` | |
 
 ## Hard rules
 
