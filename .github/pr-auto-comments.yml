@@ -55,7 +55,7 @@ labels:
     labeled:
       pr:
         body: >
-            ⚠️ This PR is over 1000 lines, which is larger than recommended.
+            ⚠️ This PR is over 3000 lines, which is larger than recommended.
 
             Please make sure that it only addresses a single issue - PRs this large are hard to test and may be rejected.
 

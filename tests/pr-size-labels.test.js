@@ -65,7 +65,7 @@ describe('PR size label updates', () => {
 
     for (const [changes, index] of [
         [0, 0], [19, 0], [20, 1], [99, 1], [100, 2],
-        [499, 2], [500, 3], [999, 3], [1000, 4],
+        [499, 2], [500, 3], [1000, 3], [2999, 3], [3000, 4],
     ]) {
         test(`assigns the expected size at ${changes} changed lines`, async () => {
             expect(await labelPullRequest({ files: [changedFile(changes)] })).toEqual(new Set([sizeLabels[index]]));
@@ -107,5 +107,13 @@ describe('PR size label updates', () => {
             labels: [sizeLabels[0]],
             removeError: error,
         })).rejects.toBe(error);
+    });
+
+    test('states the largest size threshold in the comment for the largest size label', () => {
+        const comments = parse(fs.readFileSync(new URL('../.github/pr-auto-comments.yml', import.meta.url), 'utf8'));
+        const largestLabelComment = comments.labels.find(label => label.name === sizeLabels[4]).labeled.pr.body;
+
+        expect(step.with.script).toContain(`{ label: '${sizeLabels[3]}', max: 3000 },`);
+        expect(largestLabelComment).toContain('This PR is over 3000 lines');
     });
 });

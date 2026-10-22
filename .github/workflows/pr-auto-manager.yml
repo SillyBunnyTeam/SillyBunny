@@ -77,7 +77,7 @@ jobs:
               { label: '🟩 ⬤○○○○', max: 20 },
               { label: '🟩 ⬤⬤○○○', max: 100 },
               { label: '🟨 ⬤⬤⬤○○', max: 500 },
-              { label: '🟧 ⬤⬤⬤⬤○', max: 1000 },
+              { label: '🟧 ⬤⬤⬤⬤○', max: 3000 },
               { label: '🟥 ⬤⬤⬤⬤⬤', max: Infinity },
             ];
             const selected = sizes.find(size => changes < size.max).label;
