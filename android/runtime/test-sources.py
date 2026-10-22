@@ -2226,5 +2226,310 @@ class NoticesTests(SourceFixture):
         self.assert_notices_error('output-input-overlap', self.generate, output_root=self.licenses)
 
 
+NODE_HEADER = (b'#define NODE_MAJOR_VERSION 1\n#define NODE_MINOR_VERSION 2\n'
+               b'#define NODE_PATCH_VERSION 3\n#define NODE_VERSION_IS_RELEASE 1\n')
+
+
+class NoticesNodeInputTests(SourceFixture):
+    """--node-tarball (the pinned Node source as sources.lock pins it) and --npm-licenses (exact supplements)."""
+
+    def setUp(self):
+        super().setUp()
+        self.licenses = self.directory / 'licenses'
+        (self.licenses / 'git').mkdir(parents=True)
+        (self.licenses / 'git' / 'copyright').write_bytes(b'fixture git license\n')
+        self.supplied = self.directory / 'npm-licenses'
+        self.text = b'ISC License\n\nCopyright (c) fixture\n'
+        self.good = self.supplement('@scope/bare', '2.0.0', 'ISC', {'LICENSE.md': self.text})
+        self.write_supplements([self.good])
+
+    def assert_notices_error(self, code, callback, *arguments, **kwargs):
+        with self.assertRaises(notices.NoticesError) as error:
+            callback(*arguments, **kwargs)
+        self.assertEqual(error.exception.code, code)
+        return error.exception
+
+    def supplement(self, name, version, license, texts, basis='repository-license-file'):
+        entries = []
+        for file, contents in texts.items():
+            path = self.supplied / name / file
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+            entries.append({
+                'file': name + '/' + file, 'sha256': sha256(contents), 'basis': basis,
+                'repository': 'https://example.invalid/repository', 'commit': COMMIT,
+                'url': 'https://example.invalid/raw/' + COMMIT + '/' + file,
+            })
+        return {
+            'name': name, 'version': version, 'license': license, 'texts': entries,
+            'registry': {
+                'url': 'https://registry.example.invalid/' + name, 'tarball': 'https://registry.example.invalid/package.tgz',
+                'integrity': 'sha512-fixture', 'gitHead': HISTORY_TIP, 'repository': 'git+https://example.invalid/repository.git',
+            },
+        }
+
+    def write_supplements(self, packages, schema=1):
+        self.supplied.mkdir(parents=True, exist_ok=True)
+        (self.supplied / 'provenance.json').write_bytes(json_data({'schema': schema, 'packages': packages}))
+
+    def files(self):
+        return {
+            'LICENSE': b'fixture Node composite license\r\n',
+            'src/node_version.h': NODE_HEADER,
+            'lib/fs.js': b'not part of the notices\n',
+            'deps/npm/package.json': json_data({'name': 'npm', 'version': '11.10.0', 'license': 'Artistic-2.0'}),
+            'deps/npm/LICENSE': b'npm license\n',
+            'deps/npm/node_modules/alpha/package.json': json_data({'name': 'alpha', 'version': '1.0.0', 'license': 'MIT'}),
+            'deps/npm/node_modules/alpha/LICENSE': b'alpha license\n',
+            'deps/npm/node_modules/@scope/bare/package.json': json_data({'name': '@scope/bare', 'version': '2.0.0', 'license': 'ISC'}),
+            'deps/npm/node_modules/@scope/bare/index.js': b'code, no license text\n',
+        }
+
+    def entries(self, without=(), extra=()):
+        files = [('file', 'node-v1.2.3/' + path, contents) for path, contents in sorted(self.files().items()) if path not in without]
+        return [('directory', 'node-v1.2.3', None), *files, *extra]
+
+    def node_tarball(self, entries):
+        contents = tar_bytes(entries, mode='w:xz')
+        path = self.directory / 'node-v1.2.3.tar.xz'
+        path.write_bytes(contents)
+        self.runtime['node'] = {'version': 'v1.2.3'}
+        self.runtime['npm'] = {'version': '11.10.0'}
+        self.lock['node'] = {'version': '1.2.3', 'source': {
+            'filename': 'node-v1.2.3.tar.xz', 'sha256': sha256(contents),
+            'url': 'https://nodejs.org/dist/v1.2.3/node-v1.2.3.tar.xz',
+        }}
+        self.lock['npm'] = {'version': '11.10.0', 'source': 'node'}
+        self.save_locks()
+        return path
+
+    def npm_root(self):
+        root = self.directory / 'tree'
+        for path, contents in self.files().items():
+            if path.startswith('deps/npm/'):
+                target = root / path.removeprefix('deps/npm/')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(contents)
+        return root
+
+    def android_input(self):
+        (self.directory / 'android-LICENSE').write_bytes(b'Android library verbatim\n')
+        path = self.directory / 'android-libraries.json'
+        path.write_bytes(json_data({'schema': 1, 'libraries': [{
+            'name': 'org.example:library', 'version': '1.0.0', 'spdx': 'Apache-2.0',
+            'sourceUrl': 'https://example.invalid/android/library', 'licenses': ['android-LICENSE'],
+        }]}))
+        return path
+
+    def generate(self, tarball, **kwargs):
+        return notices.generate(self.runtime_path, self.sources_path, self.licenses, node_tarball=tarball,
+                                npm_licenses=self.supplied, android_libraries=self.android_input(), **kwargs)
+
+    def test_node_tarball_feeds_node_and_npm_and_matches_the_extracted_tree(self):
+        tarball = self.node_tarball(self.entries())
+        contents, index = self.generate(tarball, require_node=True)
+        self.assertEqual([item['id'] for item in index['components']], [
+            'android/org.example:library', 'node', 'npm', 'npm/node_modules/@scope/bare', 'npm/node_modules/alpha', 'termux/git',
+        ])
+        self.assertEqual(index['sections']['node'], {'status': 'bundled', 'inputStatus': 'provided', 'components': ['node']})
+        self.assertEqual(index['sections']['npm']['status'], 'bundled')
+        node = next(item for item in index['components'] if item['id'] == 'node')
+        self.assertEqual((node['version'], node['spdx']), ('1.2.3', None))
+        bare = next(item for item in index['components'] if item['id'] == 'npm/node_modules/@scope/bare')
+        self.assertEqual(bare['spdx'], 'ISC')
+        # The supplied text is listed under its committed path, never as a file of the package.
+        self.assertEqual([license['path'] for license in bare['licenses']], ['android/runtime/licenses/npm/@scope/bare/LICENSE.md'])
+        start = bare['licenses'][0]['offset']
+        self.assertEqual(contents[start:start + bare['licenses'][0]['length']], self.text)
+        self.assertNotIn(b'not part of the notices', contents)
+        extracted = self.directory / 'extracted'
+        with tarfile.open(tarball) as archive:
+            archive.extractall(extracted, filter='data')
+        same, same_index = notices.generate(
+            self.runtime_path, self.sources_path, self.licenses, node_source=extracted / 'node-v1.2.3',
+            npm_root=extracted / 'node-v1.2.3' / 'deps' / 'npm', npm_licenses=self.supplied,
+            android_libraries=self.android_input(), require_node=True)
+        self.assertEqual((same, same_index), (contents, index))
+
+    def test_node_tarball_must_be_the_pinned_one_with_safe_members(self):
+        tarball = self.node_tarball(self.entries())
+        self.lock['node']['source']['sha256'] = '0' * 64
+        self.save_locks()
+        self.assert_notices_error('node-tarball-sha256', self.generate, tarball)
+        for name, entries, code in (
+            ('outside the source directory', self.entries(extra=[('file', 'elsewhere/LICENSE', b'x\n')]), 'node-tarball-layout'),
+            ('symlink under deps/npm', self.entries(extra=[('symlink', 'node-v1.2.3/deps/npm/node_modules/link', 'alpha')]),
+             'node-tarball-member'),
+            ('hard link under deps/npm', self.entries(extra=[('hardlink', 'node-v1.2.3/deps/npm/COPY', 'node-v1.2.3/deps/npm/LICENSE')]),
+             'node-tarball-member'),
+            ('duplicate member', self.entries(extra=[('file', 'node-v1.2.3/deps/npm/LICENSE', b'second copy\n')]),
+             'node-tarball-duplicate'),
+            ('traversal', self.entries(extra=[('file', 'node-v1.2.3/deps/npm/../../../escape', b'x\n')]), 'relative-path'),
+            ('no version header', self.entries(without=('src/node_version.h',)), 'node-input'),
+            ('no npm', self.entries(without=('deps/npm/package.json',)), 'node-input'),
+        ):
+            with self.subTest(case=name):
+                self.assert_notices_error(code, self.generate, self.node_tarball(entries))
+        # Links elsewhere in the Node source are never extracted.
+        tarball = self.node_tarball(self.entries(extra=[('symlink', 'node-v1.2.3/lib/link', 'fs.js')]))
+        _, index = self.generate(tarball, require_node=True)
+        self.assertIn('node', index['sections']['node']['components'])
+        self.runtime.update({'node': None, 'npm': None})
+        self.lock.update({'node': None, 'npm': None})
+        self.save_locks()
+        self.assert_notices_error('runtime-unpinned', self.generate, tarball)
+
+    def test_node_tarball_is_read_once_so_the_extracted_bytes_are_the_verified_ones(self):
+        tarball = self.node_tarball(self.entries())
+        verified = tarball.read_bytes()
+        replacement = tar_bytes([
+            (kind, name, b'swapped after the SHA-256 check\n' if name == 'node-v1.2.3/LICENSE' else contents)
+            for kind, name, contents in self.entries()
+        ], mode='w:xz')
+        real_open = tarfile.open
+
+        def swap_then_open(*arguments, **kwargs):
+            # Another writer rewrites the object between the SHA-256 check and the extraction.
+            tarball.write_bytes(replacement)
+            return real_open(*arguments, **kwargs)
+
+        with mock.patch.object(notices.tarfile, 'open', side_effect=swap_then_open):
+            contents, _ = self.generate(tarball, require_node=True)
+        self.assertNotEqual(tarball.read_bytes(), verified)
+        self.assertIn(b'fixture Node composite license', contents)
+        self.assertNotIn(b'swapped after the SHA-256 check', contents)
+
+    def test_npm_supplements_are_exact_and_every_entry_must_be_used(self):
+        root = self.npm_root()
+        self.assert_notices_error('licenses-missing', notices.npm_components, root)
+        components = notices.npm_components(root, notices.npm_supplements(self.supplied))
+        bare = next(item for item in components if item['name'] == '@scope/bare')
+        self.assertEqual([license['contents'] for license in bare['licenses']], [self.text])
+        for name, packages, code in (
+            ('another version', [self.supplement('@scope/bare', '2.0.1', 'ISC', {'LICENSE.md': self.text})], 'licenses-missing'),
+            ('another license', [self.supplement('@scope/bare', '2.0.0', 'MIT', {'LICENSE.md': self.text})], 'npm-supplement-license'),
+            ('unused entry', [self.good, self.supplement('ghost', '1.0.0', 'MIT', {'LICENSE': b'ghost\n'})], 'npm-supplement-unused'),
+        ):
+            with self.subTest(case=name):
+                self.write_supplements(packages)
+                error = self.assert_notices_error(code, notices.npm_components, root, notices.npm_supplements(self.supplied))
+                if code == 'npm-supplement-unused':
+                    self.assertEqual(error.details['packages'], ['ghost@1.0.0'])
+                if code == 'licenses-missing':
+                    self.assertEqual(error.details['component'], 'npm/node_modules/@scope/bare')
+        self.write_supplements([self.good])
+        (root / 'node_modules' / '@scope' / 'bare' / 'LICENSE').write_bytes(b'now shipped by the package\n')
+        self.assert_notices_error('npm-supplement-unneeded', notices.npm_components, root, notices.npm_supplements(self.supplied))
+
+    def test_npm_supplement_provenance_is_strict(self):
+        def changed(change):
+            package = copy.deepcopy(self.good)
+            change(package)
+            return [package]
+
+        cases = (
+            ('text outside the package directory', changed(lambda item: item['texts'][0].update(file='alpha/LICENSE.md')),
+             'npm-supplement-path'),
+            ('nested text', changed(lambda item: item['texts'][0].update(file='@scope/bare/sub/LICENSE.md')), 'npm-supplement-path'),
+            ('traversal', changed(lambda item: item['texts'][0].update(file='@scope/bare/../bare/LICENSE.md')), 'relative-path'),
+            ('unknown basis', changed(lambda item: item['texts'][0].update(basis='guess')), 'npm-supplement-basis'),
+            ('the old template basis', changed(lambda item: item['texts'][0].update(basis='maintainer-template')),
+             'npm-supplement-basis'),
+            ('substitute without a note', changed(lambda item: item['texts'][0].update(basis='substitute')), 'npm-supplement-note'),
+            ('empty note', changed(lambda item: item['texts'][0].update(basis='substitute', note='')), 'metadata-text'),
+            ('multi-line note', changed(lambda item: item['texts'][0].update(note='first line\nsecond line')), 'metadata-text'),
+            ('note that is not text', changed(lambda item: item['texts'][0].update(note=['x'])), 'metadata-text'),
+            ('extra key', changed(lambda item: item.update(note='x')), 'npm-supplement-schema'),
+            ('extra text key', changed(lambda item: item['texts'][0].update(comment='x')), 'npm-supplement-schema'),
+            ('missing text key', changed(lambda item: item['texts'][0].pop('commit')), 'npm-supplement-schema'),
+            ('http text url', changed(lambda item: item['texts'][0].update(url='http://example.invalid/x')), 'https-url'),
+            ('short commit', changed(lambda item: item['texts'][0].update(commit='abc123')), 'npm-supplement-commit'),
+            ('short gitHead', changed(lambda item: item['registry'].update(gitHead='abc123')), 'npm-supplement-commit'),
+            ('no license', changed(lambda item: item.update(license=None)), 'npm-supplement-license'),
+            ('no texts', changed(lambda item: item.update(texts=[])), 'licenses-missing'),
+            ('bad name', changed(lambda item: item.update(name='../bare')), 'npm-supplement-package'),
+            ('duplicate package', [self.good, copy.deepcopy(self.good)], 'npm-supplement-duplicate'),
+        )
+        for name, packages, code in cases:
+            with self.subTest(case=name):
+                self.write_supplements(packages)
+                self.assert_notices_error(code, notices.npm_supplements, self.supplied)
+        self.write_supplements([self.good], schema=2)
+        self.assert_notices_error('npm-supplement-schema', notices.npm_supplements, self.supplied)
+        # A substitute is accepted once its note says what it is; a note is allowed on any text.
+        for basis in ('substitute', 'spdx-license-list'):
+            with self.subTest(basis=basis):
+                self.write_supplements(changed(lambda item: item['texts'][0].update(basis=basis, note='why this text')))
+                self.assertEqual(notices.npm_supplements(self.supplied)[('@scope/bare', '2.0.0')]['spdx'], 'ISC')
+        self.write_supplements([self.good])
+        text = self.supplied / '@scope' / 'bare' / 'LICENSE.md'
+        text.write_bytes(b'substituted text\n')
+        self.assert_notices_error('npm-supplement-sha256', notices.npm_supplements, self.supplied)
+        copy_path = self.directory / 'license-copy'
+        copy_path.write_bytes(self.text)
+        text.unlink()
+        text.symlink_to(copy_path)
+        self.assert_notices_error('symlink', notices.npm_supplements, self.supplied)
+
+    def test_cli_takes_the_tarball_alone_and_writes_the_full_pair(self):
+        tarball = self.node_tarball(self.entries())
+        self.assert_notices_error('node-input-conflict', self.generate, tarball, node_source=self.directory)
+        with mock.patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as stopped:
+            notices.main(['--node-tarball', str(tarball), '--npm-root', str(self.npm_root())])
+        self.assertEqual(stopped.exception.code, 2)
+        output = self.directory / 'assets'
+        notices.main([
+            '--runtime-lock', str(self.runtime_path), '--sources-lock', str(self.sources_path),
+            '--licenses-root', str(self.licenses), '--node-tarball', str(tarball), '--npm-licenses', str(self.supplied),
+            '--android-libraries', str(self.android_input()), '--require-node', '--output-root', str(output),
+        ])
+        contents = (output / 'THIRD_PARTY_NOTICES').read_bytes()
+        index = json.loads((output / 'THIRD_PARTY_NOTICES.json').read_bytes())
+        self.assertIsNone(notices.validate_output(contents, index))
+        self.assertEqual(index['sections']['npm']['components'], ['npm', 'npm/node_modules/@scope/bare', 'npm/node_modules/alpha'])
+        self.assert_notices_error('output-input-overlap', self.generate, tarball, output_root=self.supplied / 'assets')
+
+    def test_committed_license_texts_match_their_provenance(self):
+        supplements = notices.npm_supplements()
+        self.assertEqual({key: value['spdx'] for key, value in supplements.items()}, {
+            ('@npmcli/agent', '4.0.2'): 'ISC', ('@sigstore/verify', '3.1.1'): 'Apache-2.0',
+            ('spdx-exceptions', '2.5.0'): 'CC-BY-3.0', ('spdx-license-ids', '3.0.23'): 'CC0-1.0',
+        })
+        for (name, _), value in supplements.items():
+            with self.subTest(package=name):
+                self.assertTrue(value['licenses'])
+                self.assertTrue(all(license['path'].startswith('android/runtime/licenses/npm/' + name + '/')
+                                    for license in value['licenses']))
+        table = json.loads((ROOT / 'licenses' / 'android' / 'licenses.json').read_bytes())
+        self.assertEqual(table['schema'], 1)
+        for entry in table['licenses']:
+            with self.subTest(text=entry['file']):
+                self.assertEqual(sha256((ROOT / 'licenses' / 'android' / entry['file']).read_bytes()), entry['sha256'])
+
+
+@unittest.skipUnless(shutil.which('zstd'), 'zstd')
+class ArchiveVerificationDirectoryTests(SourceFixture):
+    def test_verification_unpacks_beside_the_build_or_in_the_system_temporary_directory(self):
+        calls = []
+        real = tempfile.TemporaryDirectory
+
+        def record(*arguments, **kwargs):
+            calls.append((kwargs.get('prefix'), kwargs.get('dir')))
+            return real(*arguments, **kwargs)
+
+        with mock.patch.object(sources.tempfile, 'TemporaryDirectory', side_effect=record):
+            destination = self.directory / 'sources.tar.zst'
+            with mock.patch.object(sources, 'ROOT', self.fixture_root):
+                sources.build(self.lock, self.runtime, self.runtime_path, self.sources_path, self.cache, destination)
+                sources.verify_archive(destination)
+        verifications = [directory for prefix, directory in calls if prefix == 'sources-verify-']
+        self.assertEqual(len(verifications), 2)
+        self.assertTrue(Path(verifications[0]).name.startswith('sources-build-'))
+        self.assertEqual(Path(verifications[0]).parent, self.cache.directory.parent)
+        self.assertIsNone(verifications[1])
+        # The checkout's android/runtime/cache is never created for verification.
+        self.assertFalse((self.fixture_root / 'cache').exists())
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -784,7 +784,7 @@ class Members:
         packed = Path(work) / 'sources.tar.zst'
         with packed.open('wb') as stream:
             run(['zstd', '--single-thread', '-19', '--no-dictID', '--check', '--quiet', '--stdout', tar_path], stdout=stream, stderr=subprocess.PIPE)
-        verify_archive(packed)
+        verify_archive(packed, work)
         destination = input_path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         with packed.open('rb') as source, tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as output:
@@ -804,11 +804,11 @@ class Members:
         return {'archive': destination.name, 'sha256': digest(destination), 'size': destination.stat().st_size, 'members': len(self.files) + 1}
 
 
-def verify_archive(path):
+def verify_archive(path, work=None):
     require_tools('zstd')
-    verification_root = ROOT / 'cache'
-    verification_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='sources-verify-', dir=verification_root) as temporary:
+    # A build unpacks beside its own temporary files (under --cache); --verify uses the system temporary directory.
+    # Neither needs a writable checkout.
+    with tempfile.TemporaryDirectory(prefix='sources-verify-', dir=work) as temporary:
         unpacked = Path(temporary) / 'sources.tar'
         with unpacked.open('wb') as output:
             result = subprocess.run(['zstd', '--decompress', '--quiet', '--stdout', str(path)],
