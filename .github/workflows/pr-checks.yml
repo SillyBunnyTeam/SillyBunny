@@ -60,6 +60,12 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Install test dependencies
+        run: npm ci --ignore-scripts --prefix tests
+
+      - name: Run ESLint on tests
+        run: npm run lint --prefix tests
+
   run-tests:
     name: ✅ Run Unit Tests on PR
     runs-on: ubuntu-latest
