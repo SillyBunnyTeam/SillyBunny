@@ -20,9 +20,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SillyBunny">
 
+        <!-- adjustResize: the edge-to-edge window then receives the keyboard as IME insets,
+             which the screens pad for. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
