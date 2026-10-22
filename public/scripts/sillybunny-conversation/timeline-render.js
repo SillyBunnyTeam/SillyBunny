@@ -1594,6 +1594,13 @@ export function buildSettingsDrawerHtml() {
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i><span>Context Overrides</span></h4>
                 <div class="sb-conversation-field-stack">
+                    <label class="checkbox_label">
+                        <input id="sb_conv_lorebooks_enabled" type="checkbox" />
+                        <span data-sb-copy-placeholder="true">TODO(copy) <span class="sb-conversation-setting-scope">Global</span></span>
+                    </label>
+                    <p class="sb-conversation-field-hint" data-sb-copy-placeholder="true">TODO(copy)</p>
+                </div>
+                <div class="sb-conversation-field-stack">
                     <label for="sb_conv_lorebook_override">Lorebook Override</label>
                     <select id="sb_conv_lorebook_override" class="text_pole textarea_compact wide100p">
                         ${buildLorebookOptions(settings.lorebook_override)}
