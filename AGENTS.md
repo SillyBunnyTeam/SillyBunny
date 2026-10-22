@@ -17,6 +17,7 @@ Read the docs below in full before you start; they change more often than this f
 | Build, cache or generated-asset changes | `docs/frontend-build.md` | |
 | Install, launcher or update flows, or anything else README covers | `README.md` | Primary user-facing documentation for the project description, installation procedure, credits, and so on. |
 | Release, RC, hotfix, tagging or CI workflow work | `CONTRIBUTING.md` § Release process | |
+| Fixing bugs in known hotspots, or any non-trivial change | `lessons.md` | |
 
 ## Hard rules
 
