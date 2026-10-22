@@ -13,6 +13,18 @@ describe('pull request checks workflow', () => {
         expect(commands).toContain('npm run lint --prefix tests');
     });
 
+    test('boots the server under Node.js and keeps the Bun check name', () => {
+        expect(workflow.jobs['run-bun-checks'].name).toBe('✅ Check Bun Runtime');
+        const job = workflow.jobs['run-node-checks'];
+        expect(job.name).toBe('✅ Check Node Runtime');
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+
+        const bootStep = job.steps.find(step => step.name === 'Node boot smoke');
+        expect(bootStep.run).toContain('node server.js --browserLaunchEnabled=false');
+        expect(bootStep.run).toContain('curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/"');
+        expect(bootStep.env).toEqual({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' });
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = Object.values(workflow.jobs).flatMap(job => job.steps.map(step => step.uses).filter(Boolean));
         expect(uses.length).toBeGreaterThan(0);
