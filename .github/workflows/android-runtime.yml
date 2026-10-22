@@ -1,0 +1,246 @@
+name: Android Node Runtime
+
+# Builds Node for the Android APK with android/runtime/build-node.sh (plan §5.2, task 4.2), publishes each ABI to
+# GHCR with oras plus a build-provenance attestation, then opens a PR that pins the published digests in
+# android/runtime.lock (android/runtime/update-node-digests.py). Pull requests never trigger it: only staging pushes
+# that touch the Node pins or this pipeline, and manual runs. Publishing happens only from staging, and only the
+# SillyBunnyTeam repository runs it: on forks the plan job is skipped, and with it every job that needs it.
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - android/runtime.lock
+      - android/runtime/sources.lock
+      - android/runtime/patches/node/**
+      - android/runtime/build-node.sh
+      - .github/workflows/android-runtime.yml
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: lorum ipsum
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: android-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/sillybunnyteam/sillybunny-android-runtime
+
+jobs:
+  plan:
+    name: Plan
+    # Forks cannot publish to the SillyBunnyTeam package, so they skip the multi-hour builds as well.
+    if: github.repository == 'SillyBunnyTeam/SillyBunny'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Pushes build only while a digest is still null, so merging the digest PR does not start another build.
+      # update-node-digests.py --reset nulls them after a Node version, patch-series or build-node.sh change.
+      - name: Check the Node pins
+        id: plan
+        run: |
+          python3 -B android/runtime/update-node-digests.py --plan > "$RUNNER_TEMP/plan.json"
+          cat "$RUNNER_TEMP/plan.json"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(jq -r .needsBuild "$RUNNER_TEMP/plan.json")" = true ]; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build Node (${{ matrix.abi }})
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    # S2.1 estimates 2-4 h per ABI on 4 vCPUs; GitHub-hosted jobs stop at 6 h.
+    timeout-minutes: 330
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - arm64-v8a
+          - armeabi-v7a
+          - x86_64
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # g++-multilib provides the i386 libraries the armeabi-v7a host tools link against (S2.1 §6).
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential python3 make git curl unzip patch xz-utils gpgv g++-multilib
+
+      # Fetches the pinned Node tarball (checked against the signed SHASUMS256.txt) and the pinned NDK zip, applies
+      # the patch series, configures with S2.1's recipe, builds in a fresh tree, strips and audits libnode.so.
+      - name: Build libnode.so
+        env:
+          ABI: ${{ matrix.abi }}
+          NODE_BUILD_JOBS: '4'
+          NODE_BUILD_DIR: ${{ runner.temp }}/node-build
+          NODE_CACHE_DIR: ${{ runner.temp }}/node-cache
+          NODE_REQUIRE_SIGNATURE: '1'
+        run: bash android/runtime/build-node.sh "$ABI" "$RUNNER_TEMP/node-out/$ABI"
+
+      - name: Upload libnode.so
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: node-${{ matrix.abi }}
+          path: ${{ runner.temp }}/node-out/${{ matrix.abi }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to GHCR
+    needs:
+      - plan
+      - build
+    if: >-
+      needs.plan.outputs.build == 'true' && github.ref == 'refs/heads/staging'
+      && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    concurrency:
+      group: android-runtime-publish
+      cancel-in-progress: false
+    outputs:
+      published: ${{ steps.push.outputs.published }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: node-*
+          path: ${{ runner.temp }}/node-out
+
+      - name: Set up oras
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.5/oras_1.3.5_linux_amd64.tar.gz
+          checksum: f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Re-audits each download, checks it against its node-build.json, pushes both files under the lock's tag and
+      # records the manifest digest oras exported, cross-checked against the registry.
+      - name: Push each ABI
+        id: push
+        run: |
+          plan="$RUNNER_TEMP/plan.json"
+          python3 -B android/runtime/update-node-digests.py --plan > "$plan"
+          published='{}'
+          for abi in $(jq -r '.abis | keys[]' "$plan"); do
+            dir="$RUNNER_TEMP/node-out/node-$abi"
+            repository=$(jq -r --arg abi "$abi" '.abis[$abi].repository' "$plan")
+            tag=$(jq -r --arg abi "$abi" '.abis[$abi].tag' "$plan")
+            test "$repository" = "$IMAGE"
+            python3 -B android/runtime/fetch-node.py --audit "$abi=$dir/libnode.so" > /dev/null
+            sha256=$(sha256sum "$dir/libnode.so" | cut -d ' ' -f 1)
+            size=$(stat -c %s "$dir/libnode.so")
+            test "$(jq -r '[.abi, .tag, .libnode.sha256, .libnode.size] | map(tostring) | join(" ")' "$dir/node-build.json")" = "$abi $tag $sha256 $size"
+            (cd "$dir" && oras push --artifact-type application/vnd.sillybunnyteam.android.node.v1 \
+              --export-manifest manifest.json "$repository:$tag" \
+              libnode.so:application/vnd.sillybunnyteam.android.node.libnode \
+              node-build.json:application/vnd.sillybunnyteam.android.node.build.v1+json)
+            digest="sha256:$(sha256sum "$dir/manifest.json" | cut -d ' ' -f 1)"
+            test "$(oras resolve "$repository:$tag")" = "$digest"
+            published=$(jq -c --arg abi "$abi" --arg repository "$repository" --arg tag "$tag" --arg digest "$digest" \
+              --arg sha256 "$sha256" --argjson size "$size" \
+              '. + {($abi): {repository: $repository, tag: $tag, digest: $digest, sha256: $sha256, size: $size}}' <<< "$published")
+            echo "digest_${abi//-/_}=$digest" >> "$GITHUB_OUTPUT"
+          done
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+
+      - name: Attest arm64-v8a
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest_arm64_v8a }}
+          push-to-registry: true
+
+      - name: Attest armeabi-v7a
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest_armeabi_v7a }}
+          push-to-registry: true
+
+      - name: Attest x86_64
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest_x86_64 }}
+          push-to-registry: true
+
+  update-lock:
+    name: Pin published digests
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: android-runtime-lock-pr
+      cancel-in-progress: false
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Rewrites only binaries.<abi>.digest/sha256/size in runtime.lock and runtimeLockSha256 in sources.lock.
+      # The bot owns the run's branch: a re-run force-pushes its new commit there, and the PR is opened only once.
+      - name: Open the digest PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISHED: ${{ needs.publish.outputs.published }}
+        run: |
+          printf '%s\n' "$PUBLISHED" > "$RUNNER_TEMP/published.json"
+          python3 -B android/runtime/update-node-digests.py --published "$RUNNER_TEMP/published.json" > "$RUNNER_TEMP/update.json"
+          cat "$RUNNER_TEMP/update.json"
+          if [ "$(jq -r .changed "$RUNNER_TEMP/update.json")" != true ]; then
+            exit 0
+          fi
+          branch="android-runtime/node-digests-$GITHUB_RUN_ID"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch --create "$branch"
+          git add android/runtime.lock android/runtime/sources.lock
+          git commit --message 'chore(android): pin published Node runtime digests'
+          git push --force origin "$branch"
+          open=$(gh pr list --head "$branch" --state open --json number --jq length)
+          if [ "$open" = 0 ]; then
+            gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title 'lorum ipsum' --body 'lorum ipsum'
+          fi
