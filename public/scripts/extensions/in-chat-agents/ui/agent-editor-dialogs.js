@@ -254,6 +254,7 @@ export function createAgentEditorDialogs({
                     okButton: t`Apply`,
                     cancelButton: t`Discard`,
                     title: t`Generate Kit`,
+                    tier: 'window',
                     wide: true,
                     large: true,
                     customButtons: [

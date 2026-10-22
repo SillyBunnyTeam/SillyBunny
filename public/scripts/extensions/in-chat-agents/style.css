@@ -138,8 +138,9 @@
 .ica--prompt-preview pre {
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: min(60vh, 520px);
-    overflow: auto;
+    overflow-wrap: anywhere;
+    max-height: none;
+    overflow: visible;
     margin: 10px 0 0;
     padding: 12px;
     border-radius: 10px;
@@ -199,12 +200,48 @@
 .ica--tracker-preview-frame {
     margin-top: 8px;
     padding: 12px;
-    max-height: min(42vh, 420px);
-    overflow: auto;
+    max-height: none;
+    overflow: visible;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #555) 76%, transparent);
     border-radius: var(--sb-radius-md, 12px);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 46%, transparent);
-    -webkit-overflow-scrolling: touch;
+}
+
+.ica--tracker-preview-frame pre {
+    max-height: none;
+    overflow: visible;
+    overflow-wrap: anywhere;
+}
+
+.ica--tracker-preview-prompt,
+.ica--tracker-preview-extraction {
+    margin: 0;
+    padding: 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ica-transform-diff {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+dialog.popup.sb-dialog--window .ica-transform-diff {
+    max-height: none;
+    overflow: visible;
+}
+
+.ica--post-main-intercept-review-output {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
+    max-height: none;
+    overflow: visible;
 }
 
 .ica--tracker-preview-source {

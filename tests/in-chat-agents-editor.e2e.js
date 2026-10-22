@@ -1159,13 +1159,22 @@ for (const width of [1440, 390]) {
                 exact: true,
             }).click();
             await expect(dialog.locator('.sb-dialog__title')).toHaveText('Generate Kit');
+            await expect(dialog).toHaveClass(/sb-dialog--window/);
+            await expect(dialog.locator('.popup-button-ok')).toHaveText('Apply');
+            await expect(dialog.locator('.popup-button-cancel')).toHaveText('Discard');
+            await expect(dialog.locator('.sb-dialog__bottom-bar').getByText('Regenerate', { exact: true })).toBeVisible();
             await expect(dialog.locator('#ica--tracker-builder-extra-instructions')).toBeVisible();
             await expect(dialog.locator('.editor_maximize, .ica--textarea-fullscreen-toggle')).toHaveCount(0);
+            await dialog.locator('.popup-content').evaluate(node => node.id = 'qa-tracker-preview-body');
             await dialog.evaluate(node => node.dataset.qaTrackerPreview = 'same-popup');
             await dialog.locator('#ica--tracker-builder-extra-instructions').fill('QA regeneration');
             await dialog.getByText('Regenerate', { exact: true }).click();
             await expect.poll(() => page.evaluate(() => window.__editorModelCalls)).toBe(3);
             await expect(dialog).toHaveAttribute('data-qa-tracker-preview', 'same-popup');
+            await expect(dialog.locator('.popup-content')).toHaveAttribute('id', 'qa-tracker-preview-body');
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Generate Kit');
+            await expect(dialog.locator('.sb-dialog__bottom-bar').getByText('Regenerate', { exact: true })).toBeVisible();
+            await expect(dialog.locator('#ica--tracker-builder-extra-instructions')).toHaveValue('QA regeneration');
             await acceptPopup(dialog);
             await expect(editor.prompt).toHaveValue('Mock tracker prompt');
             expect(editor.saves()).toHaveLength(0);

@@ -1,6 +1,7 @@
 /* global document, window */
 import { expect, test } from '@playwright/test';
 import { dismissOnboardingIfPresent, dismissOpenDialogIfPresent } from './chat-scroll-regression-helpers.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -239,3 +240,47 @@ test('Stop cancels a real auxiliary request without saving a late summary', asyn
     expect(state.writes).toEqual([]);
     await expect(page.locator('#pf--summary-create')).toBeEnabled();
 });
+
+for (const width of [1440, 390]) {
+    test(`${width}px Pathfinder editor keeps its existing Close result in a scrollable Window`, async ({ page, baseURL }) => {
+        const state = await openSettings(page, baseURL);
+        await protectMaintainerServer(page);
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        await page.evaluate(async () => {
+            const ui = await import('/scripts/extensions/in-chat-agents/pathfinder-settings-ui.js');
+            const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+            const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+            const panel = await ui.openPathfinderSettings(store.getAgentById('pf-e2e-agent'));
+            const popup = new Popup(panel, POPUP_TYPE.TEXT, '', {
+                okButton: 'Close',
+                tier: 'window',
+                title: 'Pathfinder',
+                wide: true,
+                large: true,
+                onClosing: () => ui.canClosePathfinderSettings(panel),
+            });
+            window.__pathfinderWindowResult = popup.show();
+        });
+        const dialog = page.locator('dialog[open]');
+        await expect(dialog).toHaveClass(/sb-dialog--window/);
+        await expect(dialog.locator('.sb-dialog__title')).toHaveText('Pathfinder');
+        await expect(dialog.locator('.popup-button-close')).toBeVisible();
+        await expect(dialog.locator('.popup-button-ok')).toBeHidden();
+        const body = dialog.locator('.popup-content');
+        const lastSection = dialog.locator('.pf--section').last();
+        for (const header of await dialog.locator('.pf--section-collapsible > .pf--collapsible-header').all()) {
+            if (await header.getAttribute('aria-expanded') === 'false') await header.click();
+        }
+        expect(await dialog.locator('#pf--settings').evaluate(node => getComputedStyle(node).overflowY)).toBe('visible');
+        await expect.poll(() => body.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+        await body.evaluate(node => node.scrollTop = node.scrollHeight);
+        await expect.poll(() => lastSection.evaluate(node => {
+            const bodyRect = node.closest('.popup-content').getBoundingClientRect();
+            return node.getBoundingClientRect().bottom <= bodyRect.bottom + 1;
+        })).toBe(true);
+        await dialog.locator('.popup-button-close').click();
+        await expect(dialog).toHaveCount(0);
+        expect(await page.evaluate(async () => await window.__pathfinderWindowResult)).toBe(1);
+        expect(state.saves).toEqual([]);
+    });
+}

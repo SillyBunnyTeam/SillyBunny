@@ -1401,6 +1401,8 @@ async function previewCompanionFeedbackPrompt(agent) {
     );
 
     await new Popup(previewHtml, POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`Preview Feedback`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -1431,6 +1433,8 @@ async function previewPreGenerationPrompt(agent, promptOverride = null) {
     );
 
     await new Popup(previewHtml, POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`Preview Prompt in Context`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -2568,12 +2572,12 @@ function buildTrackerPreviewPopupContent(generatedKit, sampleText, extraInstruct
             <div class="ica--tracker-preview-slot"></div>
             <div class="ica--editor-section ica--regex-subsection">
                 <strong>Prompt</strong>
-                <pre style="white-space:pre-wrap;max-height:220px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.prompt)}</pre>
+                <pre class="ica--tracker-preview-prompt">${escapeHtml(generatedKit.prompt)}</pre>
             </div>
             <div class="ica--editor-section ica--regex-subsection">
                 <strong>Extraction</strong>
                 <div class="ica--regex-note"><b>Variable:</b> <code>${escapeHtml(generatedKit.postProcess.extractVariable)}</code></div>
-                <pre style="white-space:pre-wrap;max-height:120px;overflow-y:auto;padding:10px;border:1px solid var(--SmartThemeBorderColor);border-radius:8px;">${escapeHtml(generatedKit.postProcess.extractPattern)}</pre>
+                <pre class="ica--tracker-preview-extraction">${escapeHtml(generatedKit.postProcess.extractPattern)}</pre>
             </div>
             <div class="ica--editor-section ica--regex-subsection">
                 <strong>Regex Beautifiers</strong>
@@ -2990,6 +2994,8 @@ async function openPromptTransformHistoryPopup(messageIndex) {
     });
 
     await new Popup(html, POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`View agent changes`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -3192,6 +3198,8 @@ async function openPathfinderEditor(agent) {
     try {
         await new Popup(settingsPanel, POPUP_TYPE.TEXT, '', {
             okButton: 'Close',
+            tier: 'window',
+            title: t`Pathfinder`,
             wide: true,
             large: true,
             onClosing: () => canClosePathfinderSettings(settingsPanel),

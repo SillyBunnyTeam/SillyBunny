@@ -330,6 +330,10 @@ describe('in-chat agent post-processing runner', () => {
             power_user: { sysprompt: { enabled: true, content: 'Global system prompt text.' } },
         }));
 
+        await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+            t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+        }));
+
         await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
             POPUP_RESULT: {
                 AFFIRMATIVE: 1,

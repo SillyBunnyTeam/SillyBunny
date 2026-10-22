@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -159,25 +160,76 @@ for (const width of [1440, 390]) {
     });
 }
 
-test('context and feedback previews use the document icon and context wording', async ({ page, baseURL }) => {
-    const { root, saves, errors } = await openAgents(page, baseURL);
-    const row = root.locator('.ica-agent-row[data-agent-id="qa-bravo"]');
-    await menu(page, row, 'Agent Menu');
-    const preview = page.getByRole('menuitem', { name: 'Preview Prompt in Context', exact: true });
-    await expect(preview.locator(':scope > i')).toHaveClass(/fa-file-lines/);
-    await expect(page.getByRole('menuitem', { name: 'Preview Prompt', exact: true })).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await page.evaluate(async () => {
-        const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
-        store.getAgentById('qa-bravo').execution = 'companion';
-        (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+for (const width of [1440, 390]) {
+    test(`${width}px prompt and feedback previews use Window frames and one scroll area`, async ({ page, baseURL }) => {
+        const { root, saves, errors } = await openAgents(page, baseURL, width);
+        await protectMaintainerServer(page);
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        await page.evaluate(async () => {
+            const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+            const app = await import('/script.js');
+            const promptAgent = store.getAgentById('qa-bravo');
+            promptAgent.prompt = `${Array.from({ length: 150 }, (_, index) => `Prompt line ${index + 1}`).join('\n')}\nlast prompt sentinel`;
+            app.chat.splice(0, app.chat.length, {
+                name: 'QA Assistant',
+                is_user: false,
+                mes: 'Preview feedback fixture.',
+                extra: {
+                    inChatAgentCompanionResults: {
+                        'qa-bravo': {
+                            status: 'done',
+                            content: `${Array.from({ length: 80 }, (_, index) => `Feedback line ${index + 1}`).join('\n')}\nlast feedback sentinel`,
+                        },
+                    },
+                },
+            });
+            promptAgent.execution = 'inline';
+            (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+        });
+
+        const row = root.locator('.ica-agent-row[data-agent-id="qa-bravo"]');
+        await menu(page, row, 'Agent Menu');
+        const preview = page.getByRole('menuitem', { name: 'Preview Prompt in Context', exact: true });
+        await expect(preview.locator(':scope > i')).toHaveClass(/fa-file-lines/);
+        await expect(page.getByRole('menuitem', { name: 'Preview Prompt', exact: true })).toHaveCount(0);
+        await preview.click();
+        const promptDialog = page.locator('dialog[open]');
+        await expect(promptDialog).toHaveClass(/sb-dialog--window/);
+        await expect(promptDialog.locator('.sb-dialog__title')).toHaveText('Preview Prompt in Context');
+        await expect(promptDialog.locator('.popup-button-close')).toBeVisible();
+        await expect(promptDialog.locator('.popup-button-ok')).toBeHidden();
+        const promptBody = promptDialog.locator('.popup-content');
+        await expect(promptBody.locator('pre')).toContainText('last prompt sentinel');
+        await expect.poll(() => promptBody.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+        expect(await promptBody.locator('pre').evaluate(node => getComputedStyle(node).overflowY)).toBe('visible');
+        await promptBody.evaluate(node => node.scrollTop = node.scrollHeight);
+        expect(await promptBody.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        await promptDialog.locator('.popup-button-close').click();
+        await expect(promptDialog).toHaveCount(0);
+
+        await page.evaluate(async () => {
+            const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+            const agent = store.getAgentById('qa-bravo');
+            agent.execution = 'companion';
+            agent.category = 'companion';
+            agent.companion.feedback.enabled = true;
+            (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+        });
+        await menu(page, row, 'Agent Menu');
+        const feedback = page.getByRole('menuitem', { name: 'Preview Feedback', exact: true });
+        await expect(feedback.locator(':scope > i')).toHaveClass(/fa-file-lines/);
+        await feedback.click();
+        const feedbackDialog = page.locator('dialog[open]');
+        await expect(feedbackDialog).toHaveClass(/sb-dialog--window/);
+        await expect(feedbackDialog.locator('.sb-dialog__title')).toHaveText('Preview Feedback');
+        await expect(feedbackDialog.locator('.popup-button-close')).toBeVisible();
+        await expect(feedbackDialog.locator('.ica--prompt-preview pre')).toContainText('last feedback sentinel');
+        await feedbackDialog.locator('.popup-button-close').click();
+        await expect(feedbackDialog).toHaveCount(0);
+        expect(saves()).toHaveLength(0);
+        expect(errors).toEqual([]);
     });
-    await menu(page, row, 'Agent Menu');
-    await expect(page.getByRole('menuitem', { name: 'Preview Feedback', exact: true }).locator(':scope > i'))
-        .toHaveClass(/fa-file-lines/);
-    expect(saves()).toHaveLength(0);
-    expect(errors).toEqual([]);
-});
+}
 
 test('search header toggle, Ctrl+F, type-to-search and Escape follow the prompt list pattern', async ({ page, baseURL }) => {
     const { root, saves } = await openAgents(page, baseURL);
