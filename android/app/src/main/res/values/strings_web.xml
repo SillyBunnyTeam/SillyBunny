@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WebView screen (plan §4.5). Placeholder copy until humans write it. -->
+    <string name="web_dialog_ok">lorum ipsum</string>
+    <string name="web_dialog_cancel">lorum ipsum</string>
+    <string name="web_dialog_leave_title">lorum ipsum</string>
+    <string name="web_dialog_leave">lorum ipsum</string>
+    <string name="web_dialog_stay">lorum ipsum</string>
+    <string name="web_version_warning">lorum ipsum</string>
+    <string name="web_open_in_browser">lorum ipsum</string>
+    <string name="web_update_webview">lorum ipsum</string>
+    <string name="web_dismiss">lorum ipsum</string>
+    <string name="web_load_failed">lorum ipsum</string>
+    <string name="web_retry">lorum ipsum</string>
+    <string name="web_no_browser">lorum ipsum</string>
+</resources>
