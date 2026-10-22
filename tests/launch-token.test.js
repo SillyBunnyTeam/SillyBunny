@@ -11,6 +11,7 @@ import createLaunchTokenMiddleware, {
     createHandoffCode,
     HANDOFF_MAX_AGE_MS,
     HANDOFF_NONCE_LIMIT,
+    HANDOFF_PAGE,
     HANDOFF_PATH,
     HEALTH_PATH,
     LAUNCH_COOKIE_NAME,
@@ -222,18 +223,22 @@ describe('launch-token handoff format', () => {
 });
 
 describe('launch-token browser handoff', () => {
-    test('sets only the session launch cookie and redirects without needing a cookie', async () => {
+    test('sets only the session launch cookie and moves to / without needing a cookie', async () => {
         const baseUrl = await serve({ token, now: () => now });
         const code = createHandoffCode(token, { expiry: now + 30_000 });
         const response = await request(baseUrl, `/__sillybunny/handoff?c=${code}`);
 
-        expect(response.status).toBe(302);
-        expect(response.headers.location).toBe('/');
+        // Not a redirect: Chrome drops the SameSite=Strict cookie on the redirect of a navigation another app started.
+        expect(response.status).toBe(200);
+        expect(response.headers.location).toBeUndefined();
+        expect(response.headers['content-type']).toBe('text/html; charset=utf-8');
         expect(response.headers['cache-control']).toBe('no-store');
         expect(response.headers['set-cookie']).toEqual([
             `sillybunny_launch=${token}; Path=/; HttpOnly; SameSite=Strict`,
         ]);
-        expect(response.body).toBe('');
+        expect(response.body).toBe(HANDOFF_PAGE);
+        expect(response.body).toContain('<meta http-equiv="refresh" content="0;url=/">');
+        expect(response.body).not.toContain(token);
         expect(code).not.toContain(token);
         const cookie = response.headers['set-cookie'][0].split(';')[0];
         expect((await request(baseUrl, '/', { cookie })).status).toBe(200);
@@ -255,7 +260,7 @@ describe('launch-token browser handoff', () => {
         const baseUrl = await serve({ token, now: () => now });
         const code = createHandoffCode(token, { expiry: now + age });
 
-        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(302);
+        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(200);
     });
 
     test('rejects a tampered MAC without consuming the nonce', async () => {
@@ -265,7 +270,7 @@ describe('launch-token browser handoff', () => {
         bytes[24] ^= 1;
 
         expectForbidden(await request(baseUrl, `/__sillybunny/handoff?c=${bytes.toString('base64url')}`));
-        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(302);
+        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(200);
     });
 
     test('rejects a code signed by another launch token', async () => {
@@ -313,7 +318,7 @@ describe('launch-token browser handoff', () => {
         const code = createHandoffCode(token, { nonce, expiry: now + 30_000 });
         const replacement = createHandoffCode(token, { nonce, expiry: now + 40_000 });
 
-        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(302);
+        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(200);
         expectForbidden(await request(baseUrl, `/__sillybunny/handoff?c=${code}`));
         expectForbidden(await request(baseUrl, `/__sillybunny/handoff?c=${replacement}`));
     });
@@ -324,11 +329,11 @@ describe('launch-token browser handoff', () => {
         const nonce = Buffer.alloc(16, 2);
         const code = createHandoffCode(token, { nonce, expiry: now + 1 });
 
-        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(302);
+        expect((await request(baseUrl, `/__sillybunny/handoff?c=${code}`)).status).toBe(200);
         currentTime += 1;
         expectForbidden(await request(baseUrl, '/__sillybunny/handoff?c=malformed'));
         const replacement = createHandoffCode(token, { nonce, expiry: currentTime + 30_000 });
-        expect((await request(baseUrl, `/__sillybunny/handoff?c=${replacement}`)).status).toBe(302);
+        expect((await request(baseUrl, `/__sillybunny/handoff?c=${replacement}`)).status).toBe(200);
         expectForbidden(await request(baseUrl, `/__sillybunny/handoff?c=${code}`));
     });
 
@@ -346,14 +351,14 @@ describe('launch-token browser handoff', () => {
             return createHandoffCode(token, { nonce, expiry: now + 1 });
         });
         for (const code of codes) {
-            expect(submit(code).statusCode).toBe(302);
+            expect(submit(code).statusCode).toBe(200);
         }
         const extra = createHandoffCode(token, { expiry: now + 30_000 });
         expect(submit(extra).statusCode).toBe(403);
         expect(submit(codes[0]).statusCode).toBe(403);
 
         currentTime += 1;
-        expect(submit(extra).statusCode).toBe(302);
+        expect(submit(extra).statusCode).toBe(200);
     });
 });
 

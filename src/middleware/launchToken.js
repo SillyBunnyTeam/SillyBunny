@@ -10,6 +10,8 @@ export const HEALTH_PATH = '/__sillybunny/health';
 export const HANDOFF_PATH = '/__sillybunny/handoff';
 export const HANDOFF_MAX_AGE_MS = 60_000;
 export const HANDOFF_NONCE_LIMIT = 1024;
+// Moves to / with a same-origin navigation; the link covers browsers with meta refresh turned off.
+export const HANDOFF_PAGE = '<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><a href="/">lorum ipsum</a>\n';
 
 function handoffMac(tokenBytes, payload) {
     return crypto.createHmac('sha256', tokenBytes)
@@ -118,11 +120,13 @@ export default function createLaunchTokenMiddleware({ token = process.env.SILLYB
                 return rejectRequest(res);
             }
 
-            res.statusCode = 302;
-            res.setHeader('Location', '/');
+            // A page rather than a 302: the browser opens this URL for another app (Open in browser), and Chrome
+            // does not send a SameSite=Strict cookie on that navigation's redirect, so a 302 to / got the 403.
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.setHeader('Cache-Control', 'no-store');
             res.setHeader('Set-Cookie', `${LAUNCH_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Strict`);
-            return res.end();
+            return res.end(HANDOFF_PAGE);
         }
 
         if (!hasLaunchCookie(req.headers.cookie, tokenBytes)) {
