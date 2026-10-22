@@ -1,21 +1,35 @@
-// Runtime packaging for the SillyBunny APK (plan §2.1, §4.1, §4.9; tasks 5.2 and 5.3).
+// Runtime packaging for the SillyBunny APK (plan §2.1, §4.1, §4.6, §4.9, §5.3; tasks 4.5, 5.2 and 5.3).
 //
 // Staging contract. Every input is generated and ignored by git, never committed:
 // - android/runtime/out/<abi>/jniLibs/*.so and out/<abi>/runtime-files.json: Termux natives
 //   (android/runtime/fetch-termux.sh, which replaces the whole out/ directory on every run).
 // - android/runtime/out/assets/runtime/{certs/cert.pem,git-core-links.txt,git-templates/}: shared assets.
-// - android/runtime/out/assets/THIRD_PARTY_NOTICES and .json: notices (notices.py), packaged when present;
-//   release and -PrequireRuntime builds require them.
+// - android/runtime/out/licenses/<package>/: the Termux license files (fetch-termux.sh), for the notices.
 // - <sillybunny.nodeDir, default android/runtime/node-out>/<abi>/libnode.so plus node.json:
 //   {"schema":1,"version":"24.22.0","abis":{"<abi>":{"sha256":"<hex>","size":<bytes>}},"source":{...}}
 // - <sillybunny.npmDir, default android/runtime/npm-out>/npm.zip plus npm.json:
 //   {"schema":1,"version":"11.19.1","sha256":"<hex>","size":<bytes>,"files":<n>,"contentBytes":<bytes>,
 //    "source":{...}}
+// - <sillybunny.nodeTarball, default android/runtime/cache/sources/objects/<sources.lock node.source.sha256>>:
+//   the pinned Node source tarball, for the notices (android/runtime/build-sources.sh downloads, authenticates
+//   and keeps it there).
 //
-// A debuggable variant packages every split ABI whose inputs are complete. Without inputs it still
-// builds, with a warning, no runtime payload and BuildConfig.HAS_RUNTIME=false, so builds from
-// `git archive` copies need neither the inputs nor an NDK. Non-debuggable (release) variants, and every
-// variant under -PrequireRuntime, need every input for every split ABI and fail clearly otherwise.
+// Order (p45b): fetch-termux.sh, fetch-node.py, build-npm.py and build-sources.sh stage the inputs; then Gradle
+// generates the notices and builds. THIRD_PARTY_NOTICES and THIRD_PARTY_NOTICES.json are generated, never staged:
+// generate<Variant>SillyBunnyNotices runs android/runtime/notices.py over the Termux license files, the Node
+// tarball (LICENSE and deps/npm), the committed android/runtime/licenses/npm texts and the Android library list
+// that notices.gradle.kts generates, so fetch-termux.sh replacing out/ cannot drop them.
+//
+// A debuggable variant packages every split ABI whose inputs are complete, and the notices when their inputs
+// exist. Without inputs it still builds, with a warning, no runtime payload and BuildConfig.HAS_RUNTIME=false,
+// so builds from `git archive` copies need neither the inputs nor an NDK. Non-debuggable (release) variants, and
+// every variant under -PrequireRuntime, need every input for every split ABI, the notices inputs included, and
+// fail clearly otherwise. The notices run android/runtime/notices.py, which needs a POSIX host (Linux or macOS;
+// WSL on Windows), so on a Windows host they count as missing.
+// Every packaged node.json and npm.json must match android/runtime.lock's node and npm pins. A build that requires
+// the runtime also fails when npm.json names no source tarball while npm is pinned, and when node.json names none
+// once the lock pins a Node binary it packages; a debuggable build only warns about a missing source tarball.
+// What the lock leaves unpinned only warns, because the release decision refuses unpinned releases.
 // -Psillybunny.ndkDir=<dir> points the trampoline build at an NDK outside the SDK; its revision must
 // equal android.ndkVersion.
 
@@ -196,6 +210,83 @@ abstract class BuildSillyBunnyTrampoline : DefaultTask() {
     }
 }
 
+/**
+ * Runs android/runtime/notices.py (p45b): the Termux license files, the pinned Node source tarball (its LICENSE,
+ * src/node_version.h and deps/npm, checked against android/runtime/sources.lock), the committed npm license texts
+ * and the variant's Android library list give THIRD_PARTY_NOTICES and its index THIRD_PARTY_NOTICES.json.
+ */
+abstract class GenerateSillyBunnyNotices : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val script: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val runtimeLock: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sourcesLock: RegularFileProperty
+
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val termuxLicenses: DirectoryProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val nodeTarball: RegularFileProperty
+
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val npmLicenses: DirectoryProperty
+
+    /** notices.gradle.kts's output: android-libraries.json and the license texts it names. */
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val androidLibraries: DirectoryProperty
+
+    @get:Input
+    abstract val requireNode: Property<Boolean>
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    @TaskAction
+    fun generate() {
+        val out = output.get().asFile.also { it.deleteRecursively(); it.mkdirs() }
+        val arguments = mutableListOf(
+            "python3", "-I", "-B", script.get().asFile.path,
+            "--runtime-lock", runtimeLock.get().asFile.path,
+            "--sources-lock", sourcesLock.get().asFile.path,
+            "--licenses-root", termuxLicenses.get().asFile.path,
+            "--node-tarball", nodeTarball.get().asFile.path,
+            "--npm-licenses", npmLicenses.get().asFile.path,
+            "--android-libraries", androidLibraries.get().file(ANDROID_LIBRARIES).asFile.path,
+            "--output-root", File(out, "assets").path,
+        )
+        if (requireNode.get()) arguments += "--require-node"
+        val errors = java.io.ByteArrayOutputStream()
+        val result = execOperations.exec {
+            commandLine(arguments)
+            errorOutput = errors
+            isIgnoreExitValue = true
+        }
+        if (result.exitValue != 0) {
+            throw GradleException(
+                "android/runtime/notices.py failed (exit ${result.exitValue}): ${errors.toString(Charsets.UTF_8).trim()}",
+            )
+        }
+    }
+
+    companion object {
+        // Must equal LibraryNotices.FILE in notices.gradle.kts.
+        const val ANDROID_LIBRARIES = "android-libraries.json"
+    }
+}
+
 /** Verifies the runtime inputs and stages the per-ABI natives, the runtime assets and runtime-manifest.json. */
 abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
     @get:Input
@@ -203,6 +294,20 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
 
     @get:Input
     abstract val missing: ListProperty<String>
+
+    /** generate<Variant>SillyBunnyNotices's output; unset when a debuggable build lacks the notices inputs. */
+    @get:Optional
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val noticesDirectory: DirectoryProperty
+
+    /** p45b: what a debuggable build lacks for the notices when [noticesDirectory] is unset, for its warning. */
+    @get:Input
+    abstract val noticesMissing: ListProperty<String>
+
+    /** p45b: true when the build requires the runtime, so pinned payloads must name their source tarball. */
+    @get:Input
+    abstract val attributionRequired: Property<Boolean>
 
     @get:Internal
     abstract val termuxDirectory: DirectoryProperty
@@ -245,8 +350,9 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
 
         val lockFile = runtimeLock.get().asFile
         val lockSha256 = sha256(lockFile).sha256
+        val lock = parseObject(lockFile)
         val termuxVersions = sortedMapOf<String, String>()
-        (parseObject(lockFile).child("termux", lockFile)["packages"] as? List<*>)?.forEach { item ->
+        (lock.child("termux", lockFile)["packages"] as? List<*>)?.forEach { item ->
             val record = item as? Map<*, *> ?: return@forEach
             termuxVersions[record.string("name", lockFile)] = record.string("version", lockFile)
         }
@@ -256,6 +362,10 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
         val nodeVersion = node.string("version", "node.json")
         val nodeAbis = node.child("abis", "node.json")
         val nodeSource = node.child("source", "node.json")
+        // p45b: read npm.json before the per-ABI checks, so the pin problems are reported with theirs.
+        val npmJsonFile = File(npmDir, "npm.json")
+        val npm = parseObject(npmJsonFile)
+        checkPins(lock, node, npm, abis.get(), attributionRequired.get(), problems)
 
         val natives = sortedMapOf<String, Any?>()
         var sharedAssets: Map<String, RuntimeRecord>? = null
@@ -327,9 +437,7 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
             "git-core-links.txt does not hold gitCoreLinkCount entries"
         }
 
-        val npmJsonFile = File(npmDir, "npm.json")
         val npmZip = File(npmDir, "npm.zip")
-        val npm = parseObject(npmJsonFile)
         problems.check(npm["schema"] == 1) { "npm.json: schema must be 1" }
         val npmRecord = RuntimeRecord(npm.sha256("sha256", npmJsonFile), npm.count("size", npmJsonFile))
         val npmFiles = npm.count("files", npmJsonFile)
@@ -350,13 +458,21 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
         assetRecords[NPM_ARCHIVE] = npmRecord
         npmJsonFile.copyTo(File(assets, NPM_JSON))
         assetRecords[NPM_JSON] = sha256(npmJsonFile)
+        // p45b: the notices come only from generate<Variant>SillyBunnyNotices, never from out/, which fetch-termux.sh
+        // replaces and which holds Termux's notices alone.
+        val notices = noticesDirectory.orNull?.asFile
+        if (notices == null) {
+            logger.warn(
+                "SillyBunny runtime: the APK ships without ${NOTICES.joinToString(" and ")}, because the notices " +
+                    "inputs are missing: ${noticesMissing.get().joinToString("; ")}.",
+            )
+        }
         NOTICES.forEach { name ->
-            val notice = File(termux, "assets/$name")
+            val notice = File(notices ?: return@forEach, "assets/$name")
+            problems.check(notice.isFile) { "$notice was not generated" }
             if (notice.isFile) {
                 notice.copyTo(File(assets, name))
                 assetRecords[name] = sha256(notice)
-            } else {
-                logger.warn("SillyBunny runtime: $notice is absent; the APK ships without it.")
             }
         }
         // `versions` stays a flat name-to-string map: Settings lists it as is.
@@ -393,6 +509,87 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
     }
 
     private fun recordJson(record: RuntimeRecord) = sortedMapOf("sha256" to record.sha256, "size" to record.size)
+
+    /**
+     * p45b: inputsHash covers android/runtime.lock, so the APK must carry exactly the Node and npm it pins. Each
+     * disagreement of node.json or npm.json with the lock's node and npm blocks is a problem that names the field,
+     * both values and the producer to rerun.
+     *
+     * When [attributionRequired] (a build that requires the runtime), a file that names no source tarball is a
+     * problem too: npm.json whenever npm is pinned, because the release decision counts npm as pinned by the Node
+     * tarball alone and npm.json's source is npm.zip's only tie to it; node.json once the lock pins a binary this
+     * build packages, because fetch-node.py's GHCR staging always names the tarball. One warning covers the rest:
+     * what the lock leaves unpinned (a null block, or a binary whose sha256 stays null until the runtime workflow
+     * first publishes, which the release decision refuses to release), and a missing source tarball in a debuggable
+     * build or in node.json while the binaries it packages are unpinned (the only Node builds before the first
+     * publish are local ones, such as S2.1's, that no node-build.json ties to the pinned tarball).
+     */
+    private fun checkPins(
+        lock: Map<*, *>,
+        node: Map<*, *>,
+        npm: Map<*, *>,
+        packaged: List<String>,
+        attributionRequired: Boolean,
+        problems: RuntimeProblems,
+    ) {
+        val unchecked = mutableListOf<String>()
+        fun compare(field: String, staged: Any?, pinField: String, pinned: Any?, producer: String) {
+            val same = if (staged is Number && pinned is Number) staged.toLong() == pinned.toLong() else staged == pinned
+            problems.check(same) { "$field is ${json(staged)}, but android/runtime.lock $pinField is ${json(pinned)}; rerun $producer" }
+        }
+        val nodePin = lock["node"] as? Map<*, *>
+        val tarballPin = nodePin?.get("source") as? Map<*, *>
+        fun checkSourceTarball(file: String, source: Any?, required: Boolean, producer: String) {
+            val tarball = (source as? Map<*, *>)?.get("tarball")
+            when {
+                tarball != null -> {
+                    val record = tarball as? Map<*, *>
+                    compare("$file source.tarball.filename", record?.get("filename"), "node.source.tarball", tarballPin?.get("tarball"), producer)
+                    compare("$file source.tarball.sha256", record?.get("sha256"), "node.source.tarballSha256", tarballPin?.get("tarballSha256"), producer)
+                }
+                required -> problems.add(
+                    "$file source.tarball is absent, but android/runtime.lock node.source.tarball is ${json(tarballPin?.get("tarball"))} " +
+                        "(node.source.tarballSha256 ${json(tarballPin?.get("tarballSha256"))}); rerun $producer",
+                )
+                else -> unchecked += "$file source.tarball (absent)"
+            }
+        }
+        if (nodePin == null) {
+            unchecked += "node (null)"
+        } else {
+            compare("node.json version", node["version"], "node.version", nodePin["version"], FETCH_NODE)
+            val binaries = nodePin["binaries"] as? Map<*, *>
+            val binaryPinned = packaged.any { abi -> (binaries?.get(abi) as? Map<*, *>)?.get("sha256") != null }
+            checkSourceTarball("node.json", node["source"], attributionRequired && binaryPinned, FETCH_NODE)
+            val staged = node["abis"] as? Map<*, *>
+            packaged.forEach { abi ->
+                val pin = binaries?.get(abi) as? Map<*, *>
+                if (pin?.get("sha256") == null) {
+                    unchecked += "node.binaries.$abi.sha256 (null)"
+                } else {
+                    val record = staged?.get(abi) as? Map<*, *>
+                    compare("node.json abis.$abi.sha256", record?.get("sha256"), "node.binaries.$abi.sha256", pin["sha256"], FETCH_NODE)
+                    compare("node.json abis.$abi.size", record?.get("size"), "node.binaries.$abi.size", pin["size"], FETCH_NODE)
+                }
+            }
+        }
+        val npmPin = lock["npm"] as? Map<*, *>
+        if (npmPin == null) {
+            unchecked += "npm (null)"
+        } else {
+            compare("npm.json version", npm["version"], "npm.version", npmPin["version"], BUILD_NPM)
+            // "node" is the only npm source: the copy bundled in the pinned Node source tarball.
+            problems.check(npmPin["source"] == "node") { "android/runtime.lock npm.source is ${json(npmPin["source"])}; only \"node\" is supported" }
+            checkSourceTarball("npm.json", npm["source"], attributionRequired, BUILD_NPM)
+        }
+        if (unchecked.isNotEmpty()) {
+            logger.warn(
+                "SillyBunny runtime: not checked against android/runtime.lock, because it is unpinned or unattributed: " +
+                    "${unchecked.joinToString()}. A release build fails without a source tarball once npm, or the Node " +
+                    "binaries it packages, are pinned; the release decision refuses unpinned releases.",
+            )
+        }
+    }
 
     /**
      * Applies the app's npm.zip rules and limits (NpmArchive.open and parse), so an archive every device would
@@ -500,6 +697,8 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
         const val NPM_JSON = "runtime/npm.json"
         val NOTICES = listOf("THIRD_PARTY_NOTICES", "THIRD_PARTY_NOTICES.json")
         val TOOL_NATIVES = setOf("libnode.so", "libnpm.so", "libnpx.so")
+        const val FETCH_NODE = "android/runtime/fetch-node.py"
+        const val BUILD_NPM = "android/runtime/build-npm.py"
 
         // NpmArchive's limits.
         const val NPM_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
@@ -676,6 +875,14 @@ val runtimeNodeDir = providers.gradleProperty("sillybunny.nodeDir").orNull?.let 
 val runtimeNpmDir = providers.gradleProperty("sillybunny.npmDir").orNull?.let { rootProject.file(it) }
     ?: rootProject.file("runtime/npm-out")
 val runtimeNdkOverride = providers.gradleProperty("sillybunny.ndkDir").orNull?.let { rootProject.file(it) }
+
+// p45b: the pinned Node source tarball for the notices. build-sources.sh --require-node and build-npm.py keep it in
+// the shared download cache under its SHA-256, which android/runtime/sources.lock pins (fetch-node.py does so only
+// in build-node.sh's --build-inputs mode).
+val runtimeNodeTarball: File? = providers.gradleProperty("sillybunny.nodeTarball").orNull?.let { rootProject.file(it) }
+    ?: rootProject.file("runtime/sources.lock").takeIf { it.isFile }?.let { lock ->
+        (((JsonSlurper().parse(lock) as? Map<*, *>)?.get("node") as? Map<*, *>)?.get("source") as? Map<*, *>)?.get("sha256") as? String
+    }?.let { rootProject.file("runtime/cache/sources/objects/$it") }
 val trampolineTargets = mapOf(
     "arm64-v8a" to "aarch64-linux-android",
     "armeabi-v7a" to "armv7a-linux-androideabi",
@@ -692,10 +899,25 @@ fun missingSharedRuntimeInputs(): List<String> = buildList {
     }
 }
 
-// Debug builds only warn when the notices are absent; a build that requires the runtime needs them too.
-fun missingNotices(): List<String> = PrepareSillyBunnyRuntime.NOTICES
-    .filterNot { File(runtimeTermuxDir, "assets/$it").isFile }
-    .map { "$it in $runtimeTermuxDir/assets (run android/runtime/notices.py)" }
+// p45b: android/runtime/notices.py runs only on a POSIX host: it locks its output with fcntl and refuses paths
+// holding a backslash. Everything else here, BuildSillyBunnyTrampoline included, still works on a Windows host.
+val noticesHostSupported = !System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows")
+
+// p45b: a debuggable build only warns when one of these is missing; a build that requires the runtime fails on it.
+fun missingNoticeInputs(): List<String> = buildList {
+    if (!noticesHostSupported) {
+        add("a POSIX host for android/runtime/notices.py (Linux or macOS; on Windows, build in WSL)")
+    }
+    if (!File(runtimeTermuxDir, "licenses").isDirectory) {
+        add("Termux license files in $runtimeTermuxDir/licenses (run android/runtime/fetch-termux.sh)")
+    }
+    if (runtimeNodeTarball?.isFile != true) {
+        add(
+            "the pinned Node source tarball ${runtimeNodeTarball ?: "(android/runtime/sources.lock pins no Node)"} for the notices " +
+                "(run android/runtime/build-sources.sh --require-node, or pass -Psillybunny.nodeTarball=<file>)",
+        )
+    }
+}
 
 fun missingRuntimeInputs(abi: String): List<String> = buildList {
     if (!File(runtimeTermuxDir, "$abi/runtime-files.json").isFile) {
@@ -748,7 +970,8 @@ fun configureRuntimePackaging(variant: Any) {
         sharedMissing.isEmpty() -> splitAbis.filter { missingRuntimeInputs(it).isEmpty() }
         else -> emptyList()
     }
-    val missingInputs = if (required) sharedMissing + missingNotices() + abis.flatMap(::missingRuntimeInputs) else emptyList()
+    val missingNotices = missingNoticeInputs()
+    val missingInputs = if (required) sharedMissing + missingNotices + abis.flatMap(::missingRuntimeInputs) else emptyList()
     val packaged = required || abis.isNotEmpty()
     val buildConfigField = Class.forName("com.android.build.api.variant.BuildConfigField", true, variant.javaClass.classLoader)
         .getConstructor(String::class.java, java.io.Serializable::class.java, String::class.java)
@@ -772,16 +995,36 @@ fun configureRuntimePackaging(variant: Any) {
     // With inputs missing the prepare task fails first with the list of them, so never build the trampoline then.
     val trampolineBuilds = if (missingInputs.isEmpty()) abis.map { trampolineTask(it, minSdk) } else emptyList()
 
+    // p45b: registered only when the notices inputs exist; without them, a build that requires the runtime fails in
+    // prepare, which lists what is missing.
+    val notices = if (missingNotices.isNotEmpty()) null else tasks.register<GenerateSillyBunnyNotices>("generate${variantName}SillyBunnyNotices") {
+        script.set(rootProject.layout.projectDirectory.file("runtime/notices.py"))
+        runtimeLock.set(rootProject.layout.projectDirectory.file("runtime.lock"))
+        sourcesLock.set(rootProject.layout.projectDirectory.file("runtime/sources.lock"))
+        termuxLicenses.set(File(runtimeTermuxDir, "licenses"))
+        nodeTarball.set(runtimeNodeTarball)
+        npmLicenses.set(rootProject.layout.projectDirectory.dir("runtime/licenses/npm"))
+        // notices.gradle.kts registers this task and writes this directory.
+        androidLibraries.set(layout.buildDirectory.dir("generated/sillybunny/library-notices/$name"))
+        dependsOn("generate${variantName}SillyBunnyLibraryNotices")
+        requireNode.set(required)
+        output.set(layout.buildDirectory.dir("intermediates/sillybunny/notices/$name"))
+    }
+
     val prepare = tasks.register<PrepareSillyBunnyRuntime>("prepare${variantName}SillyBunnyRuntime") {
         this.abis.set(abis)
         missing.set(missingInputs)
         termuxDirectory.set(runtimeTermuxDir)
         nodeDirectory.set(runtimeNodeDir)
         npmDirectory.set(runtimeNpmDir)
+        notices?.let { task -> noticesDirectory.set(task.flatMap { it.output }) }
+        // p45b: a required build refuses unattributed pinned payloads; a debuggable one says why it lacks notices.
+        noticesMissing.set(missingNotices)
+        attributionRequired.set(required)
         inputFiles.from(
             fileTree(runtimeTermuxDir) {
                 abis.forEach { include("$it/jniLibs/**", "$it/runtime-files.json") }
-                include("assets/runtime/**", "assets/THIRD_PARTY_NOTICES", "assets/THIRD_PARTY_NOTICES.json")
+                include("assets/runtime/**")
             },
             fileTree(runtimeNodeDir) {
                 include("node.json")

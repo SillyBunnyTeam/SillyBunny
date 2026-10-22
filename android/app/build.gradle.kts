@@ -9,6 +9,9 @@ plugins {
 // Bundled runtime payload, npm/npx trampoline and packaging checks (plan §2.1, §4.9). Applied via file():
 // lint follows a string `apply(from = ...)` into the script and crashes analysing it (findFirCompiledSymbol).
 apply(from = file("runtime-packaging.gradle.kts"))
+// Android library list for THIRD_PARTY_NOTICES, from the resolved runtime classpath's POMs (plan §5.3, task 4.5).
+// Applied via file() for the same lint reason.
+apply(from = file("notices.gradle.kts"))
 
 val appVersion = Properties().apply {
     rootProject.file("app-version.properties").inputStream().use { load(it) }
