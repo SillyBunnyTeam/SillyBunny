@@ -3405,6 +3405,14 @@ export async function init() {
         $(document).on('keydown', '.expression_list_regenerate', onExpressionGenerationKeydown);
         $(document).on('click', '.expression_list_delete', onClickExpressionDelete);
         $(window).on('resize', () => updateVisualNovelModeDebounced());
+        // SillyBunny: docked panels change the Visual Novel canvas width without a viewport resize.
+        window.addEventListener('sb:side-panel-layout', () => {
+            if (isVisualNovelMode()) {
+                void visualNovelUpdateLayers($('#visual-novel-wrapper')).catch(error => {
+                    console.error('Failed to reposition Visual Novel sprites after a side-panel layout change.', error);
+                });
+            }
+        });
         $('#open_chat_expressions').hide();
 
         await renderAdditionalExpressionSettings();

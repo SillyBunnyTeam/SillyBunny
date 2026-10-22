@@ -15,6 +15,7 @@ import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import { initializeColorPickers } from './sillybunny-color-picker.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
+import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import {
     animateIn,
     animateOut,
@@ -5758,13 +5759,14 @@ function buildChatSidebar() {
     }
 
     root.id = 'sb-chat-sidebar';
+    root.classList.remove('draggable');
     root.classList.add('sb-chat-sidebar');
     root.style.top = 'calc(var(--sb-topbar-layout-offset) + 18px)';
     root.style.right = '16px';
     root.style.left = 'auto';
     root.style.bottom = 'auto';
 
-    title.textContent = 'Recent Chats';
+    title.textContent = t`Recent Chats`;
 
     const body = createElement('div', { className: 'sb-chat-sidebar-body' });
     const list = createElement('div', { className: 'sb-chat-sidebar-list' });
@@ -5775,7 +5777,14 @@ function buildChatSidebar() {
 
     movingDivs.appendChild(root);
 
-    getChatbarState().sidebar = { root, title, list };
+    const controller = registerSidePanel({
+        id: 'sb-chat-sidebar',
+        element: root,
+        title: t`Recent Chats`,
+        defaultSide: 'right',
+        onClose: () => { getChatbarState().sidebarOpen = false; },
+    });
+    getChatbarState().sidebar = { root, title, list, controller };
     return getChatbarState().sidebar;
 }
 
@@ -5783,7 +5792,7 @@ function isChatSidebarOpen() {
     return Boolean(getChatbarState().sidebarOpen);
 }
 
-function setChatSidebarOpenState(shouldOpen) {
+function setChatSidebarOpenState(shouldOpen, { opener = document.activeElement, restoreFocus = false } = {}) {
     const refs = buildChatSidebar();
 
     if (!refs?.root) {
@@ -5792,11 +5801,13 @@ function setChatSidebarOpenState(shouldOpen) {
 
     const isOpen = Boolean(shouldOpen);
     getChatbarState().sidebarOpen = isOpen;
-    refs.root.style.display = isOpen ? 'flex' : 'none';
     refs.root.classList.toggle('sb-chat-sidebar-visible', isOpen);
 
     if (isOpen) {
+        void refs.controller.open({ opener });
         scheduleChatbarRefresh(0);
+    } else {
+        refs.controller.close({ restoreFocus });
     }
 }
 
@@ -5806,7 +5817,7 @@ function toggleChatSidebar() {
         return;
     }
 
-    setChatSidebarOpenState(!isChatSidebarOpen());
+    setChatSidebarOpenState(!isChatSidebarOpen(), { restoreFocus: true });
 }
 
 function buildMobileChatTools() {
@@ -6816,7 +6827,7 @@ async function refreshChatbarState() {
     const chatNames = files.map(chat => chat.fileName);
 
     if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
-        files.unshift({ fileName: chatContext.chatId, tokenEstimate: 0 });
+        files.unshift(normalizeChatInfo(chatContext.chatId));
     }
 
     populateChatSelector(mobileRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');

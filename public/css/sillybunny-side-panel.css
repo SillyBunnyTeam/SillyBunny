@@ -16,6 +16,10 @@
     display: none !important;
 }
 
+.sb-side-panel [hidden] {
+    display: none !important;
+}
+
 .sb-side-panel--left {
     left: var(--sb-side-panel-x, 0px);
     top: var(--sb-side-panel-y, var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
@@ -144,6 +148,8 @@
 }
 
 .sb-side-panel__body {
+    display: flex;
+    flex-direction: column;
     flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
@@ -152,8 +158,17 @@
     scrollbar-gutter: stable;
 }
 
+.sb-side-panel__content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
 .sb-side-panel__content > .sb-side-panel__source {
     display: flex !important;
+    flex: 1 1 auto;
     position: static !important;
     inset: auto !important;
     width: 100% !important;
@@ -170,6 +185,118 @@
     border-radius: 0 !important;
     box-shadow: none !important;
     z-index: auto !important;
+}
+
+.sb-side-panel__content > .sb-side-panel__source > .panelControlBar,
+.sb-side-panel__content > .sb-side-panel__source > .logprobs_panel_header,
+.sb-side-panel__content > .sb-side-panel__source > .dragTitle {
+    display: none !important;
+}
+
+.sb-side-panel__content > .sb-side-panel__source {
+    gap: 0;
+}
+
+.sb-side-panel__content > .sb-side-panel__source > [name='floatingPromptHolder'],
+.sb-side-panel__content > .sb-side-panel__source > [name='cfgConfigHolder'] {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+}
+
+.sb-side-panel .sb-editor-section + .sb-editor-section {
+    margin-top: 12px;
+}
+
+.sb-side-panel .ds-pref-group {
+    border-radius: var(--sb-radius-card, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.sb-side-panel .ds-row--stacked > .ds-row-text {
+    flex: 1 1 auto;
+    width: 100%;
+}
+
+.sb-side-panel .ds-row--stacked .ds-row-text > textarea {
+    width: 100%;
+    min-height: 8lh;
+    resize: vertical;
+}
+
+.sb-side-panel .ds-row--stacked .extension_token_counter {
+    display: block;
+    width: 100%;
+    text-align: end;
+}
+
+.sb-side-panel .ds-row-slider > .ds-row-suffix {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+}
+
+.sb-side-panel .ds-row-slider > .ds-row-suffix > input[type='range'] {
+    flex: 1 1 120px;
+    width: 100%;
+    min-width: 0;
+}
+
+.sb-side-panel .ds-row-slider > .ds-row-suffix > input[type='number'] {
+    flex: 0 0 5.5em;
+    width: 5.5em;
+}
+
+.sb-side-panel input[type='number'] {
+    box-sizing: border-box;
+    min-height: var(--sb-field-min-height, 36px);
+    padding: 0 8px;
+    border: 1px solid var(--sb-input-border, var(--SmartThemeBorderColor));
+    border-radius: var(--sb-radius-button, 8px);
+    color: var(--SmartThemeBodyColor);
+    background-color: var(--sb-input-bg, var(--SmartThemeBlurTintColor));
+    font: inherit;
+}
+
+.sb-side-panel .sb-side-panel__subheading {
+    min-height: 40px;
+    padding-inline: 16px;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sb-side-panel .sb-side-panel__legacy-controls[hidden] {
+    display: none !important;
+}
+
+.sb-side-panel[data-sb-side-panel-id='sb-chat-sidebar'] .sb-chat-sidebar-body {
+    padding-top: 8px;
+}
+
+.sb-side-panel[data-sb-side-panel-id='logprobsViewer'] .logprobs_panel_content,
+.sb-side-panel[data-sb-side-panel-id='logprobsViewer'] #logprobs_generation_output {
+    height: auto;
+    overflow: visible;
+}
+
+.sb-side-panel[data-sb-side-panel-id='logprobsViewer'] .ds-pref-group,
+.sb-side-panel[data-sb-side-panel-id='logprobsViewer'] .logprobs_panel_content,
+.sb-side-panel[data-sb-side-panel-id='logprobsViewer'] #logprobs_generation_output {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.sb-side-panel__content > #logprobsViewer {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
 }
 
 .sb-side-panel__source > .panelControlBar,
@@ -253,6 +380,16 @@ body.sb-has-docked-panel #visual-novel-wrapper {
     left: var(--sb-chat-offset) !important;
     width: var(--sb-chat-width) !important;
     height: calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
+}
+
+body.sb-has-docked-panel #visual-novel-wrapper .expression-holder {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+body.sb-has-docked-panel #visual-novel-wrapper .expression-holder img.expression {
+    max-width: 100%;
+    max-height: 100%;
 }
 
 @keyframes sb-side-panel-sheet-in {

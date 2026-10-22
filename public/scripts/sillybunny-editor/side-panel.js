@@ -1,7 +1,7 @@
 import { t } from '../i18n.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261023b',
+    href: 'css/sillybunny-side-panel.css?v=20261023d',
     id: 'deferred-side-panel-css',
 };
 
@@ -362,6 +362,10 @@ function applyPanelRect(entry, rect) {
     entry.panel.style.setProperty('--sb-side-panel-height', `${rect.height}px`);
 }
 
+function notifySidePanelLayoutChanged() {
+    window.dispatchEvent(new Event('sb:side-panel-layout'));
+}
+
 function deferPanelRevealUntilChatSettles(open, chatShell, targetRect) {
     if (pendingLayoutRevealTimer) return layoutSettled;
     const currentRect = chatShell.getBoundingClientRect();
@@ -424,6 +428,7 @@ function updateLayout() {
             window.removeEventListener('orientationchange', scheduleLayout);
             windowEventsBound = false;
         }
+        notifySidePanelLayoutChanged();
         return;
     }
 
@@ -451,6 +456,7 @@ function updateLayout() {
             entry.panel.hidden = false;
         }
         if (activeEntry) applySheetGeometry(activeEntry);
+        notifySidePanelLayoutChanged();
         return;
     }
 
@@ -482,6 +488,7 @@ function updateLayout() {
         applyPanelRect(entry, rect);
         entry.panel.hidden = false;
     }
+    notifySidePanelLayoutChanged();
 }
 
 function scheduleLayout() {
@@ -668,6 +675,7 @@ export function registerSidePanel({ id, element, title, defaultSide, onClose }) 
         : Promise.resolve();
 
     return Object.freeze({
+        get isOpen() { return entry.isOpen; },
         open: options => openSidePanel(id, options),
         close: options => closeSidePanel(id, options),
         moveToOtherSide: () => movePanelToOtherSide(entry),

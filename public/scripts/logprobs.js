@@ -1,5 +1,4 @@
 import {
-    animation_duration,
     chat,
     cleanUpMessage,
     event_types,
@@ -10,7 +9,9 @@ import {
     isStreamingEnabled,
     substituteParamsExtended,
 } from '../script.js';
-import { debounce, delay, getStringHash } from './utils.js';
+// SillyBunny: the Token Probabilities adapter owns visibility while this module keeps rendering and keyboard behavior.
+import { closeTokenProbabilitiesPanel, registerTokenProbabilitiesPanel, toggleTokenProbabilitiesPanel } from './sillybunny-editor/adapters/side-panels.js';
+import { debounce, getStringHash } from './utils.js';
 import { decodeTextTokens, getTokenizerBestMatch } from './tokenizers.js';
 import { power_user } from './power-user.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
@@ -336,36 +337,11 @@ function addGeneration(prompt) {
  * the logprobs view, such as clicking the Token Probabilities menu item or the
  * close button.
  */
+// SillyBunny: the dock controller owns visibility, while the upstream token rendering path remains unchanged.
 function onToggleLogprobsPanel() {
-    const logprobsViewer = $('#logprobsViewer');
-
-    // largely copied from CFGScale toggle
-    if (logprobsViewer.css('display') === 'none') {
-        logprobsViewer.addClass('resizing');
-        logprobsViewer.css('display', 'flex');
-        logprobsViewer.css('opacity', 0.0);
-        renderAlternativeTokensView();
-        logprobsViewer.transition({
-            opacity: 1.0,
-            duration: animation_duration,
-        }, async function () {
-            await delay(50);
-            logprobsViewer.removeClass('resizing');
-        });
-    } else {
-        logprobsViewer.addClass('resizing');
-        logprobsViewer.transition({
-            opacity: 0.0,
-            duration: animation_duration,
-        },
-        async function () {
-            await delay(50);
-            logprobsViewer.removeClass('resizing');
-        });
-        setTimeout(function () {
-            logprobsViewer.hide();
-        }, animation_duration);
-    }
+    const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="logprobsViewer"]');
+    if (panel?.hidden) renderAlternativeTokensView();
+    return toggleTokenProbabilitiesPanel(this);
 }
 
 /**
@@ -608,9 +584,12 @@ function convertTokenIdLogprobsToText(input) {
 }
 
 export function initLogprobs() {
+    // SillyBunny: register the original token view so menu toggles and Escape use docked visibility.
+    registerTokenProbabilitiesPanel();
     REROLL_BUTTON.hide();
     const debouncedRender = debounce(renderAlternativeTokensView);
-    $('#logprobsViewerClose').on('click', onToggleLogprobsPanel);
+    // SillyBunny: keep the upstream Escape target connected to the controller-owned panel state.
+    $('#logprobsViewerClose').on('click', () => closeTokenProbabilitiesPanel());
     $('#option_toggle_logprobs').on('click', onToggleLogprobsPanel);
     eventSource.on(event_types.CHAT_CHANGED, debouncedRender);
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, debouncedRender);

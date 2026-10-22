@@ -7,9 +7,11 @@ import {
     saveSettingsDebounced,
     animation_duration,
 } from '../script.js';
+// SillyBunny: the side-panel adapter presents the live CFG controls without changing their save handlers.
+import { closeCfgPanel, registerCfgPanel, toggleCfgPanel } from './sillybunny-editor/adapters/side-panels.js';
 import { extension_settings, saveMetadataDebounced } from './extensions.js';
 import { selected_group } from './group-chats.js';
-import { getCharaFilename, delay } from './utils.js';
+import { getCharaFilename } from './utils.js';
 import { power_user } from './power-user.js';
 
 const extensionName = 'cfg';
@@ -117,40 +119,8 @@ function onCfgMenuItemClick() {
         return;
     }
 
-    //show CFG config if it's hidden
-    if ($('#cfgConfig').css('display') !== 'flex') {
-        $('#cfgConfig').addClass('resizing');
-        $('#cfgConfig').css('display', 'flex');
-        $('#cfgConfig').css('opacity', 0.0);
-        $('#cfgConfig').transition({
-            opacity: 1.0,
-            duration: animation_duration,
-        }, async function () {
-            await delay(50);
-            $('#cfgConfig').removeClass('resizing');
-        });
-
-        //auto-open the main AN inline drawer
-        if ($('#CFGBlockToggle')
-            .siblings('.inline-drawer-content')
-            .css('display') !== 'block') {
-            $('#floatingPrompt').addClass('resizing');
-            $('#CFGBlockToggle').trigger('click');
-        }
-    } else {
-        //hide AN if it's already displayed
-        $('#cfgConfig').addClass('resizing');
-        $('#cfgConfig').transition({
-            opacity: 0.0,
-            duration: animation_duration,
-        }, async function () {
-            await delay(50);
-            $('#cfgConfig').removeClass('resizing');
-        });
-        setTimeout(function () {
-            $('#cfgConfig').hide();
-        }, animation_duration);
-    }
+    // SillyBunny: only the dock controller can open this panel without overlapping the chat.
+    toggleCfgPanel(this);
     //duplicate options menu close handler from script.js
     //because this listener takes priority
     $('#options').stop().fadeOut(animation_duration);
@@ -277,14 +247,10 @@ function migrateSettings() {
 
 // This function is called when the extension is loaded
 export function initCfg() {
-    $('#CFGClose').on('click', function () {
-        $('#cfgConfig').transition({
-            opacity: 0,
-            duration: animation_duration,
-            easing: 'ease-in-out',
-        });
-        setTimeout(function () { $('#cfgConfig').hide(); }, animation_duration);
-    });
+    // SillyBunny: the adapter must adopt source controls before CFG listeners bind to them.
+    registerCfgPanel();
+    // SillyBunny: the engine header replaces the old close glyph but preserves its Escape trigger.
+    $('#CFGClose').on('click', () => closeCfgPanel());
 
     $('#chat_cfg_guidance_scale').on('input', function () {
         const numberValue = Number($(this).val());

@@ -33,9 +33,23 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Target seam | `public/scripts/sillybunny-editor/side-panel.js`. |
 | Adapter shape | Keep MovingUI calls compatible while guarding registered panel descendants; route their existing state entries through the side controller and persist only `{ left, right }`. Reset and MovingUI off restore declared defaults. |
 | Protecting tests | `tests/unit/side-panel.test.js`; `tests/side-panel-engine.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. |
-| Validation | 2026-10-23: root lint and `git diff --check` pass; frontend budgets pass at 16 blocking stylesheets / 1005.3 KiB and 24 startup scripts / 2029.8 KiB. Full Jest: 423 suites passed; 6,419 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: side-panel engine, MovingUI shell smoke, dialog tiers and Popup scroll 43/43 passed. Desktop 1440×900 and phone 390×844 screenshots were visually reviewed in `/tmp/opencode/side-panel-engine-shots/`. |
+| Validation | 2026-10-23: root lint and `git diff --check` pass; frontend budgets pass at 16 blocking stylesheets / 1005.3 KiB and 24 startup scripts / 2030.3 KiB. Full Jest: 424 suites passed; 6,420 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: side-panel engine 9/9, MovingUI shell smoke 17/17, dialog tiers 18/18, and Popup scroll 2/2 passed (46/46). Desktop 1440×900 and phone 390×844 screenshots were visually reviewed in `/tmp/opencode/side-panel-engine-shots/`. |
 | Rollback path | Remove the MovingUI guard and side-panel state hooks, then remove the side-panel module and its tests; persisted state remains in the existing `movingUIState` shape. |
 | Last reviewed | 2026-10-23, PR #870 Phase 5.1 / 5.6. |
+| Owner | UI integrator. |
+
+### Phase 5.2–5.5 Side-panel adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/authors-note.js`; `public/scripts/cfg-scale.js`; `public/scripts/logprobs.js`; `public/scripts/extensions/expressions/index.js`; `public/scripts/sillybunny-tabs.js`; `public/css/sillybunny-side-panel.css`. |
+| Area | Author's Note, CFG, and Token Probabilities presentation. |
+| Divergence reason | The existing live controls need docked panel framing and row presentation without changing chat metadata, extension settings, logprob rendering, or keyboard behavior. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/side-panels.js`; `public/scripts/sillybunny-editor/side-panel.js`. |
+| Adapter shape | Keep source inputs, IDs, names, values, events, and save handlers; adopt controls into preference rows, route existing triggers and Escape close targets through the dock controller, and keep the logprob token DOM and keyboard handlers intact. Recent Chats uses the same controller from `sillybunny-tabs.js`; Visual Novel sprites follow docked canvas geometry. |
+| Protecting tests | `tests/unit/side-panel-adapters.test.js`; `tests/side-panel-adapters.e2e.js`; `tests/side-panel-engine.e2e.js`; existing `tests/mobile-shell-smoke.e2e.js`, `tests/authors-note-chat-metadata.test.js`, and CFG/logprobs/recent-chat suites found by `grep tests/`. |
+| Validation | 2026-10-23: root lint, touched-test ESLint, and `git diff --check` pass. Frontend budgets pass at 16 blocking stylesheets / 1005.3 KiB and 24 startup scripts / 2030.3 KiB. Full Jest: 424 suites passed; 6,420 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: side-panel adapters 11/11; side-panel engine 9/9, MovingUI shell smoke 17/17, dialog tiers 18/18, and Popup scroll 2/2 (57/57 requested cases total). Refreshed and visually reviewed Author's Note and Recent Chats at 1440×900 and 390×844 in `/tmp/opencode/side-panel-shots-final/`; Recent Chats shows populated previews and its actual scroll list reaches the final fixture entry. |
+| Rollback path | Remove the adapter imports and registration/toggle calls, then restore the upstream panel visibility handlers; source settings, metadata, and token rendering remain the data source. |
+| Last reviewed | 2026-10-23, PR #870 Phase 5.2–5.5. |
 | Owner | UI integrator. |
 
 ### Phase 4.5–4.9 Window-tier tools

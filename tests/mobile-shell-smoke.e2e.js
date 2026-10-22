@@ -950,87 +950,60 @@ test.describe('compact desktop smoke at 820x1180', () => {
 test.describe('desktop MovingUI containment at 1264x800', () => {
     test.use({ viewport: { width: 1264, height: 800 } });
 
-    test('clamps an active panel drag at every viewport edge', async ({ page }) => {
+    test('MovingUI cannot drag or resize registered side panels', async ({ page }) => {
         await openQuietChatForSmoke(page, { selectCharacter: false });
-
-        // Backend, Customize and Characters live in the settings page and no
-        // longer drag; Author's Note is still a floating MovingUI panel.
         const original = await page.evaluate(async () => {
             const powerUserModule = await import('/scripts/power-user.js');
-            const { dragElement } = await import('/scripts/RossAscends-mods.js');
-            const panel = document.getElementById('floatingPrompt');
+            await window.SillyBunnySidePanels.openSidePanel('floatingPrompt');
+            const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]');
+            const source = document.getElementById('floatingPrompt');
             const snapshot = {
                 movingUI: powerUserModule.power_user.movingUI,
                 movingUIState: powerUserModule.power_user.movingUIState,
-                panelStyle: panel.style.cssText,
                 hadMovingUIClass: document.body.classList.contains('movingUI'),
+                rect: panel.getBoundingClientRect().toJSON(),
             };
 
             powerUserModule.power_user.movingUI = true;
             powerUserModule.power_user.movingUIState = {};
             document.body.classList.add('movingUI');
-            panel.style.setProperty('display', 'flex', 'important');
-            panel.style.setProperty('position', 'fixed', 'important');
-            panel.style.setProperty('inset', 'auto', 'important');
-            panel.style.setProperty('left', '100px', 'important');
-            panel.style.setProperty('top', '100px', 'important');
-            panel.style.setProperty('width', '400px', 'important');
-            panel.style.setProperty('height', '500px', 'important');
-            dragElement(window.$(panel));
+            const { initMovingUI } = await import('/scripts/RossAscends-mods.js');
+            await initMovingUI();
+            window.qaMovingUIPanel = panel;
+            window.qaMovingUISource = source;
             return snapshot;
         });
 
-        const dragBeyond = async (targetX, targetY) => {
-            const header = page.locator('#floatingPromptheader');
-            const box = await header.boundingBox();
-            expect(box).not.toBeNull();
-            await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
-            await page.mouse.down();
-            await page.mouse.move(targetX, targetY, { steps: 2 });
-            await page.mouse.up();
-            await waitForAnimationFrames(page, 2);
-        };
-        const getBounds = () => page.evaluate(() => {
-            const rect = document.getElementById('floatingPrompt').getBoundingClientRect();
-            return {
-                left: rect.left,
-                top: rect.top,
-                right: rect.right,
-                bottom: rect.bottom,
-                viewportWidth: window.innerWidth,
-                viewportHeight: window.innerHeight,
-                rootScrollWidth: document.documentElement.scrollWidth,
-                rootScrollHeight: document.documentElement.scrollHeight,
-            };
-        });
-        const expectContained = (bounds) => {
-            expect(bounds.left).toBeGreaterThanOrEqual(-1);
-            expect(bounds.top).toBeGreaterThanOrEqual(-1);
-            expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth + 1);
-            expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight + 1);
-            expect(bounds.rootScrollWidth).toBe(bounds.viewportWidth);
-            expect(bounds.rootScrollHeight).toBe(bounds.viewportHeight);
-        };
-
         try {
-            // Each drag must end on the far edges, or the clamp never ran.
-            await dragBeyond(2000, 1600);
-            const bottomRight = await getBounds();
-            expectContained(bottomRight);
-            expect(bottomRight.right).toBeGreaterThanOrEqual(bottomRight.viewportWidth - 2);
-            expect(bottomRight.bottom).toBeGreaterThanOrEqual(bottomRight.viewportHeight - 2);
-            await dragBeyond(-800, -600);
-            const topLeft = await getBounds();
-            expectContained(topLeft);
-            expect(topLeft.left).toBeLessThanOrEqual(1);
-            expect(topLeft.top).toBeLessThanOrEqual(1);
+            const title = page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"] .sb-side-panel__title');
+            const box = await title.boundingBox();
+            expect(box).not.toBeNull();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(box.x + box.width / 2 + 300, box.y + box.height / 2 + 150, { steps: 3 });
+            await page.mouse.up();
+
+            const current = await page.evaluate(async () => {
+                const module = await import('/scripts/power-user.js');
+                return {
+                    rect: window.qaMovingUIPanel.getBoundingClientRect().toJSON(),
+                    dragged: window.qaMovingUISource.hasAttribute('data-dragged'),
+                    resize: getComputedStyle(window.qaMovingUISource).resize,
+                    state: module.power_user.movingUIState,
+                };
+            });
+            expect(current.rect.left).toBe(original.rect.left);
+            expect(current.rect.top).toBe(original.rect.top);
+            expect(current.dragged).toBe(false);
+            expect(current.resize).toBe('none');
+            expect(current.state).toEqual({});
         } finally {
             await page.evaluate(async (snapshot) => {
                 const module = await import('/scripts/power-user.js');
                 module.power_user.movingUI = snapshot.movingUI;
                 module.power_user.movingUIState = snapshot.movingUIState;
                 document.body.classList.toggle('movingUI', snapshot.hadMovingUIClass);
-                document.getElementById('floatingPrompt').style.cssText = snapshot.panelStyle;
+                window.SillyBunnySidePanels.closeSidePanel('floatingPrompt', { restoreFocus: false });
             }, original);
         }
     });
@@ -1127,21 +1100,20 @@ test.describe('desktop Escape at 1264x800', () => {
             portrait.css('display', 'flex');
         });
         const portrait = page.locator('#zoomFor_smoke');
-        const chatSidebar = page.locator('#movingDivs > #sb-chat-sidebar.draggable');
+        const chatSidebar = page.locator('.sb-side-panel[data-sb-side-panel-id="sb-chat-sidebar"]');
 
         // The open page hides the portrait, so Escape from outside the page leaves it alone.
         await page.evaluate(() => document.activeElement?.blur());
         await page.keyboard.press('Escape');
         await expect(portrait).toBeAttached();
 
-        // Escape inside the page closes only the page, not Author's Note floating above it.
-        const authorsNote = page.locator('#floatingPrompt');
-        await page.evaluate(() => window.jQuery('#floatingPrompt').css({ display: 'flex', opacity: 1 }));
+        const authorsNote = page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]');
+        await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('floatingPrompt'));
         await page.locator('#sb-settings-close').focus();
         await page.keyboard.press('Escape');
         await expect(settingsPage).toHaveAttribute('hidden', '');
         await expect(authorsNote).toBeVisible();
-        await page.evaluate(() => window.jQuery('#floatingPrompt').hide());
+        await page.evaluate(() => window.SillyBunnySidePanels.closeSidePanel('floatingPrompt', { restoreFocus: false }));
 
         expect(await page.evaluate(() => window.jQuery('#WorldInfo').is(':visible'))).toBe(true);
         await expect(portrait).toBeVisible();
@@ -1196,13 +1168,12 @@ test.describe('mobile chat tools with a chat at iPhone 390x844', () => {
         await expect(chatFiles).toBeHidden();
         await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
 
-        // The sheet's own Escape stops there, so Author's Note behind it stays open.
-        await page.evaluate(() => window.jQuery('#floatingPrompt').css({ display: 'flex', opacity: 1 }));
+        await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('floatingPrompt'));
         await page.locator('#sb-mobile-chat-tools-panel').focus();
         await page.keyboard.press('Escape');
         await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: false });
         await expect(authorsNote).toBeVisible();
         await expect(page.locator('#sb-settings-page')).toHaveAttribute('hidden', '');
-        await page.evaluate(() => window.jQuery('#floatingPrompt').hide());
+        await page.evaluate(() => window.SillyBunnySidePanels.closeSidePanel('floatingPrompt', { restoreFocus: false }));
     });
 });

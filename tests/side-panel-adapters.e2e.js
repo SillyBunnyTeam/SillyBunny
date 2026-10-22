@@ -1,0 +1,450 @@
+/* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- viewport mode selects docked or sheet-specific geometry assertions. */
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+import { expect, test } from '@playwright/test';
+import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+
+const VIEWPORTS = [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 1280, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 900, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+];
+
+const RECENT_CHAT_FIXTURES = Array.from({ length: 24 }, (_, index) => ({
+    file_name: `side-panel-qa-chat-${String(index).padStart(2, '0')}.jsonl`,
+    mes: `Preview for saved conversation ${index + 1}`,
+    last_mes: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+    chat_items: index + 1,
+}));
+
+const PANELS = [
+    { id: 'floatingPrompt', trigger: '#option_toggle_AN', side: 'left', lastControl: '#extension_default_interval' },
+    { id: 'cfgConfig', trigger: '#option_toggle_CFG', side: 'left', lastControl: '#cfg_prompt_insertion_depth' },
+    { id: 'logprobsViewer', trigger: '#option_toggle_logprobs', side: 'right', lastControl: '#logprobs_selected_top_logprobs' },
+    { id: 'sb-chat-sidebar', trigger: null, side: 'right', lastControl: '.sb-chat-sidebar-body' },
+];
+
+test.describe.configure({ timeout: 120_000 });
+
+async function boot(page, viewport) {
+    await protectMaintainerServer(page);
+    await page.setViewportSize(viewport);
+    await openQuietChatForSmoke(page);
+    await page.route('**/api/characters/chats', route => route.fulfill({ json: RECENT_CHAT_FIXTURES }));
+    await page.evaluate(() => document.documentElement.style.setProperty('--sheldWidth', '55vw'));
+}
+
+async function openPanel(page, definition) {
+    if (definition.trigger) {
+        await page.evaluate(selector => document.querySelector(selector).click(), definition.trigger);
+    } else {
+        await page.evaluate(() => window.SillyBunnyShell.toggleChatSidebar());
+    }
+    const panel = page.locator(`.sb-side-panel[data-sb-side-panel-id="${definition.id}"]`);
+    await expect(panel).toBeVisible();
+    return panel;
+}
+
+async function closePanel(page, id) {
+    await page.evaluate(panelId => window.SillyBunnySidePanels.closeSidePanel(panelId, { restoreFocus: false }), id);
+    await expect(page.locator(`.sb-side-panel[data-sb-side-panel-id="${id}"]`)).toBeHidden();
+}
+
+async function expectControlAtRowEnd(panel, controlSelector) {
+    const control = panel.locator(controlSelector);
+    const row = control.locator('xpath=..');
+    const label = row.locator('.ds-row-text');
+    const [controlBox, labelBox] = await Promise.all([control.boundingBox(), label.boundingBox()]);
+    expect(controlBox).not.toBeNull();
+    expect(labelBox).not.toBeNull();
+    expect(controlBox.x).toBeGreaterThanOrEqual(labelBox.x + labelBox.width - 1);
+}
+
+async function readGeometry(page, panel) {
+    return panel.evaluate(element => {
+        const panelRect = element.getBoundingClientRect();
+        const chatRect = document.getElementById('sheld').getBoundingClientRect();
+        const chatContentRect = document.getElementById('chat').getBoundingClientRect();
+        const composerRect = document.getElementById('form_sheld').getBoundingClientRect();
+        const topBarRect = document.getElementById('top-bar').getBoundingClientRect();
+        const intersects = (left, right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+        return {
+            mode: element.classList.contains('sb-side-panel--sheet') ? 'sheet' : 'docked',
+            side: element.dataset.sbSidePanelSide,
+            panel: { left: panelRect.left, right: panelRect.right, top: panelRect.top, bottom: panelRect.bottom, height: panelRect.height },
+            chat: { left: chatRect.left, right: chatRect.right, width: chatRect.width },
+            initialChat: window.qaSidePanelInitialChat,
+            chatRect: { left: chatRect.left, right: chatRect.right, top: chatRect.top, bottom: chatRect.bottom },
+            chatContentRect: { left: chatContentRect.left, right: chatContentRect.right, top: chatContentRect.top, bottom: chatContentRect.bottom },
+            composerRect: { left: composerRect.left, right: composerRect.right, top: composerRect.top, bottom: composerRect.bottom },
+            topBarBottom: topBarRect.bottom,
+            intersectsChat: intersects(panelRect, element.classList.contains('sb-side-panel--sheet') ? chatContentRect : chatRect),
+            intersectsComposer: intersects(panelRect, composerRect),
+        };
+    });
+}
+
+for (const viewport of VIEWPORTS) {
+    test(`real side panels dock, scroll, and stay reachable at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+        await boot(page, viewport);
+        await page.evaluate(() => {
+            window.qaSidePanelInitialChat = document.getElementById('sheld').getBoundingClientRect().toJSON();
+        });
+
+        for (const definition of PANELS) {
+            const panel = await openPanel(page, definition);
+            await expect(panel).toHaveClass(/sb-side-panel--left|sb-side-panel--right|sb-side-panel--sheet/);
+            await expect(panel.locator(definition.lastControl)).toBeAttached();
+            await panel.locator('.sb-side-panel__body').evaluate(body => { body.scrollTop = body.scrollHeight; });
+            await expect(panel.locator(definition.lastControl)).toBeVisible();
+            if (definition.id === 'floatingPrompt') {
+                await expectControlAtRowEnd(panel, '#extension_floating_allow_wi_scan');
+            }
+            if (definition.id === 'cfgConfig') {
+                await expectControlAtRowEnd(panel, 'input[name="cfg_prompt_combine"][value="1"]');
+                const numberInputStyles = await panel.locator('#chat_cfg_guidance_scale_counter').evaluate(input => {
+                    const style = getComputedStyle(input);
+                    return { backgroundColor: style.backgroundColor, color: style.color };
+                });
+                expect(numberInputStyles.backgroundColor).not.toBe('rgb(255, 255, 255)');
+                expect(numberInputStyles.color).not.toBe(numberInputStyles.backgroundColor);
+            }
+            if (definition.id === 'logprobsViewer') {
+                await expect(panel.locator('.logprobs_panel_content > small')).toContainText('Select a token to see alternatives considered by the AI.');
+            }
+            if (definition.id === 'sb-chat-sidebar') {
+                const list = panel.locator('.sb-chat-sidebar-list');
+                await expect(list.locator('.sb-chat-file')).toHaveCount(RECENT_CHAT_FIXTURES.length + 1);
+                await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
+                const lastChat = list.locator('.sb-chat-file').last();
+                await expect(lastChat).toBeVisible();
+                expect(await lastChat.evaluate(element => {
+                    const scroller = element.closest('.sb-chat-sidebar-list');
+                    const row = element.getBoundingClientRect();
+                    const view = scroller.getBoundingClientRect();
+                    return row.top >= view.top - 1 && row.bottom <= view.bottom + 1;
+                })).toBe(true);
+                const previews = await list.locator('.sb-chat-file-preview').allTextContents();
+                expect(previews.every(preview => preview !== 'undefined')).toBe(true);
+                expect(await panel.locator('.sb-chat-sidebar-body').evaluate(body => getComputedStyle(body).paddingTop)).toBe('8px');
+            }
+
+            const geometry = await readGeometry(page, panel);
+            expect(geometry.side).toBe(definition.side);
+            expect(geometry.panel.top).toBeGreaterThanOrEqual(geometry.topBarBottom - 1);
+            expect(geometry.intersectsChat).toBe(false);
+            expect(geometry.intersectsComposer).toBe(false);
+            if (geometry.mode === 'sheet') {
+                await expect(panel.locator('.sb-side-panel__grab-handle')).toBeVisible();
+                expect(geometry.panel.height).toBeLessThanOrEqual(viewport.height * 0.5 + 1);
+                await page.locator('#send_textarea').fill('Composer remains usable above the panel sheet');
+                await expect(page.locator('#send_textarea')).toHaveValue('Composer remains usable above the panel sheet');
+                await page.locator('#send_textarea').fill('');
+            } else if (viewport.width >= 1280) {
+                expect(Math.abs(geometry.chat.left - geometry.initialChat.left)).toBeLessThan(1);
+                expect(Math.abs(geometry.chat.width - geometry.initialChat.width)).toBeLessThan(1);
+            }
+
+            await closePanel(page, definition.id);
+        }
+    });
+}
+
+test('two real panels split one side while Visual Novel sprites stay in the free chat area', async ({ page }) => {
+    await boot(page, { width: 1440, height: 900 });
+    await page.route('**/api/chats/group/info', route => route.fulfill({ json: {} }));
+    await page.route('**/api/chats/group/get', route => route.fulfill({ json: [
+        { chat_metadata: { tainted: true } },
+        { name: 'Seraphina', original_avatar: 'default_Seraphina.png', is_user: false, is_system: false, send_date: '2026-10-23', mes: 'Visual Novel sprite layout fixture' },
+    ] }));
+    await page.route('**/api/chats/group/save', route => route.fulfill({ json: {} }));
+    await page.route(/\/api\/sprites\/get(?:\?.*)?$/, route => route.fulfill({ json: [
+        { label: 'caring', path: '/qa-side-panel-vn-sprite.png' },
+    ] }));
+    await page.route('**/qa-side-panel-vn-sprite.png', route => route.fulfill({ contentType: 'image/png', body: readFileSync(new URL('../default/content/Seraphina/caring.png', import.meta.url)) }));
+
+    const fixture = await page.evaluate(async () => {
+        const context = window.SillyTavern.getContext();
+        const character = context.characters[context.characterId];
+        if (!character?.avatar) throw new Error('The Visual Novel fixture needs the selected sample character.');
+        delete context.powerUserSettings?.movingUIState?.[`expression-${character.avatar}`];
+        context.extensionSettings.expressions.api = 'none';
+        context.extensionSettings.expressions.fallback_expression = 'caring';
+
+        const groupChats = await import('/scripts/group-chats.js');
+        const group = {
+            id: 'qa-side-panel-visual-novel-group',
+            name: 'QA side-panel Visual Novel group',
+            members: [character.avatar],
+            disabled_members: [],
+            member_models: {},
+            avatar_url: '',
+            chat_id: 'qa-side-panel-visual-novel-chat',
+            chats: ['qa-side-panel-visual-novel-chat'],
+            activation_strategy: 0,
+            generation_mode: 0,
+            allow_self_responses: false,
+            hideMutedSprites: false,
+        };
+        groupChats.groups.push(group);
+
+        const visualNovelToggle = document.getElementById('waifuMode');
+        visualNovelToggle.checked = true;
+        visualNovelToggle.dispatchEvent(new Event('change', { bubbles: true }));
+        if (!await groupChats.openGroupById(group.id, { switchMenu: false })) {
+            throw new Error('The Visual Novel fixture group could not be opened.');
+        }
+
+        return { characterName: character.name, avatar: character.avatar };
+    });
+    await page.waitForFunction(() => {
+        const wrapper = document.getElementById('visual-novel-wrapper');
+        return document.body.classList.contains('waifuMode') && wrapper && getComputedStyle(wrapper).display !== 'none';
+    });
+    await page.evaluate(async name => {
+        const expressions = await import('/scripts/extensions/expressions/index.js');
+        await expressions.sendExpressionCall(name, 'caring');
+    }, fixture.characterName);
+    const spriteImage = page.locator('#visual-novel-wrapper .expression-holder img[src="/qa-side-panel-vn-sprite.png"]');
+    await expect(spriteImage).toBeVisible();
+    await expect.poll(() => spriteImage.evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
+
+    await page.evaluate(async () => {
+        const sidePanels = window.SillyBunnySidePanels;
+        await sidePanels.openSidePanel('floatingPrompt');
+        await sidePanels.openSidePanel('cfgConfig');
+    });
+    const leftPanels = page.locator('.sb-side-panel[data-sb-side-panel-side="left"]:visible');
+    await expect(leftPanels).toHaveCount(2);
+    await expect.poll(() => page.evaluate(() => {
+        const wrapper = document.getElementById('visual-novel-wrapper');
+        const sprite = document.querySelector('#visual-novel-wrapper .expression-holder:not(.hidden)');
+        if (!wrapper || !sprite) return false;
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const spriteRect = sprite.getBoundingClientRect();
+        return spriteRect.left >= wrapperRect.left - 1 && spriteRect.right <= wrapperRect.right + 1;
+    })).toBe(true);
+    const geometry = await page.evaluate(() => {
+        const panels = [...document.querySelectorAll('.sb-side-panel[data-sb-side-panel-side="left"]:not([hidden])')]
+            .map(panel => panel.getBoundingClientRect());
+        const chat = document.getElementById('sheld').getBoundingClientRect();
+        const wrapper = document.getElementById('visual-novel-wrapper');
+        const sprite = wrapper.querySelector('.expression-holder:not(.hidden)');
+        const spriteImage = [...sprite.querySelectorAll('img')].find(image => new URL(image.src).pathname === '/qa-side-panel-vn-sprite.png');
+        const spriteRect = sprite.getBoundingClientRect();
+        const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]');
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const topBarRect = document.getElementById('top-bar').getBoundingClientRect();
+        return {
+            panels: panels.map(rect => ({ top: rect.top, bottom: rect.bottom, height: rect.height })),
+            chat: { left: chat.left, right: chat.right, top: chat.top, bottom: chat.bottom, width: chat.width },
+            wrapper: { left: wrapperRect.left, right: wrapperRect.right, top: wrapperRect.top, bottom: wrapperRect.bottom, width: wrapperRect.width },
+            sprite: { left: spriteRect.left, right: spriteRect.right, top: spriteRect.top, bottom: spriteRect.bottom },
+            freeArea: { left: chat.left, right: chat.right, top: topBarRect.bottom, bottom: window.innerHeight },
+            spriteLoaded: spriteImage?.naturalWidth > 0,
+            visualNovelEnabled: document.body.classList.contains('waifuMode'),
+            panelZ: Number(getComputedStyle(panel).zIndex),
+            spriteZ: Number(getComputedStyle(sprite).zIndex),
+        };
+    });
+    expect(Math.abs(geometry.panels[0].height - geometry.panels[1].height)).toBeLessThan(1);
+    expect(Math.abs(geometry.panels[0].bottom - geometry.panels[1].top)).toBeLessThan(1);
+    expect(Math.abs(geometry.wrapper.left - geometry.chat.left)).toBeLessThan(1);
+    expect(Math.abs(geometry.wrapper.width - geometry.chat.width)).toBeLessThan(1);
+    expect(Math.abs(geometry.wrapper.right - geometry.chat.right)).toBeLessThan(1);
+    expect(geometry.wrapper.top).toBeGreaterThanOrEqual(geometry.freeArea.top - 1);
+    expect(geometry.wrapper.bottom).toBeLessThanOrEqual(geometry.freeArea.bottom + 1);
+    expect(geometry.visualNovelEnabled).toBe(true);
+    expect(geometry.spriteLoaded).toBe(true);
+    expect(geometry.sprite.left).toBeGreaterThanOrEqual(geometry.freeArea.left - 1);
+    expect(geometry.sprite.right).toBeLessThanOrEqual(geometry.freeArea.right + 1);
+    expect(geometry.sprite.top).toBeGreaterThanOrEqual(geometry.freeArea.top - 1);
+    expect(geometry.sprite.bottom).toBeLessThanOrEqual(geometry.freeArea.bottom + 1);
+    expect(geometry.panelZ).toBeGreaterThan(geometry.spriteZ);
+});
+
+test('real panels return focus and Escape closes Token Probabilities, CFG, then Author\'s Note', async ({ page }) => {
+    await boot(page, { width: 1440, height: 900 });
+    await page.evaluate(() => {
+        const opener = document.createElement('button');
+        opener.id = 'qa-side-panel-focus-opener';
+        opener.textContent = 'Open real panel';
+        document.body.append(opener);
+        opener.focus();
+        window.qaSidePanelOpener = opener;
+    });
+    await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('floatingPrompt', { opener: window.qaSidePanelOpener }));
+    const authorsNote = page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]');
+    await expect(authorsNote).toBeVisible();
+    await expect(authorsNote.locator('#extension_floating_prompt')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(authorsNote).toBeHidden();
+    await expect(page.locator('#qa-side-panel-focus-opener')).toBeFocused();
+
+    await page.evaluate(async () => {
+        await window.SillyBunnySidePanels.openSidePanel('logprobsViewer');
+        await window.SillyBunnySidePanels.openSidePanel('cfgConfig');
+        await window.SillyBunnySidePanels.openSidePanel('floatingPrompt');
+    });
+    const token = page.locator('.sb-side-panel[data-sb-side-panel-id="logprobsViewer"]');
+    const cfg = page.locator('.sb-side-panel[data-sb-side-panel-id="cfgConfig"]');
+    await expect(token).toBeVisible();
+    await expect(cfg).toBeVisible();
+    await expect(authorsNote).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(token).toBeHidden();
+    await expect(cfg).toBeVisible();
+    await expect(authorsNote).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(cfg).toBeHidden();
+    await expect(authorsNote).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(authorsNote).toBeHidden();
+});
+
+test('Author\'s Note and CFG keep their existing metadata and settings save contracts', async ({ page }) => {
+    await boot(page, { width: 1440, height: 900 });
+    const saved = { settings: [], chats: [] };
+    await page.route('**/api/settings/save', async route => {
+        const payload = readPayload(route.request());
+        saved.settings.push({ note: payload.extension_settings?.note, cfg: payload.extension_settings?.cfg });
+        return route.fulfill({ json: { result: 'ok', version: Number(payload._version ?? 0) + 1 } });
+    });
+    await page.route('**/api/chats/save', async route => {
+        const payload = readPayload(route.request());
+        const metadata = payload.chat?.[0]?.chat_metadata ?? {};
+        saved.chats.push(Object.fromEntries(Object.entries(metadata).filter(([key]) => key.startsWith('note_') || key.startsWith('cfg_'))));
+        return route.fulfill({ json: {} });
+    });
+
+    const before = await page.evaluate(async () => {
+        const core = await import('/script.js');
+        const extensions = await import('/scripts/extensions.js');
+        return {
+            metadata: { ...core.chat_metadata },
+            note: structuredClone(extensions.extension_settings.note),
+            cfg: structuredClone(extensions.extension_settings.cfg),
+        };
+    });
+
+    await page.locator('#option_toggle_AN').evaluate(button => button.click());
+    await expect(page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]')).toBeVisible();
+    await page.locator('#extension_floating_prompt').fill('Adapter chat note');
+    await page.locator('#extension_floating_depth').fill('6');
+    await page.locator('#extension_floating_role').selectOption('2');
+    await page.locator('#extension_floating_allow_wi_scan').check();
+    await page.locator('#extension_floating_interval').fill('5');
+    await page.locator('#extension_floating_chara').fill('Adapter character note');
+    await page.locator('#extension_use_floating_chara').check();
+    await page.locator('input[name="extension_floating_char_position"][value="2"]').evaluate(input => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.locator('#extension_floating_default').fill('Adapter default note');
+    await page.locator('#extension_default_position_depth').evaluate(input => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator('#extension_default_depth').fill('9');
+    await page.locator('#extension_default_role').selectOption('1');
+    await page.locator('#extension_default_position_before').evaluate(input => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator('#extension_default_interval').fill('4');
+
+    const positionVisibility = await page.evaluate(async () => {
+        const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
+        const mainDepthRow = document.querySelector('.ds-row[data-sb-editor-field="authors-note-main-depth"]');
+        const mainRoleRow = document.querySelector('.ds-row[data-sb-editor-field="authors-note-main-role"]');
+        await executeSlashCommandsWithOptions('/note-position before');
+        const hiddenAfterSlashCommand = mainDepthRow.hidden && mainRoleRow.hidden;
+        await executeSlashCommandsWithOptions('/note-position chat');
+        return { hiddenAfterSlashCommand, mainDepth: mainDepthRow.hidden, mainRole: mainRoleRow.hidden };
+    });
+    expect(positionVisibility.hiddenAfterSlashCommand).toBe(true);
+    expect(positionVisibility.mainDepth).toBe(false);
+    expect(positionVisibility.mainRole).toBe(false);
+    await page.locator('input[name="extension_floating_position"][value="1"]').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('input[name="extension_floating_position"][value="2"]')).toBeChecked();
+    await expect(page.locator('.ds-row[data-sb-editor-field="authors-note-main-depth"]')).toBeHidden();
+    await page.evaluate(async () => (await import('/scripts/slash-commands.js')).executeSlashCommandsWithOptions('/note-position chat'));
+    await expect(page.locator('.ds-row[data-sb-editor-field="authors-note-main-depth"]')).toBeVisible();
+
+    await page.locator('input[name="extension_floating_char_position"][value="2"]').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('input[name="extension_floating_char_position"][value="0"]')).toBeChecked();
+    await page.locator('input[name="extension_floating_char_position"][value="2"]').evaluate(input => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await page.locator('#option_toggle_CFG').evaluate(button => button.click());
+    await expect(page.locator('.sb-side-panel[data-sb-side-panel-id="cfgConfig"]')).toBeVisible();
+    await page.locator('#chat_cfg_negative_prompt').fill('Chat negative prompt');
+    await page.locator('#chat_cfg_positive_prompt').fill('Chat positive prompt');
+    await page.locator('#chara_cfg_negative_prompt').fill('Character negative prompt');
+    await page.locator('#global_cfg_negative_prompt').fill('Global negative prompt');
+    await page.locator('#cfg_prompt_separator').fill(' | ');
+    await page.locator('#cfg_prompt_insertion_depth').fill('7');
+    await page.locator('input[name="cfg_prompt_combine"][value="1"]').check();
+    await page.locator('#chat_cfg_guidance_scale_counter').evaluate(input => {
+        input.value = '1.5';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('#chat_cfg_guidance_scale')).toHaveValue('1.5');
+    await page.locator('#chat_cfg_guidance_scale').evaluate(range => {
+        range.value = '1.75';
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(page.locator('#chat_cfg_guidance_scale_counter')).toHaveValue('1.75');
+    await page.locator('#global_cfg_guidance_scale').evaluate(range => {
+        range.value = '2.25';
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await expect.poll(() => saved.chats.some(metadata => metadata.note_prompt === 'Adapter chat note'
+        && metadata.note_position === 1
+        && metadata.note_depth === 6
+        && metadata.note_role === 2
+        && metadata.note_interval === 5
+        && metadata.cfg_negative_prompt === 'Chat negative prompt'
+        && metadata.cfg_positive_prompt === 'Chat positive prompt'
+        && metadata.cfg_guidance_scale === 1.75
+        && metadata.cfg_prompt_insertion_depth === 7
+        && metadata.cfg_prompt_separator === ' | '
+        && metadata.cfg_prompt_combine?.includes(1))).toBe(true);
+    await expect.poll(() => saved.settings.some(settings => {
+        const note = settings.note;
+        const cfg = settings.cfg;
+        return note?.default === 'Adapter default note'
+            && note.defaultPosition === 2
+            && note.defaultDepth === 9
+            && note.defaultRole === 1
+            && note.defaultInterval === 4
+            && note.allowWIScan === true
+            && note.chara?.some(entry => entry.prompt === 'Adapter character note' && entry.useChara && entry.position === 2)
+            && cfg?.chara?.some(entry => entry.negative_prompt === 'Character negative prompt')
+            && cfg?.global?.negative_prompt === 'Global negative prompt'
+            && cfg.global.guidance_scale === 2.25;
+    })).toBe(true);
+
+    expect(before.metadata.note_prompt).not.toBe('Adapter chat note');
+    expect(before.note.default).not.toBe('Adapter default note');
+    expect(before.cfg.global.negative_prompt).not.toBe('Global negative prompt');
+});
+
+function readPayload(request) {
+    const buffer = request.postDataBuffer();
+    const body = request.headers()['content-encoding'] === 'gzip' ? gunzipSync(buffer) : buffer;
+    return JSON.parse(body.toString());
+}
