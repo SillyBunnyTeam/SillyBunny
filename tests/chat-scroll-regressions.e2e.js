@@ -1,4 +1,3 @@
-/* global document, WheelEvent, window */
 import { expect, test } from '@playwright/test';
 import {
     getChatScrollSnapshot,
