@@ -1778,7 +1778,7 @@ export function ensureConversationChrome() {
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
-                <div id="sb_conversation_add_dm_picker" class="sb-conversation-add-dm-picker" style="position: absolute; inset-block-start: calc(100% + 4px); inset-inline-start: 12px; inset-inline-end: 12px; z-index: 95; padding: 10px; border-radius: var(--sb-radius-md); border: 1px solid var(--sb-shell-border); background-color: var(--SmartThemeBlurTintColor); backdrop-filter: blur(12px); box-shadow: 0 4px 20px var(--black50a);" hidden></div>
+                <div id="sb_conversation_add_dm_picker" class="sb-conversation-add-dm-picker" style="position: absolute; inset-block-start: calc(100% + 4px); inset-inline-start: 12px; inset-inline-end: 12px; z-index: 95; padding: 10px; border-radius: var(--sb-radius-md); border: 1px solid var(--sb-shell-border); background-color: var(--SmartThemeBlurTintColor); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 4px 20px var(--black50a);" hidden></div>
             </div>
             <div class="sb-conversation-rail-search" style="padding: 0 14px 8px;">
                 <input type="text" id="sb_conversation_pals_search" class="text_pole textarea_compact wide100p" placeholder="Search direct messages..." style="font-size: var(--sb-type-meta);" />

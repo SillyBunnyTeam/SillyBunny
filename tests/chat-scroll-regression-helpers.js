@@ -1,4 +1,3 @@
-/* global document, HTMLElement, requestAnimationFrame, window, WheelEvent */
 import { testSetup } from './frontend/frontent-test-utils.js';
 
 export const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
@@ -464,4 +463,63 @@ export async function growMessageBlockAboveViewport(page, messageId, { height = 
         messageText.prepend(lateMedia);
     }, { targetMessageId: String(messageId), nextHeight: height });
     await waitForAnimationFrames(page, 10);
+}
+
+/**
+ * Off-screen history may skip rendering (issue #911). Forces one message to render so a size change
+ * inside it lands immediately instead of when it next comes near the viewport.
+ */
+export async function forceMessageRendered(page, messageId) {
+    await page.evaluate((targetMessageId) => {
+        document.querySelector(`#chat .mes[mesid="${targetMessageId}"]`).style.contentVisibility = 'visible';
+    }, String(messageId));
+}
+
+export async function isMessageContentSkipped(page, messageId) {
+    return page.evaluate((targetMessageId) => {
+        const content = document.querySelector(`#chat .mes[mesid="${targetMessageId}"]`)?.firstElementChild;
+        return Boolean(content) && !content.checkVisibility({ contentVisibilityAuto: true });
+    }, String(messageId));
+}
+
+export async function getSkippedMessageCount(page) {
+    return page.evaluate(() => Array.from(document.querySelectorAll('#chat > .mes[mesid]'))
+        .filter(message => message.firstElementChild && !message.firstElementChild.checkVisibility({ contentVisibilityAuto: true }))
+        .length);
+}
+
+export async function getMessageOffsetTop(page, messageId) {
+    return page.evaluate((targetMessageId) => {
+        const chat = document.querySelector('#chat');
+        const message = chat.querySelector(`.mes[mesid="${targetMessageId}"]`);
+        return message.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+    }, String(messageId));
+}
+
+/**
+ * Measures chat height with skipping on and forced off, then scrolls to the top recording every height seen.
+ */
+export async function getSkippedHistoryGeometry(page) {
+    return page.evaluate(async () => {
+        const chat = document.querySelector('#chat');
+        const skippedScrollHeight = chat.scrollHeight;
+        const renderAll = document.createElement('style');
+        renderAll.textContent = '#chat > .mes { content-visibility: visible !important; }';
+        document.head.append(renderAll);
+        const renderedScrollHeight = chat.scrollHeight;
+        renderAll.remove();
+
+        const scrollHeightsWhileScrolling = new Set();
+        for (let step = 0; chat.scrollTop > 0 && step < 500; step++) {
+            chat.scrollTop = Math.max(0, chat.scrollTop - 300);
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            scrollHeightsWhileScrolling.add(chat.scrollHeight);
+        }
+
+        return {
+            skippedScrollHeight,
+            renderedScrollHeight,
+            scrollHeightsWhileScrolling: [...scrollHeightsWhileScrolling],
+        };
+    });
 }

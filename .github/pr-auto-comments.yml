@@ -7,7 +7,7 @@ labels:
           Hey @{{ pull_request.user.login }}, thanks for your contribution!
           Unfortunately, this PR has been marked as invalid.
 
-          Please check that you've followed the PR template, included all relevant details, and are targeting the correct branch (`staging` for regular contributions, `release` only for hotfixes).
+          Please check that you've followed the PR template, included all relevant details, and are targeting the correct branch (`staging` for regular contributions; `release` only for release, hotfix, rollback and GitHub Actions branches from this repository).
 
           If you need help, feel free to ask!
 
@@ -47,7 +47,7 @@ labels:
         body: >
           ❗ This PR is against the `release` branch.
 
-          Please make sure this was intended, and you did not want to target the `staging` branch. Only hotfixes, readme changes and similar should be made against `release`.
+          Please make sure this was intended, and you did not want to target the `staging` branch. Only `release/vX.Y.Z`, `hotfix/<name>`, `rollback/vX.Y.Z` and `actions/<name>` branches from this repository may target `release`. Documentation and all other changes go to `staging`.
 
           You can change the target branch **without recreating the PR** by clicking "Edit" at the top of the page.
 
@@ -55,7 +55,7 @@ labels:
     labeled:
       pr:
         body: >
-            ⚠️ This PR is over 1000 lines, which is larger than recommended.
+            ⚠️ This PR is over 3000 lines, which is larger than recommended.
 
             Please make sure that it only addresses a single issue - PRs this large are hard to test and may be rejected.
 
