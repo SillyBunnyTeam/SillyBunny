@@ -1,4 +1,4 @@
-<!-- Read CONTRIBUTING.md before opening a PR: https://github.com/SillyBunnyTeam/SillyBunny/blob/staging/CONTRIBUTING.md
+<!-- Thank you for contributing to SillyBunny! Read CONTRIBUTING.md before opening a PR: https://github.com/SillyBunnyTeam/SillyBunny/blob/staging/CONTRIBUTING.md
 PR descriptions must be written by a human, without AI assistance. -->
 
 ## What is this PR's goal?
