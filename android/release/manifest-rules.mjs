@@ -3,7 +3,7 @@
 //
 // Sources mirrored (android/app/src/main/java/io/github/sillybunnyteam/sillybunny/update/):
 //   UpdateHttpClient.kt  fetchJson: body <= 2 MiB, strict UTF-8 that keeps a BOM (so a BOM fails later)
-//   UpdateManifest.kt    UpdateJson.parse, UpdateManifestParser.parse(json, abi, sdk)
+//   UpdateManifest.kt    UpdateJson.parse, UpdateManifestParser.parse(json, abis, sdk) with one ABI
 //   ApkVerifier.kt       normalizeFingerprint
 //   UpdateRepository.kt  checkStable (prerelease must be false), stableDownloadUrl/encodeReleaseTag
 // Keep this file in step with those when the app changes. Every check names the Kotlin rule it copies.
@@ -33,7 +33,9 @@
 //                       names are unique across entries
 //     <abi>.sha256      isSha256
 //     <abi>.size        positiveLong <= 300 MiB (MAX_APK_BYTES)
-//     [device ABI]      an entry for the device's primary ABI must exist when an ABI is given
+//     [device ABI]      an entry for the given ABI must exist. The app takes the first ABI in
+//                       Build.SUPPORTED_ABIS order that has an entry, so this checks a device that
+//                       lists only that ABI
 //   runtime             object; node, git, bash and npm are text(128); bun must be present and is
 //                       null or text(128)
 //   stable channel      UpdateRepository.checkStable: prerelease must be false; stableDownloadUrl:
@@ -408,7 +410,7 @@ export function isStableDownloadTag(tag) {
 
 /**
  * UpdateManifestParser.parseManifest on a parsed document, plus optional consumer checks:
- * `abi` (device primary ABI), `sdk` (device SDK) and `stableChannel` (UpdateRepository.checkStable).
+ * `abi` (the only ABI of the device), `sdk` (device SDK) and `stableChannel` (UpdateRepository.checkStable).
  * Returns the normalized manifest: versionCode is a BigInt; hashes are lowercase.
  */
 export function validateManifestValue(root, { abi, sdk, stableChannel = false } = {}) {

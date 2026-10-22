@@ -26,21 +26,28 @@ object UpdateManifestParser {
     private val abiName = Regex("[a-z0-9][a-z0-9_-]{0,31}")
     private val assetName = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,191}\\.apk")
 
-    fun parse(json: String, abi: String, sdk: Int): UpdateManifest? {
+    /**
+     * [abis] is the device's ABI list in preference order (`Build.SUPPORTED_ABIS`). The asset of the first one the
+     * manifest offers is selected, so an x86_64 device that runs the ARM APK under translation still finds its update.
+     */
+    fun parse(json: String, abis: List<String>, sdk: Int): UpdateManifest? {
         return try {
-            parseManifest(UpdateJson.parse(json) as? Map<*, *> ?: return null, abi, sdk)
+            parseManifest(UpdateJson.parse(json) as? Map<*, *> ?: return null, abis, sdk)
         } catch (_: Exception) {
             null
         }
     }
+
+    fun parse(json: String, abi: String, sdk: Int): UpdateManifest? = parse(json, listOf(abi), sdk)
 
     internal fun isSafeAssetName(name: String): Boolean =
         assetName.matches(name) && ".." !in name
 
     internal fun isSha256(value: String): Boolean = hex.matches(value)
 
-    private fun parseManifest(root: Map<*, *>, abi: String, sdk: Int): UpdateManifest? {
-        if (sdk <= 0 || !abiName.matches(abi) || root.positiveLong("schema") != 1L) return null
+    private fun parseManifest(root: Map<*, *>, abis: List<String>, sdk: Int): UpdateManifest? {
+        val wanted = abis.filter(abiName::matches)
+        if (sdk <= 0 || wanted.isEmpty() || root.positiveLong("schema") != 1L) return null
         val versionCode = root.positiveLong("versionCode") ?: return null
         val versionName = root.text("versionName", 128) ?: return null
         val prerelease = root["prerelease"] as? Boolean ?: return null
@@ -55,7 +62,7 @@ object UpdateManifestParser {
 
         val assets = root["assets"] as? Map<*, *> ?: return null
         if (assets.isEmpty() || assets.size > 16) return null
-        var selected: ApkAsset? = null
+        val offered = mutableMapOf<String, ApkAsset>()
         val names = mutableSetOf<String>()
         for ((key, value) in assets) {
             if (key !is String || !abiName.matches(key)) return null
@@ -64,7 +71,7 @@ object UpdateManifestParser {
             if (!names.add(name)) return null
             val sha256 = (entry["sha256"] as? String)?.takeIf(::isSha256) ?: return null
             val size = entry.positiveLong("size")?.takeIf { it <= MAX_APK_BYTES } ?: return null
-            if (key == abi) selected = ApkAsset(name, sha256.lowercase(Locale.ROOT), size)
+            offered[key] = ApkAsset(name, sha256.lowercase(Locale.ROOT), size)
         }
 
         val runtime = root["runtime"] as? Map<*, *> ?: return null
@@ -83,7 +90,7 @@ object UpdateManifestParser {
             minSdk = minSdk,
             signingCertSha256 = fingerprint.joinToString("") { "%02x".format(it.toInt() and 0xff) },
             inputsHash = inputsHash.lowercase(Locale.ROOT),
-            asset = selected ?: return null,
+            asset = wanted.firstNotNullOfOrNull(offered::get) ?: return null,
         )
     }
 

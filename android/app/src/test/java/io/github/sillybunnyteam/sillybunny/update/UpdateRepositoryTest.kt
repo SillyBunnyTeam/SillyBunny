@@ -527,7 +527,7 @@ class UpdateRepositoryTest {
         manifestUrl = manifestUrl,
         releasesApiUrl = server.url("/releases"),
         http = http,
-        primaryAbi = CoreTestFixtures.ABI,
+        supportedAbis = listOf(CoreTestFixtures.ABI),
         sdk = 29,
         defaultRef = defaultRef,
     )
@@ -536,7 +536,7 @@ class UpdateRepositoryTest {
         UpdateRepository(
             context,
             http = UpdateHttpClient(allowDebugLoopback = true),
-            primaryAbi = CoreTestFixtures.ABI,
+            supportedAbis = listOf(CoreTestFixtures.ABI),
             sdk = 29,
             defaultRef = "release",
             archiveVerifier = verifier,

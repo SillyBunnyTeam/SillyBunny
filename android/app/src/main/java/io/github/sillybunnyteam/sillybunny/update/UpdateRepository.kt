@@ -29,7 +29,7 @@ class UpdateRepository(
     private val manifestUrl: String = BuildConfig.UPDATE_MANIFEST_URL,
     private val releasesApiUrl: String = BuildConfig.RELEASES_API_URL,
     private val http: UpdateHttpClient = UpdateHttpClient(),
-    private val primaryAbi: String = Build.SUPPORTED_ABIS.firstOrNull().orEmpty(),
+    private val supportedAbis: List<String> = Build.SUPPORTED_ABIS.toList(),
     private val sdk: Int = Build.VERSION.SDK_INT,
     private val defaultRef: String = BuildConfig.DEFAULT_REF,
     private val installedVersionCode: () -> Long? = { ApkVerifier.installedVersionCode(context) },
@@ -99,7 +99,7 @@ class UpdateRepository(
         } catch (_: Exception) {
             return failed(UpdateCheckFailure.NETWORK)
         }
-        val manifest = UpdateManifestParser.parse(json, primaryAbi, sdk)
+        val manifest = UpdateManifestParser.parse(json, supportedAbis, sdk)
             ?: return failed(UpdateCheckFailure.INVALID_MANIFEST)
         if (manifest.prerelease) return failed(UpdateCheckFailure.INVALID_MANIFEST)
         if (manifest.versionCode <= version) return UpdateCheckResult.UpToDate
@@ -146,7 +146,7 @@ class UpdateRepository(
                 if (!sawCurrent) networkFailureAboveCurrent = true
                 continue
             }
-            val manifest = UpdateManifestParser.parse(body, primaryAbi, sdk)
+            val manifest = UpdateManifestParser.parse(body, supportedAbis, sdk)
             if (manifest == null) {
                 invalidManifest = true
                 continue

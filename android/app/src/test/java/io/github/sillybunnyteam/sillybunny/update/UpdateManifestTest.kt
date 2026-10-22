@@ -86,6 +86,26 @@ class UpdateManifestTest {
     }
 
     @Test
+    fun selectsTheFirstAbiInDeviceOrderThatTheManifestOffers() {
+        val root = CoreTestFixtures.manifest()
+        root.getJSONObject("assets").put("armeabi-v7a", JSONObject().apply {
+            put("name", "SillyBunny-android-armeabi-v7a.apk")
+            put("sha256", "CD".repeat(32))
+            put("size", 42)
+        })
+        val json = root.toString()
+
+        // An x86_64 device that runs the ARM APKs under translation lists its own ABIs first.
+        val translated = UpdateManifestParser.parse(json, listOf("x86_64", "x86", "arm64-v8a", "armeabi-v7a"), 29)!!
+        assertEquals(CoreTestFixtures.APK_NAME, translated.asset.name)
+        assertEquals("cd".repeat(32), UpdateManifestParser.parse(json, listOf("armeabi-v7a", "armeabi"), 29)!!.asset.sha256)
+        // Unusable names are skipped, not fatal, as long as one usable ABI is offered.
+        assertEquals(CoreTestFixtures.APK_NAME, UpdateManifestParser.parse(json, listOf("../x", "arm64-v8a"), 29)!!.asset.name)
+        assertNull(UpdateManifestParser.parse(json, listOf("x86_64", "x86"), 29))
+        assertNull(UpdateManifestParser.parse(json, emptyList(), 29))
+    }
+
+    @Test
     fun enforcesPositiveBoundedIntegerAssetSizeAndHash() {
         for (size in listOf<Any>(0, -1, "12", true, UpdateManifestParser.MAX_APK_BYTES + 1, Long.MAX_VALUE, JSONObject.NULL)) {
             val root = CoreTestFixtures.manifest()

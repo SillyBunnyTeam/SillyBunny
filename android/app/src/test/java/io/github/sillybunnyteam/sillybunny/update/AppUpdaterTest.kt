@@ -401,7 +401,7 @@ class AppUpdaterTest {
         manifestUrl = server.url("/latest/android-update.json"),
         releasesApiUrl = server.url("/releases"),
         http = UpdateHttpClient(allowDebugLoopback = true),
-        primaryAbi = CoreTestFixtures.ABI,
+        supportedAbis = listOf(CoreTestFixtures.ABI),
         defaultRef = "release",
         installedVersionCode = { 1 },
         installedSigner = { CoreTestFixtures.signer },

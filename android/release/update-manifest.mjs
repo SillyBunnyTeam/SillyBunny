@@ -46,7 +46,8 @@
 // Validate a manifest file with the app's rules (manifest-rules.mjs):
 //   node android/release/update-manifest.mjs --validate <file> [--abi <abi>] [--sdk <n>] [--prerelease <true|false>]
 //       [--inputs-hash <hex>] [--apk <abi>=<file> ...]
-//     --abi, --sdk           also apply the device checks for that primary ABI and SDK level
+//     --abi, --sdk           also apply the device checks for a device that lists only that ABI, at that
+//                            SDK level
 //     --prerelease           the manifest must be for that channel; false adds the stable channel's checks
 //     --inputs-hash          the manifest's inputsHash must be this one
 //     --apk                  once per ABI the manifest lists, all of them: each file must have the size and
