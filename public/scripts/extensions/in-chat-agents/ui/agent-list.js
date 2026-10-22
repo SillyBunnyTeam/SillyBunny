@@ -604,7 +604,7 @@ export function mountAgentsPanel(column) {
                 icon: model.savedCount ? 'magnifying-glass' : 'puzzle-piece',
                 title: model.savedCount ? t`No Results` : t`No Agents`, description: t`lorum ipsum`, compact: true,
                 actions: model.savedCount ? [] : [
-                    { label: t`New Agent`, onActivate: () => run(() => adapter.openEditor()) },
+                    { label: t`New Agent`, primary: true, onActivate: () => run(() => adapter.openEditor()) },
                     { label: t`New Agent from Template…`, onActivate: () => openTemplates(false) },
                 ],
             }).element;

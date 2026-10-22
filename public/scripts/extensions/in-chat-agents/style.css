@@ -1232,6 +1232,21 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     padding-bottom: 8px;
 }
 
+/* Top and side gutters match the World Info, Persona, and Characters editor frames, including compact mode. */
+[data-sb-panel='agents'] > .sb-shell-panel-scroller,
+:root[data-sb-compact-mode='true'] [data-sb-panel='agents'] > .sb-shell-panel-scroller {
+    padding-top: calc(var(--sb-shell-panel-padding-block) - 4px);
+    padding-inline: var(--sb-shell-panel-padding-inline);
+}
+
+@media screen and (max-width: 768px) {
+    [data-sb-panel='agents'] > .sb-shell-panel-scroller,
+    :root[data-sb-compact-mode='true'] [data-sb-panel='agents'] > .sb-shell-panel-scroller {
+        padding-top: 14px;
+        padding-inline: 14px;
+    }
+}
+
 .ica-agents-list {
     display: flex;
     flex-direction: column;
@@ -1265,36 +1280,51 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     justify-self: center;
 }
 
+/* Header geometry, titles, and icon buttons match the World Info list header (`.sb-wi-list-header`). */
 .ica-agents-editor .sb-list-header {
     display: flex;
     align-items: center;
-    gap: 4px;
-    min-height: 60px;
     flex: none;
-    padding: 6px 12px;
+    flex-wrap: nowrap;
+    box-sizing: border-box;
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 10px;
 }
 
 .ica-agents-editor .sb-list-header__titles {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    padding-inline: 6px;
+    line-height: 1.2;
+}
+
+.ica-agents-editor .sb-list-header__title,
+.ica-agents-editor .sb-list-header__subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ica-agents-editor .sb-list-header__title {
     font-size: var(--sb-type-title);
     font-weight: 700;
+    line-height: 1.25;
 }
 
 .ica-agents-editor .sb-list-header__subtitle {
     color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: calc(var(--mainFontSize) * 0.75);
+    font-weight: 400;
 }
 
 .ica-agents-editor .sb-list-header__spacer {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .ica-agents-editor .sb-list-header__button {
@@ -1302,14 +1332,20 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     align-items: center;
     justify-content: center;
     flex: none;
-    width: 40px;
-    height: 40px;
+    box-sizing: border-box;
+    width: var(--sb-control-icon-physical-size);
+    min-width: var(--sb-control-icon-physical-size);
+    height: var(--sb-control-icon-physical-size);
+    margin: 0;
     padding: 0;
     border: 0;
-    border-radius: 50%;
+    border-radius: var(--sb-icon-control-radius);
     background: transparent;
-    color: var(--SmartThemeBodyColor);
+    color: inherit;
+    font-size: var(--sb-type-control);
+    line-height: 1;
     cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 .ica-agents-editor .sb-list-header__button:focus-visible {
@@ -1329,6 +1365,16 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     .ica-agents-editor .sb-list-header__button[aria-pressed='true']:hover {
         background: var(--sb-flat-selected-hover-bg);
     }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ica-agents-editor .sb-list-header__button {
+        transition: none;
+    }
+}
+
+body.reduced-motion .ica-agents-editor .sb-list-header__button {
+    transition: none;
 }
 
 .ica-agents-search {
@@ -1355,14 +1401,14 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     cursor: text;
 }
 
+/* Focus ring and glyph match the World Info search field (`.sb-wi-search-field`). */
 .ica-agents-search-field:focus-within {
-    border-color: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
+    border-color: var(--sb-entry-focus-border);
+    box-shadow: var(--sb-entry-focus-ring);
 }
 
 .ica-agents-search .fa-magnifying-glass {
-    font-size: 12px;
-    color: var(--sb-shell-text-secondary);
+    color: var(--sb-muted-fg);
     flex-shrink: 0;
 }
 
@@ -1386,10 +1432,6 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     box-shadow: none !important;
 }
 
-:root[data-sb-compact-mode='true'] .ica-agents-search {
-    --ica-agents-search-height: 36px;
-}
-
 /* Row boxes match the prompt editor's `.sb-prompt-box` (libadwaita card fill). */
 .ica-agents-box,
 .ica--tpanel-agent,
@@ -1410,6 +1452,38 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     overflow: auto;
     overscroll-behavior: contain;
     padding: 0 12px 16px;
+}
+
+/* Status pages sit and act like World Info's (`.sb-wi-list-body` inset, flat `#WorldInfo .sb-wi-editor .menu_button`). */
+.ica-agents-body > .sb-status-page {
+    margin-block-start: 8px;
+}
+
+#sb-settings-page .ica-agents-editor .sb-status-page__action {
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    box-shadow: none;
+}
+
+#sb-settings-page .ica-agents-editor .sb-status-page__action:not(.is-suggested) {
+    background: transparent;
+    color: inherit;
+}
+
+@media (hover: hover) {
+    #sb-settings-page .ica-agents-editor .sb-status-page__action:not(.is-suggested):not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page .ica-agents-editor .sb-status-page__action:not(.is-suggested):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sb-settings-page .ica-agents-editor .sb-status-page__action:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .ica-agents-group {
