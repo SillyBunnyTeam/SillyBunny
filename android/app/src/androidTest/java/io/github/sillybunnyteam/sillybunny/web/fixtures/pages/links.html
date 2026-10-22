@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-links</title></head><body>
+<a class="b" id="same" href="/page2.html">same</a>
+<a class="b" id="external" href="https://example.com/ext">external</a>
+<a class="b" id="mailto" href="mailto:someone@example.com">mailto</a>
+<a class="b" id="other-port" href="http://127.0.0.1:{{OTHER}}/link">other port</a>
+<a class="b" id="intent" href="intent://scan/#Intent;scheme=zxing;package=com.example.none;end">intent</a>
+<a class="b" id="blob">blob</a>
+<a class="b" id="data" href="data:text/plain,fixture-data">data</a>
+<script>document.getElementById('blob').href = URL.createObjectURL(new Blob(['fixture-blob'], { type: 'text/plain' }));</script>
+</body></html>

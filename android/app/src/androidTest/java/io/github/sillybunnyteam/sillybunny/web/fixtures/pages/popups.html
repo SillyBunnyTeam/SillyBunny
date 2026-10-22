@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-popups</title></head><body>
+<button class="b" id="open-external" onclick="window.open('https://example.com/popup')">open external</button>
+<a class="b" id="blank-external" href="https://example.com/blank" target="_blank" rel="noopener">blank external</a>
+<button class="b" id="open-same" onclick="window.open('/page2.html')">open same</button>
+<!-- window.URL: inside an inline handler a bare URL is document.URL. -->
+<button class="b" id="open-blob" onclick="window.open(window.URL.createObjectURL(new Blob(['popup-blob'], { type: 'text/plain' })))">open blob</button>
+<button class="b" id="open-data" onclick="window.open('data:text/plain,popup-data')">open data</button>
+<button class="b" id="open-other" onclick="window.open('http://127.0.0.1:{{OTHER}}/popup')">open other port</button>
+<button class="b" id="open-noopener" onclick="window.open('https://example.com/noopener', '_blank', 'noopener')">noopener</button>
+<button class="b" id="open-later" onclick="setTimeout(() => { window.results.later = String(window.open('https://example.com/later') !== null); }, 1000)">open after awaited work</button>
+<script>
+window.results = {};
+// Without a user gesture; the popup blocker should refuse it.
+function openAuto() { results.auto = String(window.open('https://example.com/auto') !== null); }
+</script>
+</body></html>

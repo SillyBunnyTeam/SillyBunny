@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-home</title></head><body>
+<h1 id="h">fixture home</h1>
+<a class="b" id="to-page2" href="/page2.html">page2</a>
+<a class="b" id="to-fullscreen" href="/fullscreen.html">fullscreen</a>
+<script>
+window.results = {};
+// Origin-keyed storage the frontend relies on: localStorage, IndexedDB (LocalForage, QIG), Web Locks, quota.
+function probeStorage(value) {
+  try {
+    if (value) localStorage.setItem('fixture-kept', value);
+    results.ls = String(localStorage.getItem('fixture-kept'));
+  } catch (e) {
+    results.ls = 'err:' + e.name;
+  }
+  try {
+    const open = indexedDB.open('fixture-db', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('kv');
+    open.onerror = () => { results.idb = 'err:' + (open.error && open.error.name); };
+    open.onsuccess = () => {
+      const db = open.result;
+      const store = db.transaction('kv', 'readwrite').objectStore('kv');
+      if (value) store.put(value, 'kept');
+      const read = store.get('kept');
+      read.onsuccess = () => { results.idb = String(read.result); db.close(); };
+      read.onerror = () => { results.idb = 'err:read'; };
+    };
+  } catch (e) {
+    results.idb = 'err:' + e.name;
+  }
+  if (navigator.locks) {
+    navigator.locks.request('fixture-lock', () => 'held').then((v) => { results.locks = v; }, (e) => { results.locks = 'err:' + e.name; });
+  } else {
+    results.locks = 'absent';
+  }
+  if (navigator.storage && navigator.storage.estimate) {
+    navigator.storage.estimate().then((q) => { results.quota = String(q.quota > 0); }, (e) => { results.quota = 'err:' + e.name; });
+  } else {
+    results.quota = 'absent';
+  }
+}
+</script>
+</body></html>

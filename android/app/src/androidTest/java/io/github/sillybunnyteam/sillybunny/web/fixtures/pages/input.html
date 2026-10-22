@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}#field{position:fixed;left:8px;right:8px;bottom:8px;box-sizing:border-box;width:calc(100% - 16px);height:48px;font:16px sans-serif}</style>
+<title>fixture-input</title></head><body>
+<h1>fixture input</h1>
+<!-- Pinned to the bottom like the frontend's chat input. -->
+<input id="field" autocomplete="off" autocapitalize="off">
+<script>
+// True while the field lies inside the visible part of the page.
+function fieldVisible() {
+  const rect = document.getElementById('field').getBoundingClientRect();
+  const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  return String(rect.top >= 0 && rect.bottom <= height + 1);
+}
+</script>
+</body></html>

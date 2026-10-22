@@ -1,0 +1,114 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-containment</title></head><body>
+<button class="b" id="open-redirect" onclick="window.open('/redirect-other?to=/m-open')">open redirect</button>
+<img id="img" src="http://127.0.0.1:{{OTHER}}/img" width="10" height="10">
+<iframe id="frame" name="target-frame" src="http://127.0.0.1:{{OTHER}}/frame" width="50" height="50"></iframe>
+<form id="form" method="post" action="http://127.0.0.1:{{OTHER}}/post" target="target-frame"><input name="a" value="b"></form>
+<form id="post-self" method="post" action="/redirect-other?to=/m-post"><input name="a" value="b"></form>
+<script>
+window.results = {};
+// Requests straight to another loopback port: the shell answers each one locally.
+fetch('http://127.0.0.1:{{OTHER}}/fetch', { mode: 'no-cors', credentials: 'include' })
+  .then((r) => { results.fetch = 'type:' + r.type + ':' + r.status; }, (e) => { results.fetch = 'err:' + e.name; });
+try { results.beacon = String(navigator.sendBeacon('http://127.0.0.1:{{OTHER}}/beacon', 'x')); } catch (e) { results.beacon = 'throw:' + e.name; }
+const xhr = new XMLHttpRequest();
+xhr.open('GET', 'http://127.0.0.1:{{OTHER}}/xhr');
+xhr.withCredentials = true;
+xhr.onloadend = () => { results.xhr = String(xhr.status); };
+xhr.send();
+setTimeout(() => { document.getElementById('form').submit(); results.form = 'submitted'; }, 200);
+
+// A main-frame form POST whose response redirects to another port.
+function postSelf() {
+  document.getElementById('post-self').submit();
+}
+
+// The kinds of subresource request that the redirect probes make.
+const REDIRECT_KINDS = ['img', 'css', 'script', 'frame', 'form', 'nocors', 'cors', 'xhr', 'beacon'];
+const HOP_KINDS = ['img', 'css', 'script', 'frame', 'form', 'nocors', 'beacon'];
+
+// One subresource request of the given kind to url; results[key] settles with its outcome.
+function probe(key, kind, url) {
+  results[key] = 'pending';
+  const done = (value) => { results[key] = value; };
+  try {
+    if (kind === 'img') {
+      const e = new Image();
+      e.onload = () => done('load');
+      e.onerror = () => done('error');
+      e.src = url;
+      document.body.appendChild(e);
+    } else if (kind === 'css') {
+      const e = document.createElement('link');
+      e.rel = 'stylesheet';
+      e.onload = () => done('load');
+      e.onerror = () => done('error');
+      e.href = url;
+      document.head.appendChild(e);
+    } else if (kind === 'script') {
+      const e = document.createElement('script');
+      e.onload = () => done('load');
+      e.onerror = () => done('error');
+      e.src = url;
+      document.body.appendChild(e);
+    } else if (kind === 'frame') {
+      const e = document.createElement('iframe');
+      e.onload = () => done('load');
+      e.src = url;
+      document.body.appendChild(e);
+    } else if (kind === 'form') {
+      const sink = document.createElement('iframe');
+      sink.name = 'sink-' + key;
+      document.body.appendChild(sink);
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = url;
+      form.target = sink.name;
+      const input = document.createElement('input');
+      input.name = 'a';
+      input.value = 'b';
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+      sink.onload = () => done('load');
+    } else if (kind === 'nocors') {
+      fetch(url, { mode: 'no-cors', credentials: 'include' }).then((r) => done('type:' + r.type + ':' + r.status), (e) => done('err:' + e.name));
+    } else if (kind === 'cors') {
+      fetch(url, { credentials: 'include' }).then((r) => done('status:' + r.status), (e) => done('err:' + e.name));
+    } else if (kind === 'xhr') {
+      const x = new XMLHttpRequest();
+      x.open('GET', url);
+      x.withCredentials = true;
+      x.onloadend = () => done('status:' + x.status);
+      x.send();
+    } else if (kind === 'beacon') {
+      done('queued:' + navigator.sendBeacon(url, 'x'));
+    }
+  } catch (e) {
+    done('throw:' + e.name);
+  }
+}
+
+// Requests the shell cannot see, measured by the test. Each redirect asks for its own target path on the other
+// port (r-, x- or e- plus the kind), so the test can tell which probe a request that arrived there came from.
+function residual(external) {
+  try {
+    const ws = new WebSocket('ws://127.0.0.1:{{OTHER}}/ws');
+    ws.onerror = () => { results.ws = 'error'; };
+    ws.onclose = () => { results.ws = results.ws || 'closed'; };
+  } catch (e) {
+    results.ws = 'throw:' + e.name;
+  }
+  // The app origin's own response redirects to another port.
+  for (const kind of REDIRECT_KINDS) probe('r-' + kind, kind, '/redirect-other?to=/r-' + kind);
+  // A cleartext first hop to another site: the fixture's redirector reached as localhost. The app allows cleartext
+  // only to 127.0.0.1, so WebView refuses this hop before sending it (net::ERR_CLEARTEXT_NOT_PERMITTED).
+  for (const kind of HOP_KINDS) probe('x-' + kind, kind, 'http://localhost:{{PORT}}/__fixture/redirect-other?to=/x-' + kind);
+  // Optional: an external https redirector given by the test; the encoded target goes at the end of its URL.
+  if (external) {
+    for (const kind of HOP_KINDS) probe('e-' + kind, kind, external + encodeURIComponent('http://127.0.0.1:{{OTHER}}/e-' + kind));
+  }
+}
+</script>
+</body></html>

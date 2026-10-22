@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-dialogs</title></head><body>
+<button class="b" id="touch">touch</button>
+<script>
+window.results = {};
+function later(fn) { setTimeout(fn, 0); }
+function doAlert() { later(() => { alert('fixture-alert'); results.alert = 'done'; }); }
+function doConfirm(key) { later(() => { results[key] = confirm('fixture-confirm'); }); }
+function doPrompt(key) { later(() => { results[key] = prompt('fixture-prompt', 'fixture-default'); }); }
+function guard() {
+  window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = ''; });
+  results.guarded = true;
+}
+</script>
+</body></html>
