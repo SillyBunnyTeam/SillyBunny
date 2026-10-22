@@ -2,10 +2,12 @@ package io.github.sillybunnyteam.sillybunny.settings
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -180,6 +182,8 @@ class ThirdPartyNoticesTest {
 
     @Test
     fun aDebugBuildWithoutNoticesAssetsShowsTheEmptyState() {
+        // Notices are packaged only with the runtime.
+        assumeFalse("This build packages the runtime and its notices", BuildConfig.HAS_RUNTIME)
         val context = ApplicationProvider.getApplicationContext<Context>()
         assertEquals(NoticesLoad.Reason.MISSING, reason(AssetNoticesSource(context.assets)))
     }

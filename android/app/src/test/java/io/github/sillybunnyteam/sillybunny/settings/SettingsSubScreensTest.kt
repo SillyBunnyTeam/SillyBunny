@@ -16,9 +16,11 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -170,6 +172,8 @@ class SettingsSubScreensTest {
 
     @Test
     fun aDebugBuildWithoutNoticesAssetsShowsTheEmptyState() {
+        // Notices are packaged only with the runtime.
+        assumeFalse("This build packages the runtime and its notices", BuildConfig.HAS_RUNTIME)
         val source = AssetNoticesSource(compose.activity.assets)
         compose.setContent { MaterialTheme { SettingsLicensesScreen(source, onNavigateUp = {}) } }
         compose.waitUntil(5_000) { exists(SettingsTags.LICENSES_EMPTY) }

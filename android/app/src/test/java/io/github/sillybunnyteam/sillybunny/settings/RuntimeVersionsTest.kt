@@ -2,7 +2,9 @@ package io.github.sillybunnyteam.sillybunny.settings
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.BuildConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -42,6 +44,7 @@ class RuntimeVersionsTest {
 
     @Test
     fun aBuildWithoutTheManifestShowsNoVersions() {
+        assumeFalse("This build packages the runtime and its manifest", BuildConfig.HAS_RUNTIME)
         val context = ApplicationProvider.getApplicationContext<Context>()
         assertEquals(emptyList<RuntimeVersion>(), AssetRuntimeVersions(context.assets).read())
     }
