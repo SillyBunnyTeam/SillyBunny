@@ -382,6 +382,7 @@ import {
     createDelegatedResizeObserver,
     createMessageUpdateQueue,
     createMobileViewportObserver,
+    createOffscreenMessageTracker,
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
@@ -723,7 +724,11 @@ let mobileMessageUpdateFlushResolvers = [];
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
+let offscreenChatMessageTracker = null;
 const chatMessageResizeStates = new Map();
+const pendingChatMessageResizeBlocks = new Set();
+let pendingChatMessageResizeFrame = 0;
+let chatMessageResizeDeliveryViewportState = null;
 
 let dialogueResolve = null;
 let dialogueCloseStop = false;
@@ -2782,19 +2787,34 @@ function captureChatMessageResizeViewportState() {
     };
 }
 
-function captureChatMessageResizeState(element, entry = null) {
+/**
+ * Captures the viewport once per resize-observer delivery. One delivery can carry every message block
+ * in the chat, and scanning for the visible anchor once per block made long chat loads quadratic (#911).
+ */
+function captureChatMessageResizeDeliveryViewportState() {
+    if (!chatMessageResizeDeliveryViewportState) {
+        chatMessageResizeDeliveryViewportState = captureChatMessageResizeViewportState();
+        queueMicrotask(() => {
+            chatMessageResizeDeliveryViewportState = null;
+        });
+    }
+
+    return chatMessageResizeDeliveryViewportState;
+}
+
+function captureChatMessageResizeState(element, entry = null, viewportState = captureChatMessageResizeViewportState()) {
     return {
-        ...captureChatMessageResizeViewportState(),
+        ...viewportState,
         blockHeight: getObservedElementHeight(element, entry),
     };
 }
 
-function refreshChatMessageResizeState(element, metadata, entry = null) {
+function refreshChatMessageResizeState(element, metadata, entry = null, viewportState = undefined) {
     if (!metadata) {
         return;
     }
 
-    Object.assign(metadata, captureChatMessageResizeState(element, entry));
+    Object.assign(metadata, captureChatMessageResizeState(element, entry, viewportState));
 }
 
 function refreshObservedChatMessageResizeViewportStates() {
@@ -2836,13 +2856,13 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
     const previousHeight = Number(resizeState.blockHeight ?? nextHeight);
 
     if (Math.abs(nextHeight - previousHeight) < 1) {
-        refreshChatMessageResizeState(element, metadata, entry);
+        refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());
         return;
     }
 
     // SillyBunny: streaming progress owns the live message's scroll lane; skip resize scrolls for that block.
     if (isActiveStreamingMessageResizeBlock(element)) {
-        refreshChatMessageResizeState(element, metadata, entry);
+        refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());
         return;
     }
 
@@ -2906,6 +2926,7 @@ function getMessageBlockElement(messageElement) {
 
 function unobserveChatMessageResizeBlock(messageBlock) {
     if (messageBlock instanceof HTMLElement) {
+        pendingChatMessageResizeBlocks.delete(messageBlock);
         chatMessageResizeObserver?.unobserve(messageBlock);
         chatMessageResizeStates.delete(messageBlock);
     }
@@ -2922,19 +2943,34 @@ function observeChatMessageResize(messageElement) {
         return;
     }
 
-    requestAnimationFrame(() => {
-        if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE) || !messageBlock.isConnected) {
-            return;
-        }
+    // SillyBunny: blocks rendered in the same frame share one frame callback and one viewport capture (#911).
+    pendingChatMessageResizeBlocks.add(messageBlock);
 
-        const observer = getChatMessageResizeObserver();
+    if (!pendingChatMessageResizeFrame) {
+        pendingChatMessageResizeFrame = requestAnimationFrame(observePendingChatMessageResizeBlocks);
+    }
+}
+
+function observePendingChatMessageResizeBlocks() {
+    pendingChatMessageResizeFrame = 0;
+    const messageBlocks = [...pendingChatMessageResizeBlocks].filter(messageBlock => messageBlock.isConnected);
+    pendingChatMessageResizeBlocks.clear();
+
+    if (messageBlocks.length === 0 || !isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE)) {
+        return;
+    }
+
+    const observer = getChatMessageResizeObserver();
+    const viewportState = captureChatMessageResizeViewportState();
+
+    for (const messageBlock of messageBlocks) {
         unobserveChatMessageResizeBlock(messageBlock);
 
-        const metadata = captureChatMessageResizeState(messageBlock);
+        const metadata = captureChatMessageResizeState(messageBlock, null, viewportState);
         if (observer.observe(messageBlock, metadata)) {
             chatMessageResizeStates.set(messageBlock, metadata);
         }
-    });
+    }
 }
 
 function unobserveChatMessageResize(messageElement) {
@@ -2946,12 +2982,49 @@ function unobserveChatMessageResize(messageElement) {
     const messageBlock = getMessageBlockElement(messageElement);
 
     unobserveChatMessageResizeBlock(messageBlock);
+
+    if (messageElement instanceof HTMLElement) {
+        offscreenChatMessageTracker?.untrack(messageElement.closest('.mes') ?? messageElement);
+    }
 }
 
 function disposeChatMessageResizeObserver() {
+    if (pendingChatMessageResizeFrame) {
+        cancelAnimationFrame(pendingChatMessageResizeFrame);
+        pendingChatMessageResizeFrame = 0;
+    }
+
+    pendingChatMessageResizeBlocks.clear();
     chatMessageResizeObserver?.dispose();
     chatMessageResizeObserver = null;
     chatMessageResizeStates.clear();
+    offscreenChatMessageTracker?.dispose();
+    offscreenChatMessageTracker = null;
+}
+
+function getOffscreenChatMessageTracker() {
+    if (!offscreenChatMessageTracker && chatElement[0]) {
+        offscreenChatMessageTracker = createOffscreenMessageTracker({ container: chatElement[0] });
+    }
+
+    return offscreenChatMessageTracker;
+}
+
+/**
+ * Lets a chat message skip rendering while it is far off screen, once it has been laid out (#911).
+ * The CSS rule for `.sb-mes-sized` keeps the newest messages fully rendered.
+ * @param {JQuery<HTMLElement>|HTMLElement} messageElement Message element.
+ */
+function trackOffscreenChatMessage(messageElement) {
+    if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.OFFSCREEN_MESSAGES) || !canObserveChatMessageResize()) {
+        return;
+    }
+
+    const element = messageElement?.jquery ? messageElement[0] : messageElement;
+
+    if (element instanceof HTMLElement) {
+        getOffscreenChatMessageTracker()?.track(element);
+    }
 }
 
 function updateMessageBlockThroughLifecycle(messageId, message, { rerenderMessage }) {
@@ -5411,6 +5484,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     }
 
     observeChatMessageResize(messageElement);
+    trackOffscreenChatMessage(messageElement);
     return messageElement;
 }
 
@@ -15693,6 +15767,23 @@ export function getOverswipeBehavior(messageId, message = undefined) {
 }
 
 /**
+ * Toggles a swipe control only when its inline display has to change.
+ * SillyBunny: jQuery's show() reads computed style, so refreshing every message forced one restyle
+ * per message, including history that content-visibility had skipped (#911).
+ * @param {JQuery<HTMLElement>} controls Swipe controls of one message.
+ * @param {boolean} visible Whether the controls should be shown.
+ */
+function toggleSwipeControl(controls, visible) {
+    for (const control of controls) {
+        if ((control.style.display === 'none') !== visible) {
+            continue;
+        }
+
+        $(control).toggle(visible);
+    }
+}
+
+/**
  * Refreshes all swipe buttons and updates their swipe counters.
  * This has been optimized for bulk updates by minimizing DOM queries.
  * @param {boolean} updateCounters When true, the swipe counters will also be updated. Typically redundant because addOneMessage updates the counters.
@@ -15750,15 +15841,15 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
 
             //If there's only one swipe, the left arrow should not be shown.
             div.classList.toggle('swipes_visible', hasSwipes || pristineGreeting);
-            swipePickerButton.toggle(canOpenSwipePicker);
-            deleteAddSwipeButton.toggle(canDeleteAddSwipe(messageId, message));
+            toggleSwipeControl(swipePickerButton, canOpenSwipePicker);
+            toggleSwipeControl(deleteAddSwipeButton, canDeleteAddSwipe(messageId, message));
 
             //updateSwipeCounter does not need to be awaited, It can run a bit later.
             if (updateCounters) updateSwipeCounter(messageId, { message, messageElement: $(div) });
         } else {
             //Hide all messages that are not swipeable.
             div.classList.remove('swipes_visible', 'last_swipe');
-            $(div).find('.mes_swipe_picker').toggle(canOpenSwipePickerForMessage(messageId));
+            toggleSwipeControl($(div).find('.mes_swipe_picker'), canOpenSwipePickerForMessage(messageId));
             $(div).find('.mes_delete_add_swipe').hide();
         }
     });

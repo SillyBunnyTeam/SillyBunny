@@ -105,8 +105,8 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          if ! grep -Eq '^(fix|chore|feat|sync|docs|hotfix)(\([^)]+\))?!?:[[:space:]].+' <<< "$PR_TITLE"; then
-            echo "PR title must start with one of: fix:, chore:, feat:, sync:, docs:, hotfix:"
+          if ! grep -Eq '^(fix|chore|feat|sync|docs|hotfix|refactor|perf|test|ci|build|style|revert)(\([^)]+\))?!?:[[:space:]].+' <<< "$PR_TITLE"; then
+            echo "PR title must start with one of: fix:, chore:, feat:, sync:, docs:, hotfix:, refactor:, perf:, test:, ci:, build:, style:, revert:"
             echo "Current title: $PR_TITLE"
             exit 1
           fi

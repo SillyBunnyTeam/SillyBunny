@@ -26,7 +26,7 @@ describe('core message transparency wiring', () => {
 
     test('loads the native chat stylesheet during chat-display setup so default chat styles get core transparency', () => {
         expect(indexSource).not.toContain('id="sillybunny-native-chat-styles"');
-        expect(powerUserSource).toContain("const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20261002d';");
+        expect(powerUserSource).toContain('const NATIVE_CHAT_STYLE_STYLESHEET_HREF = \'css/sillybunny-chat-styles.css?v=20261002d\';');
         expect(powerUserSource).toContain('ensureNativeChatStyleStylesheet();');
     });
 
@@ -79,11 +79,11 @@ describe('core message transparency wiring', () => {
         expect(indexSource).toContain('aria-label="Chat field blur"');
         expect(indexSource).toContain('aria-label="Chat field blur value"');
         expect(powerUserSource).toContain('const THEME_EFFECT_PROPERTIES = Object.freeze([');
-        expect(powerUserSource).toContain("{ key: 'customCSS-bg-blur', selector: '#background_blur'");
-        expect(powerUserSource).toContain("{ key: 'customCSS-bg-opacity', selector: '#background_opacity'");
-        expect(powerUserSource).toContain("{ key: 'sheldBlurStrength', selector: '#sheld_blur_strength'");
-        expect(powerUserSource).toContain("linkedCssVars: ['--mobileSheldBlurStrength']");
-        expect(powerUserSource).not.toContain("key: 'mobileSheldBlurStrength'");
+        expect(powerUserSource).toContain('{ key: \'customCSS-bg-blur\', selector: \'#background_blur\'');
+        expect(powerUserSource).toContain('{ key: \'customCSS-bg-opacity\', selector: \'#background_opacity\'');
+        expect(powerUserSource).toContain('{ key: \'sheldBlurStrength\', selector: \'#sheld_blur_strength\'');
+        expect(powerUserSource).toContain('linkedCssVars: [\'--mobileSheldBlurStrength\']');
+        expect(powerUserSource).not.toContain('key: \'mobileSheldBlurStrength\'');
         expect(powerUserSource).toContain('function applyThemeEffects()');
         expect(powerUserSource).toContain('for (const cssVar of property.linkedCssVars || [])');
         expect(powerUserSource).toContain('theme[key] = power_user[key];');

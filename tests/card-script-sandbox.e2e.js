@@ -1,4 +1,3 @@
-/* global document, localStorage */
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 
