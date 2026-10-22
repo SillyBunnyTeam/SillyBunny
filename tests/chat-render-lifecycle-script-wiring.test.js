@@ -702,6 +702,18 @@ describe('chat render lifecycle script wiring', () => {
         expect(styleSource).toMatch(/\n\.mes \{[^}]*contain-intrinsic-size: auto 180px;/);
     });
 
+    test('swipe refreshes only toggle controls whose inline display has to change', () => {
+        const toggleSource = getSource(findFunctionDeclaration('toggleSwipeControl'));
+        expect(toggleSource).toContain('if ((control.style.display === \'none\') !== visible) {');
+        expect(toggleSource).toContain('$(control).toggle(visible);');
+
+        const refreshSource = getSource(findExportedFunction('refreshSwipeButtons'));
+        expect(refreshSource).toContain('toggleSwipeControl(swipePickerButton, canOpenSwipePicker);');
+        expect(refreshSource).toContain('toggleSwipeControl(deleteAddSwipeButton, canDeleteAddSwipe(messageId, message));');
+        expect(refreshSource).toContain('toggleSwipeControl($(div).find(\'.mes_swipe_picker\'), canOpenSwipePickerForMessage(messageId));');
+        expect(refreshSource).not.toMatch(/\.toggle\((?:canOpenSwipePicker|canDeleteAddSwipe)/);
+    });
+
     test('guard-on mobile viewport events route through the lifecycle observer helper', () => {
         expect(scriptSource).toContain('createMobileViewportObserver,');
         expect(scriptSource).toContain('let mobileChatViewportObserver = null;');

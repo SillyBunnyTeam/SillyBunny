@@ -15413,6 +15413,23 @@ export function getOverswipeBehavior(messageId, message = undefined) {
 }
 
 /**
+ * Toggles a swipe control only when its inline display has to change.
+ * SillyBunny: jQuery's show() reads computed style, so refreshing every message forced one restyle
+ * per message, including history that content-visibility had skipped (#911).
+ * @param {JQuery<HTMLElement>} controls Swipe controls of one message.
+ * @param {boolean} visible Whether the controls should be shown.
+ */
+function toggleSwipeControl(controls, visible) {
+    for (const control of controls) {
+        if ((control.style.display === 'none') !== visible) {
+            continue;
+        }
+
+        $(control).toggle(visible);
+    }
+}
+
+/**
  * Refreshes all swipe buttons and updates their swipe counters.
  * This has been optimized for bulk updates by minimizing DOM queries.
  * @param {boolean} updateCounters When true, the swipe counters will also be updated. Typically redundant because addOneMessage updates the counters.
@@ -15470,15 +15487,15 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
 
             //If there's only one swipe, the left arrow should not be shown.
             div.classList.toggle('swipes_visible', hasSwipes || pristineGreeting);
-            swipePickerButton.toggle(canOpenSwipePicker);
-            deleteAddSwipeButton.toggle(canDeleteAddSwipe(messageId, message));
+            toggleSwipeControl(swipePickerButton, canOpenSwipePicker);
+            toggleSwipeControl(deleteAddSwipeButton, canDeleteAddSwipe(messageId, message));
 
             //updateSwipeCounter does not need to be awaited, It can run a bit later.
             if (updateCounters) updateSwipeCounter(messageId, { message, messageElement: $(div) });
         } else {
             //Hide all messages that are not swipeable.
             div.classList.remove('swipes_visible', 'last_swipe');
-            $(div).find('.mes_swipe_picker').toggle(canOpenSwipePickerForMessage(messageId));
+            toggleSwipeControl($(div).find('.mes_swipe_picker'), canOpenSwipePickerForMessage(messageId));
             $(div).find('.mes_delete_add_swipe').hide();
         }
     });
