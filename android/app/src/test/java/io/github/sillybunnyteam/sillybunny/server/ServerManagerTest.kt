@@ -151,7 +151,8 @@ class ServerManagerTest {
 
     private fun idleMain() = shadowOf(Looper.getMainLooper()).idle()
 
-    private fun <T : Any> await(what: String, timeoutMillis: Long = 5_000, probe: () -> T?): T {
+    // Generous: it returns as soon as the probe holds, and a loaded host once took over 5 s to spawn the first fake server.
+    private fun <T : Any> await(what: String, timeoutMillis: Long = 20_000, probe: () -> T?): T {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
         while (true) {
             idleMain()
