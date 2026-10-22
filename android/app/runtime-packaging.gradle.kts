@@ -326,6 +326,11 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val runtimeLock: RegularFileProperty
 
+    /** scripts/bootstrap/install.sh: first run and Repair run it before any checkout exists (plan §4.3, §4.7). */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val installScript: RegularFileProperty
+
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val trampolines: ConfigurableFileCollection
@@ -458,6 +463,10 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
         assetRecords[NPM_ARCHIVE] = npmRecord
         npmJsonFile.copyTo(File(assets, NPM_JSON))
         assetRecords[NPM_JSON] = sha256(npmJsonFile)
+        // Recorded like every runtime asset, so the app lays out exactly the script this APK was built with.
+        val script = installScript.get().asFile
+        script.copyTo(File(assets, INSTALL_SCRIPT))
+        assetRecords[INSTALL_SCRIPT] = sha256(script)
         // p45b: the notices come only from generate<Variant>SillyBunnyNotices, never from out/, which fetch-termux.sh
         // replaces and which holds Termux's notices alone.
         val notices = noticesDirectory.orNull?.asFile
@@ -695,6 +704,7 @@ abstract class PrepareSillyBunnyRuntime : SillyBunnyRuntimeTask() {
         const val MANIFEST = "runtime-manifest.json"
         const val NPM_ARCHIVE = "runtime/npm.zip"
         const val NPM_JSON = "runtime/npm.json"
+        const val INSTALL_SCRIPT = "runtime/install.sh"
         val NOTICES = listOf("THIRD_PARTY_NOTICES", "THIRD_PARTY_NOTICES.json")
         val TOOL_NATIVES = setOf("libnode.so", "libnpm.so", "libnpx.so")
         const val FETCH_NODE = "android/runtime/fetch-node.py"
@@ -1033,6 +1043,8 @@ fun configureRuntimePackaging(variant: Any) {
             fileTree(runtimeNpmDir) { include("npm.zip", "npm.json") },
         )
         runtimeLock.set(rootProject.layout.projectDirectory.file("runtime.lock"))
+        // android/release/inputs-hash.mjs lists this file in EXTRA_INPUTS, because it lies outside android/.
+        installScript.set(rootProject.file("../scripts/bootstrap/install.sh"))
         trampolineBuilds.forEach { build -> trampolines.from(build.flatMap { it.output }) }
     }
     val sources = variant.agpGet("sources")!!

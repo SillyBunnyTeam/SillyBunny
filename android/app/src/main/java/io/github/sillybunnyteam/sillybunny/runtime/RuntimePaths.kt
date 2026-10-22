@@ -30,6 +30,9 @@ class RuntimePaths(
     val opensslModulesDir = File(runtimeDir, "openssl-modules")
     val installedRuntime = File(runtimeDir, "installed-runtime.json")
 
+    /** The APK's `install.sh` for first run and Repair; read-only and not executable, because bash runs it. */
+    val installScript = File(runtimeDir, "share/sillybunny/install.sh")
+
     val homeDir = File(filesDir, "home")
     val statusDir = File(filesDir, "status")
     val logsDir = File(filesDir, "logs")
