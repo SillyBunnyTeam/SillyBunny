@@ -160,7 +160,7 @@ test('upstream seams keep result parsing, intercepted request contracts and dest
     expect(core).toContain('...dialogOptions');
     expect(core).toContain('Number.parseInt(String(startInput instanceof HTMLInputElement ? startInput.value');
     const user = read('scripts/user.js');
-    expect(user.match(/defaultResult: POPUP_RESULT.NEGATIVE/g)).toHaveLength(3);
+    expect(user.match(/defaultResult: POPUP_RESULT.NEGATIVE/g)).toHaveLength(4);
     expect(user.match(/accountFormOptions\(template/g)).toHaveLength(4);
     expect(user).toContain('JSON.stringify({ handle, newPassword, oldPassword })');
     expect(user).toContain('JSON.stringify({ handle, purge })');

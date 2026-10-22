@@ -88,6 +88,8 @@ import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { setOpenRouterProviders, syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { getNanoGptServiceTiers, isNanoGptPayg, updateServiceTierOptions } from './service-tiers.js';
+// SillyBunny: YAML and reasoning controls adopt shared full-width Window rows.
+import { customEndpointParametersOptions } from './sillybunny-editor/adapters/window-content-dialogs.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
@@ -9721,7 +9723,8 @@ async function onCustomizeParametersClick() {
 
     syncCustomReasoningPopup();
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    // SillyBunny: preserve YAML whitespace while the shared Window body owns scrolling.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, ...customEndpointParametersOptions(template) });
 }
 
 /**

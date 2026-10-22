@@ -2248,6 +2248,8 @@ export function initChatUtilities() {
         }
 
         const wrapper = document.createElement('div');
+        // SillyBunny: this marker lets the Window body hand its only scroll area to the textarea.
+        wrapper.classList.add('sb-maximized-editor');
         wrapper.classList.add('height100p', 'wide100p', 'flex-container');
         wrapper.classList.add('flexFlowColumn', 'justifyCenter', 'alignitemscenter');
         const textarea = document.createElement('textarea');
@@ -2302,7 +2304,10 @@ export function initChatUtilities() {
             });
         }
 
-        await callGenericPopup(wrapper, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+        // SillyBunny: the maximized editor is an explicit Window with its source field's title.
+        const title = document.querySelector(`label[for="${CSS.escape(broId)}"]`)?.textContent.trim()
+            || document.querySelector(`.editor_maximize[data-for="${CSS.escape(broId)}"]`)?.closest('h4, .ds-field-header')?.textContent.trim();
+        await callGenericPopup(wrapper, POPUP_TYPE.TEXT, '', { tier: 'window', ...(title ? { title } : {}), wide: true, large: true });
     });
 
     $(document).on('click', 'body .mes .mes_text, body .mes .mes_reasoning', function (event) {

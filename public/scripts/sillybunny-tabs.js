@@ -7731,7 +7731,8 @@ async function openCreatorNotesFullscreen() {
     wrapper.append(spoiler);
 
     try {
-        await context.callGenericPopup(wrapper, context.POPUP_TYPE.TEXT, '', { wide: true, large: true });
+        // SillyBunny: formatted Creator's Notes use the shared Window body without changing the live node.
+        await context.callGenericPopup(wrapper, context.POPUP_TYPE.TEXT, '', { tier: 'window', title: t`Creator's Notes`, wide: true, large: true });
     } finally {
         if (anchor.isConnected) {
             anchor.replaceWith(spoiler);

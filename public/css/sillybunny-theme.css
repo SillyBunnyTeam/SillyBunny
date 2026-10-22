@@ -6846,6 +6846,44 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     overscroll-behavior: contain;
 }
 
+/* Maximized editors give the scrolling surface to the textarea, not both it and the Popup body. */
+dialog.popup.sb-dialog--window:has(.sb-maximized-editor) > .popup-body {
+    display: flex;
+    flex-direction: column;
+}
+
+dialog.popup.sb-dialog--window:has(.sb-maximized-editor) .popup-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+dialog.popup.sb-dialog--window .sb-maximized-editor {
+    flex: 1 1 auto;
+    align-items: stretch;
+    justify-content: stretch;
+    min-height: 0;
+}
+
+dialog.popup.sb-dialog--window .sb-maximized-editor > textarea.maximized_textarea {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    resize: none;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+/* Creator's Notes keeps its formatted live node in the shared Window's single body scroller. */
+dialog.popup.sb-dialog--window:has(.sb-creator-notes-fullscreen) .sb-creator-notes-fullscreen {
+    min-height: 100%;
+    overflow-wrap: anywhere;
+}
+
 dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) :is(.popup-input, .popup-inputs) {
     flex: 0 0 auto;
     width: auto;
@@ -7248,6 +7286,25 @@ dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
 
 .sb-dialog .sb-dialog-rows .ds-row-entry__caption {
     margin-block-start: 6px;
+}
+
+dialog.popup.sb-dialog .ds-row--stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+dialog.popup.sb-dialog .ds-row--stacked > .ds-row-text,
+dialog.popup.sb-dialog .ds-row--stacked .ds-row-text > :is(input, textarea, select) {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+dialog.popup.sb-dialog .ds-row--stacked.sb-window-stacked-textarea textarea {
+    min-height: 8lh;
 }
 
 /* Icon results share the Popup body scroller rather than an independently clipped grid. */

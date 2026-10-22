@@ -315,6 +315,8 @@ import { evaluateMacros, getLastMessageId, initMacros } from './scripts/macros.j
 import { currentUser, setUserControls } from './scripts/user.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup, fixToastrForDialogs } from './scripts/popup.js';
 import { renderTemplate, renderTemplateAsync } from './scripts/templates.js';
+// SillyBunny: scenario overrides adopt their textareas into the shared Window rows.
+import { scenarioOverrideOptions } from './scripts/sillybunny-editor/adapters/window-content-dialogs.js';
 import { initScrapers } from './scripts/scrapers.js';
 import { initCustomSelectedSamplers, validateDisabledSamplers } from './scripts/samplerSelect.js';
 import { DragAndDropHandler } from './scripts/dragdrop.js';
@@ -15489,6 +15491,8 @@ export async function setCharacterSettingsOverrides() {
 
     // Wait for popup close/confirm.
     await callGenericPopup($template, POPUP_TYPE.TEXT, '', {
+        // SillyBunny: the override editor uses the Window tier with full-width textarea rows.
+        ...scenarioOverrideOptions($template),
         wide: true,
         large: true,
         allowVerticalScrolling: true,

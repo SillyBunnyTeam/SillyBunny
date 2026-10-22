@@ -38,6 +38,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-22, PR #870 Phase 4.5–4.9. |
 | Owner | UI integrator. |
 
+### Phase 4.10–4.15 Window-tier content adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/user.js`; `public/script.js`; `public/scripts/chats.js`; `public/scripts/sillybunny-tabs.js`; `public/scripts/itemized-prompts.js`; `public/scripts/openai.js`; `public/scripts/secrets.js`; `public/css/sillybunny-theme.css`. |
+| Area | Settings Snapshots, Account Profile, Admin, character settings overrides, maximized editor and Creator's Notes, Prompt Itemization/raw prompt, Custom Endpoint parameters, exposed secrets viewer. |
+| Divergence reason | Window content must remain reachable while source inputs, event handlers, persistence, route contracts and secret handling stay unchanged; maximized editors use the textarea as their only scroller. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/window-content-dialogs.js`; shared Popup frame, rows and `bindKeyboardInset()`. |
+| Adapter shape | Adopt existing profile/admin/snapshot/scenario/YAML controls into explicit Window content while preserving IDs and native attributes; pass Window tiers to expanded text and itemization surfaces; use the visual viewport inset already bound by the frame. Never execute snapshot restore or account writes in tests, and keep exposed secret fixtures out of logs, storage, screenshots and video. |
+| Protecting tests | `tests/unit/window-content-dialogs.test.js`; `tests/window-content-dialogs.e2e.js` at 1440×900 and 390×844; `tests/expanded-editor-touch.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/misc-form-dialogs.e2e.js`, `tests/character-editor-rendering.e2e.js`, `tests/world-info-editor.e2e.js`, `tests/prompt-manager-characterization.e2e.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/sillybunny-backend-settings.e2e.js`, `tests/sillybunny-connections-layout.e2e.js`, and `tests/window-dialogs.e2e.js`. |
+| Validation | 2026-10-22: `npm run lint`, `git diff --check`, and `npm run check:frontend-budgets` pass (16 blocking stylesheets / 1005.3 KiB; 24 startup scripts / 2029.8 KiB). From `tests/`, full Jest: 422 suites passed; 6,409 tests passed, 2 skipped; 1 snapshot passed. Chromium: Window surfaces + dialog tiers + Popup scroll 44/44 on final rerun; initial Window/popup/touch batch 47/47; shell/Connections/Window regression batch 78/78; focused in-chat editor checks 2/2. Existing backend settings: 21/22, with the known unsaved-template alert assertion at line 729; full in-chat Agents suite: 50/51 after scoping the stacked-textarea `8lh` minimum to this adapter's rows (a global rule had shrunk the Agents regex fields to 159.75px), with only the known missing tracker fixture failing; the combined rerun of in-chat Agents, Window content, expanded-editor touch, dialog tiers and Popup scroll is 97 passed, 1 known failure; Quick Edit fade check passes on isolated retry after restarting port 4455. Account, snapshot, settings and secret requests are intercepted; restore and user mutations are not confirmed. Secret suite screenshots and video are disabled. Seven non-secret screenshots were reviewed in `/tmp/opencode/window-content-shots/`. |
+| Rollback path | Remove the `window-content-dialogs.js` adapter imports/options, restore original Popup tier calls and remove the scoped maximized-textarea CSS; source templates, fields, metadata, request bodies and persistence remain unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 4.10–4.15. |
+| Owner | UI integrator. |
+
 ### Phase 4.4 Quick Reply editor window
 | Field | Value |
 | --- | --- |

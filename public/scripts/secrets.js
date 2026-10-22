@@ -335,7 +335,9 @@ async function viewSecrets() {
         $(table).append(`<tr><td>${DOMPurify.sanitize(key)}</td><td>${DOMPurify.sanitize(value)}</td></tr>`);
     }
 
-    await callGenericPopup(table.outerHTML, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
+    // SillyBunny: exposed values stay inside the shared Window body and are never written elsewhere.
+    const title = document.querySelector('#viewSecrets span')?.textContent.trim();
+    await callGenericPopup(table.outerHTML, POPUP_TYPE.TEXT, '', { tier: 'window', title, wide: true, large: true, allowVerticalScrolling: true });
 }
 
 /**

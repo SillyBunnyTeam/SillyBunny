@@ -5,6 +5,8 @@ import { renderTemplateAsync } from './templates.js';
 import { ensureImageFormatSupported, getBase64Async, humanFileSize } from './utils.js';
 // SillyBunny: account rows keep native password types, autocomplete, and upstream request handlers.
 import { accountFormOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: account windows adopt their source content without changing route or result contracts.
+import { accountProfileOptions, adminPanelOptions, snapshotsOptions } from './sillybunny-editor/adapters/window-content-dialogs.js';
 import { t } from './i18n.js';
 
 /**
@@ -500,7 +502,15 @@ async function restoreSnapshot(name, callback) {
             `Are you sure you want to restore the settings from "${name}"?`,
             POPUP_TYPE.CONFIRM,
             '',
-            { okButton: 'Restore', cancelButton: 'Cancel', wide: false, large: false },
+            // SillyBunny: restoring a settings snapshot is destructive; Return must not confirm it.
+            {
+                okButton: 'Restore',
+                cancelButton: 'Cancel',
+                defaultResult: POPUP_RESULT.NEGATIVE,
+                wide: false,
+                large: false,
+                onOpen(popup) { popup.okButton.classList.add('is-destructive'); },
+            },
         );
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
@@ -633,7 +643,8 @@ async function viewSettingsSnapshots() {
         }
     }
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true });
+    // SillyBunny: snapshots use the shared Window body and preserve the existing action/list nodes.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, ...snapshotsOptions(template) });
     template.find('.makeSnapshotButton').on('click', () => makeSnapshot(renderSnapshots));
     renderSnapshots();
 }
@@ -756,6 +767,8 @@ async function openUserProfile() {
         large: false,
         allowVerticalScrolling: true,
         allowHorizontalScrolling: false,
+        // SillyBunny: account profile uses the shared Window while keeping its source controls live.
+        ...accountProfileOptions(template),
     };
     callGenericPopup(template, POPUP_TYPE.TEXT, '', popupOptions);
 }
@@ -875,7 +888,8 @@ async function openAdminPanel() {
         });
     });
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false });
+    // SillyBunny: the admin view is a Window; its new-user inputs retain their source identities.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false, ...adminPanelOptions(template) });
     renderUsers();
 }
 
