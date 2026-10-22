@@ -7261,38 +7261,6 @@ dialog.popup.sb-dialog.sb-icon-picker {
     line-height: 1.4;
 }
 
-/* QR's inline Show toggle is not a full-width preferences row. Keep its upstream editor intact. */
-.sb-dialog--window #qr--modalEditor .qr--inputGroup > .checkbox_label {
-    flex: 0 0 auto;
-    width: auto;
-    white-space: nowrap;
-}
-
-.sb-dialog--window #qr--modalEditor .qr--inputGroup > input {
-    min-width: 0;
-}
-
-.sb-dialog--window:has(#qr--modalEditor) > .popup-body {
-    container: sb-qr / inline-size;
-}
-
-@container sb-qr (max-width: 1000px) {
-    dialog.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) {
-        flex: 0 0 auto;
-        flex-direction: column;
-        overflow: visible;
-    }
-
-    dialog.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) > #qr--main {
-        flex: 0 0 auto;
-        overflow: visible;
-    }
-
-    .sb-dialog--window #qr--modalEditor:not(.qr--isExecuting) #qr--modal-messageHolder {
-        min-height: 300px;
-    }
-}
-
 dialog.popup.sb-dialog--alert .popup-content :is(h2, h3) {
     margin-top: 0;
 }

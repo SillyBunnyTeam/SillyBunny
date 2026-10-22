@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 4.4 Quick Reply editor window
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/quick-reply/src/QuickReply.js`; `public/scripts/extensions/quick-reply/style.css`; `public/css/sillybunny-theme.css`. |
+| Area | Quick Reply editor, context-set rows, execution debugger and minimized debugger. |
+| Divergence reason | The live editor is a Window with one frame-body scroller; its icon picker must be a pushed page, and minimized execution must remain operable instead of collapsing the frame. |
+| Target seam | `public/scripts/extensions/quick-reply/src/sillybunny-editor.js`; shared rows and `public/scripts/sillybunny-editor/popup-frame.js`. |
+| Adapter shape | Keep the existing template, control identities, IDs, input/change/click listeners, live mutation/persistence, parser, debug controller, Popup callbacks and results. Pass Window/Quick Reply title options, use the shared select/switch/entry/spin rows for adopted controls, and let the existing Popup frame stack the icon picker. Feature CSS is loaded by Quick Reply's manifest, so QR-only layout and minimized-debugger rules stay in `style.css`; remove the Phase 2 QR container-query workaround from the global theme. |
+| Protecting tests | `tests/unit/quick-reply-editor.test.js`; `tests/quick-reply-editor.e2e.js` at 1440×900, 390×844 and 844×390; `tests/utility-dialogs.e2e.js`; `tests/quick-reply-bar-layout.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. The editor suite verifies live/persisted fields, options, context selection, icon page, execute/error/debugger controls, Ctrl+Enter, F9, Ctrl+Backslash, scrolling, split/stack debugger widths and minimization. |
+| Validation | 2026-10-22: HEAD characterization `tests/quick-reply-editor.e2e.js` 6/6 at 1440×900 and 390×844. Full Jest: 420 suites, 6,400 passed, 2 skipped, 1 snapshot passed. Root lint, test-file ESLint, and `git diff --check` pass; frontend budget passes at 16 blocking stylesheets / 1,002.9 KiB. Chromium: editor 16/16; requested editor + dialog tiers + Popup scroll + utility dialogs 62/62. Narrow debugger result width is asserted ≥90% of body at 390×844 and 844×390; desktop retains the side-by-side debugger split. Generation calls are intercepted; test slash commands use local fixtures. Refreshed 390/844 debug screenshots and 1440 desktop split were visually reviewed in `/tmp/opencode/quick-reply-layout-review/`. |
+| Rollback path | Remove the SillyBunny adapter import/options and context-row adoption call, restore the theme's QR container-query rules, and remove the QR Window/minimized overrides and editor tests; the source template and Quick Reply persisted model remain unchanged. |
+| Last reviewed | 2026-10-22, PR #870 Phase 4.4. |
+| Owner | UI integrator. |
+
 ### Phase 4.1–4.3 Window-tier content adapters
 | Field | Value |
 | --- | --- |
