@@ -35,6 +35,7 @@ import {
     updateConversationThreadMessage,
 } from './thread-store.js';
 import { splitChatroomMessages, waitForReplyDelay, withTypingParticipant } from './typing.js';
+import { getConversationWorldInfo } from './world-info.js';
 
 let activeConversationEditor = null;
 
@@ -107,11 +108,12 @@ export async function generateConversationReply(directive, settings, { responseL
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
         ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
         : getConversationReplyMaxTokens(settings);
-    const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId });
+    const worldInfo = await getConversationWorldInfo(messages, settings, { avatar: speakerAvatar, personaId, responseLength: resolvedResponseLength });
+    const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo });
 
     return generateConversationRaw({
         prompt,
-        systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar, branchId, groupId, personaId }),
+        systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { threadAvatar, branchId, groupId, personaId, worldInfo }),
         responseLength: resolvedResponseLength,
         trimNames,
         cacheScope: 'conversation-mode',

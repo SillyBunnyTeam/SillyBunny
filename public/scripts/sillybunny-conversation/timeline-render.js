@@ -57,6 +57,7 @@ import {
     saveConversationThread,
 } from './thread-store.js';
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
+import { getConversationWorldInfo } from './world-info.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -1022,11 +1023,19 @@ export async function regenerateConversationMessage(messageId) {
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
+        const transcript = sourceMessages.slice(0, -1);
+        const responseLength = getConversationReplyMaxTokens(settings);
+        const worldInfo = await getConversationWorldInfo(transcript, settings, {
+            avatar: speakerAvatar,
+            personaId: context.personaId,
+            responseLength,
+            trigger: 'regenerate',
+        });
         const prompt = await buildConversationPromptMessages(
-            sourceMessages.slice(0, -1),
+            transcript,
             '[System directive: Regenerate the selected Conversation reply. Keep the same speaker, casual DM style, and current context. Output only the replacement message.]',
             speakerName,
-            { groupId: context.groupId, personaId: context.personaId },
+            { groupId: context.groupId, personaId: context.personaId, worldInfo },
         );
         const response = await withTypingParticipant(
             { avatar: speakerAvatar, name: speakerName },
@@ -1037,8 +1046,9 @@ export async function regenerateConversationMessage(messageId) {
                     branchId: context.branchId,
                     groupId: context.groupId,
                     personaId: context.personaId,
+                    worldInfo,
                 }),
-                responseLength: getConversationReplyMaxTokens(settings),
+                responseLength,
                 trimNames: true,
                 cacheScope: 'conversation-mode',
             }, settings),

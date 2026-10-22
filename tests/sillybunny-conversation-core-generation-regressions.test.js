@@ -7,10 +7,15 @@ const generateConversationImage = jest.fn();
 const updateConversationThreadMessage = jest.fn();
 const runtimeStatusOverrides = new Map();
 const threadMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
+const generateRaw = jest.fn();
+const buildConversationPromptMessages = jest.fn(async () => [{ role: 'user', content: 'Conversation transcript:' }]);
+const buildConversationSystemPrompt = jest.fn(() => 'system prompt');
+const worldInfo = { before: 'Lore before.', after: '', authorsNoteBefore: '', authorsNoteAfter: '', depth: [] };
+const getConversationWorldInfo = jest.fn(async () => worldInfo);
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'char.png', name: 'Aster' }],
-    generateRaw: jest.fn(),
+    generateRaw,
 }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({
     extractProfileResponseText: value => String(value || ''),
@@ -37,8 +42,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partne
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles: () => [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({
-    buildConversationPromptMessages: jest.fn(),
-    buildConversationSystemPrompt: jest.fn(),
+    buildConversationPromptMessages,
+    buildConversationSystemPrompt,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     formatPromptText: value => String(value || ''),
@@ -64,9 +69,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
     waitForReplyDelay: jest.fn(),
     withTypingParticipant: (_participant, task) => task(),
 }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-info.js', () => ({ getConversationWorldInfo }));
 
 const {
     editConversationMessage,
+    generateConversationReply,
     postCharacterReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
 
@@ -83,8 +90,32 @@ describe('Conversation core generated reply regressions', () => {
         generateConversationImage.mockClear();
         updateConversationThreadMessage.mockClear();
         runtimeStatusOverrides.clear();
+        generateRaw.mockReset();
+        buildConversationPromptMessages.mockClear();
+        buildConversationSystemPrompt.mockClear();
+        getConversationWorldInfo.mockClear();
         delete globalThis.document;
         delete globalThis.confirm;
+        delete globalThis.window;
+    });
+
+    test('scans lorebooks for the speaker and gives the entries to both prompt builders', async () => {
+        globalThis.window = {};
+        generateRaw.mockResolvedValueOnce('reply');
+
+        await expect(generateConversationReply('Reply now.', settings, {
+            avatar: 'char.png',
+            branchId: 'branch-a',
+            groupId: '',
+            personaId: 'persona-a.png',
+            speakerAvatar: 'partner.png',
+            speakerName: 'Partner',
+        })).resolves.toBe('reply');
+
+        expect(getConversationWorldInfo).toHaveBeenCalledWith(threadMessages, settings, { avatar: 'partner.png', personaId: 'persona-a.png', responseLength: 100 });
+        expect(buildConversationPromptMessages).toHaveBeenCalledWith(threadMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
+        expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { threadAvatar: 'char.png', branchId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
+        expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 100 }));
     });
 
     test('keeps native selfie command metadata when image generation is disabled', async () => {
