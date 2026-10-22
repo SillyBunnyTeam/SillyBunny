@@ -96,6 +96,15 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit --prefix tests
 
+      - name: Check agent template versions
+        # The merge ref holds only this PR's changes on top of the base branch; fork checkouts do not have it.
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags --depth=2 "https://github.com/$BASE_REPOSITORY.git" "+refs/pull/$PR_NUMBER/merge:refs/remotes/pr/merge"
+          node scripts/bump-agent-template-versions.js --check --base 'refs/remotes/pr/merge^1' --head refs/remotes/pr/merge
+
   frontend-budgets:
     name: ✅ Check Frontend Assets
     runs-on: ubuntu-latest

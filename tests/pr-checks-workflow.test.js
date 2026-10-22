@@ -13,6 +13,14 @@ describe('pull request checks workflow', () => {
         expect(commands).toContain('npm run lint --prefix tests');
     });
 
+    test('checks agent template versions against the merge ref inside the required unit test job', () => {
+        expect(workflow.jobs['run-tests'].name).toBe('✅ Run Unit Tests on PR');
+        const step = workflow.jobs['run-tests'].steps.find(candidate => candidate.name === 'Check agent template versions');
+        expect(step.run).toContain('"+refs/pull/$PR_NUMBER/merge:refs/remotes/pr/merge"');
+        expect(step.run).toContain('node scripts/bump-agent-template-versions.js --check --base \'refs/remotes/pr/merge^1\' --head refs/remotes/pr/merge');
+        expect(step.env.BASE_REPOSITORY).toBe('${{ github.repository }}');
+    });
+
     test('boots the server under Node.js and keeps the Bun check name', () => {
         expect(workflow.jobs['run-bun-checks'].name).toBe('✅ Check Bun Runtime');
         const job = workflow.jobs['run-node-checks'];
