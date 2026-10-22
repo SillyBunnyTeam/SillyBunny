@@ -1,4 +1,3 @@
-/* global document, window, navigator */
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';

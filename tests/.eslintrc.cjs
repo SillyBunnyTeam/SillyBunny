@@ -2,12 +2,10 @@ module.exports = {
     root: true,
     plugins: [
         'jest',
-        'playwright',
     ],
     extends: [
         'eslint:recommended',
         'plugin:jest/recommended',
-        'plugin:playwright/recommended',
     ],
     env: {
         es6: true,
@@ -21,6 +19,11 @@ module.exports = {
         sourceType: 'module',
     },
     overrides: [
+        {
+            files: ['*.e2e.js', 'chat-scroll-regression-helpers.js', 'frontend/frontent-test-utils.js'],
+            plugins: ['playwright'],
+            extends: ['plugin:playwright/recommended'],
+        },
     ],
     ignorePatterns: [
         '*.min.js',
