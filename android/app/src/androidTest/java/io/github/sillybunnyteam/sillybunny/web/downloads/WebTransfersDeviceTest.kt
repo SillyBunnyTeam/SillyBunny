@@ -27,9 +27,11 @@ import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
 /**
- * Page exports and HTTP downloads end to end (plan §4.5, S2.7b patterns) in a real WebView against the
- * host fixture server. Destinations are MediaStore items handed back through [HostRegistry]. Tests that
- * need the page script skip on a WebView without the bridge; the rest also cover that WebView.
+ * Page exports and HTTP downloads end to end (plan §4.5, S2.7b patterns) in the app's real WebView shell
+ * ([TransferHost] hosts [io.github.sillybunnyteam.sillybunny.web.WebScreen]) against the host fixture
+ * server, on the app's per-install web origin. Destinations are MediaStore items handed back through
+ * [HostRegistry]. Tests that need the page script skip on a WebView without the bridge; the rest also
+ * cover that WebView.
  */
 @RunWith(AndroidJUnit4::class)
 class WebTransfersDeviceTest {
@@ -80,9 +82,10 @@ class WebTransfersDeviceTest {
     fun bridgeIsOnlyForTheAppOrigin() {
         val host = launch()
         val view = host.webView()
+        // A sandboxed frame of the app's own page has an opaque origin, so it is another origin.
         val frame = JSONObject(HostWeb.waitResult(view, "frame", 20_000))
-        assertEquals("cross-origin frame sees no bridge", "undefined", frame.getString("bridge"))
-        assertEquals("cross-origin frame sees no page script", "undefined", frame.getString("api"))
+        assertEquals("opaque-origin frame sees no bridge", "undefined", frame.getString("bridge"))
+        assertEquals("opaque-origin frame sees no page script", "undefined", frame.getString("api"))
         val state = JSONObject(checkNotNull(HostWeb.fx(view, "state()")))
         HostWeb.note("bridged=${host.bridged()} webview=${HostWeb.webViewMajor()} main frame state=$state")
         assertEquals(if (host.bridged()) "object" else "undefined", state.getString("api"))
@@ -330,9 +333,10 @@ class WebTransfersDeviceTest {
     }
 
     /**
-     * A frame on another loopback port is same-site with the app origin, so its form POST there carries
-     * the launch cookie, and no page script runs in that frame to report the POST. The download it
-     * starts is never fetched again with GET: no navigation shows a GET, so the browser is offered.
+     * A frame of the app's host on another loopback port would be same-site with the app origin, so a
+     * form POST from it into the app origin would carry the launch cookie, with no page script there to
+     * report it. The shell refuses that frame's request: nothing reaches the other port, and no POST, no
+     * download and no prompt follow.
      */
     @Test
     fun aFormPostFromAnotherPortIsNeverReplayed() {
@@ -340,22 +344,12 @@ class WebTransfersDeviceTest {
         val view = host.webView()
         val name = "otherport-post.json"
         HostWeb.fx(view, "postFromOtherPort(${js(name)})")
-        HostWeb.waitFor("the frame's POST", 20_000) { fixture.app("/attachment?name=$name").any { it.method == "POST" } }
-        val reported = runCatching { HostWeb.waitFor("the download report", 5_000) { host.downloadReports.any { name in it } } }.isSuccess
-        val prompted = HostWeb.shown(OPEN_IN_BROWSER_TAG, if (reported) 10_000 else 2_000)
-        HostWeb.note(
-            "other-port form POST: bridged=${host.bridged()} webview=${HostWeb.webViewMajor()} reported=$reported prompted=$prompted " +
-                "posts=${fixture.app("/attachment?name=$name")}",
-        )
-        assertEquals("prompt exactly when the WebView reports the download", reported, prompted)
-        if (prompted) {
-            HostWeb.clickTag(DISMISS_TAG)
-            assertTrue(HostWeb.gone(DISMISS_TAG))
-        }
         host.registry.none(3_000)
-        val hits = fixture.app("/attachment?name=$name")
-        assertTrue(hits.isNotEmpty())
-        assertTrue("never fetched again with GET: $hits", hits.all { it.method == "POST" })
+        assertFalse("no prompt", HostWeb.shown(OPEN_IN_BROWSER_TAG, 2_000))
+        HostWeb.note("other-port frame: bridged=${host.bridged()} webview=${HostWeb.webViewMajor()} log=${fixture.requests()}")
+        assertEquals("the frame was refused", emptyList<String>(), fixture.escaped().map { it.toString() })
+        assertEquals("no POST reached the app", emptyList<String>(), fixture.app("/attachment").map { it.toString() })
+        assertTrue(host.downloadReports.toString(), host.downloadReports.isEmpty())
         assertEquals(0, host.openInBrowserCalls.get())
         assertEquals(0, host.count(R.string.web_transfer_saved))
     }
@@ -476,11 +470,20 @@ class WebTransfersDeviceTest {
     fun redirectsAreCheckedPerHop() {
         val host = bridgedHost()
         val view = host.webView()
-        val outside = "http://127.0.0.1:${fixture.otherPort}/bytes?n=10"
-        HostWeb.fx(view, "httpAnchor('/redirect?to=' + encodeURIComponent(${js(outside)}), 'leak.bin')")
-        host.waitNotice(R.string.web_transfer_failed)
+        // Another port on 127.0.0.1, the app's own host on another port, and the server's native address,
+        // which is another origin than the web origin. The page builds the label host itself.
+        val targets = listOf(
+            "'http://127.0.0.1:${fixture.otherPort}/bytes?n=10'",
+            "'http://' + location.hostname + ':${fixture.otherPort}/bytes?n=11'",
+            "'http://127.0.0.1:${fixture.port}/bytes?n=12'",
+        )
+        for ((index, target) in targets.withIndex()) {
+            HostWeb.fx(view, "httpAnchor('/redirect?to=' + encodeURIComponent($target), 'leak$index.bin')")
+            host.waitNotice(R.string.web_transfer_failed, index + 1)
+        }
         host.registry.none()
         assertEquals("nothing reached the other port", emptyList<String>(), fixture.escaped().map { it.toString() })
+        assertEquals("nothing followed to the native address", emptyList<String>(), fixture.app("/bytes?n=12").map { it.toString() })
         HostWeb.fx(view, "httpAnchor('/redirect?to=' + encodeURIComponent('/bytes?n=1200&seed=9'), 'redir.bin')")
         val launch = host.registry.next()
         assertEquals("redir.bin", launch.title)

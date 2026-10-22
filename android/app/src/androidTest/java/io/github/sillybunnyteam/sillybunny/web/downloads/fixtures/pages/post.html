@@ -2,11 +2,11 @@
 <form id="post" method="post"><input type="hidden" name="x" value="1"></form>
 <script>
 'use strict';
-// Served from the other loopback port, which is same-site with the app origin: this form POST into the
-// app origin carries the launch cookie, and no page script of the app runs here to report it.
+// Served from the other loopback port under the app's host name, which is same-site with the app origin:
+// this form POST into the app origin would carry the launch cookie, and no page script of the app runs here.
 const name = new URLSearchParams(location.search).get('name') || 'otherport.json';
 const form = document.getElementById('post');
-form.action = 'http://127.0.0.1:{{APP}}/attachment?name=' + encodeURIComponent(name) + '&n=700&seed=5';
+form.action = 'http://' + location.hostname + ':{{APP}}/attachment?name=' + encodeURIComponent(name) + '&n=700&seed=5';
 form.submit();
 </script>
 </body></html>

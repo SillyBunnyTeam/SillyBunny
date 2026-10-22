@@ -12,6 +12,7 @@ import androidx.activity.result.ActivityResult
 import androidx.test.core.app.ApplicationProvider
 import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import io.github.sillybunnyteam.sillybunny.web.WebAddress
 import io.github.sillybunnyteam.sillybunny.web.files.ContentUriPolicy
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -116,6 +117,13 @@ private class FakePlatform : TransferPlatform {
     var evaluateResult: String? = "true"
     val evaluated = mutableListOf<String>()
 
+    /** The main frame's document; tests set the app page, or another page. */
+    @Volatile
+    var page: String? = null
+
+    /** The URLs whose WebView cookies were read, in order (worker threads). */
+    val cookieUrls = CopyOnWriteArrayList<String>()
+
     override fun bridgeSupported(): Boolean = bridge
 
     override fun binarySupported(): Boolean = binary
@@ -140,7 +148,12 @@ private class FakePlatform : TransferPlatform {
 
     override fun userAgent(webView: WebView): String = "WebViewUA"
 
-    override fun cookies(url: String): String = "sillybunny_launch=t0k3n"
+    override fun pageUrl(webView: WebView): String? = page
+
+    override fun cookies(url: String): String {
+        cookieUrls += url
+        return "sillybunny_launch=t0k3n"
+    }
 }
 
 /**
@@ -294,7 +307,13 @@ private class ScriptedConnection(
 @Config(sdk = [37])
 class WebTransfersTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val origin = "http://127.0.0.1:41234"
+    private val address = WebAddress("sb-abcdefghijklmnopqrstuvwxyz")
+
+    /** The web origin of the app's pages, as in the app: the per-install label, not the native address. */
+    private val origin = "http://sb-abcdefghijklmnopqrstuvwxyz.localhost:41234"
+
+    /** The server's own address, where HTTP downloads on [origin] connect. */
+    private val native = "http://127.0.0.1:41234"
     private val session = LaunchSession(41234, "ab".repeat(32))
     private val platform = FakePlatform()
     private val storage = FakeStorage(context.cacheDir)
@@ -340,6 +359,7 @@ class WebTransfersTest {
         var workers = 0
         transfers = WebTransfers(
             context,
+            originOf = address::origin,
             platform = platform,
             storage = storage,
             destinations = ContentUriPolicy(context, ownAuthorities = { emptySet() }) { uri, needed -> (held[uri] ?: 0) and needed == needed },
@@ -359,13 +379,19 @@ class WebTransfersTest {
             newFetch = { policy, cookies, agent -> HttpFetch(policy, cookies, agent, connect = ::connect) },
         ).also { created += it }
         view = WebView(context)
+        platform.page = "$origin/"
         transfers.attach(view, session)
         transfers.bind { launches += it }
         if (bridge) hello()
     }
 
+    /**
+     * The network. Android's resolver does not resolve the label, so a request to it would fail: hops on the
+     * web origin must connect to [native]. Routes are keyed by the URL the page used.
+     */
     private fun connect(uri: URI): HttpURLConnection {
-        val url = uri.toString()
+        if (uri.host.endsWith(".localhost")) throw AssertionError("connected to the web origin's name")
+        val url = uri.toString().let { if (it.startsWith("$native/")) origin + it.removePrefix(native) else it }
         streamed[url]?.let { (headers, input) ->
             return ScriptedConnection(uri.toURL(), 200, headers) { input }.also { requests += it }
         }
@@ -438,7 +464,7 @@ class WebTransfersTest {
 
     @Test
     fun bridgeIsInstalledForTheExactOrigin() {
-        assertEquals(origin, platform.origin)
+        assertEquals("the web origin, never the native address", origin, platform.origin)
         assertTrue(transfers.hasBridge(view))
         start(bridge = false)
         assertFalse(transfers.hasBridge(view))
@@ -552,6 +578,7 @@ class WebTransfersTest {
         send("""{"t":"begin","doc":"$doc","id":"${exportId('b')}","name":"x","mime":"","size":4,"key":""}""", main = false)
         send("""{"t":"begin","doc":"$doc","id":"${exportId('c')}","name":"x","mime":"","size":4,"key":""}""", from = "http://127.0.0.1:41235")
         send("""{"t":"begin","doc":"$doc","id":"${exportId('d')}","name":"x","mime":"","size":4,"key":""}""", from = "http://localhost:41234")
+        send("""{"t":"begin","doc":"$doc","id":"${exportId('e')}","name":"x","mime":"","size":4,"key":""}""", from = native)
         idle()
         assertTrue(launches.isEmpty())
         // POST notices count from any frame of the origin, so a subframe form never gets replayed either.
@@ -806,11 +833,12 @@ class WebTransfersTest {
         send("""{"t":"post","doc":"$doc","url":"$origin/posted"}""")
         download("$origin/posted", get = false)
         download("http://127.0.0.1:41235/other-port")
+        download("$native/native-address")
         download("http://example.com/cleartext")
         send("""{"t":"get","doc":"$doc","url":"https://example.com/outside","name":"x"}""")
         send("""{"t":"get","doc":"${"f".repeat(16)}","url":"$origin/stale","name":"x"}""")
         idle()
-        assertEquals(4, notices.count { it == R.string.web_transfer_failed })
+        assertEquals(5, notices.count { it == R.string.web_transfer_failed })
         assertTrue(requests.isEmpty())
         assertTrue(launches.isEmpty())
     }
@@ -913,8 +941,8 @@ class WebTransfersTest {
     }
 
     /**
-     * Also inside the app origin, with the page script: a frame on another loopback port is same-site,
-     * so its form POST into the app origin carries the launch cookie, and no script there reports it.
+     * Also inside the app origin, with the page script: a frame of the app's host on another port is
+     * same-site, so its form POST into the app origin carries the launch cookie, and no script there reports it.
      * Without a GET navigation for the URL the download is never fetched, so never replayed as a GET.
      */
     @Test
@@ -934,6 +962,60 @@ class WebTransfersTest {
         assertEquals("sillybunny_launch=t0k3n", requests.single().sent["Cookie"])
         assertEquals("posted.json", launches.single().getStringExtra(Intent.EXTRA_TITLE))
         assertTrue(notices.isEmpty())
+    }
+
+    @Test
+    fun webOriginDownloadsConnectToTheNativeAddressWithTheWebOriginsCookies() {
+        val url = "$origin/backups/x.zip?n=1"
+        routes[url] = Triple(200, mapOf("Content-Length" to "2"), "ok".toByteArray())
+        download(url)
+        val destination = destination("x.zip")
+        answer(destination)
+        assertArrayEquals("ok".toByteArray(), storage.bytes(destination))
+        assertEquals("$native/backups/x.zip?n=1", requests.single().url.toString())
+        assertEquals("the cookies WebView holds for the web origin", listOf(url), platform.cookieUrls)
+        assertEquals("sillybunny_launch=t0k3n", requests.single().sent["Cookie"])
+    }
+
+    @Test
+    fun redirectsOnTheWebOriginStayOnTheNativeAddress() {
+        routes["$origin/r"] = Triple(302, mapOf("Location" to "/b?x=1"), ByteArray(0))
+        routes["$origin/b?x=1"] = Triple(200, mapOf("Content-Length" to "2"), "ok".toByteArray())
+        download("$origin/r")
+        assertEquals(listOf("$native/r", "$native/b?x=1"), requests.map { it.url.toString() })
+        assertEquals(listOf("$origin/r", "$origin/b?x=1"), platform.cookieUrls)
+        assertEquals(1, launches.size)
+        // An absolute redirect to the native address is another origin, so it is refused.
+        now += WebTransfers.DUPLICATE_REPORT_MILLIS + 1
+        routes["$origin/to-native"] = Triple(302, mapOf("Location" to "$native/b?x=1"), ByteArray(0))
+        download("$origin/to-native")
+        assertEquals(3, requests.size)
+        assertEquals(listOf(R.string.web_transfer_failed), notices)
+    }
+
+    @Test
+    fun nothingCountsWhileAnotherPageIsShown() {
+        routes["$origin/file.json"] = Triple(200, mapOf("Content-Length" to "2"), "{}".toByteArray())
+        for (other in listOf("https://openrouter.ai/auth?callback_url=x", "$native/", "http://127.0.0.1:41235/", "about:blank", null)) {
+            platform.page = other
+            assertFalse("$other", transfers.handleNavigation(view, Uri.parse("blob:$origin/x"), true, true))
+            assertFalse("$other", transfers.handleNavigation(view, Uri.parse("data:text/plain;base64,aGk="), true, true))
+            assertFalse("$other", transfers.handleNavigation(view, Uri.parse("$origin/file.json"), true, true))
+            checkNotNull(platform.downloads).onDownloadStart("$origin/file.json", "UA", null, null, -1)
+            checkNotNull(platform.downloads).onDownloadStart("https://openrouter.ai/x.json", "UA", null, null, -1)
+            idle()
+        }
+        assertTrue(platform.evaluated.isEmpty())
+        assertTrue(requests.isEmpty())
+        assertTrue(launches.isEmpty())
+        assertTrue(notices.isEmpty())
+        assertFalse(transfers.unsupportedPrompt)
+        // Back on the app page, the same report counts: no GET was seen meanwhile, so the browser is offered.
+        platform.page = "$origin/chats"
+        checkNotNull(platform.downloads).onDownloadStart("$origin/file.json", "UA", null, null, -1)
+        idle()
+        assertTrue(transfers.unsupportedPrompt)
+        assertTrue(transfers.handleNavigation(view, Uri.parse("data:text/plain;base64,aGk="), true, true))
     }
 
     @Test

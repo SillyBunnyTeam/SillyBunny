@@ -61,6 +61,9 @@ internal interface TransferPlatform {
 
     fun userAgent(webView: WebView): String?
 
+    /** The URL of the document in [webView]'s main frame (main thread). */
+    fun pageUrl(webView: WebView): String?
+
     /** The WebView cookie header for [url]; only ever called for the exact app origin. */
     fun cookies(url: String): String?
 }
@@ -136,6 +139,8 @@ internal object AndroidTransferPlatform : TransferPlatform {
     }
 
     override fun userAgent(webView: WebView): String? = webView.settings.userAgentString
+
+    override fun pageUrl(webView: WebView): String? = webView.url
 
     override fun cookies(url: String): String? = CookieManager.getInstance().getCookie(url)
 }

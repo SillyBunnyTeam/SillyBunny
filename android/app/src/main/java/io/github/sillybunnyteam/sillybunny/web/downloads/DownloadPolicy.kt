@@ -25,8 +25,12 @@ internal data class WebOrigin(val scheme: String, val host: String, val port: In
     }
 }
 
-/** One request of a download chain and whether it may carry the app's WebView cookies. */
-internal class DownloadHop(val url: URI, val sendCookies: Boolean, val leftApp: Boolean)
+/**
+ * One request of a download chain and whether it may carry the app's WebView cookies. [connectTo] is
+ * where the request goes: [url] itself, or for the app's web origin the server's native address with the
+ * same path and query, because Android's resolver does not resolve `*.localhost` names.
+ */
+internal class DownloadHop(val url: URI, val sendCookies: Boolean, val leftApp: Boolean, val connectTo: URI = url)
 
 /**
  * Cookie and redirect rules for app-owned HTTP downloads (plan §3.3, §4.5). Cookies are not
@@ -35,13 +39,20 @@ internal class DownloadHop(val url: URI, val sendCookies: Boolean, val leftApp: 
  * never gets cookies again, never returns to the app origin and never reaches loopback or private
  * addresses, so an outside redirect cannot aim the app's credentials at a local server. Cleartext
  * is allowed only on the app origin. Every request is a GET; callers never replay a POST.
+ *
+ * [app] is the origin of the app's pages, the per-install `http://<label>.localhost:<port>`; hops on it
+ * connect to [native], the server's own address (`http://127.0.0.1:<port>`), with the same path and query.
  */
-internal class DownloadPolicy(private val app: WebOrigin, val maxRedirects: Int = MAX_REDIRECTS) {
+internal class DownloadPolicy(
+    private val app: WebOrigin,
+    val maxRedirects: Int = MAX_REDIRECTS,
+    private val native: WebOrigin = app,
+) {
     fun start(url: String): DownloadHop? {
         val uri = parse(url) ?: return null
         val origin = WebOrigin.of(uri) ?: return null
         return when {
-            origin == app -> DownloadHop(uri, sendCookies = true, leftApp = false)
+            origin == app -> appHop(uri)
             isPublicHttps(origin) -> DownloadHop(uri, sendCookies = false, leftApp = true)
             else -> null
         }
@@ -60,11 +71,25 @@ internal class DownloadPolicy(private val app: WebOrigin, val maxRedirects: Int 
         val uri = parse(resolved.toString()) ?: return null
         val origin = WebOrigin.of(uri) ?: return null
         return when {
-            !from.leftApp && origin == app -> DownloadHop(uri, sendCookies = true, leftApp = false)
+            !from.leftApp && origin == app -> appHop(uri)
             isPublicHttps(origin) -> DownloadHop(uri, sendCookies = false, leftApp = true)
             else -> null
         }
     }
+
+    private fun appHop(uri: URI): DownloadHop {
+        val target = if (native == app) {
+            uri
+        } else {
+            // The same path and query; the fragment is never sent.
+            val path = uri.rawPath.ifEmpty { "/" }
+            val query = uri.rawQuery?.let { "?$it" }.orEmpty()
+            URI("${native.scheme}://${authority(native.host)}:${native.port}$path$query")
+        }
+        return DownloadHop(uri, sendCookies = true, leftApp = false, connectTo = target)
+    }
+
+    private fun authority(host: String): String = if (':' in host) "[$host]" else host
 
     private fun isPublicHttps(origin: WebOrigin): Boolean = origin.scheme == "https" && !isLocalHost(origin.host)
 

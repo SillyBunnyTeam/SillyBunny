@@ -113,4 +113,26 @@ class DownloadPolicyTest {
         assertEquals("$base/a", TransferKeys.of("$base/a#x"))
         assertEquals("blob:$base/id#x", TransferKeys.of("blob:$base/id#x"))
     }
+
+    @Test
+    fun webOriginHopsConnectToTheNativeAddress() {
+        val label = "http://sb-abcdefghijklmnopqrstuvwxyz.localhost:41234"
+        val mapped = DownloadPolicy(WebOrigin("http", "sb-abcdefghijklmnopqrstuvwxyz.localhost", 41234), native = app)
+        val first = checkNotNull(mapped.start("$label/backups/x.zip?n=1&a=%20#frag"))
+        assertEquals("$label/backups/x.zip?n=1&a=%20", first.url.toString())
+        assertEquals("the same path and query on the native address", "$base/backups/x.zip?n=1&a=%20", first.connectTo.toString())
+        assertTrue(first.sendCookies)
+        assertEquals("$base/", checkNotNull(mapped.start(label)).connectTo.toString())
+        val next = checkNotNull(mapped.redirect(first, "/b?x=1"))
+        assertEquals("$label/b?x=1", next.url.toString())
+        assertEquals("$base/b?x=1", next.connectTo.toString())
+        assertNull("the native address is not the web origin", mapped.start("$base/x"))
+        assertNull(mapped.redirect(first, "$base/x"))
+        assertNull("the label on another port", mapped.start("http://sb-abcdefghijklmnopqrstuvwxyz.localhost:41235/x"))
+        val outside = checkNotNull(mapped.start("https://example.com/x"))
+        assertEquals(outside.url, outside.connectTo)
+        // Without a separate native address, a hop connects where it points.
+        val own = checkNotNull(policy.start("$base/x"))
+        assertEquals(own.url, own.connectTo)
+    }
 }

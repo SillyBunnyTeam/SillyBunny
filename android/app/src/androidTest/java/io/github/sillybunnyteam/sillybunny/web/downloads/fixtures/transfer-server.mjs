@@ -10,6 +10,10 @@
 //
 // Test bodies are deterministic: byte i of a body with seed s is (i * 31 + s) & 0xff, the same formula
 // the pages and the Kotlin tests use.
+//
+// The app loads the pages from its per-install web origin http://<label>.localhost:<port>. Each log entry
+// says which kind of host name the request used ("ip", "localhost", "label" or "unknown"); request URLs
+// are logged with the label replaced by "<label>", so the label stays out of test output.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -43,6 +47,16 @@ const gate = createLaunchTokenMiddleware({ token });
 const log = [];
 let otherPort = 0;
 let appPort = 0;
+const LABEL = /sb-[a-z2-7]{26}/gi;
+
+/** The kind of host name in a Host header: never the name itself. */
+function hostKind(value) {
+    const host = String(value ?? '').toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+    if (host === '127.0.0.1') return 'ip';
+    if (host === 'localhost') return 'localhost';
+    if (/^sb-[a-z2-7]{26}\.localhost$/.test(host)) return 'label';
+    return host ? 'unknown' : 'none';
+}
 
 function record(listener, req, status) {
     const cookie = req.headers.cookie ?? '';
@@ -50,11 +64,12 @@ function record(listener, req, status) {
         at: Date.now(),
         listener,
         method: req.method,
-        url: req.url,
+        url: String(req.url).replace(LABEL, '<label>'),
         status,
         launchCookie: cookie.includes(`${LAUNCH_COOKIE_NAME}=${token}`),
         anyCookie: cookie.length > 0,
         userAgent: req.headers['user-agent'] ?? '',
+        host: hostKind(req.headers.host),
     });
 }
 
@@ -140,6 +155,8 @@ function app(port) {
                 record('app', req, res.statusCode);
             }
         });
+        // Like helmet's default on the real server: no Referer leaves the app's pages.
+        res.setHeader('Referrer-Policy', 'no-referrer');
         gate(req, res, async () => {
             await drain(req);
             const n = Math.min(Number(url.searchParams.get('n') ?? 1024), 512 * 1024 * 1024);
@@ -187,8 +204,8 @@ function app(port) {
     };
 }
 
-// Anything that reaches this listener left the app origin. It serves the pages for the cross-origin
-// frame checks and answers everything else with bytes, so a leaked download would produce a save.
+// Anything that reaches this listener left the app origin. It serves the page for the other-port frame
+// check and answers everything else with bytes, so a leaked download would produce a save.
 function other() {
     return (req, res) => {
         record('other', req, 200);

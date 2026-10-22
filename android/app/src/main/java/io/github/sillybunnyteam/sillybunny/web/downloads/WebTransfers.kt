@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import io.github.sillybunnyteam.sillybunny.web.WebAddress
 import io.github.sillybunnyteam.sillybunny.web.WebDownloads
 import io.github.sillybunnyteam.sillybunny.web.files.ContentUriPolicy
 import java.io.File
@@ -34,9 +35,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * - **Page exports.** When the WebView provider supports both `DOCUMENT_START_SCRIPT` and
  *   `WEB_MESSAGE_LISTENER`, [attach] installs `assets/web/transfers.js` and the `sillybunnyTransfers`
- *   bridge for the exact app origin only. The script keeps each Blob from the moment its `blob:` URL
- *   is created and captures `<a download>` clicks (attached, detached and programmatic) before the
- *   page can revoke the URL. Bytes stream only after the user picks a destination, in ordered chunks
+ *   bridge for the exact app origin only: the per-install web origin that [originOf] gives for the
+ *   session (`http://<label>.localhost:<port>`), not the server's native address. The script keeps each
+ *   Blob from the moment its `blob:` URL is created and captures `<a download>` clicks (attached,
+ *   detached and programmatic) before the page can revoke the URL. Bytes stream only after the user
+ *   picks a destination, in ordered chunks
  *   of [TransferLimits.chunkBytes] with at most [TransferLimits.window] unacknowledged, a size
  *   declared up front, an idle timeout and cancellation when the document goes away. Writes run off
  *   the main thread. Messages count only from the main frame of the exact origin; form POST notices,
@@ -45,12 +48,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   by [HttpFetch] straight away and buffered in the cache while the picker is open, so a short-lived
  *   URL is used before the picker delays it. Once the user picks a new document, the buffered part is
  *   copied there and the rest streams straight to it. WebView cookies go only to the exact app origin
- *   and redirects are checked per hop ([DownloadPolicy]). A URL the page POSTed to is never fetched
- *   again. A download listener report is fetched only with proof that it was a GET: the page script's
- *   own capture of the link, or a main-frame navigation seen by [handleNavigation]. The listener does
- *   not say which method or frame a download came from, and the page script sees forms only in frames
- *   of the app origin, while a frame on another loopback port is same-site, so its form POST into the
- *   app origin carries the launch cookie. Without that proof Open in browser is offered. A URL
+ *   and redirects are checked per hop ([DownloadPolicy]). The fetch connects to the session's native
+ *   address, because Android's resolver does not resolve the web origin's `*.localhost` name. A URL the
+ *   page POSTed to is never fetched again. A download listener report is fetched only with proof that it
+ *   was a GET: the page script's own capture of the link, or a main-frame navigation seen by
+ *   [handleNavigation]. The listener does not say which method or frame a download came from, and the
+ *   page script sees forms only in frames of the app origin, while a frame of the app's host on another
+ *   port is same-site, so its form POST into the app origin would carry the launch cookie (the shell
+ *   refuses such frames). Without that proof Open in browser is offered. A URL
  *   reported again within [DUPLICATE_REPORT_MILLIS] is the same download: some WebViews report one
  *   download twice.
  * - **Replaced documents.** The picker may hand back an existing document the user chose to replace.
@@ -72,6 +77,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   download report for the same URL came from a GET.
  * - **Missing features.** Without the bridge, page exports cannot be captured: [unsupportedPrompt]
  *   asks the host to offer Open in browser. No `addJavascriptInterface` fallback exists.
+ * - **Other pages.** Download reports and navigations count only while the WebView's main frame shows
+ *   the app origin, so an external page that the shell lets in (the OpenRouter sign-in) gets no downloads,
+ *   as it gets no bridge.
  * - One destination picker is open at a time; exports wait in a queue, at most
  *   [TransferLimits.maxActive] alive.
  *
@@ -84,6 +92,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class WebTransfers(
     private val context: Context,
+    /** The web origin of a session's pages; the bridge allowlist and the cookie origin of downloads. */
+    private val originOf: (LaunchSession) -> String = WebAddress.forInstall(context)::origin,
     private val platform: TransferPlatform = AndroidTransferPlatform,
     private val storage: TransferStorage = ContentTransferStorage(context),
     private val destinations: ContentUriPolicy = ContentUriPolicy(context),
@@ -133,7 +143,7 @@ internal class WebTransfers(
             onDownloadStart(attachment, url, userAgent, disposition, mime)
         }
         if (platform.bridgeSupported()) {
-            attachment.bridge = platform.installBridge(webView, session.origin, script()) { input, origin, main, reply ->
+            attachment.bridge = platform.installBridge(webView, attachment.webOrigin, script()) { input, origin, main, reply ->
                 onBridge(attachment, input, origin, main, reply)
             }
         }
@@ -141,7 +151,7 @@ internal class WebTransfers(
     }
 
     override fun handleNavigation(webView: WebView, url: Uri, isMainFrame: Boolean, hasGesture: Boolean): Boolean {
-        val attachment = attachments[webView] ?: return false
+        val attachment = attachments[webView]?.takeIf(::onAppPage) ?: return false
         val text = url.toString()
         val key = TransferKeys.of(text)
         return when (url.scheme?.lowercase()) {
@@ -240,7 +250,8 @@ internal class WebTransfers(
     // region Download listener and navigations
 
     private fun onDownloadStart(attachment: Attachment, url: String, userAgent: String?, disposition: String?, mime: String?) {
-        if (attachment.detached) return
+        // Another page in the main frame (the OpenRouter sign-in) gets no downloads.
+        if (attachment.detached || !onAppPage(attachment)) return
         val key = TransferKeys.of(url)
         // WebView 74 reported a text/plain attachment twice within milliseconds; it is one download.
         if (attachment.reports.contains(key)) return
@@ -255,8 +266,8 @@ internal class WebTransfers(
                     hop == null || attachment.posts.contains(key) -> notify(R.string.web_transfer_failed)
                     // Links the page script took were captured above. Otherwise only a main-frame navigation
                     // offered to handleNavigation shows that the download was a GET: the script cannot see
-                    // a form in a frame of another origin, and one on another loopback port is same-site,
-                    // so its POST into the app origin carries the launch cookie.
+                    // a form in a frame of another origin, and one of the app's host on another port is
+                    // same-site, so its POST into the app origin would carry the launch cookie.
                     !attachment.gets.contains(key) -> promptUnsupported()
                     else -> startHttp(attachment, hop, nameHint = null, disposition = disposition, mime = mime, userAgent = userAgent)
                 }
@@ -295,6 +306,13 @@ internal class WebTransfers(
                 }
             }
         }
+    }
+
+    /** True while [attachment]'s main frame shows a page of the app origin. */
+    private fun onAppPage(attachment: Attachment): Boolean {
+        val page = platform.pageUrl(attachment.webView)?.let(Uri::parse) ?: return false
+        if (page.scheme == null || page.encodedAuthority == null) return false
+        return WebOrigin.parse("${page.scheme}://${page.encodedAuthority}/") == attachment.origin
     }
 
     private fun promptUnsupported() {
@@ -901,8 +919,10 @@ internal class WebTransfers(
     private enum class Target { CREATED, REPLACED }
 
     private inner class Attachment(val webView: WebView, session: LaunchSession) {
-        val origin: WebOrigin = checkNotNull(WebOrigin.parse(session.origin))
-        val policy = DownloadPolicy(origin)
+        /** The origin of the app's pages; HTTP downloads on it connect to the session's native address. */
+        val webOrigin: String = originOf(session)
+        val origin: WebOrigin = checkNotNull(WebOrigin.parse(webOrigin))
+        val policy = DownloadPolicy(origin, native = checkNotNull(WebOrigin.parse(session.origin)))
         var bridge: InstalledBridge? = null
         var doc: String? = null
         var reply: ((String) -> Unit)? = null

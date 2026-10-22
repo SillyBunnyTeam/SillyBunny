@@ -187,4 +187,23 @@ class HttpFetchTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun webOriginHopsConnectToTheNativeAddressWithTheWebOriginsCookies() {
+        val label = "http://sb-abcdefghijklmnopqrstuvwxyz.localhost:41234"
+        val mapped = DownloadPolicy(WebOrigin("http", "sb-abcdefghijklmnopqrstuvwxyz.localhost", 41234), native = app)
+        val script = Script(
+            mapOf(
+                "http://127.0.0.1:41234/a" to Triple(302, mapOf("Location" to "/b"), ByteArray(0)),
+                "http://127.0.0.1:41234/b" to Triple(200, mapOf("Content-Length" to "2"), "ok".toByteArray()),
+            ),
+        )
+        val asked = mutableListOf<String>()
+        val fetch = HttpFetch(mapped, { url -> "sillybunny_launch=t".also { asked += url } }, "UA/1", connect = script::connect)
+        val response = checkNotNull(fetch.open(checkNotNull(mapped.start("$label/a"))))
+        assertEquals("$label/b", response.url.toString())
+        assertEquals("cookies are read for the web origin", listOf("$label/a", "$label/b"), asked)
+        assertEquals(listOf("http://127.0.0.1:41234/a", "http://127.0.0.1:41234/b"), script.connections.map { it.url.toString() })
+        assertTrue(script.connections.all { it.sent["Cookie"] == "sillybunny_launch=t" })
+    }
 }

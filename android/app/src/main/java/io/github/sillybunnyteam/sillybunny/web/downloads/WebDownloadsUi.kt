@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.R
+import io.github.sillybunnyteam.sillybunny.web.WebAddress
 import io.github.sillybunnyteam.sillybunny.web.WebDownloads
 import io.github.sillybunnyteam.sillybunny.web.files.retained
 
@@ -28,7 +29,9 @@ import io.github.sillybunnyteam.sillybunny.web.files.retained
  * The app's downloads and page exports for a WebView shown in this composition (plan §4.5). Pass it
  * to the WebView screen, which calls [WebDownloads.attach] before the first load, offers navigations
  * to [WebDownloads.handleNavigation] and calls [WebDownloads.detach] before destroying the WebView.
- * Everything is saved to a document the user creates with `ACTION_CREATE_DOCUMENT`.
+ * Everything is saved to a document the user creates with `ACTION_CREATE_DOCUMENT`. [address] must be
+ * the one the WebView screen uses: the bridge serves exactly its web origin, and downloads carry cookies
+ * only for it.
  *
  * When the installed WebView lacks `DOCUMENT_START_SCRIPT` or `WEB_MESSAGE_LISTENER`, page exports
  * cannot be captured; the first one that is lost shows a dialog (copy `lorum ipsum`) whose action
@@ -42,8 +45,10 @@ import io.github.sillybunnyteam.sillybunny.web.files.retained
  * cancelled because its result can no longer arrive; queued exports wait until it returns.
  */
 @Composable
-fun rememberWebDownloads(onOpenInBrowser: () -> Unit): WebDownloads =
-    rememberWebTransfers(onOpenInBrowser) { WebTransfers(it) }
+fun rememberWebDownloads(
+    onOpenInBrowser: () -> Unit,
+    address: WebAddress = WebAddress.forInstall(LocalContext.current),
+): WebDownloads = rememberWebTransfers(onOpenInBrowser) { WebTransfers(it, originOf = address::origin) }
 
 /** [rememberWebDownloads] with a custom engine, for tests. */
 @Composable

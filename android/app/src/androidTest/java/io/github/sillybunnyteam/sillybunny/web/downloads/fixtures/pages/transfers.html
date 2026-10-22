@@ -3,7 +3,8 @@
 <title>fixture-transfers</title></head><body>
 <a class="b" id="tapExport" href="#" download="tapped.json">tap export</a>
 <form id="post" method="post" action="/attachment?name=posted.json&amp;n=1500&amp;seed=4"><input type="hidden" name="x" value="1"></form>
-<iframe id="cross" src="http://127.0.0.1:{{OTHER}}/frame.html"></iframe>
+<!-- A sandboxed frame without allow-same-origin has an opaque origin: another origin than the app's. -->
+<iframe id="cross" sandbox="allow-scripts" srcdoc="<script>parent.postMessage({ bridge: typeof globalThis.sillybunnyTransfers, api: typeof globalThis[Symbol.for('sillybunny.transfers')] }, '*');</script>"></iframe>
 <script>
 'use strict';
 window.results = {};
@@ -138,10 +139,11 @@ window.fx = {
         document.getElementById('post').submit();
         return 'ok';
     },
-    // A frame on the other loopback port posts a form into the app origin (fixtures/pages/post.html).
+    // A frame of the app's own host on the other loopback port would post a form into the app origin
+    // (fixtures/pages/post.html).
     postFromOtherPort(name) {
         const frame = document.createElement('iframe');
-        frame.src = `http://127.0.0.1:{{OTHER}}/post.html?name=${encodeURIComponent(name)}`;
+        frame.src = `http://${location.hostname}:{{OTHER}}/post.html?name=${encodeURIComponent(name)}`;
         document.body.appendChild(frame);
         return 'ok';
     },

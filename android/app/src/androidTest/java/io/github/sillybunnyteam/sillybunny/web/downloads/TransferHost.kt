@@ -1,13 +1,11 @@
 package io.github.sillybunnyteam.sillybunny.web.downloads
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.content.MutableContextWrapper
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,30 +13,20 @@ import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
-import android.view.ViewGroup
-import android.webkit.ConsoleMessage
-import android.webkit.CookieManager
 import android.webkit.DownloadListener
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.remember
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -49,9 +37,15 @@ import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import io.github.sillybunnyteam.sillybunny.web.WebAddress
+import io.github.sillybunnyteam.sillybunny.web.WebDownloads
+import io.github.sillybunnyteam.sillybunny.web.WebFileChooser
+import io.github.sillybunnyteam.sillybunny.web.WebScreen
+import io.github.sillybunnyteam.sillybunny.web.WebShell
 import io.github.sillybunnyteam.sillybunny.web.files.ContentUriPolicy
 import io.github.sillybunnyteam.sillybunny.web.files.SafFileChooser
 import io.github.sillybunnyteam.sillybunny.web.files.rememberSafFileChooser
+import io.github.sillybunnyteam.sillybunny.web.retainedWebShell
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -72,7 +66,9 @@ import org.json.JSONTokener
 /**
  * The host fixture server (`fixtures/transfer-server.mjs`): the real launch-token middleware in front
  * of the transfer fixture pages, reached through `adb reverse`. Ports and token come from the
- * instrumentation arguments `fixturePort`, `fixtureOther` and `fixtureToken`.
+ * instrumentation arguments `fixturePort`, `fixtureOther` and `fixtureToken`. The pages load from the
+ * app's per-install web origin [webOrigin]; the fixture's own control requests use its native address
+ * [origin]. The fixture logs URLs with the label replaced by `<label>`.
  */
 internal class TransferFixture {
     private val args = InstrumentationRegistry.getArguments()
@@ -80,10 +76,24 @@ internal class TransferFixture {
     val otherPort: Int = requireNotNull(args.getString("fixtureOther")) { "run with -e fixtureOther <port>" }.toInt()
     val token: String = requireNotNull(args.getString("fixtureToken")) { "run with -e fixtureToken <hex>" }
     val session = LaunchSession(port, token)
+
+    /** The server's native address, `http://127.0.0.1:<port>`. */
     val origin = session.origin
 
-    class Request(val listener: String, val method: String, val url: String, val status: Int, val launchCookie: Boolean, val anyCookie: Boolean) {
-        override fun toString() = "$listener $method $url $status cookie=$launchCookie/$anyCookie"
+    /** The web origin of the app's pages, `http://<label>.localhost:<port>`; keep it out of test output. */
+    val webOrigin: String = WebAddress.forInstall(InstrumentationRegistry.getInstrumentation().targetContext).origin(session)
+
+    class Request(
+        val listener: String,
+        val method: String,
+        val url: String,
+        val status: Int,
+        val launchCookie: Boolean,
+        val anyCookie: Boolean,
+        /** The kind of host name the request used: `ip`, `localhost`, `label`, ... */
+        val host: String,
+    ) {
+        override fun toString() = "$listener $method $host $url $status cookie=$launchCookie/$anyCookie"
     }
 
     fun requests(): List<Request> {
@@ -97,6 +107,7 @@ internal class TransferFixture {
                 entry.getInt("status"),
                 entry.getBoolean("launchCookie"),
                 entry.getBoolean("anyCookie"),
+                entry.optString("host"),
             )
         }
     }
@@ -104,8 +115,8 @@ internal class TransferFixture {
     /** App-port requests whose path starts with [prefix]. */
     fun app(prefix: String): List<Request> = requests().filter { it.listener == "app" && it.url.startsWith(prefix) }
 
-    /** Requests that reached the other loopback port, except the pages of its frames themselves. */
-    fun escaped(): List<Request> = requests().filter { it.listener == "other" && it.url != "/frame.html" && !it.url.startsWith("/post.html") }
+    /** Requests that reached the other loopback port. */
+    fun escaped(): List<Request> = requests().filter { it.listener == "other" }
 
     fun reset() {
         get("/__fixture/reset")
@@ -199,13 +210,12 @@ private class ReportingPlatform(private val delegate: TransferPlatform, private 
 }
 
 /**
- * A minimal WebView host for the transfer tests in the debug `ComponentActivity` from
- * `ui-test-manifest`. Like the app's shell it keeps one WebView across activity recreation (built on a
- * [MutableContextWrapper], mounted into each new activity), uses the plan §4.5 settings, attaches the
- * downloads before the first load, offers main-frame navigations to [WebTransfers.handleNavigation] and
- * hands `onShowFileChooser` to the latest chooser. The chooser and downloads come from the real
- * factories. Unless [realPicker] is set, the activity result registry is replaced by [registry] and URI
- * grants are checked against [Grants].
+ * Hosts the app's own [WebScreen] for the transfer tests in the debug `ComponentActivity` from
+ * `ui-test-manifest`, so they run inside the real shell: its WebView settings, its per-install web
+ * origin, its navigation and request containment, and its WebView kept across activity recreation. The
+ * chooser and the downloads come from the real factories, wrapped only to record what the shell hands
+ * them. Unless [realPicker] is set, the activity result registry is replaced by [registry] and URI grants
+ * are checked against [Grants].
  */
 internal class TransferHost(
     val fixture: TransferFixture,
@@ -218,10 +228,10 @@ internal class TransferHost(
     /** String resources of every toast the chooser and the downloads asked for, in order. */
     val notices = CopyOnWriteArrayList<Int>()
 
-    /** `mode accept permission hint` of every `onShowFileChooser` call. */
+    /** `mode accept permission hint` of every request the shell handed to the chooser. */
     val chooserCalls = CopyOnWriteArrayList<String>()
 
-    /** Every main-frame navigation offered to the downloads, and whether it was taken. */
+    /** Every main-frame navigation the shell offered to the downloads, and whether it was taken. */
     val offers = CopyOnWriteArrayList<String>()
 
     /** URLs the WebView reported to the download listener. */
@@ -239,19 +249,27 @@ internal class TransferHost(
         private set
 
     // Main thread only.
-    private var wrapper: MutableContextWrapper? = null
-    private var view: WebView? = null
-    private var container: ViewGroup? = null
     private var currentChooser: SafFileChooser? = null
-    private var attachedTransfers: WebTransfers? = null
-    private var startPage = "transfers.html"
+    private var currentTransfers: WebTransfers? = null
 
-    fun launch(page: String = "transfers.html"): TransferHost {
+    /**
+     * Shows the shell, waits for its first page (`/`, which is `transfers.html`; [ready] says when it is) and then
+     * opens [page] unless that is `transfers.html`.
+     */
+    fun launch(
+        page: String = "transfers.html",
+        firstPageMillis: Long = 30_000,
+        keepVersionWarning: Boolean = false,
+        ready: (WebView) -> Boolean = { HostWeb.ready(it, "") },
+    ): TransferHost {
         Grants.clear()
         app.registerActivityLifecycleCallbacks(this)
-        startPage = page
         scenario = ActivityScenario.launch(ComponentActivity::class.java)
-        HostWeb.waitFor("first page", 30_000) { HostWeb.ready(webView(), page) }
+        HostWeb.waitFor("first page", firstPageMillis) { webViewOrNull()?.let(ready) == true }
+        // API 29's WebView 74 is below the supported version: the shell's banner would cover the page's foot.
+        val shell = shell()
+        if (!keepVersionWarning) onMain { shell.dismissVersionWarning() }
+        if (page != "transfers.html") open(page)
         return this
     }
 
@@ -282,13 +300,39 @@ internal class TransferHost(
                 notify = ::notice,
             )
         }
-        SideEffect { bind(chooser, transfers) }
-        AndroidView(
-            factory = { context -> FrameLayout(context).also(::mount) },
-            // Edge to edge is enforced from API 35: keep the page clear of the system bars so taps land on it.
-            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-            onRelease = ::unmount,
-        )
+        SideEffect {
+            currentChooser = chooser
+            currentTransfers = transfers
+        }
+        val recordedChooser = remember(chooser) { RecordingChooser(chooser) }
+        val recordedDownloads = remember(transfers) { RecordingDownloads(transfers) }
+        WebScreen(fixture.session, fileChooser = recordedChooser, downloads = recordedDownloads)
+    }
+
+    /** The real chooser; records each request the shell hands it. */
+    private inner class RecordingChooser(private val chooser: SafFileChooser) : WebFileChooser {
+        override fun show(webView: WebView, callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Boolean {
+            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) params.permissionMode else -1
+            val call = "${params.mode} ${params.acceptTypes.joinToString(",")} $permission ${params.filenameHint}"
+            HostWeb.note("chooser $call")
+            chooserCalls += call
+            return chooser.show(webView, callback, params)
+        }
+
+        override fun cancelPending() = chooser.cancelPending()
+    }
+
+    /** The real downloads; records each navigation the shell offers them. */
+    private inner class RecordingDownloads(private val transfers: WebTransfers) : WebDownloads {
+        override fun attach(webView: WebView, session: LaunchSession) = transfers.attach(webView, session)
+
+        override fun handleNavigation(webView: WebView, url: Uri, isMainFrame: Boolean, hasGesture: Boolean): Boolean {
+            val taken = transfers.handleNavigation(webView, url, isMainFrame, hasGesture)
+            offers += "${WebAddress.redact(url.toString()).take(80)} taken=$taken"
+            return taken
+        }
+
+        override fun detach(webView: WebView) = transfers.detach(webView)
     }
 
     private fun policy(context: Context): ContentUriPolicy =
@@ -311,15 +355,30 @@ internal class TransferHost(
         HostWeb.note("notice ${noticeName(id)}")
     }
 
-    fun webView(): WebView = checkNotNull(onMain { view }) { "no WebView" }
+    /** The shell the activity keeps; call from the test thread. */
+    fun shell(): WebShell {
+        var shell: WebShell? = null
+        scenario.onActivity { shell = retainedWebShell(it, it) }
+        return checkNotNull(shell)
+    }
 
-    fun transfers(): WebTransfers = checkNotNull(onMain { attachedTransfers }) { "no downloads" }
+    private fun webViewOrNull(): WebView? {
+        val shell = shell()
+        return onMain { shell.webView }
+    }
+
+    fun webView(): WebView = checkNotNull(webViewOrNull()) { "no WebView" }
+
+    fun transfers(): WebTransfers = checkNotNull(onMain { currentTransfers }) { "no downloads" }
 
     fun chooser(): SafFileChooser = checkNotNull(onMain { currentChooser }) { "no chooser" }
 
-    fun bridged(): Boolean = onMain { attachedTransfers?.hasBridge(checkNotNull(view)) == true }
+    fun bridged(): Boolean {
+        val view = webViewOrNull() ?: return false
+        return onMain { currentTransfers?.hasBridge(view) == true }
+    }
 
-    fun activeTransfers(): Int = onMain { checkNotNull(attachedTransfers).activeCount }
+    fun activeTransfers(): Int = onMain { checkNotNull(currentTransfers).activeCount }
 
     fun count(notice: Int): Int = notices.count { it == notice }
 
@@ -336,105 +395,17 @@ internal class TransferHost(
     /** Loads [page] of the fixture in the same WebView and waits until its script ran. */
     fun open(page: String) {
         val view = webView()
-        onMain { view.loadUrl("${fixture.origin}/$page") }
+        val url = "${fixture.webOrigin}/$page"
+        onMain { view.loadUrl(url) }
         HostWeb.waitFor("page $page", 20_000) { HostWeb.ready(view, page) }
     }
 
-    private fun bind(chooser: SafFileChooser, transfers: WebTransfers) {
-        currentChooser = chooser
-        if (view != null) return
-        val contextWrapper = MutableContextWrapper(app)
-        val webView = WebView(contextWrapper)
-        configure(webView, transfers)
-        wrapper = contextWrapper
-        view = webView
-        attachedTransfers = transfers
-        transfers.attach(webView, fixture.session)
-        container?.let(::mount)
-        CookieManager.getInstance().setCookie(fixture.origin, launchCookie()) { accepted ->
-            check(accepted) { "launch cookie refused" }
-            webView.loadUrl("${fixture.origin}/$startPage")
-        }
-    }
-
-    private fun launchCookie() = "${LaunchSession.COOKIE_NAME}=${fixture.token}; HttpOnly; SameSite=Strict; Path=/"
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun configure(webView: WebView, transfers: WebTransfers) {
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            allowFileAccess = false
-            allowContentAccess = false
-            @Suppress("DEPRECATION")
-            allowFileAccessFromFileURLs = false
-            @Suppress("DEPRECATION")
-            allowUniversalAccessFromFileURLs = false
-        }
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                if (!request.isForMainFrame) return false
-                val taken = transfers.handleNavigation(view, request.url, true, request.hasGesture())
-                offers += "${request.url.toString().take(80)} taken=$taken"
-                return taken
-            }
-
-            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                HostWeb.note("renderer gone")
-                return true
-            }
-        }
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onShowFileChooser(
-                webView: WebView,
-                filePathCallback: ValueCallback<Array<Uri>>,
-                fileChooserParams: FileChooserParams,
-            ): Boolean {
-                val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) fileChooserParams.permissionMode else -1
-                val call = "${fileChooserParams.mode} ${fileChooserParams.acceptTypes.joinToString(",")} $permission ${fileChooserParams.filenameHint}"
-                HostWeb.note("chooser $call")
-                chooserCalls += call
-                return checkNotNull(currentChooser).show(webView, filePathCallback, fileChooserParams)
-            }
-
-            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-                Log.d(TAG, "console ${consoleMessage.messageLevel()} ${consoleMessage.message()}")
-                return true
-            }
-        }
-    }
-
-    private fun mount(container: ViewGroup) {
-        this.container = container
-        val webView = view ?: return
-        val parent = webView.parent as? ViewGroup
-        if (parent !== container) parent?.removeView(webView)
-        wrapper?.baseContext = container.context
-        if (webView.parent == null) {
-            container.addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        }
-    }
-
-    private fun unmount(container: ViewGroup) {
-        if (this.container !== container) return
-        this.container = null
-        view?.let { if (it.parent === container) container.removeView(it) }
-        wrapper?.baseContext = app
-    }
-
+    /** Finishing the activity releases the shell, its WebView, the chooser and the downloads. */
     override fun close() {
         try {
             scenario.close()
         } finally {
             app.unregisterActivityLifecycleCallbacks(this)
-            onMain {
-                view?.let {
-                    attachedTransfers?.detach(it)
-                    it.stopLoading()
-                    it.destroy()
-                }
-                view = null
-            }
             Grants.clear()
         }
     }
@@ -481,7 +452,7 @@ internal object HostWeb {
         val latch = CountDownLatch(1)
         var value: String? = null
         onMain { view.evaluateJavascript(script) { value = it; latch.countDown() } }
-        check(latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) { "evaluateJavascript timed out: ${script.take(200)}" }
+        check(latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) { "evaluateJavascript timed out: ${WebAddress.redact(script.take(200))}" }
         return value ?: "null"
     }
 
@@ -543,9 +514,11 @@ internal object HostWeb {
     /** The installed WebView's major version, 0 when unknown. */
     fun webViewMajor(): Int = WebView.getCurrentWebViewPackage()?.versionName?.substringBefore('.')?.toIntOrNull() ?: 0
 
+    /** Logs [message] with every label redacted. */
     fun note(message: String) {
-        Log.i(TransferHost.TAG, message)
-        println("p56b: $message")
+        val redacted = WebAddress.redact(message)
+        Log.i(TransferHost.TAG, redacted)
+        println("p56b: $redacted")
     }
 }
 

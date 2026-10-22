@@ -10,6 +10,8 @@ import java.net.URI
  * App-owned HTTP(S) GET for a download (plan §4.5). Redirects are followed by hand, each hop checked
  * by [DownloadPolicy], so WebView cookies reach only the exact app origin and never follow a
  * redirect to another origin or port. Only GET is ever sent: a POST download is never replayed.
+ * Each hop connects to [DownloadHop.connectTo] (the server's native address for the app's web origin),
+ * with the cookies that WebView holds for [DownloadHop.url].
  */
 internal class HttpFetch(
     private val policy: DownloadPolicy,
@@ -35,7 +37,7 @@ internal class HttpFetch(
     fun open(first: DownloadHop, onConnection: (HttpURLConnection) -> Unit = {}): Response? {
         var hop = first
         repeat(policy.maxRedirects + 1) {
-            val connection = connect(hop.url)
+            val connection = connect(hop.connectTo)
             onConnection(connection)
             connection.instanceFollowRedirects = false
             connection.useCaches = false
