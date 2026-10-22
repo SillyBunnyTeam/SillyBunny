@@ -469,6 +469,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | World Info and shell integrator. |
 
+### `public/scripts/world-info.js` - scan target for Conversation lorebooks
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/world-info.js` |
+| Area | World Info scanning and Conversation mode. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-conversation/world-info.js`. |
+| Adapter shape | `checkWorldInfo()` and `getSortedEntries()` take an optional `scanTarget` (`WIScanTarget`), and `WorldInfoBuffer` takes the substitution function for keys. With a target, the scan reads the target character's linked books and the global books, reads `chatWorld` and `personaWorld` in place of the chat and persona lorebooks, and applies character filters, `{{char}}`, `{{user}}` and the regex `{{char}}` to the target. It skips the active chat's extension prompts, forced activations, sticky and cooldown writes, Author's Note write, `WORLDINFO_ENTRIES_LOADED` and `WORLDINFO_SCAN_DONE`. Without a target the scan does not change. |
+| Protecting tests | `tests/world-info-scan-target.test.js` (characterization of the active-chat scan, plus target scans). |
+| Validation | `npm run test:unit -- world-info-scan-target.test.js` in `tests/`, `npx eslint public/scripts/world-info.js`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Conversation lorebooks. |
+| Owner | TODO(copy) |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
