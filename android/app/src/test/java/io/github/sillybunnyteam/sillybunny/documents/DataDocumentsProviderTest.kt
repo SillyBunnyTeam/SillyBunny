@@ -17,6 +17,7 @@ import android.system.Os
 import android.system.OsConstants
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.ClosingFileObserver
 import io.github.sillybunnyteam.sillybunny.DataDocumentsProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -41,7 +42,15 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [29], shadows = [PosixTestOs::class, ProxyTestStorageManager::class, PosixTestParcelFileDescriptor::class])
+@Config(
+    sdk = [29],
+    shadows = [
+        PosixTestOs::class,
+        ProxyTestStorageManager::class,
+        PosixTestParcelFileDescriptor::class,
+        ClosingFileObserver::class,
+    ],
+)
 @LooperMode(LooperMode.Mode.PAUSED)
 class DataDocumentsProviderTest {
     private lateinit var checkout: File
