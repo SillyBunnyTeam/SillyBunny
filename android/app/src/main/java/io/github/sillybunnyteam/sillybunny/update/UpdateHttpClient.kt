@@ -8,21 +8,37 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.net.URLConnection
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 
-class UpdateHttpClient(
-    private val allowDebugLoopback: Boolean = BuildConfig.DEBUG,
-    private val connectTimeoutMillis: Int = 15_000,
-    private val readTimeoutMillis: Int = 30_000,
-    private val maxRedirects: Int = 5,
+class UpdateHttpClient internal constructor(
+    private val allowDebugLoopback: Boolean,
+    private val connectTimeoutMillis: Int,
+    private val readTimeoutMillis: Int,
+    private val maxRedirects: Int,
+    private val openConnection: (URL) -> URLConnection,
 ) {
+    constructor(
+        allowDebugLoopback: Boolean = BuildConfig.DEBUG,
+        connectTimeoutMillis: Int = 15_000,
+        readTimeoutMillis: Int = 30_000,
+        maxRedirects: Int = 5,
+    ) : this(allowDebugLoopback, connectTimeoutMillis, readTimeoutMillis, maxRedirects, URL::openConnection)
+
     init {
         require(connectTimeoutMillis > 0 && readTimeoutMillis > 0 && maxRedirects in 0..10)
     }
 
-    fun fetchJson(url: String): String = withResponse(url, "application/json") { connection ->
+    fun fetchJson(url: String): String = fetchJson(url, null)
+
+    /** Like [fetchJson]; [onRedirect] receives each accepted redirect target in order. */
+    internal fun fetchJson(url: String, onRedirect: ((String) -> Unit)?): String = withResponse(
+        url,
+        "application/json",
+        onRedirect,
+    ) { connection ->
         val length = contentLength(connection)
         if (length != null && length > UpdateJson.MAX_BYTES) throw IOException()
         val output = ByteArrayOutputStream()
@@ -101,12 +117,17 @@ class UpdateHttpClient(
         false
     }
 
-    private fun <T> withResponse(url: String, accept: String, read: (HttpURLConnection) -> T): T {
+    private fun <T> withResponse(
+        url: String,
+        accept: String,
+        onRedirect: ((String) -> Unit)? = null,
+        read: (HttpURLConnection) -> T,
+    ): T {
         var current = validatedUrl(url)
         var redirects = 0
         while (true) {
             if (Thread.currentThread().isInterrupted) throw IOException()
-            val connection = current.openConnection() as? HttpURLConnection ?: throw IOException()
+            val connection = openConnection(current) as? HttpURLConnection ?: throw IOException()
             try {
                 connection.instanceFollowRedirects = false
                 connection.connectTimeout = connectTimeoutMillis
@@ -123,6 +144,7 @@ class UpdateHttpClient(
                     if (location.length > MAX_URL_LENGTH) throw IOException()
                     val next = validatedUrl(current.toURI().resolve(URI(location)).toString())
                     if (!redirectAllowed(current.toString(), next.toString())) throw IOException()
+                    onRedirect?.invoke(next.toString())
                     current = next
                     continue
                 }

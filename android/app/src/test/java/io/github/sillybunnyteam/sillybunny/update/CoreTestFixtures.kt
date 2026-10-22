@@ -8,7 +8,10 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import java.io.Closeable
 import java.io.IOException
+import java.io.InputStream
+import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.URL
 import java.security.MessageDigest
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -85,6 +88,41 @@ internal object CoreTestFixtures {
             applicationInfo = context.applicationInfo
             signingInfo = CoreTestFixtures.signingInfo(signers)
         }
+}
+
+/** Canned HTTPS responses, so a test can follow GitHub's redirect chain without a network or TLS server. */
+internal class CannedHttps {
+    private val routes = ConcurrentHashMap<String, CannedResponse>()
+    val requests: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
+    fun redirect(from: String, to: String, status: Int = 302) {
+        routes[from] = CannedResponse(status, mapOf("Location" to to), ByteArray(0))
+    }
+
+    fun body(url: String, value: ByteArray) {
+        routes[url] = CannedResponse(200, mapOf("Content-Length" to value.size.toString()), value)
+    }
+
+    fun client(): UpdateHttpClient = UpdateHttpClient(false, 1_000, 1_000, 5) { url ->
+        requests += url.toString()
+        CannedConnection(url, routes[url.toString()] ?: CannedResponse(404, emptyMap(), ByteArray(0)))
+    }
+
+    private class CannedResponse(val status: Int, val headers: Map<String, String>, val body: ByteArray)
+
+    private class CannedConnection(url: URL, private val response: CannedResponse) : HttpURLConnection(url) {
+        override fun connect() = Unit
+
+        override fun disconnect() = Unit
+
+        override fun usingProxy() = false
+
+        override fun getResponseCode() = response.status
+
+        override fun getHeaderField(name: String): String? = response.headers[name]
+
+        override fun getInputStream(): InputStream = response.body.inputStream()
+    }
 }
 
 internal class UpdateTestServer : Closeable {

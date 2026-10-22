@@ -323,9 +323,74 @@ class UpdateRepositoryTest {
         addRelease(releases, "/network", null)
         server.json("/releases", releases.toString())
         assertFailure(UpdateCheckFailure.NETWORK, repository.check())
+        // "/network" is listed above the installed version, so it may hold a newer APK.
         addRelease(releases, "/current", CoreTestFixtures.manifest(version = 1).toString())
         server.json("/releases", releases.toString())
-        assertEquals(UpdateCheckResult.UpToDate, repository.check())
+        assertFailure(UpdateCheckFailure.NETWORK, repository.check())
+    }
+
+    @Test
+    fun prereleaseNetworkFailureAboveTheInstalledVersionIsNotReportedAsUpToDate() {
+        val releases = JSONArray()
+        addRelease(releases, "/rc3", null)
+        addRelease(releases, "/rc2", CoreTestFixtures.manifest(version = 1, prerelease = true).toString())
+        server.json("/releases", releases.toString())
+        assertFailure(UpdateCheckFailure.NETWORK, repository(defaultRef = "staging").check())
+    }
+
+    @Test
+    fun prereleaseFailuresBelowTheInstalledVersionStillReportUpToDate() {
+        val releases = JSONArray()
+        addRelease(releases, "/current", CoreTestFixtures.manifest(version = 1, prerelease = true).toString())
+        addRelease(releases, "/older-network", null)
+        addRelease(releases, "/older-invalid", "{}")
+        server.json("/releases", releases.toString())
+        assertEquals(UpdateCheckResult.UpToDate, repository(defaultRef = "staging").check())
+    }
+
+    @Test
+    fun officialLatestDownloadsFromTheReleaseThatServedTheManifest() {
+        // Plan §6.1 re-attaches an unchanged APK and manifest to a newer release, so releaseTag can name an
+        // older release that maintainers may later delete. GitHub's latest/download redirect names the host.
+        val https = CannedHttps()
+        val hosting = "https://github.com/SillyBunnyTeam/SillyBunny/releases/download/v2.0.1/android-update.json"
+        val blob = "https://release-assets.githubusercontent.com/github-production-release-asset/1/manifest?sig=fixture"
+        https.redirect(OFFICIAL_LATEST_MANIFEST, hosting)
+        https.redirect(hosting, blob)
+        https.body(blob, CoreTestFixtures.manifest(version = 2).toString().toByteArray())
+        val result = repository(manifestUrl = OFFICIAL_LATEST_MANIFEST, http = https.client()).check()
+            as UpdateCheckResult.Available
+        assertEquals("v1.2.0", result.candidate.manifest.releaseTag)
+        assertEquals(
+            "https://github.com/SillyBunnyTeam/SillyBunny/releases/download/v2.0.1/${CoreTestFixtures.APK_NAME}",
+            result.candidate.downloadUrl,
+        )
+        assertEquals(listOf(OFFICIAL_LATEST_MANIFEST, hosting, blob), https.requests.toList())
+    }
+
+    @Test
+    fun officialLatestFallsBackToTheManifestTagWithoutAUsableHostingRedirect() {
+        val pinned = "https://github.com/SillyBunnyTeam/SillyBunny/releases/download/v1.2.0/${CoreTestFixtures.APK_NAME}"
+        val manifest = CoreTestFixtures.manifest(version = 2).toString().toByteArray()
+        val direct = CannedHttps().apply { body(OFFICIAL_LATEST_MANIFEST, manifest) }
+        val unusual = listOf(
+            "https://github.com/SillyBunnyTeam/SillyBunny/releases/download/v2.0.1/other.json",
+            "https://github.com/OtherOwner/SillyBunny/releases/download/v2.0.1/android-update.json",
+            "https://github.com/SillyBunnyTeam/SillyBunny/releases/download/bad..tag/android-update.json",
+            "https://github.com/SillyBunnyTeam/SillyBunny/releases/download/v2.0.1/android-update.json?x=1",
+            "https://github.com:8443/SillyBunnyTeam/SillyBunny/releases/download/v2.0.1/android-update.json",
+        )
+        val clients = listOf(direct.client()) + unusual.map { hop ->
+            CannedHttps().apply {
+                redirect(OFFICIAL_LATEST_MANIFEST, hop)
+                body(hop, manifest)
+            }.client()
+        }
+        clients.forEach { client ->
+            val result = repository(manifestUrl = OFFICIAL_LATEST_MANIFEST, http = client).check()
+                as UpdateCheckResult.Available
+            assertEquals(pinned, result.candidate.downloadUrl)
+        }
     }
 
     @Test
@@ -456,11 +521,12 @@ class UpdateRepositoryTest {
     private fun repository(
         defaultRef: String = "release",
         manifestUrl: String = server.url("/latest/android-update.json"),
+        http: UpdateHttpClient = UpdateHttpClient(allowDebugLoopback = true),
     ): UpdateRepository = UpdateRepository(
         context,
         manifestUrl = manifestUrl,
         releasesApiUrl = server.url("/releases"),
-        http = UpdateHttpClient(allowDebugLoopback = true),
+        http = http,
         primaryAbi = CoreTestFixtures.ABI,
         sdk = 29,
         defaultRef = defaultRef,

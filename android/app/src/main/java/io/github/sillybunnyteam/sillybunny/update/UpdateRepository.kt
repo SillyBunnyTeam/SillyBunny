@@ -3,9 +3,13 @@ package io.github.sillybunnyteam.sillybunny.update
 import android.content.Context
 import android.os.Build
 import io.github.sillybunnyteam.sillybunny.BuildConfig
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.URI
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.security.MessageDigest
@@ -89,8 +93,9 @@ class UpdateRepository(
     }
 
     private fun checkStable(version: Long, signer: ByteArray): UpdateCheckResult {
+        var firstRedirect: String? = null
         val json = try {
-            http.fetchJson(manifestUrl)
+            http.fetchJson(manifestUrl, onRedirect = { target -> if (firstRedirect == null) firstRedirect = target })
         } catch (_: Exception) {
             return failed(UpdateCheckFailure.NETWORK)
         }
@@ -99,7 +104,7 @@ class UpdateRepository(
         if (manifest.prerelease) return failed(UpdateCheckFailure.INVALID_MANIFEST)
         if (manifest.versionCode <= version) return UpdateCheckResult.UpToDate
         if (!signerMatches(manifest, signer)) return failed(UpdateCheckFailure.SIGNER_MISMATCH)
-        val downloadUrl = stableDownloadUrl(manifest)
+        val downloadUrl = stableDownloadUrl(manifest, firstRedirect)
             ?: return failed(UpdateCheckFailure.INVALID_MANIFEST)
         return UpdateCheckResult.Available(UpdateCandidate(manifest, downloadUrl))
     }
@@ -116,6 +121,8 @@ class UpdateRepository(
         var fetched = 0
         var sawCurrent = false
         var networkFailure = false
+        // The API lists newest releases first, so a manifest that failed before any current one may be newer.
+        var networkFailureAboveCurrent = false
         var invalidManifest = false
         var signerMismatch = false
 
@@ -136,6 +143,7 @@ class UpdateRepository(
                 http.fetchJson(releaseManifestUrl)
             } catch (_: Exception) {
                 networkFailure = true
+                if (!sawCurrent) networkFailureAboveCurrent = true
                 continue
             }
             val manifest = UpdateManifestParser.parse(body, primaryAbi, sdk)
@@ -168,7 +176,7 @@ class UpdateRepository(
         }
         return best?.let { UpdateCheckResult.Available(it) } ?: when {
             signerMismatch -> failed(UpdateCheckFailure.SIGNER_MISMATCH)
-            sawCurrent -> UpdateCheckResult.UpToDate
+            sawCurrent && !networkFailureAboveCurrent -> UpdateCheckResult.UpToDate
             networkFailure -> failed(UpdateCheckFailure.NETWORK)
             invalidManifest -> failed(UpdateCheckFailure.INVALID_MANIFEST)
             else -> UpdateCheckResult.UpToDate
@@ -183,16 +191,69 @@ class UpdateRepository(
             MessageDigest.isEqual(signer, it)
         } ?: false
 
-    internal fun stableDownloadUrl(manifest: UpdateManifest): String? {
+    /**
+     * [hostingUrl] is the first redirect target of the manifest request. For the official latest URL GitHub
+     * redirects to the release that holds the manifest, which plan §6.1 can make newer than [UpdateManifest.releaseTag].
+     */
+    internal fun stableDownloadUrl(manifest: UpdateManifest, hostingUrl: String? = null): String? {
         if (!http.isAllowedUrl(manifestUrl) || !UpdateManifestParser.isSafeAssetName(manifest.asset.name)) return null
         val original = URI(manifestUrl)
-        if (original.scheme != "https" || !original.host.equals("github.com", ignoreCase = true) ||
-            original.port !in listOf(-1, 443) || original.rawPath != OFFICIAL_LATEST_PATH
-        ) return siblingUrl(manifestUrl, manifest.asset.name)
+        if (!isOfficialOrigin(original) || original.rawPath != OFFICIAL_LATEST_PATH) {
+            return siblingUrl(manifestUrl, manifest.asset.name)
+        }
 
-        // latest can advance while the prompt is open; bind the APK to the checked manifest's release.
-        val tag = encodeReleaseTag(manifest.releaseTag) ?: return null
+        // latest can advance while the prompt is open; bind the APK to the release that served the checked manifest.
+        val tag = hostingUrl?.let(::hostingReleaseTag) ?: encodeReleaseTag(manifest.releaseTag) ?: return null
         return "$OFFICIAL_RELEASE_DOWNLOAD/$tag/${manifest.asset.name}".takeIf(http::isAllowedUrl)
+    }
+
+    private fun isOfficialOrigin(uri: URI): Boolean =
+        uri.scheme == "https" && uri.host.equals("github.com", ignoreCase = true) && uri.port in listOf(-1, 443) &&
+            uri.rawUserInfo == null
+
+    /** The encoded tag of an official `releases/download/<tag>/android-update.json` URL, or null. */
+    private fun hostingReleaseTag(url: String): String? = try {
+        val uri = URI(url)
+        val path = uri.rawPath.orEmpty()
+        val prefix = "$OFFICIAL_RELEASE_PATH/"
+        val suffix = "/$MANIFEST_NAME"
+        if (!isOfficialOrigin(uri) || uri.rawQuery != null || uri.rawFragment != null ||
+            !path.startsWith(prefix) || !path.endsWith(suffix) || path.length <= prefix.length + suffix.length
+        ) {
+            null
+        } else {
+            decodePathSegment(path.substring(prefix.length, path.length - suffix.length))?.let(::encodeReleaseTag)
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun decodePathSegment(raw: String): String? {
+        val bytes = ByteArrayOutputStream()
+        var index = 0
+        while (index < raw.length) {
+            val char = raw[index]
+            if (char == '%') {
+                if (index + 2 >= raw.length) return null
+                val high = Character.digit(raw[index + 1], 16)
+                val low = Character.digit(raw[index + 2], 16)
+                if (high < 0 || low < 0) return null
+                bytes.write(high * 16 + low)
+                index += 3
+            } else {
+                if (char == '/' || char.code !in 0x21..0x7e) return null
+                bytes.write(char.code)
+                index++
+            }
+        }
+        return try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes.toByteArray())).toString()
+        } catch (_: CharacterCodingException) {
+            null
+        }
     }
 
     private fun encodeReleaseTag(tag: String): String? {
@@ -241,7 +302,8 @@ class UpdateRepository(
         const val MAX_MANIFESTS = 20
         const val MANIFEST_NAME = "android-update.json"
         const val OFFICIAL_LATEST_PATH = "/SillyBunnyTeam/SillyBunny/releases/latest/download/android-update.json"
-        const val OFFICIAL_RELEASE_DOWNLOAD = "https://github.com/SillyBunnyTeam/SillyBunny/releases/download"
+        const val OFFICIAL_RELEASE_PATH = "/SillyBunnyTeam/SillyBunny/releases/download"
+        const val OFFICIAL_RELEASE_DOWNLOAD = "https://github.com$OFFICIAL_RELEASE_PATH"
         const val HEX = "0123456789ABCDEF"
     }
 }
