@@ -333,7 +333,18 @@ function reloadWhenIdle(chatKey) {
 }
 
 /**
- * Acts on the server's list of generations for the open chat that this page does not own.
+ * The server kept its copy of a reply this page generated, so the page shows that copy instead of
+ * saving its own over a newer chat file.
+ */
+export function reloadServerCommittedReply() {
+    const chatKey = watchedChatKey;
+    clearTimeout(idleTimer ?? undefined);
+    // Deferred, so the generation that found the commit ends before the reload replaces its chat.
+    idleTimer = setTimeout(() => reloadWhenIdle(chatKey), 0);
+}
+
+/**
+ * Acts on the server's list of generations for the open chat that this page is not reading.
  * @param {string} chatKey Chat the list is for
  * @param {any[]} pending Generations
  */
@@ -341,11 +352,15 @@ function onPendingGenerations(chatKey, pending) {
     if (chatKey !== watchedChatKey || !Array.isArray(pending)) {
         return;
     }
-    const own = new Set(getActiveGenerationIds());
-    const foreign = pending.filter(item => !own.has(item.id) && item.page !== pageId);
+    const active = new Set(getActiveGenerationIds());
+    // This page's finished replies still count: the server can keep one this page then did not save.
+    const settled = pending.filter(item => !active.has(item.id));
+    const foreign = settled.filter(item => item.page !== pageId);
     const running = foreign.filter(item => ['running', 'waiting', 'committing'].includes(item.state));
-    const committed = foreign.filter(item => item.state === 'committed');
+    const committed = settled.filter(item => item.state === 'committed');
     const outcomes = foreign.filter(item => (item.state === 'failed' || item.state === 'lost') && !shownIds.has(item.id));
+    // This page saw its own failures as request errors, or saved the reply itself.
+    acknowledge(pending.filter(item => item.page === pageId && (item.state === 'failed' || item.state === 'lost')).map(item => item.id));
 
     for (const item of outcomes) {
         shownIds.add(item.id);

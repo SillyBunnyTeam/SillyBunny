@@ -12,8 +12,24 @@
  * own save goes through as if the server had never written anything.
  */
 
-import { getMessageIdentity, hashCommitText } from '../public/scripts/generation-commit-plan.js';
+import { GENERATION_PLACEHOLDER_KEY as PLACEHOLDER_KEY, getMessageIdentity, hashCommitText } from '../public/scripts/generation-commit-plan.js';
 import { updateChatRecords } from './endpoints/chats.js';
+
+/** Message extras that clearMessageData() in public/script.js removes before a swipe is generated. */
+const SWIPE_SCOPED_EXTRA_KEYS = Object.freeze([
+    'memory',
+    'display_text',
+    'media',
+    'inline_image',
+    'files',
+    'fileLength',
+    'generationType',
+    'negative',
+    'title',
+    'append_title',
+    'inChatAgentTransformHistory',
+    'inChatAgentPreGenerationInterceptHistory',
+]);
 
 /**
  * @typedef {import('../public/scripts/generation-commit-plan.js').GenerationCommitPlan} GenerationCommitPlan
@@ -90,20 +106,39 @@ function stampGeneration(message, plan, { finishedAt }) {
     extra.api = plan.message.extra.api;
     extra.model = plan.message.extra.model;
     extra.reasoning_effort = plan.message.extra.reasoning_effort;
-    extra.reasoning_duration = null;
+    delete extra[PLACEHOLDER_KEY];
     delete extra.token_count;
-    delete extra.reasoning_tokens;
+    // A continue extends the earlier reasoning, so its duration and token count stay, as in saveReply('appendFinal').
+    if (plan.kind !== 'continue') {
+        extra.reasoning_duration = null;
+        delete extra.reasoning_tokens;
+    }
+}
+
+/**
+ * Drops what belonged to the swipe shown before, as clearMessageData() in the browser's swipe() does.
+ * @param {any} message Message receiving a new swipe
+ */
+function clearSwipeData(message) {
+    const extra = ensureExtra(message);
+    for (const key of SWIPE_SCOPED_EXTRA_KEYS) {
+        delete extra[key];
+    }
+    delete message.gen_started;
+    delete message.gen_finished;
 }
 
 /**
  * The browser writes a reply's message before the reply is done (streaming placeholder), and any
- * save during the stream puts it on disk. It is recognized by carrying this generation's start time.
+ * save during the stream puts it on disk. The browser marks it with this generation's start time
+ * until the reply is finished, so a finished reply that started at the same time is not replaced.
  * @param {any} message Chat message
  * @param {GenerationCommitPlan} plan Plan
  * @returns {boolean}
  */
 function isOwnPlaceholder(message, plan) {
-    return Boolean(message) && !message.is_user && Boolean(plan.started) && message.gen_started === plan.started;
+    return Boolean(message) && !message.is_user && Boolean(plan.started)
+        && message.extra?.[PLACEHOLDER_KEY] === plan.started;
 }
 
 /**
@@ -161,6 +196,7 @@ export function applyGenerationReply(records, plan, reply, context) {
     }
 
     if (plan.kind === 'swipe') {
+        clearSwipeData(message);
         const swipes = Array.isArray(message.swipes) ? message.swipes : [message.mes];
         if (ownPlaceholder && swipes.length === plan.swipes + 1) {
             swipes.length = plan.swipes;
@@ -189,8 +225,11 @@ export function applyGenerationReply(records, plan, reply, context) {
     marker.prefix_length = prefix.length;
     message.mes = prefix + reply.text;
     const extra = ensureExtra(message);
-    extra.reasoning = reply.reasoning;
-    extra.reasoning_signature = null;
+    if (reply.reasoning) {
+        // The model continues its earlier reasoning, which the old signature no longer covers.
+        extra.reasoning = String(extra.reasoning ?? '') + reply.reasoning;
+        extra.reasoning_signature = null;
+    }
     extra.server_generation = marker;
     stampGeneration(message, plan, context);
     syncCurrentSwipe(message);

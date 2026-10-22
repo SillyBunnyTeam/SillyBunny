@@ -10,6 +10,11 @@
 export const GENERATION_COMMIT_HEADER = 'x-generation-commit';
 export const GENERATION_COMMIT_PLAN_VERSION = 1;
 export const GENERATION_COMMIT_KINDS = Object.freeze(['append', 'swipe', 'continue']);
+/**
+ * Message extra that holds the plan's `started` while the browser streams the reply into that
+ * message. The server may replace only a message marked this way; the browser drops it once the reply is finished.
+ */
+export const GENERATION_PLACEHOLDER_KEY = 'server_generation_placeholder';
 
 const MAX_PLAN_TEXT_LENGTH = 1024;
 const MAX_HEADER_LENGTH = 8192;
@@ -158,7 +163,7 @@ export function decodeCommitPlan(value) {
  * @property {number} swipes swipe: swipe count of the target before this generation
  * @property {string|null} prefix continue: hash of the text the reply continues
  * @property {number} prefix_length continue: length of that text
- * @property {string} started Generation start, ISO timestamp; also marks this generation's in-progress message on disk
+ * @property {string} started Generation start, ISO timestamp; also marks this generation's in-progress message on disk (GENERATION_PLACEHOLDER_KEY)
  * @property {string} page Id of the page load that started the generation
  * @property {string[]} round Group chats: avatars of the members still to speak after this reply in its round
  * @property {{ name: string, force_avatar: string|null, original_avatar: string|null, extra: { api: string, model: string, reasoning_effort: string|null, gen_id: number|null } }} message Reply fields known up front

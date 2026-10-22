@@ -381,6 +381,10 @@ export class ResumableGeneration {
                 } else {
                     console.warn(`Did not commit generation ${this.id}: ${commit.reason}`);
                 }
+                if (generations.get(this.key) !== this) {
+                    // A newer request with this id replaced it in the registry, so nothing can resume it.
+                    this.freeBuffers();
+                }
             }
         })();
         return commit.work;

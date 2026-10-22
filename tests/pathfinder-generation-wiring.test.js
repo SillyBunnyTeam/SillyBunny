@@ -86,6 +86,7 @@ function createHost() {
         applyMainGenerationOutputInterceptors: jest.fn(async ({ text }) => ({ text, cancelled: false })),
         saveReply: jest.fn(async data => data), saveChatConditional: jest.fn(async () => {}),
         createGenerationCommitPlan: () => null, registerGenerationCommitPlan: () => undefined, getMessageIdentity: () => null,
+        settleGenerationCommit: async () => null, reloadServerCommittedReply: () => undefined,
         TempResponseLength: { isCustomized: () => false }, removeReasoningFromString: text => text,
         t: (strings, ...values) => String.raw({ raw: strings }, ...values),
         toastr: { error: jest.fn(), warning: jest.fn() },

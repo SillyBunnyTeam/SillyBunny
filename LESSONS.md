@@ -41,6 +41,7 @@ This is the largest class by a wide margin.
 - **Breaks:** rendering or resizing moves the reader's position; cancelling leaves stream state behind.
 - **Files:** `public/script.js`, `public/scripts/chat-render-lifecycle/`, `public/scripts/chats.js`, `src/request-cancellation.js`.
 - **Guards:** `chat-render-lifecycle/scroll-intent.js` decides when to follow the newest message, `resize-observer.js` handles content that resizes after render, and `mobile-viewport.js` handles mobile viewport changes.
+- **Guards:** a page hands its chat replies to the server and stops its stream on `pagehide`, not `beforeunload` (`public/scripts/resumable-generation.js`, `public/script.js`). A leave-site prompt can cancel `beforeunload`, and the page then stays with replies the server still writes into the chat (PR #877 review). Test: `tests/resumable-generation-frontend.test.js`.
 - **Tests:** `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/chat-scroll-regressions.e2e.js`, `tests/request-cancellation.test.js`, `tests/in-chat-agents-companion-panel.test.js`.
 - **Fixes:** #271 (stabilise chat scrolling), #314 (cancel when a stream disconnects), #771 (resize and load lock work against each other), #783 (streaming moves the screen).
 
@@ -77,8 +78,11 @@ This is the largest class by a wide margin.
 ### Chat writes, reloads and backups
 
 - **Breaks:** an old queued write replaces a newer chat; backups push each other out of the backup ring.
-- **Files:** `public/scripts/chat-save-guard.js`, `public/scripts/chat-reload-guard.js`, `src/endpoints/chats.js`.
-- **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`.
+- **Files:** `public/scripts/chat-save-guard.js`, `public/scripts/chat-reload-guard.js`, `src/endpoints/chats.js`, `src/generation-commit.js`, `public/scripts/server-generations.js`.
+- **Guards:**
+  - The server writes a reply over an existing message only when that message carries `extra.server_generation_placeholder` with the generation's start time. The browser removes the mark when the reply is finished, so a reply the page saved itself, and later edits to it, are not overwritten (`src/generation-commit.js`).
+  - `Generate()` awaits `settleGenerationCommit()` before it saves a finished reply. If the server answers `committed`, the page reloads the chat and does not save its own copy, which would fail the integrity check. Stream readers return at `[DONE]`, which can come before the body ends and claims on its own (PR #877 review).
+- **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`, `tests/server-generation-commit.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/story-mode-request-controls.test.js`.
 - **Fixes:** #819 (queued saves across swipes clone chats), #849 (staged reloads wipe chats), #373 (extra pre-write backups push older backups out), #856 (issue #706: a chat saves when opened).
 
 ### Cache, boot and reload

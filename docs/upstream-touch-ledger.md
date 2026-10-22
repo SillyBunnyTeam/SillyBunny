@@ -50,6 +50,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
 
+### `public/script.js` - server-owned chat generations
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Generation lifecycle and chat persistence. |
+| Divergence reason | SillyBunny lets the server finish a chat reply when the page that asked for it goes away, because phones freeze and close background tabs during a generation. `Generate()` must send a commit plan with each committable request, mark its streaming message so the server replaces only an unfinished reply, and skip its own save when the server kept its copy. Upstream stops the stream on `beforeunload`, which a leave-site prompt can cancel, so the hand-off and the stop run on `pagehide`. |
+| Target seam | `public/scripts/server-generations.js`, `public/scripts/resumable-generation.js`, `public/scripts/generation-commit-plan.js`. |
+| Adapter shape | `Generate()` registers a commit plan before each committable request (`registerGenerationCommitPlan()`), then awaits `settleGenerationCommit()` before it saves the finished reply; on `committed` it unblocks and calls `reloadServerCommittedReply()` instead of saving. `StreamingProcessor.onStartStreaming()` sets `extra[GENERATION_PLACEHOLDER_KEY]` on the streaming message, and `finalizeIntermediaryMessage()` deletes it. The window `pagehide` handler stops the stream unless the page goes into the back/forward cache; the `beforeunload` handler no longer stops it. |
+| Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/server-generation-commit.test.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- story-mode-request-controls.test.js resumable-generation-frontend.test.js server-generation-commit.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `registerGenerationCommitPlan()` and `settleGenerationCommit()` calls, the `GENERATION_PLACEHOLDER_KEY` lines in `onStartStreaming()` and `finalizeIntermediaryMessage()`, and the `pagehide` handler, then put `streamingProcessor.onStopStreaming()` back in the `beforeunload` handler. Requests then carry no commit plan, so the server never writes replies, and `fetchResumable()` still resumes dropped streams. |
+| Last reviewed | 2026-10-23 PR #877 review fixes. |
+| Owner | Generation lifecycle owner. |
+
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |

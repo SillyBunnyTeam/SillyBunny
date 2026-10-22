@@ -133,10 +133,23 @@ describe('applyGenerationReply', () => {
     });
 
     test('replaces a streaming placeholder of the same generation that a save put on disk', () => {
-        const records = [...chatRecords(), { ...message('Seraphina', false, 'The for', ''), gen_started: STARTED }];
+        const records = [...chatRecords(), { ...message('Seraphina', false, 'The for', '', { server_generation_placeholder: STARTED }), gen_started: STARTED }];
         const result = commit.applyGenerationReply(records, plan(), REPLY, CONTEXT);
         expect(result.records).toHaveLength(4);
         expect(result.records[3].mes).toBe('The forest stirs.');
+        expect(result.records[3].extra).not.toHaveProperty('server_generation_placeholder');
+        expect(result.records[3].swipe_info[0].extra).not.toHaveProperty('server_generation_placeholder');
+    });
+
+    test('leaves a finished reply that started at the same time alone', () => {
+        // The page saved its own copy, which drops the placeholder mark; the server must not overwrite it.
+        const finished = { ...message('Seraphina', false, 'The forest stirs, edited by the user.', '2026-10-03T10:00:31.000Z'), gen_started: STARTED };
+        const records = [...chatRecords(), finished];
+        expect(commit.applyGenerationReply(records, plan(), REPLY, CONTEXT)).toEqual({ reason: 'chat-changed' });
+
+        const swipePlan = plan({ kind: 'swipe', index: 2, anchor: null, target: 'identity-before-the-swipe-started', swipes: 1 });
+        const swiped = { ...finished, swipe_id: 1, swipes: ['First take.', finished.mes], swipe_info: [{}, {}] };
+        expect(commit.applyGenerationReply([...chatRecords(), swiped], swipePlan, REPLY, CONTEXT)).toEqual({ reason: 'target-changed' });
     });
 
     test('replaces the regenerated message it was asked to replace', () => {
@@ -167,9 +180,33 @@ describe('applyGenerationReply', () => {
         expect(result.records[3]).toMatchObject({ swipe_id: 1, swipes: ['First take.', 'The forest stirs.'], mes: 'The forest stirs.' });
     });
 
+    test('drops what belonged to the swipe shown before, as the browser does before a swipe', () => {
+        const extra = {
+            display_text: 'Erste Aufnahme.',
+            media: [{ url: 'user/images/first.png' }],
+            inline_image: true,
+            title: 'First',
+            memory: 'summary',
+            inChatAgentTransformHistory: [{ agent: 'tone' }],
+            inChatAgentPreGenerationInterceptHistory: [{ agent: 'guard' }],
+            bias: 'kept',
+        };
+        const target = { ...message('Seraphina', false, 'First take.', '2026-10-03T09:59:30.000Z', extra), swipe_id: 0, swipes: ['First take.'], swipe_info: [{ extra: structuredClone(extra) }] };
+        const swipePlan = plan({ kind: 'swipe', index: 2, anchor: null, target: getMessageIdentity(target), swipes: 1 });
+        const result = commit.applyGenerationReply([...chatRecords(), target], swipePlan, REPLY, CONTEXT);
+        const swiped = result.records[3];
+        for (const key of ['display_text', 'media', 'inline_image', 'title', 'memory', 'inChatAgentTransformHistory', 'inChatAgentPreGenerationInterceptHistory']) {
+            expect(swiped.extra).not.toHaveProperty(key);
+            expect(swiped.swipe_info[1].extra).not.toHaveProperty(key);
+        }
+        expect(swiped.extra.bias).toBe('kept');
+        // The swipe shown before keeps its own data.
+        expect(swiped.swipe_info[0].extra.display_text).toBe('Erste Aufnahme.');
+    });
+
     test('replaces the swipe slot its own streaming placeholder already added', () => {
         const target = {
-            ...message('Seraphina', false, 'The for', ''),
+            ...message('Seraphina', false, 'The for', '', { server_generation_placeholder: STARTED }),
             gen_started: STARTED,
             swipe_id: 1,
             swipes: ['First take.', 'The for'],
@@ -188,6 +225,20 @@ describe('applyGenerationReply', () => {
         const result = commit.applyGenerationReply(records, continuePlan, { ...REPLY, text: ' stirs.' }, CONTEXT);
         expect(result.records[3].mes).toBe('The forest stirs.');
         expect(result.records[3].extra.server_generation.prefix_length).toBe(10);
+    });
+
+    test('a continue keeps the reasoning it continues, as saveReply(\'appendFinal\') does', () => {
+        const extra = { reasoning: 'Think first.', reasoning_duration: 4200, reasoning_tokens: 12, reasoning_signature: 'sig-1', token_count: 3 };
+        const target = message('Seraphina', false, 'The forest', '2026-10-03T09:59:30.000Z', extra);
+        const continuePlan = plan({ kind: 'continue', index: 2, anchor: null, target: getMessageIdentity(target), prefix: hashCommitText('The forest'), prefix_length: 10 });
+
+        const plain = commit.applyGenerationReply([...chatRecords(), target], continuePlan, { ...REPLY, text: ' stirs.', reasoning: '' }, CONTEXT).records[3];
+        expect(plain.extra).toMatchObject({ reasoning: 'Think first.', reasoning_duration: 4200, reasoning_tokens: 12, reasoning_signature: 'sig-1' });
+        // The text grew, so the browser counts it again when it finishes the reply.
+        expect(plain.extra).not.toHaveProperty('token_count');
+
+        const reasoned = commit.applyGenerationReply([...chatRecords(), target], continuePlan, { ...REPLY, text: ' stirs.', reasoning: ' Then act.' }, CONTEXT).records[3];
+        expect(reasoned.extra).toMatchObject({ reasoning: 'Think first. Then act.', reasoning_duration: 4200, reasoning_signature: null });
     });
 
     test('refuses to continue a message whose text was edited', () => {
@@ -604,6 +655,22 @@ describe('server-owned generation lifecycle', () => {
             await owner.close().catch(() => undefined);
             await other.close();
         }
+    });
+
+    test('a reply replaced in the registry by a newer request with its id gives its bytes back once committed', async () => {
+        jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+        const id = '9'.repeat(32);
+        const { generation: superseded, finish } = startGeneration(id);
+        finish();
+        expect(superseded.commit.state).toBe('waiting');
+        expect(registry.testExports.totalBufferedBytes).toBeGreaterThan(0);
+
+        const { generation: replacement } = startGeneration(id);
+        expect(registry.testExports.generations.get(replacement.key)).toBe(replacement);
+        await superseded.runCommit();
+
+        expect(superseded.commit.state).toBe('committed');
+        expect(registry.testExports.totalBufferedBytes).toBe(replacement.size);
     });
 
     test('stop-and-keep commits what was generated before the stop', async () => {

@@ -25,6 +25,8 @@ const MAX_RESUME_ATTEMPTS = 60;
 const CONTROL_RETRY_DELAYS_MS = Object.freeze([1000, 2000, 5000, 10000, 20000]);
 /** Retries of a claim; the end of the reply waits for it, so it gives up sooner. */
 const CLAIM_RETRY_DELAYS_MS = Object.freeze([250, 1000, 2000]);
+/** A claim attempt on a connection that dropped silently is abandoned after this long. */
+const CLAIM_TIMEOUT_MS = 4000;
 /** A stream with no bytes for this long when the page becomes visible again gets reconnected. */
 const STALE_STREAM_MS = 5000;
 const SKIPPED_RESPONSE_HEADERS = new Set(['content-encoding', 'content-length', 'transfer-encoding']);
@@ -45,6 +47,8 @@ export const pageId = createGenerationId();
 
 /** @type {WeakMap<AbortSignal, import('./generation-commit-plan.js').GenerationCommitPlan>} */
 const commitPlans = new WeakMap();
+/** @type {WeakMap<AbortSignal, ResumableRequest>} */
+const plannedRequests = new WeakMap();
 
 /**
  * Lets the server write the reply of the next generation request made with this signal.
@@ -87,12 +91,14 @@ function sleep(ms, signal) {
  * @param {string} url Control endpoint
  * @param {RequestInit} init Fetch options
  * @param {readonly number[]} retryDelays Wait before each retry
+ * @param {number} [timeoutMs] Abandon an attempt after this long; 0 waits as long as fetch does
  * @returns {Promise<Response|null>} The server's answer, or null if none came
  */
-async function sendControl(url, init, retryDelays) {
+async function sendControl(url, init, retryDelays, timeoutMs = 0) {
     for (let attempt = 0; ; attempt++) {
         try {
-            const response = await fetch(url, init);
+            const signal = timeoutMs && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : undefined;
+            const response = await fetch(url, signal ? { ...init, signal } : init);
             if (response.status < 500) {
                 return response;
             }
@@ -153,8 +159,11 @@ class ResumableRequest {
         this.commitPlan = this.outerSignal ? commitPlans.get(this.outerSignal) ?? null : null;
         if (this.commitPlan) {
             commitPlans.delete(this.outerSignal);
+            plannedRequests.set(this.outerSignal, this);
             this.requestHeaders[GENERATION_COMMIT_HEADER] = encodeCommitPlan(this.commitPlan);
         }
+        /** @type {Promise<string|null>|null} */
+        this.claiming = null;
         // Same CSRF token for the control calls, but no generation id: that would register a new one.
         this.controlHeaders = Object.fromEntries(Object.entries(this.requestHeaders)
             .filter(([name]) => !CONTROL_HEADERS_EXCLUDED.has(name.toLowerCase())));
@@ -257,8 +266,13 @@ class ResumableRequest {
                 }
             },
             cancel: (reason) => {
-                this.finish();
-                this.connection?.abort(reason);
+                if (this.claiming) {
+                    this.finish();
+                    this.connection?.abort(reason);
+                    return;
+                }
+                // The reader gave up before the end, so this page does not save the reply; the server must not either.
+                this.cancel();
             },
         });
 
@@ -350,22 +364,37 @@ class ResumableRequest {
     }
 
     /**
-     * Tells the server this page has the whole reply and saves it itself.
-     * @returns {Promise<void>}
+     * Tells the server this page has the whole reply and saves it itself. Sent once per request.
+     * @returns {Promise<string|null>} Commit state the server answered with, `unknown` without an
+     * answer, `missing` when the server does not have the generation, or null without a commit plan
      */
-    async claim() {
+    claim() {
         if (!this.commitPlan) {
-            return;
+            return Promise.resolve(null);
         }
+        this.claiming ??= this.sendClaim();
+        return this.claiming;
+    }
+
+    /**
+     * @returns {Promise<string>}
+     */
+    async sendClaim() {
         const response = await sendControl(CLAIM_URL, {
             method: 'POST',
             headers: this.controlHeaders,
             body: JSON.stringify({ id: this.id }),
             cache: 'no-store',
-        }, CLAIM_RETRY_DELAYS_MS);
-        if (!response) {
-            console.warn('Could not claim a finished generation; the server may also write it into the chat.');
+        }, CLAIM_RETRY_DELAYS_MS, CLAIM_TIMEOUT_MS);
+        if (response?.status === 404) {
+            return 'missing';
         }
+        const data = response?.ok ? await response.json().catch(() => null) : null;
+        if (typeof data?.state !== 'string') {
+            console.warn('Could not claim a finished generation; the server may also write it into the chat.');
+            return 'unknown';
+        }
+        return data.state;
     }
 
     /**
@@ -430,6 +459,35 @@ export function getActiveGenerationIds() {
 }
 
 /**
+ * The page is shown again from the back/forward cache: its requests are its own again, so a stop
+ * cancels them on the server instead of leaving them to be written into the chat.
+ */
+export function reattachActiveGenerations() {
+    for (const request of activeRequests.values()) {
+        request.detached = false;
+    }
+}
+
+/**
+ * Claims the chat reply requested with this signal and waits for the server's answer. Stream
+ * readers stop at the reply's last event, which can come before the body ends and claims on its own.
+ * @param {AbortSignal|null|undefined} signal Signal the reply was requested with
+ * @returns {Promise<string|null>} Commit state; `committed` means the server's copy stays in the
+ * chat and the page must not save its own. Null when the request has no commit plan or was stopped.
+ */
+export function settleGenerationCommit(signal) {
+    const request = signal ? plannedRequests.get(signal) : null;
+    if (!request) {
+        return Promise.resolve(null);
+    }
+    plannedRequests.delete(signal);
+    if (!request.claiming && request.aborted) {
+        return Promise.resolve(null);
+    }
+    return request.claim();
+}
+
+/**
  * fetch() for generation endpoints: the reply survives the connection dropping and the page being
  * frozen in the background. Abort the signal in `init` to cancel the generation for real.
  * @param {string} url Generation endpoint
@@ -449,10 +507,14 @@ if (typeof document !== 'undefined') {
 }
 
 if (typeof window !== 'undefined') {
-    // Desktop browsers fire beforeunload on reload and close. iOS Safari never does, but it does
-    // fire pagehide when the tab is actually going away - backgrounding only flips visibility,
-    // which stays silent here so a frozen tab keeps its reply. Registered before the chat UI's own
-    // unload handler, which stops the stream; detached requests then skip the server-side cancel.
-    window.addEventListener('beforeunload', releaseActiveGenerations);
+    // pagehide, not beforeunload: a leave-site prompt can cancel beforeunload and keep the page, which
+    // would leave its replies detached. iOS Safari fires pagehide when a tab closes, but not when it
+    // goes to the background, so a frozen tab keeps its reply. Registered before the chat UI's own
+    // pagehide handler, which stops the stream; detached requests then skip the server-side cancel.
     window.addEventListener('pagehide', releaseActiveGenerations);
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            reattachActiveGenerations();
+        }
+    });
 }
