@@ -1,30 +1,35 @@
 # SillyBunny Contribution Guide
 
+> [!NOTE]
+> ### AI Disclaimer (Vibe Coding)
+> LLMs are liberally used in this project to implement changes to the codebase. You are more than welcome to submit a PR with AI-assistance, as long as it aligns with the following contribution guidelines and you understand the implications of the code being submitted in your own words.
+
 ## Project Etiquette
 
-BEFORE submitting a pull request, keep the following project goals and best practices in mind:
+Thanks for wanting to contribute to SillyBunny! We are more than happy to accept PR submissions. Before submitting a pull request, please keep the following project goals and best practices in mind:
 
 #### Project Goals
 
-The following goals summarize `PRODUCT.md` and `README.md`; `PRODUCT.md` is authoritative for product direction.
+The following goals summarize `PRODUCT.md` and `README.md`; `PRODUCT.md` is authoritative for SillyBunny's direction. `DESIGN.md` details the graphical user interface's direction.
 
-1) **Simple by default; powerful when needed.** Directly inspired by KDE Plasma's main driving philosophy, SillyBunny is aimed to be simple to understand and intuitive to use by default, with most of the complex settings hidden away from the default workspace. Sane defaults are implemented while all the extra complexity is hidden behind UI elements. Our graphical shell best embodies this philosophy.
+1) **Simple by default; powerful when needed.** Directly inspired by KDE Plasma's main driving philosophy, SillyBunny is aimed to be simple to understand and intuitive to use by default, with most of the complex settings hidden away from the default workspace. Sane defaults are implemented while all the extra complexity is hidden the shell. Our graphical shell best embodies this philosophy.
 2) **A focus on roleplay and storytelling.** SillyBunny has a more opinionated purpose compared to upstream SillyTavern. Our goals align closely with the creative writing scene for models, and the general direction of the fork is aimed for that use case. We facilitate this with pre-bundled tutorials/add-ons/presets designed to get you started with LLM creative writing in fun ways.
-3) **Modernised features.** We aim to implement new features that can greatly take advantage of modern models and their strong, agentic capabilities. Currently, this includes full support for In-Chat pre, sidecar, and post gen agents that complement the main generation. Models work best on smaller individual tasks, and this is best shown through in-chat agents and their capabilities. We've also implemented a conversational "instant messenger' mode that accompanies the roleplay mode, and plan on introducing more of these modes in the future.
-4) **Better performance & UX.** Base SillyTavern relies on node.js for its runtime environment. While robust, this is not ideal for performance. We've switched to a Bun runtime to increase general performance and startup times, while optimising for lower power devices like smartphones. Mobile development gets as much attention as desktop development in this fork, so the program remains easy to use regardless of your platform of choice.
-5) **Compatibility**. We remain as closely backwards compatible with upstream SillyTavern as possible. This facilitates easy synchronizing with upstream. We aim to not remove any pre-existing features, unless replacing with a direct alternative. The backend is already very solid, so primary work is done in the frontend space. In addition, we aim to make all our new features compatible with models of all sizes, not just the frontier, SOTA ones. Simplicity is key.
+3) **Modernized features.** We aim to implement new features that can greatly take advantage of modern models and their strong, agentic capabilities while leveraging upstream SillyTavern's ecosystem. If it's an idea that helps people interact with models in creative and interesting ways, it can be considered.
+4) **Better performance & UX.** SillyBunny uses a Bun runtime to increase general performance and startup times, while optimising for lower power devices like smartphones. Node.js is supported as a compatibility fallback. The user experience is heavily centered on maintaining focus on the main chat window while tucking away settings until they're actually required. Mobile development gets equal attention to desktop development, so the program remains easy to use regardless of your platform of choice.
+5) **Compatibility**. We remain as closely backwards compatible with upstream SillyTavern as possible. This facilitates easy synchronizing with upstream. We aim to not remove any pre-existing features, unless replacing with a direct alternative. The backend is already very solid, so primary work is done in the frontend space. In addition, we aim to make all our new features compatible with models of all sizes, not just the frontier, SOTA ones.
 
 #### Best Code Practices
 
-- SillyBunny is a derivative fork of [SillyTavern](https://github.com/SillyTavern/SillyTavern), not a replacement. Sustainability to upstream is critical: keep SillyBunny's general code compatibility as close to upstream as possible.
+- SillyBunny is a successive fork of [SillyTavern](https://github.com/SillyTavern/SillyTavern). Sustainability to upstream is critical: keep SillyBunny's general code compatibility as close to upstream as possible.
 - Backwards compatibility with SillyTavern is a key design goal of the project. A user should be able to open SillyBunny, import their pre-existing SillyTavern settings, and feel right at home with SillyTavern's pre-existing featureset.
-- Follow KISS (keep it simple, stupid). A solution to a problem should not have any excess overreach. Use small, focused PRs to address bug fixes. A new feature or design decision should be delegated to one larger PR for easier tracking and development.
-- Changes to upstream should be self-contained in their own files where possible. With the exception of UI modifications, try to minimise actual changes to base SillyTavern code.
-- If modifying base SillyTavern files, leave clear inline comments indicating where and why SillyBunny code diverges from upstream. This aids maintainers during future upstream merge conflict resolutions.
-- Reuse existing metadata/state formats where possible instead of inventing new persistent structures.
+- A solution to a problem should not have any excess overreach. Use small, focused PRs to address bug fixes. A new feature or design decision should be delegated to one larger PR for easier tracking and development.
+- Prefer code that can be reused in multiple locations within their own reference files. Reuse existing metadata/state formats where possible instead of inventing new persistent structures.
+- SillyBunny exclusive changes should be self-contained in their own files where possible. With the exception of UI modifications, try to minimize actual changes to base SillyTavern code unless it is completely necessary.
+- Code comments should be explicit and direct in ASD-STE100 Simplified Technical English - verbose comments are difficult to read and are heavily discouraged. Comments are only necessary to help explain the *why* of complex logic in isolation that the code cannot explain alone. Comments should not reference other parts of the code. Match the existing comment style of the file you're working on.
+- When modifying base SillyTavern files, leave clear inline comments indicating where and why SillyBunny code diverges from upstream. This aids maintainers during future upstream merge conflict resolutions.
 - While Bun is the default runtime, Node.js backwards compatibility is required. Do not use Bun-exclusive APIs (such as Bun.file() or Bun.serve()) unless a standard Node.js fallback is included. Test all structural changes in both runtime environments.
 - Keep fork-specific feature additions and upstream synchronization merges in separate pull requests. Mixing upstream code updates with SillyBunny feature logic complicates the review process.
-- Make sure new features work elegantly with parity on both mobile and desktop environments. UI changes should not break the other platform - this is very important!
+- Make sure new features work elegantly with parity on both mobile and desktop environments. SillyBunny must support Chromium, Gecko, and WebKit browsers. UI changes should not break the other platform - this is very important!
 
 #### Correct target branch
 
@@ -40,7 +45,9 @@ You can still send a pull request for `release` in the following scenarios:
 
 #### Release Cadence
 
-We prefer release synchronisations in short, frequent updates vs. long commit lists. This is to ensure that `staging` does not drift too far from `release` and to give people a frequent update target without relying on the `staging` branch. The `staging` branch should not accumulate a large backlog before synchronisation.
+We prefer release synchronizations in short, frequent updates vs. long commit lists. This is to ensure that `staging` does not drift too far from `release` and to give people a frequent update target without relying on the `staging` branch. The `staging` branch should not accumulate a large backlog before synchronization.
+
+vx releases are reserved for complete program redesigns or overhauls. In practice, this should only happen in very special circumstances.
 
 v1.x releases are reserved for significant feature updates, improvements, or a large group of individual changes.
 
@@ -54,6 +61,7 @@ When submitting a PR, follow this template:
 - Write a paragraph denoting what the PR wants to achieve.
 - Write a paragraph denoting how the PR achieves its goal.
 - Include steps that designate how to use the feature, so it's easier for us to test.
+- Include before and after screenshots for both desktop and mobile when making changes to the user interface.
 
 Pull requests should use the following [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) PR prefixes before the title:
 - `fix` - a direct bug fix.
@@ -117,7 +125,8 @@ When upstream SillyTavern `staging` advances:
 
 1. Required software: git and Bun for normal local development. Node.js and npm are also required when testing Node.js compatibility or matching CI behavior.
 2. An IDE or editor of your choice. Visual Studio Code is a safe default.
-3. You can also use GitHub Codespaces which sets up everything for you.
+3. A Chromium, Gecko (Firefox), and WebKit browser for compatibility checks.
+4. You can also use GitHub Codespaces which sets up everything for you.
 
 Native Termux contributors should use `bash start-termux-node.sh` for Node.js + npm unless specifically testing Bun behavior; use `bash start-termux-bun.sh` when checking Bun-specific behavior.
 
@@ -135,9 +144,3 @@ Native Termux contributors should use `bash start-termux-node.sh` for Node.js + 
 ### License
 
 This program is licensed as free software under the [AGPL 3.0](https://www.gnu.org/licenses/agpl-3.0.html). This implies NO warranty, and due diligence to maintain adherence to the copyleft structure of the license. Any derivatives or modifications of this program must be released under the same license.
-
----
-
-> [!WARNING]
-> ### AI Disclaimer (Vibe Coding)
-> LLMs are used liberally in this project to implement changes to the code. You are more than welcome to submit a PR with AI-assistance, as long as it aligns with the contribution guidelines and you understand and can explain the code being submitted in your own words.
