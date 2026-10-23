@@ -135,7 +135,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(result.status).toBe(0);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
         expect(result.stdout).toBe('Checking for updates on origin/release...\n');
-        expect(result.stderr).toBe('Skipping self-update: lorum ipsum\n');
+        expect(result.stderr).toBe('Skipping self-update: TODO(copy)\n');
         expect(readFileSync(path.join(statusDir, 'update-blocked.json'), 'utf8'))
             .toBe(`{"required":2,"installed":1,"reason":"newer","upstream":"${upstream}","branch":"release"}\n`);
         expect(readdirSync(statusDir)).toEqual(['update-blocked.json']);
@@ -146,7 +146,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         writeFile(path.join(statusDir, 'update-blocked.json'), 'stale\n');
         const result = runUpdater({ optional: false });
         expect(result.status).toBe(1);
-        expect(result.stderr).toBe('Self-update failed: lorum ipsum\n');
+        expect(result.stderr).toBe('Self-update failed: TODO(copy)\n');
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
         expect(readFileSync(path.join(statusDir, 'update-blocked.json'), 'utf8'))
             .toBe(`{"required":2,"installed":1,"reason":"newer","upstream":"${upstream}","branch":"release"}\n`);
@@ -163,8 +163,8 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         ].join('\n'));
         const result = runUpdater({ stderrFile, env: { ...env, TEST_STDERR_FILE: stderrFile, TEST_ORDER_FILE: orderFile } });
         expect(result.status).toBe(0);
-        expect(result.stderr).toBe('Skipping self-update: lorum ipsum\n');
-        expect(readFileSync(orderFile, 'utf8')).toBe('Skipping self-update: lorum ipsum\n');
+        expect(result.stderr).toBe('Skipping self-update: TODO(copy)\n');
+        expect(readFileSync(orderFile, 'utf8')).toBe('Skipping self-update: TODO(copy)\n');
         expect(existsSync(path.join(statusDir, 'update-blocked.json'))).toBe(true);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
     });
@@ -182,7 +182,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         const env = stubCommand('rm', 'exit 17');
         const result = runUpdater({ optional, env });
         expect(result.status).toBe(exitCode);
-        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: lorum ipsum\n`);
+        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: TODO(copy)\n`);
         expect(readFileSync(path.join(statusDir, 'update-blocked.json'), 'utf8')).toBe('stale\n');
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
     });
@@ -195,7 +195,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         ].join('\n'));
         const result = runUpdater({ optional, env });
         expect(result.status).toBe(exitCode);
-        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: lorum ipsum\n`);
+        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: TODO(copy)\n`);
         expect(existsSync(statusDir)).toBe(false);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
     });
@@ -211,7 +211,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         const env = stubCommand(command, 'exit 17');
         const result = runUpdater({ optional, env });
         expect(result.status).toBe(exitCode);
-        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: lorum ipsum\n`);
+        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: TODO(copy)\n`);
         expect(readdirSync(statusDir)).toEqual([]);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
     });
@@ -232,7 +232,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(upstream);
         expect(existsSync(path.join(statusDir, 'update-blocked.json'))).toBe(false);
         expect(result.stdout).toContain('Updating SillyBunny...\n');
-        expect(result.stdout).not.toContain('lorum ipsum');
+        expect(result.stdout).not.toContain('TODO(copy)');
     });
 
     test.each([
@@ -255,7 +255,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
         expect(readFileSync(path.join(statusDir, 'update-blocked.json'), 'utf8'))
             .toBe(`{"required":null,"installed":1,"reason":"${reason}","upstream":"${upstream}","branch":"release"}\n`);
-        expect(result.stderr).toBe('Skipping self-update: lorum ipsum\n');
+        expect(result.stderr).toBe('Skipping self-update: TODO(copy)\n');
     });
 
     test.each([
@@ -266,7 +266,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         const result = runUpdater({ optional: false });
         expect(result.status).toBe(1);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
-        expect(result.stderr).toBe('Self-update failed: lorum ipsum\n');
+        expect(result.stderr).toBe('Self-update failed: TODO(copy)\n');
         expect(readFileSync(path.join(statusDir, 'update-blocked.json'), 'utf8'))
             .toBe(`{"required":null,"installed":1,"reason":"${reason}","upstream":"${upstream}","branch":"release"}\n`);
     });
@@ -362,7 +362,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(head);
         expect(existsSync(path.join(statusDir, 'update-blocked.json'))).toBe(blocked);
         expect(result.stderr).toBe(blocked
-            ? 'Skipping self-update: lorum ipsum\n'
+            ? 'Skipping self-update: TODO(copy)\n'
             : 'Skipping self-update: branch \'release\' has diverged from \'origin/release\'. Resolve it manually before using self-update.\n');
     });
 
@@ -383,7 +383,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(result.status).toBe(0);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(upstream);
         expect(existsSync(statusDir)).toBe(false);
-        expect(result.stdout).not.toContain('lorum ipsum');
+        expect(result.stdout).not.toContain('TODO(copy)');
     });
 
     test('non-APK mode never removes or overwrites an existing status', () => {
@@ -411,7 +411,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
         expect(git(cloneDir, 'status', '--porcelain')).toBe('');
         expect(readdirSync(workDir).sort()).toEqual(entries);
-        expect(result.stderr).toBe('Skipping self-update: lorum ipsum\n');
+        expect(result.stderr).toBe('Skipping self-update: TODO(copy)\n');
     });
 
     function advanceUpstreamOn(command, minimum, newerMinimum) {
@@ -463,7 +463,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         expect(git(cloneDir, 'rev-parse', '@{upstream}')).toBe(newer);
         expect(readFileSync(path.join(statusDir, 'update-blocked.json'), 'utf8'))
             .toBe(`{"required":2,"installed":1,"reason":"newer","upstream":"${checked}","branch":"release"}\n`);
-        expect(result.stderr).toBe('Skipping self-update: lorum ipsum\n');
+        expect(result.stderr).toBe('Skipping self-update: TODO(copy)\n');
         const calls = readFileSync(callsFile, 'utf8').trimEnd().split('\n');
         expect(calls.filter(call => call === 'rev-parse @{upstream}')).toHaveLength(1);
         expect(calls).toContain(`show ${checked}:android/min-app-version`);
@@ -492,7 +492,7 @@ describePosix('Android app self-update gate with a bare upstream', () => {
         ].join('\n'));
         const result = runUpdater({ optional, env });
         expect(result.status).toBe(exitCode);
-        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: lorum ipsum\n`);
+        expect(result.stderr).toBe(`${optional ? 'Skipping self-update' : 'Self-update failed'}: TODO(copy)\n`);
         expect(git(cloneDir, 'rev-parse', 'HEAD')).toBe(initialHead);
     });
 });

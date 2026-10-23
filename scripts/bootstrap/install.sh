@@ -53,7 +53,7 @@ Options:
   --repo <url-or-path>    Repository to clone (default: the official repository)
   --migrate-from <path>   Copy data, settings, plugins and extensions from an
                           old non-Git (ZIP) install. The old folder is not changed.
-  --allow-git-source      lorum ipsum
+  --allow-git-source      TODO(copy)
   --use-bun               Force Bun as the runtime (default on Linux/Windows)
   --use-node              Force Node.js as the runtime (default on macOS,
                           where it is installed automatically if missing)

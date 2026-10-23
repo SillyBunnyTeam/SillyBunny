@@ -392,7 +392,7 @@ describePosix('Android bootstrap against a bare fixture upstream', () => {
     test('help exposes the repair flag with only its approved placeholder', () => {
         const result = runInstaller(['--help']);
         expect(result.status).toBe(0);
-        expect(result.stdout).toMatch(/^ {2}--allow-git-source +lorum ipsum$/m);
+        expect(result.stdout).toMatch(/^ {2}--allow-git-source +TODO\(copy\)$/m);
         expect(result.stderr).toBe('');
     });
 });
