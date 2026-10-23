@@ -19,8 +19,9 @@
  *               [--default-ref staging|release] [--idle-wait-minutes 10] [--out DIR] [--scratch DIR]
  *               [--source DIR] [--ref REV] [--package ID] [--summary FILE] [--open-settings-tag T]
  *               [--failed-restart-tag T] [--failed-share-tag T]
- *               Starts p61's fixtures, maps them into the guest with adb reverse, runs the steps, checks the
- *               seeded data/ after every step, collects logs and removes every port rule it added.
+ *               Starts p61's fixtures in a new or empty --scratch folder (default: a new temporary one), maps
+ *               them into the guest with adb reverse, runs the steps, checks the seeded data/ and the crash log
+ *               after every step, collects logs and removes every port rule it added.
  *   steps       The step table.
  *
  * `--serial` defaults to ANDROID_SERIAL (set by the emulator runner action). Exit codes: 0 pass (or skip),
@@ -35,7 +36,18 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { accelUsable, Adb, parseDnsAddresses, parseEmulatorVersion, parseIni, parsePackageVersion, parsePingResolution, runCommand } from './adb.js';
+import {
+    accelUsable,
+    Adb,
+    isErrorDialogWindow,
+    parseDnsAddresses,
+    parseEmulatorVersion,
+    parseFocusedWindow,
+    parseIni,
+    parsePackageVersion,
+    parsePingResolution,
+    runCommand,
+} from './adb.js';
 import {
     bunEntries,
     DEFAULT_PACKAGE,
@@ -137,6 +149,22 @@ function existingFile(values, name) {
     return file;
 }
 
+/**
+ * The `--scratch` folder, which must be new or empty: launcher.js reuses the repositories it finds there with an
+ * earlier run's helper commits, and the update folder keeps that run's manifest, so step 1 would start against a
+ * raised min-app-version and an offered APK update.
+ */
+function freshScratch(values) {
+    if (!values.scratch) {
+        return null;
+    }
+    const dir = path.resolve(values.scratch);
+    if (fs.existsSync(dir) && (!fs.statSync(dir).isDirectory() || fs.readdirSync(dir).length > 0)) {
+        throw new UsageError('scratch-not-empty', { option: 'scratch' });
+    }
+    return dir;
+}
+
 function serialOf(values, env) {
     const serial = values.serial ?? env.ANDROID_SERIAL;
     if (!serial) {
@@ -146,7 +174,8 @@ function serialOf(values, env) {
 }
 
 /**
- * Validates the options of `run` (no device access; files are only checked for existence).
+ * Validates the options of `run` (no device access; files are only checked for existence, the scratch folder for
+ * being new or empty).
  * @param {Record<string, any>} values Parsed options.
  * @param {NodeJS.ProcessEnv} [env] Environment (ANDROID_SERIAL, GITHUB_STEP_SUMMARY).
  * @returns {object} Normalized options.
@@ -177,7 +206,7 @@ export function parseRunOptions(values, env = process.env) {
         defaultRef,
         idleWaitMinutes: integerOption(values, 'idle-wait-minutes', DEFAULT_IDLE_WAIT_MINUTES),
         out: values.out ? path.resolve(values.out) : null,
-        scratch: values.scratch ? path.resolve(values.scratch) : null,
+        scratch: freshScratch(values),
         source: values.source ? path.resolve(values.source) : REPO_ROOT,
         ref: values.ref ?? 'HEAD',
         pkg: values.package ?? DEFAULT_PACKAGE,
@@ -278,8 +307,13 @@ async function poll(check, { timeoutMs, intervalMs = 2_000 }) {
     return { ...last, ok: false, timedOut: true };
 }
 
-/** UI and system services are usable, not just `sys.boot_completed`. */
-async function uiReady(adb) {
+/**
+ * UI and system services are usable, not just `sys.boot_completed`. A system error dialog with the focus is
+ * dismissed, and the check fails until the next poll finds the focus elsewhere.
+ * @param {Adb} adb Device.
+ * @param {string[]} dismissed Receives the title of each error dialog dismissed.
+ */
+async function uiReady(adb, dismissed) {
     const checks = {};
     checks.bootCompleted = (await adb.getprop('sys.boot_completed', { timeoutMs: 15_000 })) === '1';
     checks.bootAnimation = (await adb.getprop('init.svc.bootanim', { timeoutMs: 15_000 })) !== 'running';
@@ -288,8 +322,14 @@ async function uiReady(adb) {
     checks.packageManager = /^package:/.test(await adb.shellText(['pm', 'path', 'android'], { check: false, timeoutMs: 30_000 }));
     await adb.shell(['wm', 'dismiss-keyguard'], { check: false, timeoutMs: 15_000 });
     // The whole dump: API 37 prints mCurrentFocus with the displays, API 29 with the windows.
-    const windows = await adb.shellText(['dumpsys', 'window'], { check: false, timeoutMs: 30_000 });
-    checks.focusedWindow = /mCurrentFocus=Window\{/.test(windows);
+    const focus = parseFocusedWindow(await adb.shellText(['dumpsys', 'window'], { check: false, timeoutMs: 30_000 }));
+    checks.focusedWindow = focus !== null && !isErrorDialogWindow(focus);
+    if (isErrorDialogWindow(focus)) {
+        // A slow boot can leave "System UI isn't responding" over every screen (seen on API 36), and UiAutomator
+        // then finds none of the app's elements. The system closes this dialog on CLOSE_SYSTEM_DIALOGS as on Wait.
+        dismissed.push(focus);
+        await adb.shell(['am', 'broadcast', '-a', 'android.intent.action.CLOSE_SYSTEM_DIALOGS'], { check: false, timeoutMs: 15_000 });
+    }
     return { ok: Object.values(checks).every(Boolean), ...checks };
 }
 
@@ -333,8 +373,10 @@ async function commandPreflight(values) {
             }
         }
         const started = Date.now();
-        result.ui = await poll(() => uiReady(adb), { timeoutMs: uiTimeout * 1000 });
+        const dismissed = [];
+        result.ui = await poll(() => uiReady(adb, dismissed), { timeoutMs: uiTimeout * 1000 });
         result.ui.seconds = Math.round((Date.now() - started) / 1000);
+        result.ui.dismissedDialogs = dismissed;
         if (!result.ui.ok) {
             throw new Error(`the UI was not ready within ${uiTimeout} s: ${JSON.stringify(result.ui)}`);
         }
@@ -516,10 +558,29 @@ async function collectDiagnostics(ctx) {
     });
 }
 
+/**
+ * The lines of summary.md and of the job summary: the step table, then the run's own failure, which no step record
+ * holds (the steps could not start, or an unhandled rejection came outside them).
+ * @param {object[]} records Step records.
+ * @param {string} [detail] The run's failure, English for the CI log.
+ * @returns {string[]} Markdown lines.
+ */
+export function runSummary(records, detail) {
+    const table = summaryTable(records);
+    if (!detail) {
+        return table;
+    }
+    // A code span, so that a redacted `<label>` stays visible in GitHub's rendering.
+    const text = String(detail).replace(/\s+/g, ' ').replace(/`/g, '\'').slice(0, 1000);
+    return [...table, '', `${MESSAGE}: \`${text}\``];
+}
+
 async function commandRun(values) {
     const options = parseRunOptions(values);
     const { SERVICES, startFixtures } = await import('./launcher.js');
-    const { checkDataSafety, closeCdp, createContext, fixtureView, smokeSteps } = await import('./smoke-steps.js');
+    const { checkDataSafety, closeBrowser, closeCdp, createContext, fixtureView, newAppCrashes, smokeSteps } = await import('./smoke-steps.js');
+    // Playwright's errors name the page URL; its per-install origin label stays out of the logs and summaries.
+    const { redactLabel } = await import('./cdp.js');
     const out = outDir(options.out, 'sillybunny-android-smoke-');
     const scratch = outDir(options.scratch, 'sillybunny-android-smoke-scratch-');
     const adb = new Adb({ serial: options.serial, adb: options.adb, log: progress });
@@ -528,6 +589,16 @@ async function commandRun(values) {
     let fixtures = null;
     let ctx = null;
     let records = [];
+    // A rejection nobody awaits (for example from a Playwright page handler) would end the process before the
+    // port rules, the fixtures and the results are dealt with. It is logged instead, and fails the step that was
+    // running when it came, or the run when no step was.
+    const unhandled = [];
+    const outsideSteps = [];
+    const onUnhandled = (error) => {
+        unhandled.push(redactLabel(String(error?.message ?? error).split('\n')[0]));
+        progress(`unhandled rejection: ${unhandled[unhandled.length - 1]}`);
+    };
+    process.on('unhandledRejection', onUnhandled);
     try {
         const state = await adb.state();
         if (state !== 'device') {
@@ -541,11 +612,17 @@ async function commandRun(values) {
         ctx = createContext({ adb, pkg: options.pkg, options, fixtures: fixtureView(fixtures.info), facts, out, log: progress });
         ctx.state.noRestart = await adb.supportsNoRestart();
         result.noRestart = ctx.state.noRestart;
+        // The crash log keeps the crashes from before the run, so this first look only notes them.
+        await newAppCrashes(ctx).catch(error => progress(`crash log: ${error.message}`));
+        outsideSteps.push(...unhandled.splice(0));
         records = await runSteps({
             steps: smokeSteps(options),
             selected: options.steps,
             context: ctx,
+            newRejections: () => unhandled.splice(0),
+            newCrashes: () => newAppCrashes(ctx),
             afterStep: () => checkDataSafety(ctx),
+            redact: redactLabel,
             onRecord: (record) => {
                 ctx.records.push(record);
                 const why = record.error ? ` (${record.code}: ${record.error})` : record.reason ? ` (${record.reason})` : '';
@@ -553,27 +630,36 @@ async function commandRun(values) {
             },
         });
         Object.assign(result, summarize(records, options.steps));
+        outsideSteps.push(...unhandled.splice(0));
+        if (outsideSteps.length > 0) {
+            result.ok = false;
+            result.unhandled = outsideSteps;
+            result.error = MESSAGE;
+            result.detail = `unhandled rejections outside the steps: ${outsideSteps.join('; ').slice(0, 1000)}`;
+        }
     } catch (error) {
         result.error = MESSAGE;
-        result.detail = error.message;
+        result.detail = redactLabel(error.message);
     } finally {
         if (ctx && !result.ok) {
             await collectDiagnostics(ctx);
         }
         if (ctx) {
             await closeCdp(ctx).catch(() => {});
+            await closeBrowser(ctx).catch(() => {});
         }
         await adb.removeAllRules().catch(() => {});
         if (fixtures) {
             await fixtures.close().catch(() => {});
         }
+        process.off('unhandledRejection', onUnhandled);
     }
     result.records = records;
     fs.writeFileSync(path.join(out, 'results.json'), `${JSON.stringify(result, null, 4)}\n`);
-    const table = summaryTable(records);
-    fs.writeFileSync(path.join(out, 'summary.md'), `${table.join('\n')}\n`);
+    const lines = runSummary(records, result.detail);
+    fs.writeFileSync(path.join(out, 'summary.md'), `${lines.join('\n')}\n`);
     if (options.summary) {
-        appendSummary(options.summary, [`API ${result.sdk ?? '?'} (${options.serial})`, '', ...table, '']);
+        appendSummary(options.summary, [`API ${result.sdk ?? '?'} (${options.serial})`, '', ...lines, '']);
     }
     print({ ok: result.ok, out, passed: result.passed, failed: result.failed, notRun: result.notRun, ...(result.detail ? { error: MESSAGE, detail: result.detail } : {}) });
     if (!result.ok) {

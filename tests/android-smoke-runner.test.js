@@ -10,9 +10,13 @@ import {
     accelUsable,
     Adb,
     base64Lines,
+    isAppCrash,
+    isErrorDialogWindow,
     notificationPosted,
+    parseCrashLog,
     parseDnsAddresses,
     parseEmulatorVersion,
+    parseFocusedWindow,
     parseForwardPort,
     parseHookResult,
     parseIni,
@@ -21,12 +25,13 @@ import {
     parsePidof,
     parsePingResolution,
     parseProcesses,
+    parseWebViewPackage,
     shellCommand,
     shellQuote,
 } from './android-smoke/adb.js';
-import { isAppPageUrl, redactLabel } from './android-smoke/cdp.js';
+import { appPageTarget, DevToolsPage, isAppPageUrl, redactLabel } from './android-smoke/cdp.js';
 import { DEVICE_PORT_MAX, isFixturePort } from './android-smoke/ports.js';
-import { DEFAULT_IDLE_WAIT_MINUTES, integerOption, parseRunOptions, redactHandoff, UsageError } from './android-smoke/run-smoke.js';
+import { DEFAULT_IDLE_WAIT_MINUTES, integerOption, parseRunOptions, redactHandoff, runSummary, UsageError } from './android-smoke/run-smoke.js';
 import {
     bunEntries,
     DEFAULT_PACKAGE,
@@ -39,6 +44,8 @@ import {
     resolveHead,
     setConfigFlag,
     UPDATE_REPLACED_NOTIFICATION,
+    WEB_VERSION_WARNING_TAG,
+    WEBVIEW_MINIMUM_MAJOR,
     zipEntryNames,
 } from './android-smoke/smoke-config.js';
 import { appendOutputs, appendSummary, evaluateRuntimeLock, evaluateRuntimeLockFile, GUARD_CODES, guardReport } from './android-smoke/smoke-guard.js';
@@ -53,7 +60,17 @@ import {
     summaryTable,
     withDeadline,
 } from './android-smoke/smoke-runner.js';
-import { CookieJar, createContext, remoteBranchEntry, smokeSteps } from './android-smoke/smoke-steps.js';
+import {
+    appPathExists,
+    browserPage,
+    CookieJar,
+    createContext,
+    newAppCrashes,
+    remoteBranchEntry,
+    settleFrontend,
+    smokeSteps,
+    webViewInfo,
+} from './android-smoke/smoke-steps.js';
 
 const RUN_SMOKE = fileURLToPath(new URL('android-smoke/run-smoke.js', import.meta.url));
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'android-smoke-runner-'));
@@ -67,6 +84,60 @@ const BINARY = Buffer.concat([Buffer.from('a\r\nb\rc\n\x1a d\x00\xff', 'latin1')
 afterAll(() => {
     fs.rmSync(scratch, { recursive: true, force: true });
 });
+
+/** The server's bash as the app starts it: by its path in the install directory (LaunchSpec.kt). */
+const BASH_PATH = `/data/app/~~Eu3D3ATm1tYOtt6HPk1aYw==/${DEFAULT_PACKAGE}-nrQ2AivKJXY2kwtuHFPZ5g==/lib/x86_64/libbash.so`;
+/**
+ * `logcat -b crash -v threadtime` as the three images write it: a WebView abort of the app (API 36), an uncaught
+ * exception, another app's crash, a WebView renderer's crash and a SIGABRT of the app on API 37 (whose header adds
+ * `ppid:`), the app's SIGABRT on API 29 (no Cmdline line), and a SIGABRT of the server's bash on API 37.
+ */
+const CRASH_LOG = [
+    '--------- beginning of crash',
+    '10-23 18:10:14.017  5668  5668 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    '10-23 18:10:14.017  5668  5668 F DEBUG   : Build fingerprint: \'Android/sdk_phone64_x86_64/emu64x:16/BE2A.250530.026.D1/13818094:userdebug/test-keys\'',
+    `10-23 18:10:14.018  5668  5668 F DEBUG   : Cmdline: ${DEFAULT_PACKAGE}`,
+    `10-23 18:10:14.018  5668  5668 F DEBUG   : pid: 5397, tid: 5603, name: Chrome_IOThread  >>> ${DEFAULT_PACKAGE} <<<`,
+    '10-23 18:10:14.018  5668  5668 F DEBUG   : uid: 10150',
+    '10-23 18:10:14.018  5668  5668 F DEBUG   : signal 5 (SIGTRAP), code 128 (SI_KERNEL), fault addr 0x0000000000000000',
+    '10-23 18:10:14.018  5668  5668 F DEBUG   : Abort message: \'[FATAL:partition_alloc_support.cc(770)] Detected dangling raw_ptr in unretained with id=0x00003c6a00c026e0:',
+    '10-23 18:10:14.018  5668  5668 F DEBUG   : ',
+    '10-23 18:10:14.018  5668  5668 F DEBUG   : Please check for more information on:\'',
+    '10-23 18:10:14.018  5668  5668 F DEBUG   :     rax 000072a502b20e38  rbx 000072a4f3dd92e0  rcx 0000000000000000  rdx 0000000000000002',
+    '10-23 18:21:00.000  6100  6100 E AndroidRuntime: FATAL EXCEPTION: main',
+    `10-23 18:21:00.000  6100  6100 E AndroidRuntime: Process: ${DEFAULT_PACKAGE}, PID: 6100`,
+    '10-23 18:21:00.000  6100  6100 E AndroidRuntime: java.lang.IllegalStateException: no server',
+    '10-23 18:21:00.001  6100  6100 E AndroidRuntime: \tat io.github.sillybunnyteam.sillybunny.MainActivity.onCreate(MainActivity.kt:1)',
+    '10-23 18:22:00.000  6200  6200 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    '10-23 18:22:00.000  6200  6200 F DEBUG   : pid: 6190, tid: 6191, name: RenderThread  >>> com.android.systemui <<<',
+    '10-23 18:22:00.000  6200  6200 F DEBUG   : signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : Build fingerprint: \'google/sdk_gphone16k_x86_64/emu64xa16k:17/CE2A.260420.050/16231978:userdebug/dev-keys\'',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : Cmdline: com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : pid: 10668, ppid: 1147, tid: 10668, name: ocessService0:0  >>> com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 <<<',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : uid: 99011',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : signal 5 (SIGTRAP), code 128 (SI_KERNEL), fault addr --------',
+    '10-23 20:58:50.608 10668 10668 F DEBUG   : Abort message: \'[FATAL:base/android/java_exception_reporter.cc:93] Uncaught exception\'',
+    '10-23 21:01:59.315 10407 10407 F libc    : Fatal signal 6 (SIGABRT), code 0 (SI_USER from pid 11373, uid 10231) in tid 10407 (illybunny.debug), pid 10407 (illybunny.debug)',
+    '10-23 21:02:00.180 11378 11378 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    `10-23 21:02:00.180 11378 11378 F DEBUG   : Cmdline: ${DEFAULT_PACKAGE}`,
+    `10-23 21:02:00.180 11378 11378 F DEBUG   : pid: 10407, ppid: 444, tid: 10407, name: illybunny.debug  >>> ${DEFAULT_PACKAGE} <<<`,
+    '10-23 21:02:00.180 11378 11378 F DEBUG   : uid: 10231',
+    '10-23 21:02:00.180 11378 11378 F DEBUG   : signal 6 (SIGABRT), code 0 (SI_USER from pid 11373, uid 10231), fault addr --------',
+    '10-23 21:22:03.575  9165  9165 F libc    : Fatal signal 6 (SIGABRT), code 0 (SI_USER from pid 10025, uid 10116) in tid 9165 (illybunny.debug), pid 9165 (illybunny.debug)',
+    '10-23 21:22:03.729 10028 10028 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    '10-23 21:22:03.729 10028 10028 F DEBUG   : Build fingerprint: \'Android/sdk_phone_x86_64/generic_x86_64:10/QSR1.210820.001/7663313:userdebug/test-keys\'',
+    `10-23 21:22:03.730 10028 10028 F DEBUG   : pid: 9165, tid: 9165, name: illybunny.debug  >>> ${DEFAULT_PACKAGE} <<<`,
+    '10-23 21:22:03.730 10028 10028 F DEBUG   : uid: 10116',
+    '10-23 21:22:03.730 10028 10028 F DEBUG   : signal 6 (SIGABRT), code 0 (SI_USER from pid 10025, uid 10116), fault addr --------',
+    '10-23 22:08:29.471 11227 11227 F libc    : Fatal signal 6 (SIGABRT), code 0 (SI_USER from pid 11463, uid 10231) in tid 11227 (libbash.so), pid 11227 (libbash.so)',
+    '10-23 22:08:29.592 11467 11467 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+    `10-23 22:08:29.593 11467 11467 F DEBUG   : Cmdline: ${BASH_PATH} --noprofile --norc start.sh -- --port 63785`,
+    `10-23 22:08:29.593 11467 11467 F DEBUG   : pid: 11227, ppid: 11223, tid: 11227, name: libbash.so  >>> ${BASH_PATH} <<<`,
+    '10-23 22:08:29.593 11467 11467 F DEBUG   : uid: 10231',
+    '10-23 22:08:29.593 11467 11467 F DEBUG   : signal 6 (SIGABRT), code 0 (SI_USER from pid 11463, uid 10231), fault addr --------',
+    '',
+].join('\r\n');
 
 /** The error a call throws, or null. */
 function thrown(work) {
@@ -179,6 +250,28 @@ class RecordingAdb extends Adb {
     async run(args, options = {}) {
         this.calls.push({ args, options });
         return this.results.shift() ?? { code: 0, stdout: '', stderr: '', timedOut: false };
+    }
+}
+
+/** A page target's DevTools socket: it records each message and answers with the queued replies, in order. */
+class FakeDevToolsSocket extends EventTarget {
+    constructor(replies = []) {
+        super();
+        this.replies = replies;
+        this.sent = [];
+    }
+
+    send(data) {
+        const message = JSON.parse(data);
+        this.sent.push(message);
+        if (this.replies.length) {
+            const reply = { id: message.id, ...this.replies.shift() };
+            setImmediate(() => this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(reply) })));
+        }
+    }
+
+    close() {
+        this.dispatchEvent(new Event('close'));
     }
 }
 
@@ -335,6 +428,144 @@ describe('smoke-runner: runSteps', () => {
         expect(records[0]).toMatchObject({ status: STATUS.failed, code: 'data-safety', checksum: { ok: false, code: 'adb', error: 'device offline' } });
     });
 
+    test('an app crash fails the step it came in and is named in a failed step\'s error', async () => {
+        const crash = { summary: 'SIGTRAP in Chrome_IOThread of the app' };
+        const found = { 1: [], 2: [crash], 3: [crash, { summary: 'SIGABRT in illybunny.debug of the app' }] };
+        const order = [];
+        let calls = 0;
+        const records = await runSteps({
+            steps: fakeSteps({ 13: new StepError('bun-shipped', 'the APK ships bun') }),
+            selected: [1, 2, 13],
+            context: { ran: [] },
+            newCrashes: async () => {
+                calls += 1;
+                order.push('crashes');
+                return found[calls];
+            },
+            afterStep: async () => {
+                order.push('checksum');
+                return { ok: true };
+            },
+        });
+        expect(order).toEqual(['crashes', 'checksum', 'crashes', 'checksum', 'crashes', 'checksum']);
+        expect(records[0]).toMatchObject({ status: STATUS.passed });
+        expect(records[0].crashes).toBeUndefined();
+        expect(records[1]).toMatchObject({ status: STATUS.failed, code: 'app-crash', error: 'the app crashed: SIGTRAP in Chrome_IOThread of the app', crashes: [crash] });
+        expect(records[12]).toMatchObject({
+            status: STATUS.failed,
+            code: 'bun-shipped',
+            error: 'the APK ships bun (the app crashed: SIGTRAP in Chrome_IOThread of the app; SIGABRT in illybunny.debug of the app)',
+        });
+    });
+
+    test('an unreadable crash log is noted, and the step\'s own checks decide', async () => {
+        const records = await runSteps({
+            steps: fakeSteps({}),
+            selected: [1],
+            context: { ran: [] },
+            newCrashes: async () => {
+                throw new StepError('adb', 'device offline');
+            },
+        });
+        expect(records[0]).toMatchObject({ status: STATUS.passed, crashCheck: 'device offline' });
+    });
+
+    test('a failed fetch says why, from its cause (step 4)', async () => {
+        const closed = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
+        const records = await runSteps({
+            steps: fakeSteps({ 4: new TypeError('fetch failed', { cause: closed }), 5: new Error('refused', { cause: new Error('connect ECONNREFUSED') }) }),
+            selected: [1, 2, 4, 5],
+            context: { ran: [] },
+        });
+        expect(records[3]).toMatchObject({ status: STATUS.failed, code: 'failed', error: 'fetch failed (UND_ERR_SOCKET: other side closed)' });
+        expect(records[4]).toMatchObject({ status: STATUS.failed, code: 'failed', error: 'refused (connect ECONNREFUSED)' });
+    });
+
+    test('the records keep no per-install origin label in their errors', async () => {
+        const url = 'http://sb-k3x9.localhost:50123/login?noauto=true';
+        const redacted = 'http://<label>.localhost:50123/login?noauto=true';
+        let crashChecks = 0;
+        const records = await runSteps({
+            steps: fakeSteps({ 2: new Error(`page.goto: Target page closed, navigating to "${url}"`) }),
+            selected: [1, 2, 13],
+            context: { ran: [] },
+            newCrashes: async () => {
+                crashChecks += 1;
+                if (crashChecks === 1) {
+                    throw new Error(`no crash log for ${url}`);
+                }
+                return [];
+            },
+            afterStep: async (step) => {
+                if (step.id === 1) {
+                    return { ok: true };
+                }
+                throw new Error(`checksum failed at ${url}`);
+            },
+            redact: redactLabel,
+        });
+        expect(records[0]).toMatchObject({ status: STATUS.passed, crashCheck: `no crash log for ${redacted}` });
+        expect(records[1]).toMatchObject({
+            status: STATUS.failed,
+            code: 'failed',
+            error: `page.goto: Target page closed, navigating to "${redacted}"`,
+            checksum: { ok: false, error: `checksum failed at ${redacted}` },
+        });
+        expect(records[12]).toMatchObject({ status: STATUS.failed, code: 'data-safety', error: `the data-safety check failed: checksum failed at ${redacted}` });
+        expect(JSON.stringify(records)).not.toContain('k3x9');
+    });
+
+    test('an unhandled rejection fails the step it came in and is named in a failed step\'s error', async () => {
+        const url = 'http://sb-k3x9.localhost:50123/';
+        const pending = [];
+        const order = [];
+        const records = await runSteps({
+            steps: fakeSteps({ 2: { pushed: true }, 13: new StepError('bun-shipped', 'the APK ships bun') }).map(step => ({
+                ...step,
+                run: async (context, signal) => {
+                    if (step.id === 2) {
+                        pending.push(`page.evaluate: Target page closed at ${url}`);
+                    }
+                    if (step.id === 13) {
+                        pending.push('dialog.dismiss: Target closed', 'second');
+                    }
+                    return step.run(context, signal);
+                },
+            })),
+            selected: [1, 2, 13],
+            context: { ran: [] },
+            newRejections: () => {
+                order.push('rejections');
+                return pending.splice(0);
+            },
+            newCrashes: async () => {
+                order.push('crashes');
+                return [];
+            },
+            afterStep: async () => {
+                order.push('checksum');
+                return { ok: true };
+            },
+            redact: redactLabel,
+        });
+        expect(order).toEqual(Array(3).fill(['rejections', 'crashes', 'checksum']).flat());
+        expect(records[0]).toMatchObject({ status: STATUS.passed });
+        expect(records[0].rejections).toBeUndefined();
+        expect(records[1]).toMatchObject({
+            status: STATUS.failed,
+            code: 'unhandled-rejection',
+            error: 'unhandled rejection: page.evaluate: Target page closed at http://<label>.localhost:50123/',
+            rejections: ['page.evaluate: Target page closed at http://<label>.localhost:50123/'],
+            details: { pushed: true },
+        });
+        expect(records[12]).toMatchObject({
+            status: STATUS.failed,
+            code: 'bun-shipped',
+            error: 'the APK ships bun (unhandled rejection: dialog.dismiss: Target closed; second)',
+        });
+        expect(JSON.stringify(records)).not.toContain('k3x9');
+    });
+
     test('withDeadline resolves the work and aborts it at the deadline', async () => {
         await expect(withDeadline(async () => 5, 1_000)).resolves.toBe(5);
         let aborted = null;
@@ -377,6 +608,16 @@ describe('smoke-runner: verdicts and summaries', () => {
             '| 4 | git-update | not-run |  | needs-step-2 |',
             '| 14 | data-safety | passed | 0.0 |  |',
         ]);
+    });
+
+    test('the run summary adds the run\'s own failure, which no step record holds, after the table', () => {
+        expect(runSummary(records)).toEqual(summaryTable(records));
+        expect(runSummary(records, 'unhandled rejections outside the steps: page.close: `closed`\nat\thttp://<label>.localhost:50123/')).toEqual([
+            ...summaryTable(records),
+            '',
+            'TODO(copy): `unhandled rejections outside the steps: page.close: \'closed\' at http://<label>.localhost:50123/`',
+        ]);
+        expect(runSummary([], 'device emulator-5628 is offline')).toEqual([...summaryTable([]), '', 'TODO(copy): `device emulator-5628 is offline`']);
     });
 });
 
@@ -626,6 +867,52 @@ describe('adb.js parsers', () => {
             ]);
     });
 
+    test('reads the crash log: native dumps, as API 36, 37 and 29 write them, and uncaught exceptions', () => {
+        const crashes = parseCrashLog(CRASH_LOG);
+        const renderer = 'com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0';
+        expect(crashes.map(({ summary, ...crash }) => crash)).toEqual([
+            { kind: 'native', time: '10-23 18:10:14.017', pid: 5397, thread: 'Chrome_IOThread', process: DEFAULT_PACKAGE, signal: 'SIGTRAP',
+                message: '[FATAL:partition_alloc_support.cc(770)] Detected dangling raw_ptr in unretained with id=0x00003c6a00c026e0:' },
+            { kind: 'java', time: '10-23 18:21:00.000', pid: 6100, thread: 'main', process: DEFAULT_PACKAGE, signal: null,
+                message: 'java.lang.IllegalStateException: no server' },
+            { kind: 'native', time: '10-23 18:22:00.000', pid: 6190, thread: 'RenderThread', process: 'com.android.systemui', signal: 'SIGABRT', message: null },
+            { kind: 'native', time: '10-23 20:58:50.608', pid: 10668, thread: 'ocessService0:0', process: renderer, signal: 'SIGTRAP',
+                message: '[FATAL:base/android/java_exception_reporter.cc:93] Uncaught exception' },
+            { kind: 'native', time: '10-23 21:02:00.180', pid: 10407, thread: 'illybunny.debug', process: DEFAULT_PACKAGE, signal: 'SIGABRT', message: null },
+            { kind: 'native', time: '10-23 21:22:03.729', pid: 9165, thread: 'illybunny.debug', process: DEFAULT_PACKAGE, signal: 'SIGABRT', message: null },
+            { kind: 'native', time: '10-23 22:08:29.592', pid: 11227, thread: 'libbash.so', process: BASH_PATH, signal: 'SIGABRT', message: null },
+        ]);
+        expect(crashes.map(crash => crash.summary)).toEqual([
+            `SIGTRAP in Chrome_IOThread of ${DEFAULT_PACKAGE} at 10-23 18:10:14.017: [FATAL:partition_alloc_support.cc(770)] Detected dangling raw_ptr in unretained with id=0x00003c6a00c026e0:`,
+            `an uncaught exception in main of ${DEFAULT_PACKAGE} at 10-23 18:21:00.000: java.lang.IllegalStateException: no server`,
+            'SIGABRT in RenderThread of com.android.systemui at 10-23 18:22:00.000',
+            `SIGTRAP in ocessService0:0 of ${renderer} at 10-23 20:58:50.608: [FATAL:base/android/java_exception_reporter.cc:93] Uncaught exception`,
+            `SIGABRT in illybunny.debug of ${DEFAULT_PACKAGE} at 10-23 21:02:00.180`,
+            `SIGABRT in illybunny.debug of ${DEFAULT_PACKAGE} at 10-23 21:22:03.729`,
+            'SIGABRT in libbash.so of libbash.so at 10-23 22:08:29.592',
+        ]);
+        // The WebView renderer runs in its own isolated process, so its crash is not the app's.
+        expect(crashes.map(crash => isAppCrash(crash, DEFAULT_PACKAGE))).toEqual([true, true, false, false, true, true, true]);
+        expect(isAppCrash({ process: `${DEFAULT_PACKAGE}:remote` }, DEFAULT_PACKAGE)).toBe(true);
+        expect(isAppCrash({ process: `${DEFAULT_PACKAGE}.test` }, DEFAULT_PACKAGE)).toBe(false);
+        expect(isAppCrash({ process: `/data/app/${DEFAULT_PACKAGE}.test-a1b2/base.apk` }, DEFAULT_PACKAGE)).toBe(false);
+        expect(isAppCrash({ process: null }, DEFAULT_PACKAGE)).toBe(false);
+        expect(parseCrashLog('--------- beginning of crash\n')).toEqual([]);
+    });
+
+    test('reads the focused window and tells the system error dialogs apart (preflight)', () => {
+        const anr = '  mCurrentFocus=Window{5346ae5 u0 Application Not Responding: com.android.systemui}\r\n  mFocusedApp=null\r\n';
+        expect(parseFocusedWindow(anr)).toBe('Application Not Responding: com.android.systemui');
+        expect(isErrorDialogWindow(parseFocusedWindow(anr))).toBe(true);
+        expect(isErrorDialogWindow('Application Error: io.github.sillybunnyteam.sillybunny.debug')).toBe(true);
+        const launcher = 'mCurrentFocus=Window{8fef26c u0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}';
+        expect(parseFocusedWindow(launcher)).toBe('com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity');
+        expect(isErrorDialogWindow(parseFocusedWindow(launcher))).toBe(false);
+        expect(isErrorDialogWindow('io.github.sillybunnyteam.sillybunny.debug/io.github.sillybunnyteam.sillybunny.MainActivity')).toBe(false);
+        expect(parseFocusedWindow('  mCurrentFocus=null\n')).toBeNull();
+        expect(isErrorDialogWindow(null)).toBe(false);
+    });
+
     test('the adb client needs a serial and never maps port 4444', async () => {
         expect(thrown(() => new Adb({}))).toBeInstanceOf(Error);
         // A missing adb executable would fail differently: the port check comes before any process starts.
@@ -703,6 +990,19 @@ describe('adb.js app files', () => {
         expect(adb.calls.map(({ options }) => [options.input, options.check, options.timeoutMs])).toEqual([
             ['bG9ydW0gaXBzdW0K\n', undefined, 1_000],
             ['dGFy\n', undefined, 300_000],
+        ]);
+    });
+
+    test('calls the smoke hook, with the method argument when there is one (step 10 kill)', async () => {
+        const adb = new RecordingAdb([
+            { code: 0, stdout: 'Result: Bundle[{json={"killed":4321}}]\r\n', stderr: '', timedOut: false },
+            { code: 0, stdout: 'Result: Bundle[{json={"state":"Running","port":50123,"originChanged":false}}]\r\n', stderr: '', timedOut: false },
+        ]);
+        expect(await adb.hook(pkg, 'kill', { arg: 4321, timeoutMs: 30_000 })).toEqual({ killed: 4321 });
+        expect(await adb.hook(pkg, 'state')).toMatchObject({ state: 'Running', port: 50123 });
+        expect(adb.calls.map(({ args, options }) => [args, options])).toEqual([
+            [['shell', `content call --uri content://${pkg}.smoke --method kill --arg 4321`], { timeoutMs: 30_000 }],
+            [['shell', `content call --uri content://${pkg}.smoke --method state`], {}],
         ]);
     });
 
@@ -821,6 +1121,221 @@ describe('cdp.js and the smoke steps helpers', () => {
         expect(context.testPkg).toBe(`${DEFAULT_PACKAGE}.test`);
         expect(context.state).toMatchObject({ noRestart: false, baseline: null, cdp: null });
     });
+
+    test('the crash check notes the crashes from before the run, then gives the app\'s new ones', async () => {
+        const later = [
+            CRASH_LOG.trimEnd(),
+            '10-23 21:30:00.000  6300  6300 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+            `10-23 21:30:00.000  6300  6300 F DEBUG   : pid: 6290, ppid: 444, tid: 6290, name: illybunny.debug  >>> ${DEFAULT_PACKAGE} <<<`,
+            '10-23 21:30:00.000  6300  6300 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+            '10-23 21:30:00.000  6300  6300 F DEBUG   : pid: 6291, ppid: 444, tid: 6291, name: RenderThread  >>> com.android.systemui <<<',
+            '',
+        ].join('\n');
+        const adb = new RecordingAdb([CRASH_LOG, CRASH_LOG, later, later].map(stdout => ({ code: 0, stdout, stderr: '', timedOut: false })));
+        const context = createContext({ adb, options: {}, fixtures: null, facts: null, out: scratch });
+        expect(await newAppCrashes(context)).toEqual([]);
+        expect(await newAppCrashes(context)).toEqual([]);
+        expect((await newAppCrashes(context)).map(crash => [crash.pid, crash.summary]))
+            .toEqual([[6290, `a native crash in illybunny.debug of ${DEFAULT_PACKAGE} at 10-23 21:30:00.000`]]);
+        expect(await newAppCrashes(context)).toEqual([]);
+        expect(adb.calls.map(({ args }) => args)).toEqual(Array(4).fill(['logcat', '-d', '-b', 'crash', '-v', 'threadtime']));
+    });
+
+    test('looks for an app path with the shell builtin test, as API 29 has no test command (step 1)', async () => {
+        const adb = new RecordingAdb([
+            { code: 0, stdout: '', stderr: '', timedOut: false },
+            { code: 1, stdout: '', stderr: '', timedOut: false },
+        ]);
+        const context = createContext({ adb, options: {}, fixtures: null, facts: null, out: scratch });
+        expect(await appPathExists(context, 'files/SillyBunny/node_modules')).toBe(true);
+        expect(await appPathExists(context, 'files/missing')).toBe(false);
+        expect(adb.calls.map(({ args, options }) => [args, options.check])).toEqual([
+            [['shell', `run-as ${DEFAULT_PACKAGE} sh -c 'test -e files/SillyBunny/node_modules'`], false],
+            [['shell', `run-as ${DEFAULT_PACKAGE} sh -c 'test -e files/missing'`], false],
+        ]);
+    });
+
+    test('picks the page target on the app origin from /json/list (old WebViews, steps 2 and 9)', () => {
+        const targets = [
+            { type: 'service_worker', url: 'http://sb-k3x9.localhost:50123/sw.js', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/1' },
+            { type: 'page', url: 'http://sb-k3x9.localhost:50124/', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/2' },
+            { type: 'page', url: 'http://sb-k3x9.localhost:50123/', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/3' },
+        ];
+        expect(appPageTarget(targets, 50123)).toBe(targets[2]);
+        // A target that another DevTools client holds has no socket URL.
+        expect(appPageTarget([{ ...targets[2], webSocketDebuggerUrl: undefined }], 50123)).toBeNull();
+        expect(appPageTarget({ error: 'x' }, 50123)).toBeNull();
+    });
+
+    test('evaluates in an old WebView page through its DevTools socket (steps 2 and 9)', async () => {
+        const socket = new FakeDevToolsSocket([
+            { result: { result: { type: 'number', value: 200 } } },
+            { result: { result: { type: 'boolean', value: false } } },
+            { result: { result: { type: 'object' }, exceptionDetails: { text: 'Uncaught', exception: { description: 'Error: navigated' } } } },
+            { result: { result: { type: 'boolean', value: true } } },
+            { result: { result: { type: 'object' }, exceptionDetails: { text: 'Uncaught', exception: { description: 'TypeError: x is undefined' } } } },
+            { error: { code: -32000, message: 'Cannot find context with specified id' } },
+        ]);
+        const page = new DevToolsPage(socket, 'http://sb-k3x9.localhost:50123/');
+        expect(page.url()).toBe('http://sb-k3x9.localhost:50123/');
+        expect(await page.evaluate(async target => (await fetch(target)).status, '/')).toBe(200);
+        expect(await page.waitForFunction('document.title === "SillyBunny"', null, { timeout: 5_000, polling: 1 })).toBe(true);
+        await expect(page.evaluate('x.y')).rejects.toThrow('Evaluation failed: TypeError: x is undefined');
+        await expect(page.evaluate('1')).rejects.toThrow('Cannot find context with specified id (-32000)');
+
+        expect(socket.sent.map(message => message.method)).toEqual(Array(6).fill('Runtime.evaluate'));
+        expect(new Set(socket.sent.map(message => message.id)).size).toBe(6);
+        expect(socket.sent[0].params).toMatchObject({ awaitPromise: true, returnByValue: true });
+        expect(socket.sent[0].params.expression).toMatch(/^\(async target => [\s\S]+\)\("\/"\)$/);
+        expect(socket.sent[1].params.expression).toBe('document.title === "SillyBunny"');
+        expect(page.isClosed()).toBe(false);
+    });
+
+    test('an old WebView page session ends when its DevTools socket closes', async () => {
+        const socket = new FakeDevToolsSocket();
+        const page = new DevToolsPage(socket, 'http://127.0.0.1:50123/');
+        const pending = page.evaluate('1');
+        socket.close();
+        await expect(pending).rejects.toThrow('The WebView page closed its DevTools socket');
+        expect(page.isClosed()).toBe(true);
+        await expect(page.evaluate('1')).rejects.toThrow('the DevTools page session is closed');
+        await expect(page.waitForFunction('1', null, { timeout: 1_000, polling: 1 })).rejects.toThrow('waitForFunction: the page closed');
+        page.close();
+    });
+});
+
+describe('smoke-steps: the WebView and the frontend', () => {
+    const webSources = path.join(REPO_ROOT, 'android', 'app', 'src', 'main', 'java', 'io', 'github', 'sillybunnyteam',
+        'sillybunny', 'web');
+    const providerLine = version => `Current WebView Update Service state\n  Current WebView package (name, version): (com.android.webview, ${version})\n  Minimum targetSdkVersion: 33\n`;
+
+    test('the WebView minimum and the version warning tag are the app\'s', () => {
+        expect(fs.readFileSync(path.join(webSources, 'WebViewVersion.kt'), 'utf8')).toMatch(new RegExp(`\\bMINIMUM_MAJOR = ${WEBVIEW_MINIMUM_MAJOR}\\b`));
+        expect(fs.readFileSync(path.join(webSources, 'WebScreen.kt'), 'utf8')).toMatch(new RegExp(`\\bVERSION_WARNING = "${WEB_VERSION_WARNING_TAG}"`));
+    });
+
+    test('parseWebViewPackage reads the provider in use, as API 37 and API 29 print it', () => {
+        const api37 = providerLine('145.0.7632.218').replace('com.android.webview', 'com.google.android.webview')
+            + '  Preferred WebView package (name, version): (com.google.android.webview.beta, 146.0.1.1)\n';
+        expect(parseWebViewPackage(api37)).toEqual({ package: 'com.google.android.webview', version: '145.0.7632.218', major: 145 });
+        expect(parseWebViewPackage(api37.replace(/\n/g, '\r\n'))).toEqual({ package: 'com.google.android.webview', version: '145.0.7632.218', major: 145 });
+        expect(parseWebViewPackage(providerLine('74.0.3729.185'))).toEqual({ package: 'com.android.webview', version: '74.0.3729.185', major: 74 });
+        expect(parseWebViewPackage(providerLine('dev'))).toEqual({ package: 'com.android.webview', version: 'dev', major: null });
+        expect(parseWebViewPackage('Current WebView Update Service state\n  Any WebView package installed: false\n')).toBeNull();
+        expect(parseWebViewPackage('')).toBeNull();
+    });
+
+    test('webViewInfo asks the device once and runs the frontend from the app minimum up', async () => {
+        const info = async (dump) => {
+            const calls = [];
+            const adb = { shellText: async (args) => {
+                calls.push(args);
+                return dump;
+            } };
+            const context = createContext({ adb, options: {}, fixtures: null, facts: null, out: scratch });
+            const first = await webViewInfo(context);
+            expect(await webViewInfo(context)).toBe(first);
+            expect(calls).toEqual([['dumpsys', 'webviewupdate']]);
+            return first;
+        };
+        expect(await info(providerLine('74.0.3729.185'))).toEqual({ package: 'com.android.webview', version: '74.0.3729.185', major: 74, frontend: false });
+        expect(await info(providerLine(`${WEBVIEW_MINIMUM_MAJOR - 1}.0.1.2`))).toMatchObject({ frontend: false });
+        expect(await info(providerLine(`${WEBVIEW_MINIMUM_MAJOR}.0.1.2`))).toMatchObject({ frontend: true });
+        expect(await info(providerLine('145.0.7632.218'))).toMatchObject({ major: 145, frontend: true });
+        // Unreadable: the WebView steps run and fail on their own evidence instead of being moved to a browser.
+        expect(await info('')).toEqual({ package: null, version: null, major: null, frontend: true });
+    });
+
+    /** A page whose evaluate returns the given startup states in order, repeating the last one. */
+    const startupPage = (states) => {
+        const names = [];
+        return {
+            names,
+            evaluate: async (_script, name) => {
+                names.push(name);
+                const next = states.length > 1 ? states.shift() : states[0];
+                if (next instanceof Error) {
+                    throw next;
+                }
+                return next;
+            },
+        };
+    };
+    const booted = { ready: true, preloader: false, acted: null };
+
+    test('settleFrontend answers the startup prompts until the booted frontend stays quiet', async () => {
+        const page = startupPage([
+            { ready: false, preloader: true, acted: null },
+            { ...booted, acted: 'popup' },
+            { ...booted, acted: 'onboarding' },
+            booted,
+            { ...booted, acted: 'wizard' },
+            booted,
+        ]);
+        await expect(settleFrontend(page, { intervalMs: 1 })).resolves.toEqual({ answered: ['popup', 'onboarding', 'wizard'] });
+        // Five quiet polls in a row after the last answer; the quiet poll before the wizard does not count.
+        expect(page.names).toHaveLength(10);
+        expect(new Set(page.names)).toEqual(new Set(['lorum ipsum']));
+    });
+
+    test('settleFrontend counts a failed look, a preloader or a missing APP_READY as not settled', async () => {
+        const navigating = startupPage([new Error('Execution context was destroyed'), booted]);
+        await expect(settleFrontend(navigating, { intervalMs: 1 })).resolves.toEqual({ answered: [] });
+        expect(navigating.names).toHaveLength(6);
+        for (const stuck of [{ ...booted, preloader: true }, { ...booted, ready: false }, { ...booted, acted: 'popup' }]) {
+            await expect(settleFrontend(startupPage([stuck]), { intervalMs: 1, timeoutMs: 30 })).rejects.toMatchObject({ code: 'frontend-not-ready' });
+        }
+        const aborted = AbortSignal.abort(new Error('step deadline'));
+        await expect(settleFrontend(startupPage([booted]), { intervalMs: 1, signal: aborted })).rejects.toThrow('step deadline');
+    });
+
+    test('browserPage keeps no session whose page failed to open, so the next call opens a new one (API 29)', async () => {
+        const reply = json => ({ code: 0, stdout: `Result: Bundle[{json=${JSON.stringify(json)}}]`, stderr: '', timedOut: false });
+        const ok = { code: 0, stdout: '', stderr: '', timedOut: false };
+        const running = reply({ state: 'Running', port: 50123 });
+        const pid = { code: 0, stdout: '4321\n', stderr: '', timedOut: false };
+        const adb = new RecordingAdb([running, pid, ok, ok, running, pid, ok, reply({})]);
+        const contexts = [];
+        const pages = [];
+        let failures = 1;
+        const context = createContext({ adb, options: {}, fixtures: null, facts: null, out: scratch });
+        context.state.browserInstance = {
+            newContext: async () => {
+                const created = {
+                    closed: false,
+                    close: async () => {
+                        created.closed = true;
+                    },
+                    newPage: async () => {
+                        if (failures-- > 0) {
+                            throw new Error('browserContext.newPage: Target closed');
+                        }
+                        const page = {
+                            timeout: null,
+                            setDefaultTimeout: (ms) => {
+                                page.timeout = ms;
+                            },
+                            isClosed: () => false,
+                        };
+                        pages.push(page);
+                        return page;
+                    },
+                };
+                contexts.push(created);
+                return created;
+            },
+        };
+        await expect(browserPage(context)).rejects.toThrow('browserContext.newPage: Target closed');
+        expect(context.state.browser).toBeNull();
+        expect(contexts[0].closed).toBe(true);
+        const forwards = adb.calls.map(({ args }) => args).filter(args => args[0] === 'forward');
+        expect(forwards).toEqual([['forward', forwards[0][1], 'tcp:50123'], ['forward', '--remove', forwards[0][1]]]);
+        expect(adb.forwards.size).toBe(0);
+        // The second call gets past the page and stops at the hook's empty handoff reply.
+        await expect(browserPage(context)).rejects.toMatchObject({ code: 'no-handoff' });
+        expect(context.state.browser).toMatchObject({ pid: 4321, port: 50123, context: contexts[1], page: pages[0] });
+        expect(pages[0].timeout).toBe(120_000);
+    });
 });
 
 describe('run-smoke.js options', () => {
@@ -857,7 +1372,17 @@ describe('run-smoke.js options', () => {
         });
     });
 
-    test('refuses a bad default-ref, steps, wait, serial or APK with a machine code', () => {
+    test('takes a new or empty scratch folder, which the fixtures start from', () => {
+        const env = { ANDROID_SERIAL: 'emulator-5554' };
+        const empty = path.join(scratch, 'options/empty-scratch');
+        fs.mkdirSync(empty, { recursive: true });
+        const fresh = path.join(scratch, 'options/new-scratch');
+        expect(parseRunOptions({ apk: [apk], 'test-apk': testApk, scratch: empty }, env).scratch).toBe(empty);
+        expect(parseRunOptions({ apk: [apk], 'test-apk': testApk, scratch: fresh }, env).scratch).toBe(fresh);
+        expect(fs.existsSync(fresh)).toBe(false);
+    });
+
+    test('refuses a bad default-ref, steps, wait, serial, APK or scratch with a machine code', () => {
         const base = { apk: [apk], 'test-apk': testApk };
         const env = { ANDROID_SERIAL: 'emulator-5554' };
         const cases = [
@@ -869,6 +1394,8 @@ describe('run-smoke.js options', () => {
             [{ ...base, apk: [apk, apk] }, env, { code: 'duplicate-option' }],
             [{ 'test-apk': testApk }, env, { code: 'missing-option', details: { option: 'apk' } }],
             [{ ...base, 'test-apk': path.join(scratch, 'missing.apk') }, env, { code: 'missing-file', details: { option: 'test-apk' } }],
+            [{ ...base, scratch: path.dirname(apk) }, env, { code: 'scratch-not-empty', details: { option: 'scratch' } }],
+            [{ ...base, scratch: apk }, env, { code: 'scratch-not-empty', details: { option: 'scratch' } }],
         ];
         for (const [values, environment, expected] of cases) {
             const error = thrown(() => parseRunOptions(values, environment));

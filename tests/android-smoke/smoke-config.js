@@ -38,8 +38,15 @@ export const SERVER_LOG_FILE = 'files/logs/server.log';
 export const UPDATE_REPLACED_NOTIFICATION = Object.freeze({ id: 5801, channel: 'app_updates' });
 
 /**
- * Tags of screens that task 5.5 (track p5int) wires into MainActivity. They are run options, so stage B
- * can confirm them against the integrated app without code changes.
+ * The oldest WebView major that runs the frontend. It must match the app's WebViewVersion.MINIMUM_MAJOR, below
+ * which the app shows its version warning (WebScreenTags.VERSION_WARNING) and offers Open in browser.
+ */
+export const WEBVIEW_MINIMUM_MAJOR = 111;
+export const WEB_VERSION_WARNING_TAG = 'web_version_warning';
+
+/**
+ * Tags of MainActivity's screens (AppScreens.kt) that the UI tests use. They are run options, so a renamed tag
+ * needs no code change.
  */
 export const DEFAULT_UI_TAGS = Object.freeze({
     openSettings: 'app_open_settings',

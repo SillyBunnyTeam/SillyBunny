@@ -4,7 +4,8 @@
  * Every step runs on its own: it gets its own deadline and timing, a failure or timeout fails only that
  * step, and a step whose prerequisite did not pass is reported as not run with the reason. After every
  * step that ran, pass or fail, the data-safety check (step 14's checksum) runs and fails the step when the
- * seeded `data/` fixture changed. Nothing here touches a device; the steps and the check are injected.
+ * seeded `data/` fixture changed. A crash of the app during a step fails that step too, and so does an unhandled
+ * promise rejection that came while it ran. Nothing here touches a device; the steps and the checks are injected.
  */
 
 /**
@@ -107,10 +108,62 @@ export async function withDeadline(work, timeoutMs, minutes = timeoutMs / 60_000
 }
 
 function describeError(error) {
+    // fetch says only "fetch failed"; its cause tells a refused connection from a closed one.
+    const cause = error?.cause ? [error.cause.code, error.cause.message].filter(Boolean).join(': ') : '';
     return {
         code: typeof error?.code === 'string' && error.code ? error.code : 'failed',
-        error: String(error?.message ?? error),
+        error: `${String(error?.message ?? error)}${cause ? ` (${cause})` : ''}`,
     };
+}
+
+function redactErrors(record, redact) {
+    for (const holder of [record, record.checksum]) {
+        if (typeof holder?.error === 'string') {
+            holder.error = redact(holder.error);
+        }
+    }
+    if (typeof record.crashCheck === 'string') {
+        record.crashCheck = redact(record.crashCheck);
+    }
+    if (Array.isArray(record.rejections)) {
+        record.rejections = record.rejections.map(text => redact(text));
+    }
+}
+
+/** Fails a passing step for the unhandled rejections that came while it ran, or names them in a failed step's error. */
+function noteRejections(record, rejections) {
+    if (rejections.length === 0) {
+        return;
+    }
+    record.rejections = rejections;
+    const what = `unhandled rejection: ${rejections.join('; ')}`;
+    if (record.status === STATUS.passed) {
+        Object.assign(record, { status: STATUS.failed, code: 'unhandled-rejection', error: what });
+    } else {
+        record.error = `${record.error} (${what})`;
+    }
+}
+
+/** Names the app's crashes in the step's record; a step whose own checks passed fails with code app-crash. */
+async function noteCrashes(record, newCrashes) {
+    let crashes;
+    try {
+        crashes = await newCrashes();
+    } catch (error) {
+        // Without the crash log the step's own checks decide.
+        record.crashCheck = describeError(error).error;
+        return;
+    }
+    if (crashes.length === 0) {
+        return;
+    }
+    record.crashes = crashes;
+    const what = `the app crashed: ${crashes.map(crash => crash.summary).join('; ')}`;
+    if (record.status === STATUS.passed) {
+        Object.assign(record, { status: STATUS.failed, code: 'app-crash', error: what });
+    } else {
+        record.error = `${record.error} (${what})`;
+    }
 }
 
 /**
@@ -122,11 +175,16 @@ function describeError(error) {
  * @param {object} options.context Shared context handed to every step (the steps keep their state in it).
  * @param {(step: object, record: object) => Promise<{ok: boolean}|null>} [options.afterStep] The data-safety
  *     check; null means nothing to check yet (no baseline).
+ * @param {() => Promise<Array<{summary: string}>>} [options.newCrashes] The app's crashes since the previous call;
+ *     called after every step that ran, before the data-safety check.
+ * @param {() => string[]} [options.newRejections] The messages of the unhandled promise rejections since the previous
+ *     call; called after every step that ran, before the crash check.
+ * @param {(text: string) => string} [options.redact] Applied to every error text a record keeps.
  * @param {(record: object) => void} [options.onRecord] Called with each finished record.
  * @param {() => number} [options.now] Clock.
  * @returns {Promise<object[]>} One record per step, in step order.
  */
-export async function runSteps({ steps, selected, context, afterStep, onRecord = () => {}, now = Date.now }) {
+export async function runSteps({ steps, selected, context, afterStep, newCrashes, newRejections, redact, onRecord = () => {}, now = Date.now }) {
     const wanted = new Set(selected);
     const records = [];
     const byId = new Map();
@@ -155,6 +213,12 @@ export async function runSteps({ steps, selected, context, afterStep, onRecord =
                     Object.assign(record, describeError(error));
                 }
                 record.durationMs = now() - started;
+                if (newRejections) {
+                    noteRejections(record, newRejections());
+                }
+                if (newCrashes) {
+                    await noteCrashes(record, newCrashes);
+                }
                 if (afterStep) {
                     try {
                         const check = await afterStep(step, record);
@@ -176,6 +240,9 @@ export async function runSteps({ steps, selected, context, afterStep, onRecord =
                     }
                 }
             }
+        }
+        if (redact) {
+            redactErrors(record, redact);
         }
         records.push(record);
         byId.set(step.id, record);

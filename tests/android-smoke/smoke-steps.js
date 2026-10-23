@@ -14,8 +14,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { notificationPosted, parsePackageVersion, parseProcesses, shellQuote } from './adb.js';
-import { attachWebView, findAppPage, forwardToDevice, redactLabel } from './cdp.js';
+import { isAppCrash, notificationPosted, parseCrashLog, parsePackageVersion, parseProcesses, parseWebViewPackage, shellQuote } from './adb.js';
+import { attachWebView, attachWebViewPage, findAppPage, forwardToDevice, redactLabel } from './cdp.js';
 import { checksumTree, compareChecksums, dataFixtureFiles } from './data-fixture.js';
 import { runGit } from './git.js';
 import { MOCK_MODEL_ID, MOCK_REPLY } from './mock-llm.js';
@@ -33,6 +33,8 @@ import {
     resolveHead,
     SMOKE_TEST_CLASS,
     UPDATE_REPLACED_NOTIFICATION,
+    WEB_VERSION_WARNING_TAG,
+    WEBVIEW_MINIMUM_MAJOR,
     zipEntryNames,
 } from './smoke-config.js';
 import { dataSafetyVerdict, StepError, STEPS } from './smoke-runner.js';
@@ -54,7 +56,7 @@ export function createContext({ adb, pkg = DEFAULT_PACKAGE, options, fixtures, f
         facts,
         out,
         log,
-        state: { noRestart: false, baseline: null, seeded: [], cdp: null, serverPort: null, pid: null },
+        state: { noRestart: false, baseline: null, seeded: [], cdp: null, serverPort: null, pid: null, crashKeys: null },
         records: [],
     };
 }
@@ -128,6 +130,18 @@ export async function waitForPid(ctx, { timeoutMs = 60_000, signal } = {}) {
     });
     ctx.state.pid = pid;
     return pid;
+}
+
+/**
+ * The app's crashes that the crash log buffer got since the previous call. The buffer keeps the crashes from before
+ * the run until the device restarts, so the first call only notes them and gives none.
+ */
+export async function newAppCrashes(ctx, signal) {
+    const crashes = parseCrashLog(await ctx.adb.crashLog({ signal })).filter(crash => isAppCrash(crash, ctx.pkg));
+    const key = crash => `${crash.kind} ${crash.time} ${crash.pid}`;
+    const seen = ctx.state.crashKeys;
+    ctx.state.crashKeys = new Set([...(seen ?? []), ...crashes.map(key)]);
+    return seen ? crashes.filter(crash => !seen.has(key(crash))) : [];
 }
 
 /** The hook's view of the server (`state`, `port` when running). */
@@ -243,7 +257,8 @@ async function checkHealth(ctx, port, signal) {
 
 /** Whether a path exists in the app's data directory. */
 export async function appPathExists(ctx, relative, signal) {
-    const result = await ctx.adb.runAs(ctx.pkg, ['test', '-e', relative], { check: false, signal, timeoutMs: 30_000 });
+    // Through sh, because API 29 has `test` only as a shell builtin, which run-as cannot start.
+    const result = await ctx.adb.runAs(ctx.pkg, ['sh', '-c', `test -e ${shellQuote(relative)}`], { check: false, signal, timeoutMs: 30_000 });
     return result.code === 0;
 }
 
@@ -302,11 +317,27 @@ export async function runUi(ctx, method, args = {}, { timeoutMs = 10 * 60_000, s
     throw new StepError('ui-test-failed', `${method} ${why}`);
 }
 
+/** Ends the page sessions: the CDP connection to the WebView, and the host browser's context and port rule. */
 export async function closeCdp(ctx) {
     const current = ctx.state.cdp;
+    const browser = ctx.state.browser;
     ctx.state.cdp = null;
+    ctx.state.browser = null;
     if (current) {
         await current.connection.close();
+    }
+    if (browser) {
+        await browser.context.close().catch(() => {});
+        await ctx.adb.removeForward(browser.hostPort);
+    }
+}
+
+/** Closes the host browser that {@link browserPage} started, after {@link closeCdp}. */
+export async function closeBrowser(ctx) {
+    const instance = ctx.state.browserInstance;
+    ctx.state.browserInstance = null;
+    if (instance) {
+        await instance.close().catch(() => {});
     }
 }
 
@@ -321,11 +352,18 @@ export async function attachAppPage(ctx, signal) {
         return ctx.state.cdp.page;
     }
     await closeCdp(ctx);
+    if (!(await webViewInfo(ctx, signal)).frontend) {
+        // Playwright lists no pages of such an old WebView, and the steps only read from it (see webPage).
+        const connection = await attachWebViewPage({ adb: ctx.adb, pid, serverPort: port, signal, timeoutMs: 120_000 });
+        connection.page.setDefaultTimeout(120_000);
+        ctx.state.cdp = { pid, port, connection, page: connection.page, settled: false };
+        return connection.page;
+    }
     const connection = await attachWebView({ adb: ctx.adb, pid, signal });
     try {
         const page = await findAppPage(connection.browser, port, { signal, timeoutMs: 120_000 });
         page.setDefaultTimeout(120_000);
-        ctx.state.cdp = { pid, port, connection, page };
+        ctx.state.cdp = { pid, port, connection, page, settled: false };
         return page;
     } catch (error) {
         await connection.close();
@@ -333,11 +371,155 @@ export async function attachAppPage(ctx, signal) {
     }
 }
 
-/** The WebView page on the app origin, past the preloader and APP_READY (tests/frontend patterns). */
+/**
+ * The system WebView, and whether it runs the frontend (major version at least {@link WEBVIEW_MINIMUM_MAJOR}).
+ * An unreadable provider counts as able, so the WebView steps then fail on their own evidence.
+ */
+export async function webViewInfo(ctx, signal) {
+    if (!ctx.state.webView) {
+        const dump = await ctx.adb.shellText(['dumpsys', 'webviewupdate'], { check: false, signal, timeoutMs: 60_000 });
+        const current = parseWebViewPackage(dump);
+        ctx.state.webView = { ...(current ?? { package: null, version: null, major: null }),
+            frontend: current?.major == null || current.major >= WEBVIEW_MINIMUM_MAJOR };
+    }
+    return ctx.state.webView;
+}
+
+/**
+ * The app's frontend in a host browser, as the app's Open in browser offers it where the WebView cannot run the
+ * frontend: `adb forward` to the server port, then a handoff code from the debug hook opens the launch cookie.
+ * A new app process, a new port or a refused health check (a new run has a new token) starts a new session.
+ */
+export async function browserPage(ctx, signal) {
+    const server = await waitForServer(ctx, { signal });
+    const pid = await waitForPid(ctx, { signal });
+    const current = ctx.state.browser;
+    if (current && current.pid === pid && current.port === server.port && !current.page.isClosed()) {
+        const health = await current.page.evaluate(async () => (await fetch('/__sillybunny/health')).status).catch(() => 0);
+        if (health === 204) {
+            return current.page;
+        }
+    }
+    await closeCdp(ctx);
+    if (!ctx.state.browserInstance) {
+        const { chromium } = await import('@playwright/test');
+        ctx.state.browserInstance = await chromium.launch({ headless: true });
+    }
+    const hostPort = await forwardToDevice(ctx.adb, `tcp:${server.port}`);
+    let context = null;
+    let page;
+    try {
+        context = await ctx.state.browserInstance.newContext();
+        page = await context.newPage();
+    } catch (error) {
+        await context?.close().catch(() => {});
+        await ctx.adb.removeForward(hostPort).catch(() => {});
+        throw error;
+    }
+    page.setDefaultTimeout(120_000);
+    // Stored only with its page: the reuse check above reads the page of a stored session.
+    ctx.state.browser = { pid, port: server.port, hostPort, context, page, settled: false };
+    const handoff = await ctx.adb.hook(ctx.pkg, 'handoff', { signal, timeoutMs: 30_000 });
+    if (!handoff.code || !handoff.path) {
+        throw new StepError('no-handoff', `the hook gave no handoff code: ${JSON.stringify(redactHandoffReply(handoff))}`);
+    }
+    await page.goto(`http://127.0.0.1:${hostPort}${handoff.path}?c=${encodeURIComponent(handoff.code)}`);
+    // The handoff page sets the cookie and moves on to / (or /login with user accounts on).
+    await page.waitForURL(url => url.pathname !== handoff.path, { timeout: 60_000 });
+    return page;
+}
+
+function redactHandoffReply(reply) {
+    return typeof reply?.code === 'string' ? { ...reply, code: `<${reply.code.length} characters>` } : reply;
+}
+
+/** The page the web steps drive: the WebView, or the host browser where the WebView cannot run the frontend. */
+async function webPage(ctx, signal) {
+    return (await webViewInfo(ctx, signal)).frontend ? attachAppPage(ctx, signal) : browserPage(ctx, signal);
+}
+
+/** Test input for the persona name the frontend's onboarding prompt asks for. */
+const PERSONA_NAME = 'lorum ipsum';
+/** Polls in a row with the frontend booted and no prompt to answer. */
+const SETTLED_POLLS = 5;
+
+/**
+ * One look at the frontend's startup, run in the page. It answers the topmost startup prompt the way a user
+ * would and reports what it did: the onboarding prompt gets a persona name, any other popup dialog is cancelled
+ * (for example Quick Image Gen's offer to import settings a killed earlier boot left in the browser's storage),
+ * and Quick Image Gen's setup wizard is skipped. These prompts stack in no fixed order, and a modal popup over
+ * the wizard blocks a pointer click on Skip, so the answers are DOM clicks.
+ */
+async function frontendStartupStep(name) {
+    const state = { preloader: document.getElementById('preloader') !== null, ready: false, acted: null };
+    try {
+        const { eventSource, event_types } = await import('/scripts/events.js');
+        state.ready = eventSource.autoFireLastArgs.has(event_types.APP_READY);
+    } catch {
+        // The module graph is not loaded yet.
+    }
+    const shown = element => element !== null && element.getClientRects().length > 0;
+    const onboarding = document.querySelector('dialog[open] .onboarding')?.closest('dialog') ?? null;
+    if (onboarding) {
+        const input = onboarding.querySelector('.popup-input');
+        if (input) {
+            input.value = name;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        onboarding.querySelector('.popup-button-ok')?.click();
+        state.acted = 'onboarding';
+        return state;
+    }
+    const popup = [...document.querySelectorAll('dialog.popup[open]')].pop() ?? null;
+    if (popup) {
+        const cancel = popup.querySelector('.popup-button-cancel');
+        (shown(cancel) ? cancel : popup.querySelector('.popup-button-ok'))?.click();
+        state.acted = 'popup';
+        return state;
+    }
+    const wizard = document.getElementById('qig-setup-wizard');
+    if (wizard !== null && wizard.style.display !== 'none') {
+        document.getElementById('qig-wizard-skip')?.click();
+        state.acted = 'wizard';
+    }
+    return state;
+}
+
+/**
+ * Waits until the frontend has booted (no preloader, APP_READY) and stays free of startup prompts for
+ * {@link SETTLED_POLLS} polls in a row, answering the prompts on the way (see {@link frontendStartupStep}).
+ * A failed evaluation (the page navigating, for example) counts as not settled.
+ * @returns {Promise<{answered: string[]}>} The prompts it answered, in order.
+ */
+export async function settleFrontend(page, { signal, timeoutMs = 300_000, intervalMs = 1_000 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    const answered = [];
+    let quiet = 0;
+    let last = null;
+    while (Date.now() < deadline) {
+        signal?.throwIfAborted();
+        last = await page.evaluate(frontendStartupStep, PERSONA_NAME).catch(error => ({ error: error.message }));
+        if (last.acted) {
+            answered.push(last.acted);
+        }
+        quiet = last.ready && !last.preloader && !last.acted ? quiet + 1 : 0;
+        if (quiet >= SETTLED_POLLS) {
+            return { answered };
+        }
+        await sleep(intervalMs, signal);
+    }
+    throw new StepError('frontend-not-ready', `the frontend did not settle: ${JSON.stringify({ last, answered })}`);
+}
+
+/** The app's page with the frontend booted and its startup prompts answered, in the WebView or the host browser. */
 export async function appPage(ctx, signal) {
-    const page = await attachAppPage(ctx, signal);
-    await page.waitForFunction('document.getElementById("preloader") === null', null, { timeout: 300_000 });
-    await testSetup.waitForAppReady({ page });
+    const page = await webPage(ctx, signal);
+    const session = ctx.state.cdp?.page === page ? ctx.state.cdp : ctx.state.browser;
+    if (!session.settled) {
+        const settled = await settleFrontend(page, { signal });
+        session.settled = true;
+        session.answered = settled.answered;
+    }
     return page;
 }
 
@@ -457,6 +639,20 @@ async function stepFirstRun(ctx, signal) {
     return { versionCode: installed.versionCode, checkout: head.commit, firstRunMs, seeded: seeded.files.length };
 }
 
+/** SillyBunny's own page is in the document; ES5, because old WebViews that cannot run the frontend evaluate it. */
+const PAGE_LOADED = 'document.title === "SillyBunny" && document.getElementById("send_textarea") !== null';
+
+/** Resource ids on screen, from `uiautomator dump`; debug builds expose Compose test tags as resource ids. */
+export async function windowResourceIds(ctx, signal) {
+    const file = '/data/local/tmp/sillybunny-smoke-window.xml';
+    const script = `uiautomator dump ${file} > /dev/null && cat ${file}; rm -f ${file}`;
+    const xml = await eventually(async () => {
+        const result = await ctx.adb.shell(['sh', '-c', script], { check: false, signal, timeoutMs: 60_000 });
+        return String(result.stdout).includes('<hierarchy') ? String(result.stdout) : null;
+    }, { timeoutMs: 90_000, intervalMs: 3_000, signal, code: 'no-window-dump', detail: 'uiautomator dump gave no hierarchy' });
+    return [...xml.matchAll(/resource-id="([^"]+)"/g)].map(match => match[1]);
+}
+
 async function stepServerWebView(ctx, signal) {
     const started = Date.now();
     const launch = await launchApp(ctx, signal);
@@ -464,8 +660,31 @@ async function stepServerWebView(ctx, signal) {
     const runningMs = Date.now() - started;
     const pid = await waitForPid(ctx, { signal });
     await checkHealth(ctx, server.port, signal);
-    const page = await appPage(ctx, signal);
-    return { launchTotalTimeMs: launch.totalTimeMs, runningMs, readyMs: Date.now() - started, port: server.port, pid, origin: redactLabel(new URL(page.url()).origin) };
+    const webView = await webViewInfo(ctx, signal);
+    // The server serves the app's own page only with the launch cookie, so this shows the WebView has it.
+    const loaded = await attachAppPage(ctx, signal);
+    await loaded.waitForFunction(PAGE_LOADED, null, { timeout: 300_000 });
+    const details = {
+        launchTotalTimeMs: launch.totalTimeMs,
+        runningMs,
+        loadedMs: Date.now() - started,
+        port: server.port,
+        pid,
+        origin: redactLabel(new URL(loaded.url()).origin),
+        webView: `${webView.package} ${webView.version}`,
+    };
+    if (webView.frontend) {
+        await appPage(ctx, signal);
+        return { ...details, readyMs: Date.now() - started, frontend: 'webview', answered: ctx.state.cdp.answered };
+    }
+    // Below the frontend's minimum the app shows its version warning, which offers Open in browser; the host
+    // browser takes that role for the web steps.
+    const ids = await windowResourceIds(ctx, signal);
+    if (!ids.includes(WEB_VERSION_WARNING_TAG)) {
+        throw new StepError('no-version-warning', `WebView ${webView.version} is too old, but ${WEB_VERSION_WARNING_TAG} is not on screen`);
+    }
+    await appPage(ctx, signal);
+    return { ...details, readyMs: Date.now() - started, frontend: 'browser', answered: ctx.state.browser.answered };
 }
 
 async function stepChat(ctx, signal) {
@@ -499,6 +718,8 @@ async function stepChat(ctx, signal) {
     if (!selected) {
         throw new StepError('no-character', 'no sample character to chat with');
     }
+    // A late startup prompt would sit over the send button.
+    await settleFrontend(page, { signal, timeoutMs: 120_000 });
     await page.evaluate(() => {
         const textarea = document.getElementById('send_textarea');
         textarea.value = 'lorum ipsum';
@@ -509,12 +730,13 @@ async function stepChat(ctx, signal) {
         const replies = [...document.querySelectorAll('#chat .mes[is_user="false"] .mes_text')];
         return replies.length > 0 && replies[replies.length - 1].textContent.includes(reply);
     }, MOCK_REPLY, { timeout: 120_000 });
-    const requests = fs.readFileSync(llmLog, 'utf8').split('\n').filter(Boolean).slice(before).map(line => JSON.parse(line));
-    const streamed = requests.find(entry => entry.path?.endsWith('/chat/completions') && entry.stream === true && entry.status === 200);
-    if (!streamed) {
-        throw new StepError('not-streamed', 'the mock backend saw no streaming chat request');
-    }
-    return { model: streamed.model, requests: requests.length };
+    // The mock logs a request when its response ends, which can be after the UI shows the streamed text.
+    const requests = () => fs.readFileSync(llmLog, 'utf8').split('\n').filter(Boolean).slice(before).map(line => JSON.parse(line));
+    const streamed = await eventually(
+        () => requests().find(entry => entry.path?.endsWith('/chat/completions') && entry.stream === true && entry.status === 200),
+        { timeoutMs: 30_000, intervalMs: 500, signal, code: 'not-streamed', detail: 'the mock backend saw no streaming chat request' },
+    );
+    return { model: streamed.model, requests: requests().length };
 }
 
 async function stepGitUpdate(ctx, signal) {
@@ -650,7 +872,7 @@ async function stepExtension(ctx, signal) {
     }
     // The UI loads the extension revision it now has.
     await page.reload();
-    await testSetup.waitForAppReady({ page });
+    await settleFrontend(page, { signal });
     const loaded = await page.evaluate(() => window.sillyBunnySmokeExtension ?? null);
     if (loaded?.branch !== EXTENSION_SECOND_BRANCH) {
         throw new StepError('not-loaded', `the UI loaded ${JSON.stringify(loaded)}`);
@@ -739,32 +961,45 @@ async function stepTokenGate(ctx, signal) {
     } finally {
         await client.close();
     }
-    const page = await appPage(ctx, signal);
-    result.webView = await page.evaluate(async () => (await fetch('/', { credentials: 'include' })).status);
+    // The WebView's own request, with the cookie it holds; this needs no frontend, so old WebViews answer it too.
+    const webView = await attachAppPage(ctx, signal);
+    result.webView = await webView.evaluate(async () => (await fetch('/', { credentials: 'include' })).status);
     if (result.webView !== 200) {
         throw new StepError('webview-refused', `the WebView got ${result.webView}`);
     }
 
-    // Login behind the gate with user accounts on.
+    // Login behind the gate with user accounts on, where the frontend runs (see webPage).
     const configPath = `${CHECKOUT_DIR}/config.yaml`;
     const config = await appText(ctx, configPath, signal);
     await ctx.adb.writeAppFile(ctx.pkg, configPath, setConfigFlag(config, 'enableUserAccounts', true), { signal });
     try {
         await relaunch(ctx, signal);
-        // The login page never fires APP_READY, so attach without the readiness wait.
-        const accountsPage = await attachAppPage(ctx, signal);
-        await accountsPage.waitForLoadState('domcontentloaded');
+        const accountsPage = await webPage(ctx, signal);
+        // The restart cache clear reloads the page twice after the relaunch, and a navigation during those reloads
+        // can make WebView 133 (API 36) abort. So the login page opens only after the frontend booted.
+        await settleFrontend(accountsPage, { signal });
+        // A single user without a password is logged in automatically; `noauto` shows the login page anyway, so
+        // the user picks the account there as on a multi-user install. The login page never fires APP_READY.
+        await accountsPage.goto(new URL('/login?noauto=true', accountsPage.url()).href);
         if (!(await testSetup.isLoginPage({ page: accountsPage }))) {
-            throw new StepError('no-login-page', 'user accounts are on, but the WebView did not show the login page');
+            throw new StepError('no-login-page', `user accounts are on, but ${redactLabel(accountsPage.url())} is not the login page`);
         }
         await accountsPage.locator('#userList .userSelect').first().click();
         await accountsPage.waitForURL(url => url.pathname !== '/login', { timeout: 60_000 });
-        await accountsPage.waitForFunction('document.getElementById("preloader") === null', null, { timeout: 300_000 });
-        await testSetup.waitForAppReady({ page: accountsPage });
-        result.login = 'ok';
+        result.answered = (await settleFrontend(accountsPage, { signal })).answered;
+        const me = await accountsPage.evaluate(async () => {
+            const response = await fetch('/api/users/me');
+            return { status: response.status, handle: response.ok ? (await response.json()).handle : null };
+        });
+        if (me.status !== 200 || !me.handle) {
+            throw new StepError('not-logged-in', `/api/users/me answered ${me.status} after the login`);
+        }
+        result.login = me.handle;
+        result.frontend = ctx.state.webView.frontend ? 'webview' : 'browser';
     } finally {
-        await ctx.adb.writeAppFile(ctx.pkg, configPath, config, { signal });
-        await relaunch(ctx, signal);
+        // Not bound to the step's signal: after a timeout the next steps still need the original config.yaml.
+        await ctx.adb.writeAppFile(ctx.pkg, configPath, config);
+        await relaunch(ctx);
     }
     return result;
 }
@@ -787,15 +1022,23 @@ async function waitForNode(ctx, signal, notPid = null) {
     }, { timeoutMs: 5 * 60_000, signal, code: 'no-restart', detail: 'no new running node process' });
 }
 
+/** SIGKILL for an app process, sent by the debug hook from the app's own process (see SmokeHookProvider). */
+async function killAppProcess(ctx, pid, signal) {
+    const reply = await ctx.adb.hook(ctx.pkg, 'kill', { arg: pid, signal, timeoutMs: 30_000 });
+    if (reply.killed !== pid) {
+        throw new StepError('kill-failed', `the smoke hook did not kill ${pid}: ${JSON.stringify(reply)}`);
+    }
+}
+
 async function stepCrashPolicy(ctx, signal) {
     const tags = ctx.options.uiTags;
     const first = await waitForNode(ctx, signal);
-    await ctx.adb.runAs(ctx.pkg, ['kill', '-9', first.pid], { signal });
+    await killAppProcess(ctx, first.pid, signal);
     const restarted = await waitForNode(ctx, signal, first.pid);
     // Three automatic restarts fit in the 5-minute window (RestartConfig); the fourth crash gives up.
     let previous = restarted.pid;
     for (let kill = 2; kill <= 4; kill++) {
-        await ctx.adb.runAs(ctx.pkg, ['kill', '-9', previous], { signal });
+        await killAppProcess(ctx, previous, signal);
         if (kill < 4) {
             previous = (await waitForNode(ctx, signal, previous)).pid;
         }

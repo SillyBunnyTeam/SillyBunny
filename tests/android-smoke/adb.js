@@ -202,6 +202,26 @@ export function parseIni(text) {
 }
 
 /**
+ * The focused window's title from `dumpsys window`: `mCurrentFocus=Window{5346ae5 u0 <title>}`.
+ * @param {string} text Output.
+ * @returns {string|null} Title, or null when no window has the focus.
+ */
+export function parseFocusedWindow(text) {
+    const match = /mCurrentFocus=Window\{\S+ u\d+ ([^}\r\n]+)\}/.exec(String(text));
+    return match ? match[1] : null;
+}
+
+/**
+ * Whether a window title is the system's "isn't responding" or "has stopped" dialog, which the system titles
+ * `Application Not Responding: <process>` and `Application Error: <process>`.
+ * @param {string|null} title Window title.
+ * @returns {boolean} True for an error dialog.
+ */
+export function isErrorDialogWindow(title) {
+    return /^Application (Not Responding|Error): /.test(String(title ?? ''));
+}
+
+/**
  * versionCode and versionName from `dumpsys package <pkg>`.
  * @param {string} text Output.
  * @returns {{versionCode: number|null, versionName: string|null}} Version.
@@ -229,6 +249,21 @@ export function notificationPosted(text, { pkg, id, channel }) {
 }
 
 /**
+ * The WebView provider in use, from `dumpsys webviewupdate`:
+ * `Current WebView package (name, version): (com.android.webview, 74.0.3729.185)`.
+ * @param {string} text Output.
+ * @returns {{package: string, version: string, major: number|null}|null} Provider, or null when the dump names none.
+ */
+export function parseWebViewPackage(text) {
+    const match = /Current WebView package \(name, version\): \(([^,\s]+), ([^)\s]+)\)/.exec(String(text));
+    if (!match) {
+        return null;
+    }
+    const major = /^(\d+)\./.exec(match[2]);
+    return { package: match[1], version: match[2], major: major ? Number(major[1]) : null };
+}
+
+/**
  * Processes from `ps -A -o PID,PPID,USER,NAME,ARGS` (toybox).
  * @param {string} text Output.
  * @returns {Array<{pid: number, ppid: number, user: string, name: string, args: string}>} Processes.
@@ -242,6 +277,84 @@ export function parseProcesses(text) {
         }
     }
     return processes;
+}
+
+/**
+ * Crashes in the crash log buffer (`logcat -b crash -v threadtime`): the native crash dumps that debuggerd writes as
+ * `DEBUG` lines from `*** *** ***` on, and the uncaught Java exceptions (`AndroidRuntime: FATAL EXCEPTION`). Each
+ * crash gets a one-line `summary`.
+ * @param {string} text Output.
+ * @returns {Array<{kind: 'native'|'java', time: string, pid: number|null, thread: string|null, process: string|null,
+ *     signal: string|null, message: string|null, summary: string}>} Crashes, oldest first.
+ */
+export function parseCrashLog(text) {
+    const crashes = [];
+    let current = null;
+    let exceptionNext = false;
+    for (const line of String(text).replace(/\r/g, '').split('\n')) {
+        const entry = /^(\d\d-\d\d \d\d:\d\d:\d\d\.\d+)\s+\d+\s+\d+\s+[VDIWEF]\s+(\S+?)\s*: ?(.*)$/.exec(line);
+        if (!entry) {
+            continue;
+        }
+        const [, time, tag, message] = entry;
+        if (tag === 'DEBUG') {
+            if (message.startsWith('*** *** ***')) {
+                current = { kind: 'native', time, pid: null, thread: null, process: null, signal: null, message: null };
+                crashes.push(current);
+            } else if (current?.kind === 'native') {
+                // API 37 adds the parent pid: `pid: 10407, ppid: 444, tid: 10407, name: ...`.
+                const header = /^pid: (\d+), (?:ppid: \d+, )?tid: \d+, name: (.*?)\s+>>> (.*) <<<$/.exec(message);
+                const signal = /^signal \d+ \((\w+)\)/.exec(message);
+                // An abort message can go on over several lines; the first one says what failed.
+                const abort = /^Abort message: '(.*?)'?$/.exec(message);
+                if (header) {
+                    Object.assign(current, { pid: Number(header[1]), thread: header[2], process: header[3] });
+                } else if (signal && current.signal === null) {
+                    current.signal = signal[1];
+                } else if (abort && current.message === null) {
+                    current.message = abort[1];
+                }
+            }
+        } else if (tag === 'AndroidRuntime') {
+            const fatal = /^FATAL EXCEPTION: (.*)$/.exec(message);
+            const process = /^Process: (.*), PID: (\d+)$/.exec(message);
+            if (fatal) {
+                current = { kind: 'java', time, pid: null, thread: fatal[1], process: null, signal: null, message: null };
+                crashes.push(current);
+                exceptionNext = false;
+            } else if (current?.kind === 'java' && process) {
+                Object.assign(current, { process: process[1], pid: Number(process[2]) });
+                exceptionNext = true;
+            } else if (current?.kind === 'java' && exceptionNext && message.trim() !== '') {
+                current.message = message.trim();
+                exceptionNext = false;
+            }
+        }
+    }
+    return crashes.map(crash => ({ ...crash, summary: crashSummary(crash) }));
+}
+
+function crashSummary(crash) {
+    const program = String(crash.process ?? '').split(' ')[0];
+    const name = program.includes('/') ? program.slice(program.lastIndexOf('/') + 1) : program || 'an unknown process';
+    const what = crash.signal ?? (crash.kind === 'java' ? 'an uncaught exception' : 'a native crash');
+    const thread = crash.thread ? ` in ${crash.thread}` : '';
+    const message = crash.message ? `: ${crash.message.slice(0, 240)}` : '';
+    return `${what}${thread} of ${name} at ${crash.time}${message}`;
+}
+
+/**
+ * Whether a crashed process is the app's: its own processes, and the programs it starts by a path in its install or
+ * data directory. An abort or a segmentation fault of the app's Node leaves no entry: signal-exit listeners from the
+ * server's dependencies take SIGABRT, and Node's WebAssembly trap handler takes SIGSEGV. Both end Node by the signal's
+ * default action, which writes no crash dump.
+ * @param {{process: string|null}} crash Crash from {@link parseCrashLog}.
+ * @param {string} pkg Application id.
+ * @returns {boolean} Whether it is.
+ */
+export function isAppCrash(crash, pkg) {
+    const process = String(crash.process ?? '');
+    return process === pkg || process.startsWith(`${pkg}:`) || process.includes(`/${pkg}-`) || process.includes(`/${pkg}/`);
 }
 
 function checkPortSpec(spec) {
@@ -501,12 +614,16 @@ export class Adb {
     /**
      * Calls the debug build's smoke hook (`android/app/src/debug/.../SmokeHookProvider.kt`).
      * @param {string} pkg Application id.
-     * @param {string} method `state` or `handoff`.
-     * @param {object} [options] {@link Adb#run} options.
+     * @param {string} method `state`, `handoff` or `kill`.
+     * @param {object} [options] {@link Adb#run} options, and `arg`, the method's argument (`kill`: a pid).
      * @returns {Promise<object>} Decoded reply.
      */
-    async hook(pkg, method, options) {
-        const result = await this.shell(['content', 'call', '--uri', `content://${pkg}.smoke`, '--method', method], options);
+    async hook(pkg, method, { arg, ...options } = {}) {
+        const command = ['content', 'call', '--uri', `content://${pkg}.smoke`, '--method', method];
+        if (arg !== undefined) {
+            command.push('--arg', String(arg));
+        }
+        const result = await this.shell(command, options);
         const reply = parseHookResult(result.stdout);
         if (!reply) {
             throw new Error(`The smoke hook gave no reply to ${method}: ${String(result.stdout).trim().slice(0, 300)}`);
@@ -544,6 +661,12 @@ export class Adb {
     async supportsNoRestart() {
         const result = await this.shell(['am', 'help'], { check: false, timeoutMs: 30_000 });
         return /--no-restart/.test(`${result.stdout}\n${result.stderr}`);
+    }
+
+    /** The crash log buffer, for {@link parseCrashLog}. */
+    async crashLog(options = {}) {
+        const result = await this.run(['logcat', '-d', '-b', 'crash', '-v', 'threadtime'], { timeoutMs: 60_000, ...options });
+        return binaryText(result.stdout);
     }
 
     /** Saves `logcat -d` (all main buffers) to a file. */
