@@ -50,6 +50,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
 
+### `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, and `src/endpoints/chats.js` - server-owned chat generations
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, `src/endpoints/chats.js` |
+| Area | Generation lifecycle and chat persistence. |
+| Divergence reason | SillyBunny lets the server finish a chat reply when the page that asked for it goes away, because phones freeze and close background tabs during a generation. `Generate()` must send a commit plan with each committable request, mark its streaming message so the server replaces only an unfinished reply, and skip its own save when the server kept its copy. Upstream stops the stream on `beforeunload`, which a leave-site prompt can cancel, so the hand-off and the stop run on `pagehide`. A group reply written this way must carry the rest of its round so the round can go on, and the server must save chats with the same locking, integrity and backup handling as a browser save. |
+| Target seam | `public/scripts/server-generations.js`, `public/scripts/resumable-generation.js`, `public/scripts/generation-commit-plan.js`, `src/generation-commit.js`. |
+| Adapter shape | `Generate()` registers a commit plan before each committable request (`registerGenerationCommitPlan()`), then awaits `settleGenerationCommit()` before it saves the finished reply; on `committed` it unblocks and calls `reloadServerCommittedReply()` instead of saving. `StreamingProcessor.onStartStreaming()` sets `extra[GENERATION_PLACEHOLDER_KEY]` on the streaming message, and `finalizeIntermediaryMessage()` deletes it. The window `pagehide` handler stops the stream unless the page goes into the back/forward cache; the `beforeunload` handler no longer stops it. `generateGroupWrapper()` records the members still to speak in `groupRoundRemaining`, read by `getGroupRoundRemaining()`, and `resumeGroupRound()` runs them. `parseAutoReasoningFromString()` exposes the live reasoning parse. `updateChatRecords()` saves through `trySaveChat()`, whose `integrity` option restores a chat's earlier slug when a commit is taken back. |
+| Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/server-generations-frontend.test.js`, `tests/server-generation-commit.test.js`, `tests/server-generation-commit.e2e.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- story-mode-request-controls.test.js resumable-generation-frontend.test.js server-generations-frontend.test.js server-generation-commit.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against Bun 1.3.14 and Node servers, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `registerGenerationCommitPlan()` and `settleGenerationCommit()` calls, the `GENERATION_PLACEHOLDER_KEY` lines in `onStartStreaming()` and `finalizeIntermediaryMessage()`, and the `pagehide` handler, then put `streamingProcessor.onStopStreaming()` back in the `beforeunload` handler. Requests then carry no commit plan, so the server never writes replies, and `fetchResumable()` still resumes dropped streams. `getGroupRoundRemaining()`, `resumeGroupRound()`, `parseAutoReasoningFromString()` and `updateChatRecords()` are used only by `public/scripts/server-generations.js` and `src/generation-commit.js`, so they go with those modules. |
+| Last reviewed | 2026-10-23 PR #877 review fixes. |
+| Owner | Generation lifecycle owner. |
+
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |
@@ -362,6 +376,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
 
+### `src/server-startup.js` - listen retry and port-conflict diagnostics
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js`. |
+| Area | Server lifecycle. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/server-listen.js`. |
+| Adapter shape | `#startHTTPorHTTPS()` runs the IPv6 and IPv4 binds at the same time through `retryOnAddressInUse()` and calls `reportPortHolders()` on the first retry. Both create functions close a server that failed to bind and call `trackListeningServer()` once it listens. `#handleServerListenFail()` calls `reportPortHolders()` again and prints the `diagnosePortConflict()` result through `formatPortConflictBanner()` before it exits. `#getAddressInUseMessage()` uses `APP_NAME` and adds the Bun socket-inheritance hint only when `hasBunSocketInheritBug()` is true. |
+| Protecting tests | `tests/server-listen.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- server-listen.test.js`, `node --check src/server-startup.js`, `npm run lint`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
@@ -440,6 +468,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert shell/source integration and filename normalization independently; retain the upstream World Info data format. |
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | World Info and shell integrator. |
+
+### `public/scripts/world-info.js` - scan target for Conversation lorebooks
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/world-info.js` |
+| Area | World Info scanning and Conversation mode. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-conversation/world-info.js`. |
+| Adapter shape | `checkWorldInfo()` and `getSortedEntries()` take an optional `scanTarget` (`WIScanTarget`), and `WorldInfoBuffer` takes the substitution function for keys. With a target, the scan reads the target character's linked books and the global books, reads `chatWorld` and `personaWorld` in place of the chat and persona lorebooks, and applies character filters, `{{char}}`, `{{user}}` and the regex `{{char}}` to the target. It skips the active chat's extension prompts, forced activations, sticky and cooldown writes, Author's Note write, `WORLDINFO_ENTRIES_LOADED` and `WORLDINFO_SCAN_DONE`. Without a target the scan does not change. |
+| Protecting tests | `tests/world-info-scan-target.test.js` (characterization of the active-chat scan, plus target scans), `tests/frontend/ConversationLorebooks.e2e.js`. |
+| Validation | `npm run test:unit -- world-info-scan-target.test.js` in `tests/`, `npx eslint public/scripts/world-info.js`, `npm run test:e2e -- frontend/ConversationLorebooks.e2e.js` against a running server in Chromium and WebKit. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Conversation lorebooks. |
+| Owner | TODO(copy) |
 
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |

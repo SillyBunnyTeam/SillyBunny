@@ -41,6 +41,7 @@ This is the largest class by a wide margin.
 - **Breaks:** rendering or resizing moves the reader's position; cancelling leaves stream state behind.
 - **Files:** `public/script.js`, `public/scripts/chat-render-lifecycle/`, `public/scripts/chats.js`, `src/request-cancellation.js`.
 - **Guards:** `chat-render-lifecycle/scroll-intent.js` decides when to follow the newest message, `resize-observer.js` handles content that resizes after render, and `mobile-viewport.js` handles mobile viewport changes.
+- **Guards:** a page hands its chat replies to the server and stops its stream on `pagehide`, not `beforeunload` (`public/scripts/resumable-generation.js`, `public/script.js`). A leave-site prompt can cancel `beforeunload`, and the page then stays with replies the server still writes into the chat (PR #877 review). Test: `tests/resumable-generation-frontend.test.js`.
 - **Tests:** `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/chat-scroll-regressions.e2e.js`, `tests/request-cancellation.test.js`, `tests/in-chat-agents-companion-panel.test.js`.
 - **Fixes:** #271 (stabilise chat scrolling), #314 (cancel when a stream disconnects), #771 (resize and load lock work against each other), #783 (streaming moves the screen).
 
@@ -52,6 +53,7 @@ This is the largest class by a wide margin.
 - **No test:** `59aeea3f1` (#385, abort agent generation on cancel), `20353df60` (hotfix, swipes rerun agents).
 - **Fixes:** #839 (Guided Generations cancel, swipe cleanup and profile restore).
 - **Order matters:** Guided Generations calls `integrateQrBar()` before it returns for a hidden bar (`public/scripts/extensions/guided-generations/index.js`). If the order changes, Quick Replies show in the composer after a reload (`8ce1a10a5`). Test: `tests/guided-generations-settings.test.js`.
+- **Dry runs:** the `GENERATION_STARTED` listener in `public/scripts/extensions/in-chat-agents/index.js` returns for a dry run, as the listeners in `agent-runner.js` and `public/scripts/sillybunny-conversation/init.js` do. A dry run does not change the generation state. Without the check, `refreshGenerationUi()` → `activateSendButtons()` → `showSwipeButtons()` → `refreshSwipeButtons()` added `.fade` to every rendered message. Prompt Manager starts dry runs from its own debounced timers after `CHAT_LOADED` (`saveServiceSettings()`, then `renderDebounced()`, in `public/scripts/PromptManager.js`), so one can land right after `redisplayChat({ fade: false })`. Holding `/api/settings/save` until after the redisplay reproduces the nightly failure in issue #920: 12 `.fade` classes in `redisplay keeps render follow-up hooks applied after batched render`. Tests: `tests/chat-scroll-regressions.e2e.js` (`a dry-run generation keeps redisplay follow-up hooks applied`), `tests/in-chat-agents-generation-ui-wiring.test.js`.
 
 ### Bundled defaults, templates and user state
 
@@ -77,8 +79,14 @@ This is the largest class by a wide margin.
 ### Chat writes, reloads and backups
 
 - **Breaks:** an old queued write replaces a newer chat; backups push each other out of the backup ring.
-- **Files:** `public/scripts/chat-save-guard.js`, `public/scripts/chat-reload-guard.js`, `src/endpoints/chats.js`.
-- **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`.
+- **Files:** `public/scripts/chat-save-guard.js`, `public/scripts/chat-reload-guard.js`, `src/endpoints/chats.js`, `src/generation-commit.js`, `public/scripts/server-generations.js`.
+- **Guards:**
+  - The server writes a reply over an existing message only when that message carries `extra.server_generation_placeholder` with the generation's start time. The browser removes the mark when the reply is finished, so a reply the page saved itself, and later edits to it, are not overwritten (`src/generation-commit.js`).
+  - `Generate()` awaits `settleGenerationCommit()` before it saves a finished reply. If the server answers `committed`, the page reloads the chat and does not save its own copy, which would fail the integrity check. Stream readers return at `[DONE]`, which can come before the body ends and claims on its own (PR #877 review).
+  - A tab keeps its server event stream (`public/scripts/server-generations.js`) only while it is visible or reads a reply of its own. Over HTTP/1.1 a browser opens about 6 connections per server for all its tabs; with a stream in every tab, a seventh tab never loads (PR #877 review). Tests: `tests/server-generations-frontend.test.js`, `tests/server-generation-commit.e2e.js`.
+  - A tab that reloaded once for a server-written reply and still finds no mark for it acknowledges it. Otherwise each reload reconnects, hears of the reply again and reloads again until the server forgets it.
+  - `reloadCurrentChat()` removes an open message editor but leaves `this_edit_mes_id` set. A reload for a server-written reply reopens the edit with its unsaved text through `messageEdit()`, unless the reply changed that message, and clears the id with `setEditedMessageId()` (`restoreOpenEdit()` in `public/scripts/server-generations.js`). Waiting with the reload does not help: once the server has written the chat, saving the edit fails the integrity check. Tests: `tests/server-generations-frontend.test.js`, `tests/server-generation-commit.e2e.js`.
+- **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`, `tests/server-generation-commit.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/story-mode-request-controls.test.js`.
 - **Fixes:** #819 (queued saves across swipes clone chats), #849 (staged reloads wipe chats), #373 (extra pre-write backups push older backups out), #856 (issue #706: a chat saves when opened).
 
 ### Cache, boot and reload
@@ -95,6 +103,8 @@ This is the largest class by a wide margin.
 - **Breaks:** the wrong runtime or shell behaviour on one platform.
 - **Files:** `Start-Node.bat`, `scripts/`, `src/npm-launcher.js`, `src/endpoints/server-admin.js`.
 - **Guards:** `server.js` runs under `src/server-supervisor.js`. It loads `src/server-log-buffer.js` first and imports `src/server-main.js` last. Do not change this import order.
+- **Bun and disconnects:** under Bun 1.3.12 and 1.3.14 an Express response emits no `close` when the client disconnects; the request and its socket do. Node emits all three, and emits the response's `close` from inside the socket's. The streamed routes in `src/resumable-generations.js` use `whenClientGone()`, which watches both and runs once (test: `tests/server-generation-commit.test.js`). Still on the response's `close`: `src/endpoints/backends/chat-completions.js`, `src/endpoints/server-admin.js`, `src/endpoints/chat-archive.js`, `src/server-listen.js`.
+- **Bun and the listen port:** before Bun 1.4.0, sockets on Windows are inheritable (oven-sh/bun#36936, fixed by oven-sh/bun#36938). A process that the server starts, such as git during an update, can keep the port bound after the server exits. `engines.bun` still allows 1.3.14. The listen retry window in `src/server-listen.js` and `GIT_OPTIONS` in `src/endpoints/server-admin.js` (no background git maintenance during updates) guard against it. `hasBunSocketInheritBug()` limits the port-conflict hint and the dead-holder diagnostic to Bun before 1.4.0 on Windows (test: `tests/server-listen.test.js`). Before Bun 1.4.3, `closeAllConnections()` does nothing once `close()` has run (oven-sh/bun#43557), so `closeListeningServers()` also destroys the tracked sockets.
 - **Tests:** `tests/server-supervisor.test.js`, `tests/base64-atomic-writes.test.js`, `tests/server-admin-update-install.test.js`, `tests/server-plugin-manager.test.js`, `tests/server-plugin-update-helper.test.js`.
 - **No test:** `c1a87366c` (#522, Bun bootstrap on Termux), `cd7429421` (issue #672, unescaped parentheses in `Start-Node.bat`).
 - **Fixes:** #806 (explicit Base64 decode on Bun), #912 (run npm through Node.js on Windows).
@@ -122,6 +132,13 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/pr-auto-manager-workflow.test.js`, `tests/pr-checks-workflow.test.js`, `tests/nightly-workflow.test.js`, `tests/release-workflows.test.js`, `tests/sillybunny-launcher-smol.test.js`.
 - **Fixes:** #888, #892, #895 and #903 carried workflow and test changes to `release` through `actions/*` branches. `label-by-branches` in `pr-auto-manager.yml` waited for a `synchronize` event with `changes.base`, which never arrives; a base-branch change is an `edited` event. On 2026-10-23 the `release` copy of `pr-metadata.yml` still rejected `hotfix:` titles.
 - **Runner images:** GitHub moves `ubuntu-latest` to Ubuntu 26.04 between 2026-10-19 and 2026-11-19 (actions/runner-images#14748), so a job can land on either image. `@playwright/test` 1.60.0 refuses to install Chromium on Ubuntu 26.04, which broke `Install Chromium` in nightly (issue #920) and in `Run Chromium E2E suite` on #925. Playwright 1.61.0 added Ubuntu 26.04 support; `tests/package.json` pins 1.64.1. A Playwright bump needs `npx playwright install chromium` in `tests/` locally, because each version expects its own browser build.
+
+### Playwright tests
+
+- **Breaks:** a wait passes at once, so the test checks state too early or proves nothing.
+- **Cause:** `page.waitForFunction()` takes a returned Promise as a truthy result (checked with `@playwright/test` 1.64.1), so an `async` predicate never waits. Read module values into `window` first, then wait on a synchronous predicate, as `tests/server-generation-commit.e2e.js` does.
+- **Open:** `tests/nanogpt-controls.e2e.js` and `tests/pathfinder-settings.e2e.js` still wait on `async` predicates.
+- **Breaks:** work that the app starts when a chat loads runs on its own timers and can land between a test step and its assertion. The failure is rare locally and can still fail a single nightly run (issue #920, see § In-chat agents and companions). To reproduce such a race, hold the request that starts the timer chain with `page.route()` and release it after the test step.
 
 ### Upstream compatibility and sync
 

@@ -27,6 +27,7 @@ async function stream(type = 'normal') {
         document: { querySelector: () => element }, HTMLElement: Element,
         power_user: { streaming_fps: 30 }, main_api: 'openai', scrollLock: false, scrollLockImmunityUntil: 0,
         IN_CHAT_AGENT_TRANSFORM_HISTORY_KEY: 'history', IN_CHAT_AGENT_PRE_GENERATION_INTERCEPT_HISTORY_KEY: 'intercept',
+        GENERATION_PLACEHOLDER_KEY: 'server_generation_placeholder',
         ReasoningHandler: class {
             reasoning = '';
             process = async () => {};
