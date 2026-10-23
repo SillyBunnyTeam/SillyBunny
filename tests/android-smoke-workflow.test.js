@@ -481,6 +481,18 @@ describe('android-smoke.yml jobs', () => {
         });
     });
 
+    test('installs Chromium like nightly does, for the web steps below the WebView minimum, before the smoke', () => {
+        const names = jobs.smoke.steps.map(step => step.name);
+        expect(stepNamed(jobs.smoke, 'Install Chromium')).toEqual({
+            name: 'Install Chromium',
+            'working-directory': 'tests',
+            run: 'npx --no-install playwright install --with-deps chromium',
+        });
+        expect(stepNamed(nightly.workflow.jobs.checks, 'Install Chromium').run).toBe('npx --no-install playwright install --with-deps chromium');
+        expect(names.indexOf('Install test dependencies')).toBeLessThan(names.indexOf('Install Chromium'));
+        expect(names.indexOf('Install Chromium')).toBeLessThan(names.indexOf('Run the smoke'));
+    });
+
     test('pins every action to a full commit SHA with a version comment, matching the other workflows', () => {
         const lines = usesLines(smoke.source);
         const { calls, actions } = usesOf(smoke.workflow);

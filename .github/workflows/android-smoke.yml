@@ -231,6 +231,12 @@ jobs:
           NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc
         run: npm ci --ignore-scripts --prefix tests
 
+      # A WebView older than the frontend's minimum (API 29's image) shows the app's version warning, so the web
+      # steps drive the frontend in a host browser instead, as the app's Open in browser does.
+      - name: Install Chromium
+        working-directory: tests
+        run: npx --no-install playwright install --with-deps chromium
+
       - name: Download the test APKs
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
