@@ -6,7 +6,8 @@ import { promisify } from 'node:util';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { CheckRepoActions, default as simpleGit } from 'simple-git';
+// SillyBunny: simple-git 4 has no default export.
+import { CheckRepoActions, simpleGit } from 'simple-git';
 
 import { PUBLIC_DIRECTORIES } from '../constants.js';
 import { color, getConfigValue, isValidUrl } from '../util.js';

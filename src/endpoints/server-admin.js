@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import express from 'express';
 import yaml from 'yaml';
 import { sync as commandExistsSync } from 'command-exists';
-import simpleGit from 'simple-git';
+import { simpleGit } from 'simple-git';
 
 import { APP_NAME, formatRuntimeLabel, isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import {
