@@ -225,7 +225,7 @@ export class SubpageStack {
 
             if (row.icon) {
                 const icon = document.createElement('i');
-                icon.className = `sb-subpage-row-icon ${row.icon}`;
+                icon.className = `sb-subpage-row-icon fa-solid ${row.icon}`;
                 icon.setAttribute('aria-hidden', 'true');
                 button.appendChild(icon);
             }

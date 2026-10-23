@@ -933,6 +933,7 @@ test('Extensions detail pages retain live controls and restore their list', asyn
     await page.setViewportSize({ width: 390, height: 844 });
     const extensions = await openPanel(page, 'extensions', 'right');
     const firstRow = extensions.locator('.sb-subpage-row').first();
+    await expect(firstRow.locator('.sb-subpage-row-icon')).toHaveCSS('font-family', /Font Awesome/);
     const containerId = await firstRow.getAttribute('data-sb-subpage-row');
     await page.evaluate(id => {
         const container = document.getElementById(id);

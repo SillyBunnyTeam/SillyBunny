@@ -79,6 +79,14 @@ describe('Extensions list groups', () => {
         stack.close({ instant: true });
     });
 
+    test('gives each row icon the Font Awesome style class that sets the icon font', () => {
+        const { host } = mountStack(buildExtensionsSubpage(buildPanel()).rows);
+        const icons = [...host.querySelectorAll('.sb-subpage-row-icon')];
+
+        expect(icons).toHaveLength(4);
+        expect(icons.every(icon => icon.classList.contains('fa-solid') && icon.classList.contains('fa-puzzle-piece'))).toBe(true);
+    });
+
     test('shows no User-installed heading when the user has installed nothing', () => {
         const panel = buildPanel();
         panel.querySelector('.qa-user-extension').remove();
