@@ -255,12 +255,14 @@ jobs:
           grep -qx 'Pkg.Revision=23.0' "$tools/latest/source.properties"
 
       # Hardware acceleration or nothing: the emulator runs with -accel on, never a silent software fallback.
+      # Without --settle, udevadm returns before udev applies the new mode, so the check can fail on a usable device.
       - name: Enable KVM
         run: |
           set -euo pipefail
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+          sudo udevadm trigger --name-match=kvm --settle
+          ls -l /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
 
       # The action replaces the emulator with build 16428233 later; any build can answer -accel-check. It

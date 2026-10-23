@@ -437,7 +437,9 @@ describe('android-smoke.yml jobs', () => {
         expect(options[options.indexOf('-accel') + 1]).toBe('on');
         expect(options.filter(option => option === '-accel')).toHaveLength(1);
 
-        expect(stepNamed(jobs.smoke, 'Enable KVM').run).toContain('test -r /dev/kvm && test -w /dev/kvm');
+        const kvm = stepNamed(jobs.smoke, 'Enable KVM').run;
+        expect(kvm).toContain('sudo udevadm trigger --name-match=kvm --settle');
+        expect(kvm).toContain('test -r /dev/kvm && test -w /dev/kvm');
         const accel = stepNamed(jobs.smoke, 'Check the hardware acceleration').run;
         expect(accel).toContain('accel=$("$ANDROID_HOME/emulator/emulator" -accel-check 2>&1) || status=$?');
         expect(accel).toContain('test "$status" -eq 0');
