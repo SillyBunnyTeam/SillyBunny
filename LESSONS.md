@@ -137,6 +137,10 @@ This is the largest class by a wide margin.
 - **Breaks:** a wait passes at once, so the test checks state too early or proves nothing.
 - **Cause:** `page.waitForFunction()` takes a returned Promise as a truthy result (checked with `@playwright/test` 1.64.1), so an `async` predicate never waits. Read module values into `window` first, then wait on a synchronous predicate, as `tests/server-generation-commit.e2e.js` does.
 - **Open:** `tests/nanogpt-controls.e2e.js` and `tests/pathfinder-settings.e2e.js` still wait on `async` predicates.
+- **Breaks:** a startup check passes with 4 workers and times out with 8 or more. All workers share one server, so app start takes longer as the worker count goes up. The `#preloader` check in `exerciseUpgrade()` (`tests/topbar-upgrade.e2e.js`) used the 5 s `expect` default. On a 16-thread host, 17 of its 18 test runs with 8 or 12 workers (6 tests, three suite runs) failed there. All 6 tests passed with 1 and 4 workers. The check now has a 20 s timeout. `tests/mobile-shell-smoke.e2e.js` sets a 60 s test timeout for the same cause. Give startup waits an explicit timeout instead of the 5 s `expect` default.
+- **Breaks:** a spec that you run alone against a fresh data root times out at startup, but passes in the full suite.
+- **Cause:** a fresh data root stops startup at the first-run onboarding dialog until it is answered. `waitForAppReady()` in `tests/frontend/frontent-test-utils.js` answers it. The `app_ready` waits in `tests/character-list.e2e.js` (lines 105 and 191), `tests/character-folders.e2e.js` (line 49) and `tests/character-create-flow.e2e.js` (line 56) do not, so they pass only after an earlier spec has answered the dialog on the same server. Run alone against a fresh data root, almost every test in these three files timed out at that wait. They passed after the dialog was answered once.
+- **Open:** these three specs still depend on an earlier spec to answer onboarding.
 
 ### Upstream compatibility and sync
 
