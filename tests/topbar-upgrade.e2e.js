@@ -61,7 +61,8 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
     }, { storage: settings, legacyAttributes: legacyNavigationAttributes });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function');
-    await expect(page.locator('#preloader')).toHaveCount(0);
+    // App start can take longer than the 5 s expect default when several workers share one server.
+    await expect(page.locator('#preloader')).toHaveCount(0, { timeout: 20_000 });
     await expect(page.locator('#sb-topbar-inner')).toBeVisible();
     for (const attribute of legacyNavigationAttributes) {
         await expect(page.locator('html')).not.toHaveAttribute(attribute);
