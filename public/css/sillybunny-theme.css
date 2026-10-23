@@ -6996,7 +6996,9 @@ dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close {
     justify-self: end;
     box-sizing: border-box;
     width: 40px;
+    min-width: 40px;
     height: 40px;
+    min-height: 40px;
     margin: 0;
     padding: 0;
     border-radius: 999px;
@@ -7628,7 +7630,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     white-space: nowrap;
 }
 
-.sb-dialog .sb-dialog__icon-button {
+.sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__close) {
     display: grid;
     place-items: center;
     flex: 0 0 auto;
@@ -7636,6 +7638,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     width: 40px;
     min-width: 40px;
     height: 40px;
+    min-height: 40px;
     margin: 0;
     padding: 0;
     border: 0;
@@ -7646,7 +7649,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     cursor: pointer;
 }
 
-.sb-dialog .sb-dialog__icon-button:active {
+.sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__close):active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -7915,7 +7918,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 }
 
 @media (hover: hover) {
-    .sb-dialog .sb-dialog__icon-button:hover {
+    .sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__close):hover {
         background: var(--sb-flat-hover-bg);
     }
 
@@ -7930,7 +7933,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
         min-height: 44px;
     }
 
-    .sb-dialog .sb-dialog__icon-button {
+    .sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__close) {
         width: 44px;
         height: 44px;
     }

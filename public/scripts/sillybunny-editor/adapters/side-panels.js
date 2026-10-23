@@ -1,6 +1,6 @@
 import { t } from '../../i18n.js';
 import { registerSidePanel } from '../side-panel.js';
-import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createRow, createSpinRow, createSwitchRow } from '../rows.js';
+import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createSpinRow, createSwitchRow } from '../rows.js';
 import { createToggleRow } from '../toggle-row.js';
 
 const controllers = new Map();
@@ -159,11 +159,16 @@ function createAuthorNoteFrequencyRow(root, inputId, field) {
 
 function createAuthorNoteStatusRow(root) {
     const counter = requireElement(root, '#extension_floating_counter', 'Author\'s Note');
-    return createRow({
-        label: t`User inputs until next insertion:`,
-        field: 'authors-note-next-insertion',
-        suffix: counter,
-    }).row;
+    counter.className = 'ds-row-property__value ds-row-subtitle';
+    const row = document.createElement('div');
+    row.className = 'ds-row ds-row-property';
+    row.dataset.sbEditorField = 'authors-note-next-insertion';
+    const label = document.createElement('span');
+    label.className = 'ds-row-label';
+    label.dataset.i18n = 'User inputs until next insertion:';
+    label.textContent = t`User inputs until next insertion:`;
+    row.append(label, counter);
+    return row;
 }
 
 function adaptAuthorNote(root) {
@@ -240,7 +245,7 @@ function adaptAuthorNote(root) {
         input: useCharacterInput,
     });
     setRowLabel(characterSwitch.row, 'Use character author\'s note');
-    const characterTextareaRow = createTextareaRow(characterPrompt, t`Character Author's Note (Private)`, 'authors-note-character-prompt');
+    const characterTextareaRow = createTextareaRow(characterPrompt, t`Author's Note`, 'authors-note-character-prompt');
     characterTextareaRow.append(characterCounter);
     const characterGroup = createAuthorNoteSection({
         title: t`Character Author's Note (Private)`,

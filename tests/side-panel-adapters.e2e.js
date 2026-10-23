@@ -32,6 +32,130 @@ const PANELS = [
 
 test.describe.configure({ timeout: 120_000 });
 
+test('side panels share dialog headers, boxed groups, and theme-derived surfaces', async ({ page }) => {
+    await boot(page, { width: 1440, height: 900 });
+    const panel = await openPanel(page, PANELS[0]);
+    const headings = panel.locator('.ds-pref-group-heading');
+    const heading = headings.first();
+    const description = panel.locator('.ds-pref-group-subtitle').first();
+    await expect(heading).toBeVisible();
+    await expect(description).toBeVisible();
+    for (const node of await panel.locator('.ds-pref-group-subtitle').all()) {
+        expect(await node.evaluate(element => element.parentElement.classList.contains('ds-pref-group-header'))).toBe(true);
+    }
+    for (const node of await headings.all()) {
+        const style = await node.evaluate(element => {
+            const computed = getComputedStyle(element);
+            return { background: computed.backgroundColor, borderRadius: computed.borderRadius, borderWidth: computed.borderWidth };
+        });
+        expect(style).toEqual({ background: 'rgba(0, 0, 0, 0)', borderRadius: '0px', borderWidth: '0px' });
+    }
+    await expect(panel.locator('.ds-row[data-sb-editor-field="authors-note-character-prompt"] .ds-row-label')).toHaveText('Author\'s Note');
+
+    await page.evaluate(async () => {
+        const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+        window.qaSidePanelHeaderPopup = new Popup('<h3>Header Reference</h3>', POPUP_TYPE.TEXT, '', { large: true });
+        void window.qaSidePanelHeaderPopup.show();
+    });
+    const popup = page.locator('dialog.popup[open]').last();
+    await expect(popup.locator('.sb-dialog__header')).toBeVisible();
+    await expect(popup).not.toHaveAttribute('opening');
+    await expect.poll(() => popup.locator('.sb-dialog__header').evaluate(node => node.getBoundingClientRect().height)).toBe(56);
+    const headerMetrics = await page.evaluate(() => {
+        const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]');
+        const popupHeader = document.querySelector('dialog.popup[open] .sb-dialog__header');
+        const panelHeader = panel.querySelector('.sb-side-panel__header');
+        const panelButtons = [...panelHeader.querySelectorAll('.sb-dialog__icon-button')];
+        const popupButton = popupHeader.querySelector('.sb-dialog__close');
+        const body = panel.querySelector('.sb-side-panel__body');
+        const edge = getComputedStyle(panel).boxShadow;
+        return {
+            panelHeaderHeight: panelHeader.getBoundingClientRect().height,
+            popupHeaderHeight: popupHeader.getBoundingClientRect().height,
+            panelButtons: panelButtons.map(button => [getComputedStyle(button).width, getComputedStyle(button).height]),
+            popupButton: [getComputedStyle(popupButton).width, getComputedStyle(popupButton).height],
+            headerBackground: getComputedStyle(panelHeader).backgroundColor,
+            bodyBackground: getComputedStyle(body).backgroundColor,
+            shadow: edge,
+            side: panel.dataset.sbSidePanelSide,
+        };
+    });
+    expect(headerMetrics.panelHeaderHeight).toBe(headerMetrics.popupHeaderHeight);
+    expect(headerMetrics.panelButtons).toEqual([['40px', '40px'], ['40px', '40px']]);
+    expect(headerMetrics.popupButton).toEqual(['40px', '40px']);
+    expect(headerMetrics.headerBackground).not.toBe(headerMetrics.bodyBackground);
+    expect(headerMetrics.shadow).not.toBe('none');
+    expect(headerMetrics.shadow).toContain('inset');
+    expect(headerMetrics.shadow).toContain(headerMetrics.side === 'left' ? '-1px 0px 0px 0px inset' : '1px 0px 0px 0px inset');
+    await popup.locator('.sb-dialog__close').click();
+    await expect(popup).toHaveCount(0);
+
+    const themeStyles = [];
+    for (const theme of ['Libadwaita', 'Libadwaita Light', 'Cinder']) {
+        await page.evaluate(themeName => {
+            const select = document.getElementById('themes');
+            select.value = themeName;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }, theme);
+        await expect.poll(() => page.evaluate(themeName => window.SillyTavern.getContext().powerUserSettings.theme === themeName, theme)).toBe(true);
+        themeStyles.push(await panel.evaluate(element => ({
+            tone: document.documentElement.dataset.sbSurfaceTone,
+            header: getComputedStyle(element.querySelector('.sb-side-panel__header')).backgroundColor,
+            body: getComputedStyle(element.querySelector('.sb-side-panel__body')).backgroundColor,
+            shadow: getComputedStyle(element).boxShadow,
+            edge: getComputedStyle(element).boxShadow,
+        })));
+    }
+    expect(themeStyles[0].tone).toBe('dark');
+    expect(themeStyles[1].tone).toBe('light');
+    for (const style of themeStyles) {
+        expect(style.header).not.toBe(style.body);
+        expect(style.shadow).not.toBe('none');
+        expect(style.edge).toContain('inset');
+    }
+    expect(themeStyles[0].header).not.toBe(themeStyles[1].header);
+    expect(themeStyles[2].header).not.toBe(themeStyles[0].header);
+    expect(themeStyles[2].shadow).not.toBe(themeStyles[0].shadow);
+    await page.evaluate(() => {
+        const select = document.getElementById('themes');
+        select.value = 'Libadwaita';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator('#sb-left-shell-toggle').click();
+    await expect(page.locator('#sb-settings-page')).toBeVisible();
+    const settingsCoversPanel = await page.evaluate(() => {
+        const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]');
+        const box = panel.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return document.getElementById('sb-settings-page').contains(hit);
+    });
+    expect(settingsCoversPanel).toBe(true);
+    await page.locator('#sb-settings-close').click();
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 740 }]) {
+    test(`Author's Note sheet fits inside ${viewport.width}×${viewport.height}`, async ({ page }) => {
+        await boot(page, viewport);
+        const panel = await openPanel(page, PANELS[0]);
+        await expect(panel).toHaveClass(/sb-side-panel--sheet/);
+        const overflow = await panel.evaluate(element => {
+            const panelRight = element.getBoundingClientRect().right;
+            const offenders = [...element.querySelectorAll('*')]
+                .filter(child => child.getClientRects().length > 0 && child.getBoundingClientRect().right > panelRight + 0.5)
+                .map(child => ({ selector: child.id ? `#${child.id}` : child.className, right: child.getBoundingClientRect().right }));
+            const body = element.querySelector('.sb-side-panel__body');
+            return {
+                panelScroll: [element.scrollWidth, element.clientWidth],
+                bodyScroll: [body.scrollWidth, body.clientWidth],
+                offenders,
+            };
+        });
+        expect(overflow.offenders, JSON.stringify(overflow)).toEqual([]);
+        expect(overflow.panelScroll[0]).toBeLessThanOrEqual(overflow.panelScroll[1]);
+        expect(overflow.bodyScroll[0]).toBeLessThanOrEqual(overflow.bodyScroll[1]);
+    });
+}
+
 async function boot(page, viewport) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
@@ -140,6 +264,10 @@ for (const viewport of VIEWPORTS) {
             expect(geometry.panel.top).toBeGreaterThanOrEqual(geometry.topBarBottom - 1);
             expect(geometry.intersectsChat).toBe(false);
             expect(geometry.intersectsComposer).toBe(false);
+            if (viewport.width === 1440 && viewport.height === 900) {
+                expect(Math.abs(geometry.panel.top - geometry.chatRect.top)).toBeLessThanOrEqual(2);
+                expect(Math.abs(geometry.panel.bottom - geometry.chatRect.bottom)).toBeLessThanOrEqual(2);
+            }
             if (geometry.mode === 'sheet') {
                 await expect(panel.locator('.sb-side-panel__grab-handle')).toBeVisible();
                 expect(geometry.panel.height).toBeLessThanOrEqual(viewport.height * 0.5 + 1);

@@ -1,7 +1,7 @@
 /* eslint-disable playwright/no-standalone-expect, jest/no-conditional-expect -- Jest assertions run inside Jest tests, and gap rows assert only when the gap fits. */
 import { describe, expect, jest, test } from '@jest/globals';
 
-jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join('') }));
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join(''), translate: value => value }));
 const { computeSidePanelLayout } = await import('../../public/scripts/sillybunny-editor/side-panel.js');
 
 function panel(id, side = 'left') {

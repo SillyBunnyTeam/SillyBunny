@@ -1,7 +1,8 @@
 import { t } from '../i18n.js';
+import { bindHeaderLayout } from './dialog.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261023d',
+    href: 'css/sillybunny-side-panel.css?v=20261024f',
     id: 'deferred-side-panel-css',
 };
 
@@ -189,12 +190,11 @@ function createElement(tagName, className, text = '') {
     return element;
 }
 
-function createIconButton({ className, iconName, label, placeholder = false }) {
+function createIconButton({ className, iconName, label }) {
     const button = createElement('button', className);
     button.type = 'button';
     button.title = label;
     button.setAttribute('aria-label', label);
-    if (placeholder) button.dataset.sbCopyPlaceholder = 'true';
     const icon = createElement('i', `fa-solid fa-${iconName}`);
     icon.setAttribute('aria-hidden', 'true');
     button.append(icon);
@@ -203,7 +203,7 @@ function createIconButton({ className, iconName, label, placeholder = false }) {
 
 function createPanelShell({ id, element, title }) {
     const panel = document.createElement('aside');
-    panel.className = 'sb-side-panel';
+    panel.className = 'sb-side-panel sb-dialog sb-dialog--window';
     panel.dataset.sbSidePanelId = id;
     panel.hidden = true;
     panel.setAttribute('role', 'complementary');
@@ -211,24 +211,24 @@ function createPanelShell({ id, element, title }) {
     const titleNodeId = `sb-side-panel-title-${++nextPanelTitleId}`;
     panel.setAttribute('aria-labelledby', titleNodeId);
 
-    const header = createElement('header', 'sb-side-panel__header');
-    const titleNode = createElement('h2', 'sb-side-panel__title', title);
+    const header = createElement('header', 'sb-dialog__header sb-side-panel__header');
+    const start = createElement('div', 'sb-dialog__header-start');
+    const titles = createElement('div', 'sb-dialog__titles');
+    const titleNode = createElement('h2', 'sb-dialog__title sb-side-panel__title', title);
     titleNode.id = titleNodeId;
-    const controls = createElement('div', 'sb-side-panel__controls');
+    titles.append(titleNode);
+    const controls = createElement('div', 'sb-dialog__header-end sb-side-panel__controls');
 
-    // HUMAN: replace — accessible name for the side-panel actions menu.
-    const panelMenuLabel = t`lorum ipsum`;
+    const panelMenuLabel = t`Menu`;
     const menuButton = createIconButton({
-        className: 'sb-side-panel__icon-button sb-side-panel__menu-trigger',
-        iconName: 'ellipsis',
+        className: 'sb-dialog__icon-button sb-dialog__menu sb-side-panel__icon-button sb-side-panel__menu-trigger',
+        iconName: 'ellipsis-vertical',
         label: panelMenuLabel,
-        placeholder: true,
     });
     menuButton.setAttribute('aria-haspopup', 'menu');
     menuButton.setAttribute('aria-expanded', 'false');
 
-    // HUMAN: replace — action that moves this panel to the opposite side.
-    const moveSideLabel = t`lorum ipsum`;
+    const moveSideLabel = t`TODO(copy)`;
     const menu = createElement('div', 'sb-side-panel__menu');
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
@@ -239,23 +239,23 @@ function createPanelShell({ id, element, title }) {
     menu.append(moveSideButton);
 
     const closeButton = createIconButton({
-        className: 'sb-side-panel__icon-button sb-side-panel__close',
+        className: 'sb-dialog__icon-button sb-dialog__close sb-side-panel__icon-button sb-side-panel__close',
         iconName: 'xmark',
         label: t`Close`,
     });
 
     controls.append(menuButton, closeButton);
-    header.append(titleNode, controls, menu);
+    header.append(start, titles, controls, menu);
 
     const grabHandle = createElement('div', 'sb-side-panel__grab-handle');
     grabHandle.setAttribute('aria-hidden', 'true');
-    const body = createElement('div', 'sb-side-panel__body');
+    const body = createElement('div', 'sb-dialog__body sb-side-panel__body');
     const content = createElement('div', 'sb-side-panel__content');
     content.append(element);
     body.append(content);
     panel.append(header, grabHandle, body);
 
-    return { panel, header, menuButton, menu, moveSideButton, closeButton, body, content };
+    return { panel, header, unbindHeaderLayout: bindHeaderLayout(header), menuButton, menu, moveSideButton, closeButton, body, content };
 }
 
 function getPanelRoot() {
@@ -285,7 +285,7 @@ function resolveChatWidth(viewportWidth) {
 function readLayoutInputs(openPanels) {
     const viewport = { width: window.innerWidth, height: window.innerHeight };
     const chat = { width: resolveChatWidth(viewport.width) };
-    const topBar = document.getElementById('top-bar');
+    const chatShell = document.getElementById('sheld');
     const configuredOffset = getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset').trim();
     const offsetProbe = document.createElement('div');
     offsetProbe.style.position = 'absolute';
@@ -294,7 +294,7 @@ function readLayoutInputs(openPanels) {
     document.documentElement.append(offsetProbe);
     const resolvedOffset = offsetProbe.getBoundingClientRect().height;
     offsetProbe.remove();
-    const topBarHeight = resolvedOffset || Number.parseFloat(configuredOffset) || topBar?.getBoundingClientRect().bottom || 0;
+    const topBarHeight = chatShell?.getBoundingClientRect().top || resolvedOffset || Number.parseFloat(configuredOffset) || 0;
     return { viewport, chat, topBarHeight, panels: openPanels };
 }
 
@@ -346,8 +346,8 @@ function applySheetGeometry(entry) {
 
     const shellRect = chatShell.getBoundingClientRect();
     const composerRect = composer.getBoundingClientRect();
-    const panelRect = entry.panel.getBoundingClientRect();
-    const sheetHeight = Math.min(panelRect.height, window.innerHeight / 2);
+    const availableHeight = Math.max(0, composerRect.top - shellRect.top - SHEET_COMPOSER_CLEARANCE);
+    const sheetHeight = Math.min(window.innerHeight / 2, availableHeight);
     const panelTop = Math.max(shellRect.top, composerRect.top - sheetHeight - SHEET_COMPOSER_CLEARANCE);
     const chatHeight = Math.max(0, panelTop - shellRect.top);
     entry.panel.style.setProperty('--sb-side-panel-sheet-height', `${sheetHeight}px`);
@@ -462,6 +462,19 @@ function updateLayout() {
 
     const chatShell = document.getElementById('sheld');
     if (chatShell) deferPanelRevealUntilChatSettles(open, chatShell, layout.chatRect);
+    const chatShellRect = chatShell?.getBoundingClientRect();
+    if (chatShellRect && Number.isFinite(chatShellRect.top) && Number.isFinite(chatShellRect.bottom)) {
+        for (const side of ['left', 'right']) {
+            const sidePanels = open.filter(entry => entry.side === side);
+            const panelHeight = Math.max(0, chatShellRect.height / sidePanels.length);
+            sidePanels.forEach((entry, index) => {
+                const rect = layout.panelRects[entry.id];
+                if (!rect) return;
+                rect.y = chatShellRect.top + panelHeight * index;
+                rect.height = panelHeight;
+            });
+        }
+    }
     body.classList.remove('sb-has-side-panel-sheet');
     body.classList.add('sb-has-docked-panel');
     root.style.setProperty('--sb-dock-start', `${layout.dockStart}px`);
@@ -715,6 +728,7 @@ export function unregisterSidePanel(id) {
     if (!entry) return false;
     closeEntry(entry, { restoreFocus: false, notify: false });
     document.removeEventListener('pointerdown', entry.outsidePointerListener, true);
+    entry.shell.unbindHeaderLayout();
     entry.element.classList.toggle('sb-side-panel__source', entry.originalClass);
     if (entry.originalPanelId === undefined) delete entry.element.dataset.sbSidePanelId;
     else entry.element.dataset.sbSidePanelId = entry.originalPanelId;

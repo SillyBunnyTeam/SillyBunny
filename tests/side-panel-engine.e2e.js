@@ -103,7 +103,13 @@ for (const viewport of VIEWPORTS) {
                 sendFormVisible: !!sendForm && sendForm.getClientRects().length > 0,
                 sendTextareaVisible: !!sendTextarea && sendTextarea.getClientRects().length > 0,
                 panelIntersectsChat: intersects(panelRect, panel.classList.contains('sb-side-panel--sheet') ? chatContentRect : chatRect),
+                panelIntersectsShell: intersects(panelRect, document.getElementById('sheld').getBoundingClientRect()),
                 panelIntersectsComposer: intersects(panelRect, composerRect),
+                panelShadow: getComputedStyle(panel).boxShadow,
+                panelChatEdge: getComputedStyle(panel).boxShadow,
+                panelUsesDialogFrame: panel.classList.contains('sb-dialog')
+                    && panel.querySelector('.sb-dialog__header')
+                    && panel.querySelector('.sb-dialog__body'),
                 visualNovel: panel.classList.contains('sb-side-panel--sheet') ? null : {
                     left: document.getElementById('visual-novel-wrapper').getBoundingClientRect().left,
                     top: document.getElementById('visual-novel-wrapper').getBoundingClientRect().top,
@@ -126,6 +132,7 @@ for (const viewport of VIEWPORTS) {
         });
 
         expect(geometry.mode).toBe(viewport.expectedMode);
+        expect(geometry.panelUsesDialogFrame).toBeTruthy();
         expect(geometry.panel.top).toBeGreaterThanOrEqual(geometry.topBar.bottom - 1);
         expect(geometry.sendFormVisible).toBe(true);
         expect(geometry.sendTextareaVisible).toBe(true);
@@ -149,6 +156,9 @@ for (const viewport of VIEWPORTS) {
         } else {
             expect(geometry.panelIntersectsChat, JSON.stringify(geometry)).toBe(false);
             expect(geometry.panelIntersectsComposer).toBe(false);
+            if (viewport.width === 1440 && viewport.height === 900) expect(geometry.panelIntersectsShell).toBe(false);
+            expect(geometry.panelShadow).not.toBe('none');
+            expect(geometry.panelChatEdge).toContain('inset');
             expect(geometry.panelIsAboveZoomedAvatar).toBe(true);
             expect(Number(geometry.panelZIndex)).toBeGreaterThan(Number(geometry.avatarZIndex));
             if (viewport.width >= 1200) {

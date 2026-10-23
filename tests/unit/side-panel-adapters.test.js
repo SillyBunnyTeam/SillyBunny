@@ -2,7 +2,7 @@
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom DOM assertions. */
 import { afterEach, expect, jest, test } from '@jest/globals';
 
-jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join('') }));
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join(''), translate: value => value }));
 const adapters = await import('../../public/scripts/sillybunny-editor/adapters/side-panels.js');
 const { releaseRowIds } = await import('../../public/scripts/sillybunny-editor/rows.js');
 

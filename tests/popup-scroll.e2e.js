@@ -10,7 +10,26 @@ async function openCreateProfile(page, viewport) {
     await page.goto('/');
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
-    await page.evaluate(() => document.getElementById('create_connection_profile').click());
+    await page.evaluate(async () => {
+        const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+        const content = document.createElement('div');
+        for (let index = 0; index < 12; index++) {
+            const label = document.createElement('label');
+            label.className = 'checkbox_label';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = 'exclude';
+            input.value = `fixture-command-${index}`;
+            input.checked = true;
+            const text = document.createElement('span');
+            text.textContent = `Fixture command ${index + 1}: a long value that makes the profile dialog scroll`;
+            label.append(input, text);
+            content.append(label);
+        }
+        content.insertAdjacentHTML('afterbegin', '<h3>Creating a Connection Profile</h3>');
+        window.qaPopupScroll = new Popup(content, POPUP_TYPE.INPUT, 'QA profile', { rows: 4 });
+        void window.qaPopupScroll.show();
+    });
     const dialog = page.locator('dialog.popup[open]').filter({ has: page.locator('input[name="exclude"]') });
     await expect(dialog.locator('input[name="exclude"]').first()).toBeAttached();
     return dialog;
