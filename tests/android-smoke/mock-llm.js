@@ -5,7 +5,7 @@ import path from 'node:path';
 import { closeHttpServer, guardRequestHandler, listenOnFixturePort, parseRequestTarget } from './ports.js';
 
 export const MOCK_MODEL_ID = 'sillybunny-smoke';
-export const MOCK_REPLY = 'lorum ipsum';
+export const MOCK_REPLY = 'mock reply';
 export const MOCK_CREATED = 1767225600;
 export const DEFAULT_MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 
@@ -30,7 +30,7 @@ function sendJson(response, status, body, headers = {}) {
 }
 
 function sendError(response, status, type, headers = {}) {
-    sendJson(response, status, { error: { message: 'lorum ipsum', type, code: null } }, headers);
+    sendJson(response, status, { error: { message: 'TODO(copy)', type, code: null } }, headers);
 }
 
 function readJson(request, limit) {

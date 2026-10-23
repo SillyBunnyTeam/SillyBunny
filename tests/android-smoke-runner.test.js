@@ -969,7 +969,7 @@ describe('adb.js app files', () => {
     const pkg = DEFAULT_PACKAGE;
 
     test('encodes whole inputs as base64 in 76-column lines', () => {
-        expect(base64Lines('lorum ipsum\n')).toBe('bG9ydW0gaXBzdW0K\n');
+        expect(base64Lines('TODO(copy)\n')).toBe('VE9ETyhjb3B5KQo=\n');
         expect(base64Lines(Buffer.alloc(0))).toBe('\n');
         const lines = base64Lines(BINARY).split('\n');
         expect(lines.pop()).toBe('');
@@ -980,7 +980,7 @@ describe('adb.js app files', () => {
 
     test('writes through adb shell as base64, so a failed device command fails the write', async () => {
         const adb = new RecordingAdb();
-        await adb.writeAppFile(pkg, 'files/SillyBunny/.git/HEAD', 'lorum ipsum\n', { timeoutMs: 1_000 });
+        await adb.writeAppFile(pkg, 'files/SillyBunny/.git/HEAD', 'TODO(copy)\n', { timeoutMs: 1_000 });
         await adb.untarIntoApp(pkg, 'files/SillyBunny/plugins', Buffer.from('tar'));
         expect(adb.calls.map(call => call.args)).toEqual([
             ['shell', `run-as ${pkg} sh -c 'base64 -d > files/SillyBunny/.git/HEAD'`],
@@ -988,7 +988,7 @@ describe('adb.js app files', () => {
         ]);
         // No `check: false`, so Adb#run throws on the exit status that `adb shell` reports.
         expect(adb.calls.map(({ options }) => [options.input, options.check, options.timeoutMs])).toEqual([
-            ['bG9ydW0gaXBzdW0K\n', undefined, 1_000],
+            ['VE9ETyhjb3B5KQo=\n', undefined, 1_000],
             ['dGFy\n', undefined, 300_000],
         ]);
     });
@@ -1034,9 +1034,9 @@ describePosix('adb.js app files through a stand-in adb and run-as', () => {
         const device = fakeDevice();
         try {
             await device.adb.runAs(DEFAULT_PACKAGE, ['mkdir', '-p', 'files/SillyBunny/.git']);
-            await device.adb.writeAppFile(DEFAULT_PACKAGE, 'files/SillyBunny/.git/HEAD', 'lorum ipsum\n');
+            await device.adb.writeAppFile(DEFAULT_PACKAGE, 'files/SillyBunny/.git/HEAD', 'TODO(copy)\n');
             expect(device.commands().slice(-1)).toEqual([`run-as ${DEFAULT_PACKAGE} sh -c 'base64 -d > files/SillyBunny/.git/HEAD'`]);
-            expect(device.file('files/SillyBunny/.git/HEAD').toString('utf8')).toBe('lorum ipsum\n');
+            expect(device.file('files/SillyBunny/.git/HEAD').toString('utf8')).toBe('TODO(copy)\n');
 
             const odd = 'files/SillyBunny/data/default-user/chats/smoke fixture/it\'s "x".jsonl';
             await device.adb.runAs(DEFAULT_PACKAGE, ['mkdir', '-p', path.posix.dirname(odd)]);
@@ -1275,7 +1275,7 @@ describe('smoke-steps: the WebView and the frontend', () => {
         await expect(settleFrontend(page, { intervalMs: 1 })).resolves.toEqual({ answered: ['popup', 'onboarding', 'wizard'] });
         // Five quiet polls in a row after the last answer; the quiet poll before the wizard does not count.
         expect(page.names).toHaveLength(10);
-        expect(new Set(page.names)).toEqual(new Set(['lorum ipsum']));
+        expect(new Set(page.names)).toEqual(new Set(['TODO(copy)']));
     });
 
     test('settleFrontend counts a failed look, a preloader or a missing APP_READY as not settled', async () => {

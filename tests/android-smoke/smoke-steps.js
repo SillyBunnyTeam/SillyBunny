@@ -439,7 +439,7 @@ async function webPage(ctx, signal) {
 }
 
 /** Test input for the persona name the frontend's onboarding prompt asks for. */
-const PERSONA_NAME = 'lorum ipsum';
+const PERSONA_NAME = 'TODO(copy)';
 /** Polls in a row with the frontend booted and no prompt to answer. */
 const SETTLED_POLLS = 5;
 
@@ -722,7 +722,7 @@ async function stepChat(ctx, signal) {
     await settleFrontend(page, { signal, timeoutMs: 120_000 });
     await page.evaluate(() => {
         const textarea = document.getElementById('send_textarea');
-        textarea.value = 'lorum ipsum';
+        textarea.value = 'TODO(copy)';
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await page.locator('#send_but').click();
@@ -1083,7 +1083,7 @@ async function stepRepair(ctx, signal) {
     const hadExtensions = await appPathExists(ctx, extensionsDir, signal);
     const hadPlugin = await appPathExists(ctx, `${CHECKOUT_DIR}/plugins/${PLUGIN_ID}`, signal);
     // Corrupt the checkout's repository: HEAD no longer names a ref, so git cannot read it.
-    await ctx.adb.writeAppFile(ctx.pkg, `${CHECKOUT_DIR}/.git/HEAD`, 'lorum ipsum\n', { signal });
+    await ctx.adb.writeAppFile(ctx.pkg, `${CHECKOUT_DIR}/.git/HEAD`, 'TODO(copy)\n', { signal });
     await forceStop(ctx, signal);
     await runUi(ctx, 'repair', { openSettingsTag: ctx.options.uiTags.openSettings, timeoutSeconds: 40 * 60 }, { timeoutMs: 42 * 60_000, signal });
     const head = await checkoutHead(ctx, signal);

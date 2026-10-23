@@ -134,7 +134,7 @@ export function guardRequestHandler(handler, record) {
             const status = response.headersSent ? response.statusCode : 500;
             try {
                 if (!response.headersSent) {
-                    const text = 'lorum ipsum\n';
+                    const text = 'TODO(copy)\n';
                     response.writeHead(500, {
                         'Content-Type': 'text/plain; charset=utf-8',
                         'Content-Length': Buffer.byteLength(text),

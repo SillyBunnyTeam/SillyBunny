@@ -154,7 +154,7 @@ function createSourceRepo(dir, files = {}) {
         ...files,
     });
     runGit(['-C', dir, 'add', '--all']);
-    runGit(['-C', dir, 'commit', '--quiet', '-m', 'lorum ipsum']);
+    runGit(['-C', dir, 'commit', '--quiet', '-m', 'TODO(copy)']);
     return {
         path: dir,
         head: runGit(['-C', dir, 'rev-parse', 'HEAD']),
@@ -453,12 +453,12 @@ describe('fixture request handling', () => {
         const logged = [];
         const server = http.createServer(guardRequestHandler(async (incoming, response) => {
             if (incoming.url === '/before-headers') {
-                throw new Error('lorum ipsum');
+                throw new Error('TODO(copy)');
             }
             if (incoming.url === '/after-headers') {
                 response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
                 response.write('lorum');
-                throw new Error('lorum ipsum');
+                throw new Error('TODO(copy)');
             }
             response.end('ok');
         }, entry => logged.push(entry)));
@@ -466,13 +466,13 @@ describe('fixture request handling', () => {
         onCleanup(() => closeHttpServer(server));
 
         const failed = await request(`http://127.0.0.1:${port}/before-headers`);
-        expect([failed.status, failed.headers['content-type'], failed.body.toString('utf8')]).toEqual([500, 'text/plain; charset=utf-8', 'lorum ipsum\n']);
+        expect([failed.status, failed.headers['content-type'], failed.body.toString('utf8')]).toEqual([500, 'text/plain; charset=utf-8', 'TODO(copy)\n']);
         // Once the status line is out, the only honest answer is a reset.
         await expect(request(`http://127.0.0.1:${port}/after-headers`)).rejects.toThrow();
         expect((await request(`http://127.0.0.1:${port}/`)).body.toString('utf8')).toBe('ok');
         expect(logged).toEqual([
-            { time: expect.any(String), method: 'GET', path: '/before-headers', status: 500, error: 'lorum ipsum' },
-            { time: expect.any(String), method: 'GET', path: '/after-headers', status: 200, error: 'lorum ipsum' },
+            { time: expect.any(String), method: 'GET', path: '/before-headers', status: 500, error: 'TODO(copy)' },
+            { time: expect.any(String), method: 'GET', path: '/after-headers', status: 200, error: 'TODO(copy)' },
         ]);
     });
 });
@@ -584,7 +584,7 @@ describe('git smart-HTTP server', () => {
         const checkout = path.join(dir, 'push');
         await runGitAsync(['clone', '--quiet', server.urlFor(plugin.name), checkout], { env });
         fs.writeFileSync(path.join(checkout, 'index.js'), 'export const info = {};\n');
-        await runGitAsync(['-C', checkout, 'commit', '--quiet', '--all', '-m', 'lorum ipsum'], { env });
+        await runGitAsync(['-C', checkout, 'commit', '--quiet', '--all', '-m', 'TODO(copy)'], { env });
 
         const branchPush = await gitResultAsync(['-C', checkout, 'push', 'origin', 'HEAD:main'], { env });
         expect(branchPush.status).not.toBe(0);
@@ -643,7 +643,7 @@ describe('git smart-HTTP server', () => {
     test('answers request targets that URL rejects with 400 and keeps serving', async () => {
         for (const target of MALFORMED_TARGETS) {
             const reply = await rawExchange(server.port, malformedRequest(target));
-            expect([target, reply.split('\r\n')[0], reply.includes('\r\n\r\n') && reply.includes('lorum ipsum\n')]).toEqual([target, 'HTTP/1.1 400 Bad Request', true]);
+            expect([target, reply.split('\r\n')[0], reply.includes('\r\n\r\n') && reply.includes('TODO(copy)\n')]).toEqual([target, 'HTTP/1.1 400 Bad Request', true]);
         }
         // Backend requests are logged when the backend exits, so select by path rather than by position.
         const logged = server.requests.filter(entry => MALFORMED_TARGETS.includes(entry.path));
@@ -721,9 +721,9 @@ describe('fixture repository builders', () => {
     test('builds the SillyBunny remote from another revision of the source', () => {
         const dir = scratchDir('remote-ref');
         const source = createSourceRepo(path.join(dir, 'source'));
-        writeFiles(source.path, { 'later.txt': 'lorum ipsum\n' });
+        writeFiles(source.path, { 'later.txt': 'TODO(copy)\n' });
         runGit(['-C', source.path, 'add', '--all']);
-        runGit(['-C', source.path, 'commit', '--quiet', '-m', 'lorum ipsum']);
+        runGit(['-C', source.path, 'commit', '--quiet', '-m', 'TODO(copy)']);
 
         const remote = buildSillyBunnyRemote({ root: path.join(dir, 'repos'), source: source.path, ref: 'HEAD~1', tmpDir: path.join(dir, 'tmp') });
         expect(remote).toMatchObject({ sourceCommit: source.head, sourceTree: source.tree });
@@ -757,8 +757,8 @@ describe('fixture repository builders', () => {
         expect(marker).toEqual({ branch: 'release', parent: remote.commit, commit: expect.stringMatching(/^[0-9a-f]{40}$/), marker: MARKER_PATH });
         expect(runGit(['-C', remote.path, 'show', `release:${MARKER_PATH}`])).toBe(`release ${remote.commit}`);
         expect(runGit(['-C', remote.path, 'rev-parse', 'release^'])).toBe(remote.commit);
-        const custom = pushMarkerCommit({ repo: remote.path, branch: 'staging', marker: 'step-4.txt', contents: 'lorum ipsum\n' });
-        expect(runGit(['-C', remote.path, 'show', 'staging:step-4.txt'])).toBe('lorum ipsum');
+        const custom = pushMarkerCommit({ repo: remote.path, branch: 'staging', marker: 'step-4.txt', contents: 'TODO(copy)\n' });
+        expect(runGit(['-C', remote.path, 'show', 'staging:step-4.txt'])).toBe('TODO(copy)');
 
         const raised = raiseMinAppVersion({ repo: remote.path, branch: 'release', above: 41 });
         expect(raised).toEqual({ branch: 'release', parent: marker.commit, commit: expect.stringMatching(/^[0-9a-f]{40}$/), minAppVersion: 42 });
@@ -779,7 +779,7 @@ describe('fixture repository builders', () => {
 
         const manifest = JSON.parse(runGit(['-C', extension.path, 'show', `${initial}:manifest.json`]));
         // public/scripts/extensions.js reads these fields; js and css name files in the repository.
-        expect(manifest).toMatchObject({ display_name: 'lorum ipsum', js: 'index.js', css: 'style.css', requires: [], optional: [], loading_order: 100, version: '1.0.0' });
+        expect(manifest).toMatchObject({ display_name: 'TODO(copy)', js: 'index.js', css: 'style.css', requires: [], optional: [], loading_order: 100, version: '1.0.0' });
         expect(runGit(['-C', extension.path, 'ls-tree', '--name-only', initial]).split('\n').sort()).toEqual(['index.js', 'manifest.json', 'style.css']);
         const revisions = [[initial, 1, 'main', '1.0.0'], [update, 2, 'main', '1.1.0'], [next, 3, 'next', '2.0.0']].map(([commit, revision, branch, version]) => {
             const sandbox = {};
@@ -808,7 +808,7 @@ describe('fixture repository builders', () => {
         const checkout = path.join(dir, 'checkout');
         runGit(['clone', '--quiet', plugin.path, checkout]);
         const module = await import(pathToFileURL(path.join(checkout, 'index.js')).href);
-        expect(module.info).toEqual({ id: PLUGIN_ID, name: 'lorum ipsum', description: 'lorum ipsum' });
+        expect(module.info).toEqual({ id: PLUGIN_ID, name: 'TODO(copy)', description: 'TODO(copy)' });
         expect(module.info.id).toMatch(/^[a-z0-9_-]+$/);
         expect(typeof module.exit).toBe('function');
         const routes = [];
@@ -896,7 +896,7 @@ describe('mock LLM', () => {
     });
 
     test('returns a canned non-streaming completion and records the request', async () => {
-        const messages = [{ role: 'system', content: 'lorum ipsum' }, { role: 'user', content: 'lorum ipsum' }];
+        const messages = [{ role: 'system', content: 'TODO(copy)' }, { role: 'user', content: 'TODO(copy)' }];
         const before = llm.requests.length;
         const response = await postJson(`${llm.baseUrl}/chat/completions`, { model: 'requested-model', messages, stream: false });
         expect(response.status).toBe(200);
@@ -911,7 +911,7 @@ describe('mock LLM', () => {
     });
 
     test('streams SSE chunks that end with a [DONE] frame', async () => {
-        const messages = [{ role: 'user', content: 'lorum ipsum' }];
+        const messages = [{ role: 'user', content: 'TODO(copy)' }];
         const response = await postJson(`${llm.baseUrl}/chat/completions`, { model: MOCK_MODEL_ID, messages, stream: true });
         expect(response.status).toBe(200);
         expect(response.headers['content-type']).toBe('text/event-stream; charset=utf-8');
@@ -934,7 +934,7 @@ describe('mock LLM', () => {
     });
 
     test('streams the same deterministic frames every time', async () => {
-        const body = { model: MOCK_MODEL_ID, messages: [{ role: 'user', content: 'lorum ipsum' }], stream: true };
+        const body = { model: MOCK_MODEL_ID, messages: [{ role: 'user', content: 'TODO(copy)' }], stream: true };
         const first = (await postJson(`${llm.baseUrl}/chat/completions`, body)).body.toString('utf8');
         const second = (await postJson(`${llm.baseUrl}/chat/completions`, body)).body.toString('utf8');
         const normalize = text => text.replace(/chatcmpl-smoke-\d+/g, 'chatcmpl-smoke-N');
@@ -947,7 +947,7 @@ describe('mock LLM', () => {
         expect((await request(`${llm.baseUrl}/chat/completions`)).status).toBe(405);
         const invalid = await request(`${llm.baseUrl}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
         expect(invalid.status).toBe(400);
-        expect(JSON.parse(invalid.body.toString('utf8'))).toEqual({ error: { message: 'lorum ipsum', type: 'invalid_request_error', code: null } });
+        expect(JSON.parse(invalid.body.toString('utf8'))).toEqual({ error: { message: 'TODO(copy)', type: 'invalid_request_error', code: null } });
         expect((await postJson(`${llm.baseUrl}/chat/completions`, { model: MOCK_MODEL_ID })).status).toBe(400);
 
         const small = await startMockLlm({ maxRequestBytes: 64 });
@@ -965,7 +965,7 @@ describe('mock LLM', () => {
         for (const target of MALFORMED_TARGETS) {
             const reply = await rawExchange(llm.port, malformedRequest(target));
             expect([target, reply.split('\r\n')[0]]).toEqual([target, 'HTTP/1.1 400 Bad Request']);
-            expect(JSON.parse(reply.slice(reply.indexOf('\r\n\r\n') + 4))).toEqual({ error: { message: 'lorum ipsum', type: 'invalid_request_error', code: null } });
+            expect(JSON.parse(reply.slice(reply.indexOf('\r\n\r\n') + 4))).toEqual({ error: { message: 'TODO(copy)', type: 'invalid_request_error', code: null } });
         }
         const logged = llm.requests.filter(entry => MALFORMED_TARGETS.includes(entry.path));
         expect(logged).toEqual(MALFORMED_TARGETS.map(target => ({ time: expect.any(String), method: 'GET', path: target, status: 400 })));
@@ -983,10 +983,10 @@ describe('update static server', () => {
         writeFiles(path.join(dir, 'root'), {
             'SillyBunny-android-x86_64.apk': apk,
             'android-update.json': '{}\n',
-            'notes.txt': 'lorum ipsum\n',
+            'notes.txt': 'TODO(copy)\n',
             'empty.apk': '',
             '.hidden.json': '{}\n',
-            'nested/file.bin': 'lorum ipsum',
+            'nested/file.bin': 'TODO(copy)',
         });
         server = await startStaticServer({ root: path.join(dir, 'root'), logFile: path.join(dir, 'update.jsonl') });
     });
@@ -1040,7 +1040,7 @@ describe('update static server', () => {
     test('answers request targets that URL rejects with 400 and keeps serving', async () => {
         for (const target of MALFORMED_TARGETS) {
             const reply = await rawExchange(server.port, malformedRequest(target));
-            expect([target, reply.split('\r\n')[0], reply.endsWith('\r\n\r\nlorum ipsum\n')]).toEqual([target, 'HTTP/1.1 400 Bad Request', true]);
+            expect([target, reply.split('\r\n')[0], reply.endsWith('\r\n\r\nTODO(copy)\n')]).toEqual([target, 'HTTP/1.1 400 Bad Request', true]);
         }
         const logged = server.requests.filter(entry => MALFORMED_TARGETS.includes(entry.path));
         expect(logged.map(entry => [entry.path, entry.status])).toEqual(MALFORMED_TARGETS.map(target => [target, 400]));
@@ -1148,13 +1148,13 @@ describe('update manifest', () => {
         ['NaN', VALID_MANIFEST.replace('"versionCode":2', '"versionCode":NaN'), 'json.tokens'],
         ['a capitalised literal', VALID_MANIFEST.replace('"prerelease":false', '"prerelease":False'), 'json.tokens'],
         ['a single-quoted string', VALID_MANIFEST.replace('"1.0.1"', '\'1.0.1\''), 'json.tokens'],
-        ['a comment', `// lorum ipsum\n${VALID_MANIFEST}`, 'json.tokens'],
+        ['a comment', `// TODO(copy)\n${VALID_MANIFEST}`, 'json.tokens'],
         ['an invalid escape', VALID_MANIFEST.replace('"v2.0.0"', '"v2.0.0\\x41"'), 'json.tokens'],
         ['a leading zero', VALID_MANIFEST.replace('"versionCode":2', '"versionCode":02'), 'json.tokens'],
         ['an exponent versionCode', VALID_MANIFEST.replace('"versionCode":2', '"versionCode":2e0'), 'versionCode'],
         ['a versionCode above Long.MAX_VALUE', VALID_MANIFEST.replace('"versionCode":2', '"versionCode":9223372036854775808'), 'versionCode'],
         ['a lone surrogate', VALID_MANIFEST.replace('"1.0.1"', '"1.0.1\\ud800"'), 'json.unicode'],
-        ['a top-level string', '"lorum ipsum"', 'json.top-level'],
+        ['a top-level string', '"TODO(copy)"', 'json.top-level'],
         ['a top-level array', '[]', 'root'],
         ['trailing data', `${VALID_MANIFEST} {}`, 'json.trailing'],
         ['nesting deeper than 32 levels', VALID_MANIFEST.replace('{', `{"deep":${'['.repeat(40)}${']'.repeat(40)},`), 'json.limits'],
@@ -1322,7 +1322,7 @@ describe('update manifest', () => {
             'ftp://example.com/android-update.json',
             'https://user@example.com/android-update.json',
             'https://example.com/android-update.json#latest',
-            'https://example.com/lorum ipsum.json',
+            'https://example.com/a b.json',
             'https://example.com/a[1].json',
             'https://example.com/%zz.json',
             'https://example.com:0/android-update.json',
@@ -1416,7 +1416,7 @@ describe('update manifest', () => {
             const storeArgs = ['-keystore', keystore, '-storetype', 'PKCS12', '-storepass', 'fixture-store', '-alias', 'fixture'];
             run(keytool, ['-genkeypair', ...storeArgs, '-keypass', 'fixture-store', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '2', '-dname', 'CN=fixture']);
             run(keytool, ['-exportcert', ...storeArgs, '-file', path.join(dir, 'cert.der')]);
-            fs.writeFileSync(path.join(dir, 'unsigned.apk'), storedZip({ 'AndroidManifest.xml': Buffer.from('lorum ipsum'), 'classes.dex': Buffer.from('lorum ipsum') }));
+            fs.writeFileSync(path.join(dir, 'unsigned.apk'), storedZip({ 'AndroidManifest.xml': Buffer.from('TODO(copy)'), 'classes.dex': Buffer.from('TODO(copy)') }));
             run(apksigner.command, [
                 ...apksigner.args, 'sign', '--ks', keystore, '--ks-type', 'PKCS12', '--ks-pass', 'pass:fixture-store', '--key-pass', 'pass:fixture-store',
                 '--ks-key-alias', 'fixture', '--min-sdk-version', '29', '--v4-signing-enabled', 'false', '--out', path.join(dir, 'signed.apk'), path.join(dir, 'unsigned.apk'),
@@ -1447,7 +1447,7 @@ describe('update manifest', () => {
 });
 
 describe('data-safety helper', () => {
-    const chatFile = `${DATA_USER}/chats/smoke-fixture/lorum ipsum.jsonl`;
+    const chatFile = `${DATA_USER}/chats/smoke-fixture/TODO(copy).jsonl`;
     const cardFile = `${DATA_USER}/characters/${CHARACTER_FILE}`;
     const secretsFile = `${DATA_USER}/secrets.json`;
 
@@ -1466,14 +1466,14 @@ describe('data-safety helper', () => {
         expect(JSON.parse(readCharacterCard(card))).toEqual(fixtureCharacterCard());
 
         const lines = fs.readFileSync(path.join(root, ...chatFile.split('/')), 'utf8').trimEnd().split('\n').map(line => JSON.parse(line));
-        expect(lines[0]).toMatchObject({ character_name: 'lorum ipsum', chat_metadata: {} });
-        expect(lines.slice(1).map(line => [line.is_user, line.mes])).toEqual([[false, 'lorum ipsum'], [true, 'lorum ipsum']]);
+        expect(lines[0]).toMatchObject({ character_name: 'TODO(copy)', chat_metadata: {} });
+        expect(lines.slice(1).map(line => [line.is_user, line.mes])).toEqual([[false, 'TODO(copy)'], [true, 'TODO(copy)']]);
 
         // The current secrets format: the server's flat-secrets migration leaves it alone.
         const secrets = readJson(path.join(root, ...secretsFile.split('/')));
         expect(secrets._migrated).toEqual([]);
         expect(Object.values(secrets).every(Array.isArray)).toBe(true);
-        expect(secrets.api_key_openai).toEqual([{ id: expect.any(String), value: expect.any(String), label: 'lorum ipsum', active: true }]);
+        expect(secrets.api_key_openai).toEqual([{ id: expect.any(String), value: expect.any(String), label: 'TODO(copy)', active: true }]);
     });
 
     test('computes the same manifest for the same content, whatever the timestamps', async () => {
@@ -1672,9 +1672,9 @@ describe('launcher CLI', () => {
         expect(reused.plugin).toMatchObject({ commits: built.plugin.commits, tags: built.plugin.tags });
 
         // A new source commit is refused rather than served from the old tree; the old commit by --ref still matches.
-        writeFiles(source.path, { 'later.txt': 'lorum ipsum\n' });
+        writeFiles(source.path, { 'later.txt': 'TODO(copy)\n' });
         runGit(['-C', source.path, 'add', '--all']);
-        runGit(['-C', source.path, 'commit', '--quiet', '-m', 'lorum ipsum']);
+        runGit(['-C', source.path, 'commit', '--quiet', '-m', 'TODO(copy)']);
         await expect(start()).rejects.toThrow(`SillyBunny.git was built from ${source.head}, not `);
         await (await start({ ref: 'HEAD~1' })).close();
 
@@ -1692,7 +1692,7 @@ describe('launcher CLI', () => {
         const result = runCli(['start', '--services', 'git', '--scratch', run, '--source', source.path, '--watch-stdin']);
         expect(result).toMatchObject({
             status: 1,
-            json: { ok: false, error: 'lorum ipsum', code: 'failed', detail: expect.stringContaining('SillyBunny.git has no complete build record') },
+            json: { ok: false, error: 'TODO(copy)', code: 'failed', detail: expect.stringContaining('SillyBunny.git has no complete build record') },
         });
         expect(readRefs(partial).heads).toEqual({});
         expect(fs.existsSync(path.join(run, 'git-fixtures.json'))).toBe(false);
@@ -1711,11 +1711,11 @@ describe('launcher CLI', () => {
         expect(raised).toMatchObject({ status: 0, json: { ok: true, branch: 'release', parent: marker.json.commit, minAppVersion: 8 } });
         expect(runGit(['-C', remote.path, 'show', `release:${MIN_APP_VERSION_PATH}`])).toBe('8');
         expect(runCli(['publish', '--repo', plugin.path]).json).toEqual({ ok: true, repo: plugin.path, branch: 'main', parent: plugin.commits.initial, commit: plugin.commits.update });
-        expect(runCli(['publish', '--repo', plugin.path])).toMatchObject({ status: 1, json: { ok: false, error: 'lorum ipsum', code: 'failed' } });
+        expect(runCli(['publish', '--repo', plugin.path])).toMatchObject({ status: 1, json: { ok: false, error: 'TODO(copy)', code: 'failed' } });
 
         const data = path.join(scratch, 'data');
         const seeded = runCli(['seed-data', '--dir', data]);
-        expect(seeded).toMatchObject({ status: 0, json: { ok: true, dir: data, files: [`${DATA_USER}/characters/${CHARACTER_FILE}`, `${DATA_USER}/chats/smoke-fixture/lorum ipsum.jsonl`, `${DATA_USER}/secrets.json`] } });
+        expect(seeded).toMatchObject({ status: 0, json: { ok: true, dir: data, files: [`${DATA_USER}/characters/${CHARACTER_FILE}`, `${DATA_USER}/chats/smoke-fixture/TODO(copy).jsonl`, `${DATA_USER}/secrets.json`] } });
         const baseline = path.join(scratch, 'baseline.json');
         fs.writeFileSync(baseline, seeded.lines[0]);
         expect(runCli(['checksum', '--dir', data, '--baseline', baseline])).toMatchObject({ status: 0, json: { ok: true, changed: [], removed: [], added: [] } });
@@ -1726,14 +1726,14 @@ describe('launcher CLI', () => {
         fs.appendFileSync(path.join(data, DATA_USER, 'secrets.json'), ' ');
         expect(runCli(['checksum', '--dir', data, '--baseline', baseline])).toMatchObject({ status: 1, json: { ok: false, changed: [`${DATA_USER}/secrets.json`] } });
 
-        expect(runCli(['--help'])).toMatchObject({ status: 0, lines: ['lorum ipsum'] });
-        expect(runCli(['push-marker', '--branch', 'release'])).toMatchObject({ status: 2, json: { ok: false, error: 'lorum ipsum', code: 'missing-option', option: 'repo' } });
+        expect(runCli(['--help'])).toMatchObject({ status: 0, lines: ['TODO(copy)'] });
+        expect(runCli(['push-marker', '--branch', 'release'])).toMatchObject({ status: 2, json: { ok: false, error: 'TODO(copy)', code: 'missing-option', option: 'repo' } });
         expect(runCli(['raise-min-app-version', '--repo', remote.path, '--branch', 'release', '--above', 'x'])).toMatchObject({ status: 2, json: { code: 'invalid-integer', option: 'above' } });
         expect(runCli(['start', '--services', 'git,ftp'])).toMatchObject({ status: 2, json: { code: 'unknown-service', value: 'ftp' } });
         expect(runCli(['manifest', '--dir', scratch, '--apk', 'x86_64'])).toMatchObject({ status: 2, json: { code: 'invalid-apk' } });
         expect(runCli(['frobnicate'])).toMatchObject({ status: 2, json: { code: 'unknown-command', value: 'frobnicate' } });
         expect(runCli(['heads', '--bogus'])).toMatchObject({ status: 2, json: { code: 'invalid-arguments' } });
         const failed = runCli(['heads', '--repo', path.join(scratch, 'missing.git')]);
-        expect(failed).toMatchObject({ status: 1, json: { ok: false, error: 'lorum ipsum', code: 'failed', detail: expect.any(String) } });
+        expect(failed).toMatchObject({ status: 1, json: { ok: false, error: 'TODO(copy)', code: 'failed', detail: expect.any(String) } });
     }, 120000);
 });

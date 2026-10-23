@@ -4,9 +4,9 @@ import path from 'node:path';
 
 export const DATA_USER = 'default-user';
 export const CHARACTER_FILE = 'smoke-fixture.png';
-export const CHAT_NAME = 'lorum ipsum';
+export const CHAT_NAME = 'TODO(copy)';
 
-const CHARACTER_NAME = 'lorum ipsum';
+const CHARACTER_NAME = 'TODO(copy)';
 const CREATE_DATE = '2026-01-01@00h00m00s000ms';
 const SEND_DATE = 'January 1, 2026 12:00am';
 
@@ -71,10 +71,10 @@ export function createCharacterCardPng(card) {
 export function fixtureCharacterCard() {
     const data = {
         name: CHARACTER_NAME,
-        description: 'lorum ipsum',
+        description: 'TODO(copy)',
         personality: '',
         scenario: '',
-        first_mes: 'lorum ipsum',
+        first_mes: 'TODO(copy)',
         mes_example: '',
         creator_notes: '',
         system_prompt: '',
@@ -114,8 +114,8 @@ export function dataFixtureFiles(user = DATA_USER) {
     const characterId = path.posix.basename(CHARACTER_FILE, '.png');
     const chat = [
         { user_name: 'User', character_name: CHARACTER_NAME, create_date: CREATE_DATE, chat_metadata: {} },
-        { name: CHARACTER_NAME, is_user: false, is_system: false, send_date: SEND_DATE, mes: 'lorum ipsum', extra: {} },
-        { name: 'User', is_user: true, is_system: false, send_date: SEND_DATE, mes: 'lorum ipsum', extra: {} },
+        { name: CHARACTER_NAME, is_user: false, is_system: false, send_date: SEND_DATE, mes: 'TODO(copy)', extra: {} },
+        { name: 'User', is_user: true, is_system: false, send_date: SEND_DATE, mes: 'TODO(copy)', extra: {} },
     ].map(line => JSON.stringify(line)).join('\n');
     // The current secrets format (arrays plus _migrated), so the server has nothing to migrate.
     const secrets = {
@@ -123,7 +123,7 @@ export function dataFixtureFiles(user = DATA_USER) {
         api_key_openai: [{
             id: '00000000-0000-4000-8000-000000000001',
             value: 'sk-sillybunny-smoke-fixture',
-            label: 'lorum ipsum',
+            label: 'TODO(copy)',
             active: true,
         }],
     };

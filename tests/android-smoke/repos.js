@@ -23,7 +23,7 @@ export const MIN_APP_VERSION_PATH = 'android/min-app-version';
 /** Refs under this prefix hold commits that are built but not yet published (hidden by the git server). */
 export const PENDING_PREFIX = 'refs/fixture/pending/';
 
-const COMMIT_MESSAGE = 'lorum ipsum';
+const COMMIT_MESSAGE = 'TODO(copy)';
 const COMMIT_STEP_SECONDS = 60;
 const ZERO_OID = '0'.repeat(40);
 
@@ -327,13 +327,13 @@ function json(value, indent = 4) {
 export function extensionFiles({ version, revision, branch }) {
     return {
         'manifest.json': json({
-            display_name: 'lorum ipsum',
+            display_name: 'TODO(copy)',
             loading_order: 100,
             requires: [],
             optional: [],
             js: 'index.js',
             css: 'style.css',
-            author: 'lorum ipsum',
+            author: 'TODO(copy)',
             version,
             auto_update: false,
         }),
@@ -416,8 +416,8 @@ export function pluginFiles({ version, revision }) {
             '// Android smoke fixture: a minimal server plugin with a probe route.',
             'export const info = {',
             `    id: '${PLUGIN_ID}',`,
-            '    name: \'lorum ipsum\',',
-            '    description: \'lorum ipsum\',',
+            '    name: \'TODO(copy)\',',
+            '    description: \'TODO(copy)\',',
             '};',
             '',
             `const probe = Object.freeze(${JSON.stringify({ id: PLUGIN_ID, version, revision })});`,

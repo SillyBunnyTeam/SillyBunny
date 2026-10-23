@@ -285,7 +285,7 @@ export async function startGitServer({
         const refuse = (status) => {
             entry.refused = true;
             response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'close' });
-            response.end('lorum ipsum\n');
+            response.end('TODO(copy)\n');
             finish(status);
         };
 
@@ -386,7 +386,7 @@ export async function startGitServer({
         const fail = () => {
             if (!response.headersSent) {
                 response.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8', 'Connection': 'close' });
-                response.end('lorum ipsum\n');
+                response.end('TODO(copy)\n');
                 status = 502;
             } else {
                 response.destroy();
