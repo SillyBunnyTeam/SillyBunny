@@ -1157,6 +1157,10 @@ def expand_shell(value, variables):
 
 IMPORT = re.compile(r'\$\(\. "\$TERMUX_SCRIPTDIR/((?:packages|x11-packages)/[a-z0-9+.-]+/build\.sh)"; echo "\$(TERMUX_PKG_(?:VERSION|SRCURL|SHA256))"\)')
 DATE_SUBSTITUTION = re.compile(r"\$\(sed 's/\\\./-/g' <<< (\$\{[A-Za-z_][A-Za-z0-9_]*(?::[0-9]+)?\})\)")
+# Only Termux's update bot runs this function, never a package build, so what it fetches is not a source. A body
+# with an unindented line stays in the text and gets the same download checks as a build step.
+AUTO_UPDATE_FUNCTION = re.compile(r'^termux_pkg_auto_update\(\)[ \t]*\{[ \t]*\n(?:(?:[ \t][^\n]*)?\n)*?\}[ \t]*$',
+                                  re.MULTILINE)
 
 
 def data_substitutions(expression, variables, read_recipe=None, trail=()):
@@ -1270,7 +1274,7 @@ def recipe_sources(text, read_recipe=None):
             pin['recipeUrl'] = original
         validate_pin(pin)
         result.append(pin)
-    logical = re.sub(r'\\\s*\n\s*', ' ', text)
+    logical = re.sub(r'\\\s*\n\s*', ' ', AUTO_UPDATE_FUNCTION.sub('', text))
     for command in re.finditer(r'^\s*termux_download\s+([^\n]+)', logical, re.MULTILINE):
         try:
             arguments = shlex.split(command[1], comments=True)

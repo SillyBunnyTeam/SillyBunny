@@ -1542,6 +1542,44 @@ TERMUX_PKG_SHA256=2213a78b773c1f87bc503fcc2914d1f3474e9aaa2cb7fc92ec5dba4867ab71
                 self.assert_source_error('unsupported-recipe-download', sources.recipe_sources, recipe)
         self.commands.assert_not_called()
 
+    def test_auto_update_function_network_commands_are_not_sources(self):
+        # Abridged from Termux's ca-certificates recipe since termux-packages d3dde8b08c (2026-10-21).
+        recipe = r'''TERMUX_PKG_VERSION="1:2026.10.20"
+TERMUX_PKG_REVISION=1
+TERMUX_PKG_SRCURL=https://curl.se/ca/cacert-$(sed 's/\./-/g' <<< ${TERMUX_PKG_VERSION:2}).pem
+TERMUX_PKG_SHA256=796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe
+TERMUX_PKG_AUTO_UPDATE=true
+
+termux_pkg_auto_update() {
+	local latest
+	latest="$(
+		curl -fsSL https://curl.se/docs/caextract.html |
+			head -n1
+	)"
+	termux_pkg_upgrade_version "${latest}"
+}
+
+termux_step_make_install() {
+	termux_download $TERMUX_PKG_SRCURL \
+		$CERTFILE \
+		$TERMUX_PKG_SHA256
+}
+'''
+        pins, _ = sources.recipe_sources(recipe)
+        self.assertEqual([pin['filename'] for pin in pins], ['cacert-2026-10-20.pem'])
+        self.commands.assert_not_called()
+
+    def test_auto_update_exclusion_fails_closed_on_other_layouts(self):
+        for layout in (
+            'termux_pkg_auto_update() {\ncurl https://example.invalid/latest\n}\n',
+            'termux_pkg_auto_update() {\n    :\n    }\ntermux_step_pre_configure() {\n    curl https://example.invalid/unpinned\n}\n',
+            'termux_pkg_auto_update() {\n    :\n}\ntermux_step_pre_configure() {\n    wget https://example.invalid/unpinned\n}\n',
+        ):
+            with self.subTest(layout=layout):
+                recipe = 'TERMUX_PKG_VERSION=1.2.3\n' + layout
+                self.assert_source_error('unsupported-recipe-download', sources.recipe_sources, recipe)
+        self.commands.assert_not_called()
+
     def test_libandroid_version_array_and_indexed_source_urls_are_parsed(self):
         recipe = '''TERMUX_PKG_VERSION=(29
                     4)
