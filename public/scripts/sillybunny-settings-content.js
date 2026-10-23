@@ -87,10 +87,11 @@ const SB_SETTINGS_TAB_SECTIONS = Object.freeze({
  * Header-adjacent controls that describe the server or the account rather than the UI shell.
  *
  * They are authored in `#user-settings-block`'s header rows because that is where the markup
- * happened to sit, but Language, Account, Usage Stats, Version, and the cache controls all act on
- * saved data or the backend, so they read as Data & Security content. They move in this order, ahead
- * of Import & Restore, so that tab opens on Language -> Account -> Usage Stats -> Version -> Clear
- * cache -> Import.
+ * happened to sit, but Language, Account, Usage Stats, Version, the cache controls, Download Backup,
+ * and Settings Snapshots all act on saved data or the backend, so they read as Data & Security
+ * content. They move in this order, ahead of Import & Restore, so that tab opens on Language ->
+ * Account -> Usage Stats -> Version -> Clear cache -> Import. The section order then puts Download
+ * Backup and Settings Snapshots in the Export category after Import.
  */
 const SB_DATA_SECURITY_SECTIONS = Object.freeze([
     '#UI-language-block',
@@ -98,6 +99,8 @@ const SB_DATA_SECURITY_SECTIONS = Object.freeze([
     '#user_stats_controls',
     '#version_display',
     '#user-settings-utility-actions',
+    '#user_backup_controls',
+    '#settings_snapshots_controls',
 ]);
 
 /** Selectors that resolve to a checkbox but whose row is the element worth moving. */
@@ -135,6 +138,8 @@ const SB_DATA_SECURITY_REQUIRED_SECTIONS = Object.freeze([
     'user_stats_controls',
     'version_display',
     'user-settings-utility-actions',
+    'user_backup_controls',
+    'settings_snapshots_controls',
 ]);
 
 /**
@@ -291,6 +296,8 @@ export const SB_SETTINGS_CATEGORY_CLASS = 'sb-settings-category';
  *   internal layout out of the boxed-list treatment.
  * - `rows`: a new category. Each selector names one row; a checkbox resolves to its label.
  *   `body` instead names an existing group that becomes the boxed list as is.
+ *   `copyPlaceholder` marks a `description` that is a `TODO(copy)` placeholder, so it is not
+ *   translated and carries `data-sb-copy-placeholder`.
  *
  * Selectors must not depend on where a row currently sits: the order is reapplied on every tab
  * activation to place content authored after the split, and a row found only in its original
@@ -455,6 +462,13 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 rows: ['#UI-language-block', '#account_controls', '#user_stats_controls', '#version_display', '#user-settings-utility-actions'],
             },
             { section: '#SillyTavernImportSection' },
+            {
+                id: 'export',
+                title: 'Export',
+                description: 'TODO(copy)',
+                copyPlaceholder: true,
+                rows: ['#user_backup_controls', '#settings_snapshots_controls'],
+            },
         ]),
     }),
 });
@@ -555,7 +569,7 @@ function ensureCategoryHeading(category) {
 
 /**
  * Creates an empty category element for `entry`.
- * @param {{id: string, title?: string, description?: string}} entry
+ * @param {{id: string, title?: string, description?: string, copyPlaceholder?: boolean}} entry
  * @returns {HTMLElement}
  */
 function createSettingsCategory(entry) {
@@ -573,7 +587,11 @@ function createSettingsCategory(entry) {
 
         if (entry.description) {
             const description = document.createElement('small');
-            description.dataset.i18n = entry.description;
+            if (entry.copyPlaceholder) {
+                description.dataset.sbCopyPlaceholder = 'true';
+            } else {
+                description.dataset.i18n = entry.description;
+            }
             description.textContent = entry.description;
             heading.appendChild(description);
         }
