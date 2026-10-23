@@ -403,6 +403,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
 
+### `src/server-startup.js` - listen retry and port-conflict diagnostics
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js`. |
+| Area | Server lifecycle. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/server-listen.js`. |
+| Adapter shape | `#startHTTPorHTTPS()` runs the IPv6 and IPv4 binds at the same time through `retryOnAddressInUse()` and calls `reportPortHolders()` on the first retry. Both create functions close a server that failed to bind and call `trackListeningServer()` once it listens. `#handleServerListenFail()` calls `reportPortHolders()` again and prints the `diagnosePortConflict()` result through `formatPortConflictBanner()` before it exits. `#getAddressInUseMessage()` uses `APP_NAME` and adds the Bun socket-inheritance hint only when `hasBunSocketInheritBug()` is true. |
+| Protecting tests | `tests/server-listen.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- server-listen.test.js`, `node --check src/server-startup.js`, `npm run lint`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
