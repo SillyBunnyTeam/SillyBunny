@@ -237,10 +237,11 @@ class FirstRunAdaptersTest {
     }
 
     @Test
-    fun theStorageThresholdIsTheMeasuredFootprintPlusTheMargin() {
-        assertEquals(942_820L, FirstRunStorage.MEASURED_FOOTPRINT_KIB)
-        assertEquals(965_447_680L, FirstRunStorage.MEASURED_FOOTPRINT_BYTES)
-        assertEquals(1_448_171_520L, FirstRunStorage.REQUIRED_FREE_BYTES)
+    fun theStorageThresholdIsTheMeasuredPeakPlusTheMargin() {
+        assertEquals(873_276L, FirstRunStorage.MEASURED_PEAK_KIB)
+        assertEquals(894_234_624L, FirstRunStorage.MEASURED_PEAK_BYTES)
+        assertEquals(447_117_312L, FirstRunStorage.PEAK_MARGIN_BYTES)
+        assertEquals(1_341_351_936L, FirstRunStorage.REQUIRED_FREE_BYTES)
     }
 
     @Test
