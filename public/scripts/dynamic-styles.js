@@ -23,34 +23,51 @@ function findStylesheetLink(absoluteHref, id = '') {
         }
     }
 
-    return Array.from(document.querySelectorAll('link[rel~="stylesheet"]'))
+    // SillyBunny: adopt deferred style preloads instead of duplicating them — see docs/ui-migration.md
+    return Array.from(document.querySelectorAll('link[rel~="stylesheet"], link[rel~="preload"][as="style"][data-sb-deferred-style]'))
         .find(link => link instanceof HTMLLinkElement && getAbsoluteAssetUrl(link.href) === absoluteHref) ?? null;
 }
 
 function waitForStylesheetLink(link, media = 'all') {
     return new Promise((resolve, reject) => {
-        if (isStylesheetLoaded(link)) {
+        const cleanup = () => {
+            link.removeEventListener('load', loaded);
+            link.removeEventListener('error', failed);
+        };
+        const loaded = () => {
+            // SillyBunny: share settled readiness across deferred activation and late subscribers — see docs/ui-migration.md
+            link.dataset.sbStyleState = 'loaded';
+            link.dataset.loaded = 'true';
             if (link.media === 'print') {
                 link.media = media;
             }
+            cleanup();
             resolve(link);
+        };
+        const failed = error => {
+            link.dataset.sbStyleState = 'error';
+            link.dataset.loaded = 'false';
+            cleanup();
+            reject(error);
+        };
+        if (link.dataset.sbStyleState === 'error') {
+            failed(new Event('error'));
             return;
         }
-
-        link.addEventListener('load', () => {
-            if (link.media === 'print') {
-                link.media = media;
-            }
-            resolve(link);
-        }, { once: true });
-
-        link.addEventListener('error', reject, { once: true });
+        if (isStylesheetLoaded(link)) {
+            loaded();
+            return;
+        }
+        link.dataset.sbStyleState = 'loading';
+        link.addEventListener('load', loaded, { once: true });
+        link.addEventListener('error', failed, { once: true });
     });
 }
 
 function isStylesheetLoaded(link) {
     return Boolean(
         link.sheet
+        || link.dataset.sbStyleState === 'loaded'
         || link.dataset.loaded === 'true'
         || Array.from(document.styleSheets).some(sheet => sheet.href === link.href),
     );
@@ -68,9 +85,25 @@ function isStylesheetLoaded(link) {
  */
 export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
     const absoluteHref = getAbsoluteAssetUrl(href);
-    const existing = findStylesheetLink(absoluteHref, id);
+    let existing = findStylesheetLink(absoluteHref, id);
+
+    // SillyBunny: replace an already-failed deferred request once; a fresh failure rejects normally — see docs/ui-migration.md
+    if (existing?.dataset.sbStyleState === 'error') {
+        existing.remove();
+        asyncStylesheetPromises.delete(absoluteHref);
+        existing = null;
+    }
 
     if (existing) {
+        // SillyBunny: identify adopted links for retry cleanup and activate them before awaiting — see docs/ui-migration.md
+        if (id && !existing.id) existing.id = id;
+        if (existing.relList.contains('preload') && existing.hasAttribute('data-sb-deferred-style')) {
+            existing.dataset.sbStyleActivated = 'true';
+            existing.media = 'print';
+            const loading = waitForStylesheetLink(existing, media);
+            existing.rel = 'stylesheet';
+            return loading;
+        }
         return waitForStylesheetLink(existing, media);
     }
 
@@ -88,6 +121,7 @@ export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
             }
 
             settled = true;
+            stylesheet.dataset.sbStyleState = 'loaded';
             stylesheet.dataset.loaded = 'true';
             stylesheet.media = media;
             resolve(stylesheet);
@@ -97,12 +131,19 @@ export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
             stylesheet.id = id;
         }
 
+        stylesheet.dataset.sbStyleState = 'loading';
         stylesheet.rel = 'stylesheet';
         stylesheet.type = 'text/css';
         stylesheet.href = href;
         stylesheet.media = 'print';
         stylesheet.onload = finish;
-        stylesheet.onerror = reject;
+        stylesheet.onerror = error => {
+            if (settled) return;
+            settled = true;
+            stylesheet.dataset.sbStyleState = 'error';
+            stylesheet.dataset.loaded = 'false';
+            reject(error);
+        };
 
         document.head.appendChild(stylesheet);
 
@@ -110,7 +151,7 @@ export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
             finish();
         }
     }).catch(error => {
-        asyncStylesheetPromises.delete(absoluteHref);
+        if (asyncStylesheetPromises.get(absoluteHref) === promise) asyncStylesheetPromises.delete(absoluteHref);
         throw error;
     });
 

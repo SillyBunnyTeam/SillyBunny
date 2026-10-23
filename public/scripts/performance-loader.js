@@ -6,6 +6,16 @@ function activateDeferredStyles() {
             continue;
         }
 
+        // SillyBunny: retain settled state for consumers that subscribe after idle activation — see docs/ui-migration.md
+        style.dataset.sbStyleState = 'loading';
+        style.addEventListener('load', () => {
+            style.dataset.sbStyleState = 'loaded';
+            style.dataset.loaded = 'true';
+        }, { once: true });
+        style.addEventListener('error', () => {
+            style.dataset.sbStyleState = 'error';
+            style.dataset.loaded = 'false';
+        }, { once: true });
         style.dataset.sbStyleActivated = 'true';
         style.rel = 'stylesheet';
         style.media = style.getAttribute('data-sb-media') || style.getAttribute('media') || 'all';

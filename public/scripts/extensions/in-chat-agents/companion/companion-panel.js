@@ -64,6 +64,22 @@ const PANEL_ANCHOR_OPTIONS = {
 
 let panelInitialized = false;
 let panelOpen = false;
+let panelOrigin = null;
+
+export const captureCompanionPanelOrigin = () => panelOrigin;
+
+// SillyBunny: restore the originating companion and scroll position after detail closes.
+export function restoreCompanionPanelOrigin(restore, isCurrent) {
+    if (!isCurrent() || isConversationModeActive()) return false;
+    openCompanionPanel();
+    const body = document.querySelector('#ica--tracker-panel .ica--tpanel-body');
+    if (body) {
+        body.scrollTop = restore?.scrollTop ?? 0;
+        const row = [...body.querySelectorAll('[data-agent-id]')].find(node => node.dataset.agentId === restore?.agentId);
+        row?.querySelector('[data-action="panel-edit"]')?.focus({ preventScroll: true });
+    }
+    return true;
+}
 let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
 let suppressHandleClickUntil = 0;
@@ -82,6 +98,7 @@ function syncConversationModePanelVisibility() {
         closeCompanionPanel();
     }
     updateCompanionPanelHandleVisibility();
+    panelHooks?.refreshAgentList?.();
 }
 
 function observeConversationModeState() {
@@ -554,7 +571,7 @@ function buildChatOnlyComposer(state) {
                 <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></span>
                 <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..." aria-label="Private side chat">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send This Aside to Chat Only" aria-label="Send Aside">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
@@ -573,7 +590,7 @@ function buildPlotCompassObjectiveComposer(state) {
                 <span>Plot Objective</span>
                 <input type="text" class="text_pole ica--plot-objective-input" data-role="plot-compass-objective" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?" value="${escapeHtml(objective)}" aria-label="Plot Objective">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
+            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save Objective and Rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
             </button>
         </div>
@@ -591,7 +608,7 @@ function buildChatroomReplyComposer(state) {
                 <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the chatroom</span></span>
                 <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom..." aria-label="Respond to the chatroom">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatroom-reply-send" data-action="panel-chatroom-reply-send" title="Send your reply to the chatroom" aria-label="Send reply">
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatroom-reply-send" data-action="panel-chatroom-reply-send" title="Send Your Reply to the Chatroom" aria-label="Send Reply">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
@@ -622,18 +639,18 @@ function buildPanelAgentSection(state) {
     const canSendToLorebook = isLorebookAgent(state.agent);
 
     const settingsButton = state.agent
-        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open This Companion\'s Agent Settings" aria-label="Agent Settings"><i class="fa-solid fa-gear"></i></button>'
         : '';
     const runLatestButton = state.agent
-        ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run this companion on the latest assistant reply" aria-label="Run companion"><i class="fa-solid fa-play"></i></button>'
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run This Companion on the Latest Assistant Reply" aria-label="Run Companion"><i class="fa-solid fa-play"></i></button>'
         : '';
-    const hiddenTitle = isHidden ? 'Unhide this companion' : 'Hide this companion (skipped on auto-trigger)';
-    const hiddenLabel = isHidden ? 'Unhide companion' : 'Hide companion';
+    const hiddenTitle = isHidden ? 'Unhide This Companion' : 'Hide This Companion (Skipped on Auto-Trigger)';
+    const hiddenLabel = isHidden ? 'Unhide Companion' : 'Hide Companion';
     const hiddenIcon = isHidden ? 'fa-eye-slash' : 'fa-eye';
     const hiddenButton = `<button type="button" class="ica--cdash-action" data-action="panel-hide" title="${hiddenTitle}" aria-label="${hiddenLabel}"><i class="fa-solid ${hiddenIcon}"></i></button>`;
     // Orphaned results have no agent to persist an order onto, so they get no drag handle.
     const dragHandleButton = state.agent
-        ? '<button type="button" class="ica--cdash-action ica--tpanel-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder companion"><i class="fa-solid fa-grip-vertical"></i></button>'
+        ? '<button type="button" class="ica--cdash-action ica--tpanel-drag-handle" title="Drag to Reorder (Arrow Keys Nudge)" aria-label="Reorder Companion"><i class="fa-solid fa-grip-vertical"></i></button>'
         : '';
 
     if (!latest) {
@@ -659,8 +676,8 @@ function buildPanelAgentSection(state) {
                             <span>Message #${entry.messageIndex}</span>
                             ${buildAbsorbedPillHtml(entry)}
                             ${buildCompanionTokenUsagePillsHtml(entry.result)}
-                            ${canSendToLorebook && String(entry.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send history entry to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
-                            <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
+                            ${canSendToLorebook && String(entry.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send This State to the Attached Lorebook" aria-label="Send History Entry to Lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
+                            <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit This State's Text" aria-label="Edit History Entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
                     </div>
@@ -674,8 +691,8 @@ function buildPanelAgentSection(state) {
     const rerunButtons = latest.hostHidden
         ? ''
         : `
-                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
-                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>`;
+                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate This State" aria-label="Regenerate State"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: Re-Run with Strict Output Enforcement (Use When the Model Wrote Roleplay Instead)" aria-label="Fix State"><i class="fa-solid fa-wrench"></i></button>`;
 
     return `
         <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}" data-hidden="${isHidden}" data-host-hidden="${Boolean(latest.hostHidden)}">
@@ -688,10 +705,10 @@ function buildPanelAgentSection(state) {
                     ${dragHandleButton}
                     ${hiddenButton}
                     ${runLatestButton}${rerunButtons}
-                    ${canSendToLorebook && String(latest.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send state to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
-                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
+                    ${canSendToLorebook && String(latest.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send This State to the Attached Lorebook" aria-label="Send State to Lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
+                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit This State's Text by Hand" aria-label="Edit State Text"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${settingsButton}
-                    <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the Source Message" aria-label="Scroll to Source Message"><i class="fa-solid fa-comment-dots"></i></button>
                 </span>
             </div>
             <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, latest)}</div>
@@ -737,11 +754,11 @@ export function buildPanelHtml() {
 
     return `
         <div class="ica--tpanel-header">
-            <span class="ica--tpanel-title"><i class="fa-solid fa-user-astronaut"></i> Companions</span>
+            <h2 class="ica--tpanel-title">Companions</h2>
             <span class="ica--tpanel-agent-actions">
-                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock panel auto-close' : 'Keep panel open until unlocked'}" aria-label="${panelLocked ? 'Unlock panel' : 'Lock panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
-                <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate every companion on the last reply" aria-label="Regenerate all companions"><i class="fa-solid fa-rotate-right"></i></button>
-                <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock Panel Auto-Close' : 'Keep Panel Open Until Unlocked'}" aria-label="${panelLocked ? 'Unlock Panel' : 'Lock Panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
+                <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate Every Companion on the Last Reply" aria-label="Regenerate All Companions"><i class="fa-solid fa-rotate-right"></i></button>
+                <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close Panel" aria-label="Close Panel"><i class="fa-solid fa-xmark"></i></button>
             </span>
         </div>
         <div class="ica--tpanel-body">${body}</div>
@@ -848,6 +865,11 @@ export function openCompanionPanel() {
 }
 
 export function closeCompanionPanel() {
+    if (panelOpen) panelOrigin = {
+        scrollTop: document.querySelector('#ica--tracker-panel .ica--tpanel-body')?.scrollTop ?? 0,
+        agentId: document.activeElement?.closest('[data-agent-id]')?.dataset.agentId,
+        settingsOpen: document.documentElement?.dataset.sbSettingsOpen === 'true',
+    };
     panelOpen = false;
     $('#ica--tracker-panel').removeClass('is-open').attr('aria-hidden', 'true');
 }
@@ -1166,7 +1188,7 @@ export function initCompanionPanel() {
     panelInitialized = true;
     $(document.body).append('<div id="ica--tracker-panel" class="ica--tpanel" data-edge="right" aria-hidden="true"></div>');
     $(document.body).append(`
-        <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the companion panel" aria-label="Open the companion panel" style="display:none">
+        <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the Companion Panel" aria-label="Open the Companion Panel" style="display:none">
             <i class="fa-solid fa-user-astronaut"></i>
         </button>
     `);

@@ -121,7 +121,7 @@ async function installScreenshotMessage(page, messageText) {
         overlapProbe.append(quoteLine, followingLine);
 
         const reflowProbe = document.createElement('div');
-        reflowProbe.style.cssText = 'width:485px;font:500 24px/24px Figtree,sans-serif;';
+        reflowProbe.style.cssText = 'width:485px;font:500 24px/24px "Adwaita Sans",sans-serif;';
         const reflowLine = document.createElement('p');
         reflowLine.style.margin = '0';
         reflowLine.className = 'message-screenshot-reflow-probe';

@@ -6,11 +6,23 @@ import { initInstallNotice } from './sillybunny-install-notice.js';
 import {
     clampMobileShellText as clampText,
     createMobileShellLifecycle,
-    MOBILE_SHELL_NAV_TOGGLE_ACTION,
     normalizeMobileShellRailIcon as normalizeFontAwesomeIcon,
     normalizeMobileShellText as normalizeText,
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
+import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
+import { initializeMessageActions } from './sillybunny-message-actions.js';
+import { initializeToastMotion } from './sillybunny-toast-motion.js';
+import { initializeColorPickers } from './sillybunny-color-picker.js';
+import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
+import {
+    animateIn,
+    animateOut,
+    MOTION_FAST,
+    prefersReducedMotion,
+    SPRING_SHEET,
+    stopMotion,
+} from './sillybunny-motion.js';
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import {
@@ -25,11 +37,13 @@ import {
     TOPBAR_ADOPTION_ATTRIBUTE,
     TOPBAR_EXTENSION_SLOT_ID,
 } from './topbar-extension-slot/index.js';
-import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
+
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
-import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { addLanguagesToDropdown, t } from './i18n.js';
+import { syncUserControls } from './user.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
 } from './sampling-parameter-policy.js';
@@ -42,13 +56,32 @@ import {
     getTextSamplingParameterTransmissionState,
     setTextSamplingParameterTransmissionState,
     getTextSamplingParameterViewModel,
+    showTGSamplerControls,
 } from './textgen-settings.js';
-
+import {
+    SB_USER_SETTINGS_CONTAINER_IDS,
+    SB_DATA_SECURITY_CONTAINER_ID,
+    SB_FLAT_SECTION_CLASS,
+    SB_FLAT_SECTION_HEADER_CLASS,
+    applySettingsSectionOrder,
+    flattenNestedSettingsDrawers,
+    splitUserSettingsContent,
+} from './sillybunny-settings-content.js';
+import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
+import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
+import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
+import { createConnectionsPanel } from './sillybunny-connections-panel.js';
+import { createStatusPage } from './sillybunny-editor/status-page.js';
+import { initializePromptEditor } from './sillybunny-prompt-editor.js';
+// SillyBunny: the Agents shell mounts independently of extension initialization.
+import { mountAgentsPanel, getAgentsPanelSearchEntries } from './extensions/in-chat-agents/ui/agent-list.js';
+// SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
+import { initCharacterEditor } from './sillybunny-character-editor.js';
+import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybunny-search-entities.js';
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
-const loadSettingsTabsModule = createDeferredModule(new URL('./sillybunny-settings-tabs.js', import.meta.url));
 let serverToolsPromise;
 let settingsPanelPromise;
 
@@ -64,18 +97,475 @@ function loadServerTools() {
 }
 
 function initializeSettingsPanel() {
-    settingsPanelPromise ??= loadSettingsTabsModule().then(module => {
+    settingsPanelPromise ??= Promise.resolve().then(() => {
         injectThemePicker();
-        injectSillyTavernImportCard();
-        module.initializeSettingsTabs();
+        // SillyTavern's own settings tab UI is not used here: the settings page sidebar owns
+        // navigation, so the inline drawers are opened directly instead.
+        openAllInlineDrawers();
         applyDefaultDrawerStates();
-        const tab = getShellState('right')?.tabs.get('settings');
-        if (tab) tab.searchIndex = null;
+        // Injection above can author drawers inside another drawer -- the Appearance theme card
+        // creates `#sb-interface-drawer`, `#sb-topbar-label-drawer` and
+        // `#sb-quick-access-shortcuts-drawer` inside `#AppearanceSection`, all after the split has
+        // already run its flatten pass -- so it is repeated once the panel is fully built.
+        flattenRightShellSettingsDrawers();
+        invalidateUserSettingsTabSearchIndexes();
     }).catch(error => {
         settingsPanelPromise = undefined;
         throw error;
     });
     return settingsPanelPromise;
+}
+
+/**
+ * Tabs whose collapsible drawers are left alone.
+ *
+ * Extensions is the one the 6F decision names: each of its 17 drawers is a self-contained,
+ * independently-authored block rather than a stray accordion.
+ * Connections preserves upstream drawer content because its descendants carry provider visibility
+ * gates; its scoped form pass supplies expander-row presentation without flattening that ancestry.
+ */
+// SillyBunny: Agents now owns shared preference pages, not an extension drawer.
+const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'connections']));
+
+/**
+ * Extensions owns independently authored sections, so it retains the sliding detail stack.
+ * Prompting uses its live backend groups on one scrolling page instead.
+ */
+const SB_SUBPAGE_TAB_IDS = Object.freeze(new Set(['extensions']));
+
+/**
+ * Whether a panel's presentation is owned by the subpage stack rather than by the settings passes.
+ *
+ * @param {string} tabId
+ * @returns {boolean}
+ */
+function isSubpagePanel(tabId) {
+    return SB_SUBPAGE_TAB_IDS.has(tabId);
+}
+
+/** The stacks installed so far, keyed by `${shellKey}:${tabId}` so a rebuild replaces its own. */
+const sbSubpageStacks = new Map();
+
+/**
+ * Presents a panel as a list of sections that slide their detail page in from the right.
+ *
+ * The panel's authored markup is not rewritten. Its children are hidden in place and a section is
+ * moved out of that hidden store into the detail page when its row opens, then moved back, so every
+ * id, listener, and extension lookup on those nodes keeps working exactly as before.
+ *
+ * Idempotent: the second call for a panel refreshes the existing stack's rows rather than building a
+ * second one beside it, which is what lets it run from both the activation path and the deferred
+ * build path.
+ *
+ * @param {string} shellKey
+ * @param {string} tabId
+ */
+function installSettingsSubpage(shellKey, tabId) {
+    const spec = SB_SUBPAGE_BUILDERS[tabId];
+    if (!spec) {
+        return;
+    }
+
+    const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
+    const scroller = panel?.querySelector(':scope > .sb-shell-panel-scroller');
+    if (!(scroller instanceof HTMLElement)) {
+        return;
+    }
+
+    const key = `${shellKey}:${tabId}`;
+    const existing = sbSubpageStacks.get(key);
+    if (existing) {
+        // The list is discovered (Extensions gains rows as its containers mount), so a revisit
+        // refreshes it rather than building a second stack beside the first. The read is deferred so
+        // it happens once the rows it would find are back in the panel.
+        existing.rebuild(() => spec(panel));
+        return;
+    }
+
+    const built = spec(panel);
+    if (!built?.rows?.length) {
+        return;
+    }
+
+    // The authored wrapper stays in the document and keeps its ids, but it is out of the layout: the
+    // stack draws the panel now, and the rows move its sections into and out of the detail page.
+    for (const child of Array.from(scroller.children)) {
+        if (child instanceof HTMLElement && !child.classList.contains('sb-subpage')) {
+            child.classList.add(SB_SUBPAGE_STORE_CLASS);
+        }
+    }
+
+    scroller.classList.add('sb-subpage-host');
+
+    const stack = createSubpageStack(scroller, {
+        name: tabId,
+        // The detail page gets the same presentation pass a normal panel gets, but scoped to the
+        // section that was moved: these panels are skipped by the whole-panel pass, and their
+        // sections are only readable as the pass reads them once the section is in its own page.
+        onContent: (content, row) => normalizeSettingsDetail(content, { name: tabId, rowLabel: row.label }),
+    });
+    stack.setRows(built.rows);
+    sbSubpageStacks.set(key, stack);
+
+    // SillyBunny: Extensions — the manage/install/notify header and the Download Extensions &
+    // Assets section are always visible, above the extension row list. Move them out of the store
+    // (where the CSS hides them) and into the list page heading so they are never hidden.
+    if (tabId === 'extensions' && panel instanceof HTMLElement) {
+        const notifyLabel   = panel.querySelector('label[for="extensions_notify_updates"]');
+        const manageBtn     = panel.querySelector('#extensions_details');
+        const installBtn    = panel.querySelector('#third_party_extension_button');
+
+        if (notifyLabel || manageBtn || installBtn) {
+            const pill = document.createElement('div');
+            pill.className = 'ds-pref-group sb-ext-actions-pill';
+
+            // Action buttons row (Manage + Install)
+            if (manageBtn instanceof HTMLElement || installBtn instanceof HTMLElement) {
+                const btnRow = document.createElement('div');
+                btnRow.className = 'sb-ext-action-buttons ds-row';
+                if (manageBtn instanceof HTMLElement) btnRow.appendChild(manageBtn);
+                if (installBtn instanceof HTMLElement) btnRow.appendChild(installBtn);
+                pill.appendChild(btnRow);
+            }
+
+            // Notify toggle row — normalize via a temp wrapper because normalizeBackendSettingsRows
+            // queries descendants; passing the label itself finds nothing.
+            if (notifyLabel instanceof HTMLElement) {
+                const wrapper = document.createElement('div');
+                wrapper.appendChild(notifyLabel);
+                normalizeBackendSettingsRows(wrapper, { fields: false });
+                pill.appendChild(notifyLabel);
+            }
+
+            stack.listHeading.appendChild(pill);
+        }
+
+        if (built.pinned instanceof HTMLElement) {
+            built.pinned.classList.add('sb-ext-pinned-section');
+            stack.listHeading.appendChild(built.pinned);
+
+            // SillyBunny: The assets extension mounts async and builds a closed inline-drawer.
+            // Watch the container and expand the drawer the moment content appears; a closed
+            // drawer here looks like just another extension entry instead of a feature panel.
+            const expandPinnedDrawer = (container) => {
+                const content = container.querySelector('.inline-drawer-content');
+                if (content instanceof HTMLElement) {
+                    // Set inline style — the drawer starts display:none via CSS class, not inline style,
+                    // so removeProperty would be a no-op; an explicit inline display wins.
+                    content.style.display = 'block';
+                }
+            };
+            // Run immediately in case extension already mounted before we got here
+            expandPinnedDrawer(built.pinned);
+            const pinnedObserver = new MutationObserver(() => {
+                expandPinnedDrawer(built.pinned);
+                if (built.pinned.querySelector('.inline-drawer-content')) {
+                    pinnedObserver.disconnect();
+                }
+            });
+            pinnedObserver.observe(built.pinned, { childList: true, subtree: true });
+        }
+    }
+
+    if (built.observe instanceof HTMLElement) {
+        // Extension containers mount over the first seconds after the panel is built, so the list is
+        // rebuilt from the DOM rather than captured once.
+        const observer = new MutationObserver(() => {
+            stack.rebuild(() => spec(panel));
+            // The list just changed, so what the tab's search index holds for it is now short of a
+            // row at best. A search taken before an extension finished mounting must not stick.
+            const tab = getShellState(shellKey)?.tabs.get(tabId);
+            if (tab) {
+                tab.searchIndex = null;
+            }
+        });
+        observer.observe(built.observe, { childList: true, subtree: true });
+        stack.observeWith(() => observer.disconnect());
+    }
+}
+
+/** Phase 6F: marks the merged Chat Completion presets row and the chrome card it replaces. */
+const SB_PRESET_TOOLBAR_ROW_CLASS = 'sb-preset-toolbar-row';
+const SB_PRESET_TOOLBAR_CARD_CLASS = 'sb-preset-toolbar-card';
+const SB_PRESET_ACTION_GROUP_CLASS = 'sb-action-btn-group';
+
+const SB_PRESET_ACTION_LABELS = Object.freeze({
+    import: 'Import',
+    export: 'Export',
+    update: 'Update current preset',
+    rename: 'Rename',
+    new: 'Save preset as',
+    restore: 'Restore',
+    restoreDefaults: 'Restore default presets',
+    delete: 'Delete',
+    deleteAll: 'Delete presets in bulk',
+});
+
+function getPresetActionKind(button) {
+    if (!(button instanceof HTMLElement)) return null;
+    for (const kind of ['import', 'export', 'update', 'rename', 'new', 'restore', 'delete']) {
+        if (button.matches(`[data-preset-manager-${kind}]`)) return kind;
+    }
+    if (button.matches('[data-preset-manager-delete-all]')) {
+        return 'deleteAll';
+    }
+    if (button.matches('[data-preset-manager-restore-defaults]')) return 'restoreDefaults';
+    if (button.id === 'import_oai_preset') return 'import';
+    if (button.id === 'export_oai_preset') return 'export';
+    if (button.id === 'update_oai_preset') return 'update';
+    if (button.id === 'new_oai_preset') return 'new';
+    if (button.id === 'delete_oai_preset') return 'delete';
+    return null;
+}
+
+function groupPresetActions(actionContainer) {
+    const actions = [...actionContainer.querySelectorAll('.menu_button, .menu_button_icon')].filter(child => getPresetActionKind(child));
+    if (actions.length === 0) return;
+
+    const groups = new Map([
+        ['file', ['import', 'export']],
+        ['save', ['update', 'rename', 'new']],
+        ['restore', ['restore', 'restoreDefaults']],
+        ['destructive', ['delete', 'deleteAll']],
+    ]);
+    for (const [groupName, kinds] of groups) {
+        const wrapper = actionContainer.querySelector(`:scope > .${SB_PRESET_ACTION_GROUP_CLASS}--${groupName}`)
+            ?? createElement('span', { className: `${SB_PRESET_ACTION_GROUP_CLASS} ${SB_PRESET_ACTION_GROUP_CLASS}--${groupName}` });
+        for (const kind of kinds) {
+            const action = actions.find(button => getPresetActionKind(button) === kind);
+            if (action && action.parentElement !== wrapper) wrapper.append(action);
+        }
+        if (wrapper.childElementCount > 0 && wrapper.parentElement !== actionContainer) actionContainer.append(wrapper);
+    }
+}
+
+function enhancePresetActionButtons(root) {
+    if (!(root instanceof HTMLElement)) return;
+
+    const actionContainers = [
+        ...root.querySelectorAll('.sb-non-chat-preset-actions'),
+        ...root.querySelectorAll('#openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5'),
+    ];
+    for (const actionContainer of actionContainers) {
+        if (!(actionContainer instanceof HTMLElement)) continue;
+        for (const button of actionContainer.querySelectorAll('.menu_button, .menu_button_icon')) {
+            const kind = getPresetActionKind(button);
+            if (!kind) continue;
+            const label = SB_PRESET_ACTION_LABELS[kind];
+            // `toggle` with a force argument is a no-op when the state already matches; `add` always queues a
+            // class mutation, which wakes the keyboard-interactable observer on every Prompting activation.
+            button.classList.toggle('sb-action-btn', true);
+            button.classList.toggle('sb-action-btn--danger', kind === 'delete' || kind === 'deleteAll');
+            if (!button.querySelector(':scope > .sb-action-btn-label')) {
+                const labelId = `sb-preset-action-${actionContainer.closest('[id]')?.id}-${kind}-label`;
+                const attrs = ['restoreDefaults', 'deleteAll'].includes(kind) ? {} : { 'data-i18n': label };
+                const labelNode = createElement('span', { id: labelId, className: 'sb-action-btn-label', text: label, attrs });
+                button.append(labelNode);
+                button.setAttribute('aria-labelledby', labelId);
+            }
+            for (const icon of button.querySelectorAll(':scope > i')) {
+                if (icon.getAttribute('aria-hidden') !== 'true') icon.setAttribute('aria-hidden', 'true');
+            }
+        }
+        groupPresetActions(actionContainer);
+    }
+}
+
+const SB_PRESET_BLOCK_BY_API = Object.freeze({
+    kobold: 'kobold_api-presets',
+    koboldhorde: 'kobold_api-presets',
+    novel: 'novel_api-presets',
+    textgenerationwebui: 'textgenerationwebui_api-presets',
+    openai: 'openai_api-presets',
+});
+
+/**
+ * Moves the shared preset controls next to the active backend's preset toolbar: Master Import/Export
+ * joins its action buttons (Text Completion backends only, as upstream), and the autosave switch sits
+ * directly below the toolbar row.
+ */
+function placeSharedPresetControls(root, activeApi) {
+    const block = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
+    if (!(block instanceof HTMLElement) || !root.contains(block)) return;
+    const isChatCompletion = activeApi === 'openai';
+
+    const masterImport = document.getElementById('af_master_import');
+    const masterExport = document.getElementById('af_master_export');
+    const masterFile = document.getElementById('af_master_import_file');
+    if (masterImport instanceof HTMLElement && masterExport instanceof HTMLElement) {
+        let masterGroup = masterImport.closest(`.${SB_PRESET_ACTION_GROUP_CLASS}--master`);
+        if (!(masterGroup instanceof HTMLElement)) {
+            // The emptied upstream container stays mounted (hidden) so the group always has a home in the
+            // document, even while Chat Completions is active and no Text Completion toolbar is shown.
+            const originalContainer = masterImport.parentElement;
+            masterGroup = createElement('span', { className: `${SB_PRESET_ACTION_GROUP_CLASS} ${SB_PRESET_ACTION_GROUP_CLASS}--master` });
+            for (const button of [masterImport, masterExport]) {
+                button.classList.add('margin0', 'sb-action-btn');
+                const label = button.querySelector(':scope > span');
+                if (label instanceof HTMLElement) {
+                    label.classList.add('sb-action-btn-label');
+                    label.id ||= `${button.id}-label`;
+                    button.setAttribute('aria-labelledby', label.id);
+                }
+                for (const icon of button.querySelectorAll(':scope > i')) icon.setAttribute('aria-hidden', 'true');
+            }
+            masterGroup.append(...[masterFile, masterImport, masterExport].filter(Boolean));
+            originalContainer?.append(masterGroup);
+            if (originalContainer instanceof HTMLElement) originalContainer.hidden = true;
+        }
+        const actions = block.querySelector('.sb-non-chat-preset-actions');
+        if (!isChatCompletion && actions instanceof HTMLElement && masterGroup.parentElement !== actions) {
+            const fileGroup = actions.querySelector(`:scope > .${SB_PRESET_ACTION_GROUP_CLASS}--file`);
+            if (fileGroup) fileGroup.after(masterGroup);
+            else actions.prepend(masterGroup);
+        }
+        if (masterGroup.hidden !== isChatCompletion) masterGroup.hidden = isChatCompletion;
+    }
+
+    const autosaveRow = root.querySelector('[data-sb-preset-autosave]');
+    const anchor = isChatCompletion ? block.querySelector(`.${SB_PRESET_TOOLBAR_ROW_CLASS}`) : block;
+    if (autosaveRow instanceof HTMLElement && anchor instanceof HTMLElement && anchor.nextElementSibling !== autosaveRow) {
+        anchor.after(autosaveRow);
+    }
+}
+
+function groupPromptingRowHelpers(root) {
+    for (const row of root.querySelectorAll('.sb-prompting-group-body .ds-row')) {
+        if (row.parentElement.matches('.sb-prompting-row-with-help') || row.closest('#completion_prompt_manager')) continue;
+        const helpers = [];
+        for (let helper = row.nextElementSibling; helper?.matches('.toggle-description, .notes, p, small'); helper = helper.nextElementSibling) {
+            helpers.push(helper);
+        }
+        if (helpers.length === 0) continue;
+        const wrapper = createElement('div', { className: 'sb-prompting-row-with-help' });
+        row.before(wrapper);
+        wrapper.append(row, ...helpers);
+    }
+}
+
+/**
+ * Flattens drawers in every Backend and Customize panel, covering drawers authored after the split.
+ */
+function flattenRightShellSettingsDrawers() {
+    const shellState = getShellState('right');
+    if (!shellState) {
+        return;
+    }
+
+    syncBackgroundSettingsSection();
+    for (const [tabId, tabState] of shellState.tabs.entries()) {
+        if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && !isSubpagePanel(tabId) && tabState.panel instanceof HTMLElement) {
+            flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
+            applySettingsSectionOrder(tabState.panel, tabId);
+            normalizeSettingsPresentation(tabState.panel, { name: tabId });
+        }
+    }
+}
+
+/**
+ * Drops the cached search index for every Customize tab. The split moves nodes between tabs, so
+ * a cached index would keep pointing at detached content.
+ */
+function invalidateUserSettingsTabSearchIndexes() {
+    const shellState = getShellState('right');
+    if (!shellState) {
+        return;
+    }
+
+    for (const tabState of shellState.tabs.values()) {
+        tabState.searchIndex = null;
+    }
+}
+
+/**
+ * Every root that holds Customize settings content, in the order a user sees them.
+ *
+ * Phase 6C gives each Customize tab its own container, so the three containers are the live roots.
+ * The legacy block is kept on the list last because it stays in the document and third-party
+ * drawers still append into it; it has no settings left, so it contributes nothing in practice.
+ *
+ * The Data & Security container is here too. Its content is authored inside the settings block, so
+ * before the split moved it the drawer expansion, search reveal and drawer persistence below all
+ * reached it; listing it keeps that behaviour instead of leaving the moved drawer inert. It is
+ * absent from the document until its panel is built, and the `instanceof` guard covers that.
+ *
+ * @returns {HTMLElement[]}
+ */
+function getUserSettingsContentRoots() {
+    const roots = [];
+
+    for (const tabId of ['appearance', 'interface', 'messages']) {
+        const container = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS[tabId]);
+        if (container instanceof HTMLElement) {
+            roots.push(container);
+        }
+    }
+
+    const dataSecurity = document.getElementById(SB_DATA_SECURITY_CONTAINER_ID);
+    if (dataSecurity instanceof HTMLElement) {
+        roots.push(dataSecurity);
+    }
+
+    const legacyBlock = document.getElementById('user-settings-block-content');
+    if (legacyBlock instanceof HTMLElement) {
+        roots.push(legacyBlock);
+    }
+
+    return roots;
+}
+
+function openAllInlineDrawers(root = null) {
+    // Open every inline-drawer section so its content is visible.
+    const roots = root instanceof HTMLElement ? [root] : getUserSettingsContentRoots();
+    for (const current of roots) {
+        current.querySelectorAll('.inline-drawer').forEach(drawer => {
+            const toggle = drawer.querySelector(':scope > .inline-drawer-toggle');
+            const drawerContent = drawer.querySelector(':scope > .inline-drawer-content');
+            if (toggle && drawerContent) {
+                toggle.setAttribute('aria-expanded', 'true');
+                toggle.classList.add('openDrawer');
+                drawerContent.style.display = '';
+            }
+        });
+    }
+}
+
+/**
+ * Re-runs the drawer flatten and the 6F section order for a panel that may have been built after
+ * the split.
+ *
+ * The split flattens and orders the markup it relocates, but some sections author their drawers
+ * at runtime -- OpenAI groups are built in `openai.js` once its panel is created,
+ * and Advanced Formatting and the Appearance theme card are assembled after the split -- so both
+ * passes are repeated on activation. Both are idempotent, so re-running them costs queries and no
+ * DOM churn.
+ * Extensions and Connections are skipped for the same reason as in `flattenRightShellSettingsDrawers`, and
+ * the stacked panels are skipped here for the reason given on `SB_SUBPAGE_TAB_IDS`.
+ *
+ * @param {string} shellKey
+ * @param {string} tabId
+ */
+function flattenSettingsPanelDrawers(shellKey, tabId) {
+    if (shellKey === 'right') syncBackgroundSettingsSection();
+    if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId)) {
+        return;
+    }
+
+    const panel = getShellState(shellKey)?.tabs.get(tabId)?.panel;
+    if (tabId === 'prompting') {
+        updatePromptingPanel(panel);
+        return;
+    }
+    if (shellKey === 'left' && tabId === 'editor') {
+        updateEditorPanel(panel);
+        return;
+    }
+    if (panel instanceof HTMLElement) {
+        flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+        applySettingsSectionOrder(panel, tabId);
+        normalizeSettingsPresentation(panel, { name: tabId });
+        if (tabId === 'context') positionAdvancedFormattingHelpLink();
+    }
 }
 
 async function prepareShellSearch() {
@@ -84,16 +574,10 @@ async function prepareShellSearch() {
         Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
     ));
 }
-const SB_SHELL_SUBTITLE_PLACEHOLDER = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.';
 
 const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
     rightTab: 'sb-right-tab',
-    leftShellSize: 'sb-left-shell-size',
-    rightShellSize: 'sb-right-shell-size',
-    desktopShellSnapToChatWidth: 'sb-desktop-shell-snap-to-chat-width',
-    characterDrawerRightLocked: 'sb-character-drawer-right-locked',
-    theme: 'sb-theme',
     surfaceTransparency: 'sb-surface-transparency',
     topbarScaleDesktop: 'sb-topbar-scale-desktop',
     topbarScaleMobile: 'sb-topbar-scale-mobile',
@@ -116,19 +600,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     bottomChatSecondaryOpen: 'sb-bottom-chat-secondary-open',
     desktopButtonScale: 'sb-desktop-button-scale',
     mobileButtonScale: 'sb-mobile-button-scale',
-    desktopNavLayout: 'sb-desktop-nav-layout',
-    desktopNavIconOnly: 'sb-desktop-nav-icon-only',
-    desktopNavShowCustomize: 'sb-desktop-nav-show-customize',
-    desktopNavShowQuickActions: 'sb-desktop-nav-show-quick-actions',
-    desktopNavReplaceQuickActions: 'sb-desktop-nav-replace-quick-actions',
-    desktopNavReplacementTarget: 'sb-desktop-nav-replacement-target',
     desktopQuickActions: 'sb-desktop-quick-actions-v2',
-    mobileNavLayout: 'sb-mobile-nav-layout',
-    mobileNavIconOnly: 'sb-mobile-nav-icon-only',
-    mobileNavShowCustomize: 'sb-mobile-nav-show-customize',
-    mobileNavShowQuickActions: 'sb-mobile-nav-show-quick-actions',
-    mobileNavReplaceQuickActions: 'sb-mobile-nav-replace-quick-actions',
-    mobileNavReplacementTarget: 'sb-mobile-nav-replacement-target',
     mobileQuickActions: 'sb-mobile-quick-actions-v2',
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
@@ -139,19 +611,36 @@ const SB_STORAGE_KEYS = Object.freeze({
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
     mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
     frontendIcon: 'sb-frontend-icon',
-    characterEditorSubTab: 'sb-character-editor-sub-tab',
+
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
     paperTextureEnabled: 'sb-paper-texture-enabled',
     paperTextureOpacity: 'sb-paper-texture-opacity',
 });
 
+// The pre-overhaul shell-tab rail wrote these transient presentation attributes to <html>. Keep the
+// retired storage keys untouched for older builds and extensions, but never let stale attributes
+// suppress the Layer 2 top bar when a page is upgraded without a full browser restart.
+const SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES = Object.freeze([
+    'data-sb-mobile-nav-layout',
+    'data-sb-mobile-nav-mode',
+    'data-sb-mobile-nav-customize',
+    'data-sb-mobile-nav-quick-actions',
+    'data-sb-mobile-nav-replacement',
+    'data-sb-desktop-nav-layout',
+    'data-sb-desktop-nav-mode',
+    'data-sb-desktop-nav-customize',
+    'data-sb-desktop-nav-quick-actions',
+    'data-sb-desktop-nav-replacement',
+]);
+
 const SB_SHORTCUT_TARGETS = Object.freeze([
-    { value: 'left:presets', label: 'Presets', icon: 'fa-sliders' },
-    { value: 'left:api', label: 'API', icon: 'fa-plug' },
+    { value: 'left:connections', label: 'Connections', icon: 'fa-plug' },
     { value: 'left:sampling', label: 'Sampling', icon: 'fa-wave-square' },
-    { value: 'left:advanced-formatting', label: 'Formatting', icon: 'fa-text-height' },
-    { value: 'characters:world-info', label: 'World Info', icon: 'fa-book-atlas' },
+    { value: 'left:prompting', label: 'Presets', icon: 'fa-sliders' },
+    { value: 'left:editor', label: 'Editor', icon: 'fa-pen-to-square' },
+    { value: 'left:context', label: 'Formatting', icon: 'fa-text-height' },
     { value: 'left:agents', label: 'Agents', icon: 'fa-robot' },
+    { value: 'characters:world-info', label: 'World Info', icon: 'fa-book-atlas' },
     { value: 'action:search', label: 'Search', icon: 'fa-magnifying-glass' },
     { value: 'right:settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
     { value: 'right:extensions', label: 'Extensions', icon: 'fa-cubes' },
@@ -162,7 +651,7 @@ const SB_SHORTCUT_TARGETS = Object.freeze([
 
 const SB_SHORTCUT_DEFAULTS = Object.freeze({
     left: 'left:agents',
-    right: 'action:search',
+    right: 'right:extensions',
     slot3: 'none',
     slot4: 'none',
     slot5: 'none',
@@ -187,11 +676,37 @@ const SB_SHORTCUT_LABELS = Object.freeze({
     slot6: 'Slot 6 (Desktop)',
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
+    'left:editor': [
+        { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261018a', id: 'deferred-prompt-editor-css' },
+    ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
+        // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
+        { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-world-info-editor.css?v=20261018e', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
-        { href: 'css/personas.css?v=20260609a', id: 'deferred-personas-css' },
+        // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
+        { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-persona-editor.css?v=20261018a', id: 'deferred-persona-editor-css' },
+        { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
+    ],
+    'characters:characters': [
+        // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
+        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018c', id: 'deferred-character-list-css' },
+    ],
+    'characters:groups': [
+        // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
+        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261018c', id: 'deferred-character-list-css' },
+    ],
+    'characters:import': [
+        { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-character-import.css?v=20261018a', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
@@ -216,23 +731,22 @@ const SB_FRONTEND_ICONS = Object.freeze([
     },
 ]);
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
-const SB_INLINE_DRAWER_CUSTOM_PERSISTENCE_SELECTOR = '.sb-openai-settings-drawer, .sb-openai-settings-subdrawer, [id$="prompt_manager_drawer"]';
+/**
+ * Drawers whose open state is written by their own code rather than by the generic persistence
+ * scan, so the scan must not also write a key for them.
+ *
+ * 6F removed OpenAI drawer persistence from this list: the groups
+ * are flattened now, and a flattened section is not a drawer -- it has no toggle and no content
+ * wrapper -- so there is no open state left for either writer to persist.
+ */
+const SB_INLINE_DRAWER_CUSTOM_PERSISTENCE_SELECTOR = '[id$="prompt_manager_drawer"]';
 const SB_STORAGE_PREFIX = 'sb-';
 const SB_STORAGE_WRITE_DEBOUNCE_MS = 120;
 const SB_MOBILE_ACTION_DEBOUNCE_MS = 140;
-const SB_SHELL_FOCUSABLE_SELECTOR = [
-    'a[href]',
-    'button:not([disabled])',
-    'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])',
-    'textarea:not([disabled])',
-    '[tabindex]:not([tabindex="-1"])',
-].join(',');
 
 let sbInlineDrawerPersistenceObserver = null;
 let sbInlineDrawerPersistenceQueued = false;
 let sbChatScriptModulePromise = null;
-let sbMainScriptModulePromise = null;
 let sbComposerControlsObserver = null;
 let sbComposerControlsSyncQueued = false;
 let sbStorageFlushTimer = 0;
@@ -265,9 +779,15 @@ function debounceAction(callback, wait = SB_MOBILE_ACTION_DEBOUNCE_MS) {
 
 function getShortcutTarget(side) {
     const storageKey = SB_SHORTCUT_STORAGE_KEYS[side];
-    const stored = migrateLegacyWorldInfoRoute(storageKey ? safeGetItem(storageKey) : null);
+    const stored = migrateShortcutTarget(storageKey ? safeGetItem(storageKey) : null);
     const valid = SB_SHORTCUT_TARGETS.some(t => t.value === stored);
     return valid ? stored : SB_SHORTCUT_DEFAULTS[side] || 'none';
+}
+
+function migrateShortcutTarget(target) {
+    const migrated = migrateLegacyWorldInfoRoute(target);
+    if (typeof migrated !== 'string' || !migrated.startsWith('left:')) return migrated;
+    return `left:${migrateTabId('left', migrated.slice(5))}`;
 }
 
 function getShortcutButtonId(side) {
@@ -282,6 +802,32 @@ function migrateLegacyWorldInfoRoute(target) {
     // SillyBunny: migrate saved pre-relocation World Info shortcuts to the
     // Characters panel tab instead of reviving the old left-shell route.
     return target === 'left:world-info' ? 'characters:world-info' : target;
+}
+
+function migrateTabId(shellKey, tabId) {
+    // Phase 5: migrate old tab IDs to new reorganized structure
+    const migrations = {
+        left: {
+            'presets': 'prompting',
+            'api': 'connections',
+            'advanced-formatting': 'context',
+            // sampling and agents stay the same
+        },
+        right: {
+            'settings': 'appearance',
+            'background': 'appearance',
+            'server': 'data-security',
+            'console-logs': 'logs',
+            // extensions stays the same
+        },
+    };
+
+    const shellMigrations = migrations[shellKey];
+    if (shellMigrations && shellMigrations[tabId]) {
+        return shellMigrations[tabId];
+    }
+
+    return tabId;
 }
 
 function isSearchShortcutTarget(target) {
@@ -315,12 +861,10 @@ function activateShortcutTarget(target) {
 
     const [shell, tab] = String(target).split(':');
 
+    // SillyBunny: toggleShellPanel routes every shell through the settings page (feat/v1.9.0-ui-overhaul)
     if (shell === 'characters') {
-        if (!tab || tab === 'characters') {
-            void setCharacterListEntityView('characters');
-        }
         preloadPanelStylesheets('characters', tab);
-        toggleShellPanel(shell, tab);
+        toggleShellPanel(shell, tab || null);
         return;
     }
 
@@ -414,19 +958,6 @@ function safeSetItem(key, value) {
     scheduleSbStorageFlush();
 }
 
-function safeRemoveItem(key) {
-    if (!isSillyBunnyStorageKey(key)) {
-        try { localStorage.removeItem(key); } catch {
-            // Ignore storage removal failures.
-        }
-        return;
-    }
-
-    sbStorageCache.set(key, null);
-    sbStoragePendingWrites.set(key, { remove: true });
-    scheduleSbStorageFlush();
-}
-
 bindSbStorageFlushEvents();
 
 const SB_IDLE_BRAND_LABEL = 'SillyBunny';
@@ -475,59 +1006,11 @@ const SB_TOPBAR_DRAG_Y_RATIO = 0.24;
 const SB_TOPBAR_CONTEXT_REFRESH_DEBOUNCE = 220;
 const SB_CHATBAR_SEARCH_DEBOUNCE = 220;
 const SB_CHAT_SEARCH_MARK_SELECTOR = 'mark[data-sb-chat-search="true"]';
-const SB_DESKTOP_SHELL_LAYOUT = Object.freeze({
-    minWidth: 600,
-    maxWidth: 900,
-    ratio: 0.55,
-    laptopViewportMin: 1001,
-    laptopViewportMax: 1440,
-    laptopMinWidth: 680,
-    laptopMaxWidth: 920,
-    laptopRatio: 0.6,
-    laptopGutter: 28,
-    compactMaxWidth: 900,
-    compactViewportWidth: 1100,
-    compactGap: 20,
-    gutterMin: 20,
-    gutterRatio: 0.04,
-    gutterMax: 80,
-    fullWidthMaxHeight: 860,
-});
-const SB_DESKTOP_SHELL_RESIZE = Object.freeze({
-    minWidth: 420,
-    minHeight: 320,
-    bottomGap: 16,
-});
-const SB_SHELL_TOGGLE_GUARD_MS = 260;
 const SB_INIT_RETRY_DELAY_MS = 150;
 const SB_INIT_MAX_RETRIES = 30;
 
-const SB_THEMES = Object.freeze([
-    {
-        id: 'windows-aero',
-        label: 'Windows Aero',
-    },
-    {
-        id: 'clean-minimal',
-        label: 'Clean Minimal',
-    },
-    {
-        id: 'macos-minimal',
-        label: 'macOS Minimal',
-    },
-    {
-        id: 'cozy-warm',
-        label: 'Cozy Warm',
-    },
-    {
-        id: 'hypr-glow',
-        label: 'Hypr Glow',
-    },
-    {
-        id: 'slate-flat',
-        label: 'Slate Flat',
-    },
-]);
+// Shell Style picker removed for the libadwaita shell; legacy sb-theme values are ignored.
+const SB_SHELL_THEME = 'clean-minimal';
 
 const SB_MESSAGE_STYLES = Object.freeze([
     { id: '0', label: 'Flat', icon: 'fa-grip-lines' },
@@ -535,68 +1018,63 @@ const SB_MESSAGE_STYLES = Object.freeze([
     { id: '2', label: 'Document', icon: 'fa-file-lines' },
 ]);
 
-const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
 const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful for dialing in responses! If you\'re unsure what these all mean, check out <a class="notes-link" href="https://rentry.org/samplersettings" target="_blank" rel="noopener noreferrer">Geechan\'s guide on sampling.</a>';
 
-const SB_CHARACTER_TAB_COPY = Object.freeze({
-    characters: {
-        title: 'Character Menu',
-        subtitle: 'View or create character cards here for your roleplays and chats!',
-        description: 'Move between characters, groups, personas, lore, and imports without leaving the writing workspace.',
-    },
-    groups: {
-        title: 'Group Menu',
-        subtitle: 'View or create group chats here for your roleplays and chats!',
-        description: 'Sort group chats, check members, and return to character cards without losing your place.',
-    },
-    conversation: {
-        title: 'Conversation Mode',
-        subtitle: SB_SHELL_SUBTITLE_PLACEHOLDER,
-        description: 'Tune schedules, cooldowns, format prompts, and DM helpers without opening a group chat.',
-    },
-    editor: {
-        title: 'Card Editor',
-        subtitle: 'Edit your character cards or group chats in great detail here!',
-        description: 'Use the subtabs to keep core identity, definitions, greetings, and metadata separated.',
-    },
-    'world-info': {
-        title: 'World Info',
-        subtitle: SB_WORLD_INFO_SUBTITLE_HTML,
-        subtitleIsHtml: true,
-        description: 'Create, edit, import, and activate World Info entries without leaving the Characters menu.',
-    },
-    persona: {
-        title: 'Persona',
-        subtitle: 'Edit your own persona here for roleplay and chats!',
-        description: 'Edit persona details, locks, and defaults in the same flow as your character work.',
-    },
-    import: {
-        title: 'Import',
-        subtitle: 'Directly import character cards here from various sources.',
-        description: 'PNG, JSON, YAML, CHARX, BYAF, and supported URL imports stay one tab away.',
-    },
-});
-
-const SB_CHARACTER_EDITOR_SUB_TABS = Object.freeze([
-    'char-info',
-    'definitions',
-    'greetings',
-    'metadata',
-]);
-const SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB = 'char-info';
-const SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS = Object.freeze(['char-info', 'metadata']);
+const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
 
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
-    { id: 'characters', label: 'Characters', icon: 'fa-address-book' },
-    { id: 'groups', label: 'Groups', icon: 'fa-users' },
-    { id: 'editor', label: 'Editor', icon: 'fa-pen-to-square' },
-    { id: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
-    { id: 'persona', label: 'Persona', icon: 'fa-face-smile' },
-    { id: 'import', label: 'Import', icon: 'fa-file-import' },
+    {
+        id: 'characters',
+        label: 'Characters',
+        icon: 'fa-address-book',
+        tooltip: 'Open and manage character cards',
+        description: 'View or create character cards here for your roleplays and chats!',
+        searchAliases: ['character card', 'character list', 'avatars', 'cards'],
+    },
+    {
+        id: 'groups',
+        label: 'Groups',
+        icon: 'fa-users',
+        tooltip: 'Open and manage group conversations',
+        description: 'View or create group chats here for your roleplays and chats!',
+        searchAliases: ['group chat', 'group chats', 'group members', 'muting'],
+    },
+    {
+        id: 'editor',
+        label: 'Editor',
+        icon: 'fa-pen-to-square',
+        tooltip: 'Edit character cards and groups',
+        description: 'Edit your character cards or group chats in great detail here!',
+        searchAliases: ['character editor', 'group editor', 'edit card', 'first message', 'greetings'],
+    },
+    {
+        id: 'world-info',
+        label: 'World Info',
+        icon: 'fa-book-atlas',
+        tooltip: 'Manage lorebooks and world information',
+        description: SB_WORLD_INFO_SUBTITLE_HTML,
+        descriptionIsHtml: true,
+        searchAliases: ['lorebook', 'lorebooks', 'world info book', 'world', 'entries'],
+    },
+    {
+        id: 'persona',
+        label: 'Persona',
+        icon: 'fa-face-smile',
+        tooltip: 'Manage user persona/personality',
+        description: 'Edit your own persona here for roleplay and chats!',
+        searchAliases: ['personas', 'persona description', 'impersonate'],
+    },
+    {
+        id: 'import',
+        label: 'Import',
+        icon: 'fa-file-import',
+        tooltip: 'Add or import new character cards',
+        description: 'Directly import character cards here from various sources.',
+        searchAliases: ['import character', 'import card', 'chub', 'png', 'add character'],
+    },
 ]);
 const SB_CHARACTER_PANEL_DEFAULT_TAB = 'characters';
 
-const SB_PERSONA_HELP_LINK_HTML = '<a class="notes-link sb-character-title-help" href="https://docs.sillytavern.app/usage/core-concepts/personas/" target="_blank"><span class="fa-solid fa-circle-question note-link-span"></span></a>';
 
 const SB_SHELLS = Object.freeze({
     left: {
@@ -606,49 +1084,69 @@ const SB_SHELLS = Object.freeze({
         hostIconSelector: '#leftNavDrawerIcon',
         proxyButtonId: 'sb-left-shell-toggle',
         proxyIcon: 'fa-bars',
-        proxyLabel: 'Workspace',
-        title: 'Workspace',
+        proxyLabel: 'Backend',
+        title: 'Backend',
         subtitle: '', // Removed redundant workspace subtext (PR #145 expansion)
-        searchPlaceholder: 'Find presets, samplers, lore, or tools...',
+        searchPlaceholder: 'Find connections, prompts, samplers, or agents...',
         storageKey: SB_STORAGE_KEYS.leftTab,
-        defaultTabId: 'presets',
+        defaultTabId: 'connections',
         baseTab: {
-            id: 'presets',
-            label: 'Presets',
-            icon: 'fa-sliders',
-            description: 'Change or modify your Chat Completion presets, settings, and/or prompts here. We recommend our included Geechan and Pura presets if you\'re unsure.',
+            id: 'connections',
+            label: 'Connections',
+            icon: 'fa-plug',
+            tooltip: 'Modify the API connection to the model backend',
+            description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
+            searchAliases: ['API Response Configuration', 'AI Response Configuration', 'Response Config', 'Chat Completion', 'Text Completion', 'API key'],
         },
-        embeddedTabs: [
-            {
-                id: 'api',
-                drawerId: 'sys-settings-button',
-                label: 'API',
-                icon: 'fa-plug',
-                description: 'Configure the model backend for all AI character responses. We recommend OpenRouter if you\'re unsure.',
-            },
-            {
-                id: 'advanced-formatting',
-                drawerId: 'advanced-formatting-button',
-                label: 'Formatting',
-                icon: 'fa-text-height',
-                description: 'Change Text Completion templates and system prompts here!',
-            },
-        ],
+        embeddedTabs: [],
         customTabs: [
             {
                 id: 'sampling',
                 label: 'Sampling',
                 icon: 'fa-wave-square',
+                tooltip: 'Adjust model samplers and parameters',
                 description: SB_SAMPLING_SUBTITLE_HTML,
                 descriptionIsHtml: true,
                 searchPlaceholder: 'Search temperature, top p, repetition penalty, or backend samplers',
                 searchExamples: ['temperature', 'top p', 'repetition penalty'],
             },
             {
+                id: 'prompting',
+                label: 'Presets',
+                icon: 'fa-sliders',
+                tooltip: 'Change, update, or edit presets and prompts',
+                description: 'Manage presets, templates, and generation settings.',
+                descriptionI18n: 'Manage presets, templates, and generation settings.',
+                searchPlaceholder: 'Search presets, instruct mode, markdown, or decorators',
+                searchExamples: ['presets', 'instruct', 'markdown', 'decorators'],
+                searchAliases: ['Prompting', 'Presets'],
+            },
+            {
+                id: 'editor',
+                label: 'Editor',
+                icon: 'fa-pen-to-square',
+                tooltip: 'Edit prompt content, order, and placement.',
+                description: 'Edit prompt content, order, and placement.',
+                descriptionI18n: 'Edit prompt content, order, and placement.',
+                searchAliases: ['Prompt Manager', 'Prompts'],
+            },
+            {
+                id: 'context',
+                label: 'Formatting',
+                icon: 'fa-text-height',
+                tooltip: 'Set miscellaneous formatting settings for the model backend',
+                description: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
+                descriptionI18n: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
+                searchPlaceholder: 'Search formatting, context templates, regex, or text replacements',
+                searchExamples: ['formatting', 'context', 'advanced formatting', 'regex', 'replacement'],
+                searchAliases: ['Context', 'Advanced Formatting'],
+            },
+            {
                 id: 'agents',
                 label: 'Agents',
                 icon: 'fa-robot',
-                description: 'Enable, disable, or modify in-chat agents here. Can be configured as pre-gen, sidecar, or post-gen.',
+                tooltip: 'Interact with accompanying pre, post, and sidecar agents',
+                description: 'Configure your in-chat agents here. They can be configured for pre-gen, post-gen, or as a side companion.',
             },
         ],
     },
@@ -662,17 +1160,19 @@ const SB_SHELLS = Object.freeze({
         proxyLabel: 'Customize',
         title: 'Customize',
         subtitle: 'Personalize your workspace, add/remove extensions, modify server settings, or check logs here.',
-        searchPlaceholder: 'Search themes, top bar, backgrounds, or extensions',
-        searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
+        searchPlaceholder: 'Search themes, interface, messages, or extensions',
+        searchExamples: ['theme', 'top bar', 'messages', 'extensions'],
         storageKey: SB_STORAGE_KEYS.rightTab,
-        defaultTabId: 'settings',
+        defaultTabId: 'appearance',
         baseTab: {
-            id: 'settings',
-            label: 'Settings',
-            icon: 'fa-screwdriver-wrench',
-            description: 'Modify and customise SillyBunny\'s general appearance and configuration here.',
-            searchPlaceholder: 'Search Appearance, top bar, chat style, blur, or update notices',
-            searchExamples: ['theme', 'top bar', 'Appearance', 'notify extension updates'],
+            id: 'appearance',
+            label: 'Appearance',
+            icon: 'fa-palette',
+            tooltip: 'Change or modify the appearance of the SillyBunny graphical shell',
+            description: 'Customize SillyBunny\'s visual appearance, themes, backgrounds, and UI scale.',
+            searchPlaceholder: 'Search themes, backgrounds, blur, or UI scale',
+            searchExamples: ['theme', 'background', 'blur', 'scale'],
+            searchAliases: ['colors', 'colours', 'wallpaper', 'fonts', 'UI scale'],
         },
         embeddedTabs: [
             {
@@ -680,74 +1180,76 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'extensions-settings-button',
                 label: 'Extensions',
                 icon: 'fa-cubes',
+                tooltip: 'Manage and view all installed extensions',
                 description: 'Install, manage, and configure SillyTavern extensions here. Backwards compatibility isn\'t guaranteed, but should be applicable.',
                 searchPlaceholder: 'Search themes, Quick Reply, Dialogue Colors, or Image Gen',
                 searchExamples: ['themes', 'Quick Reply', 'Dialogue Colors', 'Image Gen'],
-            },
-            {
-                id: 'background',
-                drawerId: 'backgrounds-button',
-                label: 'Background',
-                icon: 'fa-panorama',
-                description: 'Change the appearance of the background surrounding your chats here!',
-                searchPlaceholder: 'Search background names, blur, fit, or vibe words',
-                searchExamples: ['cozy', 'landscape', 'blur', 'fit'],
+                searchAliases: ['addons', 'plugins', 'install extension', 'third party'],
             },
         ],
         customTabs: [
             {
-                id: 'server',
-                label: 'Server',
-                icon: 'fa-server',
-                description: 'Edit SillyBunny backend settings and configuration here.',
-                searchPlaceholder: 'Search update, restart, config.yaml, or branch',
-                searchExamples: ['update', 'restart', 'config.yaml', 'branch'],
+                id: 'interface',
+                label: 'Interface',
+                icon: 'fa-screwdriver-wrench',
+                tooltip: 'Toggle UI settings',
+                description: 'Configure interface behavior, power user features, and UI preferences.',
+                searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
+                searchExamples: ['top bar', 'auto-scroll', 'power user'],
+                searchAliases: ['UI', 'behavior', 'stscript'],
             },
             {
-                id: 'console-logs',
-                label: 'Console Logs',
+                id: 'messages',
+                label: 'Messages',
+                icon: 'fa-message',
+                tooltip: 'View all chat-related settings and configuration',
+                description: 'Configure message display, actions, swipes, and interaction preferences.',
+                searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
+                searchExamples: ['swipes', 'message actions', 'auto-scroll'],
+                searchAliases: ['chat', 'message display', 'sending', 'character handling'],
+            },
+            {
+                id: 'data-security',
+                label: 'Data & Security',
+                icon: 'fa-server',
+                tooltip: 'View SillyBunny\'s server configuration and backend',
+                description: 'Manage the SillyBunny backend and server settings here.',
+                searchPlaceholder: 'Search backup, data path, security, or config.yaml',
+                searchExamples: ['backup', 'data path', 'security'],
+                searchAliases: ['backup', 'restore', 'import', 'export', 'server tools', 'data path'],
+            },
+            {
+                id: 'logs',
+                label: 'Logs',
                 icon: 'fa-terminal',
-                description: 'View all SillyBunny logs for easy troubleshooting here.',
+                tooltip: 'View and gather SillyBunny\'s backend logs',
+                description: 'View SillyBunny logs for advanced troubleshooting or bug reporting.',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
                 searchExamples: ['error', 'warning', 'npm', 'bun'],
+                searchAliases: ['console', 'console logs', 'errors', 'troubleshooting'],
             },
         ],
     },
 });
 
-function renderShellSubtitle(target, subtitle, { isHtml = false } = {}) {
-    if (!(target instanceof HTMLElement)) {
-        return;
-    }
-
-    target.textContent = '';
-    if (isHtml) {
-        target.insertAdjacentHTML('beforeend', subtitle || '');
-        // Subtitles render single-line with text-overflow: ellipsis; expose the
-        // full text as a tooltip so truncated copy stays readable.
-        target.title = target.textContent.trim();
-        return;
-    }
-
-    target.textContent = subtitle || '';
-    target.title = (subtitle || '').trim();
-}
-
 const SB_DRAWER_ROUTES = Object.freeze({
-    'user-settings-button': { shell: 'right', tab: 'settings' },
-    'sys-settings-button': { shell: 'left', tab: 'api' },
-    'advanced-formatting-button': { shell: 'left', tab: 'advanced-formatting' },
+    'user-settings-button': { shell: 'right', tab: 'appearance' },
+    'sys-settings-button': { shell: 'left', tab: 'connections' },
+    'advanced-formatting-button': { shell: 'left', tab: 'context' },
     'WI-SP-button': { shell: 'characters', tab: 'world-info' },
     'extensions-settings-button': { shell: 'right', tab: 'extensions' },
     'persona-management-button': { shell: 'characters', tab: 'persona' },
-    'backgrounds-button': { shell: 'right', tab: 'background' },
+    'backgrounds-button': { shell: 'right', tab: 'appearance' },
 });
 
 const SB_SEARCH_TARGET_SELECTOR = [
+    '.ds-row-label',
+    '.ds-row-subtitle',
     'label',
     '.checkbox_label',
     '.menu_button',
     '.inline-drawer-toggle',
+    `.${SB_FLAT_SECTION_HEADER_CLASS}`,
     '.standoutHeader',
     '.range-block-title',
     '.range-block-header',
@@ -761,59 +1263,73 @@ const SB_SEARCH_TARGET_SELECTOR = [
     '.ch_name',
 ].join(', ');
 
+/**
+ * Subset of `SB_SEARCH_TARGET_SELECTOR` that reads as a section name rather than a control.
+ *
+ * The sidebar treats a hit here as specific enough to reveal a tab, because the tab's name is
+ * unlikely to be on screen while the section it holds is discoverable. Everything else the index
+ * collects — individual checkboxes, selects, buttons — is a leaf control whose match says very
+ * little about the tab, so it is left to the universal search panel, which is built for browsing.
+ */
+const SB_SIDEBAR_SECTION_MATCH_SELECTOR = [
+    'h3',
+    'h4',
+    'h5',
+    '.standoutHeader',
+    '.range-block-title',
+    '.range-block-header',
+    '.extension_name',
+    '.inline-drawer-toggle',
+    `.${SB_FLAT_SECTION_HEADER_CLASS}`,
+    '.ch_name',
+].join(', ');
+
 const SB_UNIVERSAL_SEARCH_PLACEHOLDER = 'Type to search...';
 const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search all settings';
 const SB_UNIVERSAL_SEARCH_IDLE_HINT = 'Jump to any workspace or customization control from one place.';
 const SB_UNIVERSAL_SEARCH_EMPTY_HINT = 'Could not find query. Try a broader term or a different setting name.';
-const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 10;
+// The panel shows a short list and reveals the rest on request, so the ceiling belongs to the
+// rendered page rather than the match set: `collectGlobalSearchMatches` collects everything and
+// `renderUniversalSearchResults` decides how much of it to paint.
+const SB_UNIVERSAL_SEARCH_RESULT_LIMIT = 24;
+const SB_UNIVERSAL_SEARCH_GROUP_LIMIT = 5;
+const SB_UNIVERSAL_SEARCH_QUICK_ACTION_LIMIT = 10;
+const SB_UNIVERSAL_SEARCH_DEBOUNCE_MS = 140;
+// Entity results read names from data: a few thousand characters and worlds stay cheap, but the
+// index is rebuilt per keystroke, so entry bodies are only scanned for the worlds that matched.
+const SB_UNIVERSAL_ENTITY_SCAN_LIMIT = 4000;
 const SB_MOBILE_QUICK_ACTION_LIMIT = sbMobileShellLifecycle.railModel.limits.quickActionLimit;
 const SB_MOBILE_QUICK_ACTION_ICON_FALLBACK = sbMobileShellLifecycle.railModel.limits.iconFallback;
-let sbIsSyncingRailActions = false;
 const SB_MOBILE_NAV_CLOSED_ICON = 'fa-compass';
 const SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS = 350;
-const SB_MOBILE_NAV_LAYOUTS = Object.freeze(['horizontal', 'vertical']);
 const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
-    { type: 'tab', shellKey: 'left', tabId: 'presets', icon: 'fa-sliders', label: 'Presets' },
-    { type: 'tab', shellKey: 'left', tabId: 'api', icon: 'fa-plug', label: 'API' },
+    { type: 'tab', shellKey: 'left', tabId: 'prompting', icon: 'fa-sliders', label: 'Presets' },
+    { type: 'tab', shellKey: 'left', tabId: 'connections', icon: 'fa-plug', label: 'Connections' },
     { type: 'tab', shellKey: 'left', tabId: 'sampling', icon: 'fa-wave-square', label: 'Sampling' },
-    { type: 'tab', shellKey: 'left', tabId: 'advanced-formatting', icon: 'fa-text-height', label: 'Formatting' },
+    { type: 'tab', shellKey: 'left', tabId: 'context', icon: 'fa-text-height', label: 'Formatting' },
     { type: 'tab', shellKey: 'characters', tabId: 'world-info', icon: 'fa-book-atlas', label: 'World Info' },
     { type: 'tab', shellKey: 'left', tabId: 'agents', icon: 'fa-robot', label: 'Agents' },
 ]);
 const SB_DESKTOP_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'characters', tabId: 'world-info', icon: 'fa-book-atlas', label: 'World Info' },
 ]);
-const SB_MOBILE_NAV_PAGE_TARGET_DEFAULT = 'left:presets';
-const SB_MOBILE_NAV_PAGE_TARGETS = Object.freeze([
-    { value: 'left:presets', shellKey: 'left', tabId: 'presets', label: 'Presets', icon: 'fa-sliders' },
-    { value: 'left:api', shellKey: 'left', tabId: 'api', label: 'API', icon: 'fa-plug' },
-    { value: 'left:sampling', shellKey: 'left', tabId: 'sampling', label: 'Sampling', icon: 'fa-wave-square' },
-    { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting', label: 'Formatting', icon: 'fa-text-height' },
-    { value: 'characters:world-info', shellKey: 'characters', tabId: 'world-info', label: 'World Info', icon: 'fa-book-atlas' },
-    { value: 'left:agents', shellKey: 'left', tabId: 'agents', label: 'Agents', icon: 'fa-robot' },
-    { value: 'right:settings', shellKey: 'right', tabId: 'settings', label: 'Settings', icon: 'fa-screwdriver-wrench' },
-    { value: 'right:extensions', shellKey: 'right', tabId: 'extensions', label: 'Extensions', icon: 'fa-cubes' },
-    { value: 'right:background', shellKey: 'right', tabId: 'background', label: 'Background', icon: 'fa-panorama' },
-    { value: 'right:server', shellKey: 'right', tabId: 'server', label: 'Server', icon: 'fa-server' },
-    { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs', label: 'Console Logs', icon: 'fa-terminal' },
-]);
-
 // SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
 // each section in place into that section's own pages, so the bar keeps the skeleton PRODUCT.md
 // prescribes and each cluster stays readable as its own zone. Labels and icons resolve from
 // SB_SHELLS / SB_CHARACTER_PANEL_TABS at build time so a cluster cannot drift when a page is
-// renamed. Kept separate from SB_SHORTCUT_TARGETS and SB_MOBILE_NAV_PAGE_TARGETS because those two
-// are persisted in user settings and carry pseudo-entries these lists must not inherit.
+// renamed. Kept separate from SB_SHORTCUT_TARGETS because that one is persisted in user settings
+// and carries pseudo-entries this list must not inherit.
 const SB_TOPBAR_CLUSTERS = Object.freeze([
     {
         key: 'workspace',
         leadId: 'sb-left-shell-toggle',
         railId: 'sb-topbar-cluster-workspace',
         pages: Object.freeze([
-            { value: 'left:presets', shellKey: 'left', tabId: 'presets' },
-            { value: 'left:api', shellKey: 'left', tabId: 'api' },
+            { value: 'left:connections', shellKey: 'left', tabId: 'connections' },
             { value: 'left:sampling', shellKey: 'left', tabId: 'sampling' },
-            { value: 'left:advanced-formatting', shellKey: 'left', tabId: 'advanced-formatting' },
+            { value: 'left:prompting', shellKey: 'left', tabId: 'prompting' },
+            { value: 'left:editor', shellKey: 'left', tabId: 'editor' },
+            { value: 'left:context', shellKey: 'left', tabId: 'context' },
             { value: 'left:agents', shellKey: 'left', tabId: 'agents' },
         ]),
     },
@@ -822,11 +1338,12 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
         leadId: 'sb-right-shell-toggle',
         railId: 'sb-topbar-cluster-customize',
         pages: Object.freeze([
-            { value: 'right:settings', shellKey: 'right', tabId: 'settings' },
+            { value: 'right:appearance', shellKey: 'right', tabId: 'appearance' },
+            { value: 'right:interface', shellKey: 'right', tabId: 'interface' },
+            { value: 'right:messages', shellKey: 'right', tabId: 'messages' },
             { value: 'right:extensions', shellKey: 'right', tabId: 'extensions' },
-            { value: 'right:background', shellKey: 'right', tabId: 'background' },
-            { value: 'right:server', shellKey: 'right', tabId: 'server' },
-            { value: 'right:console-logs', shellKey: 'right', tabId: 'console-logs' },
+            { value: 'right:data-security', shellKey: 'right', tabId: 'data-security' },
+            { value: 'right:logs', shellKey: 'right', tabId: 'logs' },
         ]),
     },
     {
@@ -844,7 +1361,7 @@ const SB_TOPBAR_CLUSTERS = Object.freeze([
 ]);
 const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));
 
-// SillyBunny: Home and Characters remain as Layer 2 anchors. Workspace and Customize are redundant
+// SillyBunny: Home and Characters remain as Layer 2 anchors. Backend and Customize are redundant
 // once all of their pages are shown, so CSS hides those two only while icons-only mode is active.
 const SB_TOPBAR_ANCHOR_IDS = Object.freeze([
     'sb-home-toggle',
@@ -869,7 +1386,7 @@ const sbState = {
     landingPageObserver: null,
     landingPageSyncFrame: 0,
     inlineDrawerAutoClose: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.settingsDrawerAutoClose), false),
-    theme: normalizeTheme(safeGetItem(SB_STORAGE_KEYS.theme)),
+    theme: SB_SHELL_THEME,
     frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
     surfaceTransparency: normalizeSurfaceTransparency(safeGetItem(SB_STORAGE_KEYS.surfaceTransparency)),
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
@@ -928,20 +1445,18 @@ const sbState = {
         expanded: false,
         dismissBound: false,
         activeIndex: -1,
-    },
-    shellSizing: {
-        overrides: {
-            left: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.leftShellSize)),
-            right: normalizeShellSize(safeGetItem(SB_STORAGE_KEYS.rightShellSize)),
-        },
-        snapToChatWidth: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth), true),
-        activeResize: null,
+        renderTimer: 0,
+        renderedQuery: '',
+        renderedRows: null,
+        expandedAll: false,
+        entityPrimeStarted: false,
+        skippedWorlds: null,
     },
     characterDrawer: {
-        rightLocked: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.characterDrawerRightLocked), false),
         stateObserver: null,
         observedOpen: null,
         lastTab: 'characters',
+        closing: false,
     },
     mobileModal: {
         syncFrame: 0,
@@ -951,25 +1466,10 @@ const sbState = {
         quickActionContainer: null,
         quickActionSection: null,
         quickActionDivider: null,
-        layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout)),
-        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), false),
-        showCustomize: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), true),
-        showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), false),
-        replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), false),
-        replacementTarget: normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget)),
-    },
-    desktopNav: {
-        layout: normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout)),
-        iconOnly: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), false),
-        showCustomize: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), true),
-        showQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions), false),
-        replaceQuickActions: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions), false),
-        replacementTarget: normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget)),
     },
     desktopQuickActions: [],
     mobileQuickActions: [],
     chatbar: {
-        desktop: null,
         sidebar: null,
         mobileTools: null,
         visible: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), true),
@@ -985,9 +1485,9 @@ const sbState = {
         sourceSelectObserver: null,
         sourceObservedElement: null,
         sourceChangeHandler: null,
-        connectionStripOpen: false,
         sidebarOpen: false,
         mobileToolsOpen: false,
+        mobileToolsReturnFocus: null,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -1032,10 +1532,6 @@ const sbState = {
         report: null,
     },
 };
-
-function normalizeTheme(themeId) {
-    return SB_THEMES.some(theme => theme.id === themeId) ? themeId : 'clean-minimal';
-}
 
 function normalizeFrontendIcon(iconId) {
     const normalizedIconId = normalizeText(iconId);
@@ -1127,81 +1623,8 @@ function isTopbarLabelClickCycleEnabled() {
     return isMobileViewport() ? sbState.topbarLabel.clickCycle.mobile : sbState.topbarLabel.clickCycle.desktop;
 }
 
-function normalizeMobileNavLayout(value) {
-    const normalizedValue = normalizeText(value);
-    return SB_MOBILE_NAV_LAYOUTS.includes(normalizedValue) ? normalizedValue : 'horizontal';
-}
-
-function getNavState(mode) {
-    return mode === 'desktop' ? sbState.desktopNav : sbState.mobileNav;
-}
-
 function getQuickActionState(mode) {
     return mode === 'desktop' ? sbState.desktopQuickActions : sbState.mobileQuickActions;
-}
-
-function getActiveShellRailMode() {
-    return isMobileViewport() ? 'mobile' : 'desktop';
-}
-
-function getMobileNavCustomizeLocationLabel(mode = 'mobile') {
-    return getNavState(mode).layout === 'horizontal'
-        ? 'Show Workspace and Customize buttons in top bar'
-        : 'Show Workspace and Customize shortcuts in each side rail';
-}
-
-function normalizeMobileNavReplacementTarget(value) {
-    const normalizedValue = String(value ?? '').trim();
-    return SB_MOBILE_NAV_PAGE_TARGETS.some(target => target.value === normalizedValue)
-        ? normalizedValue
-        : SB_MOBILE_NAV_PAGE_TARGET_DEFAULT;
-}
-
-function getMobileNavReplacementTargetConfig(target = sbState.mobileNav.replacementTarget) {
-    const normalizedTarget = normalizeMobileNavReplacementTarget(target);
-    return SB_MOBILE_NAV_PAGE_TARGETS.find(item => item.value === normalizedTarget)
-        ?? SB_MOBILE_NAV_PAGE_TARGETS[0];
-}
-
-function createNavReplacementQuickAction(target) {
-    const config = getMobileNavReplacementTargetConfig(target);
-    return normalizeMobileQuickAction({
-        type: 'tab',
-        shellKey: config.shellKey,
-        tabId: config.tabId,
-        icon: config.icon,
-        label: config.label,
-    });
-}
-
-function normalizeShellSize(value) {
-    let source = value;
-
-    if (typeof source === 'string') {
-        const trimmedValue = source.trim();
-
-        if (!trimmedValue) {
-            return null;
-        }
-
-        try {
-            source = JSON.parse(trimmedValue);
-        } catch {
-            return null;
-        }
-    }
-
-    const width = Number(source?.width);
-    const height = Number(source?.height);
-
-    if (!Number.isFinite(width) || !Number.isFinite(height)) {
-        return null;
-    }
-
-    return {
-        width: Math.max(0, Math.round(width)),
-        height: Math.max(0, Math.round(height)),
-    };
 }
 
 function normalizeSurfaceTransparency(value) {
@@ -1435,7 +1858,6 @@ function setQuickActionsForMode(mode, actions, { persist = true } = {}) {
 
         renderMobileQuickActionSettingsList('desktop');
         refreshMobileQuickActionSearchResults('desktop');
-        syncMobileShellRailActions();
         return;
     }
 
@@ -1448,7 +1870,6 @@ function setQuickActionsForMode(mode, actions, { persist = true } = {}) {
     renderMobileQuickActionSettingsList('mobile');
     refreshMobileQuickActionSearchResults('mobile');
     refreshMobileNavQuickActions();
-    syncMobileShellRailActions();
 }
 
 function setMobileQuickActions(actions, options = {}) {
@@ -1583,28 +2004,15 @@ function restorePersistedTopbarState() {
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
     sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
-    sbState.shellSizing.snapToChatWidth = normalizeStoredBoolean(
-        safeGetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth),
-        sbState.shellSizing.snapToChatWidth,
-    );
-    sbState.mobileNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.mobileNavLayout));
-    sbState.mobileNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavIconOnly), sbState.mobileNav.iconOnly);
-    sbState.mobileNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowCustomize), sbState.mobileNav.showCustomize);
-    sbState.mobileNav.showQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions), sbState.mobileNav.showQuickActions);
-    sbState.mobileNav.replaceQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions), sbState.mobileNav.replaceQuickActions);
-    sbState.mobileNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget));
-    sbState.desktopNav.layout = normalizeMobileNavLayout(safeGetItem(SB_STORAGE_KEYS.desktopNavLayout));
-    sbState.desktopNav.iconOnly = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavIconOnly), sbState.desktopNav.iconOnly);
-    sbState.desktopNav.showCustomize = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowCustomize), sbState.desktopNav.showCustomize);
-    sbState.desktopNav.showQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions), sbState.desktopNav.showQuickActions);
-    sbState.desktopNav.replaceQuickActions = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions), sbState.desktopNav.replaceQuickActions);
-    sbState.desktopNav.replacementTarget = normalizeMobileNavReplacementTarget(safeGetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget));
     sbState.desktopQuickActions = loadDesktopQuickActions();
     sbState.mobileQuickActions = loadMobileQuickActions();
-    sbState.characterDrawer.rightLocked = normalizeStoredBoolean(
-        getPersistentStorageItem(SB_STORAGE_KEYS.characterDrawerRightLocked),
-        sbState.characterDrawer.rightLocked,
-    );
+}
+
+function migrateLegacyNavigationState() {
+    const root = document.documentElement;
+    for (const attribute of SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES) {
+        root.removeAttribute(attribute);
+    }
 }
 
 function clampTopbarOffset(offset) {
@@ -1668,10 +2076,6 @@ function setTopbarScale(mode, value, { persist = true } = {}) {
         safeSetItem(storageKey, String(nextScale));
     }
 
-    if (getChatDesktopRefs()) {
-        scheduleChatbarRefresh(0);
-    }
-
     updateThemePickerUi();
 }
 
@@ -1714,181 +2118,6 @@ function setMobileButtonScale(value, { persist = true } = {}) {
         safeSetItem(SB_STORAGE_KEYS.mobileButtonScale, String(nextScale));
     }
 
-    updateThemePickerUi();
-}
-
-function applyMobileNavPreferences() {
-    const quickActionsShown = sbState.mobileNav.showQuickActions;
-    const useIconOnly = sbState.mobileNav.iconOnly;
-    document.documentElement.dataset.sbMobileNavLayout = sbState.mobileNav.layout;
-    document.documentElement.dataset.sbMobileNavMode = useIconOnly ? 'icon-only' : 'labeled';
-    document.documentElement.dataset.sbMobileNavCustomize = sbState.mobileNav.showCustomize ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbMobileNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbMobileNavReplacement = sbState.mobileNav.replaceQuickActions ? 'shown' : 'hidden';
-}
-
-function applyDesktopNavPreferences() {
-    const quickActionsShown = sbState.desktopNav.showQuickActions;
-    const useIconOnly = sbState.desktopNav.iconOnly;
-    document.documentElement.dataset.sbDesktopNavLayout = sbState.desktopNav.layout;
-    document.documentElement.dataset.sbDesktopNavMode = useIconOnly ? 'icon-only' : 'labeled';
-    document.documentElement.dataset.sbDesktopNavCustomize = sbState.desktopNav.showCustomize ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbDesktopNavQuickActions = quickActionsShown ? 'shown' : 'hidden';
-    document.documentElement.dataset.sbDesktopNavReplacement = sbState.desktopNav.replaceQuickActions ? 'shown' : 'hidden';
-}
-
-function setMobileNavLayout(layout, { persist = true } = {}) {
-    const nextLayout = normalizeMobileNavLayout(layout);
-    sbState.mobileNav.layout = nextLayout;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavLayout, nextLayout);
-    }
-
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setMobileNavIconOnly(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.iconOnly = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavIconOnly, String(nextEnabled));
-    }
-
-    updateThemePickerUi();
-}
-
-function setMobileNavShowCustomize(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.showCustomize = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavShowCustomize, String(nextEnabled));
-    }
-
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setMobileNavShowQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.showQuickActions = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavShowQuickActions, String(nextEnabled));
-    }
-
-    refreshMobileNavQuickActions();
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setMobileNavReplaceQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.mobileNav.replaceQuickActions = nextEnabled;
-    applyMobileNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavReplaceQuickActions, String(nextEnabled));
-    }
-
-    refreshMobileNavQuickActions();
-    syncMobileShellRailActions();
-    updateMobileNavButtonLabel();
-    updateThemePickerUi();
-}
-
-function setMobileNavReplacementTarget(target, { persist = true } = {}) {
-    const nextTarget = normalizeMobileNavReplacementTarget(target);
-    sbState.mobileNav.replacementTarget = nextTarget;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.mobileNavReplacementTarget, nextTarget);
-    }
-
-    updateMobileNavButtonLabel();
-    updateThemePickerUi();
-}
-
-function setDesktopNavLayout(layout, { persist = true } = {}) {
-    const nextLayout = normalizeMobileNavLayout(layout);
-    sbState.desktopNav.layout = nextLayout;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavLayout, nextLayout);
-    }
-
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setDesktopNavIconOnly(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.iconOnly = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavIconOnly, String(nextEnabled));
-    }
-
-    updateThemePickerUi();
-}
-
-function setDesktopNavShowCustomize(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.showCustomize = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavShowCustomize, String(nextEnabled));
-    }
-
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setDesktopNavShowQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.showQuickActions = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavShowQuickActions, String(nextEnabled));
-    }
-
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setDesktopNavReplaceQuickActions(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.desktopNav.replaceQuickActions = nextEnabled;
-    applyDesktopNavPreferences();
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavReplaceQuickActions, String(nextEnabled));
-    }
-
-    syncMobileShellRailActions();
-    updateThemePickerUi();
-}
-
-function setDesktopNavReplacementTarget(target, { persist = true } = {}) {
-    const nextTarget = normalizeMobileNavReplacementTarget(target);
-    sbState.desktopNav.replacementTarget = nextTarget;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopNavReplacementTarget, nextTarget);
-    }
-
-    syncMobileShellRailActions();
     updateThemePickerUi();
 }
 
@@ -2089,80 +2318,6 @@ function setTopbarIconsOnly(mode, enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
-function setDesktopShellSnapToChatWidth(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.shellSizing.snapToChatWidth = nextEnabled;
-    document.documentElement.dataset.sbDesktopShellSnapToChatWidth = String(nextEnabled);
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.desktopShellSnapToChatWidth, String(nextEnabled));
-    }
-
-    syncDesktopShellSizing();
-    updateThemePickerUi();
-}
-
-function syncCharacterDrawerLockButton() {
-    const button = document.getElementById('sb-character-right-lock');
-    if (!(button instanceof HTMLButtonElement)) {
-        return;
-    }
-
-    const isRightLocked = Boolean(sbState.characterDrawer.rightLocked);
-    setButtonPressed(button, isRightLocked);
-    button.title = isRightLocked ? 'Keep Characters centered' : 'Lock Characters to right';
-    button.setAttribute('aria-label', button.title);
-}
-
-function syncCharacterDrawerLockPosition() {
-    const panel = getCharacterPanel();
-    if (!(panel instanceof HTMLElement)) {
-        return;
-    }
-
-    if (isMovingUIActive()) {
-        if (panel.dataset.sbCharacterLockInline === 'right') {
-            for (const property of ['left', 'right', 'margin-left', 'margin-right']) {
-                panel.style.removeProperty(property);
-            }
-
-            delete panel.dataset.sbCharacterLockInline;
-        }
-
-        return;
-    }
-
-    if (!sbState.characterDrawer.rightLocked || isMobileViewport()) {
-        if (panel.dataset.sbCharacterLockInline === 'right') {
-            for (const property of ['left', 'right', 'margin-left', 'margin-right']) {
-                panel.style.removeProperty(property);
-            }
-
-            delete panel.dataset.sbCharacterLockInline;
-        }
-        return;
-    }
-
-    panel.style.setProperty('left', 'auto', 'important');
-    panel.style.setProperty('right', '0px', 'important');
-    panel.style.setProperty('margin-left', '0px', 'important');
-    panel.style.setProperty('margin-right', '0px', 'important');
-    panel.dataset.sbCharacterLockInline = 'right';
-}
-
-function setCharacterDrawerRightLock(enabled, { persist = true } = {}) {
-    const nextEnabled = Boolean(enabled);
-    sbState.characterDrawer.rightLocked = nextEnabled;
-    document.documentElement.dataset.sbCharacterDrawerLock = nextEnabled ? 'right' : 'center';
-
-    if (persist) {
-        setPersistentStorageItem(SB_STORAGE_KEYS.characterDrawerRightLocked, String(nextEnabled));
-    }
-
-    syncCharacterDrawerLockPosition();
-    syncCharacterDrawerLockButton();
-}
-
 /*
  * Identity-based ownership for the top-bar adoption pass. An id prefix is spoofable and absent
  * on id-less nodes, so registering what our own factory built is the only reliable test. Any
@@ -2207,28 +2362,35 @@ function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-function normalizeCharacterEditorSubTab(tabId) {
-    const normalizedTabId = normalizeText(tabId);
-    return SB_CHARACTER_EDITOR_SUB_TABS.includes(normalizedTabId) ? normalizedTabId : SB_CHARACTER_EDITOR_DEFAULT_SUB_TAB;
+// Row subtitles and section meta lines describe a setting rather than name it: they stay searchable,
+// but folding them into `textContent` turned every label into "NameDescription". Placeholder copy is
+// unwritten filler and is neither searchable nor shown.
+const SB_SEARCH_DESCRIPTION_SELECTOR = [
+    '.ds-row-subtitle',
+    '.sb-group-meta',
+    '.sb-settings-category-heading > small',
+    `.${SB_FLAT_SECTION_HEADER_CLASS} > .flex-container > small`,
+].join(', ');
+const SB_SEARCH_PLACEHOLDER_SELECTOR = '[data-sb-copy-placeholder]';
+
+/** Text inside `element`, leaving out descendants matching `skipSelector`. */
+function getSearchNodeText(element, skipSelector) {
+    if (!element.querySelector(skipSelector)) {
+        return element.textContent ?? '';
+    }
+    const parts = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const skipped = node.parentElement?.closest(skipSelector);
+        if (skipped && skipped !== element && element.contains(skipped)) continue;
+        parts.push(node.data);
+    }
+    return parts.join(' ');
 }
 
-function isCharacterSpoilerFreeFieldsHidden() {
-    const form = document.getElementById('form_create');
-    return form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
-}
-
-function isCharacterEditorSubTabSpoilerHidden(tabId) {
-    return isCharacterSpoilerFreeFieldsHidden()
-        && !SB_CHARACTER_EDITOR_SPOILER_FREE_VISIBLE_TABS.includes(normalizeCharacterEditorSubTab(tabId));
-}
-
-function resolveCharacterEditorSubTab(tabId) {
-    const normalizedTabId = normalizeCharacterEditorSubTab(tabId);
-    return isCharacterEditorSubTabSpoilerHidden(normalizedTabId) ? 'metadata' : normalizedTabId;
-}
-
-function isCharacterEditorMenuType(menuType) {
-    return ['character_edit', 'create'].includes(menuType ?? '');
+/** The name a row or heading shows, without its description or placeholder copy. */
+function getSearchLabelText(element) {
+    return getSearchNodeText(element, `${SB_SEARCH_DESCRIPTION_SELECTOR}, ${SB_SEARCH_PLACEHOLDER_SELECTOR}`);
 }
 
 function getSearchTextCandidates(element) {
@@ -2248,7 +2410,7 @@ function getSearchTextCandidates(element) {
         element.matches('.extension_container, .extension_name')
             ? extensionContainer?.querySelector('.extension_name, .inline-drawer-header, .inline-drawer-toggle, h3, h4, strong')?.textContent
             : '',
-        element.textContent,
+        getSearchLabelText(element),
     ];
 
     return candidates
@@ -2264,37 +2426,20 @@ function getSearchDisplayText(element, fallback = '') {
     return clampText(preferredCandidate || candidates[0] || fallback, 110);
 }
 
-function getSearchText(element, sectionLabel = '') {
+function getSearchText(element, sectionLabel = '', includeCategoryDescription = false) {
+    const descriptionRoot = includeCategoryDescription && element.matches('.sb-settings-category-title')
+        ? element.closest('.sb-settings-category-heading') ?? element
+        : element;
     return normalizeText([
         ...getSearchTextCandidates(element),
+        getSearchNodeText(descriptionRoot, SB_SEARCH_PLACEHOLDER_SELECTOR),
         sectionLabel,
     ].join(' '));
 }
 
-function getPersonaSearchAvatarId(element) {
-    if (!(element instanceof HTMLElement)) {
-        return '';
-    }
-
-    const directAvatarId = element.closest('.avatar-container[data-avatar-id], .avatar[data-avatar-id]')?.getAttribute('data-avatar-id');
-    if (directAvatarId) {
-        return directAvatarId;
-    }
-
-    if (!element.matches('.persona_name')) {
-        return '';
-    }
-
-    return document.querySelector('#user_avatar_block .avatar-container.selected[data-avatar-id]')?.getAttribute('data-avatar-id')
-        ?? '';
-}
-
-function getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element = null, avatarId = '' } = {}) {
+function getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { avatarId = '' } = {}) {
     const personaAvatarId = tabState.id === 'persona'
-        ? normalizeText(
-            avatarId
-            || getPersonaSearchAvatarId(element),
-        )
+        ? normalizeText(avatarId)
         : '';
 
     if (personaAvatarId) {
@@ -2310,6 +2455,73 @@ function getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element 
 
 function getUniversalSearchState() {
     return sbState.universalSearch;
+}
+
+// One trailing render per typing pause. `flush` is for keys that act on the list immediately.
+function scheduleUniversalSearchRender({ flush = false } = {}) {
+    const searchState = getUniversalSearchState();
+    const input = searchState.input;
+    if (!(input instanceof HTMLInputElement) || !searchState.expanded) {
+        window.clearTimeout(searchState.renderTimer);
+        searchState.renderTimer = 0;
+        return;
+    }
+
+    window.clearTimeout(searchState.renderTimer);
+    if (flush) {
+        searchState.renderTimer = 0;
+        renderUniversalSearchResults(input.value);
+        return;
+    }
+
+    searchState.renderTimer = window.setTimeout(() => {
+        searchState.renderTimer = 0;
+        renderUniversalSearchResults(input.value);
+    }, SB_UNIVERSAL_SEARCH_DEBOUNCE_MS);
+}
+
+// Loading one book per keystroke would be a request storm, so entry bodies are primed once when
+// the panel opens under a fixed budget, then the list is repainted with whatever arrived.
+function primeUniversalSearchEntityMetadata() {
+    const searchState = getUniversalSearchState();
+    if (searchState.entityPrimeStarted) {
+        return;
+    }
+    searchState.entityPrimeStarted = true;
+    const skippedWorlds = searchState.skippedWorlds ?? new Set();
+    searchState.skippedWorlds = skippedWorlds;
+    const names = getSillyTavernContext()?.getWorldInfoNames?.() ?? [];
+    void primeWorldInfoSearchCache({ names, skippedWorlds }).then(() => {
+        if (getUniversalSearchState().expanded && (getUniversalSearchState().input?.value ?? '').trim()) {
+            scheduleUniversalSearchRender({ flush: true });
+        }
+    }).catch(() => {
+        // A failed priming pass leaves world names searchable; only entry bodies are missing.
+    });
+}
+
+// The panel paints a short list, so a broad query needs a way to ask for the rest. The row carries
+// no id of its own, which keeps it out of the arrow-key list, and it is not a result: Enter on it
+// still opens the highlighted setting.
+function createUniversalSearchShowAllRow(hiddenCount, groupLabel = '') {
+    const row = createElement('button', {
+        className: 'sb-search-show-all',
+        attrs: {
+            type: 'button',
+            'data-sb-search-show-all': 'true',
+        },
+    });    row.appendChild(createElement('strong', {
+        text: groupLabel
+            ? `Show ${hiddenCount} more in ${groupLabel}`
+            : `Show all ${hiddenCount} more results`,
+    }));
+    row.addEventListener('click', () => {
+        const searchState = getUniversalSearchState();
+        searchState.expandedAll = true;
+        // Go through the open-state setter: it is the path that repaints an already-open panel.
+        setUniversalSearchOpenState(true);
+    });
+    return row;
 }
 
 function renderSearchEmptyState(container, title, detail) {
@@ -2373,19 +2585,28 @@ function setUniversalSearchOpenState(isOpen, { focusInput = false } = {}) {
     }
 
     if (!nextOpenState) {
+        window.clearTimeout(searchState.renderTimer);
+        searchState.renderTimer = 0;
         searchState.results?.classList.remove('is-visible');
         if (wasOpen) {
             requestMobileViewportReset({ restoreScroll: true });
         }
-    } else {
+    } else if (!wasOpen) {
+        // Opening paints the current query once; later keystrokes go through the debounce.
         renderUniversalSearchResults(input?.value ?? '');
+        primeUniversalSearchEntityMetadata();
+    } else if (!searchState.renderTimer && (input?.value ?? '').trim()) {
+        scheduleUniversalSearchRender();
     }
 
     if (focusInput && input instanceof HTMLInputElement) {
         focusUniversalSearchInput(input);
     }
 
-    queueMobileShellDrawerBoundsSync();
+    const searchToggle = document.getElementById('sb-topbar-search-toggle');
+    searchToggle?.classList.toggle('is-open', nextOpenState);
+    searchToggle?.setAttribute('aria-expanded', String(nextOpenState));
+
     syncShortcutButtonActiveStates();
 }
 
@@ -2430,127 +2651,8 @@ function normalizeCharacterPanelTab(tabId) {
     return getCharacterPanelTabConfig(normalizedTabId) ? normalizedTabId : SB_CHARACTER_PANEL_DEFAULT_TAB;
 }
 
-function getCharacterPanelSearchEntries() {
-    const panel = getCharacterPanel();
-
-    return SB_CHARACTER_PANEL_TABS.map((tab) => {
-        const button = panel?.querySelector(`[data-sb-character-tab="${CSS.escape(tab.id)}"]`);
-        const searchText = normalizeText([tab.label, tab.id, 'characters'].join(' '));
-
-        return {
-            element: button instanceof HTMLElement ? button : null,
-            searchText,
-            displayText: tab.label,
-            sectionLabel: tab.label,
-            tabId: tab.id,
-            tabLabel: tab.label,
-            dedupeKey: `characters::${tab.id}`,
-        };
-    });
-}
-
 function isMobileViewport() {
     return window.matchMedia(SB_MOBILE_MEDIA_QUERY).matches;
-}
-
-function prefersReducedMotion() {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function getShellProxyButton(shellKey) {
-    const shellConfig = getShellConfig(shellKey);
-    const proxyButton = shellConfig?.proxyButtonId ? document.getElementById(shellConfig.proxyButtonId) : null;
-
-    if (proxyButton instanceof HTMLElement && isActuallyVisible(proxyButton)) {
-        return proxyButton;
-    }
-
-    // SillyBunny: Workspace and Customize are hidden in icons-only mode, and Workspace is also
-    // hidden on phones. Fall back to the cluster icon so focus does not silently drop to <body>.
-    const activeTabId = getShellState(shellKey)?.activeTabId;
-    const pageButton = activeTabId
-        ? document.querySelector(`[data-sb-topbar-page="${CSS.escape(`${shellKey}:${activeTabId}`)}"]`)
-        : null;
-
-    if (pageButton instanceof HTMLElement && isActuallyVisible(pageButton)) {
-        return pageButton;
-    }
-
-    return proxyButton instanceof HTMLElement ? proxyButton : null;
-}
-
-function getShellActivePanel(shellState) {
-    return shellState?.tabs.get(shellState.activeTabId)?.panel ?? null;
-}
-
-function getShellFocusTarget(shellState) {
-    if (shellState?.headerTitle instanceof HTMLElement) {
-        return shellState.headerTitle;
-    }
-
-    const panel = getShellActivePanel(shellState);
-    const focusable = Array.from(panel?.querySelectorAll(SB_SHELL_FOCUSABLE_SELECTOR) ?? [])
-        .find(element => element instanceof HTMLElement
-            && isActuallyVisible(element)
-            && !element.closest('[hidden], [aria-hidden="true"], [inert]'));
-
-    if (focusable instanceof HTMLElement) {
-        return focusable;
-    }
-
-    return shellState?.nav instanceof HTMLElement ? shellState.nav : null;
-}
-
-function focusShellPanel(shellKey, { force = false } = {}) {
-    const shellState = getShellState(shellKey);
-    const shellRoot = shellState?.root;
-
-    if (!(shellRoot instanceof HTMLElement) || !shellRoot.classList.contains('openDrawer')) {
-        return;
-    }
-
-    const activeElement = document.activeElement;
-    if (!force && activeElement instanceof HTMLElement && shellRoot.contains(activeElement)) {
-        return;
-    }
-
-    const target = getShellFocusTarget(shellState);
-    if (target instanceof HTMLElement) {
-        target.focus({ preventScroll: true });
-    }
-}
-
-function rememberShellFocusOrigin(shellKey) {
-    const shellState = getShellState(shellKey);
-    const shellRoot = shellState?.root;
-    const activeElement = document.activeElement;
-
-    if (!shellState || !(activeElement instanceof HTMLElement)) {
-        return;
-    }
-
-    if (shellRoot instanceof HTMLElement && shellRoot.contains(activeElement)) {
-        return;
-    }
-
-    shellState.restoreFocusTarget = activeElement;
-}
-
-function restoreShellFocus(shellKey) {
-    const shellState = getShellState(shellKey);
-    const restoreTarget = shellState?.restoreFocusTarget;
-    const proxyButton = getShellProxyButton(shellKey);
-    const target = restoreTarget instanceof HTMLElement && document.contains(restoreTarget)
-        ? restoreTarget
-        : proxyButton;
-
-    if (shellState) {
-        delete shellState.restoreFocusTarget;
-    }
-
-    if (target instanceof HTMLElement && !target.hasAttribute('disabled')) {
-        target.focus({ preventScroll: true });
-    }
 }
 
 function getLayoutViewportScrollAnchor() {
@@ -2584,12 +2686,30 @@ function queueLayoutViewportScrollRestore(anchor) {
     window.setTimeout(() => restoreLayoutViewportScroll(anchor), 120);
 }
 
+const SB_MANAGED_SCROLL_CONTAINER_SELECTOR = '.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull, .sb-search-results, #chat';
+
+/** Whether the element would actually move when scrolled, rather than only clipping. */
+function isScrollableContainer(element) {
+    if (element.scrollHeight - element.clientHeight <= 1) {
+        return false;
+    }
+    const overflowY = window.getComputedStyle(element).overflowY;
+    return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+}
+
 function getManagedScrollContainer(target) {
     if (!(target instanceof HTMLElement)) {
         return null;
     }
 
-    return target.closest('.sb-shell-panel-scroller, .scrollableInner, .scrollableInnerFull, .sb-search-results, #chat');
+    // Nearest match first: a panel can nest a taller, non-scrolling wrapper inside the element that
+    // really scrolls, and scrolling that wrapper moves nothing.
+    const candidates = [];
+    for (let element = target; element; element = element.parentElement) {
+        if (element.matches(SB_MANAGED_SCROLL_CONTAINER_SELECTOR)) candidates.push(element);
+    }
+
+    return candidates.find(isScrollableContainer) ?? candidates[0] ?? null;
 }
 
 function scrollElementIntoManagedView(target, { block = 'nearest', behavior = 'auto' } = {}) {
@@ -2636,40 +2756,12 @@ function scrollElementIntoManagedView(target, { block = 'nearest', behavior = 'a
     return true;
 }
 
-function scrollShellTabButtonIntoView(nav, button, { smooth = false } = {}) {
-    if (!(nav instanceof HTMLElement) || !(button instanceof HTMLElement)) {
-        return;
-    }
-
-    if (!isActuallyVisible(button)) {
-        return;
-    }
-
-    const navRect = nav.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
-    const leftOverflow = buttonRect.left - navRect.left;
-    const rightOverflow = buttonRect.right - navRect.right;
-
-    if (leftOverflow >= 0 && rightOverflow <= 0) {
-        return;
-    }
-
-    nav.scrollBy({
-        left: leftOverflow < 0 ? leftOverflow : rightOverflow,
-        behavior: smooth && !prefersReducedMotion() ? 'smooth' : 'auto',
-    });
-}
-
 function isTouchOnlyDesktopViewport() {
     const hasHover = window.matchMedia('(hover: hover), (any-hover: hover)').matches;
     const hasFinePointer = window.matchMedia('(pointer: fine), (any-pointer: fine)').matches;
     const isTouchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
 
     return isTouchMac || (navigator.maxTouchPoints > 0 && !hasHover && !hasFinePointer);
-}
-
-function canResizeDesktopShells() {
-    return !isMobileViewport() && !isTouchOnlyDesktopViewport();
 }
 
 function readFiniteViewportNumber(value, fallback = 0) {
@@ -2728,7 +2820,7 @@ function isChatComposerEditableElement(element) {
 }
 
 function hasOpenMobileShellDrawer() {
-    return getMobileShellBoundDrawers().some(drawer => drawer.classList.contains('openDrawer'));
+    return sbSettingsState.open;
 }
 
 function shouldUseStableIOSPanelViewport(layoutViewport, visualViewportSize) {
@@ -2867,10 +2959,6 @@ function getShellViewportSize() {
 }
 
 function syncShellViewportBounds() {
-    if (sbIsSyncingRailActions) {
-        return;
-    }
-
     const root = document.documentElement;
     const viewportSize = getShellViewportSize();
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
@@ -3080,118 +3168,14 @@ function scheduleMobilePopupKeyboardSync() {
     sbMobilePopupKeyboardSyncTimer = window.setTimeout(syncMobilePopupKeyboardShift, 400);
 }
 
-function getMobileShellBoundDrawers() {
-    return Array.from(new Set([
-        ...document.querySelectorAll('#left-nav-panel, #user-settings-block, .sb-shell-root, #right-nav-panel'),
-        ...document.querySelectorAll('#top-settings-holder #right-nav-panel'),
-    ])).filter(drawer => drawer instanceof HTMLElement);
-}
-
-function applyMobileDrawerBoundsDecision(drawer, decision) {
-    if (!(drawer instanceof HTMLElement) || !decision) {
-        return;
-    }
-
-    if (decision.action === sbMobileShellLifecycle.drawerBounds.action.BIND) {
-        drawer.dataset.sbMobileViewportBound = 'true';
-    } else if (decision.action === sbMobileShellLifecycle.drawerBounds.action.CLEAR) {
-        delete drawer.dataset.sbMobileViewportBound;
-    }
-
-    for (const property of decision.styleRemovals) {
-        if (drawer.style.getPropertyValue(property) || drawer.style.getPropertyPriority(property)) {
-            drawer.style.removeProperty(property);
-        }
-    }
-
-    for (const { property, value, priority } of decision.styleWrites) {
-        if (drawer.style.getPropertyValue(property) !== value || drawer.style.getPropertyPriority(property) !== priority) {
-            drawer.style.setProperty(property, value, priority);
-        }
-    }
-}
-
-function syncMobileShellDrawerBounds() {
-    const drawers = getMobileShellBoundDrawers();
-
-    if (!drawers.length) {
-        return;
-    }
-
-    const mobileViewport = isMobileViewport();
-    const viewportSize = mobileViewport ? getShellViewportSize() : null;
-    const baseTopOffset = mobileViewport ? getResolvedShellTopbarOffset() : 0;
-
-    for (const drawer of drawers) {
-        const isOpen = drawer.classList.contains('openDrawer');
-        const drawerStyles = mobileViewport && isOpen ? window.getComputedStyle(drawer) : null;
-
-        applyMobileDrawerBoundsDecision(drawer, sbMobileShellLifecycle.drawerBounds.resolveBounds({
-            isMobileViewport: mobileViewport,
-            isOpen,
-            isViewportBound: drawer.dataset.sbMobileViewportBound === 'true',
-            viewportHeight: viewportSize?.height ?? 0,
-            viewportTop: viewportSize?.top ?? 0,
-            baseTopOffset,
-            shellGap: drawerStyles ? Number.parseFloat(drawerStyles.getPropertyValue('--sb-mobile-shell-gap')) || 0 : 0,
-        }));
-    }
-}
-
-let sbMobileShellDrawerBoundsFrameId = 0;
-let sbMobileShellDrawerBoundsFollowupId = 0;
-
-function queueMobileShellDrawerBoundsSync() {
-    const schedule = sbMobileShellLifecycle.viewportSync.resolveDrawerBoundsSchedule({
-        isMobileViewport: isMobileViewport(),
-        hasAnimationFrame: typeof window.requestAnimationFrame === 'function',
-        followupDelayMs: SB_MOBILE_VIEWPORT_RESET_FOLLOWUP_MS,
-    });
-
-    if (!schedule.shouldSchedule) {
-        return;
-    }
-
-    if (sbMobileShellDrawerBoundsFrameId && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(sbMobileShellDrawerBoundsFrameId);
-        sbMobileShellDrawerBoundsFrameId = 0;
-    }
-    if (sbMobileShellDrawerBoundsFollowupId) {
-        window.clearTimeout(sbMobileShellDrawerBoundsFollowupId);
-        sbMobileShellDrawerBoundsFollowupId = 0;
-    }
-
-    const sync = () => {
-        sbMobileShellDrawerBoundsFrameId = 0;
-        syncShellViewportBounds();
-        syncMobileShellDrawerBounds();
-    };
-
-    if (schedule.useAnimationFrame) {
-        sbMobileShellDrawerBoundsFrameId = window.requestAnimationFrame(sync);
-    } else {
-        sync();
-    }
-
-    sbMobileShellDrawerBoundsFollowupId = window.setTimeout(() => {
-        sbMobileShellDrawerBoundsFollowupId = 0;
-        sync();
-    }, schedule.followupDelayMs);
-}
-
-function isMovingUIActive() {
-    return document.body?.classList.contains('movingUI') ?? false;
-}
-
-function isDesktopResizableShell(shellKey) {
-    return shellKey === 'left' || shellKey === 'right' || shellKey === 'characters';
-}
-
-function getShellSizingKey(shellKey) {
-    return ['left', 'right', 'characters'].includes(shellKey) ? 'right' : shellKey;
-}
+/** Account storage once its migration marker is present; init() never removes it, so it stays ready. */
+let sbReadyAccountStorage = null;
 
 function getShellAccountStorage() {
+    if (sbReadyAccountStorage) {
+        return sbReadyAccountStorage;
+    }
+
     const storage = getSillyTavernContext()?.accountStorage;
 
     if (!storage || typeof storage.getState !== 'function') {
@@ -3199,8 +3183,13 @@ function getShellAccountStorage() {
     }
 
     try {
+        // getState() deep-clones the whole store; only pay for it until readiness is observed once.
         const snapshot = storage.getState();
-        return snapshot && Object.hasOwn(snapshot, SB_ACCOUNT_STORAGE_READY_MARKER) ? storage : null;
+        if (!snapshot || !Object.hasOwn(snapshot, SB_ACCOUNT_STORAGE_READY_MARKER)) {
+            return null;
+        }
+        sbReadyAccountStorage = storage;
+        return storage;
     } catch {
         return null;
     }
@@ -3237,41 +3226,6 @@ function setPersistentStorageItem(key, value) {
 
     safeSetItem(key, value);
     getShellAccountStorage()?.setItem(key, value);
-}
-
-function getPersistedShellSize(shellKey) {
-    const storageKey = getShellSizeStorageKey(shellKey);
-
-    if (!storageKey) {
-        return null;
-    }
-
-    const localSize = normalizeShellSize(safeGetItem(storageKey));
-    const accountStorage = getShellAccountStorage();
-    const accountSize = accountStorage ? normalizeShellSize(accountStorage.getItem(storageKey)) : null;
-
-    if (accountSize) {
-        if (!areShellSizesEqual(localSize, accountSize)) {
-            safeSetItem(storageKey, JSON.stringify(accountSize));
-        }
-
-        return accountSize;
-    }
-
-    if (localSize && accountStorage) {
-        accountStorage.setItem(storageKey, JSON.stringify(localSize));
-    }
-
-    return localSize;
-}
-
-function hydratePersistedShellSizes() {
-    const persistedSize = getPersistedShellSize('right') ?? getPersistedShellSize('left');
-
-    if (persistedSize) {
-        sbState.shellSizing.overrides.left = persistedSize;
-        sbState.shellSizing.overrides.right = persistedSize;
-    }
 }
 
 function getResolvedShellTopbarOffset() {
@@ -3321,545 +3275,6 @@ function getResolvedShellTopbarOffset() {
     return fallbackTopOffset;
 }
 
-function getShellViewportTop(root, viewportSize = getShellViewportSize()) {
-    let top = getResolvedShellTopbarOffset();
-
-    if (root instanceof HTMLElement && root.classList.contains('openDrawer') && root.getClientRects().length > 0) {
-        const rect = root.getBoundingClientRect();
-        if (Number.isFinite(rect.top)) {
-            top = rect.top;
-        }
-    }
-
-    return clampNumber(Math.round(top), viewportSize.top, viewportSize.bottom);
-}
-
-function getChatViewportWidth(viewportSize = getShellViewportSize()) {
-    const chatShell = document.getElementById('sheld');
-
-    if (chatShell instanceof HTMLElement && chatShell.getClientRects().length > 0) {
-        const rect = chatShell.getBoundingClientRect();
-        const visibleWidth = Math.min(rect.right, viewportSize.right) - Math.max(rect.left, viewportSize.left);
-
-        if (Number.isFinite(visibleWidth) && visibleWidth > 0) {
-            return Math.round(visibleWidth);
-        }
-    }
-
-    const sheldWidthStr = window.getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim();
-    const sheldWidthValue = Number.parseFloat(sheldWidthStr);
-
-    if (!Number.isFinite(sheldWidthValue)) {
-        return viewportSize.width;
-    }
-
-    if (sheldWidthStr.endsWith('px')) {
-        return Math.round(sheldWidthValue);
-    }
-
-    return Math.round((sheldWidthValue / 100) * viewportSize.width);
-}
-
-function isShellSnapToChatWidthEnabled(shellKey) {
-    return Boolean(sbState.shellSizing.snapToChatWidth)
-        && isDesktopResizableShell(shellKey)
-        && !isMobileViewport();
-}
-
-function getShellSizeStorageKey(shellKey) {
-    const sizingKey = getShellSizingKey(shellKey);
-
-    if (sizingKey === 'left') {
-        return SB_STORAGE_KEYS.leftShellSize;
-    }
-
-    if (sizingKey === 'right') {
-        return SB_STORAGE_KEYS.rightShellSize;
-    }
-
-    return '';
-}
-
-function getDesktopShellDimensions(shellKey = '') {
-    const viewportSize = getShellViewportSize();
-    const viewportWidth = viewportSize.width;
-    const viewportHeight = viewportSize.height;
-    const maxShellWidth = shellKey === 'right' ? Math.min(SB_DESKTOP_SHELL_LAYOUT.maxWidth, 760) : SB_DESKTOP_SHELL_LAYOUT.maxWidth;
-
-    if (isShellSnapToChatWidthEnabled(shellKey)) {
-        const snappedWidth = clampNumber(
-            getChatViewportWidth(viewportSize),
-            Math.min(SB_DESKTOP_SHELL_LAYOUT.minWidth, viewportWidth),
-            viewportWidth,
-        );
-
-        return {
-            width: snappedWidth,
-            maxWidth: snappedWidth,
-        };
-    }
-
-    if (
-        ['left', 'right'].includes(shellKey)
-        && viewportWidth >= SB_DESKTOP_SHELL_LAYOUT.laptopViewportMin
-        && viewportWidth <= SB_DESKTOP_SHELL_LAYOUT.laptopViewportMax
-    ) {
-        const laptopWidth = clampNumber(
-            viewportWidth * SB_DESKTOP_SHELL_LAYOUT.laptopRatio,
-            SB_DESKTOP_SHELL_LAYOUT.laptopMinWidth,
-            SB_DESKTOP_SHELL_LAYOUT.laptopMaxWidth,
-        );
-        const maxWidth = Math.max(0, viewportWidth - SB_DESKTOP_SHELL_LAYOUT.laptopGutter);
-        const resolvedWidth = Math.min(laptopWidth, maxWidth);
-
-        return {
-            width: resolvedWidth,
-            maxWidth: resolvedWidth,
-        };
-    }
-
-    if (isMobileViewport() || (viewportHeight <= SB_DESKTOP_SHELL_LAYOUT.fullWidthMaxHeight && shellKey !== 'characters')) {
-        return {
-            width: viewportWidth,
-            maxWidth: viewportWidth,
-        };
-    }
-
-    if (viewportWidth <= SB_DESKTOP_SHELL_LAYOUT.compactViewportWidth) {
-        const compactWidth = Math.max(0, Math.min(SB_DESKTOP_SHELL_LAYOUT.compactMaxWidth, viewportWidth - SB_DESKTOP_SHELL_LAYOUT.compactGap));
-        return {
-            width: compactWidth,
-            maxWidth: compactWidth,
-        };
-    }
-
-    // SillyBunny: cap shell width to the active chat width (--sheldWidth) so settings
-    // panels narrow when the user reduces the chat width, matching standard ST behaviour.
-    const sheldWidthStr = window.getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim();
-    const sheldWidthVw = parseFloat(sheldWidthStr);
-    const chatWidthPx = Number.isFinite(sheldWidthVw) ? Math.round((sheldWidthVw / 100) * viewportWidth) : viewportWidth;
-    const desiredWidth = clampNumber(
-        Math.min(viewportWidth * SB_DESKTOP_SHELL_LAYOUT.ratio, chatWidthPx),
-        SB_DESKTOP_SHELL_LAYOUT.minWidth,
-        maxShellWidth,
-    );
-    const gutter = clampNumber(
-        viewportWidth * SB_DESKTOP_SHELL_LAYOUT.gutterRatio,
-        SB_DESKTOP_SHELL_LAYOUT.gutterMin,
-        SB_DESKTOP_SHELL_LAYOUT.gutterMax,
-    );
-    const maxWidth = Math.max(0, viewportWidth - gutter);
-    const resolvedWidth = Math.min(desiredWidth, maxWidth);
-
-    return {
-        width: resolvedWidth,
-        maxWidth: resolvedWidth,
-    };
-}
-
-function getDesktopShellResizeBounds(shellKey = '') {
-    const viewportSize = getShellViewportSize();
-    const viewportWidth = Math.max(0, Math.round(viewportSize.width));
-    const viewportHeight = Math.max(0, Math.round(viewportSize.height));
-    const root = isDesktopResizableShell(shellKey) ? getResizableShellRoot(shellKey) : null;
-    const shellTop = getShellViewportTop(root, viewportSize);
-    const defaultDimensions = getDesktopShellDimensions(shellKey);
-    const defaultWidth = Math.max(0, Math.min(Math.round(defaultDimensions.width), viewportWidth));
-    const snapWidth = isShellSnapToChatWidthEnabled(shellKey) ? defaultWidth : null;
-    const maxHeight = Math.max(0, Math.round(viewportHeight - shellTop - SB_DESKTOP_SHELL_RESIZE.bottomGap));
-
-    return {
-        defaultWidth,
-        defaultHeight: maxHeight,
-        minWidth: snapWidth ?? Math.min(SB_DESKTOP_SHELL_RESIZE.minWidth, viewportWidth),
-        maxWidth: snapWidth ?? viewportWidth,
-        minHeight: Math.min(SB_DESKTOP_SHELL_RESIZE.minHeight, maxHeight),
-        maxHeight,
-    };
-}
-
-function clampShellSize(size, bounds = getDesktopShellResizeBounds()) {
-    const normalizedSize = normalizeShellSize(size);
-
-    if (!normalizedSize) {
-        return null;
-    }
-
-    return {
-        width: clampNumber(normalizedSize.width, bounds.minWidth, bounds.maxWidth),
-        height: clampNumber(normalizedSize.height, bounds.minHeight, bounds.maxHeight),
-    };
-}
-
-function areShellSizesEqual(left, right) {
-    return Boolean(left) && Boolean(right)
-        && left.width === right.width
-        && left.height === right.height;
-}
-
-function getShellSizeOverride(shellKey) {
-    return isDesktopResizableShell(shellKey) ? sbState.shellSizing.overrides.right ?? sbState.shellSizing.overrides.left ?? null : null;
-}
-
-function setShellSizeOverride(shellKey, size, { persist = true } = {}) {
-    if (!isDesktopResizableShell(shellKey)) {
-        return null;
-    }
-
-    const nextSize = clampShellSize(size, getDesktopShellResizeBounds(shellKey));
-
-    sbState.shellSizing.overrides.left = nextSize;
-    sbState.shellSizing.overrides.right = nextSize;
-
-    if (!persist) {
-        return nextSize;
-    }
-
-    const accountStorage = getShellAccountStorage();
-    const storageKeys = [SB_STORAGE_KEYS.leftShellSize, SB_STORAGE_KEYS.rightShellSize];
-
-    if (nextSize) {
-        const serializedSize = JSON.stringify(nextSize);
-        for (const storageKey of storageKeys) {
-            safeSetItem(storageKey, serializedSize);
-            accountStorage?.setItem(storageKey, serializedSize);
-        }
-    } else {
-        for (const storageKey of storageKeys) {
-            safeRemoveItem(storageKey);
-            accountStorage?.removeItem(storageKey);
-        }
-    }
-
-    return nextSize;
-}
-
-function applyDesktopShellSize(root, size) {
-    root.style.setProperty('width', `${size.width}px`, 'important');
-    root.style.setProperty('max-width', `${size.width}px`, 'important');
-    root.style.setProperty('height', `${size.height}px`, 'important');
-    root.style.setProperty('max-height', `${size.height}px`, 'important');
-    root.dataset.sbShellInlineSize = 'true';
-}
-
-function clearDesktopShellSize(root) {
-    root.style.removeProperty('width');
-    root.style.removeProperty('max-width');
-    root.style.removeProperty('height');
-    root.style.removeProperty('max-height');
-    delete root.dataset.sbShellInlineSize;
-}
-
-function syncDesktopShellSizing() {
-    if (sbIsSyncingRailActions) {
-        return;
-    }
-
-    hydratePersistedShellSizes();
-
-    const resizingEnabled = canResizeDesktopShells();
-
-    for (const shellKey of ['left', 'right', 'characters']) {
-        const root = shellKey === 'characters'
-            ? getCharacterPanel()
-            : document.getElementById(getShellConfig(shellKey).rootPanelId);
-        if (!(root instanceof HTMLElement)) {
-            continue;
-        }
-
-        const dimensions = getDesktopShellDimensions(shellKey);
-        const bounds = getDesktopShellResizeBounds(shellKey);
-
-        if (isMobileViewport()) {
-            clearDesktopShellSize(root);
-            root.classList.remove('sb-shell-can-resize');
-            syncShellResizeHandleValue(shellKey, null);
-            continue;
-        }
-
-        if (shellKey === 'characters' && isMovingUIActive()) {
-            if (root.dataset.sbShellInlineSize === 'true') {
-                clearDesktopShellSize(root);
-            }
-
-            root.classList.remove('sb-shell-can-resize');
-            syncShellResizeHandleValue(shellKey, null);
-            continue;
-        }
-
-        const { width } = dimensions;
-        let sizeToApply = {
-            width,
-            height: bounds.defaultHeight,
-        };
-
-        const storedOverride = getShellSizeOverride(shellKey);
-        if (resizingEnabled && storedOverride) {
-            const clampedOverride = clampShellSize(storedOverride, bounds);
-            if (clampedOverride) {
-                sizeToApply = clampedOverride;
-
-                if (!areShellSizesEqual(storedOverride, clampedOverride)) {
-                    setShellSizeOverride(shellKey, clampedOverride);
-                } else {
-                    sbState.shellSizing.overrides[getShellSizingKey(shellKey)] = clampedOverride;
-                }
-            }
-        }
-
-        applyDesktopShellSize(root, sizeToApply);
-        root.classList.toggle('sb-shell-can-resize', resizingEnabled);
-        syncShellResizeHandleValue(shellKey, sizeToApply);
-    }
-
-    syncCharacterDrawerLockPosition();
-}
-
-function getResizableShellRoot(shellKey) {
-    if (shellKey === 'characters') {
-        return getCharacterPanel();
-    }
-
-    return document.getElementById(getShellConfig(shellKey).rootPanelId);
-}
-
-function isPrimaryShellResizeStart(event) {
-    if (event && 'isPrimary' in event && event.isPrimary === false) {
-        return false;
-    }
-
-    return event?.button === undefined || event.button === 0 || event.pointerType === 'touch';
-}
-
-function bindShellResizeHandle(handle, shellKey) {
-    stopProxyPointerPropagation(handle);
-    configureShellResizeHandle(handle, shellKey);
-    handle.addEventListener('pointerdown', event => beginShellResize(shellKey, event));
-    handle.addEventListener('mousedown', event => {
-        if (event.defaultPrevented || sbState.shellSizing.activeResize) {
-            return;
-        }
-
-        beginShellResize(shellKey, event);
-    });
-    handle.addEventListener('keydown', event => handleShellResizeKeydown(shellKey, event));
-}
-
-function configureShellResizeHandle(handle, shellKey) {
-    const bounds = getDesktopShellResizeBounds(shellKey);
-    const currentSize = getShellSizeOverride(shellKey) ?? {
-        width: bounds.defaultWidth,
-        height: bounds.defaultHeight,
-    };
-    const label = shellKey === 'characters' ? 'Characters' : getShellConfig(shellKey)?.title || 'panel';
-
-    handle.setAttribute('role', 'separator');
-    handle.setAttribute('aria-orientation', 'horizontal');
-    handle.setAttribute('aria-label', `Resize ${label} panel`);
-    handle.setAttribute('aria-valuemin', String(bounds.minWidth));
-    handle.setAttribute('aria-valuemax', String(bounds.maxWidth));
-    handle.setAttribute('aria-valuenow', String(Math.round(currentSize.width)));
-    handle.setAttribute('aria-valuetext', `${Math.round(currentSize.width)} pixels wide, ${Math.round(currentSize.height)} pixels tall`);
-    handle.tabIndex = canResizeDesktopShells() ? 0 : -1;
-}
-
-function syncShellResizeHandleValue(shellKey, size) {
-    const root = getResizableShellRoot(shellKey);
-    const shellState = getShellState(shellKey);
-    const handle = shellState?.resizeHandle ?? root?.querySelector(':scope > .sb-shell-resize-handle, .sb-shell-resize-handle');
-    if (!(handle instanceof HTMLElement)) {
-        return;
-    }
-
-    if (!size) {
-        configureShellResizeHandle(handle, shellKey);
-        return;
-    }
-
-    configureShellResizeHandle(handle, shellKey);
-    handle.setAttribute('aria-valuenow', String(Math.round(size.width)));
-    handle.setAttribute('aria-valuetext', `${Math.round(size.width)} pixels wide, ${Math.round(size.height)} pixels tall`);
-}
-
-function handleShellResizeKeydown(shellKey, event) {
-    if (!canResizeDesktopShells() || !isDesktopResizableShell(shellKey)) {
-        return;
-    }
-
-    const root = getResizableShellRoot(shellKey);
-    if (!(root instanceof HTMLElement) || !root.classList.contains('openDrawer')) {
-        return;
-    }
-
-    const bounds = getDesktopShellResizeBounds(shellKey);
-    const currentRect = root.getBoundingClientRect();
-    const currentSize = clampShellSize({
-        width: currentRect.width || bounds.defaultWidth,
-        height: currentRect.height || bounds.defaultHeight,
-    }, bounds);
-
-    if (!currentSize) {
-        return;
-    }
-
-    const step = event.shiftKey ? 72 : 24;
-    let nextSize = currentSize;
-
-    if (event.key === 'ArrowLeft') {
-        nextSize = { ...currentSize, width: currentSize.width - step };
-    } else if (event.key === 'ArrowRight') {
-        nextSize = { ...currentSize, width: currentSize.width + step };
-    } else if (event.key === 'ArrowUp') {
-        nextSize = { ...currentSize, height: currentSize.height - step };
-    } else if (event.key === 'ArrowDown') {
-        nextSize = { ...currentSize, height: currentSize.height + step };
-    } else if (event.key === 'Home') {
-        nextSize = { ...currentSize, width: bounds.minWidth };
-    } else if (event.key === 'End') {
-        nextSize = { ...currentSize, width: bounds.maxWidth };
-    } else {
-        return;
-    }
-
-    const clampedSize = clampShellSize(nextSize, bounds);
-    if (!clampedSize) {
-        return;
-    }
-
-    event.preventDefault();
-    setShellSizeOverride(shellKey, clampedSize);
-    applyDesktopShellSize(root, clampedSize);
-    syncShellResizeHandleValue(shellKey, clampedSize);
-}
-
-function beginShellResize(shellKey, event) {
-    if (!canResizeDesktopShells() || !isDesktopResizableShell(shellKey) || !isPrimaryShellResizeStart(event)) {
-        return;
-    }
-
-    if (shellKey === 'characters' && isMovingUIActive()) {
-        return;
-    }
-
-    const root = getResizableShellRoot(shellKey);
-    if (!(root instanceof HTMLElement) || !root.classList.contains('openDrawer')) {
-        return;
-    }
-
-    if (typeof sbState.shellSizing.activeResize?.cleanup === 'function') {
-        sbState.shellSizing.activeResize.cleanup();
-    }
-
-    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const bounds = getDesktopShellResizeBounds(shellKey);
-    const startRect = root.getBoundingClientRect();
-    const startSize = clampShellSize({
-        width: startRect.width || bounds.defaultWidth,
-        height: startRect.height || bounds.defaultHeight,
-    }, bounds);
-
-    if (!startSize) {
-        return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    document.body.classList.add('sb-shell-resizing');
-    root.classList.add('sb-shell-resize-active');
-    setShellSizeOverride(shellKey, startSize, { persist: false });
-
-    const pointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
-    const moveEventName = pointerId === null ? 'mousemove' : 'pointermove';
-    const upEventName = pointerId === null ? 'mouseup' : 'pointerup';
-    const cancelEventName = pointerId === null ? 'mouseleave' : 'pointercancel';
-
-    const cleanup = () => {
-        if (pointerId !== null && handle && typeof handle.releasePointerCapture === 'function') {
-            try {
-                handle.releasePointerCapture(pointerId);
-            } catch {
-                // Ignore pointer capture cleanup failures.
-            }
-        }
-
-        window.removeEventListener(moveEventName, onPointerMove);
-        window.removeEventListener(upEventName, onPointerUp);
-        window.removeEventListener(cancelEventName, onPointerUp);
-        document.body.classList.remove('sb-shell-resizing');
-        root.classList.remove('sb-shell-resize-active');
-
-        if (sbState.shellSizing.activeResize?.pointerId === pointerId) {
-            sbState.shellSizing.activeResize = null;
-        }
-    };
-
-    const onPointerMove = moveEvent => {
-        if (pointerId !== null && moveEvent.pointerId !== pointerId) {
-            return;
-        }
-
-        moveEvent.preventDefault();
-        const widthDelta = shellKey === 'characters' && sbState.characterDrawer.rightLocked
-            ? event.clientX - moveEvent.clientX
-            : moveEvent.clientX - event.clientX;
-        const nextSize = clampShellSize({
-            width: startSize.width + widthDelta,
-            height: startSize.height + (moveEvent.clientY - event.clientY),
-        }, bounds);
-
-        if (!nextSize) {
-            return;
-        }
-
-        sbState.shellSizing.overrides[getShellSizingKey(shellKey)] = nextSize;
-        applyDesktopShellSize(root, nextSize);
-        syncShellResizeHandleValue(shellKey, nextSize);
-    };
-
-    const onPointerUp = endEvent => {
-        if (pointerId !== null && endEvent.pointerId !== pointerId) {
-            return;
-        }
-
-        const activeSize = getShellSizeOverride(shellKey) ?? startSize;
-        cleanup();
-        setShellSizeOverride(shellKey, activeSize);
-        syncShellResizeHandleValue(shellKey, activeSize);
-        syncDesktopShellSizing();
-    };
-
-    sbState.shellSizing.activeResize = {
-        shellKey,
-        pointerId,
-        cleanup,
-    };
-
-    if (pointerId !== null && handle && typeof handle.setPointerCapture === 'function') {
-        try {
-            handle.setPointerCapture(pointerId);
-        } catch {
-            // Ignore pointer capture failures.
-        }
-    }
-
-    window.addEventListener(moveEventName, onPointerMove);
-    window.addEventListener(upEventName, onPointerUp);
-    window.addEventListener(cancelEventName, onPointerUp);
-}
-
-function ensureShellReady(shellKey) {
-    if (!getShellConfig(shellKey)) {
-        return false;
-    }
-
-    if (getShellState(shellKey)) {
-        return true;
-    }
-
-    buildShell(shellKey);
-    return Boolean(getShellState(shellKey));
-}
-
 function syncExistingMobileNavQuickActions(overlay) {
     if (!(overlay instanceof HTMLElement)) {
         return;
@@ -3888,10 +3303,6 @@ function ensureMobileNavReady() {
     const overlay = document.getElementById('sb-mobile-nav');
     syncExistingMobileNavQuickActions(overlay);
     return overlay;
-}
-
-function getThemeOption(themeId) {
-    return SB_THEMES.find(theme => theme.id === themeId) ?? SB_THEMES[0];
 }
 
 function normalizeMessageStyle(styleId) {
@@ -4068,18 +3479,9 @@ function initChatAvatarVariables() {
     document.addEventListener('sb:chat-style-updated', () => scheduleChatAvatarVariableUpdate(0));
 }
 
-function setShellTheme(themeId, { persist = true } = {}) {
-    const nextTheme = normalizeTheme(themeId);
-
-    sbState.theme = nextTheme;
-    document.documentElement.dataset.sbTheme = nextTheme;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.theme, nextTheme);
-    }
-
-    updateThemePickerUi();
-    updateThemeBadge();
+function applyShellTheme() {
+    sbState.theme = SB_SHELL_THEME;
+    document.documentElement.dataset.sbTheme = SB_SHELL_THEME;
 }
 
 function applyFrontendIcon(iconId = sbState.frontendIcon) {
@@ -4249,15 +3651,6 @@ function setTopbarLabelClickCycle(enabled) {
     updateTopBarBrand();
 }
 
-function updateThemeBadge() {
-    const badge = document.getElementById('sb-theme-current-label');
-    if (!badge) {
-        return;
-    }
-
-    badge.textContent = getThemeOption(sbState.theme).label;
-}
-
 function getSillyTavernContext() {
     // SillyTavern.getContext() throws a TDZ ReferenceError on slow boots when
     // it is called before script.js finishes initializing its module-level
@@ -4338,14 +3731,6 @@ function getChatScriptModule() {
     }
 
     return sbChatScriptModulePromise;
-}
-
-function getMainScriptModule() {
-    if (!sbMainScriptModulePromise) {
-        sbMainScriptModulePromise = import('../script.js');
-    }
-
-    return sbMainScriptModulePromise;
 }
 
 function getCookieClearDomains(hostname) {
@@ -4511,8 +3896,9 @@ async function handleClearCookiesAndCacheClick(event) {
     }
 }
 
-function bindClearCookiesAndCacheButton() {
-    const button = document.getElementById('clear_cookies_cache_button');
+/** @param {Document|HTMLElement} [root] */
+function bindClearCookiesAndCacheButton(root = document) {
+    const button = root.querySelector('#clear_cookies_cache_button');
     if (!(button instanceof HTMLButtonElement) || button.dataset.sbCookiesCacheBound === 'true') {
         return;
     }
@@ -4755,7 +4141,6 @@ function returnToChatSurface() {
     closeCharacterPanel();
     closeMobileNav();
     closeMobileChatTools();
-    setConnectionStripOpenState(false);
     queueLandingPageStateSync();
 }
 
@@ -5050,12 +4435,14 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     const quickAccessIds = SB_SHORTCUT_SLOTS.map(side => getShortcutButtonId(side));
     // The divider spans ride the order too; CSS decides when they are visible.
     const left = [
-        'sb-hamburger',
         workspace.leadId,
         workspace.railId,
         'sb-topbar-divider-customize',
         customize.leadId,
         customize.railId,
+        // SillyBunny: permanent search lives left of the quick-access divider, mobile divider before it — feat/v1.9.0-ui-overhaul
+        'sb-topbar-divider-search-mobile',
+        'sb-topbar-search-toggle',
     ];
     // The extension slot leads the right group in every mode: syncTopbarGroupOrder() re-appends
     // every listed id, so an unlisted element would be pushed to the front of the group as a side
@@ -5064,14 +4451,17 @@ function getTopbarGroupOrder({ iconsOnly, mobile }) {
     const right = [TOPBAR_EXTENSION_SLOT_ID];
 
     if (iconsOnly) {
-        right.push(...quickAccessIds);
+        // Quick Access gathers on the right here, so the left quick divider parks at the end of
+        // the left group, where CSS hides it.
+        left.push('sb-topbar-divider-quick-left');
+        right.push(...quickAccessIds, 'sb-topbar-divider-quick-right');
     } else {
-        left.push('sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
-        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right');
+        left.push('sb-topbar-divider-quick-left', 'sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4');
+        right.push('sb-shortcut-slot6', 'sb-shortcut-slot5', 'sb-shortcut-right', 'sb-topbar-divider-quick-right');
     }
 
-    // The home divider marks the Home|Characters boundary; phones keep it in every mode.
-    right.push('sb-home-toggle', 'sb-topbar-divider-home');
+    // SillyBunny: mode toggle stays in right group — feat/v1.9.0-ui-overhaul
+    right.push('sb-mode-toggle', 'sb-topbar-divider-mode-mobile', 'sb-home-toggle', 'sb-topbar-divider-home');
 
     if (iconsOnly && mobile) {
         // The characters pages ride the strip, so the divider marks where they start there;
@@ -5329,10 +4719,6 @@ function setChatbarVisible(shouldShow, { persist = true } = {}) {
 
     document.body.classList.toggle('sb-chatbar-hidden', !nextVisible);
 
-    if (!nextVisible) {
-        setConnectionStripOpenState(false);
-    }
-
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.chatbarVisible, String(nextVisible));
     }
@@ -5473,10 +4859,6 @@ function bindTopbarDragEvents() {
     window.addEventListener('touchmove', updateTopbarDrag, { passive: false });
     window.addEventListener('touchend', endTopbarDrag);
     window.addEventListener('touchcancel', endTopbarDrag);
-}
-
-function getChatDesktopRefs() {
-    return getChatbarState().desktop;
 }
 
 function getChatMobileRefs() {
@@ -6189,7 +5571,7 @@ function setButtonPressed(button, pressed) {
 function setSearchStatusText(statusText) {
     const normalizedText = String(statusText ?? '').trim();
 
-    for (const refs of [getChatDesktopRefs(), getChatMobileRefs(), getBottomChatBarState()]) {
+    for (const refs of [getChatMobileRefs(), getBottomChatBarState()]) {
         const status = refs?.searchStatus;
         if (!(status instanceof HTMLElement)) {
             continue;
@@ -6411,7 +5793,6 @@ function setChatSidebarOpenState(shouldOpen) {
     getChatbarState().sidebarOpen = isOpen;
     refs.root.style.display = isOpen ? 'flex' : 'none';
     refs.root.classList.toggle('sb-chat-sidebar-visible', isOpen);
-    setButtonPressed(getChatDesktopRefs()?.toggleSidebarButton, isOpen);
 
     if (isOpen) {
         scheduleChatbarRefresh(0);
@@ -6424,7 +5805,6 @@ function toggleChatSidebar() {
         return;
     }
 
-    setConnectionStripOpenState(false);
     setChatSidebarOpenState(!isChatSidebarOpen());
 }
 
@@ -6435,7 +5815,7 @@ function buildMobileChatTools() {
     }
 
     const overlay = createElement('div', { id: 'sb-mobile-chat-tools' });
-    const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel' });
+    const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel', attrs: { tabindex: '-1' } });
     const header = createElement('div', { className: 'sb-mobile-chat-header' });
     const dismissButton = createTopBarIconButton(
         {
@@ -6537,6 +5917,27 @@ function buildMobileChatTools() {
             closeMobileChatTools();
         }
     });
+    overlay.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || !getChatbarState().mobileToolsOpen) {
+            return;
+        }
+
+        // The chat files list and legacy popups sit above the sheet; their own Escape closes them first.
+        if (['#dialogue_popup', '#select_chat_popup'].some(selector => isVisibleCharacterDrawerEscapeControl(document.querySelector(selector)))) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        // A search with text clears first, like the settings search.
+        if (event.target === searchInput && searchInput.value) {
+            setChatSearchQuery('');
+            return;
+        }
+
+        closeMobileChatTools({ restoreFocus: true });
+    });
 
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value, { closeMobileTools: true });
@@ -6564,7 +5965,7 @@ function buildMobileChatTools() {
     return getChatbarState().mobileTools;
 }
 
-function setMobileChatToolsOpenState(shouldOpen) {
+function setMobileChatToolsOpenState(shouldOpen, { restoreFocus = false } = {}) {
     const refs = buildMobileChatTools();
     const isOpen = Boolean(shouldOpen) && isMobileViewport();
 
@@ -6572,8 +5973,15 @@ function setMobileChatToolsOpenState(shouldOpen) {
         return;
     }
 
+    const wasOpen = getChatbarState().mobileToolsOpen;
     getChatbarState().mobileToolsOpen = isOpen;
-    refs.overlay.hidden = !isOpen;
+    if (isOpen && !wasOpen) {
+        const activeElement = document.activeElement;
+        getChatbarState().mobileToolsReturnFocus = activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
+    }
+    if (isOpen || !wasOpen) {
+        refs.overlay.hidden = !isOpen;
+    }
     refs.overlay.classList.toggle('sb-chat-tools-open', isOpen);
     refs.overlay.setAttribute('aria-hidden', String(!isOpen));
 
@@ -6584,7 +5992,31 @@ function setMobileChatToolsOpenState(shouldOpen) {
     queueMobileModalStateSync();
 
     if (isOpen) {
+        if (!wasOpen) {
+            stopMotion(refs.panel);
+            animateIn(refs.panel, [
+                { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+                { opacity: 1, transform: 'none' },
+            ], SPRING_SHEET);
+            // Escape is handled on the sheet, so focus has to be inside it.
+            window.requestAnimationFrame(() => refs.panel.focus({ preventScroll: true }));
+        }
         scheduleChatbarRefresh(0);
+    } else if (wasOpen) {
+        refs.overlay.hidden = false;
+        animateOut(refs.panel, [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+        ], () => {
+            refs.overlay.hidden = true;
+        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
+
+        const returnFocus = getChatbarState().mobileToolsReturnFocus;
+        getChatbarState().mobileToolsReturnFocus = null;
+        if (restoreFocus && returnFocus?.isConnected) {
+            // Wait for the modal sync frame, which lifts inert from the chat column.
+            window.requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
+        }
     }
 }
 
@@ -6600,8 +6032,8 @@ function openMobileChatTools() {
     setMobileChatToolsOpenState(true);
 }
 
-function closeMobileChatTools() {
-    setMobileChatToolsOpenState(false);
+function closeMobileChatTools({ restoreFocus = false } = {}) {
+    setMobileChatToolsOpenState(false, { restoreFocus });
 }
 
 function getMobileShellSurfaceForShell(shellKey) {
@@ -6632,7 +6064,6 @@ function applyMobileSurfaceExclusivity(decision) {
         [surface.RIGHT_SHELL]: () => closeShell('right'),
         [surface.CHARACTER_PANEL]: () => closeCharacterPanel(),
         [surface.CHAT_TOOLS]: () => closeMobileChatTools(),
-        [surface.CONNECTION_STRIP]: () => setConnectionStripOpenState(false),
     };
 
     for (const closeSurfaceKey of decision.closeSurfaces) {
@@ -6677,31 +6108,6 @@ function syncConnectionProfileSelection(value) {
     sourceSelect.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function isConnectionStripOpen() {
-    return Boolean(getChatbarState().connectionStripOpen);
-}
-
-function setConnectionStripOpenState(shouldOpen) {
-    const desktopRefs = getChatDesktopRefs();
-    const nextState = Boolean(shouldOpen);
-
-    if (!desktopRefs?.connectionStrip) {
-        return;
-    }
-
-    if (nextState) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.CONNECTION_STRIP,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    getChatbarState().connectionStripOpen = nextState;
-    desktopRefs.connectionStrip.classList.toggle('is-open', nextState);
-    desktopRefs.connectionStrip.hidden = !nextState;
-    setButtonPressed(desktopRefs.toggleConnectionButton, nextState);
-}
-
 function getCurrentMainApiValue() {
     const mainApiSelect = document.getElementById('main_api');
     const context = getSillyTavernContext();
@@ -6710,17 +6116,6 @@ function getCurrentMainApiValue() {
         selectValue: mainApiSelect instanceof HTMLSelectElement ? mainApiSelect.value : '',
         contextMainApi: context?.mainApi,
     });
-}
-
-function resolveActiveApiConnectButton() {
-    const selector = sbPresetApiSyncLifecycle.api.resolveConnectButtonSelector(getCurrentMainApiValue());
-
-    if (!selector) {
-        return null;
-    }
-
-    const button = document.querySelector(selector);
-    return button instanceof HTMLElement ? button : null;
 }
 
 function getSearchTerms(query = getChatbarState().searchQuery) {
@@ -7067,7 +6462,7 @@ function setChatSearchQuery(value, { source = null } = {}) {
     chatbarState.searchQuery = nextValue;
     chatbarState.searchApplyToken += 1;
 
-    for (const input of [getChatDesktopRefs()?.searchInput, getChatMobileRefs()?.searchInput, getBottomChatBarState()?.searchInput]) {
+    for (const input of [getChatMobileRefs()?.searchInput, getBottomChatBarState()?.searchInput]) {
         if (!(input instanceof HTMLInputElement) || input === source) {
             continue;
         }
@@ -7293,7 +6688,11 @@ async function getConnectionStatusText() {
         // Ignore slash command lookup failures and use the current context values.
     }
 
-    const apiBlock = document.getElementById('rm_api_block');
+    // SillyBunny (feat/v1.9.0-ui-overhaul): the provider selects moved into the Connections panel,
+    // so the block no longer holds the model options this reads -- `#rm_api_block` now only carries
+    // `#main_api`. The panel is searched first and the block is kept as the fallback for the window
+    // before the panel is built.
+    const apiBlock = document.querySelector('.sb-connections-panel') ?? document.getElementById('rm_api_block');
 
     if (apiBlock instanceof HTMLElement) {
         const apiOption = apiBlock.querySelector(`select:not(#main_api) option[value="${escapeSelectorValue(apiValue)}"]`)
@@ -7399,10 +6798,9 @@ function bindConnectionProfileSourceObserver() {
 async function refreshChatbarState() {
     const chatbarState = getChatbarState();
     const refreshToken = ++chatbarState.refreshToken;
-    const desktopRefs = getChatDesktopRefs();
     const mobileRefs = getChatMobileRefs();
 
-    if (!desktopRefs && !mobileRefs) {
+    if (!mobileRefs) {
         return;
     }
 
@@ -7420,19 +6818,7 @@ async function refreshChatbarState() {
         files.unshift({ fileName: chatContext.chatId, tokenEstimate: 0 });
     }
 
-    populateChatSelector(desktopRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
     populateChatSelector(mobileRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
-
-    if (desktopRefs) {
-        setButtonDisabled(desktopRefs.managerButton, !chatContext.canBrowseChats);
-        setButtonDisabled(desktopRefs.toggleSidebarButton, !chatContext.canBrowseChats);
-        setButtonDisabled(desktopRefs.newButton, !chatContext.canStartNewChat);
-        setButtonDisabled(desktopRefs.renameButton, !chatContext.hasChat);
-        setButtonDisabled(desktopRefs.deleteButton, !chatContext.hasChat);
-        setButtonDisabled(desktopRefs.closeButton, !chatContext.hasChat);
-        setButtonDisabled(desktopRefs.chatSelect, !chatContext.canBrowseChats);
-        setButtonDisabled(desktopRefs.searchInput, !chatContext.hasChat);
-    }
 
     if (mobileRefs) {
         setButtonDisabled(mobileRefs.managerButton, !chatContext.canBrowseChats);
@@ -7448,26 +6834,9 @@ async function refreshChatbarState() {
     const hasConnectionProfiles = connectionProfilesSource instanceof HTMLSelectElement;
     const connectionMirrorState = sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorState({
         hasConnectionProfiles,
-        isConnectionStripOpen: isConnectionStripOpen(),
-        hasActiveConnectButton: hasConnectionProfiles && Boolean(resolveActiveApiConnectButton()),
     });
 
-    if (desktopRefs) {
-        desktopRefs.toggleConnectionButton.hidden = !connectionMirrorState.shouldShowToggle;
-        desktopRefs.connectionStrip.hidden = !connectionMirrorState.shouldShowDesktopStrip;
-    }
-
-    if (connectionMirrorState.shouldCloseDesktopStrip) {
-        setConnectionStripOpenState(false);
-    }
-
     if (connectionMirrorState.shouldClearMirrors) {
-        if (desktopRefs) {
-            desktopRefs.connectionSelect.replaceChildren();
-            desktopRefs.connectionStatus.textContent = '';
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
-        }
-
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
             mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
             mobileRefs.connectionSelect.replaceChildren();
@@ -7475,13 +6844,6 @@ async function refreshChatbarState() {
         }
     } else {
         const optionsMarkup = connectionProfilesSource.innerHTML;
-        if (desktopRefs) {
-            desktopRefs.connectionSelect.innerHTML = optionsMarkup;
-            desktopRefs.connectionSelect.value = connectionProfilesSource.value;
-            desktopRefs.connectionStatus.textContent = connectionStatusText;
-            setButtonDisabled(desktopRefs.connectionConnectButton, connectionMirrorState.shouldDisableConnectButton);
-        }
-
         if (mobileRefs?.connectionSection instanceof HTMLElement) {
             mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
             mobileRefs.connectionSelect.innerHTML = optionsMarkup;
@@ -7497,11 +6859,6 @@ async function refreshChatbarState() {
         compact: true,
         onSelect: chatId => openChatById(chatId, { closeMobileTools: true }),
     });
-
-    if (desktopRefs) {
-        setButtonPressed(desktopRefs.toggleSidebarButton, isChatSidebarOpen());
-        setButtonPressed(desktopRefs.toggleConnectionButton, isConnectionStripOpen());
-    }
 
     if (!chatContext.canBrowseChats) {
         setChatSidebarOpenState(false);
@@ -7889,20 +7246,8 @@ function queueTopbarPageStateSync() {
     });
 }
 
-function forceDrawerState(drawerRootOrId, shouldOpen, drawerIconOrSelector = null) {
-    const el = typeof drawerRootOrId === 'string'
-        ? document.getElementById(drawerRootOrId)
-        : drawerRootOrId;
-    if (!(el instanceof HTMLElement)) return;
-    el.classList.toggle('openDrawer', Boolean(shouldOpen));
-    el.classList.toggle('closedDrawer', !shouldOpen);
-    syncDrawerIconState(drawerIconOrSelector, shouldOpen);
-    queueMobileModalStateSync();
-    queueTopbarPageStateSync();
-}
-
 function isShellOpen(shellKey) {
-    return isDrawerActuallyOpen(getShellConfig(shellKey).rootPanelId);
+    return isSettingsPageHosting(shellKey);
 }
 
 function isShellTabOpen(shellKey, tabId) {
@@ -7911,7 +7256,7 @@ function isShellTabOpen(shellKey, tabId) {
 }
 
 function isCharacterPanelOpen() {
-    return isDrawerActuallyOpen('right-nav-panel');
+    return isSettingsPageHosting('characters');
 }
 
 function getActiveCharacterPanelTab() {
@@ -7946,12 +7291,13 @@ function hasActiveCharacterChat(context = getSillyTavernContext()) {
 }
 
 async function setCharacterListEntityView(view) {
-    try {
-        const module = await getMainScriptModule();
-        module.setCharacterMenuEntityView?.(view);
-    } catch (error) {
-        console.warn('[SillyBunny] Could not set character list entity view.', error);
-    }
+    const [state, script] = await Promise.all([
+        import('./sillybunny-character-list-state.js'),
+        import('../script.js'),
+    ]);
+    // SillyBunny: replace Back's upstream menu state without its extra render — see docs/ui-migration.md.
+    script.setMenuType('characters');
+    await state.switchCharacterListView(view, { render: false });
 }
 
 function syncCharacterListControls(view) {
@@ -7990,55 +7336,15 @@ function syncCharacterListControls(view) {
     }
 }
 
-function ensureCharacterListToolbarLayout() {
-    const fixedTop = document.getElementById('charListFixedTop');
-    const buttonBar = document.getElementById('rm_button_bar');
-    const createButton = document.getElementById('rm_button_create');
-    const createGroupButton = document.getElementById('rm_button_group_chats');
-    const searchButton = document.getElementById('rm_button_search');
-    const pagination = document.getElementById('rm_print_characters_pagination');
+let characterListViewPromise = null;
+let characterListViewRevision = 0;
 
-    if (!(fixedTop instanceof HTMLElement) || !(buttonBar instanceof HTMLElement)) {
-        return;
-    }
-
-    let actionBar = fixedTop.querySelector('.sb-character-create-bar');
-    if (!(actionBar instanceof HTMLElement)) {
-        actionBar = createElement('div', { className: 'sb-character-create-bar' });
-        fixedTop.prepend(actionBar);
-    }
-
-    if (createButton instanceof HTMLElement && createButton.parentElement !== actionBar) {
-        actionBar.prepend(createButton);
-    }
-
-    if (createGroupButton instanceof HTMLElement && createGroupButton.parentElement !== actionBar) {
-        const afterCreate = createButton instanceof HTMLElement && createButton.parentElement === actionBar
-            ? createButton.nextSibling
-            : actionBar.firstChild;
-        actionBar.insertBefore(createGroupButton, afterCreate);
-    }
-
-    if (buttonBar.parentElement !== actionBar) {
-        const actionButton = createGroupButton instanceof HTMLElement && createGroupButton.parentElement === actionBar
-            ? createGroupButton
-            : createButton;
-        const afterAction = actionButton instanceof HTMLElement && actionButton.parentElement === actionBar
-            ? actionButton.nextSibling
-            : actionBar.firstChild;
-        actionBar.insertBefore(buttonBar, afterAction);
-    }
-
-    if (pagination instanceof HTMLElement && pagination.parentElement !== actionBar) {
-        actionBar.insertBefore(pagination, buttonBar.nextSibling);
-    }
-
-    if (searchButton instanceof HTMLElement && searchButton.parentElement !== buttonBar) {
-        buttonBar.appendChild(searchButton);
-    }
+function showCharacterListView(view = 'characters') {
+    characterListViewPromise = revealCharacterListView(view, ++characterListViewRevision);
+    return characterListViewPromise;
 }
 
-async function showCharacterListView(view = 'characters') {
+async function revealCharacterListView(view, revision) {
     setCharacterEditorEmptyState(false);
     setCharacterPersonaPanelVisible(false);
     setCharacterImportPanelVisible(false);
@@ -8050,22 +7356,32 @@ async function showCharacterListView(view = 'characters') {
     setCharacterPanelMenuType(panel, normalizedView);
 
     syncCharacterListControls(normalizedView);
+    const listController = await mountCharacterListController();
+    if (revision !== characterListViewRevision) return false;
     await setCharacterListEntityView(normalizedView);
+    if (revision !== characterListViewRevision) return false;
 
-    const backButton = document.getElementById('rm_button_back');
-
-    if (backButton instanceof HTMLElement) {
-        backButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        setCharacterPanelMenuType(panel, normalizedView);
-        syncCharacterListControls(normalizedView);
-        syncCharacterShellTabs(normalizedView);
-        return true;
+    // SillyBunny: list navigation has one render and no synthetic upstream Back refresh — see docs/ui-migration.md.
+    for (const id of ['result_info', 'rm_PinAndTabs', 'rm_ch_create_block', 'rm_group_chats_block']) {
+        const element = document.getElementById(id);
+        if (!(element instanceof HTMLElement)) continue;
+        element.classList.remove('sb-active-right-menu');
+        element.style.display = 'none';
+        element.style.visibility = 'hidden';
+        element.style.pointerEvents = 'none';
     }
-
-    resetCharacterPanelView();
+    const list = document.getElementById('rm_characters_block');
+    if (list instanceof HTMLElement) {
+        list.classList.add('sb-active-right-menu');
+        list.style.display = 'flex';
+        list.style.opacity = '1';
+        list.style.visibility = 'visible';
+        list.style.pointerEvents = 'auto';
+    }
     setCharacterPanelMenuType(panel, normalizedView);
     syncCharacterListControls(normalizedView);
     syncCharacterShellTabs(normalizedView);
+    await listController.revealActiveEntity(() => revision === characterListViewRevision);
     return true;
 }
 
@@ -8136,7 +7452,6 @@ function syncCharacterTitlebarVisibility() {
 
     const shouldHide = ['characters', 'groups', 'editor_empty', 'world-info', 'persona', 'import', 'conversation'].includes(panel.dataset.menuType ?? '');
     pinAndTabs.style.display = shouldHide ? 'none' : '';
-    syncCharacterEditorFullscreenAvailability();
 }
 
 function ensureCharacterPersonaPanel() {
@@ -8187,145 +7502,150 @@ function ensureCharacterWorldInfoPanel() {
     }
 
     drawer.querySelector('#WI_panel_pin_div')?.classList.add('sb-shell-hidden-control');
-    preloadPanelStylesheets('characters', 'world-info');
     return host;
 }
 
-function setCharacterPersonaPanelVisible(visible) {
-    const host = ensureCharacterPersonaPanel() ?? document.getElementById('sb_character_persona_panel');
+// SillyBunny: lazy-mount the persona editor only after its deferred styles load — see docs/ui-migration.md
+let personaEditorMountPromise = null;
+let characterListMountPromise = null;
+let characterPanelRevealPromise = null;
+const deferredCharacterPanels = new WeakMap();
 
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
+function hideDeferredCharacterPanel(host, content = host, { preserveLayout = false } = {}) {
+    if (!(host instanceof HTMLElement)) return;
+    const state = deferredCharacterPanels.get(host);
+    if (state) {
+        state.requested = false;
+        state.revision++;
+        state.status.element.hidden = true;
     }
+    if (!preserveLayout) host.hidden = true;
+    host.setAttribute('aria-hidden', 'true');
+    content?.setAttribute('aria-hidden', 'true');
 }
 
+function revealDeferredCharacterPanel(host, content, mount) {
+    if (!(host instanceof HTMLElement)) return Promise.resolve(false);
+    let state = deferredCharacterPanels.get(host);
+    if (!state) {
+        const status = createStatusPage({ icon: 'hourglass', title: t`Loading...` });
+        // Use already-loaded empty-page chrome so deferred editor CSS cannot restyle loading mid-flight.
+        status.element.className = 'sb-character-editor-empty sb-character-panel-loading';
+        status.element.querySelector('i')?.remove();
+        status.element.querySelector('h3')?.removeAttribute('class');
+        status.element.hidden = true;
+        host.after(status.element);
+        state = { status, revision: 0, requested: false, reveal: null };
+        deferredCharacterPanels.set(host, state);
+    }
+    if (state.requested) return state.reveal;
+    hideDeferredCharacterPanel(host, content);
+    state.requested = true;
+    const revision = ++state.revision;
+    state.status.update({ icon: 'hourglass', title: t`Loading...` });
+    state.status.element.hidden = false;
+    const isCurrent = () => state.requested && state.revision === revision;
+    state.reveal = (async () => {
+        const controller = await mount();
+        await controller?.ready;
+        if (!controller || !isCurrent()) return false;
+        await controller.prepareReveal?.();
+        if (!isCurrent()) return false;
+        state.status.element.hidden = true;
+        host.hidden = false;
+        host.setAttribute('aria-hidden', 'false');
+        content?.setAttribute('aria-hidden', 'false');
+        controller.onReveal?.();
+        return controller;
+    })().catch(error => {
+        if (isCurrent()) {
+            state.requested = false;
+            state.status.update({ icon: 'triangle-exclamation', title: t`Error` });
+        }
+        throw error;
+    });
+    state.reveal.catch(error => console.warn('[SillyBunny] Could not reveal the character panel.', error));
+    return state.reveal;
+}
+
+async function mountCharacterListController() {
+    characterListMountPromise ??= import('./sillybunny-character-list.js')
+        .then(module => module.mountCharacterList(undefined, { render: false, getNavigationGeneration: getCharacterListNavigationGeneration }))
+        .catch(error => {
+            characterListMountPromise = null;
+            console.warn('[SillyBunny] Could not mount the character list.', error);
+            throw error;
+        });
+    return characterListMountPromise;
+}
+
+function getCharacterListNavigationGeneration() {
+    // SillyBunny: authoritative page and character-tab revisions exclude close-animation cleanup — see docs/ui-migration.md.
+    return `${sbSettingsState.closeGen}:${characterListViewRevision}`;
+}
+function setCharacterPersonaPanelVisible(visible) {
+    const host = visible ? ensureCharacterPersonaPanel() : document.getElementById('sb_character_persona_panel');
+    const content = document.getElementById('PersonaManagement');
+    if (!visible) return hideDeferredCharacterPanel(host, content);
+    characterPanelRevealPromise = revealDeferredCharacterPanel(host, content, () => {
+        personaEditorMountPromise ??= import('./sillybunny-persona-editor.js').then(async module => {
+            await module.loadPersonaEditorStyles(SB_PANEL_STYLESHEETS['characters:persona']);
+            const controller = module.mountPersonaEditor(content);
+            await controller.ready;
+            return controller;
+        }).catch(error => {
+            personaEditorMountPromise = null;
+            throw error;
+        });
+        return personaEditorMountPromise;
+    });
+    return characterPanelRevealPromise;
+}
+
+let characterImportMountPromise = null;
 function setCharacterImportPanelVisible(visible) {
     const host = document.getElementById('sb_character_import_panel');
-
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
-    }
+    if (!visible) return hideDeferredCharacterPanel(host);
+    characterPanelRevealPromise = revealDeferredCharacterPanel(host, host, () => {
+        characterImportMountPromise ??= import('./sillybunny-character-import.js').then(async module => {
+            await module.loadCharacterImportStyles(SB_PANEL_STYLESHEETS['characters:import']);
+            const controller = module.mountCharacterImport(host);
+            await controller.ready;
+            return controller;
+        }).catch(error => {
+            characterImportMountPromise = null;
+            throw error;
+        });
+        return characterImportMountPromise;
+    });
+    return characterPanelRevealPromise;
 }
 
-function setCharacterWorldInfoPanelVisible(visible) {
-    const host = ensureCharacterWorldInfoPanel() ?? document.getElementById('sb_character_world_info_panel');
+// SillyBunny: defer the rebuilt editor and its styles until this tab is first requested.
+let worldInfoEditorMountPromise = null;
+function setCharacterWorldInfoPanelVisible(visible, { preserveLayout = false } = {}) {
+    const host = visible ? ensureCharacterWorldInfoPanel() : document.getElementById('sb_character_world_info_panel');
     const content = document.getElementById('WorldInfo');
-
-    if (host instanceof HTMLElement) {
-        host.hidden = !visible;
-        host.setAttribute('aria-hidden', String(!visible));
-    }
-
-    if (content instanceof HTMLElement) {
-        content.setAttribute('aria-hidden', String(!visible));
-    }
-}
-
-function getCharacterEditorSubTabState() {
-    const storedTab = safeGetItem(SB_STORAGE_KEYS.characterEditorSubTab);
-    return normalizeCharacterEditorSubTab(storedTab);
-}
-
-function saveCharacterEditorSubTab(tabId) {
-    safeSetItem(SB_STORAGE_KEYS.characterEditorSubTab, normalizeCharacterEditorSubTab(tabId));
-}
-
-function updateCharacterEditorSubTabButtons(activeTabId) {
-    const activeSubTab = resolveCharacterEditorSubTab(activeTabId);
-
-    for (const tabButton of document.querySelectorAll('#sb_character_editor_subtabs [data-sb-character-editor-tab]')) {
-        if (!(tabButton instanceof HTMLElement)) {
-            continue;
-        }
-
-        const isActive = tabButton.dataset.sbCharacterEditorTab === activeSubTab;
-        tabButton.classList.toggle('is-active', isActive);
-        tabButton.setAttribute('aria-selected', String(isActive));
-        tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
-        // Dimmed, not disabled: tapping a spoiler-hidden tab reveals the fields (see bindCharacterEditorSubTabs).
-        tabButton.classList.toggle('is-spoiler-hidden', isCharacterEditorSubTabSpoilerHidden(tabButton.dataset.sbCharacterEditorTab));
-    }
-}
-
-function updateCharacterEditorSubTabPanels(activeTabId) {
-    const activeSubTab = resolveCharacterEditorSubTab(activeTabId);
-
-    for (const panel of document.querySelectorAll('#form_create [data-sb-character-editor-panel]')) {
-        if (!(panel instanceof HTMLElement)) {
-            continue;
-        }
-
-        const isActive = panel.dataset.sbCharacterEditorPanel === activeSubTab;
-        panel.hidden = !isActive;
-        panel.setAttribute('aria-hidden', String(!isActive));
-    }
-}
-
-function syncCharacterEditorSubTabs(activeTabId = getCharacterEditorSubTabState()) {
-    const normalizedTab = resolveCharacterEditorSubTab(activeTabId);
-    saveCharacterEditorSubTab(normalizedTab);
-    updateCharacterEditorSubTabButtons(normalizedTab);
-    updateCharacterEditorSubTabPanels(normalizedTab);
-}
-
-function focusCharacterEditorSubTab(tabId) {
-    const button = document.querySelector(`#sb_character_editor_subtabs [data-sb-character-editor-tab="${tabId}"]`);
-    if (button instanceof HTMLElement) {
-        button.focus({ preventScroll: true });
-    }
-}
-
-function setCharacterEditorSubTab(tabId, { focusButton = false } = {}) {
-    const normalizedTab = normalizeCharacterEditorSubTab(tabId);
-    syncCharacterEditorSubTabs(normalizedTab);
-
-    if (focusButton) {
-        focusCharacterEditorSubTab(normalizedTab);
-    }
-}
-
-function setCharacterEditorFullscreenState(expanded, { focusButton = false } = {}) {
-    const panel = getCharacterPanel();
-    const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
-    const wasExpanded = panel instanceof HTMLElement && panel.classList.contains('sb-character-editor-fullscreen');
-    const canExpand = panel instanceof HTMLElement
-        && panel.classList.contains('openDrawer')
-        && isCharacterEditorMenuType(panel.dataset.menuType);
-    const isExpanded = Boolean(expanded) && canExpand;
-
-    if (panel instanceof HTMLElement) {
-        panel.classList.toggle('sb-character-editor-fullscreen', isExpanded);
-        panel.dataset.sbCharacterEditorFullscreen = String(isExpanded);
-    }
-
-    if (toggleButton instanceof HTMLButtonElement) {
-        setButtonPressed(toggleButton, isExpanded);
-        toggleButton.title = isExpanded ? 'Exit editor fullscreen' : 'Enter editor fullscreen';
-        toggleButton.setAttribute('aria-label', toggleButton.title);
-        toggleButton.setAttribute('aria-expanded', String(isExpanded));
-        toggleButton.dataset.i18n = isExpanded
-            ? '[title]Exit editor fullscreen;[aria-label]Exit editor fullscreen'
-            : '[title]Enter editor fullscreen;[aria-label]Enter editor fullscreen';
-
-        if (focusButton) {
-            toggleButton.focus({ preventScroll: true });
-        }
-    }
-
-    if (isExpanded && !wasExpanded) {
-        scrollElementIntoManagedView(document.getElementById('sb_character_editor_subtabs'), { block: 'nearest' });
-    }
+    if (!visible) return hideDeferredCharacterPanel(host, content, { preserveLayout });
+    characterPanelRevealPromise = revealDeferredCharacterPanel(host, content, () => {
+        worldInfoEditorMountPromise ??= import('./sillybunny-world-info-editor.js').then(async module => {
+            await Promise.all(SB_PANEL_STYLESHEETS['characters:world-info'].map(stylesheet =>
+                window.SillyBunnyAssets?.loadStylesheetAsync(stylesheet.href, { id: stylesheet.id })));
+            const controller = module.mountWorldInfoEditor(content);
+            await controller.ready;
+            return controller;
+        }).catch(error => {
+            worldInfoEditorMountPromise = null;
+            throw error;
+        });
+        return worldInfoEditorMountPromise;
+    });
+    return characterPanelRevealPromise;
 }
 
 function setCharacterPanelMenuType(panel, menuType) {
     if (!(panel instanceof HTMLElement)) {
         return;
-    }
-
-    if (!isCharacterEditorMenuType(menuType)) {
-        setCharacterEditorFullscreenState(false);
     }
 
     panel.dataset.menuType = menuType;
@@ -8334,55 +7654,61 @@ function setCharacterPanelMenuType(panel, menuType) {
     }
 }
 
-function toggleCharacterEditorFullscreen() {
+function isVisibleCharacterDrawerEscapeControl(element) {
+    return element instanceof HTMLElement
+        && isActuallyVisible(element)
+        && !element.closest('[hidden], [aria-hidden="true"], [inert]');
+}
+
+function shouldDeferCharacterDrawerEscape(event, panel) {
+    if (event.defaultPrevented || event.isComposing) {
+        return true;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('dialog[open], [role="dialog"], .popup, .popover, .sb-conversation-picker, .sb-conversation-status-picker')) {
+        return true;
+    }
+
+    if (target?.closest('input, textarea, select, [contenteditable="true"]')
+        && target !== panel
+        && !target.closest('.sb-shell-close')) {
+        return true;
+    }
+
+    return [
+        '#curEditTextarea',
+        '.reasoning_edit_textarea',
+        '#mes_stop',
+        '#dialogue_popup',
+        '#select_chat_popup',
+        '#dialogue_del_mes',
+        '#floatingPrompt',
+        '#cfgConfig',
+        '#logprobsViewer',
+    ].some(selector => isVisibleCharacterDrawerEscapeControl(document.querySelector(selector)));
+}
+
+function bindCharacterDrawerEscapeHandler() {
     const panel = getCharacterPanel();
-    if (!(panel instanceof HTMLElement) || !panel.classList.contains('openDrawer') || !isCharacterEditorMenuType(panel.dataset.menuType)) {
+    if (!(panel instanceof HTMLElement) || panel.dataset.sbCharacterEscapeBound === 'true') {
         return;
     }
 
-    setCharacterEditorFullscreenState(!panel.classList.contains('sb-character-editor-fullscreen'), { focusButton: true });
-}
+    panel.dataset.sbCharacterEscapeBound = 'true';
+    panel.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !panel.classList.contains('openDrawer')) {
+            return;
+        }
 
-function syncCharacterEditorFullscreenAvailability() {
-    const panel = getCharacterPanel();
-    const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
-    const canUseFullscreen = panel instanceof HTMLElement
-        && isCharacterEditorMenuType(panel.dataset.menuType)
-        && panel.classList.contains('openDrawer');
+        if (shouldDeferCharacterDrawerEscape(event, panel)) {
+            return;
+        }
 
-    if (toggleButton instanceof HTMLButtonElement) {
-        toggleButton.hidden = !canUseFullscreen;
-    }
-
-    if (!canUseFullscreen) {
-        setCharacterEditorFullscreenState(false);
-    }
-}
-
-function bindCharacterEditorFullscreenToggle() {
-    const toggleButton = document.getElementById('sb_character_editor_fullscreen_toggle');
-    if (!(toggleButton instanceof HTMLButtonElement) || toggleButton.dataset.sbBound === 'true') {
-        return;
-    }
-
-    toggleButton.dataset.sbBound = 'true';
-    toggleButton.addEventListener('click', () => toggleCharacterEditorFullscreen());
-
-    const panel = getCharacterPanel();
-    if (panel instanceof HTMLElement && panel.dataset.sbEditorFullscreenKeyBound !== 'true') {
-        panel.dataset.sbEditorFullscreenKeyBound = 'true';
-        panel.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape' || !panel.classList.contains('sb-character-editor-fullscreen')) {
-                return;
-            }
-
-            setCharacterEditorFullscreenState(false, { focusButton: true });
-            event.preventDefault();
-            event.stopPropagation();
-        });
-    }
-
-    syncCharacterEditorFullscreenAvailability();
+        closeCharacterPanel();
+        event.preventDefault();
+        event.stopPropagation();
+    });
 }
 
 async function openCreatorNotesFullscreen() {
@@ -8409,7 +7735,7 @@ async function openCreatorNotesFullscreen() {
         if (anchor.isConnected) {
             anchor.replaceWith(spoiler);
         } else {
-            document.querySelector('.sb-character-creator-notes-preview-body')?.prepend(spoiler);
+            document.querySelector('.sb-creator-notes-preview__body')?.prepend(spoiler);
         }
     }
 }
@@ -8431,71 +7757,6 @@ function focusCharacterPanelTab(tabId) {
     if (button instanceof HTMLElement) {
         button.focus({ preventScroll: true });
     }
-}
-
-function bindCharacterEditorSubTabs() {
-    const tablist = document.getElementById('sb_character_editor_subtabs');
-    if (!(tablist instanceof HTMLElement) || tablist.dataset.sbBound === 'true') {
-        return;
-    }
-
-    tablist.dataset.sbBound = 'true';
-
-    tablist.addEventListener('click', (event) => {
-        const target = event.target instanceof HTMLElement ? event.target.closest('[data-sb-character-editor-tab]') : null;
-        if (!(target instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const tabId = target.dataset.sbCharacterEditorTab;
-        // Spoiler-free mode hides Definitions/Greetings; a deliberate tap on one of them is the same request as the eye
-        // button's peek, so reveal the fields first instead of silently landing on Metadata.
-        if (isCharacterEditorSubTabSpoilerHidden(tabId)) {
-            setCharacterSpoilerFreeFieldsHidden(false);
-        }
-
-        setCharacterEditorSubTab(tabId, { focusButton: false });
-    });
-
-    tablist.addEventListener('keydown', (event) => {
-        if (!(event.target instanceof HTMLElement)) {
-            return;
-        }
-
-        const targetButton = event.target.closest('[data-sb-character-editor-tab]');
-        if (!(targetButton instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const buttons = Array.from(tablist.querySelectorAll('[data-sb-character-editor-tab]'));
-        const currentIndex = buttons.indexOf(targetButton);
-        if (currentIndex === -1) {
-            return;
-        }
-
-        const lastIndex = buttons.length - 1;
-        let nextIndex = currentIndex;
-
-        if (event.key === 'ArrowRight') {
-            nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
-        } else if (event.key === 'ArrowLeft') {
-            nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
-        } else if (event.key === 'Home') {
-            nextIndex = 0;
-        } else if (event.key === 'End') {
-            nextIndex = lastIndex;
-        } else {
-            return;
-        }
-
-        event.preventDefault();
-        const nextButton = buttons[nextIndex];
-        if (nextButton instanceof HTMLButtonElement) {
-            setCharacterEditorSubTab(nextButton.dataset.sbCharacterEditorTab, { focusButton: true });
-        }
-    });
-
-    syncCharacterEditorSubTabs();
 }
 
 function hideCharacterMainPanels() {
@@ -8657,69 +7918,43 @@ function setCharacterShellMode(mode) {
 }
 
 function openCharacterPanelTab(tabId) {
+    // SillyBunny: Characters lives in the full-screen settings page (feat/v1.9.0-ui-overhaul).
+    const normalizedTabId = normalizeCharacterPanelTab(tabId);
+    if (isSettingsPageHosting('characters')) {
+        activateSettingsTab('characters', normalizedTabId);
+        return;
+    }
+
+    openSettingsPage('characters', normalizedTabId);
+}
+
+function activateCharacterPanelTabInPlace(tabId) {
     const normalizedTabId = normalizeCharacterPanelTab(tabId);
     sbState.characterDrawer.lastTab = normalizedTabId;
-
-    if (normalizedTabId !== 'editor') {
-        setCharacterEditorFullscreenState(false);
-    }
 
     if (normalizedTabId === 'world-info' || normalizedTabId === 'persona') {
         preloadPanelStylesheets('characters', normalizedTabId);
     }
 
-    if (!isCharacterPanelOpen()) {
-        toggleCharacterPanel({ preferredTab: normalizedTabId });
-    } else {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    const activateRequestedTab = () => {
-        const panel = getCharacterPanel();
-        if (normalizedTabId === 'persona') {
-            setCharacterPanelMenuType(panel, 'persona');
-            openCharacterPersonaTab();
-        } else if (normalizedTabId === 'import') {
-            setCharacterPanelMenuType(panel, 'import');
-            openCharacterImportTab();
-        } else if (normalizedTabId === 'groups') {
-            setCharacterPanelMenuType(panel, 'groups');
-            void showCharacterListView('groups');
-        } else if (normalizedTabId === 'editor') {
-            setCharacterPanelMenuType(panel, 'character_edit');
-            void openCharacterEditorTab();
-        } else if (normalizedTabId === 'world-info') {
-            setCharacterPanelMenuType(panel, 'world-info');
-            openCharacterWorldInfoTab();
-        } else {
-            setCharacterPanelMenuType(panel, 'characters');
-            void showCharacterListView();
-        }
-    };
-
-    window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(activateRequestedTab);
-    });
-}
-
-function restoreLastCharacterPanelView() {
-    const lastTab = sbState.characterDrawer.lastTab || 'characters';
-
-    if (lastTab === 'persona') {
+    const panel = getCharacterPanel();
+    if (normalizedTabId === 'persona') {
+        setCharacterPanelMenuType(panel, 'persona');
         openCharacterPersonaTab();
-    } else if (lastTab === 'import') {
+    } else if (normalizedTabId === 'import') {
+        setCharacterPanelMenuType(panel, 'import');
         openCharacterImportTab();
-    } else if (lastTab === 'world-info') {
-        openCharacterWorldInfoTab();
-    } else if (lastTab === 'groups') {
+    } else if (normalizedTabId === 'groups') {
+        setCharacterPanelMenuType(panel, 'groups');
         void showCharacterListView('groups');
-    } else if (lastTab === 'editor') {
+    } else if (normalizedTabId === 'editor') {
+        setCharacterPanelMenuType(panel, 'character_edit');
         void openCharacterEditorTab();
+    } else if (normalizedTabId === 'world-info') {
+        setCharacterPanelMenuType(panel, 'world-info');
+        openCharacterWorldInfoTab();
     } else {
-        void showCharacterListView('characters');
+        setCharacterPanelMenuType(panel, 'characters');
+        void showCharacterListView();
     }
 }
 
@@ -8753,13 +7988,14 @@ function syncCharacterShellTabs(activeTab = null) {
                         ? 'groups'
                         : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
 
+    if (normalizedTab !== 'characters' && normalizedTab !== 'groups') characterListViewRevision++;
+
     sbState.characterDrawer.lastTab = normalizedTab;
 
     if (menuType === 'characters' || menuType === 'groups') {
         syncCharacterListControls(menuType);
     }
 
-    syncCharacterHeaderCopy(normalizedTab);
     syncCharacterModeToggle();
 
     panel?.querySelectorAll('[data-sb-character-tab]').forEach(tab => {
@@ -8772,6 +8008,20 @@ function syncCharacterShellTabs(activeTab = null) {
         tab.setAttribute('aria-selected', String(isActive));
         tab.setAttribute('tabindex', isActive ? '0' : '-1');
     });
+
+    // When the character panel is page-hosted, navigation that bypasses the
+    // settings sidebar (editor Back, opening a card, Create) must still move the
+    // sidebar selection, or it stays on whichever tab was last clicked.
+    if (sbSettingsState.open && sbSettingsState.activeShell === 'characters' && sbSettingsState.activeTabId !== normalizedTab) {
+        const settingsTab = getSettingsPageTabs('characters').find(tab => tab.id === normalizedTab);
+        if (settingsTab) {
+            sbSettingsState.activeTabId = normalizedTab;
+            document.querySelectorAll('#sb-settings-tab-list .sb-settings-tab').forEach(button => {
+                button.setAttribute('aria-selected', String(button instanceof HTMLElement && button.dataset.sbSettingsTab === normalizedTab));
+            });
+            renderSettingsPageHeading(settingsTab);
+        }
+    }
 
     document.querySelectorAll('[data-sb-rail-shell-key="characters"]').forEach(button => {
         if (!(button instanceof HTMLElement)) {
@@ -8798,30 +8048,6 @@ function syncCharacterShellTabs(activeTab = null) {
                 label: tabConfig?.label || normalizedTab,
             },
         }));
-    }
-}
-
-function syncCharacterHeaderCopy(activeTab = 'characters') {
-    const copy = SB_CHARACTER_TAB_COPY[activeTab] ?? SB_CHARACTER_TAB_COPY.characters;
-    const panel = getCharacterPanel();
-    const title = panel?.querySelector('.sb-character-shell-header .sb-shell-title');
-    const subtitle = panel?.querySelector('.sb-character-shell-header .sb-shell-subtitle');
-    const description = panel?.querySelector('.sb-character-shell-header .sb-shell-description');
-
-    if (title instanceof HTMLElement) {
-        title.textContent = '';
-        title.append(document.createTextNode(copy.title));
-        if (activeTab === 'persona') {
-            title.insertAdjacentHTML('beforeend', SB_PERSONA_HELP_LINK_HTML);
-        }
-    }
-
-    if (subtitle instanceof HTMLElement) {
-        renderShellSubtitle(subtitle, copy.subtitle, { isHtml: copy.subtitleIsHtml === true });
-    }
-
-    if (description instanceof HTMLElement) {
-        description.textContent = copy.description;
     }
 }
 
@@ -8865,61 +8091,6 @@ async function showActiveCharacterEditor() {
     return true;
 }
 
-function resetCharacterPanelView() {
-    const panel = getCharacterPanel();
-    const listButton = document.getElementById('rm_button_characters');
-    const selectedTitle = document.querySelector('#rm_button_selected_ch h2');
-
-    if (selectedTitle instanceof HTMLElement) {
-        selectedTitle.textContent = '';
-    }
-
-    setCharacterEditorEmptyState(false);
-    setCharacterPersonaPanelVisible(false);
-    setCharacterImportPanelVisible(false);
-    setCharacterWorldInfoPanelVisible(false);
-
-    if (listButton instanceof HTMLElement) {
-        listButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        setCharacterPanelMenuType(panel, 'characters');
-        syncCharacterListControls('characters');
-        syncCharacterShellTabs('characters');
-        return;
-    }
-
-    setCharacterPanelMenuType(panel, 'characters');
-
-    const infoPanel = document.getElementById('result_info');
-    const characterEditor = document.getElementById('rm_ch_create_block');
-    const characterList = document.getElementById('rm_characters_block');
-
-    if (infoPanel instanceof HTMLElement) {
-        infoPanel.style.display = 'none';
-    }
-
-    if (characterEditor instanceof HTMLElement) {
-        characterEditor.style.display = 'none';
-        characterEditor.style.visibility = 'hidden';
-        characterEditor.style.pointerEvents = 'none';
-    }
-
-    if (characterList instanceof HTMLElement) {
-        characterList.style.display = 'flex';
-        characterList.style.visibility = 'visible';
-        characterList.style.pointerEvents = 'auto';
-    }
-
-    syncCharacterShellTabs('characters');
-}
-
-function setCharacterDrawerHostOverflow(shouldOpen) {
-    const host = getCharacterDrawerHost();
-
-    if (host instanceof HTMLElement) {
-        host.style.overflow = shouldOpen ? 'visible' : '';
-    }
-}
-
 function syncCharacterDrawerStateFromDom({ force = false } = {}) {
     const panel = getCharacterPanel();
 
@@ -8933,10 +8104,8 @@ function syncCharacterDrawerStateFromDom({ force = false } = {}) {
     }
 
     sbState.characterDrawer.observedOpen = isOpen;
-    setCharacterDrawerHostOverflow(isOpen);
     syncDrawerIconState('#rightNavDrawerIcon', isOpen);
     syncDrawerIconState('#WIDrawerIcon', isOpen && panel.dataset.menuType === 'world-info');
-    syncCharacterEditorFullscreenAvailability();
 
     if (!isOpen && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
         document.activeElement.blur();
@@ -8963,7 +8132,6 @@ function bindCharacterDrawerStateObserver() {
             setCharacterPersonaPanelVisible(panel.dataset.menuType === 'persona');
             setCharacterImportPanelVisible(panel.dataset.menuType === 'import');
             setCharacterWorldInfoPanelVisible(panel.dataset.menuType === 'world-info');
-            syncCharacterEditorFullscreenAvailability();
             syncCharacterTitlebarVisibility();
             syncCharacterShellTabs();
         }
@@ -8976,51 +8144,9 @@ function bindCharacterDrawerStateObserver() {
 }
 
 function closeCharacterPanel() {
-    const panel = getCharacterPanel();
-    const shouldResetViewport = panel instanceof HTMLElement
-        && (panel.classList.contains('openDrawer') || (document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)));
-
-    setCharacterEditorFullscreenState(false);
-
-    if (panel instanceof HTMLElement && panel.classList.contains('openDrawer')) {
-        forceDrawerState(panel, false, '#rightNavDrawerIcon');
-    } else if (panel instanceof HTMLElement && document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)) {
-        document.activeElement.blur();
+    if (isSettingsPageHosting('characters')) {
+        closeSettingsPage();
     }
-
-    syncDrawerIconState('#WIDrawerIcon', false);
-    setCharacterDrawerHostOverflow(false);
-    syncChatbarVisibilityState();
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-    queueMobileModalStateSync();
-
-    if (shouldResetViewport) {
-        requestMobileViewportReset();
-    }
-}
-
-function ensureCharacterResizeHandle() {
-    const panel = getCharacterPanel();
-    if (!(panel instanceof HTMLElement)) {
-        return null;
-    }
-
-    let handle = panel.querySelector(':scope > .sb-shell-resize-handle');
-    if (handle instanceof HTMLElement) {
-        return handle;
-    }
-
-    handle = createElement('div', {
-        className: 'sb-shell-resize-handle',
-        attrs: {
-            title: 'Resize Characters panel',
-        },
-    });
-
-    bindShellResizeHandle(handle, 'characters');
-    panel.appendChild(handle);
-    return handle;
 }
 
 let characterToggleDispatchGuard = false;
@@ -9083,34 +8209,16 @@ document.addEventListener('click', (e) => {
 }, true);
 
 function toggleCharacterPanel({ preferredTab = null } = {}) {
-    injectCharacterDrawerControls();
-    ensureCharacterResizeHandle();
-
     if (isCharacterPanelOpen()) {
         closeCharacterPanel();
         return;
     }
 
     const normalizedPreferredTab = preferredTab ? normalizeCharacterPanelTab(preferredTab) : '';
-    if (normalizedPreferredTab) {
-        sbState.characterDrawer.lastTab = normalizedPreferredTab;
-    }
-
-    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-        surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,
-        isMobileViewport: isMobileViewport(),
-    }));
-    closeAllDropdowns({ except: 'characters', closeSurfaces: false });
-    restoreLastCharacterPanelView();
-
-    // iOS Safari clips position:fixed inside overflow:hidden ancestors.
-    // Temporarily allow overflow on the parent so the panel renders.
-    setCharacterDrawerHostOverflow(true);
 
     // SillyBunny: dispatch a cancelable click on the native Characters toggle to give
     // extensions like CharacterLibrary a chance to intercept. If they preventDefault(),
-    // they handle the UI themselves and we yield. Otherwise, we proceed with shell's
-    // normal open flow (Sillyanonymous/SillyTavern-CharacterLibrary#28).
+    // they handle the UI themselves and we yield (Sillyanonymous/SillyTavern-CharacterLibrary#28).
     if (characterToggleSkipExtensionIntercept) {
         characterToggleSkipExtensionIntercept = false;
     } else {
@@ -9122,34 +8230,13 @@ function toggleCharacterPanel({ preferredTab = null } = {}) {
             nativeToggle.dispatchEvent(clickEvent);
             characterToggleDispatchGuard = false;
             if (clickEvent.defaultPrevented) {
-                setCharacterDrawerHostOverflow(false);
                 return;
             }
         }
     }
 
-    // No extension intercepted — proceed with shell's normal open flow.
-    // SillyBunny: open the character drawer directly via forceDrawerState instead of
-    // synthetic-clicking the hidden native toggle. The old approach triggered handlers
-    // anchored to the hidden toggle's zero-size bounding rect, breaking extensions that
-    // anchor dropdowns/popups to native toggle positions (e.g. CharacterLibrary).
-    forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-
-    window.requestAnimationFrame(() => {
-        if (!isCharacterPanelOpen()) {
-            forceDrawerState('right-nav-panel', true, '#rightNavDrawerIcon');
-        }
-
-        restoreLastCharacterPanelView();
-
-        syncChatbarVisibilityState();
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        syncDesktopShellSizing();
-        queueMobileModalStateSync();
-    });
+    // SillyBunny: the floating drawer is retired; Characters opens in the settings page.
+    openSettingsPage('characters', normalizedPreferredTab || sbState.characterDrawer.lastTab || SB_CHARACTER_PANEL_DEFAULT_TAB);
 }
 
 function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
@@ -9175,50 +8262,21 @@ function closeAllDropdowns({ except = '', closeSurfaces = true } = {}) {
 }
 
 function toggleShellPanel(shellKey, tabId = null) {
-    if (shellKey === 'characters') {
-        if (isCharacterPanelTabOpen(tabId)) {
-            closeCharacterPanel();
-            return;
-        }
-
-        openCharacterPanelTab(tabId);
-        return;
-    }
-
     if (shellKey === 'left' && tabId === 'world-info') {
-        // SillyBunny: final guard for old code paths that still ask for the
-        // removed left-shell World Info route.
-        openCharacterPanelTab('world-info');
+        shellKey = 'characters';
+    }
+
+    if (shellKey === 'characters') {
+        toggleSettingsPage('characters', tabId ? normalizeCharacterPanelTab(tabId) : null);
         return;
     }
 
-    if (!ensureShellReady(shellKey)) {
+    if (!getShellConfig(shellKey)) {
         return;
     }
 
     preloadPanelStylesheets(shellKey, tabId);
-
-    if (tabId ? isShellTabOpen(shellKey, tabId) : isShellOpen(shellKey)) {
-        if (wasShellJustOpened(shellKey)) {
-            return;
-        }
-
-        closeShell(shellKey);
-        return;
-    }
-
-    rememberShellFocusOrigin(shellKey);
-    const shellSurface = getMobileShellSurfaceForShell(shellKey);
-    if (shellSurface) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: shellSurface,
-            isMobileViewport: isMobileViewport(),
-        }));
-        closeAllDropdowns({ except: shellKey, closeSurfaces: false });
-    } else {
-        closeAllDropdowns({ except: shellKey });
-    }
-    window.requestAnimationFrame(() => openShell(shellKey, tabId));
+    toggleSettingsPage(shellKey, tabId);
 }
 
 function preloadPanelStylesheets(shellKey, tabId = null) {
@@ -9232,6 +8290,19 @@ function preloadPanelStylesheets(shellKey, tabId = null) {
 
     if (!stylesheets || !window.SillyBunnyAssets?.loadStylesheetAsync) {
         return;
+    }
+
+    // SillyBunny: persona preloads share mount retry cleanup for failed links — see docs/ui-migration.md
+    if (normalizedKey === 'characters:persona') {
+        return import('./sillybunny-persona-editor.js')
+            .then(module => module.loadPersonaEditorStyles(stylesheets))
+            .catch(error => console.warn('Failed to load panel stylesheet:', normalizedKey, error));
+    }
+
+    if (normalizedKey === 'characters:characters' || normalizedKey === 'characters:groups') {
+        return import('./sillybunny-character-list.js')
+            .then(module => module.loadCharacterListStyles(stylesheets))
+            .catch(error => console.warn('Failed to load panel stylesheet:', normalizedKey, error));
     }
 
     for (const stylesheet of stylesheets) {
@@ -9303,7 +8374,6 @@ async function returnToLandingPage() {
     closeCharacterPanel();
     closeMobileNav();
     closeMobileChatTools();
-    setConnectionStripOpenState(false);
 
     if (isLandingPageVisible()) {
         queueLandingPageStateSync();
@@ -9327,9 +8397,17 @@ async function returnToLandingPage() {
 }
 
 function syncProxyButtonState(proxyButton, sourceIcon) {
-    if (!(proxyButton instanceof HTMLElement) || !(sourceIcon instanceof HTMLElement)) {
+    if (!(proxyButton instanceof HTMLElement)) {
         return;
     }
+
+    // SillyBunny: the page synchronously owns this button; keep drawer state for legacy consumers — see docs/ui-migration.md
+    if (proxyButton.id === 'sb-character-toggle' && getCharacterPanel()?.classList.contains('sb-settings-mounted-shell')) {
+        proxyButton.classList.remove('is-open', 'is-pinned', 'is-current');
+        proxyButton.setAttribute('aria-expanded', String(proxyButton.classList.contains('sb-settings-active')));
+        return;
+    }
+    if (!(sourceIcon instanceof HTMLElement)) return;
 
     const isOpen = sourceIcon.classList.contains('openIcon');
     const isPinned = sourceIcon.classList.contains('drawerPinnedOpen');
@@ -9387,21 +8465,8 @@ function observeProxyButton(buttonId, iconSelector) {
 }
 
 function activateCharacterTopbarButton() {
-    if (isTopbarIconsOnlyActive()) {
-        openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);
-        return;
-    }
-
-    toggleCharacterPanel();
-}
-
-function wasShellJustOpened(shellKey) {
-    const shellState = getShellState(shellKey);
-    if (!shellState) {
-        return false;
-    }
-
-    return (performance.now() - Number(shellState.lastOpenedAt || 0)) < SB_SHELL_TOGGLE_GUARD_MS;
+    // SillyBunny: route through the full-screen settings page for consistency (feat/v1.9.0-ui-overhaul)
+    toggleSettingsPage('characters');
 }
 
 function buildUniversalSearchRow() {
@@ -9463,8 +8528,26 @@ function buildUniversalSearchRow() {
         setUniversalSearchOpenState(true);
     });
 
+    // Typing is debounced: a render walks every tab's index, so firing one per keystroke spends a
+    // panel build on a query the user is still typing. Enter and the open panel flush it early.
     searchInput.addEventListener('input', () => {
         setUniversalSearchOpenState(true);
+        scheduleUniversalSearchRender();
+    });
+
+    // Delegated so a row replaced by a re-render cannot swallow the click; an unknown index means the
+    // row no longer belongs to the visible list and is ignored.
+    searchResults.addEventListener('click', event => {
+        const button = event.target instanceof Element ? event.target.closest('[data-sb-search-row]') : null;
+        if (!(button instanceof HTMLElement)) {
+            return;
+        }
+        const match = getUniversalSearchState().renderedRows?.[Number(button.dataset.sbSearchRow)];
+        if (!match) {
+            return;
+        }
+        clearUniversalSearch({ blur: true });
+        revealSearchMatch(match.shellKey, match);
     });
 
     searchInput.addEventListener('keydown', event => {
@@ -9483,8 +8566,7 @@ function buildUniversalSearchRow() {
         }
 
         if (event.key === 'Enter') {
-            const firstMatch = resultButtons[sbState.universalSearch.activeIndex] ?? resultButtons[0];
-            if (firstMatch instanceof HTMLButtonElement) {
+            const firstMatch = resultButtons[sbState.universalSearch.activeIndex] ?? resultButtons[0];            if (firstMatch instanceof HTMLButtonElement) {
                 event.preventDefault();
                 firstMatch.click();
             }
@@ -9550,28 +8632,15 @@ function buildTopBar() {
         attrs: { 'data-sb-topbar-slot-empty': 'true' },
     });
 
-    const mobileButton = createElement('button', {
-        id: 'sb-hamburger',
-        className: 'sb-proxy-button sb-mobile-toggle',
-        attrs: {
-            type: 'button',
-            title: 'Open navigation',
-            'aria-label': 'Open navigation',
-            'aria-expanded': 'false',
-        },
-    });
-    mobileButton.innerHTML = `<i class="fa-solid ${SB_MOBILE_NAV_CLOSED_ICON}" aria-hidden="true"></i>`;
-    stopProxyPointerPropagation(mobileButton);
-    mobileButton.addEventListener('click', toggleMobileNav);
-
+    // SillyBunny: left/right shell toggles now open the full-screen settings page (feat/v1.9.0-ui-overhaul)
     const leftButton = createProxyButton(
         {
             id: 'sb-left-shell-toggle',
             icon: getShellConfig('left').proxyIcon,
             label: getShellConfig('left').proxyLabel,
-            title: 'Open workspace tools',
+            title: 'Open backend tools (Ctrl+U)',
         },
-        () => toggleShellPanel('left'),
+        () => toggleSettingsPage('left'),
     );
 
     const homeButton = createProxyButton(
@@ -9579,7 +8648,7 @@ function buildTopBar() {
             id: 'sb-home-toggle',
             icon: 'fa-house',
             label: 'Home',
-            title: 'Return to the landing page',
+            title: 'Return to the landing page (Ctrl+O)',
         },
         () => {
             closeMobileNav();
@@ -9592,9 +8661,9 @@ function buildTopBar() {
             id: 'sb-right-shell-toggle',
             icon: getShellConfig('right').proxyIcon,
             label: getShellConfig('right').proxyLabel,
-            title: 'Open customization tools',
+            title: 'Open customization tools (Ctrl+I)',
         },
-        () => toggleShellPanel('right'),
+        () => toggleSettingsPage('right'),
     );
 
     const charactersButton = createProxyButton(
@@ -9602,7 +8671,7 @@ function buildTopBar() {
             id: 'sb-character-toggle',
             icon: 'fa-address-card',
             label: 'Characters',
-            title: 'Open character management',
+            title: 'Open character management (Ctrl+P)',
         },
         activateCharacterTopbarButton,
     );
@@ -9614,7 +8683,7 @@ function buildTopBar() {
             icon: leftShortcutConfig.icon,
             label: leftShortcutConfig.label,
             title: `Quick access: ${leftShortcutConfig.label}`,
-            className: 'sb-proxy-button-icon-only',
+            className: 'sb-proxy-button-icon-only sb-desktop-setting',
         },
         () => activateShortcutTarget(getShortcutTarget('left')),
     );
@@ -9627,7 +8696,7 @@ function buildTopBar() {
             icon: rightShortcutConfig.icon,
             label: rightShortcutConfig.label,
             title: `Quick access: ${rightShortcutConfig.label}`,
-            className: 'sb-proxy-button-icon-only',
+            className: 'sb-proxy-button-icon-only sb-desktop-setting',
         },
         () => activateShortcutTarget(getShortcutTarget('right')),
     );
@@ -9663,11 +8732,53 @@ function buildTopBar() {
     const customizeRail = buildTopbarPageRail(customizeCluster.railId, customizeCluster.pages);
     const charactersRail = buildTopbarPageRail(charactersCluster.railId, charactersCluster.pages);
     const customizeDivider = createTopbarClusterDivider('sb-topbar-divider-customize');
+    const quickActionsLeftDivider = createTopbarClusterDivider('sb-topbar-divider-quick-left');
+    quickActionsLeftDivider.classList.add('sb-desktop-setting');
+    const quickActionsRightDivider = createTopbarClusterDivider('sb-topbar-divider-quick-right');
+    quickActionsRightDivider.classList.add('sb-desktop-setting');
     const homeDivider = createTopbarClusterDivider('sb-topbar-divider-home');
     const charactersDivider = createTopbarClusterDivider('sb-topbar-divider-characters');
+    const searchMobileDivider = createTopbarClusterDivider('sb-topbar-divider-search-mobile');
+    searchMobileDivider.classList.add('sb-mobile-setting');
+    const modeMobileDivider = createTopbarClusterDivider('sb-topbar-divider-mode-mobile');
+    modeMobileDivider.classList.add('sb-mobile-setting');
 
-    leftGroup.append(mobileButton, leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
-    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
+    // SillyBunny: search toggle (left group, after Customize) + mode toggle (right group, before Home) — feat/v1.9.0-ui-overhaul
+    const searchToggle = createProxyButton(
+        {
+            id: 'sb-topbar-search-toggle',
+            icon: 'fa-magnifying-glass',
+            label: 'Search',
+            title: 'Search settings (Ctrl+F)',
+            className: 'sb-proxy-button-icon-only',
+        },
+        () => {
+            const searchState = getUniversalSearchState();
+            const nextOpen = !searchState.expanded;
+            if (nextOpen) {
+                closeAllDropdowns({ except: 'search', closeSurfaces: false });
+            }
+            setUniversalSearchOpenState(nextOpen, { focusInput: nextOpen });
+        },
+    );
+    // The document-level dismiss handler ignores clicks on marked triggers; without this
+    // the same click that opens the search row immediately closes it again.
+    searchToggle.dataset.sbUniversalSearchTrigger = 'true';
+
+    const modeToggle = createProxyButton(
+        {
+            id: 'sb-mode-toggle',
+            icon: 'fa-masks-theater',
+            label: 'Mode',
+            title: 'Switch chat mode (Ctrl+M)',
+            className: 'sb-proxy-button-icon-only',
+        },
+        () => openModeDropdown(),
+    );
+    modeToggle.setAttribute('aria-haspopup', 'menu');
+
+    leftGroup.append(leftButton, workspaceRail, customizeDivider, rightButton, customizeRail, searchMobileDivider, searchToggle, quickActionsLeftDivider, leftShortcut, desktopShortcutButtons.slot3, desktopShortcutButtons.slot4);
+    rightGroup.append(extensionSlot, desktopShortcutButtons.slot6, desktopShortcutButtons.slot5, rightShortcut, quickActionsRightDivider, modeToggle, modeMobileDivider, homeButton, homeDivider, charactersDivider, charactersButton, charactersRail);
     topBarInner.append(leftGroup, centerGroup, rightGroup);
     primaryRow.appendChild(topBarInner);
 
@@ -9945,6 +9056,15 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
         try {
             const loaded = await build();
             panel.replaceChildren(...loaded.panel.childNodes);
+            // Sections built here may author their own drawers, so the flatten runs again on the
+            // finished panel rather than relying on the one the split did.
+            if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabConfig.id) && !isSubpagePanel(tabConfig.id)) {
+                flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+                applySettingsSectionOrder(panel, tabConfig.id);
+                normalizeSettingsPresentation(panel, { name: tabConfig.id });
+                if (tabConfig.id === 'context') positionAdvancedFormattingHelpLink();
+            }
+            installSettingsSubpage(shellKey, tabConfig.id);
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
             if (tab) {
                 tab.searchRoot = loaded.searchRoot;
@@ -9966,27 +9086,6 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
         onActivate: () => void lifecycle.activate().catch(showError),
         onDeactivate: lifecycle.deactivate,
     };
-}
-
-function closeFocusedShell() {
-    const activeElement = document.activeElement;
-
-    if (!(activeElement instanceof HTMLElement)) {
-        return false;
-    }
-
-    const shellRoot = activeElement.closest('.sb-shell-root.openDrawer');
-    if (!(shellRoot instanceof HTMLElement)) {
-        return false;
-    }
-
-    const shellKey = shellRoot.dataset.sbShellKey;
-    if (!shellKey || !getShellState(shellKey)) {
-        return false;
-    }
-
-    closeShell(shellKey);
-    return true;
 }
 
 function moveChildrenIntoContainer(sourceElement, targetElement) {
@@ -10029,186 +9128,170 @@ function prepareEmbeddedDrawer(drawerId, root = document) {
     return { drawer, drawerContent };
 }
 
+function syncBackgroundSettingsSection() {
+    const appearance = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
+    const gallery = document.getElementById('backgrounds-button');
+    if (!(appearance instanceof HTMLElement) || !(gallery instanceof HTMLElement)) return;
+
+    let section = appearance.querySelector('#sb-background-settings-section');
+    let changed = false;
+    if (!(section instanceof HTMLElement)) {
+        section = createElement('section', {
+            id: 'sb-background-settings-section',
+            className: `${SB_FLAT_SECTION_CLASS} sb-settings-category`,
+            attrs: { 'data-sb-category': 'background', 'data-settings-tab': 'appearance', 'aria-labelledby': 'sb-background-settings-heading' },
+        });
+        const header = createElement('div', { className: `${SB_FLAT_SECTION_HEADER_CLASS} sb-settings-category-header` });
+        const heading = createElement('div', { className: 'flex-container flexFlowColumn sb-settings-category-heading' });
+        heading.append(
+            createElement('h3', {
+                id: 'sb-background-settings-heading',
+                className: 'ds-pref-group-heading sb-settings-category-title',
+                text: 'Background',
+                attrs: { 'data-i18n': 'Background' },
+            }),
+            createElement('small', { text: 'Choose backgrounds and adjust their size, blur, opacity, and visibility.', attrs: { 'data-i18n': 'Choose backgrounds and adjust their size, blur, opacity, and visibility.' } }),
+        );
+        header.append(heading);
+        section.append(header, createElement('div', { id: 'sb-background-settings-controls', className: 'ds-pref-group sb-settings-category-body' }));
+        appearance.append(section);
+        changed = true;
+    }
+
+    const controls = section.querySelector('#sb-background-settings-controls');
+    if (!(controls instanceof HTMLElement)) throw new Error('Missing Background settings control group.');
+
+    // The gallery owns its toolbar and layout; the normalizer must not box it around another pill.
+    if (gallery.dataset.sbPresentation !== 'manual') gallery.dataset.sbPresentation = 'manual';
+    // These rows are authored in three tabs, and Interface injects its slider after the initial split.
+    for (const id of ['background-blur-block', 'background-opacity-block', 'background_thumbnails_animation', 'sb-surface-transparency-input']) {
+        const row = document.getElementById(id)?.closest('.ds-row, .checkbox_label');
+        if (!(row instanceof HTMLElement) || row.parentElement === controls) continue;
+        controls.append(row);
+        changed = true;
+    }
+
+    if (gallery.parentElement !== section) {
+        section.append(gallery);
+        changed = true;
+    }
+    if (changed) invalidateUserSettingsTabSearchIndexes();
+}
+
 const SB_SAMPLING_BACKENDS = Object.freeze([
     {
         id: 'openai',
         apiIds: ['openai'],
         title: 'Chat Completions',
+        usesContextSettings: false,
         description: 'Uses the active Chat Completions provider and its provider-specific sampler support.',
-        controls: [
-            '#seed_openai',
-            '#openai_logit_bias_preset',
-            '#temp_openai',
-            '#claude_disable_temperature',
-            '#top_p_openai',
-            '#claude_disable_top_p',
-            '#repetition_penalty_openai',
-            '#freq_pen_openai',
-            '#pres_pen_openai',
-            '#top_k_openai',
-            '#min_p_openai',
-            '#top_a_openai',
-        ],
     },
     {
         id: 'textgenerationwebui',
         apiIds: ['textgenerationwebui'],
         title: 'Text Completions',
+        usesContextSettings: true,
         description: 'Uses the selected Text Completions backend and sampler visibility rules.',
-        controls: [
-            '#seed_textgenerationwebui',
-            '#n_textgenerationwebui',
-            '#samplerResetButton',
-            '#sampler_order_block_kcpp',
-            '#sampler_order_block_lcpp',
-            '#sampler_priority_block_ooba',
-            '#sampler_priority_block_aphrodite',
-            '#json_schema_block',
-            '#banned_tokens_block_ooba',
-            '#logit_bias_block_ooba',
-            '#temp_textgenerationwebui',
-            '#top_k_textgenerationwebui',
-            '#top_p_textgenerationwebui',
-            '#typical_p_textgenerationwebui',
-            '#min_p_textgenerationwebui',
-            '#top_a_textgenerationwebui',
-            '#tfs_textgenerationwebui',
-            '#epsilon_cutoff_textgenerationwebui',
-            '#nsigma_textgenerationwebui',
-            '#min_keep_textgenerationwebui',
-            '#eta_cutoff_textgenerationwebui',
-            '#rep_pen_textgenerationwebui',
-            '#rep_pen_range_textgenerationwebui',
-            '#rep_pen_slope_textgenerationwebui',
-            '#rep_pen_decay_textgenerationwebui',
-            '#encoder_rep_pen_textgenerationwebui',
-            '#freq_pen_textgenerationwebui',
-            '#presence_pen_textgenerationwebui',
-            '#no_repeat_ngram_size_textgenerationwebui',
-            '#skew_textgenerationwebui',
-            '#min_length_textgenerationwebui',
-            '#max_tokens_second_textgenerationwebui',
-            '#adaptive_p_block',
-            '#smoothingBlock',
-            '#xtc_block',
-            '#dryBlock',
-            '#dynatemp_block_ooba',
-            '#mirostat_block_ooba',
-            '#beamSearchBlock',
-            '#contrastiveSearchBlock',
-            '#do_sample_textgenerationwebui',
-            '#add_bos_token_textgenerationwebui',
-            '#ignore_eos_token_textgenerationwebui',
-            '#include_reasoning_textgenerationwebui',
-            '#temperature_last_textgenerationwebui',
-            '#speculative_ngram_textgenerationwebui',
-            '#spaces_between_special_tokens_textgenerationwebui',
-            '#cfg_block_ooba',
-            '#grammar_block_ooba',
-        ],
     },
     {
         id: 'kobold',
         apiIds: ['kobold', 'koboldhorde'],
-        title: 'Kobold / Horde',
+        title: 'Kobold/Horde',
+        usesContextSettings: true,
         description: 'Kobold Horde reuses Kobold sampler settings; Horde still requires a non-GUI preset.',
-        controls: ['#temp', '#top_p', '#rep_pen'],
     },
     {
         id: 'novel',
         apiIds: ['novel'],
         title: 'NovelAI',
+        usesContextSettings: true,
         description: 'Uses NovelAI preset sampling fields without changing the backend request format.',
-        controls: [
-            '#temp_novel',
-            '#rep_pen_novel',
-            '#rep_pen_size_novel',
-            '#rep_pen_slope_novel',
-            '#rep_pen_freq_novel',
-            '#rep_pen_presence_novel',
-            '#min_p_novel',
-            '#tail_free_sampling_novel',
-            '#top_p_novel',
-            '#top_a_novel',
-            '#top_k_novel',
-            '#mirostat_tau_novel',
-            '#mirostat_lr_novel',
-            '#typical_p_novel',
-            '#math1_temp_novel',
-            '#math1_quad_novel',
-            '#math1_quad_entropy_scale_novel',
-            '#min_length_novel',
-        ],
     },
 ]);
 
-const SB_LARGE_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#seed_openai',
-    '#openai_logit_bias_preset',
-    '#samplerResetButton',
-    '#n_textgenerationwebui',
-    '#seed_textgenerationwebui',
-    '#banned_tokens_block_ooba',
-    '#logit_bias_block_ooba',
-    '#json_schema_block',
-    '#sampler_order_block_kcpp',
-    '#sampler_order_block_lcpp',
-    '#sampler_priority_block_ooba',
-    '#sampler_priority_block_aphrodite',
-]));
+const SB_SAMPLING_GROUPS = Object.freeze([
+    { id: 'sampling', title: 'Sampling', description: 'Adjust how the AI chooses tokens and how varied its replies can be.' },
+    { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases.' },
+    { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition.' },
+    { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits.' },
+    { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules.' },
+]);
 
-const SB_COMPACT_PRIORITY_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#samplerResetButton',
-    '#n_textgenerationwebui',
-    '#seed_textgenerationwebui',
-    '#json_schema_block',
-]));
+/**
+ * Shared sampler registry. Each entry maps a canonical sampler id to selectors across backends.
+ * Controls are displayed in registry order within their group. Backends with no selector omit the entry.
+ * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, large?: boolean, gated?: boolean, description?: string, subtitleSource?: string}>}
+ */
+const SB_SAMPLER_REGISTRY = Object.freeze([
+    // Sampling
+    { id: 'sampler_toolbar', group: 'sampling', openai: '#sb_neutralize_chat_samplers', textgenerationwebui: '#samplerResetButton', large: true, gated: true },
+    { id: 'temperature', group: 'sampling', openai: '#temp_openai', textgenerationwebui: '#temp_textgenerationwebui', kobold: '#temp', novel: '#temp_novel' },
+    { id: 'top_k', group: 'sampling', openai: '#top_k_openai', textgenerationwebui: '#top_k_textgenerationwebui', kobold: '#top_k', novel: '#top_k_novel' },
+    { id: 'top_p', group: 'sampling', openai: '#top_p_openai', textgenerationwebui: '#top_p_textgenerationwebui', kobold: '#top_p', novel: '#top_p_novel' },
+    { id: 'typical_p', group: 'sampling', textgenerationwebui: '#typical_p_textgenerationwebui', kobold: '#typical_p', novel: '#typical_p_novel' },
+    { id: 'min_p', group: 'sampling', openai: '#min_p_openai', textgenerationwebui: '#min_p_textgenerationwebui', kobold: '#min_p', novel: '#min_p_novel' },
+    { id: 'top_a', group: 'sampling', openai: '#top_a_openai', textgenerationwebui: '#top_a_textgenerationwebui', kobold: '#top_a', novel: '#top_a_novel' },
+    { id: 'tfs', group: 'sampling', textgenerationwebui: '#tfs_textgenerationwebui', kobold: '#tfs', novel: '#tail_free_sampling_novel' },
+    { id: 'epsilon_cutoff', group: 'sampling', textgenerationwebui: '#epsilon_cutoff_textgenerationwebui' },
+    { id: 'eta_cutoff', group: 'sampling', textgenerationwebui: '#eta_cutoff_textgenerationwebui' },
+    { id: 'nsigma', group: 'sampling', textgenerationwebui: '#nsigma_textgenerationwebui' },
+    { id: 'min_keep', group: 'sampling', textgenerationwebui: '#min_keep_textgenerationwebui' },
+    { id: 'skew', group: 'sampling', textgenerationwebui: '#skew_textgenerationwebui' },
+    // Penalties
+    { id: 'repetition_penalty', group: 'penalties', openai: '#repetition_penalty_openai', textgenerationwebui: '#rep_pen_textgenerationwebui', kobold: '#rep_pen', novel: '#rep_pen_novel' },
+    { id: 'rep_pen_range', group: 'penalties', textgenerationwebui: '#rep_pen_range_textgenerationwebui', kobold: '#rep_pen_range', novel: '#rep_pen_size_novel' },
+    { id: 'rep_pen_slope', group: 'penalties', textgenerationwebui: '#rep_pen_slope_textgenerationwebui', kobold: '#rep_pen_slope', novel: '#rep_pen_slope_novel' },
+    { id: 'rep_pen_decay', group: 'penalties', textgenerationwebui: '#rep_pen_decay_textgenerationwebui' },
+    { id: 'encoder_rep_pen', group: 'penalties', textgenerationwebui: '#encoder_rep_pen_textgenerationwebui' },
+    { id: 'frequency_penalty', group: 'penalties', openai: '#freq_pen_openai', textgenerationwebui: '#freq_pen_textgenerationwebui', novel: '#rep_pen_freq_novel' },
+    { id: 'presence_penalty', group: 'penalties', openai: '#pres_pen_openai', textgenerationwebui: '#presence_pen_textgenerationwebui', novel: '#rep_pen_presence_novel' },
+    { id: 'no_repeat_ngram', group: 'penalties', textgenerationwebui: '#no_repeat_ngram_size_textgenerationwebui' },
+    // Algorithms
+    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true, description: 'Adjust token choices toward your chosen level of predictability.' },
+    { id: 'smoothing', group: 'algorithms', textgenerationwebui: '#smoothingBlock', expander: true },
+    { id: 'math1_temp', group: 'algorithms', novel: '#math1_temp_novel' },
+    { id: 'math1_quad', group: 'algorithms', novel: '#math1_quad_novel' },
+    { id: 'math1_quad_entropy_scale', group: 'algorithms', novel: '#math1_quad_entropy_scale_novel' },
+    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true, description: 'Exclude top token choices to encourage more varied replies.' },
+    { id: 'dry', group: 'algorithms', textgenerationwebui: '#dryBlock', expander: true },
+    { id: 'dynatemp', group: 'algorithms', textgenerationwebui: '#dynatemp_block_ooba', expander: true },
+    { id: 'mirostat', group: 'algorithms', textgenerationwebui: '#mirostat_block_ooba', kobold: '[name="miroStatBlock-kobold"]', expander: true, subtitleSource: '[data-sb-sampling-control="#mirostat_block_ooba"] .ds-row-subtitle' },
+    { id: 'mirostat_tau', group: 'algorithms', novel: '#mirostat_tau_novel' },
+    { id: 'mirostat_lr', group: 'algorithms', novel: '#mirostat_lr_novel' },
+    { id: 'beam_search', group: 'algorithms', textgenerationwebui: '#beamSearchBlock', expander: true, gated: true },
+    { id: 'contrastive_search', group: 'algorithms', textgenerationwebui: '#contrastiveSearchBlock', expander: true, gated: true },
+    // Tokens
+    { id: 'seed', group: 'tokens', openai: '#seed_openai', textgenerationwebui: '#seed_textgenerationwebui', kobold: '#seed_kobold', large: true, subtitleSource: '[data-sb-sampling-control="#seed_textgenerationwebui"] .ds-row-subtitle' },
+    { id: 'logit_bias', group: 'tokens', openai: '#openai_logit_bias_preset', textgenerationwebui: '#logit_bias_block_ooba', large: true, gated: true },
+    { id: 'banned_tokens', group: 'tokens', textgenerationwebui: '#banned_tokens_block_ooba', large: true, gated: true },
+    { id: 'min_length', group: 'tokens', textgenerationwebui: '#min_length_textgenerationwebui', novel: '#min_length_novel', gated: true },
+    { id: 'max_tokens_second', group: 'tokens', textgenerationwebui: '#max_tokens_second_textgenerationwebui', gated: true },
+    // Output
+    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', large: true, gated: true },
+    { id: 'sampler_priority', group: 'output', textgenerationwebui: ['#sampler_priority_block_ooba', '#sampler_priority_block_aphrodite'], large: true, gated: true },
+    { id: 'json_schema', group: 'output', textgenerationwebui: '#json_schema_block', large: true, gated: true },
+    { id: 'do_sample', group: 'output', textgenerationwebui: '#do_sample_textgenerationwebui', gated: true },
+    { id: 'add_bos_token', group: 'output', textgenerationwebui: '#add_bos_token_textgenerationwebui', gated: true },
+    { id: 'ignore_eos_token', group: 'output', textgenerationwebui: '#ignore_eos_token_textgenerationwebui', gated: true },
+    { id: 'use_default_badwordsids', group: 'output', kobold: '#use_default_badwordsids', gated: true },
+    { id: 'temperature_last', group: 'output', textgenerationwebui: '#temperature_last_textgenerationwebui', gated: true },
+    { id: 'include_reasoning', group: 'output', textgenerationwebui: '#include_reasoning_textgenerationwebui', gated: true },
+    { id: 'speculative_ngram', group: 'output', textgenerationwebui: '#speculative_ngram_textgenerationwebui', gated: true },
+    { id: 'spaces_between_special_tokens', group: 'output', textgenerationwebui: '#spaces_between_special_tokens_textgenerationwebui', gated: true },
+    { id: 'cfg', group: 'output', textgenerationwebui: '#cfg_block_ooba', gated: true },
+    { id: 'grammar', group: 'output', textgenerationwebui: '#grammar_block_ooba', kobold: '#grammar', gated: true, subtitleSource: '[data-sb-sampling-control="#grammar_block_ooba"] .ds-row-subtitle' },
+]);
 
-const SB_WIDE_PRIORITY_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#sampler_order_block_kcpp',
-    '#sampler_order_block_lcpp',
-    '#sampler_priority_block_ooba',
-    '#sampler_priority_block_aphrodite',
-]));
+function getSamplingBackendControls(backendId) {
+    return SB_SAMPLER_REGISTRY.flatMap(entry => [entry[backendId] ?? []].flat());
+}
 
-const SB_AFTER_SAMPLER_CONTROLS = Object.freeze(new Set([
-    '#sampler_order_block_kcpp',
-    '#sampler_order_block_lcpp',
-    '#sampler_priority_block_ooba',
-    '#sampler_priority_block_aphrodite',
-    '#json_schema_block',
-]));
+const SB_SAMPLER_ENTRY_BY_SELECTOR = Object.freeze(new Map(SB_SAMPLER_REGISTRY.flatMap(entry => SB_SAMPLING_BACKENDS
+    .flatMap(backend => [entry[backend.id] ?? []].flat())
+    .map(selector => [selector, entry]))));
 
-const SB_BOTTOM_PRIORITY_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#banned_tokens_block_ooba',
-    '#logit_bias_block_ooba',
-]));
-
-const SB_MULTI_SAMPLING_CONTROLS = Object.freeze(new Set([
-    '#adaptive_p_block',
-    '#smoothingBlock',
-    '#xtc_block',
-    '#dryBlock',
-    '#dynatemp_block_ooba',
-    '#mirostat_block_ooba',
-    '#beamSearchBlock',
-    '#contrastiveSearchBlock',
-]));
-
-function getSamplingPriorityTier(selector) {
-    if (SB_AFTER_SAMPLER_CONTROLS.has(selector)) {
-        return 'after';
-    }
-
-    if (SB_BOTTOM_PRIORITY_SAMPLING_CONTROLS.has(selector)) {
-        return 'bottom';
-    }
-
-    if (SB_LARGE_SAMPLING_CONTROLS.has(selector)) {
-        return 'top';
-    }
-
-    return '';
+function getSamplingGroupId(selector) {
+    return SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.group ?? 'sampling';
 }
 
 function getSpecialTokenControlBlock() {
@@ -10412,25 +9495,34 @@ function decorateSamplingControlCard(card, selector) {
             text: 'Set to get deterministic results. Use -1 for a random seed.',
         }));
     }
+}
 
-    if (selector === '#seed_openai') {
-        const row = createElement('small', { className: 'sb-chat-neutralize-row flex-container alignitemscenter' });
-        const button = createElement('button', {
-            className: 'menu_button menu_button_icon sb-neutralize-chat-samplers',
-            text: 'Neutralize Samplers',
-            attrs: { type: 'button' },
-        });
-        const info = createElement('div', {
-            className: 'fa-solid fa-circle-info opacity50p',
-            attrs: {
-                title: 'Set all samplers to their neutral/disabled state.',
-                'data-i18n': '[title]Set all samplers to their neutral/disabled state.',
-            },
-        });
-        button.addEventListener('click', neutralizeChatCompletionSamplers);
-        row.append(button, info);
-        card.appendChild(row);
-    }
+/** Chat Completions counterpart of the Text Completions sampler toolbar (`#samplerResetButton` row). */
+function getChatSamplerToolbarControlBlock() {
+    const existing = document.getElementById('sb_neutralize_chat_samplers');
+    if (existing instanceof HTMLElement) return existing.closest('.sb-sampling-sampler-tools-card');
+
+    const block = createElement('div', { className: 'sb-sampling-sampler-tools-card' });
+    const toolbar = createElement('div', { className: 'flex-container justifyCenter' });
+    const item = createElement('small', { className: 'flex-container alignitemscenter' });
+    const button = createElement('button', {
+        id: 'sb_neutralize_chat_samplers',
+        className: 'menu_button whitespacenowrap sb-neutralize-chat-samplers',
+        text: 'Neutralize Samplers',
+        attrs: { type: 'button', 'data-i18n': 'Neutralize Samplers' },
+    });
+    const info = createElement('div', {
+        className: 'fa-solid fa-circle-info opacity50p',
+        attrs: {
+            title: 'Set all samplers to their neutral/disabled state.',
+            'data-i18n': '[title]Set all samplers to their neutral/disabled state.',
+        },
+    });
+    button.addEventListener('click', neutralizeChatCompletionSamplers);
+    item.append(button, info);
+    toolbar.append(item);
+    block.append(toolbar);
+    return block;
 }
 
 function getSamplingControlBlock(selector) {
@@ -10443,41 +9535,202 @@ function getSamplingControlBlock(selector) {
         return input.closest('.flex-container.justifyCenter') ?? input.parentElement;
     }
 
+    if (SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.expander || input.matches('#cfg_block_ooba, #grammar_block_ooba, #json_schema_block, #banned_tokens_block_ooba, #logit_bias_block_ooba, [id^="sampler_order_block_"], [id^="sampler_priority_block_"]')) {
+        return input;
+    }
+
+    if (input.matches('input[type="checkbox"]')) {
+        return input.closest('.checkbox_label') ?? input.parentElement;
+    }
+
     return input.closest('.range-block')
         ?? input.closest('[data-tg-samplers]')
         ?? input.parentElement;
 }
 
-function buildSamplingControlCard(selector) {
+function buildSamplingControlCard(selector, root = document) {
     const controlBlock = selector === '#samplerResetButton'
         ? getSamplerToolbarControlBlock()
-        : getSamplingControlBlock(selector);
+        : selector === '#sb_neutralize_chat_samplers'
+            ? getChatSamplerToolbarControlBlock()
+            : getSamplingControlBlock(selector);
     if (!(controlBlock instanceof HTMLElement)) {
         return null;
     }
 
+    const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector);
     const isTextGenSampler = controlBlock.hasAttribute('data-tg-samplers') || controlBlock.querySelector('[data-tg-samplers]');
-    const card = createElement('div', {
+    const isExpander = Boolean(entry?.expander);
+    const card = createElement(isExpander ? 'details' : 'div', {
         className: [
             'sb-sampling-control-card',
             isTextGenSampler ? 'sb-sampling-textgen-card' : '',
-            SB_LARGE_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-large-card' : '',
-            SB_COMPACT_PRIORITY_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-compact-priority-card' : '',
-            SB_WIDE_PRIORITY_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-wide-priority-card' : '',
-            SB_MULTI_SAMPLING_CONTROLS.has(selector) ? 'sb-sampling-multi-card' : '',
-            getSamplingPriorityTier(selector) ? `sb-sampling-priority-${getSamplingPriorityTier(selector)}` : '',
+            entry?.large ? 'sb-sampling-large-card' : '',
+            isExpander ? 'ds-row-expander' : 'sb-sampling-row',
         ].filter(Boolean).join(' '),
     });
     card.dataset.sbSamplingControl = selector;
-    for (const attributeName of ['data-source', 'data-source-mode']) {
+    if (entry) card.dataset.sbSamplerId = entry.id;
+    // Ungated samplers stay visible for every provider; gating code in openai.js and
+    // textgen-settings.js skips elements carrying this marker.
+    if (entry && !entry.gated) {
+        for (const element of [controlBlock, ...controlBlock.querySelectorAll('[data-source], [data-tg-type]')]) {
+            element.setAttribute('data-sb-sampler-ungated', '');
+        }
+    }
+    for (const attributeName of ['data-source', 'data-source-mode', 'data-sb-sampler-ungated']) {
         if (controlBlock.hasAttribute(attributeName)) {
             card.setAttribute(attributeName, controlBlock.getAttribute(attributeName));
         }
     }
 
-    card.appendChild(controlBlock);
+    if (isExpander) {
+        const summary = createElement('summary', { className: 'ds-row' });
+        const text = createElement('div', { className: 'ds-row-text' });
+        const heading = controlBlock.querySelector(':scope > h4');
+        // A header toggle may already be normalized; its subtitle is not part of the sampler name.
+        const headingCopy = heading?.cloneNode(true);
+        headingCopy?.querySelectorAll('.ds-row-subtitle, [data-sb-copy-placeholder]').forEach(node => node.remove());
+        const label = createElement('span', { className: 'ds-row-label', text: headingCopy?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum' });
+        if (label.textContent === 'lorum ipsum') label.dataset.sbCopyPlaceholder = 'true';
+        const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
+        const subtitle = createElement('small', {
+            className: 'ds-row-subtitle',
+            text: tooltip?.getAttribute('title') || tooltip?.getAttribute('data-sttt--title') || 'lorum ipsum',
+        });
+        if (entry?.description) {
+            subtitle.textContent = entry.description;
+            subtitle.dataset.i18n = entry.description;
+        }
+        if (subtitle.textContent === 'lorum ipsum') subtitle.dataset.sbCopyPlaceholder = 'true';
+        text.append(label, subtitle);
+        summary.append(text);
+        const content = createElement('div', { className: 'ds-row-expander-content sb-sampling-multi-card' });
+        // SillyBunny: move header toggles into the expander body as full-width live preference rows.
+        for (const label of controlBlock.querySelectorAll(':scope > h4 .checkbox_label')) controlBlock.prepend(label);
+        content.append(controlBlock);
+        card.append(summary, content);
+    } else {
+        card.appendChild(controlBlock);
+    }
     decorateSamplingControlCard(card, selector);
+    normalizeBackendSettingsRows(card);
+    applySamplingSubtitleSource(card, entry, root);
+    addSamplingDescriptionToggles(card);
     return card;
+}
+
+/** Slider explanations stay searchable and translated, but open only when the reader needs them. */
+function addSamplingDescriptionToggles(card) {
+    for (const row of card.querySelectorAll('.ds-row-slider')) {
+        if (row.querySelector('.sb-sampling-help-toggle')) continue;
+        const text = row.querySelector(':scope > .ds-row-text');
+        const label = text?.querySelector(':scope > .ds-row-label');
+        const subtitle = text?.querySelector(':scope > .ds-row-subtitle:not([data-sb-copy-placeholder])');
+        const control = row.querySelector('input[type="range"][id]');
+        if (!label || !subtitle || !control) continue;
+
+        label.id ||= `sb-sampler-${control.id}-label`;
+        subtitle.id ||= `sb-sampler-${control.id}-help`;
+        subtitle.classList.add('sb-sampling-help');
+        subtitle.hidden = true;
+        const button = createElement('button', {
+            className: 'sb-sampling-help-toggle',
+            attrs: { type: 'button', 'aria-expanded': 'false', 'aria-controls': subtitle.id },
+        });
+        const name = createElement('span', {
+            className: 'sr-only', text: 'Details',
+            attrs: { id: `sb-sampler-${control.id}-help-label`, 'data-i18n': 'Details' },
+        });
+        button.setAttribute('aria-labelledby', `${label.id} ${name.id}`);
+        button.append(createElement('i', { className: 'fa-solid fa-circle-info', attrs: { 'aria-hidden': 'true' } }), name);
+        button.addEventListener('click', () => {
+            subtitle.hidden = !subtitle.hidden;
+            button.setAttribute('aria-expanded', String(!subtitle.hidden));
+        });
+        text.append(button);
+        row.append(subtitle);
+        row.classList.add('sb-sampling-help-row');
+    }
+}
+
+/** Reuses another backend's subtitle (text and i18n key) when this card's native markup has none. */
+function applySamplingSubtitleSource(card, entry, root) {
+    if (!entry?.subtitleSource) return;
+    const placeholder = card.querySelector('.ds-row-subtitle[data-sb-copy-placeholder]');
+    const source = root.querySelector(entry.subtitleSource);
+    if (!(placeholder instanceof HTMLElement) || !(source instanceof HTMLElement) || source.hasAttribute('data-sb-copy-placeholder')) return;
+    const text = source.textContent.trim();
+    if (!text) return;
+    placeholder.textContent = text;
+    delete placeholder.dataset.sbCopyPlaceholder;
+    if (source.dataset.i18n) placeholder.dataset.i18n = source.dataset.i18n;
+}
+
+/**
+ * Text Completions samplers that Chat Completions has no setting for. They are listed in the CC
+ * section as inert rows so both lists read the same; gated mechanisms are left out because TC only
+ * shows them for some backend types.
+ */
+const SB_CC_PLACEHOLDER_SAMPLERS = Object.freeze(SB_SAMPLER_REGISTRY.filter(entry => entry.textgenerationwebui && !entry.openai && !entry.gated));
+const SB_CC_PLACEHOLDER_SUBTITLE = 'Not available in Chat Completions. Custom endpoints can send it with Additional Parameters.';
+
+/** Registry position of a sampling card, so placeholder rows sort beside real controls. */
+function getSamplingCardRank(card) {
+    const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(card.dataset.sbSamplingControl)
+        ?? SB_SAMPLER_REGISTRY.find(candidate => candidate.id === card.dataset.sbSamplerId);
+    const index = SB_SAMPLER_REGISTRY.indexOf(entry);
+    if (index < 0) return Number.MAX_SAFE_INTEGER;
+    const selectors = Object.values(entry).flat().filter(value => typeof value === 'string');
+    return index + Math.max(0, selectors.indexOf(card.dataset.sbSamplingControl)) / 100;
+}
+
+/** Builds an inert CC row from the live Text Completions card's label; returns null until that card exists. */
+function buildChatCompletionPlaceholderCard(entry, root) {
+    const source = root.querySelector(`#sb-sampling-textgenerationwebui [data-sb-sampling-control="${entry.textgenerationwebui}"]`);
+    const sourceLabel = source?.querySelector(entry.expander ? ':scope > summary .ds-row-label' : '.ds-row-label');
+    const labelText = sourceLabel?.textContent.replace(/\s+/g, ' ').trim();
+    if (!labelText || sourceLabel.hasAttribute('data-sb-copy-placeholder')) return null;
+
+    const card = createElement('div', {
+        className: 'sb-sampling-control-card sb-sampling-row sb-sampling-placeholder-card',
+        attrs: { 'data-sb-sampling-placeholder': '', 'data-sb-sampler-id': entry.id },
+    });
+    const row = createElement('div', { className: 'ds-row' });
+    const text = createElement('div', { className: 'ds-row-text' });
+    const label = createElement('span', { className: 'ds-row-label', text: labelText });
+    const i18nKey = sourceLabel.getAttribute('data-i18n') ?? sourceLabel.querySelector(':scope > [data-i18n]')?.getAttribute('data-i18n');
+    if (i18nKey && !i18nKey.startsWith('[')) label.dataset.i18n = i18nKey;
+    text.append(label, createElement('small', {
+        className: 'ds-row-subtitle',
+        text: SB_CC_PLACEHOLDER_SUBTITLE,
+        attrs: { 'data-i18n': SB_CC_PLACEHOLDER_SUBTITLE },
+    }));
+    const badge = createElement('span', { className: 'sb-sampling-unavailable-badge' });
+    badge.append(
+        createElement('i', { className: 'fa-solid fa-ban', attrs: { 'aria-hidden': 'true' } }),
+        createElement('span', { text: 'Unavailable', attrs: { 'data-i18n': 'Unavailable' } }),
+    );
+    const suffix = createElement('div', { className: 'ds-row-suffix' });
+    suffix.append(badge);
+    row.append(text, suffix);
+    card.append(row);
+    return card;
+}
+
+function syncChatCompletionPlaceholderCards(root) {
+    const section = root.querySelector('#sb-sampling-openai');
+    if (!(section instanceof HTMLElement)) return false;
+    let built = false;
+    for (const entry of SB_CC_PLACEHOLDER_SAMPLERS) {
+        if (section.querySelector(`[data-sb-sampling-placeholder][data-sb-sampler-id="${entry.id}"]`)) continue;
+        const target = section.querySelector(`[data-sb-sampling-group="${entry.group}"] > .ds-pref-group`);
+        const card = target instanceof HTMLElement ? buildChatCompletionPlaceholderCard(entry, root) : null;
+        if (!card) continue;
+        target.append(card);
+        built = true;
+    }
+    return built;
 }
 
 function drawerHasControls(drawer) {
@@ -10502,8 +9755,10 @@ function drawerHasControls(drawer) {
 }
 
 function hideEmptyGroupedSettingsDrawers() {
+    // Flattened sections are skipped: they have no `.inline-drawer-content` left, so the control
+    // test below would report them empty and hide a section that only exists while expanded.
     document.querySelectorAll('#range_block_openai .sb-openai-settings-drawer, #textgenerationwebui_api-settings .sb-textgen-drawers > .inline-drawer').forEach(drawer => {
-        if (!(drawer instanceof HTMLElement)) {
+        if (!(drawer instanceof HTMLElement) || !drawer.classList.contains('inline-drawer')) {
             return;
         }
 
@@ -10516,30 +9771,48 @@ function updateSamplingCardVisibility(section) {
         return;
     }
 
-    section.querySelectorAll('[data-sb-sampling-control]').forEach(card => {
-        if (!(card instanceof HTMLElement)) {
-            return;
-        }
+    // Read every card's state before writing any `hidden`, so the pass costs one style flush, not one per card.
+    const cardVisibility = Array.from(section.querySelectorAll('[data-sb-sampling-control]'))
+        .filter(card => card instanceof HTMLElement)
+        .map(card => {
+            const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
+            const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
+                && !child.classList.contains('sb-sampling-transmission')
+                && getComputedStyle(child).display !== 'none');
+            return [card, hasVisibleContent];
+        });
+    for (const [card, hasVisibleContent] of cardVisibility) {
+        if (card.hidden !== !hasVisibleContent) card.hidden = !hasVisibleContent;
+    }
 
-        const hasVisibleContent = Array.from(card.children).some(child => child instanceof HTMLElement && getComputedStyle(child).display !== 'none');
-        card.hidden = !hasVisibleContent;
-    });
+    // Track visibility as we write: `card.hidden` writes above have not been flushed yet, so a
+    // checkVisibility() here would force the very layout this function is trying to avoid.
+    const visibleCards = new Set(cardVisibility.filter(([, visible]) => visible).map(([card]) => card));
+    const groups = [];
+    for (const group of section.querySelectorAll('[data-sb-sampling-group]')) {
+        if (!(group instanceof HTMLElement)) continue;
+        // Placeholder rows have no gated content, so they always keep their group visible.
+        const hasSamplingCard = Boolean(group.querySelector('[data-sb-sampling-placeholder]'))
+            || [...group.querySelectorAll('[data-sb-sampling-control]')].some(card => visibleCards.has(card));
+        groups.push([group, !hasSamplingCard]);
+    }
+    for (const [group, hidden] of groups) {
+        if (group.hidden !== hidden) group.hidden = hidden;
+    }
+}
 
-    section.querySelectorAll('.sb-sampling-priority-row').forEach(row => {
-        if (!(row instanceof HTMLElement)) {
-            return;
-        }
+function sortSamplingSectionCards(section) {
+    for (const group of section.querySelectorAll('[data-sb-sampling-group] > .ds-pref-group')) {
+        const cards = [...group.querySelectorAll(':scope > [data-sb-sampling-control], :scope > [data-sb-sampling-placeholder]')];
+        const sorted = [...cards].sort((a, b) => getSamplingCardRank(a) - getSamplingCardRank(b));
+        if (sorted.some((card, index) => card !== cards[index])) group.append(...sorted);
+    }
+}
 
-        row.hidden = !Array.from(row.children).some(child => child instanceof HTMLElement && !child.hidden);
-    });
-
-    section.querySelectorAll('.sb-sampling-multi-grid').forEach(row => {
-        if (!(row instanceof HTMLElement)) {
-            return;
-        }
-
-        row.hidden = !Array.from(row.children).some(child => child instanceof HTMLElement && !child.hidden);
-    });
+function resyncUngatedSamplerVisibility(section, backendId) {
+    // Cards built after the backend's own gating pass may still carry its inline display:none.
+    $(section).find('[data-sb-sampler-ungated]').filter('[data-source], [data-tg-type]').show();
+    if (backendId === 'textgenerationwebui') showTGSamplerControls();
 }
 
 function syncSamplingPanelControls(root) {
@@ -10549,22 +9822,19 @@ function syncSamplingPanelControls(root) {
 
     for (const backend of SB_SAMPLING_BACKENDS) {
         const section = root.querySelector(`#sb-sampling-${backend.id}`);
-        const priorityRows = {
-            top: section?.querySelector('.sb-sampling-priority-row[data-sb-priority-tier="top"]'),
-            bottom: section?.querySelector('.sb-sampling-priority-row[data-sb-priority-tier="bottom"]'),
-            after: section?.querySelector('.sb-sampling-after-row[data-sb-priority-tier="after"]'),
-        };
-        const grid = section?.querySelector('.sb-sampling-grid');
-        const multiGrid = section?.querySelector('.sb-sampling-multi-grid');
-        if (!Object.values(priorityRows).every(row => row instanceof HTMLElement) || !(grid instanceof HTMLElement) || !(multiGrid instanceof HTMLElement)) {
+        if (!(section instanceof HTMLElement)) {
             continue;
         }
 
         section.querySelector('.sb-sampling-note')?.remove();
 
-        for (const selector of backend.controls) {
-            const tier = getSamplingPriorityTier(selector);
-            const target = tier ? priorityRows[tier] : (SB_MULTI_SAMPLING_CONTROLS.has(selector) ? multiGrid : grid);
+        let builtCards = false;
+        const backendControls = getSamplingBackendControls(backend.id);
+
+        for (const selector of backendControls) {
+            const groupId = getSamplingGroupId(selector);
+            const target = section.querySelector(`[data-sb-sampling-group="${groupId}"] > .ds-pref-group`);
+            if (!(target instanceof HTMLElement)) throw new Error(`Missing Sampling group: ${backend.id}/${groupId}`);
             const existingCard = Array.from(section.querySelectorAll('[data-sb-sampling-control]'))
                 .find(card => card instanceof HTMLElement && card.dataset.sbSamplingControl === selector);
             if (existingCard instanceof HTMLElement && existingCard.children.length > 0) {
@@ -10577,16 +9847,29 @@ function syncSamplingPanelControls(root) {
 
             existingCard?.remove();
 
-            const card = buildSamplingControlCard(selector);
+            const card = buildSamplingControlCard(selector, root);
             if (card) {
                 target.appendChild(card);
+                builtCards = true;
             }
         }
 
-        if (!Object.values(priorityRows).some(row => row.children.length) && !grid.children.length && !multiGrid.children.length) {
-            grid.appendChild(createElement('p', {
+        if (backend.id === 'openai' && syncChatCompletionPlaceholderCards(root)) builtCards = true;
+
+        if (builtCards) {
+            sortSamplingSectionCards(section);
+            section.dataset.sbUngatedResyncPending = 'true';
+        }
+        // Base gating and manual sampler hiding query the live document, so wait until the panel is attached.
+        if (section.dataset.sbUngatedResyncPending && section.isConnected) {
+            delete section.dataset.sbUngatedResyncPending;
+            resyncUngatedSamplerVisibility(section, backend.id);
+        }
+
+        if (!section.querySelector('[data-sb-sampling-control]') && !section.querySelector('[data-sb-sampling-placeholder]')) {
+            section.appendChild(createElement('p', {
                 className: 'sb-sampling-note',
-                text: 'Sampler controls are not ready yet. Reopen the Workspace menu after settings finish loading.',
+                text: 'Sampler controls are not ready yet. Reopen the Backend menu after settings finish loading.',
             }));
         }
 
@@ -10626,12 +9909,42 @@ function updateSamplingPanelVisibility(root) {
     }
 }
 
+function createBackendSectionHeader({ title = '', description, modeAttrs = {}, descriptionAttrs = {} }) {
+    const header = createElement('div', { className: 'sb-backend-section-header' });
+    const titleRow = createElement('div', { className: 'sb-backend-title-row' });
+    const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: title, attrs: modeAttrs });
+    titleRow.append(mode);
+    header.append(titleRow, createElement('p', { text: description, attrs: descriptionAttrs }));
+    return header;
+}
+
+// SillyBunny: manually built Backend groups share the Messages category-heading anatomy.
+function createBackendGroupHeader(title, attrs = {}, description = '') {
+    const header = createElement('div', { className: 'sb-settings-flat-header sb-settings-category-header' });
+    const heading = createElement('div', { className: 'flex-container flexFlowColumn sb-settings-category-heading' });
+    heading.append(createElement('h3', {
+        className: 'ds-pref-group-heading sb-settings-category-title',
+        text: title,
+        attrs: { 'data-i18n': title, ...attrs },
+    }));
+    if (description) {
+        heading.append(createElement('small', {
+            text: description,
+            attrs: { 'data-i18n': description },
+        }));
+    }
+    header.append(heading);
+    return header;
+}
+
 function buildSamplingPanel() {
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
-    const column = createElement('div', { className: 'sb-shell-column sb-sampling-panel' });
+    const column = createElement('div', {
+        className: 'sb-shell-column sb-sampling-panel',
+        attrs: { 'data-sb-presentation': 'manual' },
+    });
 
     const sections = createElement('div', { className: 'sb-sampling-sections' });
-
     for (const backend of SB_SAMPLING_BACKENDS) {
         const section = createElement('section', {
             id: `sb-sampling-${backend.id}`,
@@ -10640,23 +9953,27 @@ function buildSamplingPanel() {
                 'data-sb-sampling-apis': backend.apiIds.join(','),
             },
         });
-        const header = createElement('div', { className: 'sb-sampling-section-header' });
-        const titleRow = createElement('div', { className: 'sb-sampling-title-row' });
-        const title = createElement('strong', { text: 'Sampling Backend' });
-        const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: backend.title });
-        const description = createElement('p', { text: `Active backend samplers are shown here. ${backend.description}` });
-        const priorityStack = createElement('div', { className: 'sb-sampling-priority-stack' });
-        const priorityTop = createElement('div', { className: 'sb-sampling-priority-row sb-sampling-priority-row-top', attrs: { 'data-sb-priority-tier': 'top' } });
-        const priorityBottom = createElement('div', { className: 'sb-sampling-priority-row sb-sampling-priority-row-bottom', attrs: { 'data-sb-priority-tier': 'bottom' } });
-        const grid = createElement('div', { className: 'sb-sampling-grid' });
-        const multiGrid = createElement('div', { className: 'sb-sampling-multi-grid' });
-        const afterRow = createElement('div', { className: 'sb-sampling-priority-row sb-sampling-after-row', attrs: { 'data-sb-priority-tier': 'after' } });
-
-        titleRow.append(title, mode);
-        header.append(titleRow, description);
-
-        priorityStack.append(priorityTop, priorityBottom);
-        section.append(header, priorityStack, grid, multiGrid, afterRow);
+        const header = createBackendSectionHeader({
+            title: `Backend: ${backend.title}`,
+            description: `Active backend samplers are shown here. ${backend.description}`,
+        });
+        header.append(createElement('p', {
+            className: 'sb-sampling-header-note',
+            text: 'Some backends ignore samplers they do not support.',
+            attrs: { 'data-i18n': 'Some backends ignore samplers they do not support.' },
+        }));
+        section.append(header);
+        for (const group of SB_SAMPLING_GROUPS) {
+            const category = createElement('section', {
+                className: 'sb-sampling-group',
+                attrs: { 'data-sb-sampling-group': group.id },
+            });
+            category.append(
+                createBackendGroupHeader(group.title, {}, group.description),
+                createElement('div', { className: 'ds-pref-group' }),
+            );
+            section.append(category);
+        }
         sections.appendChild(section);
     }
 
@@ -10668,6 +9985,16 @@ function buildSamplingPanel() {
 
     column.append(sections, empty);
     scroller.appendChild(column);
+    let visibilityQueued = false;
+    const visibilityObserver = new MutationObserver(mutations => {
+        if (visibilityQueued || !mutations.some(({ target }) => target instanceof HTMLElement && target.matches('[data-source], [data-tg-type], [data-tg-samplers]'))) return;
+        visibilityQueued = true;
+        window.requestAnimationFrame(() => {
+            visibilityQueued = false;
+            sections.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
+        });
+    });
+    visibilityObserver.observe(sections, { subtree: true, attributes: true, attributeFilter: ['style'] });
 
     $('#main_api').on('change.sbSamplingPanel', () => {
         if (isShellTabOpen('left', 'sampling')) updateSamplingPanelVisibility(column);
@@ -10692,16 +10019,11 @@ function buildInChatAgentsPanel() {
         id: 'agents',
     });
 
-    const column = createElement('div', { className: 'sb-shell-column' });
-    const callout = createElement('div', { className: 'sb-shell-callout' });
-    callout.innerHTML = `
-        <strong>In-Chat Agents</strong>
-        <p>Lightweight helpers that run alongside your conversation. Configure them per-chat for modular functionality.</p>
-    `;
-
-    const inChatAgentsContainer = createElement('div', { id: 'in_chat_agents_container' });
-
-    column.append(callout, inChatAgentsContainer);
+    const column = createElement('div', {
+        className: 'sb-shell-column ica-agents-column',
+        attrs: { 'data-sb-presentation': 'manual' },
+    });
+    const controller = mountAgentsPanel(column);
     scroller.appendChild(column);
 
     return {
@@ -10709,7 +10031,367 @@ function buildInChatAgentsPanel() {
         panel,
         button: null,
         searchRoot: column,
+        onActivate: () => { controller.prepareReveal(); controller.onReveal(); },
     };
+}
+
+function createBackendPromptGroup(id, title) {
+    const group = createElement('section', { id, className: 'sb-prompting-group' });
+    group.append(
+        createElement('h3', { className: 'ds-pref-group-heading', text: title, attrs: { 'data-i18n': title } }),
+        createElement('div', { className: 'ds-pref-group sb-prompting-group-body' }),
+    );
+    return group;
+}
+
+const SB_EDITOR_UTILITY_PROMPT_IDS = Object.freeze([
+    'impersonation_prompt_textarea', 'wi_format_textarea', 'scenario_format_textarea', 'personality_format_textarea',
+    'group_nudge_prompt_textarea', 'newchat_prompt_textarea', 'newgroupchat_prompt_textarea',
+    'newexamplechat_prompt_textarea', 'continue_nudge_prompt_textarea', 'send_if_empty_textarea',
+]);
+
+function prepareEditorPanel(root) {
+    if (root.dataset.sbEditorPrepared === 'true') return;
+    root.dataset.sbEditorPrepared = 'true';
+    root.dataset.sbPresentation = 'manual';
+    root.classList.add('sb-prompting-panel', 'sb-editor-panel');
+    const description = getShellConfig('left').customTabs.find(tab => tab.id === 'editor').description;
+    const header = createBackendSectionHeader({
+        description,
+        modeAttrs: { 'data-sb-editor-mode': '' },
+        descriptionAttrs: { 'data-i18n': description },
+    });
+    const meta = createElement('div', { className: 'sb-editor-meta' });
+    meta.append(
+        createElement('span', { attrs: { 'data-sb-editor-preset': '', 'aria-live': 'polite' } }),
+        // sillybunny-preset-autosave.js fills in and reveals both states.
+        createElement('span', { text: 'Autosave off', attrs: { 'data-sb-editor-autosave': '', 'data-i18n': 'Autosave off', hidden: '' } }),
+        createElement('span', { text: 'Read-only', attrs: { 'data-sb-editor-read-only': '', 'data-i18n': 'Read-only', hidden: '' } }),
+    );
+    const back = createElement('button', {
+        className: 'menu_button sb-action-btn sb-backend-navigation-pill',
+        text: 'Presets',
+        attrs: { type: 'button', 'data-sb-editor-presets': '', 'data-i18n': 'Presets' },
+    });
+    back.addEventListener('click', () => openShell('left', 'prompting'));
+    header.querySelector('.sb-backend-title-row').append(back);
+    header.querySelector(':scope > p').after(meta);
+    root.append(header);
+    for (const [id, title] of [
+        ['sb-editor-utility', 'Utility Prompts'],
+        ['sb-editor-sysprompt', 'System Prompt'],
+        ['sb-editor-instruct', 'Instruct Template'],
+        ['sb-editor-context', 'Context Template'],
+    ]) root.append(createBackendPromptGroup(id, title));
+}
+
+function buildEditorPanel() {
+    const { panel, scroller } = createShellPanel({ id: 'editor' });
+    const column = createElement('div', { className: 'sb-shell-column' });
+    prepareEditorPanel(column);
+    initializePromptEditor(column);
+    scroller.append(column);
+    return { panel, scroller, searchRoot: column, onActivate: () => {
+        groupAdvancedFormattingIntoDrawers();
+        updateEditorPanel(panel);
+    } };
+}
+
+function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.panel) {
+    const root = panel?.querySelector('.sb-editor-panel');
+    if (!(root instanceof HTMLElement)) return;
+    const activeApi = getCurrentMainApiValue();
+    const isChatCompletion = activeApi === 'openai';
+    const backend = SB_SAMPLING_BACKENDS.find(entry => entry.apiIds.includes(activeApi));
+    const mode = root.querySelector('[data-sb-editor-mode]');
+    const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
+    if (mode.textContent !== modeLabel) mode.textContent = modeLabel;
+
+    const adoptDocument = (id, groupId, wrapperSelector = null) => {
+        const field = document.getElementById(id);
+        const body = root.querySelector(`#${groupId} > .sb-prompting-group-body`);
+        if (!(field instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+        const documentNode = field.closest('[data-sb-editor-document]')
+            ?? (wrapperSelector ? field.closest(wrapperSelector) : field.parentElement);
+        if (!(documentNode instanceof HTMLElement)) return;
+        if (documentNode.dataset.sbEditorDocument !== 'true') documentNode.dataset.sbEditorDocument = 'true';
+        if (documentNode.parentElement !== body) body.append(documentNode);
+    };
+
+    const manager = document.getElementById('sb-openai-prompt-manager');
+    if (manager instanceof HTMLElement) {
+        if (manager.parentElement !== root || manager.previousElementSibling !== root.firstElementChild) root.firstElementChild.after(manager);
+        if (manager.style.display) manager.style.display = '';
+        if (!manager.classList.contains('sb-prompting-group')) manager.classList.add('sb-prompting-group');
+        // The flatten pass visits descendants, so include the group's outer drawer via its parent.
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+        let body = manager.querySelector(':scope > .sb-prompting-group-body');
+        if (!(body instanceof HTMLElement)) {
+            body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
+            for (const child of [...manager.children]) {
+                if (!child.classList.contains('sb-settings-flat-header')) body.append(child);
+            }
+            manager.append(body);
+        }
+        const block = document.getElementById('completion_prompt_manager')?.closest('.range-block');
+        if (block instanceof HTMLElement && !manager.contains(block)) body.append(block);
+        if (manager.hidden === isChatCompletion) manager.hidden = !isChatCompletion;
+    }
+    for (const id of SB_EDITOR_UTILITY_PROMPT_IDS) adoptDocument(id, 'sb-editor-utility', '.range-block');
+    for (const id of ['sysprompt_content', 'sysprompt_post_history']) adoptDocument(id, 'sb-editor-sysprompt');
+    const sequences = document.getElementById('InstructSequencesColumn');
+    const instructBody = root.querySelector('#sb-editor-instruct > .sb-prompting-group-body');
+    if (sequences instanceof HTMLElement && sequences.parentElement !== instructBody) instructBody.append(sequences);
+    for (const id of ['context_story_string', 'context_story_string_position', 'context_example_separator']) {
+        adoptDocument(id, 'sb-editor-context', '[data-cc-null]');
+    }
+    for (const id of ['sb-editor-utility', 'sb-editor-sysprompt', 'sb-editor-instruct', 'sb-editor-context']) {
+        const group = root.querySelector(`#${id}`);
+        if (!(group instanceof HTMLElement)) continue;
+        const hidden = (id === 'sb-editor-utility' ? !isChatCompletion : isChatCompletion)
+            || !group.querySelector('textarea, select, input');
+        if (group.hidden !== hidden) group.hidden = hidden;
+    }
+    root.querySelector('#sb-editor-sysprompt').classList.toggle('disabled', document.getElementById('SystemPromptBlock')?.classList.contains('disabled') ?? false);
+
+    const selectedName = id => {
+        const select = document.getElementById(id);
+        return select instanceof HTMLSelectElement ? select.selectedOptions[0]?.textContent : null;
+    };
+    const presetNames = isChatCompletion
+        ? [selectedName('settings_preset_openai')]
+        : ['sysprompt_select', 'instruct_presets', 'context_presets'].map(id => {
+            const title = ({ sysprompt_select: 'System Prompt', instruct_presets: 'Instruct Template', context_presets: 'Context Template' })[id];
+            const name = selectedName(id);
+            return name ? `${title}: ${name}` : null;
+        });
+    const names = presetNames.filter(Boolean).join(' · ');
+    const meta = root.querySelector('[data-sb-editor-preset]');
+    if (meta.textContent !== names) meta.textContent = names;
+    refreshPresetProtectionUi();
+    for (const group of root.querySelectorAll('.sb-prompting-group:not(#sb-openai-prompt-manager)')) normalizeBackendSettingsRows(group);
+    for (const wrapper of root.querySelectorAll('[data-sb-editor-document]:not(.ds-row):not(.sb-settings-row-wrapper)')) wrapper.classList.add('sb-settings-row-wrapper');
+    groupPromptingRowHelpers(root);
+    const tab = getShellState('left')?.tabs.get('editor');
+    if (tab) tab.searchIndex = null;
+}
+
+function preparePromptingPanel(root) {
+    if (root.dataset.sbPromptingPrepared === 'true') return;
+    root.dataset.sbPromptingPrepared = 'true';
+    root.classList.add('sb-prompting-panel');
+    root.dataset.sbPresentation = 'manual';
+    const completionTabs = /** @type {{openAITabManager?: {refreshTabs: () => void}}|undefined} */ (window['ChatCompletionTabs']);
+    completionTabs?.openAITabManager?.refreshTabs();
+    const configuration = root.querySelector('#ai_response_configuration');
+    if (!(configuration instanceof HTMLElement)) return;
+
+    const header = createBackendSectionHeader({
+        description: 'Manage presets and their settings, prompt templates, and reply options.',
+        modeAttrs: { 'data-sb-prompting-mode': '' },
+        descriptionAttrs: { 'data-i18n': 'Manage presets and their settings, prompt templates, and reply options.' },
+    });
+    configuration.prepend(header);
+    const presetsContainer = configuration.querySelector('#respective-presets-block');
+    if (presetsContainer instanceof HTMLElement) {
+        // PresetManager injects restore-default actions after the shell's first toolbar pass.
+        const actionsObserver = new MutationObserver(mutations => {
+            if (mutations.some(mutation => [...mutation.addedNodes].some(node => getPresetActionKind(node)))) enhancePresetActionButtons(root);
+        });
+        actionsObserver.observe(presetsContainer, { childList: true, subtree: true });
+    }
+
+    for (const [id, title, description] of [
+        ['respective-presets-block', 'Presets', 'Choose and manage presets for the current backend.'],
+        ['common-gen-settings-block', 'Generation Settings', 'Set context and reply limits, streaming, and other generation options.'],
+    ]) {
+        const block = configuration.querySelector(`#${id}`);
+        if (!(block instanceof HTMLElement)) continue;
+        block.classList.add('sb-prompting-group');
+        block.prepend(createBackendGroupHeader(title, {}, description));
+        const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
+        for (const child of [...block.children].slice(1)) body.append(child);
+        block.append(body);
+    }
+    const editPrompts = createElement('button', {
+        className: 'menu_button sb-action-btn sb-backend-navigation-pill sb-edit-prompts',
+        text: 'Edit prompts',
+        attrs: { type: 'button', 'data-sb-edit-prompts': '', 'data-i18n': 'Edit prompts' },
+    });
+    editPrompts.addEventListener('click', () => openShell('left', 'editor'));
+    presetsContainer?.after(editPrompts);
+    const generation = configuration.querySelector('#pro-settings-block');
+    if (generation instanceof HTMLElement) {
+        for (const id of ['streaming_textgenerationwebui_block', 'streaming_kobold_block', 'streaming_novel_block']) {
+            const streaming = configuration.querySelector(`#${id}`);
+            if (streaming) generation.append(streaming);
+        }
+    }
+
+    const createPromptingGroup = (id, title, description = '') => {
+        const existing = configuration.querySelector(`#${CSS.escape(id)}`);
+        if (existing instanceof HTMLElement) return existing;
+        const group = createBackendPromptGroup(id, title);
+        group.firstElementChild.replaceWith(createBackendGroupHeader(title, {}, description));
+        configuration.append(group);
+        return group;
+    };
+
+    for (const [id, title, description] of [
+        ['sb-tc-sysprompt', 'System Prompt', 'Choose and manage system prompt presets.'],
+        ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI.'],
+        ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules.'],
+        ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode.'],
+        ['sb-reasoning-template', 'Reasoning Template', 'Choose a template and set the text around reasoning blocks.'],
+    ]) createPromptingGroup(id, title, description);
+
+    // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
+    const range = configuration.querySelector('#range_block_openai');
+    const advanced = configuration.querySelector('#advanced-ai-config-block');
+    if (range instanceof HTMLElement && advanced instanceof HTMLElement) advanced.prepend(range);
+    mergeOpenAIPresetToolbarRow(root);
+}
+
+function updatePromptingPanel(panel) {
+    if (!(panel instanceof HTMLElement)) return;
+    groupAdvancedFormattingIntoDrawers();
+    const root = panel.querySelector('.sb-prompting-panel');
+    if (!(root instanceof HTMLElement)) return;
+    const activeApi = getCurrentMainApiValue();
+    const backend = SB_SAMPLING_BACKENDS.find(entry => entry.apiIds.includes(activeApi));
+    const mode = root.querySelector('[data-sb-prompting-mode]');
+    const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
+    if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
+    const bindModelPresetBlock = root.querySelector('[name="bindModelPresetBlock"]') ?? document.querySelector('[name="bindModelPresetBlock"]');
+    if (bindModelPresetBlock instanceof HTMLElement && bindModelPresetBlock.hidden !== (activeApi === 'openai')) bindModelPresetBlock.hidden = activeApi === 'openai';
+
+    flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+    updateEditorPanel();
+    const range = root.querySelector('#range_block_openai');
+    // SillyBunny: Quick Prompts remain mounted for upstream integrations; the Prompt Manager is their single editor.
+    const quickPrompts = root.querySelector('#sb-openai-prompts');
+    if (quickPrompts instanceof HTMLElement && !quickPrompts.hidden) quickPrompts.hidden = true;
+    const reasoningBody = root.querySelector('#sb-reasoning-template > .sb-prompting-group-body');
+    const reasoningDetails = document.getElementById('reasoning_select')?.closest('details');
+    if (reasoningBody instanceof HTMLElement && reasoningDetails instanceof HTMLElement) {
+        for (const child of [...reasoningDetails.children]) {
+            if (child.tagName !== 'SUMMARY') reasoningBody.append(child);
+        }
+        if (!reasoningDetails.hidden) reasoningDetails.hidden = true;
+    }
+    const isChatCompletion = activeApi === 'openai';
+    const promptingGroupIds = [
+        'sb-openai-budget', 'sb-openai-sampling', 'sb-openai-names', 'sb-openai-prefill',
+        'sb-openai-request',
+        'sb-tc-sysprompt', 'sb-tc-instruct', 'sb-tc-context', 'sb-tc-names',
+    ];
+    for (const id of promptingGroupIds) {
+        const group = root.querySelector(`#${id}`);
+        if (!(group instanceof HTMLElement)) continue;
+        if (id.startsWith('sb-openai-') && range instanceof HTMLElement && group.parentElement !== range) range.append(group);
+        group.classList.toggle('sb-prompting-group', true);
+        if (id === 'sb-openai-budget') {
+            const title = group.querySelector('.sb-settings-flat-header b');
+            if (title && title.textContent !== 'Generation Settings') title.textContent = 'Generation Settings';
+        }
+        if (!group.querySelector(':scope > .sb-prompting-group-body')) {
+            const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
+            for (const child of [...group.children]) {
+                if (!child.classList.contains('sb-settings-flat-header')) body.append(child);
+            }
+            group.append(body);
+        }
+        normalizeBackendSettingsRows(group);
+        const isTcGroup = id.startsWith('sb-tc-');
+        const isCcGroup = id.startsWith('sb-openai-');
+        const hidden = id === 'sb-openai-sampling' || (isTcGroup ? isChatCompletion : isCcGroup ? !isChatCompletion : false);
+        if (group.hidden !== hidden) group.hidden = hidden;
+    }
+    // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
+    // The check must be "is the tail already in this order", not "is this group last yet": `append` on a
+    // node that is already its parent's last child still performs a remove+insert, which is a childList
+    // mutation. This function runs from the drawer observer, so a per-group append kept re-triggering the
+    // observer every frame and re-flattening the whole Prompting panel in a loop.
+    if (range instanceof HTMLElement) {
+        const openAIReadingOrder = ['sb-openai-budget', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request'];
+        const orderedGroups = openAIReadingOrder
+            .map(id => root.querySelector(`#${id}`))
+            .filter(group => group instanceof HTMLElement);
+        const currentTail = Array.from(range.children).slice(-orderedGroups.length);
+        const isOrdered = orderedGroups.length > 0
+            && currentTail.length === orderedGroups.length
+            && currentTail.every((child, index) => child === orderedGroups[index]);
+
+        if (!isOrdered) {
+            for (const group of orderedGroups) range.append(group);
+        }
+    }
+
+    const tcOrder = ['sb-tc-sysprompt', 'sb-tc-instruct', 'sb-tc-context', 'sb-tc-names'];
+    const commonGroup = root.querySelector('#common-gen-settings-block');
+    if (commonGroup instanceof HTMLElement) {
+        let anchor = commonGroup;
+        for (const id of tcOrder) {
+            const group = root.querySelector(`#${id}`);
+            if (!(group instanceof HTMLElement)) continue;
+            if (group.parentElement !== anchor.parentElement || group.previousElementSibling !== anchor) {
+                anchor.after(group);
+            }
+            anchor = group;
+        }
+    }
+    const reasoning = root.querySelector('#sb-reasoning-template');
+    const configuration = root.querySelector('#ai_response_configuration');
+    if (reasoning instanceof HTMLElement && configuration instanceof HTMLElement && configuration.lastElementChild !== reasoning) configuration.append(reasoning);
+    if (reasoning instanceof HTMLElement) normalizeBackendSettingsRows(reasoning);
+
+    // SillyBunny: the multiple-swipes control is authored as a data-tg-samplers wrapper,
+    // not a range-block. Move only that wrapper into the shared Generation Settings group.
+    const textgenSwipes = document.getElementById('n_textgenerationwebui')?.closest('[data-tg-samplers="n"]');
+    const generationBody = root.querySelector('#common-gen-settings-block > .sb-prompting-group-body');
+    if (textgenSwipes instanceof HTMLElement && generationBody instanceof HTMLElement && textgenSwipes.parentElement !== generationBody) {
+        generationBody.append(textgenSwipes);
+    }
+    const presets = root.querySelector('#respective-presets-block');
+    const presetsBody = presets?.querySelector(':scope > .sb-prompting-group-body');
+    if (presetsBody instanceof HTMLElement && !presetsBody.querySelector('[data-sb-preset-autosave]')) {
+        presetsBody.append(createPresetAutosaveToggle());
+    }
+    if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
+    const common = root.querySelector('#common-gen-settings-block');
+    if (common instanceof HTMLElement) {
+        const contextRow = common.querySelector('#max_context_block');
+        const quickContext = contextRow?.querySelector('.quick_context_size_container');
+        if (quickContext && contextRow && contextRow.nextElementSibling !== quickContext) contextRow.after(quickContext);
+        normalizeBackendSettingsRows(common);
+    }
+    normalizeBackendSettingsRows(root, { fields: false });
+    hideEmptyGroupedSettingsDrawers();
+    mergeOpenAIPresetToolbarRow(root);
+    enhancePresetActionButtons(root);
+    placeSharedPresetControls(root, activeApi);
+    groupPromptingRowHelpers(root);
+    // Batch writes and reads: interleaving `hidden` writes with checkVisibility() forces a style and
+    // layout flush per group, which is what made opening Prompting drop frames on slower devices.
+    const measured = [];
+    for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section, .sb-prompting-group')) {
+        if (!(group instanceof HTMLElement)) continue;
+        const shouldHideByMode = ['sb-openai-sampling', 'sb-openai-prompts'].includes(group.id)
+            || (group.id.startsWith('sb-openai-') && !isChatCompletion)
+            || (group.id.startsWith('sb-tc-') && isChatCompletion);
+        // The text-generation sampling sections are source containers for the separate Sampling tab,
+        // not Prompting content; only their live controls belong in the sampling cards.
+        const isSamplingSourceGroup = group.matches('.sb-textgen-drawers > .sb-settings-flat-section');
+        const hidesWhenEmpty = group.id.startsWith('sb-openai-') || group.id.startsWith('sb-tc-');
+        const hidden = shouldHideByMode || isSamplingSourceGroup;
+        if (group.hidden !== hidden) group.hidden = hidden;
+        if (hidesWhenEmpty && !hidden) measured.push(group);
+    }
+    const emptyGroups = measured.filter(group => ![...group.querySelectorAll('input:not([type="hidden"]), select, textarea, button, .menu_button')]
+        .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0)));
+    for (const group of emptyGroups) group.hidden = true;
+    const tab = getShellState('left')?.tabs.get('prompting');
+    if (tab) tab.searchIndex = null;
 }
 
 function getImporterState() {
@@ -10776,111 +10458,182 @@ function setServerAdminMessage(element, message, tone = 'neutral') {
     element.hidden = !element.textContent;
 }
 
-/**
- * Creates a collapsible inline-drawer for Advanced Formatting sections.
- * @param {string} id Drawer element ID
- * @param {string} title Drawer title
- * @param {string} description Short description
- * @returns {HTMLElement} The drawer element
- */
-function createAdvFormattingDrawer(id, title, description) {
-    const drawer = createElement('div', {
-        id,
-        className: 'inline-drawer wide100p flexFlowColumn sb-af-settings-drawer',
-    });
-    const header = createElement('div', { className: 'inline-drawer-toggle inline-drawer-header' });
-    const label = createElement('div', { className: 'flex-container flexFlowColumn' });
-    const titleEl = createElement('b');
-    titleEl.textContent = title;
-    label.appendChild(titleEl);
-    if (description) {
-        const desc = createElement('small', { className: 'sb-group-meta' });
-        desc.textContent = description;
-        label.appendChild(desc);
+function groupAdvancedFormattingIntoDrawers() {
+    const formatting = document.getElementById('AdvancedFormatting');
+    if (!(formatting instanceof HTMLElement)) return;
+    const groupOrder = ['sb-af-tokenizer', 'sb-af-stopping', 'sb-af-reply-prefix', 'sb-af-cleanup', 'sb-af-reasoning', 'sb-af-rendering'];
+    const orderGroups = () => {
+        const groups = groupOrder.map(id => formatting.querySelector(`#${id}`)).filter(group => group instanceof HTMLElement);
+        const currentGroups = [...formatting.children].filter(child => child.classList.contains('sb-formatting-group'));
+        if (groups.length === currentGroups.length && groups.every((group, index) => group === currentGroups[index])) return;
+        for (const group of groups) formatting.append(group);
+    };
+    if (formatting.dataset.sbGrouped === 'true') {
+        const replyPrefixBody = formatting.querySelector('#sb-af-reply-prefix > .sb-prompting-group-body');
+        const startReplyWith = formatting.querySelector('[name="startReplyWithBlock"]');
+        if (startReplyWith instanceof HTMLElement && replyPrefixBody instanceof HTMLElement && startReplyWith.parentElement !== replyPrefixBody) {
+            startReplyWith.hidden = false;
+            replyPrefixBody.append(startReplyWith);
+        }
+        orderGroups();
+        if (isShellTabOpen('left', 'context')) updateFormattingGroupVisibility(formatting);
+        return;
     }
-    header.appendChild(label);
-    const icon = createElement('div', { className: 'fa-solid fa-circle-chevron-down inline-drawer-icon down' });
-    header.appendChild(icon);
-    drawer.appendChild(header);
-    const content = createElement('div', { className: 'inline-drawer-content' });
-    content.style.display = 'none';
-    drawer.appendChild(content);
-    return drawer;
+
+    const columns = formatting.querySelector('.flex-container.spaceEvenly');
+    const contextColumn = formatting.querySelector('#ContextSettings');
+    const instructColumn = formatting.querySelector('#InstructSettingsColumn');
+    const systemColumn = formatting.querySelector('#SystemPromptColumn');
+    if (!(columns instanceof HTMLElement) || !(contextColumn instanceof HTMLElement)
+        || !(instructColumn instanceof HTMLElement) || !(systemColumn instanceof HTMLElement)) return;
+
+    const startReplyWith = systemColumn.querySelector('[name="startReplyWithBlock"]');
+
+    const createGroup = (id, title, description) => {
+        const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group sb-settings-category' });
+        group.append(
+            createBackendGroupHeader(title, { 'data-i18n': title }, description),
+            createElement('div', { className: 'ds-pref-group sb-prompting-group-body sb-settings-category-body' }),
+        );
+        formatting.append(group);
+        return group.querySelector('.sb-prompting-group-body');
+    };
+    const bodies = new Map([
+        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding', 'Choose a tokenizer and adjust prompt token counts with padding.')],
+        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement.')],
+        ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat.')],
+        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies.')],
+        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'Control how reasoning is parsed, displayed, and included in prompts.')],
+        ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown.')],
+    ]);
+
+    const move = (target, body) => {
+        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+        body.append(target);
+    };
+    const moveClosest = (selector, body, ancestorSelector = null) => {
+        const target = formatting.querySelector(selector);
+        if (!(target instanceof HTMLElement)) return;
+        const resolved = ancestorSelector ? target.closest(ancestorSelector) : target;
+        move(resolved, body);
+    };
+
+    const prompting = getShellState('left')?.tabs.get('prompting')?.panel;
+    const promptingGroupBody = id => prompting?.querySelector(`#${id} > .sb-prompting-group-body`);
+    const moveToPrompting = (selector, id, ancestorSelector = null) => {
+        const target = formatting.querySelector(selector);
+        const body = promptingGroupBody(id);
+        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+        move(ancestorSelector ? target.closest(ancestorSelector) : target, body);
+    };
+
+    const groupBody = id => promptingGroupBody(id);
+    const movePromptingNode = (node, id) => {
+        const body = groupBody(id);
+        if (node instanceof HTMLElement && body instanceof HTMLElement && node.parentElement !== body) body.append(node);
+    };
+
+    moveToPrompting('[name="bindModelPresetBlock"]', 'respective-presets-block');
+    moveToPrompting('#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]', 'respective-presets-block');
+    document.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
+    const systemPromptBlock = systemColumn.querySelector('#SystemPromptBlock');
+    movePromptingNode(systemColumn.querySelector(':scope > .title_restorable[data-cc-null]'), 'sb-tc-sysprompt');
+    movePromptingNode(systemPromptBlock, 'sb-tc-sysprompt');
+    moveToPrompting('#InstructSettingsColumn', 'sb-tc-instruct');
+    movePromptingNode(contextColumn.querySelector(':scope > div > .title_restorable'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector(':scope > div > .flex-container.flexNoGap'), 'sb-tc-context');
+    const storyBlock = formatting.querySelector('[data-cc-null]:has(#context_story_string)');
+    const contextBody = promptingGroupBody('sb-tc-context');
+    if (storyBlock instanceof HTMLElement && contextBody instanceof HTMLElement) move(storyBlock, contextBody);
+    movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container.flexFlowColumn[data-cc-null]'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container[data-cc-null]'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector('#context_use_stop_strings')?.closest('label'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector('#context_names_as_stop_strings')?.closest('label'), 'sb-tc-context');
+    movePromptingNode(contextColumn.querySelector('#always-force-name2-checkbox')?.closest('label'), 'sb-tc-names');
+    moveClosest('[name="tokenizerSettingsBlock"]', bodies.get('tokenizer'));
+    moveClosest('div[data-cc-null][data-cc-chat-completion-visible]', bodies.get('stopping'));
+    if (startReplyWith instanceof HTMLElement) {
+        startReplyWith.hidden = false;
+        move(startReplyWith, bodies.get('reply-prefix'));
+    }
+    moveClosest('#single_line', bodies.get('cleanup'), 'label');
+    moveClosest('#collapse-newlines-checkbox', bodies.get('cleanup'), 'label');
+    moveClosest('#trim_spaces', bodies.get('cleanup'), 'label');
+    moveClosest('#trim_sentences_checkbox', bodies.get('cleanup'), 'label');
+    const cleanupHeading = [...contextColumn.querySelectorAll('h4.standoutHeader')]
+        .find(heading => heading.textContent?.includes('Context Formatting'));
+    cleanupHeading?.setAttribute('hidden', '');
+    const reasoningWrapper = systemColumn.querySelector('div:has(.sb-reasoning-toggle-grid)');
+    if (reasoningWrapper instanceof HTMLElement) move(reasoningWrapper, bodies.get('reasoning'));
+    const renderingControl = formatting.querySelector('#markdown_escape_strings')?.parentElement?.parentElement;
+    if (renderingControl instanceof HTMLElement) move(renderingControl, bodies.get('rendering'));
+
+    const notice = document.getElementById('advanced-formatting-cc-notice');
+    if (notice instanceof HTMLElement) notice.hidden = true;
+    const miscHeading = [...systemColumn.querySelectorAll('h4')].find(heading => heading.textContent?.trim() === 'Miscellaneous');
+    if (miscHeading instanceof HTMLElement) miscHeading.hidden = true;
+    columns.hidden = true;
+    formatting.dataset.sbGrouped = 'true';
+    orderGroups();
+    updateFormattingGroupVisibility(formatting);
+    // Normalize switch semantics for Formatting groups without restructuring.
+    for (const body of bodies.values()) {
+        normalizeBackendSettingsRows(body, { fields: false });
+    }
+
+    positionAdvancedFormattingHelpLink();
+    updateEditorPanel();
+    updatePromptingPanel(prompting);
 }
 
-/**
- * Wraps Advanced Formatting columns (Context Template, Instruct Template,
- * System Prompt, Reasoning) into collapsible drawers for better UX.
- */
-function groupAdvancedFormattingIntoDrawers() {
-    const $af = $('#AdvancedFormatting');
-    if ($af.length === 0 || $af.data('sb-grouped')) {
-        return;
+function positionAdvancedFormattingHelpLink() {
+    const formatting = document.getElementById('AdvancedFormatting');
+    if (!(formatting instanceof HTMLElement)) return;
+
+    // SillyBunny: the legacy Advanced Formatting help link lived in the old baseline bar. The
+    // presentation pass moves the title into the flat header but leaves that link behind, which
+    // renders the question mark on its own line below the title. Move the live link beside the
+    // title and remove the now-empty legacy wrapper after presentation has built the header.
+    const advancedHeader = formatting.querySelector(':scope > .sb-settings-flat-header');
+    if (advancedHeader instanceof HTMLElement && formatting.firstElementChild !== advancedHeader) {
+        formatting.prepend(advancedHeader);
     }
 
-    // The three-column container
-    const $columnsContainer = $af.find('.flex-container.spaceEvenly').first();
-    if ($columnsContainer.length === 0) {
-        return;
+    const advancedHeading = advancedHeader?.querySelector(':scope > .sb-settings-category-heading');
+    const advancedDescription = advancedHeading?.querySelector(':scope > small');
+    if (advancedDescription instanceof HTMLElement && advancedDescription.dataset.sbCopyPlaceholder === 'true') {
+        const description = 'Adjust token counting, stopping strings, text cleanup, and reasoning display.';
+        advancedDescription.textContent = description;
+        advancedDescription.dataset.i18n = description;
+        delete advancedDescription.dataset.sbCopyPlaceholder;
     }
+    const notesLink = formatting.querySelector('a.notes-link[href*="advancedformatting"]');
+    const advancedTitle = advancedHeading?.querySelector(':scope > .sb-settings-category-title');
+    const legacyBar = formatting.querySelector(':scope > .flex-container.alignItemsBaseline');
+    if (legacyBar instanceof HTMLElement && legacyBar.childElementCount === 0) legacyBar.remove();
+    if (!(advancedHeader instanceof HTMLElement) || !(advancedHeading instanceof HTMLElement)
+        || !(notesLink instanceof HTMLElement) || !(advancedTitle instanceof HTMLElement)
+        || advancedHeading.querySelector(':scope > .sb-settings-category-title-row')) return;
 
-    const sections = [
-        {
-            id: 'sb-af-context',
-            title: 'Context Template',
-            description: 'Story string, separators, and context formatting options',
-            selector: '#ContextSettings',
-        },
-        {
-            id: 'sb-af-instruct',
-            title: 'Instruct Template',
-            description: 'Instruct mode sequences, wrapping, and activation',
-            selector: '#InstructSettingsColumn',
-        },
-        {
-            id: 'sb-af-sysprompt',
-            title: 'System Prompt',
-            description: 'System prompt, post-history instructions, stopping strings, tokenizer',
-            selector: '#SystemPromptColumn',
-        },
-    ];
+    const legacyTitle = notesLink.closest('h3');
+    const notesLegacyBar = legacyTitle?.closest('.flex-container.alignItemsBaseline');
+    const titleRow = createElement('div', { className: 'sb-settings-category-title-row' });
+    advancedTitle.before(titleRow);
+    titleRow.append(advancedTitle, notesLink);
+    legacyTitle?.remove();
+    if (notesLegacyBar instanceof HTMLElement && notesLegacyBar.childElementCount === 0) notesLegacyBar.remove();
+}
 
-    const $drawersContainer = $('<div>', { class: 'sb-af-drawers flex-container flexFlowColumn gap10' });
-
-    sections.forEach(section => {
-        const $col = $(section.selector).first();
-        if ($col.length === 0) return;
-
-        $col.detach();
-
-        const drawer = createAdvFormattingDrawer(section.id, section.title, section.description);
-        const content = drawer.querySelector('.inline-drawer-content');
-
-        // Remove the flex1 class so it fills the full width in stacked layout
-        $col.removeClass('flex1');
-        $col.addClass('wide100p');
-
-        content.appendChild($col[0]);
-        $drawersContainer.append(drawer);
-    });
-
-    // Also check if Reasoning section exists after the columns container
-    const $reasoning = $columnsContainer.nextAll().filter(function () {
-        return $(this).find('#reasoning_auto_parse').length > 0 || $(this).find('.sb-reasoning-toggle-grid').length > 0;
-    }).first();
-
-    if ($reasoning.length > 0) {
-        $reasoning.detach();
-        const drawer = createAdvFormattingDrawer('sb-af-reasoning', 'Reasoning', 'Auto-parse, formatting, and reasoning block settings');
-        const content = drawer.querySelector('.inline-drawer-content');
-        content.appendChild($reasoning[0]);
-        $drawersContainer.append(drawer);
+function updateFormattingGroupVisibility(formatting) {
+    if (!(formatting instanceof HTMLElement)) return;
+    const groups = [...formatting.querySelectorAll('.sb-formatting-group')].filter(group => group instanceof HTMLElement);
+    // Unhide every group first, then measure all, then write: one layout flush instead of one per group.
+    for (const group of groups) {
+        if (group.hidden) group.hidden = false;
     }
-
-    // Replace the columns container with the stacked drawers
-    $columnsContainer.replaceWith($drawersContainer);
-
-    $af.data('sb-grouped', true);
+    const empty = groups.filter(group => ![...group.querySelectorAll('input, select, textarea, button, .menu_button')]
+        .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0)));
+    for (const group of empty) group.hidden = true;
 }
 
 function updateSillyTavernImportInteractivity() {
@@ -11226,8 +10979,15 @@ async function handleSillyTavernZipImport(file) {
     }
 }
 
-function injectSillyTavernImportCard() {
-    const importOutlet = document.getElementById('sb-import-tools-outlet');
+function injectSillyTavernImportCard(host = null) {
+    // Import & Restore lives on the Data & Security tab, so the card belongs in the outlet the
+    // import drawer carries there. It is injected only when that panel is built: before then the
+    // drawer is detached, its outlet cannot be looked up by id, and an earlier call would fall
+    // through to the theme block and paint the card at the top of Appearance. The theme block
+    // fallback keeps the card reachable if the drawer is ever missing from the markup.
+    const importOutlet = host instanceof HTMLElement
+        ? host
+        : document.getElementById('sb-import-tools-outlet');
     const themeBlock = document.getElementById('UI-presets-block');
     const cardHost = importOutlet instanceof HTMLElement
         ? importOutlet
@@ -11245,29 +11005,26 @@ function injectSillyTavernImportCard() {
         return;
     }
 
-    const card = createElement('section', { id: 'sb-import-card', className: 'sb-admin-card sb-import-card' });
-    const header = createElement('div', { className: 'sb-admin-card-header' });
-    const copy = createElement('div', { className: 'sb-admin-card-copy' });
-    const title = createElement('strong', { text: 'Import Your SillyTavern Setup' });
-    const description = createElement('p', { text: 'Bring over characters, chats, presets, themes, extensions, and account settings from an existing SillyTavern folder or backup ZIP without touching the filesystem manually.' });
+    const card = createElement('section', { id: 'sb-import-card', className: 'ds-pref-group sb-import-card', attrs: { 'data-sb-presentation': 'manual' } });
+    const header = createElement('div', { className: 'ds-row ds-row-actions' });
+    const copy = createElement('div', { className: 'ds-row-text' });
+    const title = createElement('strong', { className: 'ds-row-label', text: 'Import Your SillyTavern Setup' });
+    const description = createElement('p', { className: 'ds-row-subtitle', text: 'Bring over characters, chats, presets, themes, extensions, and account settings from an existing SillyTavern folder or backup ZIP without touching the filesystem manually.' });
+    const headerSuffix = createElement('div', { className: 'ds-row-suffix' });
     const badge = createElement('span', { className: 'sb-server-pill', text: 'Easy Import' });
     copy.append(title, description);
-    header.append(copy, badge);
+    headerSuffix.append(badge);
+    header.append(copy, headerSuffix);
 
-    const hintRow = createElement('div', { className: 'sb-import-hints' });
-    for (const label of ['Characters', 'Chats', 'Presets', 'Themes', 'Extensions']) {
-        hintRow.appendChild(createElement('span', { className: 'sb-import-chip', text: label }));
-    }
-
-    const grid = createElement('div', { className: 'sb-import-grid' });
-    const folderPane = createElement('div', { className: 'sb-import-pane' });
-    const folderTitle = createElement('strong', { text: 'Import From Folder Path' });
-    const folderBody = createElement('p', { text: 'Paste the path to your SillyTavern install, its `data` folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
-    const pathRow = createElement('div', { className: 'sb-import-path-row' });
+    const folderPane = createElement('div', { className: 'ds-row sb-import-pane' });
+    const folderCopy = createElement('div', { className: 'ds-row-text' });
+    const folderTitle = createElement('label', { className: 'ds-row-label', text: 'Import From Folder Path', attrs: { for: 'sb-import-path-input' } });
+    const folderBody = createElement('p', { className: 'ds-row-subtitle', html: 'Paste the path to your SillyTavern install, its <code>data</code> folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
+    const pathRow = createElement('div', { className: 'ds-row-suffix sb-import-path-row' });
     const actionRow = createElement('div', { className: 'sb-import-action-row' });
     const pathInput = createElement('input', {
         id: 'sb-import-path-input',
-        className: 'text_pole sb-import-path-input',
+        className: 'text_pole ds-control-flex sb-import-path-input',
         attrs: {
             type: 'text',
             placeholder: '/path/to/SillyTavern',
@@ -11287,13 +11044,16 @@ function injectSillyTavernImportCard() {
         attrs: { type: 'button' },
         html: '<i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span>Sync Extensions</span>',
     });
-    pathRow.append(pathInput);
+    pathRow.append(pathInput, actionRow);
     actionRow.append(folderButton, syncButton);
-    folderPane.append(folderTitle, folderBody, pathRow, actionRow);
+    folderCopy.append(folderTitle, folderBody);
+    folderPane.append(folderCopy, pathRow);
 
-    const zipPane = createElement('div', { className: 'sb-import-pane' });
-    const zipTitle = createElement('strong', { text: 'Import From Backup ZIP' });
-    const zipBody = createElement('p', { text: 'Use the backup ZIP that SillyTavern exports. Pick the file here and SillyBunny will import it into this account.' });
+    const zipPane = createElement('div', { className: 'ds-row sb-import-pane' });
+    const zipCopy = createElement('div', { className: 'ds-row-text' });
+    const zipSuffix = createElement('div', { className: 'ds-row-suffix' });
+    const zipTitle = createElement('strong', { className: 'ds-row-label', text: 'Import From Backup ZIP' });
+    const zipBody = createElement('p', { className: 'ds-row-subtitle', text: 'Use the backup ZIP that SillyTavern exports. Pick the file here and SillyBunny will import it into this account.' });
     const zipButton = createElement('button', {
         className: 'menu_button menu_button_icon sb-server-action menu_button_primary',
         attrs: { type: 'button' },
@@ -11309,7 +11069,9 @@ function injectSillyTavernImportCard() {
         },
     });
     const zipFileName = createElement('small', { className: 'sb-import-file-name', text: 'No ZIP selected yet.' });
-    zipPane.append(zipTitle, zipBody, zipButton, zipFileInput, zipFileName);
+    zipCopy.append(zipTitle, zipBody, zipFileName);
+    zipSuffix.append(zipButton, zipFileInput);
+    zipPane.append(zipCopy, zipSuffix);
 
     const note = createElement('div', {
         className: 'sb-server-note sb-import-note',
@@ -11329,8 +11091,7 @@ function injectSillyTavernImportCard() {
     report.append(reportHeader, reportSummary, reportHelp, reportList);
     report.hidden = true;
 
-    grid.append(folderPane, zipPane);
-    card.append(header, hintRow, grid, note, report);
+    card.append(header, folderPane, zipPane, note, report);
     cardHost.prepend(card);
 
     getImporterState().refs = {
@@ -11370,7 +11131,7 @@ function injectSillyTavernImportCard() {
     updateSillyTavernImportInteractivity();
 }
 
-function createThemeSettingsDrawer({ id, title, content, className = '' }) {
+function createThemeSettingsDrawer({ id, title, content, description = '', className = '' }) {
     const drawer = createElement('section', {
         id,
         className: `inline-drawer sb-theme-settings-drawer ${className}`.trim(),
@@ -11385,6 +11146,13 @@ function createThemeSettingsDrawer({ id, title, content, className = '' }) {
     body.style.display = 'none';
 
     header.append(heading);
+    if (description) {
+        header.append(createElement('small', {
+            className: 'ds-row-subtitle',
+            text: description,
+            attrs: { 'data-i18n': description },
+        }));
+    }
     header.append(icon);
     body.append(...content);
     drawer.append(header, body);
@@ -11392,10 +11160,11 @@ function createThemeSettingsDrawer({ id, title, content, className = '' }) {
 }
 
 function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step, ariaLabel, caption, onInput, className = '' }) {
-    const sliderGroup = createElement('div', { className: `sb-theme-slider-group ${className}`.trim() });
-    const sliderHeader = createElement('div', { className: 'sb-theme-slider-header' });
-    const sliderTitle = createElement('strong', { text: title });
+    const sliderGroup = createElement('div', { className: `ds-row ds-row-slider ${className}`.trim() });
+    const sliderHeader = createElement('div', { className: 'ds-row-text' });
+    const sliderTitle = createElement('label', { className: 'ds-row-label', text: title, attrs: { for: inputId } });
     const sliderValue = createElement('span', { id: valueId, className: 'sb-theme-slider-value' });
+    const suffix = createElement('div', { className: 'ds-row-suffix' });
     const sliderInput = createElement('input', {
         id: inputId,
         className: 'sb-theme-slider-input',
@@ -11409,13 +11178,36 @@ function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step
         },
     });
     const sliderCaption = createElement('p', {
-        className: 'sb-theme-slider-caption',
+        className: 'ds-row-subtitle',
         text: caption,
     });
 
-    sliderHeader.append(sliderTitle, sliderValue);
-    sliderGroup.append(sliderHeader, sliderInput, sliderCaption);
-    sliderInput.addEventListener('input', event => onInput(event.currentTarget?.value));
+    const numberInput = createElement('input', {
+        className: 'text_pole',
+        attrs: { type: 'number', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': ariaLabel, 'data-sb-theme-slider-counter': inputId },
+    });
+    sliderHeader.append(sliderTitle, sliderCaption);
+    sliderValue.hidden = true;
+    suffix.append(sliderInput, numberInput, sliderValue);
+    sliderGroup.append(sliderHeader, suffix);
+    sliderInput.addEventListener('input', () => {
+        numberInput.value = sliderInput.value;
+        onInput(sliderInput.value);
+    });
+    numberInput.addEventListener('change', () => {
+        if (sliderInput.disabled || !numberInput.value || !numberInput.validity.valid) {
+            numberInput.value = sliderInput.value;
+            return;
+        }
+        sliderInput.value = numberInput.value;
+        numberInput.value = sliderInput.value;
+        onInput(sliderInput.value);
+    });
+    numberInput.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        numberInput.dispatchEvent(new Event('change'));
+    });
 
     return sliderGroup;
 }
@@ -11462,9 +11254,7 @@ function createShortcutSettingsGroup() {
         className: 'sb-theme-slider-caption',
         text: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
     });
-    const rows = createElement('div', {
-        className: 'sb-shortcut-rows',
-    });
+    const rows = [];
 
     for (const side of SB_SHORTCUT_SLOTS) {
         const selectId = `sb-shortcut-${side}-select`;
@@ -11501,14 +11291,21 @@ function createShortcutSettingsGroup() {
             updateShortcutButton(side);
         });
 
-        row.append(label, select);
-        rows.appendChild(row);
+        row.append(label);
+        const subtitleText = 'Choose what this top bar shortcut opens on desktop. Select None to hide it.';
+        row.append(createElement('small', {
+            className: 'ds-row-subtitle',
+            text: subtitleText,
+            attrs: { 'data-i18n': subtitleText },
+        }));
+        row.append(select);
+        rows.push(row);
     }
 
     return createThemeSettingsDrawer({
         id: 'sb-quick-access-shortcuts-drawer',
         title: 'Quick Access Shortcuts',
-        content: [description, rows],
+        content: [description, ...rows],
     });
 }
 
@@ -11667,7 +11464,10 @@ async function renderMobileQuickActionResults(query, resultsElement, mode = 'mob
         button.disabled = isAdded || isFull;
         button.addEventListener('click', () => addQuickActionFromMatch(mode, match));
 
-        copy.append(title, detail);
+        copy.append(title);
+        // SillyBunny: synthetic settings destinations carry help independently of mounted controls.
+        if (match.description) copy.append(createElement('small', { className: 'sb-mobile-quick-action-help', text: match.description }));
+        copy.append(detail);
         row.append(copy, button);
         resultsElement.appendChild(row);
     }
@@ -11906,7 +11706,7 @@ function createGuidedGenerationsBarSettingsGroup(mode = 'mobile') {
     return group;
 }
 
-function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, icon, onChange }) {
+function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, description = '', icon, onChange }) {
     const choice = createElement('label', {
         className: 'sb-mobile-nav-choice',
         attrs: {
@@ -11950,6 +11750,13 @@ function createMobileNavChoice({ id, type = 'radio', name = '', value = '', labe
     });
 
     copy.appendChild(title);
+    if (description) {
+        copy.append(createElement('small', {
+            className: 'ds-row-subtitle',
+            text: description,
+            attrs: { 'data-i18n': description },
+        }));
+    }
     choice.append(input, iconElement, copy);
     return choice;
 }
@@ -11970,126 +11777,27 @@ function createNavigationSettingsGroup(mode = 'mobile') {
     const modeTitle = isDesktop ? 'Desktop' : 'Mobile';
     const modePrefix = isDesktop ? 'desktop' : 'mobile';
     const group = createElement('section', {
-        className: `sb-theme-slider-group sb-mobile-nav-layout-group sb-${modePrefix}-nav-layout-group`,
+        className: `sb-theme-slider-group sb-nav-settings-group sb-${modePrefix}-nav-settings-group`,
     });
     const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
     const title = createElement('strong', { text: `${modeTitle} Navigation` });
-    const layoutGrid = createElement('div', {
-        className: 'sb-mobile-nav-choice-grid',
-        attrs: {
-            role: 'radiogroup',
-            'aria-label': `${modeTitle} navigation layout`,
-        },
-    });
-    const iconOnlyChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-icon-only-input`,
-        type: 'checkbox',
-        value: 'icon-only',
-        label: 'Icons only in shell tabs',
-        icon: 'fa-icons',
-        onChange: input => isDesktop ? setDesktopNavIconOnly(input.checked) : setMobileNavIconOnly(input.checked),
-    });
-    // SillyBunny: stored per device -- this group's copy governs its own viewport only, exactly
-    // like the shell-tab toggle above it -- and it belongs with navigation rather than nested
-    // inside the Quick Access Shortcuts drawer. Sitting next to the shell-tab toggle also keeps
-    // the two similarly named options readable side by side.
+    // SillyBunny: stored per device -- this group's copy governs its own viewport only, so the two
+    // Navigation groups can disagree without either one lying about the other's viewport.
     const topbarIconsOnlyChoice = createMobileNavChoice({
         id: `sb-${modePrefix}-topbar-icons-only-input`,
         type: 'checkbox',
         value: 'topbar-icons-only',
         label: 'Icons only top bar',
+        description: isDesktop
+            ? 'Show page icons in the desktop top bar and hide button labels.'
+            : 'Show page icons in the mobile top bar and hide button labels.',
         icon: 'fa-grip',
         onChange: input => setTopbarIconsOnly(modePrefix, input.checked),
     });
     topbarIconsOnlyChoice.querySelector('input')?.setAttribute('data-sb-topbar-icons-only-input', modePrefix);
-    const showCustomizeChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-show-customize-input`,
-        type: 'checkbox',
-        value: 'show-customize',
-        label: getMobileNavCustomizeLocationLabel(mode),
-        icon: 'fa-screwdriver-wrench',
-        onChange: input => isDesktop ? setDesktopNavShowCustomize(input.checked) : setMobileNavShowCustomize(input.checked),
-    });
-    const showQuickActionsChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-show-quick-actions-input`,
-        type: 'checkbox',
-        value: 'show-quick-actions',
-        label: 'Show Custom Quick Actions in the side rail',
-        icon: 'fa-bolt',
-        onChange: input => isDesktop ? setDesktopNavShowQuickActions(input.checked) : setMobileNavShowQuickActions(input.checked),
-    });
-    const replaceQuickActionsChoice = createMobileNavChoice({
-        id: `sb-${modePrefix}-nav-replace-quick-actions-input`,
-        type: 'checkbox',
-        value: 'replace-quick-actions',
-        label: 'Use a chosen page instead of Quick Actions',
-        icon: 'fa-map-location-dot',
-        onChange: input => isDesktop ? setDesktopNavReplaceQuickActions(input.checked) : setMobileNavReplaceQuickActions(input.checked),
-    });
-    const replacementField = createElement('label', {
-        className: 'sb-mobile-nav-replacement-field',
-        attrs: {
-            for: `sb-${modePrefix}-nav-replacement-select`,
-        },
-    });
-    const replacementLabel = createElement('span', { text: 'Replacement page' });
-    const replacementSelect = createElement('select', {
-        id: `sb-${modePrefix}-nav-replacement-select`,
-        className: 'text_pole sb-mobile-nav-replacement-select',
-    });
-
-    for (const target of SB_MOBILE_NAV_PAGE_TARGETS) {
-        const option = createElement('option', {
-            attrs: {
-                value: target.value,
-            },
-        });
-        option.textContent = target.label;
-        replacementSelect.appendChild(option);
-    }
-
-    replacementSelect.addEventListener('change', event => {
-        const select = event.currentTarget;
-        const nextValue = select instanceof HTMLSelectElement ? select.value : '';
-        if (isDesktop) {
-            setDesktopNavReplacementTarget(nextValue);
-        } else {
-            setMobileNavReplacementTarget(nextValue);
-        }
-    });
-
-    layoutGrid.append(
-        createMobileNavChoice({
-            id: `sb-${modePrefix}-nav-layout-horizontal`,
-            name: `sb-${modePrefix}-nav-layout`,
-            value: 'horizontal',
-            label: 'Horizontal top bar',
-            icon: 'fa-grip-lines',
-            onChange: input => isDesktop ? setDesktopNavLayout(input.value) : setMobileNavLayout(input.value),
-        }),
-        createMobileNavChoice({
-            id: `sb-${modePrefix}-nav-layout-vertical`,
-            name: `sb-${modePrefix}-nav-layout`,
-            value: 'vertical',
-            label: 'Vertical side rail',
-            icon: 'fa-table-columns',
-            onChange: input => isDesktop ? setDesktopNavLayout(input.value) : setMobileNavLayout(input.value),
-        }),
-    );
 
     header.appendChild(title);
-    replacementField.append(replacementLabel, replacementSelect);
-    group.append(
-        header,
-        layoutGrid,
-        iconOnlyChoice,
-        topbarIconsOnlyChoice,
-        createMobileNavDivider(),
-        showCustomizeChoice,
-        showQuickActionsChoice,
-        replaceQuickActionsChoice,
-        replacementField,
-    );
+    group.append(header, topbarIconsOnlyChoice);
     return group;
 }
 
@@ -12100,31 +11808,6 @@ function createMobileNavLayoutSettingsGroup() {
 function createDesktopNavLayoutSettingsGroup() {
     return createNavigationSettingsGroup('desktop');
 }
-
-function createDesktopShellSizingSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-desktop-shell-sizing-group sb-desktop-setting',
-    });
-    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
-    const title = createElement('strong', { text: 'Panel Sizing' });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Keep Workspace, Customize, and Characters aligned with the active chat width.',
-    });
-    const snapChoice = createMobileNavChoice({
-        id: 'sb-desktop-shell-snap-to-chat-input',
-        type: 'checkbox',
-        value: 'snap-to-chat-width',
-        label: 'Snap to chat width',
-        icon: 'fa-arrows-left-right-to-line',
-        onChange: input => setDesktopShellSnapToChatWidth(input.checked),
-    });
-
-    header.append(title, description);
-    group.append(header, snapChoice);
-    return group;
-}
-
 function createPaperTextureSettingsGroup() {
     const group = createElement('section', {
         className: 'sb-theme-slider-group sb-paper-texture-group',
@@ -12140,6 +11823,7 @@ function createPaperTextureSettingsGroup() {
         type: 'checkbox',
         value: 'paper-texture-enabled',
         label: 'Enable paper texture',
+        description: 'Add a paper texture across the mobile interface.',
         icon: 'fa-scroll',
         onChange: input => setPaperTextureEnabled(input.checked),
     });
@@ -12163,45 +11847,26 @@ function createPaperTextureSettingsGroup() {
 
 function createFrontendIconSettingsGroup() {
     const group = createElement('section', {
-        className: 'sb-interface-settings-group sb-frontend-icon-group',
+        className: 'ds-row sb-interface-settings-group sb-frontend-icon-group',
     });
-    const header = createElement('div', { className: 'sb-frontend-icon-header' });
-    const title = createElement('strong', { text: 'Frontend Icon' });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
+    const header = createElement('div', { className: 'ds-row-text' });
+    const title = createElement('label', { className: 'ds-row-label', text: 'Frontend Icon', attrs: { for: 'sb-frontend-icon-select' } });
+    const description = createElement('small', {
+        className: 'ds-row-subtitle',
         text: 'Choose which SillyBunny icon appears in the app chrome, splash screen, and Home panel.',
     });
-    const options = createElement('div', { className: 'sb-frontend-icon-options' });
+    const suffix = createElement('div', { className: 'ds-row-suffix' });
+    const select = createElement('select', { id: 'sb-frontend-icon-select', className: 'ds-control-flex text_pole' });
 
     header.append(title, description);
 
     for (const icon of SB_FRONTEND_ICONS) {
-        const button = createElement('button', {
-            className: 'sb-theme-option sb-frontend-icon-option',
-            attrs: {
-                type: 'button',
-                'data-sb-frontend-icon-option': icon.id,
-            },
-        });
-        const preview = createElement('img', {
-            className: 'sb-frontend-icon-preview',
-            attrs: {
-                src: icon.src,
-                alt: '',
-                loading: 'lazy',
-            },
-        });
-        const copy = createElement('span', { className: 'sb-frontend-icon-copy' });
-        const label = createElement('span', { className: 'sb-theme-option-label', text: icon.label });
-        const meta = createElement('span', { className: 'sb-theme-option-meta', text: icon.description });
-
-        copy.append(label, meta);
-        button.append(preview, copy);
-        button.addEventListener('click', () => setFrontendIconPreference(icon.id));
-        options.appendChild(button);
+        select.appendChild(createElement('option', { text: icon.label, attrs: { value: icon.id } }));
     }
-
-    group.append(header, options);
+    select.value = sbState.frontendIcon;
+    select.addEventListener('change', () => setFrontendIconPreference(select.value));
+    suffix.appendChild(select);
+    group.append(header, suffix);
     return group;
 }
 
@@ -12270,17 +11935,18 @@ function createTopbarLabelSettingsGroup() {
     const mobileDescription = createElement('small', { text: 'Pick one option at a time.' });
     const mobileGrid = createElement('div', { className: 'sb-topbar-label-option-grid' });
     const customTextField = createElement('label', {
-        className: 'sb-topbar-custom-text-field',
+        className: 'ds-row sb-topbar-custom-text-field',
         attrs: {
             for: 'sb-topbar-custom-text-input',
         },
     });
-    const customTextHeading = createElement('div', { className: 'sb-topbar-label-section-heading' });
-    const customTextTitle = createElement('strong', { text: 'Custom Text Value' });
-    const customTextDescription = createElement('small', { text: 'This only appears in the top bar when the Custom Text checkbox is enabled above.' });
+    const customTextHeading = createElement('div', { className: 'ds-row-text' });
+    const customTextTitle = createElement('strong', { className: 'ds-row-label', text: 'Custom Text Value' });
+    const customTextDescription = createElement('small', { className: 'ds-row-subtitle', text: 'This only appears in the top bar when the Custom Text checkbox is enabled above.' });
+    const customTextSuffix = createElement('div', { className: 'ds-row-suffix' });
     const customTextInput = createElement('input', {
         id: 'sb-topbar-custom-text-input',
-        className: 'text_pole sb-topbar-custom-text-input',
+        className: 'text_pole ds-control-flex sb-topbar-custom-text-input',
         attrs: {
             type: 'text',
             maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
@@ -12332,7 +11998,8 @@ function createTopbarLabelSettingsGroup() {
 
     desktopSection.append(desktopHeading, desktopGrid);
     mobileSection.append(mobileHeading, mobileGrid);
-    customTextField.append(customTextHeading, customTextInput);
+    customTextSuffix.append(customTextInput);
+    customTextField.append(customTextHeading, customTextSuffix);
 
     return createThemeSettingsDrawer({
         id: 'sb-topbar-label-drawer',
@@ -12353,8 +12020,6 @@ function injectThemePicker() {
     }
 
     const card = createElement('div', { id: 'sb-theme-card', className: 'sb-theme-card' });
-    const description = createElement('p', { text: 'Switch the navigation shell between built-in visual directions.' });
-    const optionRow = createElement('div', { className: 'sb-theme-option-row' });
     const surfaceSliderGroup = createThemeSliderGroup({
         title: 'Background Visibility',
         valueId: 'sb-surface-transparency-value',
@@ -12409,7 +12074,6 @@ function injectThemePicker() {
     });
     const topbarLabelSettingsGroup = createTopbarLabelSettingsGroup();
     const desktopNavLayoutSettingsGroup = createDesktopNavLayoutSettingsGroup();
-    const desktopShellSizingSettingsGroup = createDesktopShellSizingSettingsGroup();
     const mobileNavLayoutSettingsGroup = createMobileNavLayoutSettingsGroup();
     const desktopSettingsDivider = createMobileNavDivider();
     const mobileSettingsDivider = createMobileNavDivider();
@@ -12426,31 +12090,10 @@ function injectThemePicker() {
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
     const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
-    for (const theme of SB_THEMES) {
-        const button = createElement('button', {
-            className: 'sb-theme-option',
-            attrs: {
-                type: 'button',
-                'data-sb-theme-option': theme.id,
-            },
-        });
-
-        button.innerHTML = `
-            <span class="sb-theme-option-label">${theme.label}</span>
-        `;
-
-        button.addEventListener('click', () => setShellTheme(theme.id));
-        optionRow.appendChild(button);
-    }
-
-    const shellStyleSettingsGroup = createThemeSettingsDrawer({
-        id: 'sb-shell-style-drawer',
-        title: 'Shell Style',
-        content: [description, optionRow],
-    });
     const interfaceSettingsGroup = createThemeSettingsDrawer({
         id: 'sb-interface-drawer',
         title: 'Interface',
+        description: 'Change the app icon and bottom chat bar size.',
         content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],
     });
 
@@ -12461,7 +12104,6 @@ function injectThemePicker() {
         desktopSettingsOutlet.replaceChildren(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
-            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
@@ -12483,12 +12125,11 @@ function injectThemePicker() {
         );
     }
 
-    card.append(shellStyleSettingsGroup, interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
+    card.append(interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
     if (!(desktopSettingsOutlet instanceof HTMLElement)) {
         card.append(
             desktopNavLayoutSettingsGroup,
             desktopSettingsDivider,
-            desktopShellSizingSettingsGroup,
             desktopButtonSliderGroup,
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
@@ -12509,6 +12150,12 @@ function injectThemePicker() {
         );
     }
     themeBlock.append(card);
+    // SillyBunny: keep the shared injection path, then mount Interface controls in their own tab.
+    const interfaceRoot = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.interface);
+    if (interfaceRoot instanceof HTMLElement) {
+        interfaceSettingsGroup.dataset.settingsTab = 'interface';
+        interfaceRoot.prepend(interfaceSettingsGroup);
+    }
     updateThemePickerUi();
 }
 
@@ -12526,33 +12173,13 @@ function updateThemePickerUi() {
     const mobileButtonScaleInput = document.getElementById('sb-mobile-button-scale-input');
     const mobileButtonScaleValue = document.getElementById('sb-mobile-button-scale-value');
     const customTextInput = document.getElementById('sb-topbar-custom-text-input');
-    const desktopNavIconOnlyInput = document.getElementById('sb-desktop-nav-icon-only-input');
-    const desktopNavShowCustomizeInput = document.getElementById('sb-desktop-nav-show-customize-input');
-    const desktopNavShowQuickActionsInput = document.getElementById('sb-desktop-nav-show-quick-actions-input');
-    const desktopNavReplaceQuickActionsInput = document.getElementById('sb-desktop-nav-replace-quick-actions-input');
-    const desktopNavReplacementSelect = document.getElementById('sb-desktop-nav-replacement-select');
-    const desktopShellSnapToChatInput = document.getElementById('sb-desktop-shell-snap-to-chat-input');
-    const mobileNavIconOnlyInput = document.getElementById('sb-mobile-nav-icon-only-input');
-    const mobileNavShowCustomizeInput = document.getElementById('sb-mobile-nav-show-customize-input');
-    const mobileNavShowQuickActionsInput = document.getElementById('sb-mobile-nav-show-quick-actions-input');
-    const mobileNavReplaceQuickActionsInput = document.getElementById('sb-mobile-nav-replace-quick-actions-input');
-    const mobileNavReplacementSelect = document.getElementById('sb-mobile-nav-replacement-select');
     const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
 
-    for (const button of document.querySelectorAll('[data-sb-theme-option]')) {
-        const themeId = button.getAttribute('data-sb-theme-option');
-        const isActive = themeId === sbState.theme;
-        button.classList.toggle('is-selected', isActive);
-        button.setAttribute('aria-pressed', String(isActive));
-    }
-
-    for (const button of document.querySelectorAll('[data-sb-frontend-icon-option]')) {
-        const iconId = button.getAttribute('data-sb-frontend-icon-option');
-        const isActive = iconId === sbState.frontendIcon;
-        button.classList.toggle('is-selected', isActive);
-        button.setAttribute('aria-pressed', String(isActive));
+    const frontendIconSelect = document.getElementById('sb-frontend-icon-select');
+    if (frontendIconSelect instanceof HTMLSelectElement) {
+        frontendIconSelect.value = sbState.frontendIcon;
     }
 
     if (sliderInput instanceof HTMLInputElement) {
@@ -12654,26 +12281,6 @@ function updateThemePickerUi() {
         input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', guidedGenerationsBarVisible);
     }
 
-    for (const input of document.querySelectorAll('input[name="sb-desktop-nav-layout"]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        const isChecked = input.value === sbState.desktopNav.layout;
-        input.checked = isChecked;
-        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
-    }
-
-    for (const input of document.querySelectorAll('input[name="sb-mobile-nav-layout"]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        const isChecked = input.value === sbState.mobileNav.layout;
-        input.checked = isChecked;
-        input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
-    }
-
     // Each Navigation group's checkbox reflects its own device's stored value, not the state in
     // force on this viewport. Quick Access stays fully live in icons-only mode -- the slots are
     // part of the right-hand cluster now, not superseded by it.
@@ -12689,96 +12296,6 @@ function updateThemePickerUi() {
         input.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', isChecked);
     }
 
-    if (desktopNavIconOnlyInput instanceof HTMLInputElement) {
-        desktopNavIconOnlyInput.checked = sbState.desktopNav.iconOnly;
-        const choice = desktopNavIconOnlyInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.desktopNav.iconOnly);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (desktopNavShowCustomizeInput instanceof HTMLInputElement) {
-        desktopNavShowCustomizeInput.checked = sbState.desktopNav.showCustomize;
-        desktopNavShowCustomizeInput.disabled = false;
-        const choice = desktopNavShowCustomizeInput.closest('.sb-mobile-nav-choice');
-        const label = choice?.querySelector('.sb-mobile-nav-choice-copy > strong');
-        if (label instanceof HTMLElement) {
-            label.textContent = getMobileNavCustomizeLocationLabel('desktop');
-        }
-        choice?.classList.toggle('is-selected', sbState.desktopNav.showCustomize);
-        choice?.classList.toggle('is-disabled', false);
-        if (choice instanceof HTMLElement) {
-            choice.style.display = sbState.desktopNav.layout === 'vertical' ? 'none' : '';
-        }
-    }
-
-    if (desktopNavShowQuickActionsInput instanceof HTMLInputElement) {
-        desktopNavShowQuickActionsInput.checked = sbState.desktopNav.showQuickActions;
-        desktopNavShowQuickActionsInput.disabled = false;
-        const choice = desktopNavShowQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.desktopNav.showQuickActions);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (desktopNavReplaceQuickActionsInput instanceof HTMLInputElement) {
-        desktopNavReplaceQuickActionsInput.checked = sbState.desktopNav.replaceQuickActions;
-        const choice = desktopNavReplaceQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.desktopNav.replaceQuickActions);
-    }
-
-    if (desktopNavReplacementSelect instanceof HTMLSelectElement) {
-        desktopNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.desktopNav.replacementTarget);
-        desktopNavReplacementSelect.disabled = !sbState.desktopNav.replaceQuickActions;
-        desktopNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.desktopNav.replaceQuickActions);
-    }
-
-    if (desktopShellSnapToChatInput instanceof HTMLInputElement) {
-        desktopShellSnapToChatInput.checked = sbState.shellSizing.snapToChatWidth;
-        const choice = desktopShellSnapToChatInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.shellSizing.snapToChatWidth);
-    }
-
-    if (mobileNavIconOnlyInput instanceof HTMLInputElement) {
-        mobileNavIconOnlyInput.checked = sbState.mobileNav.iconOnly;
-        const choice = mobileNavIconOnlyInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.mobileNav.iconOnly);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (mobileNavShowCustomizeInput instanceof HTMLInputElement) {
-        mobileNavShowCustomizeInput.checked = sbState.mobileNav.showCustomize;
-        mobileNavShowCustomizeInput.disabled = false;
-        const choice = mobileNavShowCustomizeInput.closest('.sb-mobile-nav-choice');
-        const label = choice?.querySelector('.sb-mobile-nav-choice-copy > strong');
-        if (label instanceof HTMLElement) {
-            label.textContent = getMobileNavCustomizeLocationLabel();
-        }
-        choice?.classList.toggle('is-selected', sbState.mobileNav.showCustomize);
-        choice?.classList.toggle('is-disabled', false);
-        if (choice instanceof HTMLElement) {
-            choice.style.display = sbState.mobileNav.layout === 'vertical' ? 'none' : '';
-        }
-    }
-
-    if (mobileNavShowQuickActionsInput instanceof HTMLInputElement) {
-        mobileNavShowQuickActionsInput.checked = sbState.mobileNav.showQuickActions;
-        mobileNavShowQuickActionsInput.disabled = false;
-        const choice = mobileNavShowQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.mobileNav.showQuickActions);
-        choice?.classList.toggle('is-disabled', false);
-    }
-
-    if (mobileNavReplaceQuickActionsInput instanceof HTMLInputElement) {
-        mobileNavReplaceQuickActionsInput.checked = sbState.mobileNav.replaceQuickActions;
-        const choice = mobileNavReplaceQuickActionsInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.mobileNav.replaceQuickActions);
-    }
-
-    if (mobileNavReplacementSelect instanceof HTMLSelectElement) {
-        mobileNavReplacementSelect.value = normalizeMobileNavReplacementTarget(sbState.mobileNav.replacementTarget);
-        mobileNavReplacementSelect.disabled = !sbState.mobileNav.replaceQuickActions;
-        mobileNavReplacementSelect.closest('.sb-mobile-nav-replacement-field')?.classList.toggle('is-disabled', !sbState.mobileNav.replaceQuickActions);
-    }
-
     if (paperTextureEnabledInput instanceof HTMLInputElement) {
         paperTextureEnabledInput.checked = sbState.paperTextureEnabled;
         const choice = paperTextureEnabledInput.closest('.sb-mobile-nav-choice');
@@ -12791,13 +12308,23 @@ function updateThemePickerUi() {
         paperTextureOpacityInput.step = String(SB_PAPER_TEXTURE_OPACITY.step);
         paperTextureOpacityInput.value = String(sbState.paperTextureOpacity);
         paperTextureOpacityInput.disabled = !sbState.paperTextureEnabled;
-        paperTextureOpacityInput.closest('.sb-theme-slider-group')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
+        paperTextureOpacityInput.closest('.ds-row-slider')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
     }
 
     if (paperTextureOpacityValue instanceof HTMLElement) {
         paperTextureOpacityValue.textContent = formatPaperTextureOpacity(sbState.paperTextureOpacity);
     }
 
+    for (const counter of document.querySelectorAll('[data-sb-theme-slider-counter]')) {
+        if (!(counter instanceof HTMLInputElement)) continue;
+        const rangeId = counter.dataset.sbThemeSliderCounter;
+        if (!rangeId) continue;
+        const range = document.getElementById(rangeId);
+        if (range instanceof HTMLInputElement) {
+            counter.value = range.value;
+            counter.disabled = range.disabled;
+        }
+    }
     for (const button of document.querySelectorAll('[data-sb-message-style]')) {
         const isActive = button.getAttribute('data-sb-message-style') === getCurrentMessageStyle();
         button.classList.toggle('is-selected', isActive);
@@ -12805,7 +12332,64 @@ function updateThemePickerUi() {
     }
 }
 
+/**
+ * The sections the subpage stacks around `searchRoot` present as rows, with each row's label.
+ *
+ * A stack keeps its closed sections in the hidden store, moves the open one into its detail page,
+ * and moves the panel's own chrome into its list heading. Once a stack is mounted none of that is
+ * inside the tab's search root, so the headings are returned as extra roots alongside the sections.
+ */
+function getSubpageSearchRoots(searchRoot) {
+    const sections = new Map();
+    const headings = [];
+    for (const stack of sbSubpageStacks.values()) {
+        if (!stack.host.contains(searchRoot) && !searchRoot.contains(stack.host)) {
+            continue;
+        }
+        headings.push(stack.listHeading);
+        for (const row of stack.rows) {
+            const source = row.source?.();
+            if (source instanceof HTMLElement) {
+                sections.set(source, row.label);
+            }
+        }
+    }
+    return { sections, headings };
+}
+
+/**
+ * One entry for the page itself, carrying its name, aliases and description.
+ *
+ * A tab's description never appears as a DOM label, and its aliases exist only for the sidebar, so
+ * without this a page is unfindable by the words that describe it ("Prompt Manager", "API Response
+ * Configuration"). The entry anchors to the page's heading when one is rendered, so activating it
+ * opens the page rather than a control inside it.
+ */
+function createPageSearchEntry(tabState) {
+    const heading = tabState.panel?.querySelector(`.${SB_FLAT_SECTION_HEADER_CLASS}, h3, h4, .standoutHeader`);
+    const searchText = normalizeText([
+        tabState.label,
+        tabState.id,
+        ...(tabState.searchAliases ?? []),
+    ].join(' '));
+    if (searchText.length < 3) {
+        return null;
+    }
+    return {
+        element: heading instanceof HTMLElement ? heading : null,
+        searchText,
+        displayText: tabState.label,
+        sectionLabel: tabState.label,
+        tabId: tabState.id,
+        tabLabel: tabState.label,
+        headingMatch: true,
+        dedupeKey: `${tabState.id}::page`,
+    };
+}
+
 function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
+    // Persona results come from data; hidden transports and transient editor fields are not search targets.
+    if (tabState.id === 'persona') return [];
     const searchRoot = tabState.searchRoot;
     if (!(searchRoot instanceof HTMLElement)) {
         return [];
@@ -12813,11 +12397,27 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
 
     const entries = [];
     const seen = new Set();
-    const excludedSelector = includeThemeCard
-        ? '.sb-search-result, .sb-legacy-search-hidden, .sb-mobile-quick-actions-group, .sb-desktop-quick-actions-group'
-        : '.sb-search-result, .sb-theme-card, .sb-legacy-search-hidden';
+    const pageEntry = createPageSearchEntry(tabState);
+    if (pageEntry) {
+        entries.push(pageEntry);
+    }
+    const excludedSelector = [
+        '.sb-search-result',
+        '.sb-legacy-search-hidden',
+        // Unwritten placeholder copy is not a setting.
+        SB_SEARCH_PLACEHOLDER_SELECTOR,
+        ...(includeThemeCard ? ['.sb-mobile-quick-actions-group', '.sb-desktop-quick-actions-group'] : ['.sb-theme-card']),
+    ].join(', ');
+    const { sections: subpageSections, headings: subpageHeadings } = getSubpageSearchRoots(searchRoot);
+    const searchRoots = [searchRoot, ...subpageHeadings, ...subpageSections.keys()]
+        .filter((root, index) => index === 0 || !searchRoot.contains(root));
 
-    for (const element of searchRoot.querySelectorAll(SB_SEARCH_TARGET_SELECTOR)) {
+    // The Editor retains its existing heading and search structure.
+    const includeCategoryTitles = tabState.id !== 'editor';
+    const targetSelector = includeCategoryTitles
+        ? `${SB_SEARCH_TARGET_SELECTOR}, .sb-settings-category-title`
+        : SB_SEARCH_TARGET_SELECTOR;
+    for (const element of searchRoots.flatMap(root => Array.from(root.querySelectorAll(targetSelector)))) {
         if (!(element instanceof HTMLElement)) {
             continue;
         }
@@ -12826,16 +12426,40 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
             continue;
         }
 
-        const sectionLabel = getSearchSectionLabel(element, tabState.label);
-        const searchText = getSearchText(element, sectionLabel);
-        const displayText = getSearchDisplayText(element, sectionLabel);
-        const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { element });
-
-        if (searchText.length < 3 || seen.has(dedupeKey)) {
+        // The title carries the category description in search; indexing its wrapper adds a second result.
+        if (includeCategoryTitles && element.matches('.sb-settings-category-header, .sb-settings-flat-header, .inline-drawer-toggle')
+            && element.querySelector('.sb-settings-category-title')) {
             continue;
         }
 
-        seen.add(dedupeKey);
+        // SillyBunny: the subpage store is hidden by CSS, and a match there is only reachable
+        // through the row that moves its section onto the detail page (see revealSearchMatch).
+        // Store content no row presents has no way on screen, so it is left out.
+        let subpageLabel = null;
+        for (const [section, label] of subpageSections) {
+            if (section.contains(element)) {
+                subpageLabel = label;
+                break;
+            }
+        }
+        if (subpageLabel === null && element.closest(`.${SB_SUBPAGE_STORE_CLASS}`)) {
+            continue;
+        }
+
+        const sectionLabel = subpageLabel ?? getSearchSectionLabel(element, tabState.label);
+        const searchText = getSearchText(element, sectionLabel, includeCategoryTitles);
+        const displayText = getSearchDisplayText(element, sectionLabel);
+        const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText);
+        // Identical sampler explanations belong to separate live backend sections. Keep both
+        // until availability filtering, or the hidden first backend masks the active one's help.
+        const indexDedupeKey = [dedupeKey, element.closest('[data-sb-sampling-apis]')?.id].filter(Boolean).join('::');
+
+        // Keep each backend's category title until the active-backend filter runs.
+        if (searchText.length < 3 || (seen.has(indexDedupeKey) && !(includeCategoryTitles && element.matches('.sb-settings-category-title')))) {
+            continue;
+        }
+
+        seen.add(indexDedupeKey);
         entries.push({
             element,
             searchText,
@@ -12848,6 +12472,35 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
     }
 
     return entries;
+}
+
+/**
+ * Returns the Characters pages as search destinations, so "Prompt Manager" or "lorebook" finds the
+ * page that holds them rather than only a control whose label happens to contain the word.
+ */
+function getCharacterPanelSearchEntries() {
+    const panel = getCharacterPanel();
+
+    return SB_CHARACTER_PANEL_TABS.map((tab) => {
+        const button = panel?.querySelector(`[data-sb-character-tab="${CSS.escape(tab.id)}"]`);
+        const searchText = normalizeText([
+            tab.label,
+            tab.id,
+            'characters',
+            ...(tab.searchAliases ?? []),
+        ].join(' '));
+
+        return {
+            element: button instanceof HTMLElement ? button : null,
+            searchText,
+            displayText: tab.label,
+            sectionLabel: tab.label,
+            tabId: tab.id,
+            tabLabel: tab.label,
+            headingMatch: true,
+            dedupeKey: `characters::${tab.id}`,
+        };
+    });
 }
 
 /**
@@ -12884,16 +12537,10 @@ function getPersonaSearchEntries(tabState) {
             tabId: tabState.id,
             tabLabel: tabState.label,
             dedupeKey: getSearchEntryDedupeKey(tabState, 'Persona', name, { avatarId }),
-            action: () => {
-                // Activate the persona tab and trigger ST's own persona search
-                openCharacterPanelTab('persona');
-                window.setTimeout(() => {
-                    const searchInput = document.getElementById('persona_search_bar');
-                    if (searchInput instanceof HTMLInputElement) {
-                        searchInput.value = name;
-                        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }, 80);
+            action: async () => {
+                // SillyBunny: open the exact persona without changing the list search — see docs/ui-migration.md
+                const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
+                await openPersonaEditor({ avatarId });
             },
         });
     }
@@ -12902,6 +12549,9 @@ function getPersonaSearchEntries(tabState) {
 }
 
 function getSearchSectionLabel(element, fallback) {
+    const sampler = element.closest('details[data-sb-sampling-control]');
+    const samplerTitle = sampler?.querySelector('summary .ds-row-label')?.textContent.trim();
+    if (samplerTitle) return samplerTitle;
     // For extension containers: use the extension's own name/header, not the parent tab label
     const extContainer = element.closest('.extension_container, [id$="-container"]');
     if (extContainer instanceof HTMLElement) {
@@ -12920,21 +12570,56 @@ function getSearchSectionLabel(element, fallback) {
     if (inlineDrawer instanceof HTMLElement) {
         const toggle = inlineDrawer.querySelector(':scope > .inline-drawer-toggle');
         if (toggle) {
-            const text = String(toggle.textContent ?? '').replace(/\s+/g, ' ').trim();
+            const text = getSearchLabelText(toggle).replace(/\s+/g, ' ').trim();
             if (text && text !== fallback) return text;
         }
     }
 
-    const preferred = element.closest('.persona_management_global_settings')
-        ?? element.closest('.bg-header-row-1')
+    // Flattened subsections are no longer drawers, so they are checked separately: without this a
+    // control lifted out of, say, Auto-swipe would report the enclosing drawer's name instead.
+    const flatSection = element.closest(`.${SB_FLAT_SECTION_CLASS}`);
+    if (flatSection instanceof HTMLElement) {
+        const heading = flatSection.querySelector(`:scope > .${SB_FLAT_SECTION_HEADER_CLASS}`);
+        const text = (heading ? getSearchLabelText(heading) : '').replace(/\s+/g, ' ').trim();
+        if (text && text !== fallback) return text;
+    }
+
+    const preferred = element.closest('.bg-header-row-1')
         ?? element.closest('.bg-header-row-2')
         ?? element.closest('label, h3, h4, h5, strong');
 
-    const text = String(preferred?.textContent ?? fallback).replace(/\s+/g, ' ').trim();
+    const text = (preferred ? getSearchLabelText(preferred) : String(fallback ?? '')).replace(/\s+/g, ' ').trim();
     return text || fallback;
 }
 
-function collectGlobalSearchMatches(query) {
+// Ranking is coarse on purpose: an exact query name beats a prefix, a prefix beats a word-start,
+// and a section heading beats a leaf control. Length is only a tiebreak, so a long descriptive row
+// cannot outrank the setting it describes.
+function getSearchMatchScore(entry, normalizedQuery, headingMatch) {
+    const searchText = entry.searchText;
+    const exactMatch = searchText === normalizedQuery;
+    const startsWithQuery = searchText.startsWith(normalizedQuery);
+    const wordMatch = !exactMatch && !startsWithQuery
+        && new RegExp(`(^|\\s)${escapeRegex(normalizedQuery)}`).test(searchText);
+    return Number(exactMatch) * 100
+        + Number(startsWithQuery) * 20
+        + Number(wordMatch) * 8
+        + Number(headingMatch) * 5
+        - Math.min(entry.displayText.length, 400) / 1000;
+}
+
+function getSearchMatchKey(shellKey, entry) {
+    return [
+        shellKey,
+        entry.dedupeKey || [
+            entry.tabId,
+            normalizeText(entry.sectionLabel),
+            normalizeText(entry.displayText),
+        ].filter(Boolean).join('::'),
+    ].filter(Boolean).join('::');
+}
+
+function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true } = {}) {
     const normalizedQuery = normalizeText(query);
 
     if (!normalizedQuery) {
@@ -12943,6 +12628,7 @@ function collectGlobalSearchMatches(query) {
 
     const searchTerms = normalizedQuery.split(' ').filter(Boolean);
     const matches = new Map();
+    const availableByEntry = new WeakMap();
 
     for (const [shellKey, shellState] of Object.entries(sbState.shells)) {
         const shellLabel = getShellConfig(shellKey)?.title || shellKey;
@@ -12952,33 +12638,30 @@ function collectGlobalSearchMatches(query) {
                 tabState.searchIndex = createSearchIndex(tabState);
             }
 
-            const extraEntries = tabState.id === 'persona'
-                ? getPersonaSearchEntries(tabState)
-                : tabState.id === 'characters'
-                    ? getCharacterPanelSearchEntries()
-                    : [];
+            const extraEntries = tabState.id === 'persona' ? getPersonaSearchEntries(tabState)
+                : tabState.id === 'agents' ? getAgentsPanelSearchEntries(tabState) : [];
 
-            for (const entry of [...tabState.searchIndex, ...extraEntries]) {
+            for (const entry of [...(tabState.id === 'agents' ? [] : tabState.searchIndex), ...extraEntries]) {
+                // Match first: the visibility check walks ancestors with `getComputedStyle`, and the
+                // memo only covers repeated rows, so this filter is what keeps a keystroke cheap.
                 if (!searchTerms.every(term => entry.searchText.includes(term))) {
                     continue;
                 }
+                if (!isSearchEntryAvailable(entry, tabState, availableByEntry)) continue;
 
-                const startsWithQuery = entry.searchText.startsWith(normalizedQuery);
-                const exactMatch = entry.searchText === normalizedQuery;
+                // Whether the hit names a section rather than a control. The universal search panel
+                // uses this for ranking; the sidebar needs it to tell a page-level hit from a control.
+                const headingMatch = entry.headingMatch === true || (entry.element instanceof HTMLElement
+                    && (entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR)
+                        || (tabState.id !== 'editor' && entry.element.matches('.sb-settings-category-title'))));
                 const match = {
                     ...entry,
                     shellKey,
                     shellLabel,
-                    score: Number(exactMatch) * 100 + Number(startsWithQuery) * 10 - entry.displayText.length / 1000,
+                    headingMatch,
+                    score: getSearchMatchScore(entry, normalizedQuery, headingMatch),
                 };
-                const matchKey = [
-                    shellKey,
-                    entry.dedupeKey || [
-                        entry.tabId,
-                        normalizeText(entry.sectionLabel),
-                        normalizeText(entry.displayText),
-                    ].filter(Boolean).join('::'),
-                ].filter(Boolean).join('::');
+                const matchKey = getSearchMatchKey(shellKey, entry);
                 const existingMatch = matches.get(matchKey);
                 const shouldReplaceMatch = !existingMatch
                     || match.score > existingMatch.score
@@ -12993,9 +12676,63 @@ function collectGlobalSearchMatches(query) {
         }
     }
 
+    // Characters, groups, World Info books and personas live outside sbState.shells; their entries
+    // come from app data rather than the tab DOM.
+    if (includeEntities) {
+        const searchState = getUniversalSearchState();
+        const personas = getPersonaSearchEntries(getCharacterPanelTabConfig('persona'));
+        const entities = [
+            ...getCharacterPanelSearchEntries(),
+            ...personas,
+            ...collectEntitySearchEntries(normalizedQuery, {
+                limit: SB_UNIVERSAL_ENTITY_SCAN_LIMIT,
+                skippedWorlds: searchState.skippedWorlds,
+            }),
+        ];
+        for (const entry of entities) {
+            if (!searchTerms.every(term => entry.searchText.includes(term))) continue;
+            const headingMatch = entry.headingMatch !== false;
+            matches.set(getSearchMatchKey('characters', entry), {
+                ...entry,
+                shellKey: 'characters',
+                shellLabel: 'Characters',
+                headingMatch,
+                score: getSearchMatchScore(entry, normalizedQuery, headingMatch),
+            });
+        }
+    }
+
+    // A stable tiebreak keeps the panel from reshuffling equal scores between keystrokes.
     return Array.from(matches.values())
-        .sort((left, right) => right.score - left.score)
-        .slice(0, SB_UNIVERSAL_SEARCH_RESULT_LIMIT);
+        .sort((left, right) => right.score - left.score
+            || left.displayText.localeCompare(right.displayText))
+        .slice(0, limit);
+}
+
+// Intersection-observer-free visibility check is expensive (`getComputedStyle` per ancestor), and a
+// single pass asks about the same rows repeatedly. The memo is per pass: visibility can legitimately
+// change between renders, so it must never outlive one.
+function isSearchEntryAvailable(entry, tabState, availableByEntry = null) {
+    if (availableByEntry?.has(entry)) {
+        return availableByEntry.get(entry);
+    }
+    const available = computeSearchEntryAvailability(entry, tabState);
+    availableByEntry?.set(entry, available);
+    return available;
+}
+
+function computeSearchEntryAvailability(entry, tabState) {
+    // Keep both device variants indexed so resizing can reveal the newly available controls.
+    const unavailableDevice = isMobileViewport() ? '.sb-desktop-setting' : '.sb-mobile-setting';
+    if (entry.element instanceof HTMLElement && entry.element.closest(unavailableDevice)) return false;
+    if (!['sampling', 'prompting', 'editor'].includes(tabState.id)) return true;
+    if (!(entry.element instanceof HTMLElement) || !tabState.searchRoot.contains(entry.element)) return false;
+    for (let element = entry.element; element && element !== tabState.searchRoot; element = element.parentElement) {
+        // Collapsed sampler help is searchable; its provider/card ancestors still gate availability.
+        if (element.matches('.sb-sampling-help[hidden]')) continue;
+        if (element.hidden || getComputedStyle(element).display === 'none') return false;
+    }
+    return true;
 }
 
 function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
@@ -13006,13 +12743,10 @@ function getTabSearchEntries(tabState, { includeThemeCard = false } = {}) {
     }
 
     return [
-        ...(searchIndex || tabState.searchIndex),
-        ...(tabState.id === 'persona'
-            ? getPersonaSearchEntries(tabState)
-            : tabState.id === 'characters'
-                ? getCharacterPanelSearchEntries()
-                : []),
-    ];
+        ...(tabState.id === 'agents' ? [] : (searchIndex || tabState.searchIndex)),
+        ...(tabState.id === 'persona' ? getPersonaSearchEntries(tabState) : []),
+        ...(tabState.id === 'agents' ? getAgentsPanelSearchEntries(tabState) : []),
+    ].filter(entry => isSearchEntryAvailable(entry, tabState));
 }
 
 function getMobileQuickActionSearchMatches(query) {
@@ -13055,7 +12789,7 @@ function getMobileQuickActionSearchMatches(query) {
 
     return Array.from(matches.values())
         .sort((left, right) => right.score - left.score)
-        .slice(0, SB_UNIVERSAL_SEARCH_RESULT_LIMIT);
+        .slice(0, SB_UNIVERSAL_SEARCH_QUICK_ACTION_LIMIT);
 }
 
 function findMobileQuickActionMatch(action) {
@@ -13122,36 +12856,6 @@ async function activateMobileQuickAction(action) {
     revealSearchMatch(action.shellKey, match);
 }
 
-function activateMobileNavAction(action) {
-    const normalizedAction = normalizeMobileQuickAction(action);
-    if (!normalizedAction) {
-        return;
-    }
-
-    if (isMobileViewport()) {
-        closeMobileNav();
-    }
-
-    if (normalizedAction.type === 'custom') {
-        activateMobileQuickAction(normalizedAction);
-        return;
-    }
-
-    if (normalizedAction.type === 'shell') {
-        closeAllDropdowns({ except: normalizedAction.shellKey });
-        openShell(normalizedAction.shellKey);
-        return;
-    }
-
-    if (normalizedAction.shellKey === 'characters') {
-        openCharacterPanelTab(normalizedAction.tabId);
-        return;
-    }
-
-    closeAllDropdowns({ except: normalizedAction.shellKey });
-    openShell(normalizedAction.shellKey, normalizedAction.tabId);
-}
-
 async function renderUniversalSearchResults(query) {
     const searchState = getUniversalSearchState();
     const results = searchState.results;
@@ -13174,6 +12878,12 @@ async function renderUniversalSearchResults(query) {
 
     const trimmedQuery = String(query ?? '').trim();
 
+    // A new query starts from the short list: "show all" belongs to the query it was asked for.
+    if (trimmedQuery !== searchState.renderedQuery) {
+        searchState.renderedQuery = trimmedQuery;
+        searchState.expandedAll = false;
+    }
+
     if (!trimmedQuery) {
         renderSearchEmptyState(results, SB_UNIVERSAL_SEARCH_IDLE_TITLE, SB_UNIVERSAL_SEARCH_IDLE_HINT);
         results.classList.add('is-visible');
@@ -13182,15 +12892,34 @@ async function renderUniversalSearchResults(query) {
 
     await prepareShellSearch();
     if (sbSearchRenderRequests.get(results) !== request || !searchState.expanded) return;
-    const matches = collectGlobalSearchMatches(trimmedQuery);
+    const matches = collectGlobalSearchMatches(trimmedQuery, {
+        limit: searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
+    });
+
+    // Rows are deduped on what the panel actually shows, so two controls that read identically in
+    // one section collapse to one destination instead of filling the list twice.
     const groupedMatches = new Map();
     for (const match of matches) {
         const groupLabel = `${match.shellLabel} · ${match.tabLabel}`;
         if (!groupedMatches.has(groupLabel)) {
-            groupedMatches.set(groupLabel, []);
+            groupedMatches.set(groupLabel, new Map());
         }
-        groupedMatches.get(groupLabel).push(match);
+        const groupMatches = groupedMatches.get(groupLabel);
+        const rowKey = [match.dedupeKey, match.sectionLabel, match.displayText]
+            .map(value => normalizeText(value))
+            .join('::');
+        const existing = groupMatches.get(rowKey);
+        if (!existing || match.score > existing.score) {
+            groupMatches.set(rowKey, match);
+        }
     }
+
+    const totalMatches = matches.length;
+    const perGroupLimit = searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_GROUP_LIMIT;
+    // Rows are addressed by position, not by the element: a debounced re-render can replace a row
+    // between the pointerdown and the click, and a handler bound to the dead node would do nothing.
+    const rows = [];
+    searchState.renderedRows = rows;
 
     for (const [groupLabel, groupMatches] of groupedMatches.entries()) {
         const group = createElement('div', {
@@ -13202,39 +12931,57 @@ async function renderUniversalSearchResults(query) {
         });
         group.appendChild(createElement('div', { className: 'sb-search-result-group-label', text: groupLabel }));
 
-        for (const match of groupMatches) {
+        let shown = 0;
+        // Two cards can legitimately share a name, so identical rows are counted rather than hidden:
+        // three "Bunny Guide" results would otherwise read as three destinations when they are one.
+        const shownCounts = new Map();
+        for (const match of groupMatches.values()) {
+            if (shown >= perGroupLimit) break;
+            shown += 1;
+            const sectionDisplay = match.sectionLabel === match.tabLabel
+                ? match.displayText || match.tabLabel
+                : match.sectionLabel;
+            const duplicateKey = `${sectionDisplay}::${match.displayText}`;
+            shownCounts.set(duplicateKey, (shownCounts.get(duplicateKey) ?? 0) + 1);
+            const duplicateIndex = shownCounts.get(duplicateKey);
+
+            const rowIndex = rows.length;
+            rows.push(match);
             const button = createElement('button', {
                 className: 'sb-search-result',
                 attrs: {
                     type: 'button',
                     role: 'option',
-                    id: `sb-search-result-${results.querySelectorAll('.sb-search-result').length}`,
+                    id: `sb-search-result-${rowIndex}`,
+                    'data-sb-search-row': String(rowIndex),
                     'aria-selected': 'false',
                 },
             });
             const detailText = normalizeText(match.displayText) === normalizeText(match.sectionLabel)
                 ? `Jump straight to this item in ${match.tabLabel}.`
                 : match.displayText;
-            const sectionDisplay = match.sectionLabel === match.tabLabel
-                ? match.displayText || match.tabLabel
-                : match.sectionLabel;
 
-            button.appendChild(createElement('strong', { text: sectionDisplay }));
+            button.appendChild(createElement('strong', { text: match.description !== undefined ? match.displayText : sectionDisplay }));
 
-            if (sectionDisplay !== match.displayText) {
-                button.appendChild(createElement('span', { text: detailText }));
+            if (match.description !== undefined || sectionDisplay !== match.displayText) {
+                button.appendChild(createElement('span', { text: match.description ?? detailText }));
             }
 
             button.appendChild(createElement('small', {
-                text: typeof match.action === 'function' ? 'Quick action' : 'Jump to setting',
+                text: match.locationLabel ? `${groupLabel} · ${match.sectionLabel}` : typeof match.action === 'function' ? 'Quick action' : 'Jump to setting',
             }));
 
-            button.addEventListener('click', () => {
-                clearUniversalSearch({ blur: true });
-                revealSearchMatch(match.shellKey, match);
-            });
+            if (duplicateIndex > 1) {
+                button.classList.add('is-duplicate');
+                button.setAttribute('data-sb-search-duplicate', String(duplicateIndex));
+            }
 
             group.appendChild(button);
+        }
+
+        const hiddenInGroup = groupMatches.size - shown;
+        if (hiddenInGroup > 0) {
+            group.appendChild(createUniversalSearchShowAllRow(hiddenInGroup, groupLabel));
         }
 
         results.appendChild(group);
@@ -13246,9 +12993,22 @@ async function renderUniversalSearchResults(query) {
             `No matches for "${trimmedQuery}" yet.`,
             SB_UNIVERSAL_SEARCH_EMPTY_HINT,
         );
+    } else if (!searchState.expandedAll && totalMatches > rows.length) {
+        results.appendChild(createUniversalSearchShowAllRow(totalMatches - rows.length));
     }
 
+    const wasVisible = results.classList.contains('is-visible');
     results.classList.add('is-visible');
+
+    // Animate the results panel on first appearance
+    if (!wasVisible) {
+        stopMotion(results);
+        animateIn(results, [
+            { opacity: 0, transform: 'translateY(-4px)' },
+            { opacity: 1, transform: 'translateY(0)' },
+        ], { duration: MOTION_FAST });
+    }
+
     setUniversalSearchActiveIndex(results.querySelector('.sb-search-result') ? 0 : -1);
 }
 
@@ -13281,6 +13041,19 @@ function setUniversalSearchActiveIndex(index) {
 }
 
 function expandHiddenAccordions(target) {
+    // SillyBunny: elements in the subpage store are hidden by CSS, not by a closed drawer;
+    // clicking their toggles fires jQuery slideToggle and injects inline display:block,
+    // overriding the store hide rule and bleeding the old panel into view.
+    if (target?.closest('.' + SB_SUBPAGE_STORE_CLASS)) {
+        return;
+    }
+
+    const helpRow = target.closest('.sb-sampling-help-row');
+    const help = helpRow?.querySelector(':scope > .sb-sampling-help');
+    if (help?.hidden) {
+        helpRow.querySelector('.sb-sampling-help-toggle')?.click();
+    }
+
     const hiddenContents = [];
     let current = target.parentElement;
 
@@ -13288,6 +13061,7 @@ function expandHiddenAccordions(target) {
         if (current.classList.contains('inline-drawer-content') && getComputedStyle(current).display === 'none') {
             hiddenContents.push(current);
         }
+        if (current instanceof HTMLDetailsElement) current.open = true;
 
         current = current.parentElement;
     }
@@ -13312,7 +13086,10 @@ function pulseSearchTarget(target) {
     }
 
     const drawer = target.closest('.inline-drawer');
-    const highlightTarget = drawer instanceof HTMLElement ? drawer : target;
+    const flatSection = target.closest(`.${SB_FLAT_SECTION_CLASS}`);
+    const highlightTarget = flatSection instanceof HTMLElement
+        ? flatSection
+        : drawer instanceof HTMLElement ? drawer : target;
 
     document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
         .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
@@ -13328,8 +13105,11 @@ function revealSettingsCategoryFor(target) {
         return;
     }
 
-    const settingsContent = document.getElementById('user-settings-block-content');
-    if (!settingsContent || !settingsContent.contains(target)) {
+    // Phase 6A: content is split across three permanent containers, so a match can live in any
+    // of them rather than all settings living in one block.
+    const roots = getUserSettingsContentRoots();
+    const settingsContent = roots.find(root => root.contains(target));
+    if (!settingsContent) {
         return;
     }
 
@@ -13387,8 +13167,50 @@ function revealSearchMatch(shellKey, match) {
     }
 
     openShell(shellKey, match.tabId);
+    // The search result already selects a destination, so show it past the mobile sidebar.
+    if (isMobileViewport()) setSettingsMobileContentView(true);
 
     window.setTimeout(() => {
+        // SillyBunny: subpage-hosted tabs route through the stack, not the old drawer routing.
+        // Matches inside the store would otherwise trigger jQuery slideToggle on inline-drawer
+        // toggles, injecting inline display:block and bleeding the old panel into view.
+        const stack = sbSubpageStacks.get(`${shellKey}:${match.tabId}`);
+        if (stack) {
+            const row = stack.rows.find(r => {
+                const source = r.source?.();
+                return source instanceof HTMLElement && source.contains(match.element);
+            });
+            if (row) {
+                stack.open(row.id);
+                const slideDelay = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                    ? 0
+                    : SB_SUBPAGE_DURATION;
+                window.setTimeout(() => {
+                    if (!(match.element instanceof HTMLElement)) return;
+                    expandHiddenAccordions(match.element);
+                    scrollElementIntoManagedView(match.element, {
+                        block: 'center',
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                    });
+                    pulseSearchTarget(match.element);
+                }, slideDelay + 40);
+                return;
+            }
+            // The match is in the list page's own chrome, which a detail page covers: put the list
+            // back before scrolling it, or the scroll would move a page nobody can see.
+            if (stack.isOpen()) {
+                stack.close({ instant: true });
+            }
+            if (match.element instanceof HTMLElement) {
+                scrollElementIntoManagedView(match.element, {
+                    block: 'center',
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                });
+                pulseSearchTarget(match.element);
+            }
+            return;
+        }
+
         revealSettingsCategoryFor(match.element);
         expandHiddenAccordions(match.element);
         scrollElementIntoManagedView(match.element, {
@@ -13399,7 +13221,7 @@ function revealSearchMatch(shellKey, match) {
     }, 40);
 }
 
-function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
+function setActiveTab(shellKey, tabId) {
     const shellState = getShellState(shellKey);
     const shellConfig = getShellConfig(shellKey);
 
@@ -13422,143 +13244,106 @@ function setActiveTab(shellKey, tabId, { focusButton = false } = {}) {
 
     for (const [currentTabId, tabState] of shellState.tabs.entries()) {
         const isActive = currentTabId === tabId;
-        const isHiddenRailDuplicate = tabState.button?.classList.contains('sb-shell-tab-mobile-rail-hidden') ?? false;
-        tabState.button?.classList.toggle('is-active', isActive);
-        tabState.button?.setAttribute('aria-selected', String(isActive));
-        tabState.button?.setAttribute('tabindex', isActive && !isHiddenRailDuplicate ? '0' : '-1');
         tabState.panel.classList.toggle('sb-shell-panel-active', isActive);
         tabState.panel.setAttribute('aria-hidden', String(!isActive));
         // Invalidate search index when switching to a tab so stale DOM isn't searched
         if (isActive) tabState.searchIndex = null;
     }
 
-    syncMobileShellRailActionState(shellKey, tabId);
     queueTopbarPageStateSync();
 
     const activeTab = shellState.tabs.get(tabId);
-    shellState.headerTitle.textContent = activeTab.label;
-    renderShellSubtitle(shellState.headerSubtitle, activeTab.description ?? '', { isHtml: activeTab.descriptionIsHtml === true });
-    scrollShellTabButtonIntoView(shellState.nav, activeTab.button, { smooth: focusButton });
-    shellState.updateNavScrollIndicators?.();
-
-    if (focusButton && isActuallyVisible(activeTab.button)) {
-        activeTab.button?.focus({ preventScroll: true });
-    } else if (isShellOpen(shellKey)) {
-        window.requestAnimationFrame(() => focusShellPanel(shellKey, { force: true }));
-    }
 
     if (previousTab && previousTab.id !== activeTab.id) {
         previousTab.onDeactivate?.();
     }
 
-    const shellRoot = document.getElementById(shellConfig.rootPanelId);
-    if (shellRoot instanceof HTMLElement && shellRoot.classList.contains('openDrawer')) {
+    if (isSettingsPageHosting(shellKey)) {
         activeTab.onActivate?.();
+        installSettingsSubpage(shellKey, tabId);
+        flattenSettingsPanelDrawers(shellKey, tabId);
         dispatchShellTabActivated(shellKey, activeTab);
         queueMobileShellActivationRefresh();
     }
 }
 
+// SillyBunny: every shell lives in the full-screen settings page (feat/v1.9.0-ui-overhaul).
+/** @param {string} shellKey @param {string|null} [tabId] */
 function openShell(shellKey, tabId = null) {
     if (shellKey === 'left' && tabId === 'world-info') {
-        // SillyBunny: final guard for old code paths that still ask for the
-        // removed left-shell World Info route.
+        // World Info moved from the Backend shell into Characters.
         openCharacterPanelTab('world-info');
         return;
     }
 
-    const shellConfig = getShellConfig(shellKey);
-    const shellState = getShellState(shellKey);
-    const shellRoot = document.getElementById(shellConfig.rootPanelId);
-
-    if (!shellState || !(shellRoot instanceof HTMLElement)) {
+    if (shellKey === 'characters') {
+        openCharacterPanelTab(tabId ?? SB_CHARACTER_PANEL_DEFAULT_TAB);
         return;
     }
 
-    const shellSurface = getMobileShellSurfaceForShell(shellKey);
-    if (shellSurface) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: shellSurface,
-            isMobileViewport: isMobileViewport(),
-        }));
-    } else {
-        closeMobileNav();
-    }
-    rememberShellFocusOrigin(shellKey);
-
-    if (tabId) {
-        setActiveTab(shellKey, tabId);
-    }
-
-    shellState.lastOpenedAt = performance.now();
-
-    if (isDrawerActuallyOpen(shellRoot)) {
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        syncDesktopShellSizing();
-        window.requestAnimationFrame(() => focusShellPanel(shellKey));
-        return;
-    }
-
-    if (shellRoot.classList.contains('openDrawer')) {
-        forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        syncDesktopShellSizing();
-        window.requestAnimationFrame(() => focusShellPanel(shellKey));
-        return;
-    }
-
-    if (!shellRoot.classList.contains('openDrawer')) {
-        forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        window.requestAnimationFrame(() => {
-            if (!isDrawerActuallyOpen(shellRoot)) {
-                forceDrawerState(shellRoot, true, shellConfig.hostIconSelector);
-            }
-            syncMobileShellDrawerBounds();
-            queueMobileShellDrawerBoundsSync();
-            syncDesktopShellSizing();
-            focusShellPanel(shellKey);
-        });
+    if (getShellConfig(shellKey)) {
+        openSettingsPage(shellKey, tabId);
     }
 }
 
 function closeShell(shellKey) {
-    const shellConfig = getShellConfig(shellKey);
-    const shellState = getShellState(shellKey);
-    const shellRoot = document.getElementById(shellConfig.rootPanelId);
+    if (isSettingsPageHosting(shellKey)) {
+        closeSettingsPage();
+    }
+}
 
-    if (!(shellRoot instanceof HTMLElement) || !shellRoot.classList.contains('openDrawer')) {
+/**
+ * Phase 6F: the Chat Completion presets block opened with a 60px card carrying the
+ * "Chat Completion Presets" label and four icon buttons, directly above a second row holding the
+ * preset select and three more icon buttons. Two stacked rows of unlabeled icons above the first
+ * real setting read as pure chrome, and the label duplicated the tab's own header, so the card and
+ * the select row become one row: label, select, then all seven actions together.
+ *
+ * Nodes are moved rather than rebuilt. Every action binds by id at init or through a delegated
+ * `data-preset-manager-*` handler, so position is irrelevant; the label keeps its `data-i18n`
+ * span and stays in the search index. The emptied card is hidden instead of removed so the
+ * `#openai_api-presets > div` insertion point the ChatCompletionTabs extension anchors its tab bar
+ * to is still the container's first child.
+ */
+function mergeOpenAIPresetToolbarRow(root) {
+    if (!(root instanceof HTMLElement)) {
         return;
     }
 
-    shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
+    const container = root.querySelector('#openai_api-presets > div');
+    const card = container?.querySelector(':scope > .standoutHeader');
+    const row = container?.querySelector(`:scope > .${SB_PRESET_TOOLBAR_ROW_CLASS}, :scope > .flex-container.flexNoGap`);
 
-    if (!isDrawerActuallyOpen(shellRoot)) {
-        forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
-        syncMobileShellDrawerBounds();
-        queueMobileShellDrawerBoundsSync();
-        requestMobileViewportReset();
+    if (!(card instanceof HTMLElement) || !(row instanceof HTMLElement)) {
         return;
     }
 
-    const shouldRestoreFocus = document.activeElement instanceof HTMLElement && shellRoot.contains(document.activeElement);
-    if (shouldRestoreFocus) {
-        document.activeElement.blur();
+    row.classList.remove('flexNoGap');
+    if (row.classList.contains(SB_PRESET_TOOLBAR_ROW_CLASS)) {
+        return;
     }
 
-    // Managed shells do not need the legacy drawer toggle close animation.
-    forceDrawerState(shellRoot, false, shellConfig.hostIconSelector);
-    syncMobileShellDrawerBounds();
-    queueMobileShellDrawerBoundsSync();
-    requestMobileViewportReset();
-    if (shouldRestoreFocus) {
-        window.requestAnimationFrame(() => restoreShellFocus(shellKey));
-    } else {
-        delete shellState?.restoreFocusTarget;
+    const label = card.querySelector(':scope > strong');
+    const cardActions = card.querySelector(':scope > .flex-container');
+    const rowActions = row.querySelector(':scope > .flex-container.marginLeft5');
+
+    if (!(rowActions instanceof HTMLElement)) {
+        return;
     }
+
+    if (cardActions instanceof HTMLElement) {
+        while (cardActions.firstChild) {
+            rowActions.appendChild(cardActions.firstChild);
+        }
+        cardActions.remove();
+    }
+
+    if (label instanceof HTMLElement) {
+        row.insertBefore(label, row.firstChild);
+    }
+
+    row.classList.add(SB_PRESET_TOOLBAR_ROW_CLASS);
+    card.classList.add(SB_PRESET_TOOLBAR_CARD_CLASS);
 }
 
 function buildShell(shellKey) {
@@ -13581,239 +13366,86 @@ function buildShell(shellKey) {
     moveChildrenIntoContainer(shellRoot, originalContent);
     originalContent.querySelector('#settingsSearch')?.classList.add('sb-legacy-search-hidden');
 
+    // The settings page supplies its own sidebar, title header, and close button, so the
+    // in-shell header and horizontal tab rail are no longer built.
     const frame = createElement('div', { className: 'sb-shell-frame' });
-    const navWrapper = createElement('div', { className: 'sb-shell-nav-wrapper' });
-    const navScrollLeft = createElement('button', {
-        className: 'sb-shell-nav-scroll sb-shell-nav-scroll-left',
-        attrs: {
-            type: 'button',
-            'aria-label': `Scroll ${shellConfig.title} sections left`,
-        },
-    });
-    const nav = createElement('nav', {
-        className: 'sb-shell-nav',
-        attrs: {
-            role: 'tablist',
-            'aria-label': `${shellConfig.title} sections`,
-            'aria-orientation': 'horizontal',
-        },
-    });
-    const navScrollRight = createElement('button', {
-        className: 'sb-shell-nav-scroll sb-shell-nav-scroll-right',
-        attrs: {
-            type: 'button',
-            'aria-label': `Scroll ${shellConfig.title} sections right`,
-        },
-    });
-    navScrollLeft.innerHTML = '<i class="fa-solid fa-chevron-left" aria-hidden="true"></i>';
-    navScrollRight.innerHTML = '<i class="fa-solid fa-chevron-right" aria-hidden="true"></i>';
-    navWrapper.append(navScrollLeft, nav, navScrollRight);
-
-    const scrollNavByPage = direction => {
-        const scrollRequest = sbMobileShellLifecycle.nav.resolvePageScroll({
-            direction,
-            clientWidth: nav.clientWidth,
-            prefersReducedMotion: prefersReducedMotion(),
-        });
-
-        nav.scrollBy(scrollRequest);
-    };
-
-    let navTouchDrag = null;
-    let suppressNavClickUntil = 0;
-
-    const clearNavTouchDrag = () => {
-        navTouchDrag = null;
-    };
-
-    const finishNavTouchDrag = event => {
-        const dragEnd = sbMobileShellLifecycle.nav.resolveDragEnd({
-            dragState: navTouchDrag,
-            nowMs: Date.now(),
-        });
-
-        if (dragEnd.suppressClickUntil) {
-            suppressNavClickUntil = dragEnd.suppressClickUntil;
-        }
-
-        if (dragEnd.shouldStopPropagation) {
-            event.stopPropagation();
-        }
-
-        navTouchDrag = dragEnd.dragState;
-    };
-
-    const beginNavTouchDrag = event => {
-        const touch = event.touches?.[0];
-
-        navTouchDrag = sbMobileShellLifecycle.nav.createDragState({
-            isMobileViewport: isMobileViewport(),
-            touch,
-            scrollLeft: nav.scrollLeft,
-        });
-    };
-
-    const updateNavTouchDrag = event => {
-        if (!navTouchDrag) {
-            return;
-        }
-
-        const dragMove = sbMobileShellLifecycle.nav.resolveDragMove({
-            dragState: navTouchDrag,
-            touch: event.touches?.[0],
-        });
-        navTouchDrag = dragMove.dragState;
-
-        if (!navTouchDrag) {
-            return;
-        }
-
-        if (dragMove.shouldPreventDefault && event.cancelable) {
-            event.preventDefault();
-        }
-
-        if (dragMove.shouldStopPropagation) {
-            event.stopPropagation();
-        }
-
-        if (dragMove.nextScrollLeft !== null) {
-            nav.scrollLeft = dragMove.nextScrollLeft;
-            updateNavScrollIndicators();
-        }
-    };
-
-    const suppressClickAfterNavDrag = event => {
-        if (!sbMobileShellLifecycle.nav.shouldSuppressClick({
-            nowMs: Date.now(),
-            suppressClickUntil: suppressNavClickUntil,
-        })) {
-            return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-    };
-
-    const updateNavScrollIndicators = () => {
-        const { canScrollLeft, canScrollRight } = sbMobileShellLifecycle.nav.resolveScrollIndicators({
-            scrollLeft: nav.scrollLeft,
-            clientWidth: nav.clientWidth,
-            scrollWidth: nav.scrollWidth,
-        });
-
-        navWrapper.classList.toggle('sb-can-scroll-left', canScrollLeft);
-        navWrapper.classList.toggle('sb-can-scroll-right', canScrollRight);
-        navScrollLeft.disabled = !canScrollLeft;
-        navScrollRight.disabled = !canScrollRight;
-    };
-
-    nav.addEventListener('scroll', updateNavScrollIndicators, { passive: true });
-    nav.addEventListener('click', suppressClickAfterNavDrag, true);
-    nav.addEventListener('touchstart', beginNavTouchDrag, { passive: true });
-    nav.addEventListener('touchmove', updateNavTouchDrag, { passive: false });
-    nav.addEventListener('touchend', finishNavTouchDrag, { passive: true });
-    nav.addEventListener('touchcancel', clearNavTouchDrag, { passive: true });
-    window.addEventListener('resize', updateNavScrollIndicators, { passive: true });
-    navScrollLeft.addEventListener('click', () => scrollNavByPage(-1));
-    navScrollRight.addEventListener('click', () => scrollNavByPage(1));
-
-    setTimeout(updateNavScrollIndicators, 100);
-
     const main = createElement('div', { className: 'sb-shell-main' });
-    const header = createElement('div', { className: 'sb-shell-header' });
-    const closeButton = createElement('button', {
-        className: 'sb-shell-close',
-        attrs: {
-            type: 'button',
-            title: `Close ${shellConfig.title}`,
-            'aria-label': `Close ${shellConfig.title}`,
-        },
-    });
-    const eyebrow = createElement('div', { className: 'sb-shell-kicker', text: shellConfig.title });
-    const title = createElement('h2', { className: 'sb-shell-title', text: shellConfig.baseTab.label, attrs: { tabindex: '-1' } });
-    const subtitle = createElement('p', { className: 'sb-shell-subtitle' });
-    const shellDescription = createElement('p', { className: 'sb-shell-description', text: shellConfig.subtitle });
     const panelBody = createElement('div', { className: 'sb-shell-body' });
-    const resizeHandle = createElement('div', {
-        className: 'sb-shell-resize-handle',
-        attrs: {
-            title: `Resize ${shellConfig.title}`,
-        },
-    });
 
-    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-    renderShellSubtitle(subtitle, shellConfig.baseTab.description ?? '', { isHtml: shellConfig.baseTab.descriptionIsHtml === true });
-    closeButton.addEventListener('click', () => closeShell(shellKey));
-    shellRoot.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') {
-            return;
-        }
-
-        if (closeFocusedShell()) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    });
-    bindShellResizeHandle(resizeHandle, shellKey);
-
-    header.append(closeButton, eyebrow, title, subtitle, shellDescription);
-    main.append(header, panelBody);
-    frame.append(navWrapper, main, resizeHandle);
+    main.append(panelBody);
+    frame.append(main);
     shellRoot.appendChild(frame);
 
     const shellState = {
-        activeTabId: shellConfig.defaultTabId,
-        lastOpenedAt: 0,
+        activeTabId: migrateTabId(shellKey, shellConfig.storageKey ? safeGetItem(shellConfig.storageKey) : null) || shellConfig.defaultTabId,
         tabs: new Map(),
-        nav,
-        headerTitle: title,
-        headerSubtitle: subtitle,
         root: shellRoot,
-        resizeHandle,
-        updateNavScrollIndicators,
     };
 
     sbState.shells[shellKey] = shellState;
 
-    let wasOpen = shellRoot.classList.contains('openDrawer');
-    new MutationObserver(() => {
-        const isOpen = shellRoot.classList.contains('openDrawer');
-
-        if (isOpen === wasOpen) {
-            return;
-        }
-
-        wasOpen = isOpen;
-
-        if (isOpen) {
-            shellState.lastOpenedAt = performance.now();
-            if (isMobileViewport()) {
-                closeMobileNav();
-            }
-            syncDesktopShellSizing();
-            const activeTab = shellState.tabs.get(shellState.activeTabId);
-            activeTab?.onActivate?.();
-            dispatchShellTabActivated(shellKey, activeTab);
-            queueMobileShellActivationRefresh();
-            updateNavScrollIndicators();
-            window.requestAnimationFrame(() => focusShellPanel(shellKey));
-            queueMobileModalStateSync();
-            return;
-        }
-
-        shellState.tabs.get(shellState.activeTabId)?.onDeactivate?.();
-        queueMobileModalStateSync();
-    }).observe(shellRoot, { attributes: true, attributeFilter: ['class'] });
-
     const basePanel = createShellPanel(shellConfig.baseTab);
-    basePanel.scroller.appendChild(originalContent);
-    if (shellKey === 'right') {
+
+    // For left shell, base tab is 'connections' (sys-settings-button content)
+    // For right shell, base tab is 'appearance' (user-settings-button content)
+    // Phase 6A/6B/6C: each Customize tab owns a permanent container built once by
+    // splitUserSettingsContent(). The block the settings were authored in is left in the document
+    // for the sake of ids that are looked up globally, but nothing paints it any more.
+    let userSettingsSplit = null;
+    if (shellKey === 'left') {
+        // SillyBunny (feat/v1.9.0-ui-overhaul): the base tab is the Connections panel, built by hand
+        // rather than by the drawer passes or the subpage stack. The drawer it replaces stays in the
+        // document, detached from the layout, so every id authored inside it -- `#main_api`,
+        // `#rm_api_block`, and the connection-manager extension's own markup -- is still resolvable
+        // by the code that looks it up. The panel moves out only the nodes it presents: the profile
+        // card and the five provider blocks.
+        const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
+        if (apiDrawerPrep) {
+            apiDrawerPrep.drawer.removeAttribute('style');
+            apiDrawerPrep.drawer.classList.add('sb-legacy-api-drawer');
+            shellRoot.appendChild(apiDrawerPrep.drawer);
+        }
+
+        const connectionsPanel = createConnectionsPanel({
+            createElement,
+            getActiveApi: getCurrentMainApiValue,
+            applyPanelApiVisibility: changePanelApiVisibility,
+        });
+        basePanel.scroller.appendChild(connectionsPanel.column);
+        basePanel.searchRoot = connectionsPanel.column;
+        basePanel.onActivate = () => {
+            connectionsPanel.onActivate();
+            normalizeBackendSettingsRows(connectionsPanel.column, { fields: false });
+        };
+        basePanel.connectionsPanel = connectionsPanel;
+    } else if (shellKey === 'right') {
+        userSettingsSplit = splitUserSettingsContent(originalContent);
+
+        if (userSettingsSplit) {
+            basePanel.scroller.appendChild(userSettingsSplit.appearance);
+        }
+
+        // The split empties the block, so what is left -- the legacy header rows, the search input,
+        // and the emptied columns -- is parked on the shell root and hidden. Keeping it attached
+        // rather than detaching it leaves `#user-settings-block-content` resolvable by id for
+        // third-party drawers and for the drawer-state code that looks the emptied section up.
+        originalContent.classList.add('sb-legacy-settings-remainder');
+        shellRoot.appendChild(originalContent);
+
+        // Backgrounds is its own top-level drawer outside the settings block, so it is appended
+        // separately rather than being part of the split.
+        const backgroundsPrep = prepareEmbeddedDrawer('backgrounds-button');
+        if (backgroundsPrep) {
+            basePanel.scroller.appendChild(backgroundsPrep.drawer);
+        }
+
         basePanel.ensureReady = initializeSettingsPanel;
-        basePanel.onActivate = () => void initializeSettingsPanel().catch(error => {
+        basePanel.onActivate = () => initializeSettingsPanel().catch(error => {
             console.error('[SillyBunny] Could not initialize settings:', error);
             toastr.error(String(error.message || error));
         });
     }
+
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);
 
     const registerEmbeddedTab = (embeddedTab) => {
@@ -13827,28 +13459,63 @@ function buildShell(shellKey) {
         registerShellTab(shellKey, embeddedTab, embeddedPanel, prepared.drawerContent);
     };
 
-    const leadingEmbeddedTabId = shellKey === 'left' ? 'api' : null;
-    const leadingEmbeddedTab = shellConfig.embeddedTabs.find(tab => tab.id === leadingEmbeddedTabId);
-    if (leadingEmbeddedTab) {
-        registerEmbeddedTab(leadingEmbeddedTab);
-    }
-
-    const samplingTab = shellConfig.customTabs.find(tab => tab.id === 'sampling');
-    if (samplingTab) {
-        const samplingPanel = createOnDemandShellPanel(shellKey, samplingTab, buildSamplingPanel);
-        registerShellTab(shellKey, samplingTab, samplingPanel, samplingPanel.searchRoot);
-    }
-
+    // Register embedded tabs
     for (const embeddedTab of shellConfig.embeddedTabs) {
-        if (embeddedTab.id === leadingEmbeddedTabId) {
-            continue;
-        }
-
         registerEmbeddedTab(embeddedTab);
     }
 
+    // Handle custom tabs
     for (const customTab of shellConfig.customTabs) {
         if (customTab.id === 'sampling') {
+            const samplingPanel = createOnDemandShellPanel(shellKey, customTab, buildSamplingPanel);
+            registerShellTab(shellKey, customTab, samplingPanel, samplingPanel.searchRoot);
+            continue;
+        }
+
+        if (customTab.id === 'prompting') {
+            // Prompting tab gets presets drawer content (the original left shell content)
+            const promptingPanel = createShellPanel(customTab);
+            if (shellKey === 'left') {
+                preparePromptingPanel(originalContent);
+                promptingPanel.scroller.appendChild(originalContent);
+            }
+            promptingPanel.onActivate = () => {
+                updatePromptingPanel(promptingPanel.panel);
+                void getShellState('left')?.tabs.get('sampling')?.ensureReady?.().then(() => updatePromptingPanel(promptingPanel.panel));
+            };
+            $(document).on('change.sbPromptingPanel', '#main_api, #chat_completion_source, #textgen_type', () => {
+                window.requestAnimationFrame(() => updatePromptingPanel(promptingPanel.panel));
+            });
+            registerShellTab(shellKey, customTab, promptingPanel, originalContent);
+            continue;
+        }
+
+        if (shellKey === 'left' && customTab.id === 'editor') {
+            // Build eagerly so template adoption never parks text bodies in an unmounted workspace.
+            const editorPanel = buildEditorPanel();
+            registerShellTab(shellKey, customTab, editorPanel, editorPanel.searchRoot);
+            $(document).on('change.sbEditorPanel input.sbEditorPanel', '#settings_preset_openai, #sysprompt_select, #instruct_presets, #context_presets, #sysprompt_enabled', () => {
+                window.requestAnimationFrame(() => updateEditorPanel(editorPanel.panel));
+            });
+            const systemBlock = document.getElementById('SystemPromptBlock');
+            if (systemBlock instanceof HTMLElement) {
+                new MutationObserver(() => updateEditorPanel(editorPanel.panel)).observe(systemBlock, { attributes: true, attributeFilter: ['class'] });
+            }
+            continue;
+        }
+
+        if (customTab.id === 'context') {
+            // Context tab gets advanced formatting drawer content
+            const formattingPrep = prepareEmbeddedDrawer('advanced-formatting-button');
+            if (formattingPrep) {
+                const contextPanel = createShellPanel(customTab);
+                contextPanel.scroller.appendChild(formattingPrep.drawer);
+                contextPanel.onActivate = () => {
+                    groupAdvancedFormattingIntoDrawers();
+                    updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
+                };
+                registerShellTab(shellKey, customTab, contextPanel, formattingPrep.drawerContent);
+            }
             continue;
         }
 
@@ -13858,21 +13525,85 @@ function buildShell(shellKey) {
             continue;
         }
 
-        if (customTab.id === 'server') {
-            const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildServerAdminPanel());
+        if (customTab.id === 'messages') {
+            // Phase 6B: Messages owns a permanent container built once by splitUserSettingsContent().
+            const panel = createShellPanel(customTab);
+            if (userSettingsSplit) {
+                panel.scroller.appendChild(userSettingsSplit.messages);
+            }
+            panel.ensureReady = initializeSettingsPanel;
+            registerShellTab(shellKey, customTab, panel);
+            continue;
+        }
+
+        if (customTab.id === 'interface') {
+            // Phase 6C: Interface owns a permanent container built once by splitUserSettingsContent().
+            const panel = createShellPanel(customTab);
+            if (userSettingsSplit) {
+                panel.scroller.appendChild(userSettingsSplit.interface);
+            }
+            panel.ensureReady = initializeSettingsPanel;
+            // Interface shares the deferred controls authored by Appearance. Initialize them on
+            // direct entry as well as through search, before the post-injection presentation pass.
+            panel.onActivate = basePanel.onActivate;
+            registerShellTab(shellKey, customTab, panel);
+            continue;
+        }
+
+        if (customTab.id === 'data-security') {
+            const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => {
+                const loaded = await (await loadServerTools()).buildServerAdminPanel();
+
+                // The split lifts Import & Restore out of the settings block because it manages saved
+                // data rather than appearance. It leads the panel, ahead of the server cards, because
+                // bringing an existing setup over is the first thing a user comes here to do.
+                const dataSecurityContent = userSettingsSplit?.dataSecurity;
+                if (dataSecurityContent instanceof HTMLElement) {
+                    loaded.searchRoot?.prepend(dataSecurityContent);
+                    // SillyBunny: settings loaded while this control was detached from the document.
+                    const autoClearCache = dataSecurityContent.querySelector('#auto_clear_cache_on_update');
+                    const powerUserSettings = getSillyTavernContext()?.powerUserSettings;
+                    if (autoClearCache instanceof HTMLInputElement && powerUserSettings) {
+                        autoClearCache.checked = Boolean(powerUserSettings.auto_clear_cache_on_update);
+                    }
+                    // The language list, the account buttons and the version text are filled by
+                    // document-wide lookups that ran while this container was detached. They are
+                    // filled again from this container now that it is attached.
+                    addLanguagesToDropdown(dataSecurityContent);
+                    syncUserControls(dataSecurityContent);
+                    const versionDisplay = dataSecurityContent.querySelector('#version_display');
+                    if (versionDisplay instanceof HTMLElement && !versionDisplay.textContent.trim()) {
+                        versionDisplay.textContent = displayVersion;
+                    }
+                    // The container was detached while the settings panel initialized, so the work
+                    // that normally runs there, opening the drawers and restoring their stored open
+                    // state, could not reach it. It is done now that the tree is attached.
+                    openAllInlineDrawers(dataSecurityContent);
+                    bindInlineDrawerPersistence(dataSecurityContent);
+                    // SillyBunny: this action was detached when the initial shell bindings ran.
+                    bindClearCookiesAndCacheButton(dataSecurityContent);
+                    injectSillyTavernImportCard(dataSecurityContent.querySelector('#sb-import-tools-outlet'));
+                } else {
+                    // Without the split there is no Data & Security container to adopt, so the card
+                    // takes its theme block fallback rather than going missing.
+                    injectSillyTavernImportCard();
+                }
+
+                return loaded;
+            });
             registerShellTab(shellKey, customTab, serverPanel, serverPanel.searchRoot);
             continue;
         }
 
-        if (customTab.id === 'console-logs') {
-            const consoleLogsPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildConsoleLogsPanel());
-            registerShellTab(shellKey, customTab, consoleLogsPanel, consoleLogsPanel.searchRoot);
+        if (customTab.id === 'logs') {
+            const logsPanel = createOnDemandShellPanel(shellKey, customTab, async () => (await loadServerTools()).buildConsoleLogsPanel());
+            registerShellTab(shellKey, customTab, logsPanel, logsPanel.searchRoot);
         }
     }
 
     panelBody.append(...Array.from(shellState.tabs.values()).map(tabState => tabState.panel));
 
-    const storedTabId = migrateLegacyWorldInfoRoute(safeGetItem(shellConfig.storageKey));
+    const storedTabId = migrateTabId(shellKey, migrateLegacyWorldInfoRoute(safeGetItem(shellConfig.storageKey)));
     const nextActiveTab = shellState.tabs.has(storedTabId) ? storedTabId : shellConfig.defaultTabId;
     setActiveTab(shellKey, nextActiveTab);
 }
@@ -13884,68 +13615,9 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         return;
     }
 
-    const button = createElement('button', {
-        className: 'sb-shell-tab',
-        attrs: {
-            type: 'button',
-            role: 'tab',
-            tabindex: '-1',
-            'aria-selected': 'false',
-            'aria-label': tabConfig.label,
-            title: tabConfig.label,
-            'data-sb-tab': tabConfig.id,
-        },
-    });
-
-    button.innerHTML = `
-        <i class="fa-solid ${tabConfig.icon}" aria-hidden="true"></i>
-        <span class="sb-shell-tab-copy">
-            <strong>${tabConfig.label}</strong>
-        </span>
-    `;
-
-    button.addEventListener('click', () => {
-        setActiveTab(shellKey, tabConfig.id, { focusButton: false });
-        openShell(shellKey);
-    });
-
-    button.addEventListener('keydown', event => {
-        const buttons = Array.from(shellState.nav.querySelectorAll('.sb-shell-tab[data-sb-tab]')).filter(
-            item => item instanceof HTMLElement && !item.classList.contains('sb-shell-tab-mobile-rail-hidden'),
-        );
-        const currentIndex = buttons.indexOf(button);
-
-        if (currentIndex === -1) {
-            return;
-        }
-
-        const lastIndex = buttons.length - 1;
-        let nextIndex = currentIndex;
-
-        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-            nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
-        } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-            nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
-        } else if (event.key === 'Home') {
-            nextIndex = 0;
-        } else if (event.key === 'End') {
-            nextIndex = lastIndex;
-        } else {
-            return;
-        }
-
-        event.preventDefault();
-        const nextButton = buttons[nextIndex];
-        const nextTabId = nextButton?.getAttribute('data-sb-tab');
-
-        if (nextTabId) {
-            setActiveTab(shellKey, nextTabId, { focusButton: true });
-        }
-    });
-
+    // Tab buttons live in the settings page sidebar; the shell only tracks panel state.
     shellState.tabs.set(tabConfig.id, {
         ...tabConfig,
-        button,
         panel: panelBundle.panel,
         searchRoot: explicitSearchRoot ?? panelBundle.searchRoot ?? panelBundle.scroller,
         searchIndex: null,
@@ -13953,293 +13625,6 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         onActivate: panelBundle.onActivate ?? tabConfig.onActivate ?? null,
         onDeactivate: panelBundle.onDeactivate ?? tabConfig.onDeactivate ?? null,
     });
-    shellState.nav.appendChild(button);
-    shellState.updateNavScrollIndicators?.();
-    syncMobileShellRailActions(shellKey);
-}
-
-function createMobileShellRailDivider(label) {
-    return createElement('div', {
-        className: 'sb-shell-rail-divider',
-        attrs: {
-            role: 'separator',
-            'aria-label': label,
-        },
-    });
-}
-
-function createMobileShellRailButton(item, actionHandler, className = '') {
-    const action = normalizeMobileQuickAction({
-        type: item.type || 'tab',
-        shellKey: item.shellKey,
-        tabId: item.tabId,
-        icon: item.icon,
-        label: item.label,
-        sectionLabel: item.sectionLabel,
-        displayText: item.displayText,
-        dedupeKey: item.dedupeKey,
-    });
-
-    if (!action) {
-        return null;
-    }
-
-    const buttonAttrs = {
-        type: 'button',
-        title: action.label,
-        'aria-label': action.label,
-        'data-sb-rail-action': getMobileQuickActionKey(action),
-        'data-sb-rail-type': action.type,
-        'data-sb-rail-shell-key': action.shellKey,
-    };
-
-    if (action.tabId) {
-        buttonAttrs['data-sb-rail-tab-id'] = action.tabId;
-    }
-
-    const button = createElement('button', {
-        className: ['sb-shell-tab', 'sb-shell-rail-action', className].filter(Boolean).join(' '),
-        attrs: buttonAttrs,
-    });
-    const icon = createElement('i', {
-        className: `fa-solid ${action.icon || SB_MOBILE_QUICK_ACTION_ICON_FALLBACK}`,
-        attrs: {
-            'aria-hidden': 'true',
-        },
-    });
-    const copy = createElement('span', { className: 'sb-shell-tab-copy' });
-    const label = createElement('strong', { text: action.label });
-
-    copy.appendChild(label);
-    button.append(icon, copy);
-    button.addEventListener('click', () => actionHandler(action));
-    return button;
-}
-
-function createRailActionGroup(actions, groupLabel, className = '') {
-    const railGroup = createElement('div', {
-        className: ['sb-shell-rail-group', className].filter(Boolean).join(' '),
-        attrs: {
-            'aria-label': groupLabel,
-        },
-    });
-
-    for (const action of actions) {
-        const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-customize-action');
-        if (button) {
-            railGroup.appendChild(button);
-        }
-    }
-
-    return railGroup;
-}
-
-function getBuiltInRailActionsForShell(shellKey) {
-    const shellState = getShellState(shellKey);
-    if (!shellState?.tabs) {
-        return [];
-    }
-
-    const actions = [];
-    for (const tabState of shellState.tabs.values()) {
-        actions.push({
-            type: 'tab',
-            shellKey,
-            tabId: tabState.id,
-            icon: tabState.icon,
-            label: tabState.label,
-        });
-    }
-    return actions;
-}
-
-function getAllBuiltInRailActionKeys() {
-    const actionKeys = new Set();
-
-    for (const [shellKey, shellConfig] of Object.entries(SB_SHELLS)) {
-        const tabConfigs = [
-            shellConfig.baseTab,
-            ...(Array.isArray(shellConfig.embeddedTabs) ? shellConfig.embeddedTabs : []),
-            ...(Array.isArray(shellConfig.customTabs) ? shellConfig.customTabs : []),
-        ];
-
-        for (const tabConfig of tabConfigs) {
-            if (!tabConfig?.id) {
-                continue;
-            }
-
-            actionKeys.add(getMobileQuickActionKey({
-                type: 'tab',
-                shellKey,
-                tabId: tabConfig.id,
-                icon: tabConfig.icon,
-                label: tabConfig.label,
-            }));
-        }
-    }
-
-    return actionKeys;
-}
-
-function getBuiltInRailLabelForShell(shellKey) {
-    return shellKey === 'right' ? 'Customize' : 'Workspace';
-}
-
-function syncMobileShellRailActionState(activeShellKey = '', activeTabId = '') {
-    document.querySelectorAll('.sb-shell-rail-action[data-sb-rail-shell-key]').forEach(button => {
-        if (!(button instanceof HTMLElement)) {
-            return;
-        }
-
-        const isActive = button.dataset.sbRailShellKey === activeShellKey && button.dataset.sbRailTabId === activeTabId;
-        button.classList.toggle('is-active', isActive);
-        button.setAttribute('aria-selected', String(isActive));
-        if (isActive) {
-            button.setAttribute('aria-current', 'page');
-        } else {
-            button.removeAttribute('aria-current');
-        }
-    });
-}
-
-function syncMobileShellRailTabVisibility(shellState, currentShellKey, hideCustomizeTabs) {
-    for (const tabState of shellState.tabs.values()) {
-        if (!(tabState.button instanceof HTMLElement)) {
-            continue;
-        }
-
-        const shouldHide = hideCustomizeTabs;
-        const isActive = tabState.id === shellState.activeTabId;
-        tabState.button.classList.toggle('sb-shell-tab-mobile-rail-hidden', shouldHide);
-        tabState.button.setAttribute('aria-hidden', String(shouldHide));
-        tabState.button.setAttribute('tabindex', isActive && !shouldHide ? '0' : '-1');
-        tabState.button.toggleAttribute('inert', shouldHide);
-    }
-}
-
-function syncMobileShellRailActions(shellKey = null) {
-    const shellKeys = shellKey ? [shellKey] : ['left', 'right'];
-    const railMode = getActiveShellRailMode();
-    const navState = getNavState(railMode);
-    const hasVerticalRail = navState.layout === 'vertical';
-    const railQuickActionState = getQuickActionState(railMode);
-
-    const prevSyncingRail = sbIsSyncingRailActions;
-    sbIsSyncingRailActions = true;
-
-    try {
-        for (const currentShellKey of shellKeys) {
-            const shellState = getShellState(currentShellKey);
-            if (!(shellState?.nav instanceof HTMLElement)) {
-                continue;
-            }
-
-            let shouldHideCustomizeTabs = false;
-
-            const createRailBlock = (position) => createElement('div', {
-                className: `sb-shell-rail-shortcuts sb-shell-rail-shortcuts-${position}`,
-                attrs: {
-                    'aria-hidden': 'false',
-                },
-            });
-
-            let beforeBlock = null;
-            let afterBlock = null;
-
-            if (hasVerticalRail) {
-                const builtInRailLabel = getBuiltInRailLabelForShell(currentShellKey);
-                const replacementAction = railMode === 'desktop' && navState.replaceQuickActions
-                    ? createNavReplacementQuickAction(navState.replacementTarget)
-                    : null;
-                const railActionPlan = sbMobileShellLifecycle.railModel.resolveActionVisibility({
-                    hasVerticalRail,
-                    showCustomize: hasVerticalRail || navState.showCustomize,
-                    showQuickActions: navState.showQuickActions,
-                    builtInActions: getBuiltInRailActionsForShell(currentShellKey),
-                    builtInActionKeys: Array.from(getAllBuiltInRailActionKeys()),
-                    quickActions: railQuickActionState,
-                    replacementAction,
-                    builtInGroupLabel: builtInRailLabel,
-                });
-                shouldHideCustomizeTabs = railActionPlan.shouldHideCustomizeTabs;
-
-                const createQuickActionsGroup = (actions) => {
-                    const quickActionsGroup = createElement('div', {
-                        className: 'sb-shell-rail-group sb-shell-rail-group-quick-actions',
-                        attrs: {
-                            'aria-label': 'Quick Actions',
-                        },
-                    });
-
-                    if (actions.length) {
-                        for (const action of actions) {
-                            const button = createMobileShellRailButton(action, activateMobileNavAction, 'sb-shell-rail-quick-action');
-                            if (button) {
-                                quickActionsGroup.appendChild(button);
-                            }
-                        }
-                    } else {
-                        quickActionsGroup.appendChild(createElement('div', {
-                            className: 'sb-shell-rail-empty',
-                            text: 'No Quick Actions',
-                        }));
-                    }
-
-                    return quickActionsGroup;
-                };
-
-                const pendingBefore = createRailBlock('before');
-
-                for (const group of railActionPlan.beforeGroups) {
-                    pendingBefore.appendChild(createMobileShellRailDivider(group.label));
-                    pendingBefore.appendChild(createRailActionGroup(
-                        group.actions,
-                        group.label,
-                        `sb-shell-rail-group-${group.label.toLowerCase()}`,
-                    ));
-                }
-
-                if (pendingBefore.children.length > 0) {
-                    beforeBlock = pendingBefore;
-                }
-
-                if (railActionPlan.afterGroups.length > 0) {
-                    const pendingAfter = createRailBlock('after');
-                    for (const group of railActionPlan.afterGroups) {
-                        pendingAfter.append(
-                            createMobileShellRailDivider(group.label),
-                            createQuickActionsGroup(group.actions),
-                        );
-                    }
-                    afterBlock = pendingAfter;
-                }
-            }
-
-            shellState.nav.querySelectorAll('.sb-shell-rail-shortcuts').forEach(element => element.remove());
-            syncMobileShellRailTabVisibility(shellState, currentShellKey, shouldHideCustomizeTabs);
-
-            if (beforeBlock) {
-                shellState.nav.prepend(beforeBlock);
-            }
-            if (afterBlock) {
-                shellState.nav.appendChild(afterBlock);
-            }
-
-            shellState.updateNavScrollIndicators?.();
-        }
-
-        const activeShellKey = ['left', 'right'].find(currentShellKey => isShellOpen(currentShellKey)) ?? (shellKeys.length === 1 ? shellKeys[0] : '');
-        const activeShellState = activeShellKey ? getShellState(activeShellKey) : null;
-        syncMobileShellRailActionState(activeShellKey, activeShellState?.activeTabId ?? '');
-    } finally {
-        if (!prevSyncingRail) {
-            requestAnimationFrame(() => {
-                sbIsSyncingRailActions = false;
-            });
-        } else {
-            sbIsSyncingRailActions = prevSyncingRail;
-        }
-    }
 }
 
 function routeDrawerTarget(targetId) {
@@ -14277,7 +13662,6 @@ function queueMobileShellActivationRefresh() {
         return;
     }
 
-    queueMobileShellDrawerBoundsSync();
     queueMobileViewportStateSync();
 }
 
@@ -14407,21 +13791,6 @@ function bindWorldInfoRoute() {
         });
 }
 
-function activateMobileNavPageTarget(target) {
-    const config = getMobileNavReplacementTargetConfig(target);
-
-    closeMobileNav();
-
-    if (config.shellKey === 'characters') {
-        openCharacterPanelTab(config.tabId);
-        return;
-    }
-
-    if (config.shellKey && config.tabId) {
-        openShell(config.shellKey, config.tabId);
-    }
-}
-
 function updateMobileNavButtonLabel() {
     const button = document.getElementById('sb-hamburger');
     if (!(button instanceof HTMLElement)) {
@@ -14432,14 +13801,7 @@ function updateMobileNavButtonLabel() {
     const isOpen = overlay instanceof HTMLElement
         && !overlay.hidden
         && overlay.getAttribute('aria-hidden') === 'false';
-    const replacement = getMobileNavReplacementTargetConfig();
-    let title = 'Open navigation';
-
-    if (isOpen) {
-        title = 'Close navigation';
-    } else if (sbState.mobileNav.replaceQuickActions) {
-        title = `Open ${replacement.label}`;
-    }
+    const title = isOpen ? 'Close navigation' : 'Open navigation';
 
     button.title = title;
     button.setAttribute('aria-label', title);
@@ -14638,12 +14000,29 @@ function setMobileNavOpenState(isOpen) {
         sbState.mobileNav.lastOpenedAt = performance.now();
     }
 
-    overlay.hidden = navState.overlayHidden;
+    if (navState.shouldOpen || !wasOpen) {
+        overlay.hidden = navState.overlayHidden;
+    }
     overlay.classList.toggle('sb-nav-open', navState.shouldOpen);
     overlay.setAttribute('aria-hidden', navState.overlayAriaHidden);
 
     if ('inert' in overlay) {
         overlay.inert = navState.overlayInert;
+    }
+
+    if (navState.shouldOpen && !wasOpen) {
+        animateIn(overlay.querySelector('#sb-mobile-nav-content'), [
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+            { opacity: 1, transform: 'none' },
+        ], SPRING_SHEET);
+    } else if (!navState.shouldOpen && wasOpen) {
+        overlay.hidden = false;
+        animateOut(overlay.querySelector('#sb-mobile-nav-content'), [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateY(12px) scale(0.98)' },
+        ], () => {
+            overlay.hidden = true;
+        }, { enabled: isMobileViewport(), duration: MOTION_FAST });
     }
 
     button.classList.toggle('is-open', navState.shouldOpen);
@@ -14672,61 +14051,21 @@ function setMobileNavOpenState(isOpen) {
     }
 }
 
-function toggleMobileNav() {
-    const overlay = ensureMobileNavReady();
-
-    if (!(overlay instanceof HTMLElement)) {
-        return;
-    }
-
-    const isOpen = !overlay.hidden && overlay.getAttribute('aria-hidden') === 'false';
-    const toggleIntent = sbMobileShellLifecycle.nav.resolveToggleIntent({
-        isMobileViewport: isMobileViewport(),
-        isReplacementEnabled: sbState.mobileNav.replaceQuickActions,
-        isOpen,
-    });
-
-    if (toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.ACTIVATE_PAGE_TARGET) {
-        activateMobileNavPageTarget(sbState.mobileNav.replacementTarget);
-        return;
-    }
-
-    if (toggleIntent.shouldCloseCompetingPanels) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.NAV,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    setMobileNavOpenState(toggleIntent.action === MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV);
-}
-
 function closeMobileNav() {
     setMobileNavOpenState(false);
 }
 
 function injectCharacterDrawerControls() {
     getCharacterPanel()?.classList.add('sb-character-drawer-root');
-    ensureCharacterListToolbarLayout();
-    bindCharacterEditorFullscreenToggle();
+    bindCharacterDrawerEscapeHandler();
     bindCreatorNotesFullscreen();
-
-    const shellCloseButton = document.getElementById('sb_character_shell_close');
-    if (shellCloseButton instanceof HTMLButtonElement && shellCloseButton.dataset.sbBound !== 'true') {
-        shellCloseButton.dataset.sbBound = 'true';
-        shellCloseButton.addEventListener('click', () => closeCharacterPanel());
-    }
 
     const modeToggle = document.getElementById('sb_character_mode_toggle');
     if (modeToggle instanceof HTMLElement && modeToggle.dataset.sbBound !== 'true') {
+        // SillyBunny: mode toggle removed from Characters panel (feat/v1.9.0-ui-overhaul).
+        // Binding retained as a no-op guard so upstream code paths that call
+        // injectCharacterDrawerControls don't error when the element is absent.
         modeToggle.dataset.sbBound = 'true';
-        modeToggle.querySelectorAll('[data-sb-character-mode]').forEach((button) => {
-            if (!(button instanceof HTMLButtonElement)) {
-                return;
-            }
-
-            button.addEventListener('click', () => setCharacterShellMode(button.dataset.sbCharacterMode));
-        });
     }
 
     if (document.documentElement.dataset.sbCharacterModeStateBound !== 'true') {
@@ -14771,22 +14110,6 @@ function injectCharacterDrawerControls() {
         importTab.addEventListener('click', () => openCharacterImportTab());
     }
 
-    const importFileAction = document.getElementById('sb_character_import_file_action');
-    if (importFileAction instanceof HTMLButtonElement && importFileAction.dataset.sbBound !== 'true') {
-        importFileAction.dataset.sbBound = 'true';
-        importFileAction.addEventListener('click', () => {
-            document.getElementById('character_import_button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        });
-    }
-
-    const importUrlAction = document.getElementById('sb_character_import_url_action');
-    if (importUrlAction instanceof HTMLButtonElement && importUrlAction.dataset.sbBound !== 'true') {
-        importUrlAction.dataset.sbBound = 'true';
-        importUrlAction.addEventListener('click', () => {
-            document.getElementById('external_import_button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        });
-    }
-
     if (document.documentElement.dataset.sbCharacterImportPreserveBound !== 'true') {
         document.documentElement.dataset.sbCharacterImportPreserveBound = 'true';
         document.addEventListener('sillybunny:character-import-tab-preserve', () => {
@@ -14804,6 +14127,7 @@ function injectCharacterDrawerControls() {
     if (emptyCreateButton instanceof HTMLButtonElement && emptyCreateButton.dataset.sbBound !== 'true') {
         emptyCreateButton.dataset.sbBound = 'true';
         emptyCreateButton.addEventListener('click', () => {
+            globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.('characters');
             setCharacterEditorEmptyState(false);
             setCharacterPersonaPanelVisible(false);
             setCharacterImportPanelVisible(false);
@@ -14832,7 +14156,6 @@ function bindCharacterEditorExitButton() {
 
     button.dataset.sbBound = 'true';
     button.addEventListener('click', () => {
-        setCharacterEditorFullscreenState(false);
         closeCharacterPanel();
     });
 }
@@ -14853,12 +14176,17 @@ function setInlineDrawerExpanded(drawer, expand) {
     icon.classList.toggle('fa-circle-chevron-down', !expand);
     icon.classList.toggle('up', expand);
     icon.classList.toggle('fa-circle-chevron-up', expand);
-    content.style.display = expand ? 'block' : 'none';
+    const display = expand ? 'block' : 'none';
+    if (content.style.display !== display) content.style.display = display;
 }
 
 function getLegacySettingsDrawerStorageKey(drawer) {
-    const root = document.getElementById('user-settings-block-content');
-    if (!(root instanceof HTMLElement) || !(drawer instanceof HTMLElement) || !root.contains(drawer)) {
+    if (!(drawer instanceof HTMLElement)) {
+        return null;
+    }
+
+    const root = getUserSettingsContentRoots().find(candidate => candidate.contains(drawer));
+    if (!root) {
         return null;
     }
 
@@ -15030,6 +14358,44 @@ function bindInlineDrawerPersistence(root = document) {
     }
 }
 
+/**
+ * Re-flattens drawers that a panel authored after its own activation pass had already run.
+ *
+ * The Prompt Manager rebuilds its header with `innerHTML` on every render, which brings back the
+ * collapsible `#completion_prompt_manager_drawer` band each time -- one refresh after the tab was
+ * flattened. The persistence observer already watches these subtrees and is the only thing that
+ * reliably fires afterwards, so the flatten rides along with the same debounce. It is idempotent,
+ * and it skips any panel with no drawers left, so the common case is one query per panel.
+ *
+ * Only a visible panel is re-flattened: every activation already runs the full pass through
+ * `flattenSettingsPanelDrawers`, so a hidden panel catches up when it is shown. Re-running it on
+ * hidden panels cost a full Prompting rebuild for unrelated mutations (closing search, hotkeys), and
+ * the Prompting pass decides group visibility with `checkVisibility()`, which is false for every
+ * control inside a hidden panel -- it hid each group until the next activation re-showed it. Each
+ * shell keeps its own active panel and the settings page can be closed, so the active class alone
+ * does not mean the panel is on screen.
+ */
+function reflattenRuntimeDrawers() {
+    for (const panel of document.querySelectorAll('section.sb-shell-panel.sb-shell-panel-active[data-sb-panel]')) {
+        if (!(panel.checkVisibility?.() ?? panel.getClientRects().length > 0)) continue;
+        const tabId = panel.dataset.sbPanel;
+        if (tabId === 'prompting') {
+            updatePromptingPanel(panel);
+            continue;
+        }
+        if (tabId === 'editor' && panel.closest('[data-sb-shell-key="left"]')) {
+            updateEditorPanel(panel);
+            continue;
+        }
+        if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId) || !panel.querySelector('.inline-drawer')) {
+            continue;
+        }
+        flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
+        normalizeSettingsPresentation(panel, { name: tabId });
+        if (tabId === 'context') positionAdvancedFormattingHelpLink();
+    }
+}
+
 function queueInlineDrawerPersistenceBind() {
     if (sbInlineDrawerPersistenceQueued) {
         return;
@@ -15039,13 +14405,14 @@ function queueInlineDrawerPersistenceBind() {
     window.requestAnimationFrame(() => {
         sbInlineDrawerPersistenceQueued = false;
         bindInlineDrawerPersistence(document.body);
+        reflattenRuntimeDrawers();
     });
 }
 
 function getInlineDrawerPersistenceRoots() {
     return [
         document.getElementById('left-nav-panel'),
-        document.getElementById('user-settings-block-content'),
+        ...getUserSettingsContentRoots(),
         document.getElementById('WorldInfo'),
         getCharacterPanel(),
     ].filter(element => element instanceof HTMLElement);
@@ -15061,7 +14428,12 @@ function ensureInlineDrawerPersistenceObserver() {
         return;
     }
 
-    sbInlineDrawerPersistenceObserver = new MutationObserver(() => queueInlineDrawerPersistenceBind());
+    sbInlineDrawerPersistenceObserver = new MutationObserver(mutations => {
+        // Only newly authored drawers need binding/flattening, not token or autosave text updates.
+        const addedDrawer = mutations.some(mutation => [...mutation.addedNodes].some(node => node instanceof Element
+            && (node.matches('.inline-drawer') || node.querySelector('.inline-drawer'))));
+        if (addedDrawer) queueInlineDrawerPersistenceBind();
+    });
     for (const root of roots) {
         sbInlineDrawerPersistenceObserver.observe(root, { childList: true, subtree: true });
     }
@@ -15087,13 +14459,8 @@ function syncMobileViewportState() {
     });
     const stepHandlers = {
         [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
-        [viewportSyncStep.SYNC_MOBILE_SHELL_DRAWER_BOUNDS]: () => {
-            syncMobileShellDrawerBounds();
-        },
         [viewportSyncStep.CLOSE_MOBILE_NAV]: () => closeMobileNav(),
         [viewportSyncStep.CLOSE_MOBILE_CHAT_TOOLS]: () => closeMobileChatTools(),
-        [viewportSyncStep.SYNC_MOBILE_SHELL_RAIL_ACTIONS]: () => syncMobileShellRailActions(),
-        [viewportSyncStep.SYNC_DESKTOP_SHELL_SIZING]: () => syncDesktopShellSizing(),
         [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
         [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
         [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
@@ -15134,6 +14501,29 @@ function queueMobileViewportStateSync() {
     });
 }
 
+const sbMobileShellUiState = { initialized: false };
+
+function initializeMobileShellUi() {
+    if (sbMobileShellUiState.initialized) {
+        return;
+    }
+    sbMobileShellUiState.initialized = true;
+
+    document.documentElement.dataset.sbMobileUi = 'chat-bar';
+    initializeMobileBottomBar();
+    applyMobileShellUiState();
+
+    window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', applyMobileShellUiState);
+}
+
+function applyMobileShellUiState() {
+    const isMobile = isMobileViewport();
+    document.documentElement.dataset.sbMobileUiMode = isMobile ? 'mobile' : 'desktop';
+    syncMobileBottomBar(isMobile);
+    const search = getUniversalSearchState();
+    if (search.expanded) renderUniversalSearchResults(search.input?.value ?? '');
+}
+
 function reinitSelect2AfterShell() {
     const modelSelectors = [
         '#mancer_model',
@@ -15163,19 +14553,32 @@ function reinitSelect2AfterShell() {
         }
     } else {
         // On desktop, reinitialize Select2 after DOM reparenting
-        const apiDropdownParent = $('#rm_api_block');
+        // SillyBunny (feat/v1.9.0-ui-overhaul): the API controls live in the Connections panel now,
+        // which moved them out of `#rm_api_block`; the block is the fallback before it is built.
+        const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
         const select2Defaults = {
             dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
             minimumResultsForSearch: 0,
         };
         const allSelectors = [...modelSelectors, '.openrouter_quantizations', '.openrouter_providers', '#nanogpt_allowed_providers', '#nanogpt_ignored_providers'];
-        for (const selector of allSelectors) {
-            const $el = $(selector);
-            if ($el.length && $el.data('select2')) {
+        // SillyBunny (feat/v1.9.0-ui-overhaul): API pickers are initialised before the Connections
+        // panel exists, so their stored `dropdownParent` is the emptied 1px `#rm_api_block`, which
+        // clips every menu. The panel parent must win over the stored config, and pickers outside
+        // this list (the openai.js model selects) need the same fix.
+        const panelSelects = apiDropdownParent.length
+            ? apiDropdownParent.find('select').filter((_, el) => {
+                const parent = $(el).data('select2')?.options.get('dropdownParent')?.[0];
+                return Boolean(parent) && parent !== apiDropdownParent[0];
+            }).toArray()
+            : [];
+        const targets = new Set([...allSelectors.flatMap(selector => $(selector).toArray()), ...panelSelects]);
+        for (const el of targets) {
+            const $el = $(el);
+            if ($el.data('select2')) {
                 try {
                     const config = $el.data('select2').options.options;
                     $el.select2('destroy');
-                    $el.select2({ ...select2Defaults, ...config });
+                    $el.select2({ ...select2Defaults, ...config, dropdownParent: select2Defaults.dropdownParent });
                 } catch {
                     // Element may not have been initialized yet
                 }
@@ -15185,7 +14588,7 @@ function reinitSelect2AfterShell() {
 }
 
 function injectModelFilterInput($select) {
-    if (!$select.length || $select.prev('.sb-model-filter').length) {
+    if (!$select.length || $select[0].closest('.ds-select-row') || $select.prev('.sb-model-filter').length) {
         return;
     }
 
@@ -15492,7 +14895,8 @@ function composePersonaDescriptionFromContext(context, avatarId, activeIds = nul
     for (const appendix of appendices) {
         const description = String(appendix.description ?? '').trim();
         if (activeIdSet.has(appendix.id) && description) {
-            chunks.push(`[${appendix.name}]\n${description}`);
+            // SillyBunny: match persona/Conversation note composition — see docs/ui-migration.md
+            chunks.push(`(${appendix.name})\n${description}`);
         }
     }
 
@@ -15555,11 +14959,7 @@ function quoteSlashCommandArgument(value) {
 
 function getCurrentPersonaSelection(context = getSillyTavernContext()) {
     const personas = context?.powerUserSettings?.personas ?? {};
-    const selectedAvatarId = document.querySelector('#user_avatar_block .avatar-container.selected[data-avatar-id]')?.getAttribute('data-avatar-id')
-        ?? '';
-    const currentAvatarId = String(context?.userAvatar ?? '').trim()
-        || String(selectedAvatarId).trim()
-        || '';
+    const currentAvatarId = String(context?.userAvatar ?? '').trim();
     const currentName = personas[currentAvatarId] || context?.name1 || 'You';
 
     return {
@@ -15864,22 +15264,12 @@ function renderPersonaPickerAppendixControls(picker, context, avatarId) {
     picker.appendChild(section);
 }
 
-function openPersonaAppendicesManager() {
+async function openPersonaAppendicesManager() {
+    const { currentAvatarId } = getCurrentPersonaSelection();
     closePersonaPicker();
-    openCharacterPanelTab('persona');
-
-    window.setTimeout(() => {
-        document.getElementById('persona_workspace_tab_edit')?.click();
-        document.getElementById('persona_editor_tab_prompt')?.click();
-        const appendicesHeading = document.getElementById('persona_appendices_heading');
-        const addButton = document.getElementById('persona_appendix_add');
-        const appendicesBlock = appendicesHeading?.closest('details');
-        if (appendicesBlock instanceof HTMLDetailsElement) {
-            appendicesBlock.open = true;
-        }
-        scrollElementIntoManagedView(appendicesHeading ?? addButton, { block: 'center', behavior: getReducedMotionScrollBehavior() });
-        addButton?.focus({ preventScroll: true });
-    }, 160);
+    // SillyBunny: bridge Manage directly to the active persona's notes — see docs/ui-migration.md
+    const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
+    await openPersonaEditor({ avatarId: currentAvatarId, section: 'notes' });
 }
 
 function positionPersonaPicker(picker, bubble) {
@@ -15941,19 +15331,13 @@ async function selectPersonaOption(option, picker, avatarId, context) {
             await execSlash(`/persona-set ${quoteSlashCommandArgument(avatarId)}`);
             switched = true;
         } catch (error) {
-            console.warn('[SillyBunny] Persona switch via slash command failed, falling back to DOM selection.', error);
+            console.warn('[SillyBunny] Persona switch via slash command failed, falling back to the persona API.', error);
         }
     }
 
     if (!switched) {
-        // Fallback: try clicking the DOM avatar
-        const avatarBlock = document.getElementById('user_avatar_block');
-        const domAvatar = avatarBlock?.querySelector(`.avatar-container[title="${CSS.escape(avatarId)}"]`);
-        if (domAvatar instanceof HTMLElement) {
-            domAvatar.click();
-        } else {
-            openCharacterPanelTab('persona');
-        }
+        const { usePersona } = await import('./personas.js');
+        await usePersona(avatarId);
     }
 
     updatePersonaBubble();
@@ -16065,11 +15449,14 @@ function initAll() {
     sbState.initObserver = null;
     sbState.initialized = true;
 
+    // Sizzle caches compiled selectors, not DOM results. Its default 50-entry cache thrashes across
+    // the shell's 120+ delegated input selectors, recompiling them for every keystroke.
+    if (window.jQuery?.expr) window.jQuery.expr.cacheLength = Math.max(window.jQuery.expr.cacheLength, 512);
+
     restorePersistedTopbarState();
+    migrateLegacyNavigationState();
     seedTopbarScaleDefaults();
     hideHostToggles();
-    forceDrawerState(leftShellRoot, false, getShellConfig('left').hostIconSelector);
-    forceDrawerState(rightShellRoot, false, getShellConfig('right').hostIconSelector);
     buildShell('left');
     buildShell('right');
     buildMobileNav();
@@ -16077,24 +15464,20 @@ function initAll() {
     injectCharacterDrawerControls();
     bindCharacterEditorExitButton();
     bindCharacterDrawerStateObserver();
-    setShellTheme(sbState.theme, { persist: false });
+    prewarmSettingsPageRoots();
+    applyShellTheme();
     setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
     setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
-    setDesktopShellSnapToChatWidth(sbState.shellSizing.snapToChatWidth, { persist: false });
-    setCharacterDrawerRightLock(sbState.characterDrawer.rightLocked, { persist: false });
     setTopbarScale('desktop', sbState.topbarScale.desktop, { persist: false });
     setTopbarScale('mobile', sbState.topbarScale.mobile, { persist: false });
     setBottomBarScale(sbState.bottomBarScale, { persist: false });
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });
-    applyDesktopNavPreferences();
-    applyMobileNavPreferences();
     bindComposerControlPlacement();
     initChatAvatarVariables();
-    syncDesktopShellSizing();
     buildTopBar();
     // Must follow buildTopBar(): it rearranges the buttons that call creates.
     applyTopbarIconsOnlyPreference();
@@ -16115,8 +15498,13 @@ function initAll() {
     scheduleChatbarRefresh(0);
     interceptDrawerOpeners();
     bindWorldInfoRoute();
-    bindCharacterEditorSubTabs();
     applyDefaultDrawerStates();
+    // SillyBunny: Phase 1 — settings page + mode toggle + keyboard shortcuts (feat/v1.9.0-ui-overhaul)
+    initSettingsPageClose();
+    initModeToggle();
+    initSettingsKeyboardShortcuts();
+    // SillyBunny: Phase 3b — character editor controller (feat/v1.9.0-ui-overhaul)
+    initCharacterEditor();
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
@@ -16125,7 +15513,6 @@ function initAll() {
     window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
     // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
     window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
-    window.visualViewport?.addEventListener('resize', syncDesktopShellSizing, { passive: true });
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
@@ -16157,12 +15544,6 @@ function initAll() {
         document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }
 
-    // SillyBunny: re-sync shell width when the chat width slider changes so settings
-    // panels narrow alongside the chat container (matches standard ST behaviour).
-    $(document).on('input change mouseup touchend', '#chat_width_slider', () => {
-        syncDesktopShellSizing();
-    });
-
     // Reinitialize Select2 widgets after shell reparents DOM elements.
     // Select2 bindings break when elements are moved in the DOM.
     reinitSelect2AfterShell();
@@ -16170,11 +15551,26 @@ function initAll() {
     // Group Advanced Formatting sections into collapsible drawers
     groupAdvancedFormattingIntoDrawers();
 
+    initializeMobileShellUi();
+    initializeMessageActions();
+    initializeToastMotion();
+    initializeColorPickers();
+    initializePresetAutosave();
+
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell || {});
     globalThis.SillyBunnyShell = Object.assign(sillyBunnyShell, {
         openTab(shellKey, tabId) {
             if (shellKey === 'characters') {
                 openCharacterPanelTab(tabId);
+                // SillyBunny: bridges await the atomic reveal, not just module mounting — see docs/ui-migration.md
+                if (['persona', 'world-info', 'import'].includes(tabId)) {
+                    if (isMobileViewport()) setSettingsMobileContentView(true);
+                    return characterPanelRevealPromise;
+                }
+                if (tabId === 'characters' || tabId === 'groups') {
+                    if (isMobileViewport()) setSettingsMobileContentView(true);
+                    return characterListViewPromise;
+                }
                 return;
             }
 
@@ -16199,8 +15595,8 @@ function initAll() {
             closeAllDropdowns({ except: 'search' });
             setUniversalSearchOpenState(true, { focusInput });
         },
-        applyTheme(themeId) {
-            setShellTheme(themeId);
+        applyTheme() {
+            applyShellTheme();
         },
         setFrontendIcon(iconId) {
             setFrontendIconPreference(iconId);
@@ -16223,9 +15619,8 @@ function initAll() {
         setTopbarIconsOnly(mode, value) {
             setTopbarIconsOnly(mode, value);
         },
-        setDesktopShellSnapToChatWidth(value) {
-            setDesktopShellSnapToChatWidth(value);
-        },
+        // Kept as a no-op for extensions; panels are no longer resizable drawers.
+        setDesktopShellSnapToChatWidth() {},
         setMessageStyle,
         openChatTools() {
             if (isMobileViewport()) {
@@ -16268,6 +15663,937 @@ function initAll() {
         getCompactMode() {
             return sbState.compactMode;
         },
+    });
+}
+
+// ── Phase 1: settings page + mode pill + keyboard shortcuts ──────────────
+// SillyBunny feat/v1.9.0-ui-overhaul
+
+const sbSettingsState = {
+    open: false,
+    activeShell: /** @type {string|null} */ (null),
+    activeTabId: null,
+    // Incremented each time a transition starts; guards stale callbacks after a
+    // fast reopen or close.
+    closeGen: 0,
+    pageAnimation: null,
+    closeTimer: 0,
+    // Mobile only: tracks whether the content pane is visible (true) or the
+    // sidebar is visible (false). Always false on desktop.
+    mobileContentView: false,
+};
+
+function getSettingsPage() {
+    return document.getElementById('sb-settings-page');
+}
+
+function clearSettingsAnimationState() {
+    const page = getSettingsPage();
+    if (page?.classList.contains('sb-settings-page--opening')) {
+        page.classList.remove('sb-settings-page--opening');
+    }
+    if (sbSettingsState.pageAnimation) {
+        sbSettingsState.pageAnimation.onfinish = null;
+        sbSettingsState.pageAnimation.cancel();
+        sbSettingsState.pageAnimation = null;
+    }
+
+    if (sbSettingsState.closeTimer) {
+        clearTimeout(sbSettingsState.closeTimer);
+        sbSettingsState.closeTimer = 0;
+    }
+}
+
+function animateSettingsPage(page, direction, onFinish) {
+    if (prefersReducedMotion() || typeof page.animate !== 'function') {
+        onFinish();
+        return;
+    }
+
+    const isOpening = direction === 'in';
+    const animation = page.animate(
+        [
+            {
+                opacity: isOpening ? 0 : 1,
+                transform: isOpening ? 'scale(0.96)' : 'scale(1)',
+            },
+            {
+                opacity: isOpening ? 1 : 0,
+                transform: isOpening ? 'scale(1)' : 'scale(0.97)',
+            },
+        ],
+        {
+            duration: isOpening ? 250 : 200,
+            easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+            fill: 'forwards',
+        },
+    );
+
+    sbSettingsState.pageAnimation = animation;
+    animation.onfinish = () => {
+        if (sbSettingsState.pageAnimation !== animation) {
+            return;
+        }
+        sbSettingsState.pageAnimation = null;
+        animation.cancel();
+        onFinish();
+    };
+}
+
+function getSettingsPageTabs(shellKey) {
+    if (shellKey === 'characters') {
+        return [...SB_CHARACTER_PANEL_TABS];
+    }
+
+    const shellConfig = getShellConfig(shellKey);
+    return [
+        shellConfig?.baseTab,
+        ...(shellConfig?.embeddedTabs ?? []),
+        ...(shellConfig?.customTabs ?? []),
+    ].filter(Boolean);
+}
+
+function getSettingsPageRoot(shellKey) {
+    if (shellKey === 'characters') {
+        return getCharacterPanel();
+    }
+
+    const shellConfig = getShellConfig(shellKey);
+    return shellConfig ? document.getElementById(shellConfig.rootPanelId) : null;
+}
+
+function isSettingsPageHosting(shellKey) {
+    return sbSettingsState.open && sbSettingsState.activeShell === shellKey;
+}
+
+// The page swaps shell sections itself, so only the floating mobile surfaces (nav, chat
+// tools, connection strip) are closed here; closing a shell surface would close the page.
+function closeMobileSurfacesForSettingsPage(shellKey) {
+    const surface = sbMobileShellLifecycle.overlays.surface;
+    const shellSurfaces = new Set([surface.LEFT_SHELL, surface.RIGHT_SHELL, surface.CHARACTER_PANEL]);
+    const decision = sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
+        surface: getMobileShellSurfaceForShell(shellKey),
+        isMobileViewport: isMobileViewport(),
+    });
+
+    applyMobileSurfaceExclusivity({
+        closeSurfaces: decision.closeSurfaces.filter(closeSurfaceKey => !shellSurfaces.has(closeSurfaceKey)),
+    });
+}
+
+/** @param {string} shellKey @param {string|null} [tabId] */
+function openSettingsPage(shellKey, tabId = null) {
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement)) {
+        return;
+    }
+
+    const tabs = getSettingsPageTabs(shellKey);
+    const resolvedTab = tabs.find(tab => tab.id === tabId)?.id
+        ?? (shellKey === 'characters' ? sbState.characterDrawer.lastTab : getShellState(shellKey)?.activeTabId)
+        ?? getShellConfig(shellKey)?.defaultTabId
+        ?? tabs[0]?.id
+        ?? null;
+
+    // Already showing this section: switch tabs in place instead of replaying the open.
+    if (isSettingsPageHosting(shellKey)) {
+        if (resolvedTab && resolvedTab !== sbSettingsState.activeTabId) {
+            activateSettingsTab(shellKey, resolvedTab);
+        }
+        return;
+    }
+
+    closeMobileSurfacesForSettingsPage(shellKey);
+
+    const wasOpen = sbSettingsState.open;
+    const previousShell = sbSettingsState.activeShell;
+
+    sbSettingsState.open = true;
+    sbSettingsState.activeShell = shellKey;
+    sbSettingsState.closeGen++;
+    clearSettingsAnimationState();
+    if (!wasOpen) page.classList.add('sb-settings-page--opening');
+
+    if (previousShell && previousShell !== shellKey) {
+        deactivateSettingsPageRoot(previousShell);
+    }
+
+    closeAllDropdowns({ except: shellKey, closeSurfaces: false });
+    document.getElementById('sb-persona-picker')?.remove();
+    document.getElementById('sb-mode-menu')?.remove();
+
+    buildSettingsPageFor(shellKey, resolvedTab);
+    mountShellRootInSettingsPage(shellKey, resolvedTab);
+    syncSettingsPageActiveButton();
+
+    page.classList.remove('sb-settings-page--content');
+    sbSettingsState.mobileContentView = false;
+
+    // On mobile, if opening with a saved tab (not explicitly requested), show content
+    // immediately to restore the exact state the user left. If the section was explicitly
+    // opened (tabId provided), show the sidebar first to let the user choose.
+    if (isMobileViewport() && !tabId && resolvedTab) {
+        page.classList.add('sb-settings-page--content');
+        sbSettingsState.mobileContentView = true;
+    }
+
+    document.documentElement.dataset.sbSettingsOpen = 'true';
+
+    if (wasOpen) {
+        // Switching sections while open: no page-level animation, just swap content.
+        page.hidden = false;
+        return;
+    }
+
+    page.hidden = false;
+    animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
+
+    if (isMobileViewport()) {
+        document.querySelector('.sb-settings-tab')?.focus({ preventScroll: true });
+    } else {
+        document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+    }
+}
+
+function closeSettingsPage() {
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement) || !sbSettingsState.open) {
+        return;
+    }
+
+    sbSettingsState.open = false;
+    sbSettingsState.mobileContentView = false;
+    const closingShell = sbSettingsState.activeShell;
+    const restoreFocus = page.contains(document.activeElement);
+    const openerId = SB_TOPBAR_CLUSTERS.find(cluster => cluster.pages.some(item => item.shellKey === closingShell))?.leadId;
+    sbSettingsState.activeTabId = null;
+    delete document.documentElement.dataset.sbSettingsOpen;
+
+    const closeGen = ++sbSettingsState.closeGen;
+    clearSettingsAnimationState();
+    deactivateSettingsPageRoot(closingShell);
+
+    const finishClose = () => {
+        if (sbSettingsState.closeGen !== closeGen) {
+            return;
+        }
+        page.hidden = true;
+        if (sbSettingsState.closeTimer) {
+            clearTimeout(sbSettingsState.closeTimer);
+            sbSettingsState.closeTimer = 0;
+        }
+        sbSettingsState.activeShell = null;
+        syncChatbarVisibilityState();
+        requestMobileViewportReset();
+        if (restoreFocus && (document.activeElement === document.body || page.contains(document.activeElement))) {
+            document.getElementById(openerId)?.focus({ preventScroll: true });
+        }
+    };
+
+    animateSettingsPage(page, 'out', finishClose);
+    // Fallback for browsers that do not deliver a Web Animations finish event.
+    sbSettingsState.closeTimer = setTimeout(finishClose, 300);
+
+    syncSettingsPageActiveButton();
+}
+
+function toggleSettingsPage(shellKey, tabId = null) {
+    if (isSettingsPageHosting(shellKey)) {
+        // A different tab of the open section switches in place; the same section closes.
+        if (tabId && tabId !== sbSettingsState.activeTabId) {
+            activateSettingsTab(shellKey, tabId);
+            return;
+        }
+        closeSettingsPage();
+        return;
+    }
+
+    openSettingsPage(shellKey, tabId);
+}
+
+/**
+ * Writes the page heading for a tab: the label as the title, the tab's long-form description as
+ * the sub-title beneath it.
+ *
+ * The description may be authored as HTML (the sampling sub-title links to an external guide), so
+ * it is written with `innerHTML` when flagged. Everything else goes through `textContent`, and a
+ * tab with no description clears the sub-title rather than leaving the previous one behind.
+ *
+ * @param {{label?: string, description?: string, descriptionIsHtml?: boolean, descriptionI18n?: string}|null|undefined} tab
+ */
+function renderSettingsPageHeading(tab) {
+    const titleEl = document.getElementById('sb-settings-content-title');
+    const subtitleEl = document.getElementById('sb-settings-content-subtitle');
+    if (titleEl) {
+        titleEl.textContent = tab?.label ?? '';
+    }
+    if (!subtitleEl) {
+        return;
+    }
+    const description = tab?.description ?? '';
+    if (tab?.descriptionI18n) subtitleEl.setAttribute('data-i18n', tab.descriptionI18n);
+    else subtitleEl.removeAttribute('data-i18n');
+    if (tab?.descriptionIsHtml === true) {
+        subtitleEl.innerHTML = description;
+    } else {
+        subtitleEl.textContent = description;
+    }
+}
+
+function buildSettingsPageFor(shellKey, tabId) {
+    const tabList = document.getElementById('sb-settings-tab-list');
+    const titleEl = document.getElementById('sb-settings-content-title');
+    if (!tabList || !titleEl) {
+        return;
+    }
+
+    const allTabs = getSettingsPageTabs(shellKey);
+    if (!allTabs.length) {
+        return;
+    }
+    const sectionTitle = shellKey === 'characters' ? 'Characters' : getShellConfig(shellKey).title;
+
+    const resolvedTabId = allTabs.find(t => t.id === tabId)?.id ?? allTabs[0]?.id ?? null;
+    sbSettingsState.activeTabId = resolvedTabId;
+
+    tabList.replaceChildren();
+
+    for (const tab of allTabs) {
+        const button = createElement('button', {
+            className: 'sb-settings-tab',
+            attrs: {
+                type: 'button',
+                role: 'tab',
+                'aria-selected': String(tab.id === resolvedTabId),
+                'data-sb-settings-tab': tab.id,
+                // Short action-oriented hint; the tab's `description` is the page sub-title instead.
+                title: tab.tooltip ?? '',
+                'data-sb-search-aliases': (tab.searchAliases ?? []).join('|'),
+            },
+        });
+        button.innerHTML = `<i class="fa-solid ${tab.icon}" aria-hidden="true"></i><span>${tab.label}</span>`;
+        button.addEventListener('click', () => activateSettingsTab(shellKey, tab.id));
+        tabList.appendChild(button);
+    }
+
+    const sidebarTitleEl = document.getElementById('sb-settings-sidebar-title');
+    if (sidebarTitleEl) {
+        sidebarTitleEl.textContent = sectionTitle;
+    }
+    const activeTab = allTabs.find(t => t.id === resolvedTabId);
+    renderSettingsPageHeading(activeTab ?? { label: sectionTitle });
+
+    // Re-apply an active sidebar filter to the freshly built tab list.
+    const searchInput = document.getElementById('sb-settings-search-input');
+    if (searchInput instanceof HTMLInputElement && searchInput.value.trim()) {
+        void filterSettingsSidebarTabs(searchInput.value);
+    }
+}
+
+// SillyTavern's keyboard.js MutationObserver rescans a node's whole subtree on every class
+// write, even a redundant one. These roots are huge, so batch the change and skip no-ops.
+function setRootClassState(element, classStates) {
+    const next = new Set(element.classList);
+    for (const [className, enabled] of Object.entries(classStates)) {
+        if (enabled) {
+            next.add(className);
+        } else {
+            next.delete(className);
+        }
+    }
+
+    const nextClassName = Array.from(next).join(' ');
+    if (nextClassName !== element.className) {
+        element.className = nextClassName;
+    }
+}
+
+function setRootAttribute(element, name, value) {
+    if (element.getAttribute(name) !== value) {
+        element.setAttribute(name, value);
+    }
+}
+
+// Shell roots are moved into the page once and stay there; switching sections only
+// toggles which one is active. Reparenting on every open forced a full style and layout
+// pass over each panel, which stalled the first frames of the open animation.
+/** @param {string} shellKey @param {string|null} [tabId] */
+function mountShellRootInSettingsPage(shellKey, tabId = null) {
+    const host = document.getElementById('sb-settings-shell-host');
+    const root = getSettingsPageRoot(shellKey);
+    if (!(host instanceof HTMLElement) || !(root instanceof HTMLElement)) {
+        return;
+    }
+
+    if (root.parentElement !== host) {
+        stopMotion(root);
+        host.appendChild(root);
+    }
+
+    for (const child of host.children) {
+        if (child !== root && child.classList.contains('sb-settings-active-root')) {
+            child.classList.remove('sb-settings-active-root');
+        }
+    }
+
+    const isCharacters = shellKey === 'characters';
+    // The character panel's layout hangs off `#right-nav-panel.openDrawer`; pinnedOpen keeps
+    // SillyTavern's outside-click auto-close from collapsing it while it lives in the page.
+    setRootClassState(root, {
+        'sb-settings-mounted-shell': true,
+        'sb-settings-active-root': true,
+        closedDrawer: false,
+        openDrawer: isCharacters,
+        pinnedOpen: isCharacters,
+    });
+    setRootAttribute(root, 'aria-hidden', 'false');
+
+    if (isCharacters) {
+        injectCharacterDrawerControls();
+        activateCharacterPanelTabInPlace(tabId ?? SB_CHARACTER_PANEL_DEFAULT_TAB);
+        syncChatbarVisibilityState();
+        return;
+    }
+
+    const shellState = getShellState(shellKey);
+    if (!shellState) {
+        return;
+    }
+
+    const targetTab = tabId ?? shellState.activeTabId ?? getShellConfig(shellKey).defaultTabId;
+    if (targetTab && targetTab !== shellState.activeTabId && shellState.tabs.has(targetTab)) {
+        // setActiveTab runs the activation hooks itself while the page hosts this shell.
+        setActiveTab(shellKey, targetTab);
+        return;
+    }
+
+    const activeTab = shellState.tabs.get(shellState.activeTabId);
+    activeTab?.onActivate?.();
+    // The flatten is part of activation, so the already-active tab has to run it too -- otherwise
+    // the base tab, which is active before the page is ever mounted, is the one panel that never
+    // gets flattened.
+    flattenSettingsPanelDrawers(shellKey, shellState.activeTabId);
+    // SillyBunny: the stacked panels have their store wrapper and their stack built from the same
+    // activation pass, and this path bypasses `setActiveTab` for the tab that is already active --
+    // which is the base tab, every time the page is first mounted. Without this the first paint of
+    // an Extensions panel is the raw legacy drawer: the wrapper that hides its children
+    // does not exist yet, so all of its sections render at once.
+    installSettingsSubpage(shellKey, shellState.activeTabId);
+    dispatchShellTabActivated(shellKey, activeTab);
+    queueMobileShellActivationRefresh();
+}
+
+// Roots move into the settings host at startup so SillyTavern's native drawer toggles can
+// never reopen them as floating drawers in their original holders.
+function prewarmSettingsPageRoots() {
+    const host = document.getElementById('sb-settings-shell-host');
+    if (!(host instanceof HTMLElement)) {
+        return;
+    }
+
+    for (const shellKey of ['left', 'right', 'characters']) {
+        const root = getSettingsPageRoot(shellKey);
+        if (!(root instanceof HTMLElement) || root.parentElement === host) {
+            continue;
+        }
+
+        host.appendChild(root);
+        setRootClassState(root, {
+            'sb-settings-mounted-shell': true,
+            'sb-settings-active-root': false,
+            openDrawer: false,
+            closedDrawer: false,
+            pinnedOpen: false,
+        });
+        setRootAttribute(root, 'aria-hidden', 'true');
+    }
+}
+
+function deactivateSettingsPageRoot(shellKey) {
+    const root = getSettingsPageRoot(shellKey);
+    if (!(root instanceof HTMLElement)) {
+        return;
+    }
+
+    if (document.activeElement instanceof HTMLElement && root.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
+
+    if (shellKey !== 'characters') {
+        const shellState = getShellState(shellKey);
+        shellState?.tabs.get(shellState.activeTabId)?.onDeactivate?.();
+    } else {
+        setCharacterPersonaPanelVisible(false);
+        setCharacterImportPanelVisible(false);
+        // SillyBunny: upstream WI probes require layout in the closed page; aria-hidden still suspends adapter work — see docs/ui-migration.md
+        setCharacterWorldInfoPanelVisible(false, { preserveLayout: true });
+    }
+
+    setRootClassState(root, {
+        'sb-settings-active-root': false,
+        openDrawer: false,
+        pinnedOpen: false,
+    });
+    setRootAttribute(root, 'aria-hidden', 'true');
+}
+
+function setSettingsMobileContentView(showContent) {
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement)) {
+        return;
+    }
+    sbSettingsState.mobileContentView = showContent;
+    page.classList.toggle('sb-settings-page--content', showContent);
+
+    if (showContent) {
+        document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+    } else {
+        // Return focus to the active sidebar tab when going back.
+        const activeTab = document.querySelector('.sb-settings-tab[aria-selected="true"]');
+        activeTab?.focus({ preventScroll: true });
+    }
+}
+
+function activateSettingsTab(shellKey, tabId) {
+    const tabList = document.getElementById('sb-settings-tab-list');
+    if (!tabList) {
+        return;
+    }
+
+    const allTabs = getSettingsPageTabs(shellKey);
+    const selectedTab = allTabs.find(tab => tab.id === tabId);
+    if (!selectedTab) {
+        return;
+    }
+
+    sbSettingsState.activeTabId = tabId;
+
+    if (shellKey === 'characters') {
+        activateCharacterPanelTabInPlace(tabId);
+    } else {
+        setActiveTab(shellKey, tabId);
+    }
+
+    tabList.querySelectorAll('.sb-settings-tab').forEach(button => {
+        button.setAttribute('aria-selected', String(button.dataset.sbSettingsTab === tabId));
+    });
+
+    renderSettingsPageHeading(selectedTab);
+
+    if (isMobileViewport()) {
+        setSettingsMobileContentView(true);
+    }
+}
+
+function syncSettingsPageActiveButton() {
+    for (const cluster of SB_TOPBAR_CLUSTERS) {
+        const leadButton = document.getElementById(cluster.leadId);
+        if (!(leadButton instanceof HTMLElement)) {
+            continue;
+        }
+
+        const isActive = sbSettingsState.open && (
+            (cluster.key === 'workspace' && sbSettingsState.activeShell === 'left') ||
+            (cluster.key === 'customize' && sbSettingsState.activeShell === 'right') ||
+            (cluster.key === 'characters' && sbSettingsState.activeShell === 'characters')
+        );
+        leadButton.classList.toggle('sb-settings-active', isActive);
+        if (cluster.key === 'characters') {
+            leadButton.classList.remove('is-open', 'is-pinned', 'is-current');
+            leadButton.setAttribute('aria-expanded', String(isActive));
+            if (isActive) leadButton.setAttribute('aria-current', 'page');
+            else leadButton.removeAttribute('aria-current');
+        }
+    }
+}
+
+function setSettingsSidebarSearchOpen(isOpen, { focusInput = false } = {}) {
+    const toggleBtn = document.getElementById('sb-settings-search-toggle');
+    const searchRow = document.getElementById('sb-settings-search-row');
+    const searchInput = document.getElementById('sb-settings-search-input');
+    if (!(toggleBtn instanceof HTMLElement) || !(searchRow instanceof HTMLElement)) {
+        return;
+    }
+
+    toggleBtn.setAttribute('aria-expanded', String(isOpen));
+    searchRow.classList.toggle('is-expanded', isOpen);
+    searchRow.setAttribute('aria-hidden', String(!isOpen));
+
+    if (isOpen && focusInput && searchInput instanceof HTMLElement) {
+        // Defer slightly so the max-height transition has started before focus shifts.
+        setTimeout(() => searchInput.focus(), 50);
+    } else if (!isOpen && searchInput instanceof HTMLInputElement) {
+        searchInput.value = '';
+        void filterSettingsSidebarTabs('');
+    }
+}
+
+function initSettingsPageClose() {
+    const closeButton = document.getElementById('sb-settings-close');
+    if (closeButton instanceof HTMLButtonElement && closeButton.dataset.sbBound !== 'true') {
+        closeButton.dataset.sbBound = 'true';
+        closeButton.addEventListener('click', closeSettingsPage);
+    }
+
+    // Back button: mobile only — returns from content view to sidebar view.
+    const backButton = document.getElementById('sb-settings-back');
+    if (backButton instanceof HTMLButtonElement && backButton.dataset.sbBound !== 'true') {
+        backButton.dataset.sbBound = 'true';
+        backButton.addEventListener('click', () => {
+            setSettingsMobileContentView(false);
+        });
+    }
+
+    const page = getSettingsPage();
+    if (page instanceof HTMLElement && page.dataset.sbBound !== 'true') {
+        page.dataset.sbBound = 'true';
+        page.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeSettingsPage();
+            }
+        });
+    }
+
+    // Sidebar search toggle button expands/collapses the search row.
+    const searchToggleBtn = document.getElementById('sb-settings-search-toggle');
+    if (searchToggleBtn instanceof HTMLButtonElement && searchToggleBtn.dataset.sbBound !== 'true') {
+        searchToggleBtn.dataset.sbBound = 'true';
+        searchToggleBtn.addEventListener('click', () => {
+            const isExpanded = searchToggleBtn.getAttribute('aria-expanded') === 'true';
+            setSettingsSidebarSearchOpen(!isExpanded, { focusInput: !isExpanded });
+        });
+    }
+
+    // Sidebar search: narrow the tab list to pages whose name or contents match.
+    const searchInput = document.getElementById('sb-settings-search-input');
+    if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbBound !== 'true') {
+        searchInput.dataset.sbBound = 'true';
+        searchInput.addEventListener('input', () => void filterSettingsSidebarTabs(searchInput.value));
+        searchInput.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && searchInput.value) {
+                event.preventDefault();
+                event.stopPropagation();
+                searchInput.value = '';
+                void filterSettingsSidebarTabs('');
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                const firstMatch = document.querySelector('.sb-settings-tab:not(.sb-settings-tab--filtered)');
+                firstMatch?.click();
+            }
+        });
+    }
+}
+
+let sbSettingsSidebarFilterRequest = 0;
+
+function settingsTabLabelMatches(label, query, aliases = []) {
+    const labels = [label, ...aliases];
+    if (labels.some(value => normalizeText(value).includes(query))) {
+        return true;
+    }
+
+    // Word-initial matching, e.g. "cl" for Console Logs.
+    return query.length > 1 && labels.some(value => {
+        const initials = normalizeText(value).split(/[\s-]+/).filter(Boolean).map(word => word[0]).join('');
+        return initials.startsWith(query.replace(/\s+/g, ''));
+    });
+}
+
+async function filterSettingsSidebarTabs(rawQuery) {
+    const request = ++sbSettingsSidebarFilterRequest;
+    const query = normalizeText(rawQuery);
+    const shellKey = sbSettingsState.activeShell;
+    const tabList = document.getElementById('sb-settings-tab-list');
+    if (!(tabList instanceof HTMLElement)) {
+        return;
+    }
+
+    const applyFilter = contentMatches => {
+        let visibleCount = 0;
+        for (const button of tabList.querySelectorAll('.sb-settings-tab')) {
+            const label = button.textContent ?? '';
+            const tabId = button.dataset.sbSettingsTab;
+            const aliases = String(button.dataset.sbSearchAliases ?? '').split('|').filter(Boolean);
+            const labelMatch = Boolean(query) && settingsTabLabelMatches(label, query, aliases);
+            // Label hits always keep their tab. A content hit only reveals a tab when the label
+            // itself did not match, so typing "Logs" opens Logs rather than every tab that happens
+            // to mention logs somewhere in its body.
+            const isMatch = !query || labelMatch || contentMatches.has(tabId);
+            const byContent = Boolean(query) && isMatch && !labelMatch;
+            button.classList.toggle('sb-settings-tab--filtered', !isMatch);
+            button.classList.toggle('sb-settings-tab--by-content', byContent);
+            button.setAttribute('aria-hidden', String(!isMatch));
+            button.tabIndex = isMatch ? 0 : -1;
+            // Label hits render above content hits; `order` does it without touching DOM order,
+            // which keeps keyboard traversal stable while a filter is active.
+            button.style.order = !query || labelMatch ? '0' : '1';
+            visibleCount += Number(isMatch);
+        }
+
+        let empty = tabList.querySelector('.sb-settings-tab-empty');
+        if (query && visibleCount === 0) {
+            if (!empty) {
+                empty = createElement('p', { className: 'sb-settings-tab-empty', text: 'No matching pages' });
+                tabList.appendChild(empty);
+            }
+        } else {
+            empty?.remove();
+        }
+    };
+
+    // Label matches apply immediately; content matches refine once the search index is ready.
+    applyFilter(new Set());
+    if (!query || !shellKey) {
+        return;
+    }
+
+    await prepareShellSearch();
+    if (request !== sbSettingsSidebarFilterRequest || sbSettingsState.activeShell !== shellKey) {
+        return;
+    }
+
+    const contentMatches = new Set();
+    for (const match of collectGlobalSearchMatches(query, { limit: Infinity })) {
+        const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
+        if (matchShell === shellKey && match.tabId && match.headingMatch === true) {
+            contentMatches.add(match.tabId);
+        }
+    }
+    applyFilter(contentMatches);
+}
+
+// ── Mode toggle (top-bar direct toggle) ─────────────────────────────────
+
+const SB_CHAT_MODES = Object.freeze([
+    { id: 'roleplay', label: 'Roleplay', icon: 'fa-masks-theater', description: 'Classic character-driven chat mode' },
+    { id: 'conversation', label: 'Conversation', icon: 'fa-comments', description: 'Direct conversational AI mode' },
+]);
+
+function getActiveChatMode() {
+    return conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+}
+
+function syncModeToggleButton() {
+    const mode = SB_CHAT_MODES.find(entry => entry.id === getActiveChatMode()) ?? SB_CHAT_MODES[0];
+    const modeToggleBtn = document.getElementById('sb-mode-toggle');
+    if (!(modeToggleBtn instanceof HTMLElement)) {
+        return;
+    }
+
+    const btnIcon = modeToggleBtn.querySelector(':scope > i');
+    if (btnIcon) {
+        btnIcon.className = `fa-solid ${mode.icon}`;
+    }
+    const label = modeToggleBtn.querySelector(':scope > span');
+    if (label) {
+        label.textContent = mode.label;
+    }
+    const title = `Chat mode: ${mode.label} (Ctrl+M)`;
+    modeToggleBtn.title = title;
+    modeToggleBtn.setAttribute('aria-label', title);
+}
+
+function setModeMenuOpenState(isOpen) {
+    const btn = document.getElementById('sb-mode-toggle');
+    if (btn instanceof HTMLElement) {
+        btn.classList.toggle('is-open', isOpen);
+        btn.setAttribute('aria-expanded', String(isOpen));
+    }
+}
+
+function closeModeDropdown({ restoreFocus = false } = {}) {
+    const menu = document.getElementById('sb-mode-menu');
+    if (!menu) {
+        return;
+    }
+
+    setModeMenuOpenState(false);
+    animateOut(menu, [
+        { opacity: 1, transform: 'translateY(0) scale(1)' },
+        { opacity: 0, transform: 'translateY(-4px) scale(0.97)' },
+    ], () => {
+        menu.remove();
+        if (restoreFocus) {
+            document.getElementById('sb-mode-toggle')?.focus({ preventScroll: true });
+        }
+    }, { duration: MOTION_FAST });
+}
+
+function toggleChatMode() {
+    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
+    const next = activeMode === 'roleplay' ? 'conversation' : 'roleplay';
+    setCharacterShellMode(next);
+}
+
+function openModeDropdown() {
+    if (document.getElementById('sb-mode-menu')) {
+        closeModeDropdown({ restoreFocus: true });
+        return;
+    }
+
+    const activeMode = getActiveChatMode();
+    const menu = createElement('div', {
+        id: 'sb-mode-menu',
+        attrs: {
+            role: 'menu',
+            'aria-label': 'Switch chat mode',
+        },
+    });
+
+    for (const mode of SB_CHAT_MODES) {
+        const isActive = mode.id === activeMode;
+        const item = createElement('button', {
+            className: `sb-mode-menu-item${isActive ? ' is-active' : ''}`,
+            attrs: {
+                type: 'button',
+                role: 'menuitemradio',
+                'aria-checked': String(isActive),
+            },
+        });
+        item.innerHTML = `<i class="fa-solid ${mode.icon} sb-mode-menu-icon" aria-hidden="true"></i><span class="sb-mode-menu-label">${mode.label}</span><span class="sb-mode-menu-desc">${mode.description}</span><i class="fa-solid fa-check sb-mode-menu-check" aria-hidden="true"></i>`;
+        item.addEventListener('click', () => {
+            closeModeDropdown({ restoreFocus: true });
+            if (mode.id !== getActiveChatMode()) {
+                setCharacterShellMode(mode.id);
+            }
+        });
+        menu.appendChild(item);
+    }
+
+    menu.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeModeDropdown({ restoreFocus: true });
+        } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const items = Array.from(menu.querySelectorAll('.sb-mode-menu-item'));
+            const current = items.indexOf(document.activeElement);
+            const next = event.key === 'ArrowDown'
+                ? (current + 1) % items.length
+                : (current - 1 + items.length) % items.length;
+            items[next]?.focus();
+        }
+    });
+
+    const dismiss = event => {
+        if (!document.body.contains(menu)) {
+            document.removeEventListener('pointerdown', dismiss, true);
+            return;
+        }
+        const btn = document.getElementById('sb-mode-toggle');
+        if (menu.contains(event.target) || btn?.contains(event.target)) {
+            return;
+        }
+        document.removeEventListener('pointerdown', dismiss, true);
+        closeModeDropdown();
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+
+    document.body.appendChild(menu);
+    setModeMenuOpenState(true);
+
+    const btn = document.getElementById('sb-mode-toggle');
+    if (btn instanceof HTMLElement) {
+        const rect = btn.getBoundingClientRect();
+        const menuWidth = menu.offsetWidth || 240;
+        const left = Math.min(rect.left + rect.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - 8);
+        menu.style.setProperty('--sb-mode-menu-top', `${rect.bottom + 6}px`);
+        menu.style.setProperty('--sb-mode-menu-left', `${Math.max(8, left)}px`);
+    }
+
+    animateIn(menu, [
+        { opacity: 0, transform: 'translateY(-4px) scale(0.97)' },
+        { opacity: 1, transform: 'translateY(0) scale(1)' },
+    ], { duration: MOTION_FAST });
+    menu.querySelector('.sb-mode-menu-item')?.focus();
+
+    window.requestAnimationFrame(() => {
+        (menu.querySelector('.sb-mode-menu-item.is-active') ?? menu.querySelector('.sb-mode-menu-item'))?.focus();
+    });
+}
+
+function initModeToggle() {
+    if (document.documentElement.dataset.sbModeToggleBound === 'true') {
+        return;
+    }
+    document.documentElement.dataset.sbModeToggleBound = 'true';
+    window.addEventListener('sb:conversation-workspace-state-changed', syncModeToggleButton);
+    syncModeToggleButton();
+}
+
+// ── Global keyboard shortcuts ────────────────────────────────────────────
+
+/**
+ * Keyboard routes for the top-bar destinations.
+ *
+ * Keys track the top bar left-to-right so the row reads as one memorised sequence. Bare `Ctrl`
+ * bindings are safe here because none of them are text-editing keys; `Ctrl+U` (view source) and
+ * `Ctrl+P` (print) can still be claimed by the browser first, and no page can prevent that, so the
+ * binding is best-effort rather than exclusive.
+ *
+ * The runs go through `openShell()` rather than the top bar's own `toggleSettingsPage()`, so they
+ * land on the remembered tab inside a section that is already open instead of closing it. There is
+ * no separate key for closing; Escape and the close button already cover that.
+ */
+const SB_SETTINGS_SHORTCUTS = Object.freeze([
+    { key: 'u', run: () => openShell('left') },
+    { key: 'i', run: () => openShell('right') },
+    { key: 'o', run: () => { closeMobileNav(); void returnToLandingPage(); } },
+    { key: 'p', run: () => openShell('characters') },
+]);
+
+function initSettingsKeyboardShortcuts() {
+    if (document.documentElement.dataset.sbSettingsShortcutsBound === 'true') {
+        return;
+    }
+
+    document.documentElement.dataset.sbSettingsShortcutsBound = 'true';
+
+    document.addEventListener('keydown', event => {
+        const isMac = navigator.platform?.toUpperCase().includes('MAC');
+        const ctrl = isMac ? event.metaKey : event.ctrlKey;
+        if (!ctrl || event.altKey) {
+            return;
+        }
+
+        const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+        if (!key) {
+            return;
+        }
+
+        // `Ctrl+F` works inside a field on purpose: it opens search rather than the browser's own
+        // find, which cannot reach into the settings page. The destination shortcuts are the
+        // opposite -- while the user is typing, a stray `Ctrl+P` must not navigate away.
+        const active = document.activeElement;
+        const isEditable = active instanceof HTMLInputElement ||
+            active instanceof HTMLTextAreaElement ||
+            active?.isContentEditable === true;
+
+        if (key === 'f') {
+            if (isEditable) {
+                return;
+            }
+
+            event.preventDefault();
+            setUniversalSearchOpenState(true, { focusInput: true });
+            return;
+        }
+
+        if (key === 'm') {
+            event.preventDefault();
+            toggleChatMode();
+            return;
+        }
+
+        const shortcut = SB_SETTINGS_SHORTCUTS.find(entry => entry.key === key);
+        // Shift-qualified browser chords stay the browser's: `Ctrl+Shift+I` is DevTools inspect and
+        // `Ctrl+Shift+P` is Firefox private browsing, so the destination keys fire unshifted only.
+        if (!shortcut || isEditable || event.shiftKey) {
+            return;
+        }
+
+        event.preventDefault();
+        shortcut.run();
     });
 }
 

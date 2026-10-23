@@ -17,6 +17,15 @@ function getStore(avatar, groupId, personaId) {
     return stores.get(storeKey(personaId, avatar, groupId)) || null;
 }
 
+await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
+    POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null },
+    POPUP_TYPE: { TEXT: 1, CONFIRM: 2, INPUT: 3 },
+    Popup: class Popup {},
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({
+    confirmConversationAction: jest.fn(async () => false),
+    promptConversationText: jest.fn(async () => null),
+}));
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'char.png', name: 'Aster' }],
     default_user_avatar: 'default.png',
@@ -119,7 +128,10 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 
 const stateModule = await import('../public/scripts/sillybunny-conversation/state.js');
 const {
+    formatConversationDayLabel,
+    formatConversationMessageTime,
     getActiveConversationReplyTarget,
+    getConversationTimelineGroupMeta,
     regenerateConversationMessage,
     renderConversationTimeline,
 } = await import('../public/scripts/sillybunny-conversation/timeline-render.js');
@@ -339,5 +351,54 @@ describe('conversation timeline operation identity', () => {
         expect(personaAThreadKey).toContain('persona-a.png');
         expect(stateModule.conversationState.lastRenderedThreadKey).toContain('persona-b.png');
         expect(stateModule.conversationState.lastRenderedThreadKey).not.toBe(personaAThreadKey);
+    });
+});
+
+describe('conversation timeline grouping', () => {
+    const localStamp = (year, month, day, hours, minutes = 0) => new Date(year, month, day, hours, minutes).getTime();
+
+    test('groups consecutive same-speaker messages until a 20-minute gap or day boundary', () => {
+        const messages = [
+            { id: 'a', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 10, 0) },
+            { id: 'b', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 10, 8) },
+            { id: 'c', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 10, 31) },
+            { id: 'd', role: 'user', name: 'User', created_at: localStamp(2026, 9, 3, 10, 32) },
+            { id: 'e', role: 'user', name: 'User', created_at: localStamp(2026, 9, 3, 10, 33) },
+            { id: 'f', role: 'system', name: '', created_at: localStamp(2026, 9, 3, 10, 34) },
+        ];
+
+        expect(getConversationTimelineGroupMeta(messages).map(item => ({
+            position: item.position,
+            showHeader: item.showHeader,
+            dayKey: item.dayKey,
+        }))).toEqual([
+            { position: 'start', showHeader: true, dayKey: '2026-10-03' },
+            { position: 'end', showHeader: false, dayKey: '2026-10-03' },
+            { position: 'single', showHeader: true, dayKey: '2026-10-03' },
+            { position: 'start', showHeader: true, dayKey: '2026-10-03' },
+            { position: 'end', showHeader: false, dayKey: '2026-10-03' },
+            { position: 'single', showHeader: true, dayKey: '2026-10-03' },
+        ]);
+    });
+
+    test('splits groups on a calendar-day change even when the gap is under 20 minutes', () => {
+        const messages = [
+            { id: 'late', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 23, 55) },
+            { id: 'early', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 4, 0, 5) },
+        ];
+
+        expect(getConversationTimelineGroupMeta(messages).map(item => item.position)).toEqual(['single', 'single']);
+        expect(getConversationTimelineGroupMeta(messages).map(item => item.dayKey)).toEqual(['2026-10-03', '2026-10-04']);
+    });
+
+    test('formats locale times and relative day labels instead of raw ISO strings', () => {
+        const formatted = formatConversationMessageTime({ created_at: Date.UTC(2026, 9, 3, 15, 4) });
+        expect(formatted.text).toMatch(/\d/);
+        expect(formatted.text).not.toMatch(/T|Z/);
+        expect(formatted.datetime).toBe('2026-10-03T15:04:00.000Z');
+
+        const now = new Date(2026, 9, 3, 12);
+        expect(formatConversationDayLabel('2026-10-03', now)).toBe('Today');
+        expect(formatConversationDayLabel('2026-10-02', now)).toBe('Yesterday');
     });
 });

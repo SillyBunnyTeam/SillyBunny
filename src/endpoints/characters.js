@@ -760,6 +760,17 @@ function charaFormatData(data, directories) {
         return [];
     };
 
+    // Multipart forms cannot express an empty repeated field, so the editor sends group-only
+    // greetings as a JSON array string. Returns null when the request carries no usable value.
+    const getGroupOnlyGreetings = data => {
+        let value = data.group_only_greetings;
+        if (typeof value === 'string') {
+            value = tryParse(value);
+        }
+        if (!Array.isArray(value)) return null;
+        return value.filter(greeting => typeof greeting === 'string');
+    };
+
     // Spec V1 fields
     _.set(char, 'name', data.ch_name);
     _.set(char, 'description', data.description || '');
@@ -794,6 +805,21 @@ function charaFormatData(data, directories) {
     _.set(char, 'data.creator', data.creator || '');
     _.set(char, 'data.character_version', data.character_version || '');
     _.set(char, 'data.alternate_greetings', getAlternateGreetings(data));
+
+    // SillyBunny: V3 fields edited by the character sheet. A request that omits them (older clients,
+    // extensions posting partial forms) keeps whatever json_data already carries instead of wiping it.
+    if (typeof data.nickname === 'string') {
+        _.set(char, 'data.nickname', data.nickname);
+    } else if (typeof char.data?.nickname !== 'string') {
+        _.set(char, 'data.nickname', '');
+    }
+
+    const groupOnlyGreetings = getGroupOnlyGreetings(data);
+    if (groupOnlyGreetings) {
+        _.set(char, 'data.group_only_greetings', groupOnlyGreetings);
+    } else if (!Array.isArray(char.data?.group_only_greetings)) {
+        _.set(char, 'data.group_only_greetings', []);
+    }
 
     // ST extension fields to V2 object
     _.set(char, 'data.extensions.talkativeness', data.talkativeness || 0.5);

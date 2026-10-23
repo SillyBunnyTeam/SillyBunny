@@ -413,6 +413,11 @@ class BulkEditOverlay {
     #stateChangeCallbacks = [];
     #selectedCharacters = [];
     #bulkTagPopupHandler = new BulkTagPopupHandler();
+    // SillyBunny: the shared list owns selection, not the legacy overlay — see docs/ui-migration.md.
+    #legacyRowSelectionEnabled = true;
+    #bulkActionRunning = false;
+    #stateChange = Promise.resolve();
+    #notifyingSharedState = false;
 
     /**
      * @typedef {object} LastSelected - An object noting the last selected character and its state.
@@ -458,11 +463,30 @@ class BulkEditOverlay {
     set state(newState) {
         if (this.#state === newState) return;
 
-        eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_BEFORE, newState)
-            .then(() => {
+        // SillyBunny: serialize legacy and shared notifications so rapid enter/exit preserves event order — see docs/ui-migration.md.
+        this.#notifyStateChange(newState);
+    }
+
+    #notifyStateChange(newState, shared = false) {
+        this.#stateChange = this.#stateChange.then(async () => {
+            if (this.#state === newState) return;
+            this.#notifyingSharedState = shared;
+            try {
+                await eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_BEFORE, newState);
                 this.#state = newState;
-                eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, this.state);
-            });
+                await eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, this.state);
+            } finally {
+                this.#notifyingSharedState = false;
+            }
+        });
+        return this.#stateChange;
+    }
+
+    // SillyBunny: shared selection preserves extension notifications without enabling legacy controls — see docs/ui-migration.md.
+    /** Notifies the upstream state lifecycle for shared selection. @param {'select'|'browse'} state @returns {Promise<void>} */
+    notifySharedSelectionState(state) {
+        if (state !== 'select' && state !== 'browse') throw new TypeError(`Unknown shared selection state: ${state}`);
+        return this.#notifyStateChange(BulkEditOverlayState[state], true);
     }
 
     get isLongPress() {
@@ -483,6 +507,69 @@ class BulkEditOverlay {
      */
     get selectedCharacters() {
         return this.#selectedCharacters;
+    }
+
+    // SillyBunny: leave the upstream action handlers usable without their selection UI — see docs/ui-migration.md.
+    /** Whether legacy rows and bulk-button transports may drive selection. @returns {boolean} */
+    get legacyRowSelectionEnabled() {
+        return this.#legacyRowSelectionEnabled && !this.#notifyingSharedState;
+    }
+
+    /** Enables the upstream row-selection UI only when the shared list does not own it. @param {boolean} enabled */
+    setLegacyRowSelectionEnabled(enabled) {
+        if (this.#legacyRowSelectionEnabled === enabled) return;
+        this.onPageUnload();
+        this.#legacyRowSelectionEnabled = enabled;
+        clearTimeout(this.#holdTimer);
+        this.#holdTimer = null;
+        this.isLongPress = false;
+        // SillyBunny: clean original rows before the shared list detaches them, and restored container attributes on teardown — see docs/ui-migration.md.
+        this.#resetLegacySelectionUI();
+        if (enabled) this.onPageLoad();
+        else this.notifySharedSelectionState('browse');
+    }
+
+    #resetLegacySelectionUI() {
+        this.#contextMenuOpen = false;
+        this.#cancelNextToggle = false;
+        this.#enableClickEventsForCharacters();
+        this.#enableClickEventsForDisabledElements();
+        this.clearSelectedCharacters();
+        this.disableContextMenu();
+        this.#disableBulkEditButtonHighlight();
+        CharacterContextMenu.hide();
+        this.container.querySelectorAll('.bulk_select_checkbox').forEach(checkbox => checkbox.remove());
+        this.#getDisabledElements().forEach(element => element.classList.remove('disabled'));
+        this.container.classList.remove(BulkEditOverlay.selectModeClass, 'bulk_select');
+    }
+
+    /**
+     * Runs an existing bulk handler on explicit ids, clearing selection even on cancellation or rejection.
+     * @param {'favorite'|'tag'|'duplicate'|'persona'|'delete'} action
+     * @param {Array<number|string>} entityIds Character indices as numbers; group ids as strings.
+     * @returns {Promise<void>}
+     */
+    async runBulkAction(action, entityIds) {
+        const handlers = {
+            favorite: this.handleContextMenuFavorite,
+            tag: this.handleContextMenuTag,
+            duplicate: this.handleContextMenuDuplicate,
+            persona: this.handleContextMenuPersona,
+            delete: this.handleContextMenuDelete,
+        };
+        if (!Object.hasOwn(handlers, action)) throw new TypeError(`Unknown bulk action: ${action}`);
+        if (!Array.isArray(entityIds) || entityIds.some(id => !(Number.isInteger(id) && id >= 0) && !(typeof id === 'string' && id.length))) {
+            throw new TypeError('Bulk entity ids must be character indices or group ids.');
+        }
+        if (this.#bulkActionRunning) throw new Error('A bulk action is already running.');
+        this.#bulkActionRunning = true;
+        this.#selectedCharacters = [...entityIds];
+        try {
+            await handlers[action]();
+        } finally {
+            this.clearSelectedCharacters();
+            this.#bulkActionRunning = false;
+        }
     }
 
     /**
@@ -535,6 +622,8 @@ class BulkEditOverlay {
      */
     onPageLoad = () => {
         this.onPageUnload();
+        // SillyBunny: page refreshes must not reset the shared list's selection or bind legacy gestures — see docs/ui-migration.md.
+        if (!this.legacyRowSelectionEnabled) return;
         this.browseState();
 
         const elements = this.#getEnabledElements();
@@ -558,16 +647,14 @@ class BulkEditOverlay {
      *
      */
     handleStateChange = () => {
+        // SillyBunny: shared transitions notify consumers but never bind the legacy selection UI — see docs/ui-migration.md.
+        if (!this.legacyRowSelectionEnabled) {
+            this.stateChangeCallbacks.forEach(callback => callback(this.state));
+            return;
+        }
         switch (this.state) {
             case BulkEditOverlayState.browse:
-                this.container.classList.remove(BulkEditOverlay.selectModeClass);
-                this.#contextMenuOpen = false;
-                this.#enableClickEventsForCharacters();
-                this.#enableClickEventsForDisabledElements();
-                this.clearSelectedCharacters();
-                this.disableContextMenu();
-                this.#disableBulkEditButtonHighlight();
-                CharacterContextMenu.hide();
+                this.#resetLegacySelectionUI();
                 break;
             case BulkEditOverlayState.select:
                 this.container.classList.add(BulkEditOverlay.selectModeClass);

@@ -1,57 +1,22 @@
 import { expect, test } from '@playwright/test';
-import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
-test.describe('favorites hotswap scrolling', () => {
-    test.beforeEach(async ({ page }) => {
-        await openQuietChatForSmoke(page, { selectCharacter: false });
+for (const width of [1440, 768, 375]) {
+    test(`favorites use the reachable list filter, not the retired hotswap strip at ${width}px`, async ({ page }) => {
+        await protectMaintainerServer(page);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/');
+        await page.waitForFunction(() => !document.getElementById('preloader') && window.SillyBunnyShell);
+        for (const tab of ['characters', 'groups', 'editor', 'world-info', 'persona', 'import']) {
+            await page.evaluate(async tab => { await window.SillyBunnyShell.openTab('characters', tab); }, tab);
+            await expect(page.locator('#CharListButtonAndHotSwaps')).toBeHidden();
+        }
+        await page.evaluate(async () => { await window.SillyBunnyShell.openTab('characters', 'characters'); });
+        const filter = page.locator('.sb-character-list .filterByFavorites');
+        await expect(filter).toBeVisible();
+        const initial = await filter.getAttribute('class');
+        await filter.click();
+        await expect(filter).not.toHaveAttribute('class', initial);
+        await expect(page.locator('#CharListButtonAndHotSwaps')).toBeHidden();
     });
-
-    test('scrolls vertical wheel input sideways without cancelling browser zoom gestures', async ({ page }) => {
-        const result = await page.evaluate(() => {
-            const hotswapBar = document.querySelector('#HotSwapWrapper .hotswap');
-
-            if (!(hotswapBar instanceof HTMLElement)) {
-                return null;
-            }
-
-            Object.defineProperties(hotswapBar, {
-                clientWidth: { configurable: true, value: 100 },
-                scrollWidth: { configurable: true, value: 200 },
-            });
-
-            let scrollLeft = null;
-            Object.defineProperty(hotswapBar, 'scrollTo', {
-                configurable: true,
-                value: options => {
-                    scrollLeft = options.left;
-                },
-            });
-
-            const dispatchWheel = options => {
-                const event = new WheelEvent('wheel', {
-                    bubbles: true,
-                    cancelable: true,
-                    deltaY: 80,
-                    ...options,
-                });
-                hotswapBar.dispatchEvent(event);
-
-                return event.defaultPrevented;
-            };
-
-            return {
-                ctrlWheelPrevented: dispatchWheel({ ctrlKey: true }),
-                metaWheelPrevented: dispatchWheel({ metaKey: true }),
-                verticalWheelPrevented: dispatchWheel({}),
-                scrollLeft,
-            };
-        });
-
-        expect(result).toEqual({
-            ctrlWheelPrevented: false,
-            metaWheelPrevented: false,
-            verticalWheelPrevented: true,
-            scrollLeft: 80,
-        });
-    });
-});
+}

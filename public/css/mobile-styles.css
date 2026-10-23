@@ -31,9 +31,9 @@
     #UI-Theme-Block,
     #UI-Customization,
     #power-user-options-block,
-    #ContextSettings,
-    #InstructSettingsColumn,
-    #InstructSequencesColumn {
+    #sb-appearance-content > *,
+    #InstructSequencesColumn,
+    #AdvancedFormatting > .sb-formatting-group {
         flex-basis: 100%;
     }
 
@@ -45,7 +45,7 @@
 
     #AdvancedFormatting > .flex-container.alignItemsBaseline:first-child > h3 {
         min-width: 0;
-        font-size: calc(var(--mainFontSize) * 0.92);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
@@ -86,26 +86,26 @@
         min-width: 0;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader {
         display: flex;
         align-items: center;
         gap: 6px;
         flex-wrap: nowrap;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > strong {
         min-width: 0;
-        font-size: calc(var(--mainFontSize) * 0.88);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
         line-height: 1.15;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > .flex-container {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader > .flex-container {
         flex: 0 0 auto;
         gap: 4px;
         flex-wrap: nowrap;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
@@ -114,33 +114,33 @@
         justify-content: center;
     }
 
-    #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon > span {
+    #sb-tc-instruct > .sb-prompting-group-body > #InstructSettingsColumn > .margin0.title_restorable.standoutHeader .menu_button_icon > span {
         display: none;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap {
         gap: 6px;
         flex-wrap: nowrap;
         align-items: center;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap::before {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap::before {
         content: none !important;
         display: none !important;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap > #instruct_presets {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap > #instruct_presets {
         min-width: 0;
         flex: 1 1 auto;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap > .flex-container.marginLeft5 {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap > .flex-container.marginLeft5 {
         gap: 4px;
         flex-wrap: nowrap;
         flex: 0 0 auto;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon {
         width: var(--sb-mobile-touch-target, 44px);
         min-width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
@@ -149,7 +149,7 @@
         justify-content: center;
     }
 
-    #InstructSettingsColumn #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon > span {
+    #sb-tc-instruct #instructSettingsBlock > .flex-container.flexNoGap .menu_button_icon > span {
         display: none;
     }
 
@@ -161,109 +161,6 @@
         font-size: var(--topBarIconSize);
     }
 
-    #right-nav-panel #CharListButtonAndHotSwaps {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
-        align-items: center;
-        gap: 8px;
-        width: 100%;
-        box-sizing: border-box;
-        min-height: 58px;
-        max-height: none;
-        padding: 6px var(--sb-character-mobile-edge, var(--sb-shell-panel-padding-inline, 12px));
-    }
-
-    #right-nav-panel #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
-        display: flex;
-        flex-flow: row nowrap;
-        align-items: center;
-        justify-content: center;
-        gap: 0;
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-    }
-
-    #right-nav-panel:not(:is([data-menu-type="character_edit"], [data-menu-type="create"])) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
-        display: none;
-    }
-
-    #right-nav-panel #HotSwapWrapper {
-        grid-column: 1;
-        min-width: 0;
-        width: auto;
-        max-width: 100%;
-        margin: 0 !important;
-        overflow: hidden;
-        justify-content: flex-start;
-    }
-
-    #right-nav-panel #HotSwapWrapper .hotswap {
-        min-width: 0;
-        width: 100%;
-        max-width: 100%;
-        margin: 0;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        flex-wrap: nowrap;
-        justify-content: flex-start;
-        font-size: calc(var(--mainFontSize) * 0.88);
-        line-height: 1.2;
-    }
-
-    #right-nav-panel #HotSwapWrapper .hotswap .avatar {
-        flex: 0 0 auto;
-    }
-
-    #right-nav-panel #CharListButtonAndHotSwaps :is(#rm_button_characters, #sb-character-right-lock, #sb-character-back-to-list, #sb-character-mobile-close) {
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-        max-width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        max-height: var(--sb-mobile-touch-target, 44px);
-        margin: 0;
-        padding: 0 !important;
-        box-sizing: border-box;
-    }
-
-    #right-nav-panel #sb-character-right-lock {
-        grid-column: 2;
-    }
-
-    #right-nav-panel #sb-character-back-to-list {
-        grid-column: 3;
-    }
-
-    #right-nav-panel #sb-character-mobile-close {
-        grid-column: 3;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps {
-        grid-template-columns: var(--sb-mobile-touch-target, 44px) minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px);
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #CharListButtonAndHotSwaps > .flexFlowColumn.flex-container {
-        display: flex;
-        grid-column: 1;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_characters {
-        grid-column: 1;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-right-lock {
-        grid-column: 3;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-back-to-list {
-        grid-column: 4;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb-character-mobile-close {
-        grid-column: 5;
-    }
-
     #right-nav-panel.openDrawer,
     #right-nav-panel.sb-shell-root.fillRight.openDrawer {
         min-width: 0 !important;
@@ -272,15 +169,6 @@
         left: max(8px, env(safe-area-inset-left, 0px)) !important;
         right: max(8px, env(safe-area-inset-right, 0px)) !important;
         box-sizing: border-box;
-    }
-
-    :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: max(8px, env(safe-area-inset-left, 0px)) !important;
-        right: 0 !important;
-        width: auto !important;
-        max-width: none !important;
-        margin-inline: 0 !important;
-        transform-origin: center bottom;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,
@@ -294,342 +182,9 @@
         min-width: 0;
     }
 
-    #charListFixedTop {
-        padding: 0 0 8px;
-    }
-
-    #rm_button_bar {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(44px, 1fr));
-        align-items: center;
-        justify-content: stretch;
-        gap: 6px;
-        width: 100%;
-        min-width: 0;
-    }
-
-    #rm_buttons_container {
-        display: contents;
-    }
-
-    #rm_button_bar .menu_button,
-    #rm_button_bar .right_menu_button {
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
-        height: 44px;
-        min-height: 44px;
-        max-height: 44px;
-        flex: 0 0 44px;
-        padding: 0 !important;
-        justify-self: center;
-    }
-
-    #character_sort_order {
-        grid-column: 1 / 4;
-        flex: 1 1 auto;
-        min-width: 0;
-        width: 100%;
-        height: 44px;
-        margin: 0;
-        justify-self: stretch;
-    }
-
-    #rm_button_search {
-        grid-column: 4;
-        flex: 0 0 44px;
-    }
-
-    #form_character_search_form {
-        margin-top: 8px;
-    }
-
     #character_search_bar {
         min-height: 44px;
         font-size: max(16px, var(--mainFontSize));
-    }
-
-    #rm_print_characters_pagination {
-        gap: 8px;
-        padding: 6px 0;
-    }
-
-    #rm_print_characters_pagination .menu_button,
-    #rm_print_characters_pagination .paginationjs-pages ul li a {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 44px;
-        min-width: 44px;
-        height: 44px;
-        min-height: 44px;
-        padding: 0 !important;
-        box-sizing: border-box;
-    }
-
-    #rm_print_characters_pagination .paginationjs {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 6px;
-    }
-
-    #rm_print_characters_pagination .paginationjs-pages ul {
-        gap: 6px;
-        margin: 0;
-    }
-
-    #rm_print_characters_pagination .paginationjs-size-changer select {
-        min-height: 44px;
-        margin: 0;
-    }
-
-    #rm_print_characters_pagination .paginationjs-nav {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 44px;
-        padding-inline: 6px;
-        text-align: center;
-    }
-
-    #rm_print_characters_block {
-        gap: 6px;
-        padding-inline: 0;
-        min-width: 0;
-    }
-
-    #rm_print_characters_block .character_select,
-    #rm_print_characters_block .group_select,
-    #rm_print_characters_block .bogus_folder_select {
-        min-height: 58px;
-        border-radius: 14px;
-        box-sizing: border-box;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) {
-        grid-template-columns: var(--avatar-base-width) minmax(0, 1fr);
-        align-items: center;
-        gap: 8px 10px;
-        padding: 9px 8px;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > .avatar {
-        grid-column: 1;
-        grid-row: 1 / span 3;
-        align-self: center;
-        justify-self: center;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select):not(.inline_avatar) > :is(.character_select_container, .group_select_container) {
-        grid-column: 2;
-        grid-row: 1;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        align-items: center;
-        gap: 2px;
-        width: 100%;
-        min-width: 0;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        align-items: center;
-        gap: 1px;
-        min-width: 0;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_name_block .ch_name,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .character_name_block .ch_name,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_name_block .ch_name {
-        grid-column: 1;
-        grid-row: 1;
-        min-width: 0;
-        max-width: 100%;
-        line-height: 1.22;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .group_select_counter,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .bogus_folder_select .bogus_folder_counter,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .character_version,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .ch_avatar_url,
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .character_select .ch_assistant {
-        grid-column: 1;
-        grid-row: auto;
-        justify-self: start;
-        align-self: center;
-        max-width: 100%;
-        margin: 0;
-        text-align: left;
-        white-space: nowrap;
-        font-size: calc(var(--mainFontSize) * 0.78);
-        line-height: 1.2;
-        opacity: 0.8;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > .group_select .character_name_block_sub_line {
-        grid-column: 1;
-        grid-row: auto;
-        justify-self: start;
-        align-self: center;
-        margin: 0;
-        text-align: left;
-        white-space: nowrap;
-        font-size: calc(var(--mainFontSize) * 0.78);
-        line-height: 1.2;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_description, .group_select_block_list) {
-        grid-column: 1;
-        grid-row: auto;
-        min-width: 0;
-        max-width: 100%;
-        margin: 0;
-        line-height: 1.28;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select, .bogus_folder_select) .tags_inline {
-        grid-column: 1;
-        grid-row: auto;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    body #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.character_select, .group_select) :is(.ch_fav_icon, .group_fav_icon) {
-        grid-column: 1;
-        grid-row: 1;
-        align-self: start;
-        justify-self: start;
-        margin: 0;
-    }
-
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) {
-        display: grid;
-        flex: 0 0 auto;
-        grid-template-columns: minmax(var(--sb-checkbox-size, 1rem), auto) var(--avatar-base-width) minmax(0, 1fr) !important;
-        gap: 8px;
-    }
-
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > .bulk_select_checkbox {
-        grid-column: 1;
-        grid-row: 1 / span 2;
-        align-self: center;
-        justify-self: center;
-        margin: 0;
-    }
-
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > .avatar {
-        grid-column: 2;
-    }
-
-    #rm_print_characters_block.bulk_select > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
-        grid-column: 3;
-        min-width: 0;
-    }
-
-    body.charListGrid #rm_print_characters_block {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        justify-content: stretch;
-        align-content: flex-start;
-        gap: 8px;
-    }
-
-    body.charListGrid #rm_print_characters_block .bogus_folder_select,
-    body.charListGrid #rm_print_characters_block .character_select,
-    body.charListGrid #rm_print_characters_block .group_select,
-    #user_avatar_block.gridView .avatar-container {
-        display: flex !important;
-        flex-direction: column !important;
-        width: 100%;
-        max-width: none;
-        min-width: 0;
-        min-height: 112px;
-        align-items: center !important;
-        justify-content: flex-start;
-        padding: 10px 8px;
-    }
-
-    body.charListGrid #rm_print_characters_block:not(.group_overlay_mode_select) > :is(.bogus_folder_select, .character_select, .group_select):not(.inline_avatar) > .avatar {
-        flex: 0 0 auto;
-        margin: 0 auto;
-        align-self: center;
-        justify-self: center;
-    }
-
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .ch_name,
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .bogus_folder_counter,
-    body.charListGrid #rm_print_characters_block .character_select .ch_name,
-    body.charListGrid #rm_print_characters_block .group_select .ch_name,
-    body.charListGrid #rm_print_characters_block .group_select .group_select_counter,
-    #user_avatar_block.gridView .avatar-container .ch_name,
-    #user_avatar_block.gridView .avatar-container .bogus_folder_counter,
-    #user_avatar_block.gridView .avatar-container .group_select_counter,
-    #user_avatar_block.gridView .avatar-container .ch_additional_info {
-        max-width: 100%;
-    }
-
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .character_select_container,
-    body.charListGrid #rm_print_characters_block .character_select .character_select_container,
-    body.charListGrid #rm_print_characters_block .group_select .group_select_container,
-    #user_avatar_block.gridView .avatar-container .character_select_container,
-    #user_avatar_block.gridView .avatar-container .group_select_container {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        max-width: 100%;
-        min-width: 0;
-        width: 100%;
-    }
-
-    body.charListGrid #rm_print_characters_block .bogus_folder_select .character_name_block,
-    body.charListGrid #rm_print_characters_block .character_select .character_name_block,
-    body.charListGrid #rm_print_characters_block .group_select .group_name_block,
-    #user_avatar_block.gridView .avatar-container .character_name_block {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        width: 100%;
-        min-width: 0;
-    }
-
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) {
-        display: grid !important;
-        grid-template-columns: 24px var(--avatar-base-width) minmax(0, 1fr) !important;
-        align-items: center;
-        gap: 8px;
-        min-height: 66px;
-        padding: 8px;
-    }
-
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .bulk_select_checkbox {
-        grid-column: 1 !important;
-        grid-row: 1 / -1 !important;
-        align-self: center !important;
-        justify-self: center !important;
-        margin: 0 !important;
-        position: static !important;
-    }
-
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > .avatar {
-        grid-column: 2 !important;
-        grid-row: 1 / -1 !important;
-        align-self: center !important;
-        justify-self: center !important;
-        margin: 0 !important;
-    }
-
-    body #rm_print_characters_block.bulk_select:not(.group_overlay_mode_select) > :is(.character_select, .group_select) > :is(.character_select_container, .group_select_container) {
-        grid-column: 3 !important;
-        grid-row: 1 !important;
-        display: grid !important;
-        grid-template-columns: minmax(0, 1fr) !important;
-        align-items: center !important;
-        width: 100% !important;
-        min-width: 0 !important;
-        max-width: none !important;
     }
 
     #send_form.compact #leftSendForm,
@@ -1275,7 +830,7 @@
     }
 
     #result_info {
-        font-size: calc(var(--mainFontSize) - .1rem);
+        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     }
 
     /*     .avatar_div {
@@ -1624,8 +1179,6 @@
         min-height: 42px !important;
     }
 
-    .sb-import-card .sb-admin-card-header,
-    .sb-import-card .sb-admin-card-copy,
     .sb-import-card .sb-import-path-row,
     .sb-import-card .sb-import-action-row {
         gap: 8px !important;
@@ -2047,68 +1600,7 @@
         grid-area: hide !important;
     }
 
-    /* SillyBunny: Mobile-specific group member touch targets for Add Members screen */
-    #rm_group_add_members .group_member {
-        cursor: pointer;
-        padding: 8px 5px;
-    }
-
-    #rm_group_add_members .group_member:active {
-        background-color: var(--white30a);
-    }
-
-    /* Increase touch target size for action buttons on mobile */
-    #rm_group_add_members .right_menu_button,
-    #rm_group_members .right_menu_button {
-        min-width: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        padding: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        -webkit-tap-highlight-color: transparent;
-    }
-
-    /* Adjust grid layout for mobile to accommodate larger touch targets */
-    #rm_group_add_members .group_member {
-        --sb-group-actions-width: calc(var(--sb-mobile-touch-target, 44px) + var(--sb-mobile-touch-target, 44px) + 4px);
-        grid-template-columns: auto minmax(0, 1fr) var(--sb-group-actions-width);
-        column-gap: 8px;
-    }
-
-    #rm_group_members .group_member {
-        --sb-group-actions-width: calc(var(--sb-mobile-touch-target, 44px) + var(--sb-mobile-touch-target, 44px) + var(--sb-mobile-touch-target, 44px) + 8px);
-        grid-template-columns: auto minmax(0, 1fr) minmax(var(--sb-mobile-touch-target, 44px), var(--sb-group-actions-width));
-        column-gap: 8px;
-    }
-
-    /* Hide model input and queue position on mobile to save space */
-    #rm_group_add_members .group_member_model,
-    #rm_group_add_members .queue_position,
-    #rm_group_members .group_member_model,
-    #rm_group_members .queue_position {
-        display: none;
-    }
-
-    /* Ensure action icons container has proper sizing */
-    #rm_group_add_members .group_member_icon,
-    #rm_group_members .group_member_icon {
-        min-width: var(--sb-mobile-touch-target, 44px);
-        gap: 4px;
-        justify-content: flex-end;
-    }
-
-    #rm_group_add_members .group_member_icon {
-        width: var(--sb-group-actions-width);
-    }
-
-    #rm_group_members .group_member_icon {
-        max-width: var(--sb-group-actions-width);
-        flex-wrap: wrap;
-    }
+    /* SillyBunny: ds-entity-row owns responsive group-member touch targets. */
 
     /* General fix for menu_button_icon with text on mobile */
     .menu_button_icon:has(> span) {
@@ -2135,14 +1627,5 @@
         min-width: 0 !important;
         margin-inline: 0 !important;
         box-sizing: border-box;
-    }
-
-    :root[data-sb-character-drawer-lock="right"] #right-nav-panel.openDrawer {
-        left: max(8px, env(safe-area-inset-left, 0px)) !important;
-        right: 0 !important;
-        width: auto !important;
-        max-width: none !important;
-        margin-inline: 0 !important;
-        transform-origin: center bottom;
     }
 }

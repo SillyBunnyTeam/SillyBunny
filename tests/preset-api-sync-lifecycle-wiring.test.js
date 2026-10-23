@@ -55,26 +55,12 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(mainApiSource).not.toContain('trim().toLowerCase()');
     });
 
-    test('routes active API connect button selector mapping through the lifecycle seam', () => {
-        const connectButtonSource = getFunctionSource('resolveActiveApiConnectButton');
-
-        expect(connectButtonSource).toContain('sbPresetApiSyncLifecycle.api.resolveConnectButtonSelector(getCurrentMainApiValue())');
-        expect(connectButtonSource).not.toContain('const selectorMap = {');
-        expect(connectButtonSource).not.toContain('koboldhorde: \'#api_button\'');
-    });
-
     test('routes connection profile mirror state through the lifecycle seam', () => {
         const refreshSource = getFunctionSource('refreshChatbarState');
 
         expect(refreshSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorState({');
         expect(refreshSource).toContain('hasConnectionProfiles');
-        expect(refreshSource).toContain('isConnectionStripOpen: isConnectionStripOpen()');
-        expect(refreshSource).toContain('hasActiveConnectButton: hasConnectionProfiles && Boolean(resolveActiveApiConnectButton())');
-        expect(refreshSource).toContain('connectionMirrorState.shouldShowToggle');
-        expect(refreshSource).toContain('connectionMirrorState.shouldShowDesktopStrip');
-        expect(refreshSource).toContain('connectionMirrorState.shouldCloseDesktopStrip');
         expect(refreshSource).toContain('connectionMirrorState.shouldClearMirrors');
         expect(refreshSource).toContain('connectionMirrorState.shouldShowMobileSection');
-        expect(refreshSource).toContain('connectionMirrorState.shouldDisableConnectButton');
     });
 });

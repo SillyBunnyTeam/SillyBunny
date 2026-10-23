@@ -1,0 +1,97 @@
+/* SillyBunny: Persona primitives supply the visual tokens; only agent-specific geometry differs. */
+#sb-settings-page .ica-agent-detail .sb-persona-entry-modes {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    padding: 3px;
+    gap: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+}
+
+#sb-settings-page .ica-agent-detail .sb-persona-entry-mode-toggle {
+    display: none !important;
+}
+
+.ica-agent-property-frame {
+    flex: none;
+    min-width: 0;
+}
+
+#sb-settings-page .ica-agents-editor[data-collapsed='true'] .ica-agent-property-frame > .sb-prompt-properties {
+    display: none;
+}
+
+#sb-settings-page .ica-agents-editor[data-collapsed='true'] .ica-agent-property-summary {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    text-align: start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 0;
+    border-bottom: var(--sb-headerbar-shade);
+    border-radius: 0;
+    background: transparent;
+}
+
+@container sb-list-editor-detail (width < 560px) {
+    #sb-settings-page .ica-agent-detail .sb-persona-entry-modes {
+        display: none !important;
+    }
+
+    #sb-settings-page .ica-agent-detail .sb-persona-entry-mode-toggle {
+        display: inline-flex !important;
+    }
+}
+
+.ica-agent-detail .sb-editor-section {
+    flex: none;
+}
+
+#sb-settings-page .ica-agent-detail .ica-agent-prompt-content {
+    flex: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+    /* Persona's phone touch-target rule also overrides auxiliary textarea minimums. */
+    #sb-settings-page .ica-agent-detail textarea.text_pole,
+    .ica-agent-editor-dialog textarea {
+        min-height: clamp(180px, 30vh, 360px);
+        min-height: clamp(180px, min(30dvh, calc(var(--sb-shell-viewport-height, 100dvh) * 0.3)), 360px);
+        max-height: none;
+    }
+
+    #sb-settings-page .ica-agent-detail textarea.ica-agent-prompt {
+        min-height: clamp(320px, 45vh, 560px);
+        min-height: clamp(320px, min(45dvh, calc(var(--sb-shell-viewport-height, 100dvh) * 0.45)), 560px);
+        max-height: none;
+    }
+}
+
+#sb-settings-page .ica-agent-detail .ica-agent-prompt-preview {
+    min-height: 0;
+}
+
+.ica-agent-prompt-footer {
+    justify-content: flex-end;
+}
+
+.ica-agent-detail .ica-agent-group-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ica-agent-field-error {
+    color: var(--sb-color-danger);
+    padding: 8px 12px;
+}

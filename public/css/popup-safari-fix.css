@@ -51,10 +51,6 @@ body.safari #select_chat_popup {
         row-gap: 10px;
     }
 
-    .ica--settings {
-        gap: 10px !important;
-    }
-
     .ica--category-items {
         gap: 8px !important;
     }

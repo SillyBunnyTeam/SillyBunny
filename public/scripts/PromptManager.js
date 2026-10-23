@@ -15,6 +15,7 @@ import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { createCommentOnlyContentCheck, getPromptDisplayTokenCounts, getPromptSourceTokenCounts, getRuntimePreparedPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
+import { reorderPromptOrder } from './prompt-manager-order.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
 import {
@@ -410,6 +411,11 @@ class PromptManager {
         // Active editor pane area (`edit` / `inspect` / `preview`) when visible.
         this.activePopupArea = '';
 
+        // SillyBunny: set of marker identifiers whose accordion groups are currently collapsed. — feat/v1.9.0-ui-overhaul
+        this.collapsedMarkers = new Set(
+            (() => { try { return JSON.parse(localStorage.getItem('sb-pm-collapsed-markers') ?? '[]'); } catch (_) { return []; } })(),
+        );
+
         // Prompt preview update state.
         this.previewUpdateDebounced = null;
         this.previewTokenCountRequest = 0;
@@ -417,6 +423,7 @@ class PromptManager {
         // Original popup position before the desktop editor host moves it inline.
         this.popupOriginalParent = null;
         this.popupOriginalNextSibling = null;
+        this.closeKebabMenu = null;
 
         // Media query controlling the desktop split layout.
         this.desktopSplitMediaQuery = window.matchMedia(PROMPT_MANAGER_DESKTOP_SPLIT_QUERY);
@@ -618,6 +625,100 @@ class PromptManager {
             && Boolean(this.activePopupArea);
 
         this.containerElement?.classList.toggle(`${this.configuration.prefix}prompt_manager_has_editor`, isEditorVisible);
+
+        // SillyBunny: on mobile, mirror editor visibility onto the workspace so the
+        // CSS slide-in (Layout C) can be driven by a single class toggle rather than
+        // imperative style changes. getWorkspace() is a local helper below.
+        const workspace = this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_workspace`);
+        if (workspace instanceof HTMLElement && !this.isDesktopSplitLayout()) {
+            workspace.classList.toggle('sb-workspace-mobile-detail', this.isPopupVisible() && Boolean(this.activePopupArea));
+        }
+    }
+
+    // SillyBunny: mobile context menu for the ⋮ kebab button — surfaces edit/inspect/detach/send actions on touch — feat/v1.9.0-ui-overhaul
+    showKebabMenu(anchorEl, identifier) {
+        this.closeKebabMenu?.();
+
+        const row = this.containerElement?.querySelector(`[data-pm-identifier="${CSS.escape(identifier)}"]`);
+        const hasEdit = row?.querySelector('.prompt-manager-edit-action');
+        const hasDetach = row?.querySelector('.prompt-manager-detach-action');
+        const hasSend = row?.querySelector('.prompt-manager-send-to-agents-action');
+        const hasInspect = row?.querySelector('.prompt-manager-inspect-action');
+
+        const menu = document.createElement('div');
+        menu.className = 'pm-kebab-menu';
+        menu.setAttribute('role', 'menu');
+
+        const items = [
+            hasEdit && { label: 'Edit', icon: 'fa-pencil', action: () => hasEdit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasInspect && { label: 'Inspect tokens', icon: 'fa-magnifying-glass', action: () => hasInspect.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasSend && { label: 'Send to agents', icon: 'fa-paper-plane', action: () => hasSend.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasDetach && { label: 'Detach', icon: 'fa-chain-broken', action: () => hasDetach.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+        ].filter(Boolean);
+
+        items.forEach(({ label, icon, action }) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pm-kebab-menu-item';
+            btn.setAttribute('role', 'menuitem');
+            btn.innerHTML = `<i class="fa-solid ${icon} fa-fw" aria-hidden="true"></i><span>${label}</span>`;
+            btn.addEventListener('click', () => { this.closeKebabMenu?.(); action(); });
+            menu.appendChild(btn);
+        });
+
+        if (!items.length) return;
+
+        // SillyBunny: menus must share a native dialog's layer and sit above the settings overlay.
+        const dialog = anchorEl.closest('dialog[open]');
+        (dialog ?? document.body).appendChild(menu);
+
+        const rect = anchorEl.getBoundingClientRect();
+        const menuW = 200;
+        menu.style.cssText = `position:fixed;top:0;left:0;min-width:${menuW}px;z-index:var(--sb-z-context-menu,8000)`;
+        const menuRect = menu.getBoundingClientRect();
+        const left = Math.max(8, Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+        const top = rect.bottom + 4 + menuRect.height <= window.innerHeight - 8
+            ? rect.bottom + 4
+            : Math.max(8, rect.top - menuRect.height - 4);
+        // A filtered dialog can be the containing block for fixed-position descendants.
+        menu.style.left = `${left - menuRect.left}px`;
+        menu.style.top = `${top - menuRect.top}px`;
+
+        const dismiss = (event) => {
+            if (!menu.contains(event.target) && !anchorEl.contains(event.target)) {
+                close();
+            }
+        };
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+                anchorEl.focus({ preventScroll: true });
+            }
+        };
+        const onScroll = (event) => {
+            if (menu.contains(event.target)) return;
+            // Queued or unrelated scroll events can arrive after opening without moving the anchor.
+            const currentRect = anchorEl.getBoundingClientRect();
+            if (currentRect.top !== rect.top || currentRect.left !== rect.left) close();
+        };
+        const close = () => {
+            menu.remove();
+            document.removeEventListener('click', dismiss, true);
+            document.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('scroll', onScroll, true);
+            window.removeEventListener('resize', close);
+            dialog?.removeEventListener('close', close);
+            this.closeKebabMenu = null;
+        };
+        this.closeKebabMenu = close;
+        document.addEventListener('click', dismiss, true);
+        document.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', close);
+        dialog?.addEventListener('close', close);
+        menu.querySelector('button')?.focus({ preventScroll: true });
     }
 
     isPopupVisible() {
@@ -729,6 +830,7 @@ class PromptManager {
                 '.prompt-manager-inspect-action',
                 '.prompt-manager-toggle-action',
                 '.prompt-manager-send-to-agents-action',
+                '.pm-accordion-toggle',
                 'input',
                 'select',
                 'textarea',
@@ -739,6 +841,25 @@ class PromptManager {
             if (ignoredClickTarget) return;
 
             const promptID = event.currentTarget?.dataset?.pmIdentifier;
+
+            // SillyBunny: accordion retract — clicking the already-selected prompt closes
+            // the editor instead of reopening it. — feat/v1.9.0-ui-overhaul
+            if (promptID && promptID === this.selectedPromptId && this.isPopupVisible()) {
+                const closeAndClear = () => {
+                    this.hidePopup();
+                    this.clearEditForm();
+                    this.clearInspectForm();
+                    this.selectedPromptId = null;
+                    this.activePopupArea = '';
+                    this.syncEditorPaneState();
+                    this.syncListSelection();
+                };
+                closeAndClear();
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+
             if (editPromptById(promptID)) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -813,7 +934,8 @@ class PromptManager {
 
         // Save prompt edit form to settings and close form.
         this.handleSavePrompt = (event) => {
-            const promptId = event.target.dataset.pmPrompt;
+            // SillyBunny: labelled buttons have child spans; the listener's button owns the prompt ID.
+            const promptId = event.currentTarget.dataset.pmPrompt;
             const prompt = this.getPromptById(promptId);
             const isDesktopSplit = this.isDesktopSplitLayout();
             this.#queuePromptManagerScrollRestore();
@@ -848,7 +970,8 @@ class PromptManager {
 
         // Reset prompt should it be a system prompt
         this.handleResetPrompt = (event) => {
-            const promptId = event.target.dataset.pmPrompt;
+            // SillyBunny: labelled buttons have child spans; the listener's button owns the prompt ID.
+            const promptId = event.currentTarget.dataset.pmPrompt;
             const prompt = this.getPromptById(promptId);
             const isPulledPrompt = Object.keys(this.promptSources).includes(promptId);
 
@@ -1158,11 +1281,120 @@ class PromptManager {
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_close_button').addEventListener('click', closeAndClearPopup);
         // SillyBunny: preview mode has its own close button and field listeners.
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_preview_close_button').addEventListener('click', closeAndClearPopup);
+        // SillyBunny: mobile slide-in back button — returns to the list view on narrow
+        // viewports by calling the same closeAndClearPopup path, which triggers
+        // syncEditorPaneState() and removes .sb-workspace-mobile-detail from the workspace.
+        this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_back_button`)
+            ?.addEventListener('click', closeAndClearPopup);
         document.querySelectorAll('.' + this.configuration.prefix + 'prompt_manager_tab_button').forEach(button => {
             button.addEventListener('click', this.handlePromptEditorTabClick);
         });
         this.setupPreviewListeners();
         closeAndClearPopup();
+
+        // SillyBunny: accordion toggle — clicking .pm-accordion-toggle collapses/expands
+        // a marker group without a full re-render; persists state to localStorage. — feat/v1.9.0-ui-overhaul
+        this.containerElement?.addEventListener('click', (event) => {
+            const toggle = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-accordion-toggle') : null);
+            if (!toggle) return;
+            event.stopPropagation();
+            const markerId = toggle.dataset.pmAccordion;
+            if (!markerId) return;
+            if (this.collapsedMarkers.has(markerId)) {
+                this.collapsedMarkers.delete(markerId);
+            } else {
+                this.collapsedMarkers.add(markerId);
+            }
+            try { localStorage.setItem('sb-pm-collapsed-markers', JSON.stringify([...this.collapsedMarkers])); } catch (_) { /* ignore */ }
+            this.renderDebounced();
+        });
+
+        this.containerElement?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+            const toggle = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-accordion-toggle') : null);
+            if (!toggle) return;
+            event.preventDefault();
+            toggle.click();
+        });
+
+        // SillyBunny: mobile kebab ⋮ — builds a transient context menu for touch users who can't hover — feat/v1.9.0-ui-overhaul
+        this.containerElement?.addEventListener('click', (event) => {
+            const kebab = event.target.closest('.pm-row-kebab');
+            if (!kebab) return;
+            event.stopPropagation();
+            const identifier = kebab.dataset.pmKebab;
+            if (!identifier) return;
+            this.showKebabMenu(kebab, identifier);
+        });
+
+        // SillyBunny: JS-side touch detection fallback — media query `hover:none` is unreliable
+        // in DevTools emulation; this adds .sb-touch-device so CSS can target it independently. — feat/v1.9.0-ui-overhaul
+        if (navigator.maxTouchPoints > 0) {
+            this.containerElement?.classList.add('sb-touch-device');
+        }
+
+        // SillyBunny: trigger chip toggle — syncs chip aria-checked + hidden <select> so that
+        // the existing handleSavePrompt path reading selectedOptions keeps working. — feat/v1.9.0-ui-overhaul
+        document.getElementById(this.configuration.prefix + 'prompt_manager_popup_trigger_chips')
+            ?.addEventListener('click', (event) => {
+                const chip = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-trigger-chip') : null);
+                if (!chip) return;
+                const val = chip.dataset.triggerValue;
+                if (!val) return;
+                const checked = chip.getAttribute('aria-checked') === 'true';
+                chip.setAttribute('aria-checked', checked ? 'false' : 'true');
+                const triggerField = /** @type {HTMLSelectElement} */(document.getElementById(this.configuration.prefix + 'prompt_manager_popup_entry_form_injection_trigger'));
+                if (!triggerField) return;
+                const option = Array.from(triggerField.options).find(o => o.value === val);
+                if (option) option.selected = !checked;
+                triggerField.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+
+        // SillyBunny: keep the split width on the persistent container because rendering replaces the workspace.
+        this.containerElement?.addEventListener('pointerdown', (event) => {
+            const divider = event.target.closest('.pm-workspace-divider');
+            if (!divider) return;
+
+            const workspace = this.containerElement.querySelector(`.${this.configuration.prefix}prompt_manager_workspace`);
+            if (!(workspace instanceof HTMLElement)) return;
+
+            event.preventDefault();
+            divider.classList.add('sb-divider-active');
+            divider.setPointerCapture(event.pointerId);
+
+            const startX = event.clientX;
+            const startWidth = parseInt(
+                getComputedStyle(workspace).getPropertyValue('--pm-list-width') || '280',
+                10,
+            );
+
+            const onMove = (moveEvent) => {
+                const delta = moveEvent.clientX - startX;
+                const next = Math.min(480, Math.max(200, startWidth + delta));
+                this.containerElement.style.setProperty('--pm-list-width', `${next}px`);
+            };
+
+            const onUp = () => {
+                divider.classList.remove('sb-divider-active');
+                divider.releasePointerCapture(event.pointerId);
+                divider.removeEventListener('pointermove', onMove);
+                divider.removeEventListener('pointerup', onUp);
+                // Persist across sessions
+                const width = this.containerElement.style.getPropertyValue('--pm-list-width');
+                if (width) {
+                    try { localStorage.setItem('sb-pm-list-width', width); } catch (_) { /* ignore */ }
+                }
+            };
+
+            divider.addEventListener('pointermove', onMove);
+            divider.addEventListener('pointerup', onUp);
+        });
+
+        // SillyBunny: restore persisted list pane width on init. — feat/v1.9.0-ui-overhaul
+        const savedWidth = (() => { try { return localStorage.getItem('sb-pm-list-width'); } catch (_) { return null; } })();
+        if (savedWidth && this.containerElement instanceof HTMLElement) {
+            this.containerElement.style.setProperty('--pm-list-width', savedWidth);
+        }
 
         // Re-render prompt manager on openai preset change
         eventSource.on(event_types.OAI_PRESET_CHANGED_AFTER, () => {
@@ -1286,6 +1518,8 @@ class PromptManager {
 
                 this.makeDraggable();
                 this.#setScrollPosition(scrollPosition);
+                // SillyBunny: notify the owned editor only after the current render and token counts commit.
+                document.dispatchEvent(new CustomEvent('sb:prompt-manager-rendered', { detail: { manager: this } }));
             } finally {
                 this.profileEnd('render');
             }
@@ -1822,6 +2056,11 @@ class PromptManager {
             option.selected = Array.isArray(prompt.injection_trigger) && prompt.injection_trigger.includes(option.value);
         });
         injectionTriggerField.dispatchEvent(new Event('change', { bubbles: true }));
+        // SillyBunny: sync chip state to match the hidden select after loading. — feat/v1.9.0-ui-overhaul
+        document.querySelectorAll('#completion_prompt_manager_popup_trigger_chips .pm-trigger-chip').forEach(chip => {
+            const active = Array.isArray(prompt.injection_trigger) && prompt.injection_trigger.includes(chip.dataset.triggerValue);
+            chip.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
         this.setEditFormBlockVisibility(injectionDepthBlock, prompt.injection_position === INJECTION_POSITION.ABSOLUTE);
         this.setEditFormBlockVisibility(injectionOrderBlock, prompt.injection_position === INJECTION_POSITION.ABSOLUTE);
         injectionPositionField.removeAttribute('disabled');
@@ -1994,6 +2233,10 @@ class PromptManager {
         injectionDepthField.value = DEFAULT_DEPTH.toString();
         injectionOrderField.value = DEFAULT_ORDER.toString();
         injectionTriggerField.value = '';
+        // SillyBunny: reset chips when the edit form is cleared. — feat/v1.9.0-ui-overhaul
+        document.querySelectorAll('#completion_prompt_manager_popup_trigger_chips .pm-trigger-chip').forEach(chip => {
+            chip.setAttribute('aria-checked', 'false');
+        });
         this.setEditFormBlockVisibility(injectionDepthBlock, true);
         this.setEditFormBlockVisibility(injectionOrderBlock, true);
         this.setEditFormBlockVisibility(forbidOverridesBlock, true);
@@ -2242,6 +2485,7 @@ class PromptManager {
             this.activePopupArea = '';
         }
 
+        this.closeKebabMenu?.();
         this.restorePopupToOrigin();
         promptManagerDiv.innerHTML = '';
         promptManagerDiv.insertAdjacentHTML('beforeend', headerHtml);
@@ -2260,9 +2504,9 @@ class PromptManager {
             }
 
             footerDiv?.querySelector('#prompt-manager-reset-character')?.addEventListener('click', this.handleCharacterReset);
-            footerDiv.querySelector('.menu_button:nth-child(2)').addEventListener('click', this.handleAppendPrompt);
-            footerDiv.querySelector('.caution').addEventListener('click', this.handleDeletePrompt);
-            footerDiv.querySelector('.menu_button:last-child').addEventListener('click', this.handleNewPrompt);
+            footerDiv.querySelector('[data-pm-footer-action="insert"]').addEventListener('click', this.handleAppendPrompt);
+            footerDiv.querySelector('[data-pm-footer-action="new"]').addEventListener('click', this.handleNewPrompt);
+            footerDiv.querySelector('[data-pm-footer-action="delete"]').addEventListener('click', this.handleDeletePrompt);
             footerDiv.querySelector('select').selectedIndex = selectedPromptIndex;
 
             // Add prompt export dialogue and options
@@ -2312,6 +2556,22 @@ class PromptManager {
             return false;
         }
 
+        // SillyBunny: pre-pass — build per-marker group membership so markers can render
+        // chevron, active count, and lock state without a second traversal. — feat/v1.9.0-ui-overhaul
+        const allPrompts = this.getPromptsForCharacter(this.activeCharacter);
+        /** @type {Map<string, string[]>} markerId → child identifiers */
+        const markerGroups = new Map();
+        let currentMarkerId = null;
+        allPrompts.forEach(p => {
+            if (!p) return;
+            if (p.marker) {
+                currentMarkerId = p.identifier;
+                markerGroups.set(currentMarkerId, []);
+            } else if (currentMarkerId) {
+                markerGroups.get(currentMarkerId)?.push(p.identifier);
+            }
+        });
+
         this.getPromptsForCharacter(this.activeCharacter).forEach(prompt => {
             if (!prompt) return;
 
@@ -2319,6 +2579,14 @@ class PromptManager {
             const enabledClass = listEntry.enabled ? '' : `${prefix}prompt_manager_prompt_disabled`;
             const draggableClass = `${prefix}prompt_manager_prompt_draggable`;
             const markerClass = prompt.marker ? `${prefix}prompt_manager_marker` : '';
+
+            // SillyBunny: skip children of collapsed marker groups — accordion hide. — feat/v1.9.0-ui-overhaul
+            if (!prompt.marker) {
+                const isChildCollapsed = [...markerGroups.entries()].some(([mid, children]) =>
+                    children.includes(prompt.identifier) && this.collapsedMarkers.has(mid),
+                );
+                if (isChildCollapsed) return;
+            }
             const tokens = displayTokenCounts?.[prompt.identifier] ?? this.tokenHandler?.getCounts()[prompt.identifier] ?? 0;
 
             // Warn the user if the chat history goes below certain token thresholds.
@@ -2385,39 +2653,88 @@ class PromptManager {
             const importantClass = isImportantPrompt ? `${prefix}prompt_manager_important` : '';
             const selectedClass = this.selectedPromptId === prompt.identifier && this.activePopupArea ? `${prefix}prompt_manager_prompt_selected` : '';
             const iconLookup = prompt.role === 'system' && (prompt.marker || prompt.system_prompt) ? '' : prompt.role;
+            // SillyBunny: type class drives the left accent bar colour in the new row layout — feat/v1.9.0-ui-overhaul
+            const typeRowClass = isMarkerPrompt ? 'pm-row-type-marker'
+                : isSystemPrompt || isImportantPrompt ? 'pm-row-type-system'
+                    : isInjectionPrompt ? 'pm-row-type-injection'
+                        : 'pm-row-type-user';
 
-            //add role icons to the right of prompt name
-            const promptRoles = {
-                assistant: { roleIcon: 'fa-robot', roleTitle: 'Prompt will be sent as Assistant' },
-                user: { roleIcon: 'fa-user', roleTitle: 'Prompt will be sent as User' },
-            };
-            const roleIcon = promptRoles[iconLookup]?.roleIcon || '';
-            const roleTitle = promptRoles[iconLookup]?.roleTitle || '';
+            // SillyBunny: build subtitle chip HTML — replaces icon columns that ate name space — feat/v1.9.0-ui-overhaul
+            const typeChipLabel = isMarkerPrompt ? 'marker'
+                : isSystemPrompt ? 'system'
+                    : isImportantPrompt ? 'required'
+                        : isInjectionPrompt ? 'injection'
+                            : isUserPrompt ? 'preset' : '';
+            const typeChipClass = isMarkerPrompt ? 'pm-chip-marker'
+                : isSystemPrompt ? 'pm-chip-system'
+                    : isImportantPrompt ? 'pm-chip-important'
+                        : isInjectionPrompt ? 'pm-chip-injection'
+                            : 'pm-chip-user';
+            const typeChipHtml = typeChipLabel
+                ? `<span class="pm-row-chip ${typeChipClass}">${typeChipLabel}</span>` : '';
+            // SillyBunny: only show role chip when role is non-default (user/assistant) — system is already implied by the type chip — feat/v1.9.0-ui-overhaul
+            const roleChipHtml = iconLookup && prompt.role !== 'system'
+                ? `<span class="pm-row-chip pm-chip-role pm-chip-role-${escapeHtml(prompt.role || 'system')}">${escapeHtml(prompt.role || 'system')}</span>` : '';
+            const depthChipHtml = isInjectionPrompt
+                ? `<span class="pm-row-chip pm-chip-depth">↓${escapeHtml((prompt.injection_depth ?? 0).toString())}</span>` : '';
+            const subtitleChipHtml = typeChipHtml + roleChipHtml + depthChipHtml;
+
+            // SillyBunny: accordion state — marker rows show a chevron, active count, and
+            // toggle-disabled lock; non-marker rows are skipped when their group is collapsed. — feat/v1.9.0-ui-overhaul
+            let accordionHtml = '';
+            if (isMarkerPrompt) {
+                const groupChildren = markerGroups.get(prompt.identifier) ?? [];
+                const isCollapsed = this.collapsedMarkers.has(prompt.identifier);
+                const totalInGroup = groupChildren.length;
+                const activeInGroup = groupChildren.filter(cid => {
+                    const entry = this.getPromptOrderEntry(this.activeCharacter, cid);
+                    return entry?.enabled;
+                }).length;
+                const isLocked = !this.isPromptToggleAllowed(prompt);
+                const chevronClass = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down';
+                const collapsedClass = isCollapsed ? 'pm-accordion-collapsed' : '';
+                const lockHtml = isLocked
+                    ? '<i class="fa-solid fa-lock pm-accordion-lock" aria-hidden="true"></i>'
+                    : '';
+                const countHtml = totalInGroup > 0
+                    ? `<span class="pm-accordion-count">${activeInGroup}/${totalInGroup}</span>`
+                    : '';
+                accordionHtml = `
+                    <span class="pm-accordion-toggle ${collapsedClass}" data-pm-accordion="${escapeHtml(prompt.identifier)}" role="button" tabindex="0" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-label="${isCollapsed ? 'Expand' : 'Collapse'} group">
+                        <i class="fa-solid ${chevronClass} pm-accordion-chevron fa-fw" aria-hidden="true"></i>
+                    </span>
+                    ${countHtml}${lockHtml}
+                `;
+            }
 
             listItemHtml += `
-                <li class="${prefix}prompt_manager_prompt ${draggableClass} ${enabledClass} ${markerClass} ${importantClass} ${selectedClass}" data-pm-identifier="${escapeHtml(prompt.identifier)}">
-                    <span class="drag-handle">☰</span>
-                    <span class="${prefix}prompt_manager_prompt_name" data-pm-name="${encodedName}">
-                        ${isMarkerPrompt ? '<span class="fa-fw fa-solid fa-thumb-tack" title="Marker"></span>' : ''}
-                        ${isSystemPrompt ? '<span class="fa-fw fa-solid fa-square-poll-horizontal" title="Global Prompt"></span>' : ''}
-                        ${isImportantPrompt ? '<span class="fa-fw fa-solid fa-star" title="Important Prompt"></span>' : ''}
-                        ${isUserPrompt ? '<span class="fa-fw fa-solid fa-asterisk" title="Preset Prompt"></span>' : ''}
-                        ${isInjectionPrompt ? '<span class="fa-fw fa-solid fa-syringe" title="In-Chat Injection"></span>' : ''}
-                        ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
-                        ${roleIcon ? `<span data-role="${escapeHtml(prompt.role)}" class="fa-xs fa-solid ${roleIcon}" title="${roleTitle}"></span>` : ''}
-                        ${isInjectionPrompt ? `<small class="prompt-manager-injection-depth">@ ${escapeHtml(prompt.injection_depth.toString())}</small>` : ''}
-                        ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
+                <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_prompt_visible ${draggableClass} ${enabledClass} ${markerClass} ${importantClass} ${selectedClass} ${typeRowClass}" data-pm-identifier="${escapeHtml(prompt.identifier)}">
+                    <span class="drag-handle pm-row-grip" aria-hidden="true">☰</span>
+                    <span class="pm-row-type-bar" aria-hidden="true"></span>
+                    <span class="pm-row-name-area ${prefix}prompt_manager_prompt_name" data-pm-name="${encodedName}">
+                        <span class="pm-row-primary">
+                            ${this.isPromptInspectionAllowed(prompt) ? `<a title="${encodedName}" class="prompt-manager-inspect-action" role="button" tabindex="0">${encodedName}</a>` : `<span title="${encodedName}">${encodedName}</span>`}
+                            ${isOverriddenPrompt ? '<small class="fa-solid fa-address-card prompt-manager-overridden" title="Pulled from a character card"></small>' : ''}
+                        </span>
+                        ${subtitleChipHtml ? `<span class="pm-row-chips">${subtitleChipHtml}</span>` : ''}
                     </span>
-                    <span>
-                            <span class="prompt_manager_prompt_controls">
-                                ${sendToAgentsSpanHtml}
-                                ${detachSpanHtml}
-                                ${editSpanHtml}
-                                ${toggleSpanHtml}
-                            </span>
+                    ${isMarkerPrompt ? `<span class="pm-accordion-meta">${accordionHtml}</span>` : ''}
+                    <span class="pm-row-end-zone">
+                        <span class="prompt_manager_prompt_tokens" data-pm-tokens="${calculatedTokens}"><span class="${warningClass}" title="${warningTitle}"> </span>${calculatedTokens}</span>
+                        <span class="pm-row-actions">
+                            ${sendToAgentsSpanHtml}
+                            ${detachSpanHtml}
+                            ${editSpanHtml}
+                        </span>
+                        <button type="button" class="pm-row-kebab menu_button menu_button_icon" title="Actions" aria-label="Actions" aria-haspopup="true" data-pm-kebab="${escapeHtml(prompt.identifier)}">
+                            <i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i>
+                        </button>
                     </span>
-
-                    <span class="prompt_manager_prompt_tokens" data-pm-tokens="${calculatedTokens}"><span class="${warningClass}" title="${warningTitle}"> </span>${calculatedTokens}</span>
+                    <span class="pm-row-toggle-cell">
+                        <span class="prompt_manager_prompt_controls">
+                            ${toggleSpanHtml}
+                        </span>
+                    </span>
                 </li>
             `;
         });
@@ -2427,12 +2744,19 @@ class PromptManager {
             ? `${prefix}prompt_manager_prompt_selected`
             : '';
         listItemHtml += `
-            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
-                <span class="${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
-                    <span class="fa-fw fa-solid fa-robot" aria-hidden="true"></span>
-                    <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
+            <li class="${prefix}prompt_manager_prompt ${prefix}prompt_manager_prompt_visible ${prefix}prompt_manager_marker pm-row-type-marker prompt-manager-runtime-row ${runtimeSelectedClass}" data-pm-identifier="${RUNTIME_AGENTS_IDENTIFIER}" data-pm-runtime="true">
+                <span class="drag-handle pm-row-grip" aria-hidden="true"></span>
+                <span class="pm-row-type-bar" aria-hidden="true"></span>
+                <span class="pm-row-name-area ${prefix}prompt_manager_prompt_name" data-pm-name="Agents">
+                    <span class="pm-row-primary">
+                        <a title="Agents" class="prompt-manager-inspect-action" role="button" tabindex="0">Agents</a>
+                    </span>
+                    <span class="pm-row-chips"><span class="pm-row-chip pm-chip-depth">runtime</span></span>
                 </span>
-                <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+                <span class="pm-row-end-zone">
+                    <span class="prompt_manager_prompt_tokens" data-pm-tokens="${runtimeAgentTokens || '-'}">${runtimeAgentTokens || '-'}</span>
+                </span>
+                <span class="pm-row-toggle-cell"></span>
             </li>
         `;
 
@@ -2613,8 +2937,7 @@ class PromptManager {
             update: (event, ui) => {
                 const promptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
                 const promptListElement = $(`#${this.configuration.prefix}prompt_manager_list`).sortable('toArray', { attribute: 'data-pm-identifier' });
-                const idToObjectMap = new Map(promptOrder.map(prompt => [prompt.identifier, prompt]));
-                const updatedPromptOrder = promptListElement.map(identifier => idToObjectMap.get(identifier));
+                const updatedPromptOrder = reorderPromptOrder(promptOrder, promptListElement);
 
                 this.removePromptOrderForCharacter(this.activeCharacter);
                 this.addPromptOrderForCharacter(this.activeCharacter, updatedPromptOrder);
@@ -2622,6 +2945,7 @@ class PromptManager {
                 this.log(`Prompt order updated for ${this.activeCharacter.name}.`);
 
                 this.saveServiceSettings();
+                this.renderDebounced(false);
             },
         });
         this.updateDragLockState();

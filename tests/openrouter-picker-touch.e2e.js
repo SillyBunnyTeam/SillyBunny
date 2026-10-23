@@ -51,9 +51,12 @@ async function openQuantizations(page, baseURL, kind = 'chat') {
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'api'));
     const select = page.locator(`#openrouter_quantizations_${kind}`);
-    await expect(select).toBeVisible();
-    await select.scrollIntoViewIfNeeded();
-    return { select, menu: page.locator(`#openrouter_quantizations_${kind}_menu`) };
+    const trigger = page.locator(`[data-sb-editor-field="openrouter_quantizations_${kind}"] .ds-select-row__trigger`);
+    await expect(select).toHaveAttribute('aria-hidden', 'true');
+    await expect(select).toHaveAttribute('tabindex', '-1');
+    await expect(trigger).toBeVisible();
+    await trigger.scrollIntoViewIfNeeded();
+    return { select, trigger, menu: page.locator('.sb-picker-sheet, .sb-picker') };
 }
 
 async function settleScroll(select) {
@@ -88,15 +91,15 @@ for (const kind of ['chat', 'text']) {
     test(`${kind} quantizations ignore a touch scroll and still accept an intentional tap`, async ({ page, baseURL, browserName }, testInfo) => {
         // eslint-disable-next-line playwright/no-skipped-test -- CDP has no equivalent on the other browser engines.
         test.skip(browserName !== 'chromium', 'CDP touch gesture requires Chromium');
-        const { select, menu } = await openQuantizations(page, baseURL, kind);
+        const { select, trigger, menu } = await openQuantizations(page, baseURL, kind);
         await expect(select).toHaveValues(['fp16']);
-        await select.tap();
+        await trigger.tap();
         await expect(menu).toBeVisible();
         await expect(select).toHaveValues(['fp16']);
-        await select.tap();
+        await menu.getByRole('button', { name: 'Close', exact: true }).tap();
         await expect(menu).toBeHidden();
-        await settleScroll(select);
-        const geometry = await select.evaluate(element => {
+        await settleScroll(trigger);
+        const geometry = await trigger.evaluate(element => {
             const scroller = element.closest('.sb-shell-panel-scroller');
             const box = element.getBoundingClientRect();
             const panel = scroller.getBoundingClientRect();
@@ -124,11 +127,11 @@ for (const kind of ['chat', 'text']) {
         await expect(select).toHaveValues(['fp16']);
         await attachScreenshot(page, testInfo, `quant-swipe-${kind}`);
 
-        await settleScroll(select);
-        await select.tap();
+        await settleScroll(trigger);
+        await trigger.tap();
         await expect(menu).toBeVisible();
         await expect(select).toHaveValues(['fp16']);
-        await menu.locator('[data-value="int8"]').tap();
+        await menu.getByRole('option', { name: 'Integer (8 bit)', exact: true }).tap();
         await expect(select).toHaveValues(['int8', 'fp16']);
         const saved = await page.evaluate(async kind => kind === 'chat'
             ? (await import('/scripts/openai.js')).oai_settings.openrouter_quantizations
@@ -140,10 +143,10 @@ for (const kind of ['chat', 'text']) {
 test('pen pan leaves the picker closed and a pen tap opens it', async ({ page, baseURL, browserName }, testInfo) => {
     // eslint-disable-next-line playwright/no-skipped-test -- Only the Chromium protocol can dispatch a pen pointer.
     test.skip(browserName !== 'chromium', 'CDP pen pointer requires Chromium');
-    const { select, menu } = await openQuantizations(page, baseURL);
+    const { select, trigger, menu } = await openQuantizations(page, baseURL);
     await expect(select).toHaveValues(['fp16']);
-    await recordPointerTypes(select);
-    const box = await select.boundingBox();
+    await recordPointerTypes(trigger);
+    const box = await trigger.boundingBox();
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
     const cdp = await page.context().newCDPSession(page);
@@ -174,37 +177,41 @@ test('pen pan leaves the picker closed and a pen tap opens it', async ({ page, b
 });
 
 test('mobile touch tap opens once without changing native selection', async ({ page, baseURL }) => {
-    const { select, menu } = await openQuantizations(page, baseURL);
-    await select.tap();
+    const { select, trigger, menu } = await openQuantizations(page, baseURL);
+    await trigger.tap();
     await expect(menu).toBeVisible();
     await expect(select).toHaveValues(['fp16']);
-    await select.tap();
+    // The shared picker is a modal sheet on phones; close it before returning to the row.
+    await menu.getByRole('button', { name: 'Close', exact: true }).tap();
     await expect(menu).toBeHidden();
-    await select.tap();
+    await trigger.tap();
     await expect(menu).toBeVisible();
-    await menu.locator('[data-value="int8"]').tap();
+    await menu.getByRole('option', { name: 'Integer (8 bit)', exact: true }).tap();
     await expect(select).toHaveValues(['int8', 'fp16']);
 });
 
-test('mobile inline picker keeps mouse and keyboard activation', async ({ page, baseURL }) => {
-    const { select, menu } = await openQuantizations(page, baseURL);
-    for (const key of ['Enter', 'Space', 'ArrowDown']) {
-        await select.press(key);
+test('mobile picker row keeps mouse and keyboard activation', async ({ page, baseURL }) => {
+    const { select, trigger, menu } = await openQuantizations(page, baseURL);
+    for (const key of ['Enter', 'Space', 'ArrowDown', 'ArrowUp']) {
+        await trigger.press(key);
         await expect(menu).toBeVisible();
-        await select.press(key);
+        await expect(menu.getByRole('combobox')).toBeFocused();
+        await menu.getByRole('combobox').press('Escape');
         await expect(menu).toBeHidden();
+        await expect(trigger).toBeFocused();
+        await expect(select).toHaveValues(['fp16']);
     }
-    await select.click();
+    await trigger.click();
     await expect(menu).toBeVisible();
-    await menu.locator('[data-value="int8"]').click();
+    await menu.getByRole('option', { name: 'Integer (8 bit)', exact: true }).click();
     await expect(select).toHaveValues(['int8', 'fp16']);
 });
 
 test.describe('wide tablet', () => {
     test.use({ viewport: { width: 1024, height: 768 }, userAgent: GALAXY_TAB_USER_AGENT });
 
-    test('a 1024px tablet keeps the native multiple select from scrolling its own options', async ({ page, baseURL }, testInfo) => {
-        const { select, menu } = await openQuantizations(page, baseURL);
+    test('a 1024px tablet exposes a picker row instead of a scrollable native multiple select', async ({ page, baseURL }, testInfo) => {
+        const { select, trigger, menu } = await openQuantizations(page, baseURL);
         const state = await page.evaluate(async () => {
             const { isMobile } = await import('/scripts/RossAscends-mods.js');
             const element = document.getElementById('openrouter_quantizations_chat');
@@ -212,10 +219,11 @@ test.describe('wide tablet', () => {
             return {
                 appIsMobile: isMobile(),
                 mobileMedia: window.matchMedia('(max-width: 768px)').matches,
-                nativeSelect: !element.classList.contains('select2-hidden-accessible'),
-                pickerClass: element.classList.contains('sb-inline-select-picker-control'),
+                hiddenFromAccessibility: element.getAttribute('aria-hidden'),
+                tabIndex: element.tabIndex,
+                pointerEvents: style.pointerEvents,
+                pickerRow: Boolean(element.closest('.ds-select-row')),
                 overflow: style.overflow,
-                // Recorded only: the id-keyed left nav select rule outranks the class rule for touch-action.
                 touchAction: style.touchAction,
                 insideLeftNav: Boolean(element.closest('#left-nav-panel')),
             };
@@ -224,12 +232,17 @@ test.describe('wide tablet', () => {
         expect(state).toMatchObject({
             appIsMobile: true,
             mobileMedia: false,
-            nativeSelect: true,
-            pickerClass: true,
+            hiddenFromAccessibility: 'true',
+            tabIndex: -1,
+            pointerEvents: 'none',
+            pickerRow: true,
             overflow: 'hidden',
         });
-        await select.tap();
+        await trigger.tap();
         await expect(menu).toBeVisible();
+        await expect(select).toHaveValues(['fp16']);
+        await trigger.tap();
+        await expect(menu).toBeHidden();
         await expect(select).toHaveValues(['fp16']);
         await attachScreenshot(page, testInfo, 'tablet-1024');
     });

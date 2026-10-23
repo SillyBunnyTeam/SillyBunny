@@ -342,7 +342,6 @@ async function openSwipePicker(messageId) {
     popup.closeButton.style.right = 'auto';
     popup.closeButton.style.width = 'auto';
     popup.closeButton.style.height = 'auto';
-    popup.closeButton.style.padding = '0';
     popup.closeButton.style.filter = 'none';
     header.appendChild(popup.closeButton);
 

@@ -1369,8 +1369,10 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     }
 
     let toggleElement = isActive || isDisabled ?
-        '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
-        `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="extension_missing ${checkboxClass}" disabled>`;
+        '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="sb-switch ${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
+        `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="sb-switch extension_missing ${checkboxClass}" disabled>`;
+    // SillyBunny: retain native checked state and identify each switch by its extension's name.
+    toggleElement = toggleElement.replace('<input ', `<input role="switch" aria-label="${escapeHtml(displayName)}" `);
 
     let deleteButton = isExternal ? `<button class="btn_delete menu_button" data-name="${externalId}" data-i18n="[title]Delete" title="Delete"><i class="fa-fw fa-solid fa-trash-can"></i></button>` : '';
     let cleanButton = isExternal && hasExtensionHook(externalId, 'clean') ? `<button class="btn_clean menu_button" data-name="${externalId}" data-i18n="[title]Clean extension data" title="Clean extension data"><i class="fa-fw fa-solid fa-broom"></i></button>` : '';
@@ -1400,14 +1402,12 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     // if external, wrap the name in a link to the repo
 
     let extensionHtml = `
-        <div class="extension_block" data-name="${externalId}">
-            <div class="extension_toggle">
-                ${toggleElement}
-            </div>
+        <!-- SillyBunny: retain delegated controls while sharing preference-row geometry. -->
+        <div class="extension_block ds-row ds-row-switch" data-name="${externalId}">
             <div class="extension_icon">
                 ${extensionIcon}
             </div>
-            <div class="flexGrow extension_text_block">
+            <div class="extension_text_block ds-row-text">
                 ${originHtml}
                 <span class="${isActive ? 'extension_enabled' : isDisabled ? 'extension_disabled' : 'extension_missing'}">
                     <span class="extension_name">${DOMPurify.sanitize(displayName)}</span>
@@ -1415,16 +1415,10 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
                     ${modulesInfo}
                 </span>
                 ${isExternal ? '</a>' : ''}
+                <div class="extension_actions flex-container alignItemsCenter">${updateButton}${syncButton}${branchButton}${moveButton}${cleanButton}${reinstallButton}${deleteButton}</div>
             </div>
-
-            <div class="extension_actions flex-container alignItemsCenter">
-                ${updateButton}
-                ${syncButton}
-                ${branchButton}
-                ${moveButton}
-                ${cleanButton}
-                ${reinstallButton}
-                ${deleteButton}
+            <div class="extension_toggle ds-row-suffix">
+                ${toggleElement}
             </div>
         </div>`;
 
@@ -1491,7 +1485,7 @@ function getExtensionLoadErrorsHtml() {
 }
 
 /**
- * Generates the HTML strings for all extensions and displays them in a popup.
+ * Generates the HTML strings for all extensions and displays them in a full-screen popup.
  */
 async function showExtensionsDetails() {
     const abortController = new AbortController();
@@ -1546,6 +1540,9 @@ async function showExtensionsDetails() {
             .append(htmlDefault)
             .append(htmlExternal)
             .append(getModuleInformation());
+
+        const popupHeader = $('<header class="sb-popup-dialog-header"></header>')
+            .append($('<h2></h2>').text(t`Extensions`));
 
         {
             const updateAction = async (force) => {
@@ -1630,14 +1627,13 @@ async function showExtensionsDetails() {
             toolbar.append(updateAllButton, updateEnabledOnlyButton, flexExpander, sortOrderButton);
             htmlExternal.find('.third_party_toolbar').append(restoreBulkToggledExtensionsButton, toggleAllExtensionsButton);
             html.prepend(toolbar);
+            html.prepend(popupHeader);
         }
 
         let waitingForSave = false;
 
         const popup = new Popup(html, POPUP_TYPE.TEXT, '', {
             okButton: t`Close`,
-            wide: true,
-            large: true,
             customButtons: [],
             allowVerticalScrolling: true,
             onClosing: async () => {
@@ -1674,6 +1670,8 @@ async function showExtensionsDetails() {
                 return true;
             },
         });
+        popup.dlg.classList.add('sb-popup-fullscreen');
+        popup.dlg.setAttribute('aria-label', t`Extensions`);
         popupPromise = popup.show();
         popup.content.scrollTop = initialScrollTop;
         checkForUpdatesManual(sortFn, abortController.signal).finally(() => htmlLoading.remove());
