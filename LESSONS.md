@@ -53,6 +53,7 @@ This is the largest class by a wide margin.
 - **No test:** `59aeea3f1` (#385, abort agent generation on cancel), `20353df60` (hotfix, swipes rerun agents).
 - **Fixes:** #839 (Guided Generations cancel, swipe cleanup and profile restore).
 - **Order matters:** Guided Generations calls `integrateQrBar()` before it returns for a hidden bar (`public/scripts/extensions/guided-generations/index.js`). If the order changes, Quick Replies show in the composer after a reload (`8ce1a10a5`). Test: `tests/guided-generations-settings.test.js`.
+- **Dry runs:** the `GENERATION_STARTED` listener in `public/scripts/extensions/in-chat-agents/index.js` returns for a dry run, as the listeners in `agent-runner.js` and `public/scripts/sillybunny-conversation/init.js` do. A dry run does not change the generation state. Without the check, `refreshGenerationUi()` → `activateSendButtons()` → `showSwipeButtons()` → `refreshSwipeButtons()` added `.fade` to every rendered message. Prompt Manager starts dry runs from its own debounced timers after `CHAT_LOADED` (`saveServiceSettings()`, then `renderDebounced()`, in `public/scripts/PromptManager.js`), so one can land right after `redisplayChat({ fade: false })`. Holding `/api/settings/save` until after the redisplay reproduces the nightly failure in issue #920: 12 `.fade` classes in `redisplay keeps render follow-up hooks applied after batched render`. Tests: `tests/chat-scroll-regressions.e2e.js` (`a dry-run generation keeps redisplay follow-up hooks applied`), `tests/in-chat-agents-generation-ui-wiring.test.js`.
 
 ### Bundled defaults, templates and user state
 
@@ -137,6 +138,7 @@ This is the largest class by a wide margin.
 - **Breaks:** a wait passes at once, so the test checks state too early or proves nothing.
 - **Cause:** `page.waitForFunction()` takes a returned Promise as a truthy result (checked with `@playwright/test` 1.64.1), so an `async` predicate never waits. Read module values into `window` first, then wait on a synchronous predicate, as `tests/server-generation-commit.e2e.js` does.
 - **Open:** `tests/nanogpt-controls.e2e.js` and `tests/pathfinder-settings.e2e.js` still wait on `async` predicates.
+- **Breaks:** work that the app starts when a chat loads runs on its own timers and can land between a test step and its assertion. The failure is rare locally and can still fail a single nightly run (issue #920, see § In-chat agents and companions). To reproduce such a race, hold the request that starts the timer chain with `page.route()` and release it after the test step.
 
 ### Upstream compatibility and sync
 
