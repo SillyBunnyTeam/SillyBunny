@@ -58,6 +58,7 @@ function prefersReducedMotion() {
  * @property {string} [description] the row's second line
  * @property {string} [descriptionKey] localization key for the row's description
  * @property {string} [icon] a Font Awesome class for the row's leading glyph
+ * @property {{id: string, title: string}} [group] the titled group the row is listed under
  * @property {string} [value] trailing text, for a row that reports a current setting
  * @property {() => (HTMLElement|null)} [source] the section to move into the detail page on open
  * @property {() => void} [onOpen] run before the slide, to drive the control the row stands for
@@ -91,6 +92,8 @@ export class SubpageStack {
         this.signature = '';
         /** @type {Map<string, HTMLElement>} the row element per id */
         this.rowElements = new Map();
+        /** @type {Map<string, {section: HTMLElement, list: HTMLElement}>} the elements per group id */
+        this.groupElements = new Map();
         /** @type {HTMLElement|null} the section currently moved into the detail page */
         this.moved = null;
         /** @type {{parent: Node, next: Node|null}|null} where it came from */
@@ -110,13 +113,15 @@ export class SubpageStack {
         /** @type {((event: TransitionEvent) => void)|null} */
         this.pendingCloseTransition = null;
 
+        /** @type {string} */
+        this.name = options.name ?? 'stack';
+
         this.root = document.createElement('div');
         this.root.className = 'sb-subpage';
-        this.root.setAttribute(SB_SUBPAGE_ATTRIBUTE, options.name ?? 'stack');
+        this.root.setAttribute(SB_SUBPAGE_ATTRIBUTE, this.name);
 
         this.list = document.createElement('div');
         this.list.className = 'sb-subpage-list';
-        this.list.setAttribute('role', 'list');
 
         this.listHeading = document.createElement('div');
         this.listHeading.className = 'sb-subpage-list-heading';
@@ -208,6 +213,7 @@ export class SubpageStack {
         this.rows = rows;
         this.signature = signatureOf(rows);
         this.rowElements.clear();
+        this.groupElements.clear();
         this.listBody.replaceChildren();
 
         for (const row of rows) {
@@ -216,12 +222,6 @@ export class SubpageStack {
             button.className = 'sb-subpage-row';
             button.setAttribute('role', 'listitem');
             button.dataset.sbSubpageRow = row.id;
-
-            // Descriptions this pass invented are placeholders, marked so the wording pass can list
-            // exactly the rows still waiting on human copy instead of reading every panel by hand.
-            if (row.placeholder) {
-                button.dataset.sbCopyPlaceholder = '';
-            }
 
             if (row.icon) {
                 const icon = document.createElement('i');
@@ -251,10 +251,54 @@ export class SubpageStack {
             button.addEventListener('click', () => this.open(row.id));
 
             this.rowElements.set(row.id, button);
-            this.listBody.appendChild(button);
+            this.getGroupList(row.group).appendChild(button);
         }
 
         this.sync();
+    }
+
+    /**
+     * The boxed list that holds a group's rows, built when the first row of the group is placed.
+     * Rows without a group share one list that has no heading.
+     *
+     * @param {{id: string, title: string}} [group]
+     * @returns {HTMLElement}
+     */
+    getGroupList(group) {
+        const key = group?.id ?? '';
+        const existing = this.groupElements.get(key);
+        if (existing) {
+            return existing.list;
+        }
+
+        const section = document.createElement('section');
+        section.className = 'sb-subpage-group';
+
+        const list = document.createElement('div');
+        list.className = 'sb-subpage-group-list';
+        list.setAttribute('role', 'list');
+
+        if (group) {
+            section.dataset.sbSubpageGroup = group.id;
+
+            const header = document.createElement('div');
+            header.className = 'ds-pref-group-header';
+
+            const heading = document.createElement('h3');
+            heading.className = 'ds-pref-group-heading';
+            heading.id = `sb-subpage-${this.name}-${group.id}-heading`;
+            heading.textContent = group.title;
+            heading.dataset.i18n = group.title;
+
+            header.appendChild(heading);
+            section.appendChild(header);
+            list.setAttribute('aria-labelledby', heading.id);
+        }
+
+        section.appendChild(list);
+        this.listBody.appendChild(section);
+        this.groupElements.set(key, { section, list });
+        return list;
     }
 
     /**
@@ -271,6 +315,11 @@ export class SubpageStack {
             }
             const available = row.isAvailable ? row.isAvailable() : true;
             element.hidden = !available;
+        }
+
+        // A group with no row to show would leave its heading over an empty box.
+        for (const { section, list } of this.groupElements.values()) {
+            section.hidden = !list.querySelector(':scope > .sb-subpage-row:not([hidden])');
         }
     }
 

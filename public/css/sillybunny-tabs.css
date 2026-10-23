@@ -9534,12 +9534,28 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     color: var(--sb-shell-text-secondary);
 }
 
-/* The list is the same pill every other settings section wears, so a converted panel reads as the
-   rest of the shell rather than as a page with its own idea of rows. */
 .sb-subpage-list-body {
     display: flex;
     flex-direction: column;
+    gap: var(--sb-shell-section-gap);
     flex: 0 0 auto;
+}
+
+.sb-subpage-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sb-subpage-group[hidden] {
+    display: none;
+}
+
+/* Each group's list is the same pill every other settings section wears, so a converted panel reads
+   as the rest of the shell rather than as a page with its own idea of rows. */
+.sb-subpage-group-list {
+    display: flex;
+    flex-direction: column;
     border-radius: var(--sb-radius-lg, 16px);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);

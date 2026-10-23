@@ -949,6 +949,36 @@ test('Extensions detail pages retain live controls and restore their list', asyn
     expect(await page.evaluate(() => window.phase3ExtensionNodes.every(node => node.isConnected))).toBe(true);
 });
 
+test('Extensions lists user-installed extensions after System Extensions, without a description', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const extensions = await openPanel(page, 'extensions', 'right');
+    const system = extensions.getByRole('list', { name: 'System Extensions', exact: true });
+    await expect.poll(() => system.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
+
+    // A user-installed extension mounts by appending its own markup to a settings column or to a
+    // container slot the page authors, and the list is grouped from that markup alone.
+    await page.evaluate(() => {
+        const drawer = title => `<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>${title}</b></div><div class="inline-drawer-content"><label class="checkbox_label"><input type="checkbox"><span>${title} setting</span></label></div></div>`;
+        document.getElementById('extensions_settings').insertAdjacentHTML('beforeend', `<div class="qa-user-extension">${drawer('QA User Extension')}</div>`);
+        document.getElementById('dice_container').insertAdjacentHTML('beforeend', drawer('QA Dice Slot'));
+    });
+    const user = extensions.getByRole('list', { name: 'User-installed Extensions', exact: true });
+    await expect(user.locator('.sb-subpage-heading-title')).toHaveText(['QA User Extension', 'QA Dice Slot']);
+    await expect(user.locator('.sb-subpage-heading-description, [data-sb-copy-placeholder]')).toHaveCount(0);
+    await expect(extensions.locator('.sb-subpage-list')).not.toContainText('lorum ipsum');
+    expect(await extensions.locator('[data-sb-subpage-group]').evaluateAll(groups => groups.map(group => group.dataset.sbSubpageGroup))).toEqual(['system', 'user']);
+    await expectNoOverflow(extensions);
+
+    await user.locator('.sb-subpage-row').first().click();
+    await expect(extensions.locator('.sb-subpage-detail')).toHaveAttribute('aria-hidden', 'false');
+    await expect(extensions.locator('.sb-subpage-detail-title')).toHaveText('QA User Extension');
+    await expect(extensions.locator('.sb-subpage-detail-description')).toBeHidden();
+    await extensions.locator('.sb-subpage-back').click();
+    await expect(extensions.locator('.sb-subpage-detail')).toHaveAttribute('aria-hidden', 'true');
+    await expect(user.locator('.sb-subpage-row')).toHaveCount(2);
+});
+
 test('Universal search reaches Extensions detail pages after the list is built', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
     // Activating the tab moves every extension section into the hidden subpage store.

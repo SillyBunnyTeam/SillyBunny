@@ -11,18 +11,20 @@
  * page it needed on screen was the picker itself. It is built by hand instead, in
  * `sillybunny-connections-panel.js`.
  *
- * The descriptions are the copy of the page. Sections authored upstream have none, so those are
- * `lorum ipsum` placeholders for the wording pass, marked with `data-sb-copy-placeholder` so the
- * list can be produced with a query rather than by reading the panel.
+ * The descriptions are the copy of the page. SillyBunny can describe only the extensions it ships,
+ * so the Extensions list is split into System Extensions, which have a description, and
+ * User-installed Extensions, which show their name alone.
  */
 
 /** Marks a description that still needs human wording. */
 export const SB_SUBPAGE_PLACEHOLDER_ATTRIBUTE = 'data-sb-copy-placeholder';
 
-/** The same placeholder text the settings normalizer uses, so one pass can find both. */
-const SB_SUBPAGE_PLACEHOLDER = 'lorum ipsum';
-
-const SB_EXTENSION_DESCRIPTIONS = new Map([
+/**
+ * Descriptions of the extensions SillyBunny ships (built-in, core and bundled), keyed by the
+ * container each one mounts its settings in. A container that is not listed here belongs to an
+ * extension the user installed.
+ */
+const SB_SYSTEM_EXTENSION_DESCRIPTIONS = new Map([
     ['sbdbg-settings', 'Inspect console logs, network requests, and page elements, and create diagnostic reports.'],
     ['bpt-settings', 'Organize prompts into collapsible sections, search them, and use video backgrounds.'],
     ['expressions_container', 'Show character sprites that change to match the emotions in their messages.'],
@@ -40,6 +42,12 @@ const SB_EXTENSION_DESCRIPTIONS = new Map([
     ['tts_container', 'Read chat messages aloud using your chosen voices and speech provider.'],
     ['vectors_container', 'Find relevant messages, file passages, and lorebook entries for the AI\'s prompt.'],
 ]);
+
+/** The Extensions list's groups, in the order they are shown. */
+const SB_EXTENSION_GROUPS = Object.freeze({
+    system: Object.freeze({ id: 'system', title: 'System Extensions' }),
+    user: Object.freeze({ id: 'user', title: 'User-installed Extensions' }),
+});
 
 /**
  * Builds the row list for the Extensions panel.
@@ -67,7 +75,7 @@ export function buildExtensionsSubpage(panel) {
 }
 
 /**
- * Collects one row per non-empty extension container.
+ * Collects one row per non-empty extension container, System Extensions first.
  *
  * Extensions build their own title, and they do it in two different shapes: most wrap their settings
  * in a drawer the container holds, while a few put the drawer class on the container itself. Both
@@ -96,20 +104,20 @@ function collectExtensionRows(body) {
             continue;
         }
 
-        const description = SB_EXTENSION_DESCRIPTIONS.get(container.id);
+        const description = SB_SYSTEM_EXTENSION_DESCRIPTIONS.get(container.id);
         rows.push({
             id: container.id || `extension-${rows.length}`,
             label,
-            description: description ?? SB_SUBPAGE_PLACEHOLDER,
+            description,
             descriptionKey: description,
-            placeholder: !description,
+            group: description ? SB_EXTENSION_GROUPS.system : SB_EXTENSION_GROUPS.user,
             icon: 'fa-puzzle-piece',
             source: () => container,
             isAvailable: () => !isContainerEmpty(container),
         });
     }
 
-    return rows;
+    return Object.values(SB_EXTENSION_GROUPS).flatMap(group => rows.filter(row => row.group === group));
 }
 
 /**
@@ -188,5 +196,3 @@ function isContainerEmpty(container) {
 export const SB_SUBPAGE_BUILDERS = Object.freeze({
     extensions: buildExtensionsSubpage,
 });
-
-export { SB_SUBPAGE_PLACEHOLDER };
