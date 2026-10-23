@@ -1594,7 +1594,7 @@ export function buildSettingsDrawerHtml() {
                 <div class="sb-conversation-field-stack">
                     <label class="checkbox_label">
                         <input id="sb_conv_lorebooks_enabled" type="checkbox" />
-                        <span data-sb-copy-placeholder="true">TODO(copy) <span class="sb-conversation-setting-scope">Global</span></span>
+                        <span>Use Character Lorebooks <span class="sb-conversation-setting-scope">Global</span></span>
                     </label>
                     <p class="sb-conversation-field-hint" data-sb-copy-placeholder="true">TODO(copy)</p>
                 </div>
