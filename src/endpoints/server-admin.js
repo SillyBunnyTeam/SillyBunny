@@ -1109,7 +1109,7 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
                 stashPopWarning = await restoreAutoStash(git);
             }
             return response.status(409).json({
-                error: 'lorum ipsum',
+                error: 'TODO(copy)',
                 code: ANDROID_APP_UPDATE_REQUIRED,
                 required: androidAppGate.required,
                 installed: androidAppGate.installed,
@@ -1253,7 +1253,7 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
                 await restoreAutoStash(git);
             }
             return response.status(409).json({
-                error: 'lorum ipsum',
+                error: 'TODO(copy)',
                 code: ANDROID_APP_UPDATE_REQUIRED,
                 required: androidAppGate.required,
                 installed: androidAppGate.installed,

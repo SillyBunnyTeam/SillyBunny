@@ -66,7 +66,7 @@ function expectForbidden(response) {
     expect(response.headers['content-type']).toBe('text/plain; charset=utf-8');
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.headers['set-cookie']).toBeUndefined();
-    expect(response.body).toBe('lorum ipsum');
+    expect(response.body).toBe('TODO(copy)');
 }
 
 afterEach(async () => {

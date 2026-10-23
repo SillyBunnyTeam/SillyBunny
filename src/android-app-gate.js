@@ -28,10 +28,10 @@ async function updateBlockedStatus(status) {
         await fs.rename(temporaryPath, statusPath);
         temporaryPath = null;
     } catch (error) {
-        console.warn('lorum ipsum', error);
+        console.warn('TODO(copy)', error);
     } finally {
         if (temporaryPath) {
-            await fs.rm(temporaryPath, { force: true }).catch(error => console.warn('lorum ipsum', error));
+            await fs.rm(temporaryPath, { force: true }).catch(error => console.warn('TODO(copy)', error));
         }
     }
 }

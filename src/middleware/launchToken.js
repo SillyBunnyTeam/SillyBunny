@@ -11,7 +11,7 @@ export const HANDOFF_PATH = '/__sillybunny/handoff';
 export const HANDOFF_MAX_AGE_MS = 60_000;
 export const HANDOFF_NONCE_LIMIT = 1024;
 // Moves to / with a same-origin navigation; the link covers browsers with meta refresh turned off.
-export const HANDOFF_PAGE = '<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><a href="/">lorum ipsum</a>\n';
+export const HANDOFF_PAGE = '<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><a href="/" data-sb-copy-placeholder="true">TODO(copy)</a>\n';
 
 function handoffMac(tokenBytes, payload) {
     return crypto.createHmac('sha256', tokenBytes)
@@ -29,7 +29,7 @@ function handoffMac(tokenBytes, payload) {
  */
 export function createHandoffCode(token, { nonce = crypto.randomBytes(16), expiry }) {
     if (!Buffer.isBuffer(nonce) || nonce.length !== 16) {
-        throw new RangeError('lorum ipsum');
+        throw new RangeError('TODO(copy)');
     }
 
     const expiryBytes = Buffer.alloc(8);
@@ -58,7 +58,7 @@ function rejectRequest(res) {
     res.statusCode = 403;
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
-    res.end('lorum ipsum');
+    res.end('TODO(copy)');
 }
 
 /**

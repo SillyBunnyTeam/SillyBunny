@@ -282,7 +282,7 @@ describe('server admin Android update gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toMatchObject({
-            error: 'lorum ipsum',
+            error: 'TODO(copy)',
             code: 'android_app_update_required',
             required,
             installed: 1,
@@ -319,7 +319,7 @@ describe('server admin Android update gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toMatchObject({
-            error: 'lorum ipsum',
+            error: 'TODO(copy)',
             code: 'android_app_update_required',
             stashed: true,
             stashPopWarning: expect.stringContaining('stash conflict'),
@@ -368,7 +368,7 @@ describe('server admin Android update gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toMatchObject({
-            error: 'lorum ipsum', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing',
+            error: 'TODO(copy)', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing',
             repository: { branch: LOCAL_BRANCH, trackingBranch: TRACKING_BRANCH }, stashed: true, stashPopWarning: null,
         });
         expect(fixture.git.revparse.mock.calls.filter(([args]) => args.length === 1)).toEqual([[[TRACKING_BRANCH]]]);
@@ -499,7 +499,7 @@ describe('server admin Android branch-switch gate', () => {
         const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
 
         expect(response.statusCode).toBe(409);
-        expect(response.body).toEqual({ error: 'lorum ipsum', code: 'android_app_update_required', required, installed: 1, reason, branch: 'release' });
+        expect(response.body).toEqual({ error: 'TODO(copy)', code: 'android_app_update_required', required, installed: 1, reason, branch: 'release' });
         const { resolutionOrder, minimumReadOrder } = expectPinnedMinimumRead('origin/release', RELEASE_UPSTREAM);
         expect(resolutionOrder).toBeGreaterThan(fixture.git.branch.mock.invocationCallOrder[0]);
         expectNoCheckoutOrMerge();
@@ -526,7 +526,7 @@ describe('server admin Android branch-switch gate', () => {
         const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
 
         expect(response.statusCode).toBe(409);
-        expect(response.body).toMatchObject({ error: 'lorum ipsum', code: 'android_app_update_required', reason: 'newer', branch: 'release' });
+        expect(response.body).toMatchObject({ error: 'TODO(copy)', code: 'android_app_update_required', reason: 'newer', branch: 'release' });
         expectStashRoundTrip();
         expect(fixture.state.stashed).toBe(true);
         expectNoCheckoutOrMerge();
@@ -656,7 +656,7 @@ describe('server admin Android branch-switch gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toEqual({
-            error: 'lorum ipsum', code: 'android_app_update_required', required: 2, installed: 1, reason: 'newer', branch: 'release',
+            error: 'TODO(copy)', code: 'android_app_update_required', required: 2, installed: 1, reason: 'newer', branch: 'release',
         });
         expectPinnedMinimumRead('origin/release', RELEASE_UPSTREAM);
         expect(fixture.git.revparse.mock.calls).toEqual([[['--abbrev-ref', 'HEAD']], [['origin/release']]]);
@@ -676,7 +676,7 @@ describe('server admin Android branch-switch gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toEqual({
-            error: 'lorum ipsum', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing', branch: 'release',
+            error: 'TODO(copy)', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing', branch: 'release',
         });
         expect(fixture.git.revparse.mock.calls).toEqual([[['--abbrev-ref', 'HEAD']], [['origin/release']]]);
         expect(fixture.git.revparse.mock.invocationCallOrder[1]).toBeGreaterThan(fixture.git.branch.mock.invocationCallOrder[0]);
