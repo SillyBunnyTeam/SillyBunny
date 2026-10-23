@@ -48,7 +48,7 @@
         "source": "node",
         "version": "11.19.1"
     },
-    "runtimeLockSha256": "90ce0d86ff81dfed650fcd7c8ce7ba9304955a59be53345624862a1a633cf21b",
+    "runtimeLockSha256": "e701dd878d67e665fdb492031cd0e53d5d01538a5e87a1d074af08b45306a276",
     "schema": 1,
     "termux": {
         "buildSystems": [
@@ -257,46 +257,6 @@
                 ],
                 "sha256": "b3258aa351af9b00cfe07a1ceff233e834a814879d254602f8c8213bbd9857e3",
                 "totalBytes": 1249747
-            },
-            {
-                "commit": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
-                "fileCount": 247,
-                "selection": [
-                    {
-                        "paths": [
-                            "build-all.sh",
-                            "build-package.sh",
-                            "clean.sh",
-                            "repo.json",
-                            "scripts"
-                        ],
-                        "reason": "build-framework"
-                    },
-                    {
-                        "paths": [
-                            "LICENSE.md",
-                            "packages/termux-keyring",
-                            "packages/termux-licenses"
-                        ],
-                        "reason": "license-and-repository-inputs"
-                    },
-                    {
-                        "paths": [
-                            "ndk-patches"
-                        ],
-                        "reason": "ndk-header-patching"
-                    },
-                    {
-                        "paths": [
-                            "packages/libllvm/build.sh",
-                            "packages/python/build.sh",
-                            "packages/termux-elf-cleaner/build.sh"
-                        ],
-                        "reason": "toolchain-version-reads"
-                    }
-                ],
-                "sha256": "29d4f2690b0a62667a0d998cd8c905147105d6707add0d9784d27c9916682100",
-                "totalBytes": 1256833
             },
             {
                 "commit": "82780ef5c32763e3256ac26d07a4be4c40efb044",
@@ -627,6 +587,46 @@
                 "totalBytes": 1227780
             },
             {
+                "commit": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
+                "fileCount": 247,
+                "selection": [
+                    {
+                        "paths": [
+                            "build-all.sh",
+                            "build-package.sh",
+                            "clean.sh",
+                            "repo.json",
+                            "scripts"
+                        ],
+                        "reason": "build-framework"
+                    },
+                    {
+                        "paths": [
+                            "LICENSE.md",
+                            "packages/termux-keyring",
+                            "packages/termux-licenses"
+                        ],
+                        "reason": "license-and-repository-inputs"
+                    },
+                    {
+                        "paths": [
+                            "ndk-patches"
+                        ],
+                        "reason": "ndk-header-patching"
+                    },
+                    {
+                        "paths": [
+                            "packages/libllvm/build.sh",
+                            "packages/python/build.sh",
+                            "packages/termux-elf-cleaner/build.sh"
+                        ],
+                        "reason": "toolchain-version-reads"
+                    }
+                ],
+                "sha256": "29d4f2690b0a62667a0d998cd8c905147105d6707add0d9784d27c9916682100",
+                "totalBytes": 1256833
+            },
+            {
                 "commit": "dd96f198f5f5305114736bcdbcf798e3c1255652",
                 "fileCount": 240,
                 "selection": [
@@ -707,7 +707,7 @@
                 "totalBytes": 1225871
             }
         ],
-        "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+        "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
         "packages": [
             {
                 "commit": "26d76d4f562998a7abfeba1513347c2256afc5c8",
@@ -720,12 +720,12 @@
                     "commitSubject": "bump(main/bash): 5.3.20",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/26d76d4f562998a7abfeba1513347c2256afc5c8",
                     "first": "26d76d4f562998a7abfeba1513347c2256afc5c8",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "26d76d4f562998a7abfeba1513347c2256afc5c8",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "d005fcc8961ca61cd3715555526c324e3d0e68e4",
                     "selected": "26d76d4f562998a7abfeba1513347c2256afc5c8",
                     "version": "5.3.20"
@@ -1190,34 +1190,34 @@
                 "version": "5.3.20"
             },
             {
-                "commit": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
+                "commit": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
                 "evidence": {
                     "after": null,
                     "afterVersion": null,
-                    "before": "2b3f05bb4492e4444f220dfc34054af19697bad4",
-                    "beforeVersion": "1:2026.09.25",
+                    "before": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
+                    "beforeVersion": "1:2026.10.20",
                     "ciNoBuild": false,
-                    "commitSubject": "bump(main/ca-certificates): 2026.10.20",
-                    "commitUrl": "https://github.com/termux/termux-packages/commit/7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
-                    "first": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
-                    "last": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
+                    "commitSubject": "chore(main/ca-certificates): enable auto update",
+                    "commitUrl": "https://github.com/termux/termux-packages/commit/d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
+                    "first": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
+                    "last": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
-                    "rangeStartParent": "3ced3923e33add801d05886bbb0ef9988899db78",
-                    "selected": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
-                    "version": "1:2026.10.20"
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
+                    "rangeStartParent": "fd5999953f3fd012facadf0ae6a4c1d36ba4a96d",
+                    "selected": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
+                    "version": "1:2026.10.20-1"
                 },
                 "files": [
                     {
-                        "gitBlob": "353f37c3fb578a487394df8e8ef7c76ec42deecb",
+                        "gitBlob": "75d7ea0b4c44d6d37ad65186e75b54434f8ac20f",
                         "mode": 420,
                         "path": "packages/ca-certificates/build.sh",
-                        "sha256": "485858f51efc282890c14c3e9a4fa6a893ab03b1aaa3c6fc03a08433a4871164",
+                        "sha256": "3b0473c9a6f44ecf202b12f7b16e85c93814eb5e259fb414b362f16cc00fc93d",
                         "type": "file",
-                        "url": "https://raw.githubusercontent.com/termux/termux-packages/7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e/packages/ca-certificates/build.sh"
+                        "url": "https://raw.githubusercontent.com/termux/termux-packages/d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3/packages/ca-certificates/build.sh"
                     },
                     {
                         "gitBlob": "1d2b7655be21702fc4377f20ef47e36f5005b5d9",
@@ -1225,7 +1225,7 @@
                         "path": "packages/ca-certificates/ca-certificates-java.subpackage.sh",
                         "sha256": "a7c4e5044e19215624ff481d9430e2c501b31f7c332b3603c016358fa3723838",
                         "type": "file",
-                        "url": "https://raw.githubusercontent.com/termux/termux-packages/7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e/packages/ca-certificates/ca-certificates-java.subpackage.sh"
+                        "url": "https://raw.githubusercontent.com/termux/termux-packages/d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3/packages/ca-certificates/ca-certificates-java.subpackage.sh"
                     }
                 ],
                 "homepage": "https://curl.se/docs/caextract.html",
@@ -1241,13 +1241,13 @@
                 "sources": [
                     {
                         "evidence": {
-                            "commit": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
-                            "fileSha256": "485858f51efc282890c14c3e9a4fa6a893ab03b1aaa3c6fc03a08433a4871164",
+                            "commit": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
+                            "fileSha256": "3b0473c9a6f44ecf202b12f7b16e85c93814eb5e259fb414b362f16cc00fc93d",
                             "lines": [
-                                7
+                                8
                             ],
                             "path": "packages/ca-certificates/build.sh",
-                            "url": "https://github.com/termux/termux-packages/blob/7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e/packages/ca-certificates/build.sh#L7"
+                            "url": "https://github.com/termux/termux-packages/blob/d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3/packages/ca-certificates/build.sh#L8"
                         },
                         "filename": "cacert-2026-10-20.pem",
                         "kind": "upstream-source",
@@ -1256,13 +1256,13 @@
                     },
                     {
                         "evidence": {
-                            "commit": "7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e",
-                            "fileSha256": "485858f51efc282890c14c3e9a4fa6a893ab03b1aaa3c6fc03a08433a4871164",
+                            "commit": "d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3",
+                            "fileSha256": "3b0473c9a6f44ecf202b12f7b16e85c93814eb5e259fb414b362f16cc00fc93d",
                             "lines": [
-                                28
+                                41
                             ],
                             "path": "packages/ca-certificates/build.sh",
-                            "url": "https://github.com/termux/termux-packages/blob/7aa4ba2ec22eee688cb9c6e35beba3826fba2e5e/packages/ca-certificates/build.sh#L28"
+                            "url": "https://github.com/termux/termux-packages/blob/d3dde8b08ca2b2b6dd38b2d8851e8d06f735a4b3/packages/ca-certificates/build.sh#L41"
                         },
                         "filename": "keyutil-0.4.0.jar",
                         "kind": "build-tool-binary",
@@ -1271,7 +1271,7 @@
                     }
                 ],
                 "spdx": "MPL-2.0",
-                "version": "1:2026.10.20"
+                "version": "1:2026.10.20-1"
             },
             {
                 "commit": "0cf3093fae6257ca7b67430061f8b704e0d1c924",
@@ -1284,12 +1284,12 @@
                     "commitSubject": "bump(main/git): 2.56.0",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/0cf3093fae6257ca7b67430061f8b704e0d1c924",
                     "first": "0cf3093fae6257ca7b67430061f8b704e0d1c924",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "0cf3093fae6257ca7b67430061f8b704e0d1c924",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "f4622b5cb7ec7a20026b20cde525ef8b47ada7a1",
                     "selected": "0cf3093fae6257ca7b67430061f8b704e0d1c924",
                     "version": "2.56.0"
@@ -1449,12 +1449,12 @@
                     "commitSubject": "chore(tree-wide): use `archive/refs/tags` for GitHub tarballs",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/91fad586ce5408b89711f478cc5e16598403e653",
                     "first": "951b902e406cd9b556608ae6fce33de479785500",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "91fad586ce5408b89711f478cc5e16598403e653",
                     "matchingDirectoryCommits": 2,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "73910821be21c64f484f55a4c69f03dfcc4bd0df",
                     "selected": "91fad586ce5408b89711f478cc5e16598403e653",
                     "version": "29-1"
@@ -1525,12 +1525,12 @@
                     "commitSubject": "bump(main/libcurl): 8.23.0",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/ccbb9830f72a9f95a63632467af1f9feaf440d47",
                     "first": "ccbb9830f72a9f95a63632467af1f9feaf440d47",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "ccbb9830f72a9f95a63632467af1f9feaf440d47",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "31d5c01246f8b1108ad72ea0e4943e383196bd3f",
                     "selected": "ccbb9830f72a9f95a63632467af1f9feaf440d47",
                     "version": "8.23.0"
@@ -1593,12 +1593,12 @@
                     "commitSubject": "bump(packages/libiconv): 1.19",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/c29c8a07c1982c640cfed0fda5cf8df95a0a6ec8",
                     "first": "c29c8a07c1982c640cfed0fda5cf8df95a0a6ec8",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "c29c8a07c1982c640cfed0fda5cf8df95a0a6ec8",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "eec2086da0faeb312e7614c9ddff3095fda1a608",
                     "selected": "c29c8a07c1982c640cfed0fda5cf8df95a0a6ec8",
                     "version": "1.19"
@@ -1661,12 +1661,12 @@
                     "commitSubject": "bump(main/libnghttp2): 1.70.0",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/dd96f198f5f5305114736bcdbcf798e3c1255652",
                     "first": "dd96f198f5f5305114736bcdbcf798e3c1255652",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "dd96f198f5f5305114736bcdbcf798e3c1255652",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "899a59a4580a6dbd647990853b6fb8083dca3ab6",
                     "selected": "dd96f198f5f5305114736bcdbcf798e3c1255652",
                     "version": "1.70.0"
@@ -1721,12 +1721,12 @@
                     "commitSubject": "bump(main/libnghttp3): 1.18.0",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/32889be85238b24192376e4143c5a38d7d5b2ce1",
                     "first": "32889be85238b24192376e4143c5a38d7d5b2ce1",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "32889be85238b24192376e4143c5a38d7d5b2ce1",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "aca16db98aba9abb84851cb7a8a2886cd67b6109",
                     "selected": "32889be85238b24192376e4143c5a38d7d5b2ce1",
                     "version": "1.18.0"
@@ -1781,12 +1781,12 @@
                     "commitSubject": "bump(main/libngtcp2): 1.25.0",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/c2179a72e35913d76d8e13df4b52672d7e0e3cf2",
                     "first": "c2179a72e35913d76d8e13df4b52672d7e0e3cf2",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "c2179a72e35913d76d8e13df4b52672d7e0e3cf2",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "32889be85238b24192376e4143c5a38d7d5b2ce1",
                     "selected": "c2179a72e35913d76d8e13df4b52672d7e0e3cf2",
                     "version": "1.25.0"
@@ -1841,12 +1841,12 @@
                     "commitSubject": "enhance(main/libssh2): backport security fixes from git",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/f8711dbfb6a073554267e9f6291721ca60d69788",
                     "first": "f8711dbfb6a073554267e9f6291721ca60d69788",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "f8711dbfb6a073554267e9f6291721ca60d69788",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "0fa59ae0349bc3f5badd98c7c4124c88764fb6f1",
                     "selected": "f8711dbfb6a073554267e9f6291721ca60d69788",
                     "version": "1.11.1-2"
@@ -1941,12 +1941,12 @@
                     "commitSubject": "fix(main/ncurses): roll back to last version without `htop` physical mouse crash",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/d29b295df936a1867fde79a45be5b236cefb0d55",
                     "first": "d29b295df936a1867fde79a45be5b236cefb0d55",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "d29b295df936a1867fde79a45be5b236cefb0d55",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "0d84927a87d9369c6b9d5d71e38bc247c8fb52f2",
                     "selected": "d29b295df936a1867fde79a45be5b236cefb0d55",
                     "version": "6.6.20260307+really6.5.20250830"
@@ -2121,12 +2121,12 @@
                     "commitSubject": "bump(main/openssl): 3.6.5",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/6d9ca4360b69878b2f290446359b60b69f8d4c7a",
                     "first": "6d9ca4360b69878b2f290446359b60b69f8d4c7a",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "6d9ca4360b69878b2f290446359b60b69f8d4c7a",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "2071c15523a91c5b292f21ba30cfd74f7738c43f",
                     "selected": "6d9ca4360b69878b2f290446359b60b69f8d4c7a",
                     "version": "1:3.6.5"
@@ -2213,12 +2213,12 @@
                     "commitSubject": "bump(main/pcre2): 10.49",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/82780ef5c32763e3256ac26d07a4be4c40efb044",
                     "first": "82780ef5c32763e3256ac26d07a4be4c40efb044",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "82780ef5c32763e3256ac26d07a4be4c40efb044",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "81f27edd32372f4c3cd7712926c6ff0d947dcf69",
                     "selected": "82780ef5c32763e3256ac26d07a4be4c40efb044",
                     "version": "10.49"
@@ -2281,12 +2281,12 @@
                     "commitSubject": "bump(main/readline): 8.3.6",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/d005fcc8961ca61cd3715555526c324e3d0e68e4",
                     "first": "d005fcc8961ca61cd3715555526c324e3d0e68e4",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "d005fcc8961ca61cd3715555526c324e3d0e68e4",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "520a9d6394d8d8d25cfc22fdd9776a58aaac9adc",
                     "selected": "d005fcc8961ca61cd3715555526c324e3d0e68e4",
                     "version": "8.3.6"
@@ -2447,12 +2447,12 @@
                     "commitSubject": "bump(main/termux-licenses): 2.2 - use SPDX identifiers for AGPL licenses",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/26f95de5d34ccc4a38f6c0de24908f71592fa1b8",
                     "first": "26f95de5d34ccc4a38f6c0de24908f71592fa1b8",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "26f95de5d34ccc4a38f6c0de24908f71592fa1b8",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "c05af9ec5858ad869a856c5b55ec953e2e627faa",
                     "selected": "26f95de5d34ccc4a38f6c0de24908f71592fa1b8",
                     "version": "2.2"
@@ -2799,12 +2799,12 @@
                     "commitSubject": "bump(main/zlib): 1.3.2",
                     "commitUrl": "https://github.com/termux/termux-packages/commit/9d26eb2028bc966821111b7076512383b352ce89",
                     "first": "9d26eb2028bc966821111b7076512383b352ce89",
-                    "historyTip": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "historyTip": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "last": "9d26eb2028bc966821111b7076512383b352ce89",
                     "matchingDirectoryCommits": 1,
                     "method": "first-parent-package-history",
                     "openAtHistoryTip": true,
-                    "rangeEnd": "e4e3abd27c642abba8a8ea9e7b7a99ab554fcd0e",
+                    "rangeEnd": "63c3e14d1bbfeeae06287205fc345eb96dbf1bc5",
                     "rangeStartParent": "dbcd1702c422a344d8439c87f727fbebd85e5859",
                     "selected": "9d26eb2028bc966821111b7076512383b352ce89",
                     "version": "1.3.2"

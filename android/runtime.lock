@@ -30,19 +30,19 @@
             },
             {
                 "name": "ca-certificates",
-                "version": "1:2026.10.20",
+                "version": "1:2026.10.20-1",
                 "debs": {
                     "arm64-v8a": {
-                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20_all.deb",
-                        "sha256": "2186ab9752ae1e705eea6fd69af0c114715b7a1b2a0b4d239ae59371b6001984"
+                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
+                        "sha256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
                     },
                     "armeabi-v7a": {
-                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20_all.deb",
-                        "sha256": "2186ab9752ae1e705eea6fd69af0c114715b7a1b2a0b4d239ae59371b6001984"
+                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
+                        "sha256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
                     },
                     "x86_64": {
-                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20_all.deb",
-                        "sha256": "2186ab9752ae1e705eea6fd69af0c114715b7a1b2a0b4d239ae59371b6001984"
+                        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
+                        "sha256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
                     }
                 }
             },
