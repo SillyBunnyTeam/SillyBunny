@@ -57,40 +57,40 @@ describe('Conversation mobile controls', () => {
     test('mobile pages are driven by data-sb-conversation-page', () => {
         const media = findMediaRule(query => query === '(max-width: 768px)');
         expect(media).toBeDefined();
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_rail")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_pals_rail')).toMatchObject({
             position: 'absolute',
             inset: '0',
             'grid-area': 'unset',
             transform: 'translateX(-100%)',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'][data-sb-conversation-page='pals'] #sb_conversation_pals_rail")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-page=\'pals\'] #sb_conversation_pals_rail')).toMatchObject({
             visibility: 'visible',
             transform: 'none',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'][data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage)")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-page=\'pals\'] :is(#sb_conversation_header, #sb_conversation_stage)')).toMatchObject({
             visibility: 'hidden',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-back")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-back')).toMatchObject({
             display: 'inline-grid',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-settings")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-settings')).toMatchObject({
             display: 'none',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-title')).toMatchObject({
             flex: '1 1 auto',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-more")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-more')).toMatchObject({
             display: 'inline-grid',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-attach")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-attach')).toMatchObject({
             display: 'none',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-actions")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-actions')).toMatchObject({
             display: 'none',
         });
         const overlayMedia = findMediaRule(query => query.includes('max-width: 450px') && query.includes('max-height: 360px'));
         expect(overlayMedia).toBeDefined();
-        expect(getDeclarations(overlayMedia, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])")).toMatchObject({
+        expect(getDeclarations(overlayMedia, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])')).toMatchObject({
             inset: 'auto 0 0',
         });
         expect(getDeclarations(media, '.sb-conversation-mobile-menu-trigger')).toMatchObject({
@@ -98,25 +98,25 @@ describe('Conversation mobile controls', () => {
             inset: 'auto',
             transform: 'none',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on']")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\']')).toMatchObject({
             border: '0',
             height: 'calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important',
         });
-        expect(getDeclarations(media, "body:not(.movingUI) #sheld[data-sb-conversation-mode='on']")).toMatchObject({
+        expect(getDeclarations(media, 'body:not(.movingUI) #sheld[data-sb-conversation-mode=\'on\']')).toMatchObject({
             border: '0',
             height: 'calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important',
         });
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on']")).not.toHaveProperty('position');
-        expect(getDeclarations(media, "#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer")).toMatchObject({
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\']')).not.toHaveProperty('position');
+        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer')).toMatchObject({
             'padding-block-end': 'max(8px, env(safe-area-inset-bottom, 0px))',
         });
     });
 
     test('settings is a non-modal pane that docks as a split column', () => {
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_backdrop")).toMatchObject({
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_settings_backdrop')).toMatchObject({
             display: 'none',
         });
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'] #sb_conversation_settings_drawer")).toMatchObject({
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'split\'] #sb_conversation_settings_drawer')).toMatchObject({
             'grid-area': 'settings',
             position: 'relative',
         });
@@ -124,12 +124,12 @@ describe('Conversation mobile controls', () => {
 
     test('surfaces are opaque layers without backdrop-filter', () => {
         expect(css).not.toMatch(/backdrop-filter\s*:/);
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_header").background).toBe('var(--sb-layer-view)');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_rail").background).toBe('var(--sb-conv-sidebar-bg)');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-search-bar").background).toBe('var(--sb-conv-sidebar-bg)');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer").padding).toBe('8px 12px');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on']")['border-radius']).toBe('0');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on']").height).toBe('calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)))');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_header').background).toBe('var(--sb-layer-view)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_pals_rail').background).toBe('var(--sb-conv-sidebar-bg)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-search-bar').background).toBe('var(--sb-conv-sidebar-bg)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer').padding).toBe('8px 12px');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['border-radius']).toBe('0');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']').height).toBe('calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)))');
         expect(css).not.toMatch(/\.sb-conversation-message\[data-role='user'\] \.sb-conversation-message-actions/);
         expect(getRuleDeclarations('.sb-conversation-message-actions').transform).toBe('translate(0, -8px)');
         expect(getRuleDeclarations('.sb-conversation-message-actions')).toMatchObject({
@@ -144,14 +144,14 @@ describe('Conversation mobile controls', () => {
             'grid-template-columns': 'minmax(0, 1fr)',
             'max-inline-size': '100%',
         });
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer").background).toBe('var(--sb-layer-drawer)');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] #sb_conversation_stage").background).toBe('var(--sb-layer-view)');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-back").display).toBe('none');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title").flex).toBe('0 1 auto');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-more").display).toBe('none');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split']")['grid-template-columns']).toBe('var(--sb-conv-sidebar-width) minmax(0, 1fr) 0px');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on']")['--sb-conv-column-gutter']).toBe('20px');
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on']")['--sb-conv-column-width']).toBe('100%');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_settings_drawer').background).toBe('var(--sb-layer-drawer)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_stage').background).toBe('var(--sb-layer-view)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-back').display).toBe('none');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-title').flex).toBe('0 1 auto');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-more').display).toBe('none');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'split\']')['grid-template-columns']).toBe('var(--sb-conv-sidebar-width) minmax(0, 1fr) 0px');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['--sb-conv-column-gutter']).toBe('20px');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['--sb-conv-column-width']).toBe('100%');
         expect(getRuleDeclarations('.sb-conversation-message[data-role=\'user\']').justifyContent || getRuleDeclarations('.sb-conversation-message[data-role=\'user\']')['justify-content']).toBe('flex-end');
         expect(css).not.toMatch(/\.sb-conversation-message\[data-role='user'\] \{\s*flex-direction:\s*row-reverse/);
         expect(getRuleDeclarations('.sb-conversation-message-body')['max-inline-size']).toBe('min(80%, 840px)');
@@ -201,14 +201,14 @@ describe('Conversation mobile controls', () => {
         expect(getRuleDeclarations('.sb-conversation-switch:checked')).toMatchObject({
             background: 'var(--sb-accent, var(--SmartThemeQuoteColor))',
         });
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body [hidden]")).toMatchObject({
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-settings-body [hidden]')).toMatchObject({
             display: 'none !important',
         });
         expect(css).not.toMatch(/\.sb-conversation-idle-actions/);
     });
 
     test('desktop pickers use auto inset so JS can park them on the trigger', () => {
-        expect(getRuleDeclarations("#sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])")).toMatchObject({
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])')).toMatchObject({
             position: 'absolute',
             inset: 'auto',
             background: 'var(--sb-layer-popover)',

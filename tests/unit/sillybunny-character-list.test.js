@@ -25,6 +25,9 @@ const deleteGroupById = jest.fn();
 const navigate = jest.fn();
 const selectCharacterById = jest.fn();
 const openGroupById = jest.fn();
+const setActiveCharacter = jest.fn();
+const setActiveGroup = jest.fn();
+const saveSettingsDebounced = jest.fn();
 const play = jest.fn();
 const destroyTagMenu = jest.fn();
 const attachTagFilterMenu = jest.fn(() => ({ refresh: jest.fn(), destroy: destroyTagMenu }));
@@ -79,13 +82,14 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
     getEmptyBlock: async () => template('<p>No characters found</p>'),
     toggleCharacterFavoriteById, duplicateCharacter, deleteCharacterById,
     characterGroupOverlay, characters: characterLibrary, selectCharacterById,
+    setActiveCharacter, setActiveGroup, saveSettingsDebounced,
     this_chid: 0,
 }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
     toggleGroupFavoriteById, deleteGroupById, groups: groupLibrary, openGroupById,
     getGroupAvatarElement: () => template('<img src="/group.png">'),
-    groupEditorTargetExists: jest.fn(), canPeekGroupMember: jest.fn(), openGroupMemberDefinition: jest.fn(),
-    openGroupEditor: jest.fn(), captureGroupEditorListState: jest.fn(), restoreGroupEditorListState: jest.fn(),
+    groupEditorTargetExists: jest.fn(), canPeekGroupMember: jest.fn(), canRestoreGroupMemberPeek: jest.fn(), openGroupMemberDefinition: jest.fn(),
+    openGroupEditor: jest.fn(), captureGroupEditorListState: jest.fn(), restoreGroupEditorListState: jest.fn(), selected_group: null,
 }));
 await jest.unstable_mockModule('../../public/scripts/tags.js', () => ({
     getTagBlock: item => template(`<span class="ch_name">${item.name}</span><span class="bogus_folder_counter">3 characters</span>`),
@@ -364,6 +368,7 @@ describe('shared Characters/Groups list', () => {
                 await settle();
             }
             expect(selectCharacterById).toHaveBeenCalledTimes(2);
+            expect(saveSettingsDebounced).toHaveBeenCalledTimes(2);
             expect(activation).not.toHaveBeenCalled();
             const edit = row.querySelector('button');
             edit.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -910,9 +915,11 @@ describe('chat activation and current entity', () => {
         expect(mounted.section.hidden).toBe(true);
         expect(play).not.toHaveBeenCalled();
         expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
+        expect(saveSettingsDebounced).not.toHaveBeenCalled();
         resize();
         finish(true);
         await settle();
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
         expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(1);
         expect(row.classList.contains('is-activating-entity')).toBe(false);
     });
@@ -934,6 +941,35 @@ describe('chat activation and current entity', () => {
         expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
         expect(play).not.toHaveBeenCalled();
         expect(rows()[0].hasAttribute('aria-current')).toBe(false);
+        expect(setActiveCharacter).not.toHaveBeenCalled();
+        expect(setActiveGroup).not.toHaveBeenCalled();
+        expect(saveSettingsDebounced).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['characters', ['0.png'], [null]],
+        ['groups', [null], ['g']],
+    ])('%s rows record the opened chat as the Auto-load Last Chat entity', async (view, character, group) => {
+        model.view = view;
+        if (view === 'groups') model.entities = [{ type: 'group', id: 'g', item: groupLibrary[0] }];
+        await mount();
+        rows()[0].click();
+        await settle();
+        // Index 0 has to reach upstream as its avatar; a numeric 0 would clear the entity instead.
+        expect(setActiveCharacter.mock.calls).toEqual([character]);
+        expect(setActiveGroup.mock.calls).toEqual([group]);
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    test('records the clicked row even when the library reloads while its chat opens', async () => {
+        await mount();
+        selectCharacterById.mockImplementationOnce(async () => {
+            characterLibrary.unshift({ name: 'Imported', avatar: 'imported.png' });
+            return true;
+        });
+        rows()[1].click();
+        await settle();
+        expect(setActiveCharacter.mock.calls).toEqual([['1.png']]);
     });
 
     test('entering selection while chat loading cancels deferred dismissal', async () => {
@@ -947,6 +983,8 @@ describe('chat activation and current entity', () => {
         await settle();
         expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
         expect(play).not.toHaveBeenCalled();
+        // The chat still opened, so it remains the entity to auto-load.
+        expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
     test('the user pin keeps a successful chat activation open', async () => {

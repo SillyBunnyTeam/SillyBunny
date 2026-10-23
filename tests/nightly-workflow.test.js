@@ -36,6 +36,12 @@ describe('nightly workflow', () => {
         }
     });
 
+    test('lints the root and tests packages', () => {
+        const lintStep = source.slice(source.indexOf('- name: Lint'), source.indexOf('- name: Unit tests'));
+        expect(lintStep).toContain('npm run lint\n');
+        expect(lintStep).toContain('npm run lint --prefix tests');
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = [...source.matchAll(/^\s*(?:- )?uses:\s*([^\s#]+)/gm)].map(match => match[1]);
         expect(uses.length).toBeGreaterThan(0);

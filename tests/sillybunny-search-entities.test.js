@@ -1,3 +1,4 @@
+/* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
 /* global globalThis */
 
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
@@ -11,6 +12,14 @@ import {
     resetSearchContextAccessor,
     setSearchContextAccessor,
 } from '../public/scripts/sillybunny-search-entities.js';
+
+// The module imports these only when a result is activated, so mocking after the import still applies.
+const openGroupById = jest.fn();
+const rememberOpenedEntity = jest.fn();
+const scriptSelectCharacterById = jest.fn();
+await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ openGroupById }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-auto-load.js', () => ({ rememberOpenedEntity }));
+await jest.unstable_mockModule('../public/script.js', () => ({ selectCharacterById: scriptSelectCharacterById }));
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const entityModuleUrl = pathToFileURL(path.join(repoRoot, 'public/scripts/sillybunny-search-entities.js')).href;
@@ -28,10 +37,22 @@ function replaceGlobal(name, value) {
     });
 }
 
+function stubCharacterPanel({ open = true, menuType, phone = false, phoneContent = false } = {}) {
+    const elements = {
+        'right-nav-panel': { classList: { contains: name => open && name === 'openDrawer' }, dataset: { menuType } },
+        'sb-settings-page': { classList: { contains: name => phoneContent && name === 'sb-settings-page--content' } },
+    };
+    replaceGlobal('document', { getElementById: id => elements[id] ?? null });
+    replaceGlobal('matchMedia', query => ({ matches: phone && query === '(max-width: 768px)' }));
+}
+
 afterEach(() => {
     resetSearchContextAccessor();
     jest.useRealTimers();
     jest.restoreAllMocks();
+    openGroupById.mockReset();
+    rememberOpenedEntity.mockReset();
+    scriptSelectCharacterById.mockReset();
     for (const restore of restoreGlobals.splice(0).reverse()) restore();
 });
 
@@ -167,21 +188,88 @@ describe('universal search entity entries', () => {
         expect(collectEntitySearchEntries('shared name', { limit: 0 })).toEqual([]);
     });
 
-    test('opens the matching group chat or falls back to the groups page', async () => {
+    test('selects the matching group with its chat, or falls back to the groups page when opening it throws', async () => {
         const group = { id: 'group-action', name: 'Investigation Team', chat_id: 'case-one', members: [] };
         const openGroupChat = jest.fn().mockResolvedValue();
         const openTab = jest.fn();
         replaceGlobal('SillyBunnyShell', { openTab });
         setSearchContextAccessor(() => ({ groups: [group], openGroupChat }));
+        openGroupById.mockResolvedValueOnce(true);
 
         await collectEntitySearchEntries('investigation')[0].action();
 
-        expect(openGroupChat).toHaveBeenCalledWith('group-action', 'case-one');
+        // openGroupChat would load the messages without selecting the group.
+        expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
+        expect(openGroupChat).not.toHaveBeenCalled();
         expect(openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity.mock.calls).toEqual([['group', 'group-action']]);
 
-        setSearchContextAccessor(() => ({ groups: [group] }));
+        openGroupById.mockRejectedValueOnce(new Error('Group chats module failed to load'));
         await collectEntitySearchEntries('investigation')[0].action();
         expect(openTab).toHaveBeenCalledWith('characters', 'groups');
+        expect(rememberOpenedEntity).toHaveBeenCalledTimes(1);
+    });
+
+    test('honours a group selection the app refuses', async () => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel({ menuType: 'character_edit' });
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(false);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openGroupById).toHaveBeenCalledWith('group-action', { switchMenu: false });
+        expect(openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['a character', { menuType: 'character_edit' }],
+        ['the no-chat empty state', { menuType: 'editor_empty' }],
+        ['a character on a phone', { menuType: 'character_edit', phone: true, phoneContent: true }],
+    ])('re-resolves an open Editor tab showing %s once the group opens', async (_label, panel) => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel(panel);
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openTab.mock.calls).toEqual([['characters', 'editor']]);
+    });
+
+    test.each([
+        ['another Characters tab', { menuType: 'groups' }],
+        ['a group editor', { menuType: 'group_edit' }],
+        ['a closed page', { open: false, menuType: 'character_edit' }],
+        ['a phone section list', { menuType: 'character_edit', phone: true }],
+    ])('leaves %s alone when a group opens', async (_label, panel) => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel(panel);
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openTab).not.toHaveBeenCalled();
+    });
+
+    test('a failed editor refresh does not fall back to the groups page', async () => {
+        const openTab = jest.fn(async (_shell, tabId) => {
+            if (tabId === 'editor') throw new Error('Shell is mounting');
+        });
+        replaceGlobal('SillyBunnyShell', { openTab });
+        stubCharacterPanel({ menuType: 'character_edit' });
+        setSearchContextAccessor(() => ({ groups: [{ id: 'group-action', name: 'Investigation Team', members: [] }] }));
+        openGroupById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('investigation')[0].action();
+
+        expect(openTab.mock.calls).toEqual([['characters', 'editor']]);
+        expect(rememberOpenedEntity.mock.calls).toEqual([['group', 'group-action']]);
     });
 
     test('opens a character through the app selection path, which starts the editor session', async () => {
@@ -202,6 +290,7 @@ describe('universal search entity entries', () => {
         // open a second session on top of it.
         expect(selectCharacterById).toHaveBeenCalledWith(1);
         expect(openTab).toHaveBeenCalledWith('characters', 'editor');
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'target.png']]);
     });
 
     test('honours a selection the app refuses', async () => {
@@ -217,6 +306,34 @@ describe('universal search entity entries', () => {
 
         expect(selectCharacterById).toHaveBeenCalledWith(0);
         expect(openTab).not.toHaveBeenCalled();
+        expect(rememberOpenedEntity).not.toHaveBeenCalled();
+    });
+
+    test('records the searched character even when the library reloads while its chat opens', async () => {
+        const characters = [{ name: 'Other Card', avatar: 'other.png' }, { name: 'Editor Target', avatar: 'target.png' }];
+        const selectCharacterById = jest.fn(async () => {
+            characters.unshift({ name: 'Imported', avatar: 'imported.png' });
+            return true;
+        });
+        replaceGlobal('SillyBunnyShell', { openTab: jest.fn() });
+        setSearchContextAccessor(() => ({ characters, selectCharacterById }));
+
+        await collectEntitySearchEntries('editor target')[0].action();
+
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'target.png']]);
+    });
+
+    test('records a character selected through the module fallback', async () => {
+        const openTab = jest.fn();
+        replaceGlobal('SillyBunnyShell', { openTab });
+        setSearchContextAccessor(() => ({ characters: [{ name: 'Editor Target', avatar: 'target.png' }] }));
+        scriptSelectCharacterById.mockResolvedValueOnce(true);
+
+        await collectEntitySearchEntries('editor target')[0].action();
+
+        expect(scriptSelectCharacterById).toHaveBeenCalledWith(0);
+        expect(rememberOpenedEntity.mock.calls).toEqual([['character', 'target.png']]);
+        expect(openTab).toHaveBeenCalledWith('characters', 'editor');
     });
 
     test('waits for the world picker to mount and selects the book by its original index', async () => {

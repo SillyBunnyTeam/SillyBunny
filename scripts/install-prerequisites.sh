@@ -43,9 +43,9 @@ TERMUX_BUN_SHIM_PATH="$BUN_INSTALL_DIR/lib/bun-shim.so"
 # macOS has no system package manager to install Node.js with, so the launcher
 # installs this official build into a folder the user owns (no sudo needed).
 # Pinned by version and SHA-256 because the archive is unpacked and run.
-MACOS_NODE_VERSION='v24.21.0'
-MACOS_NODE_SHA256_ARM64='bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057'
-MACOS_NODE_SHA256_X64='1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097'
+MACOS_NODE_VERSION='v24.22.1'
+MACOS_NODE_SHA256_ARM64='89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7'
+MACOS_NODE_SHA256_X64='d132557e7ee2b85af08b0c8c34338e65c6430f2238d01f727728ef42dc83b035'
 MACOS_NODE_DIR="${SILLYBUNNY_NODE_INSTALL:-$HOME/.sillybunny/node}"
 
 have_command() {

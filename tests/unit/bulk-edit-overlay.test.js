@@ -42,6 +42,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: strin
 await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user: {} }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: jest.fn(), closeActionMenu: jest.fn() }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/object-navigation.js', () => ({ objectNavigation: {} }));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-auto-load.js', () => ({ rememberOpenedEntity: jest.fn() }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-character-list-state.js', () => ({ getListPage: () => 1, getListPageSize: () => 10 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({ animateListChange: (_rows, update) => update(), animateIn() {}, play() {}, stopMotion() {}, animateOut() {}, MOTION_SLOW: 0, MOTION_FAST: 200, MOTION_EASE_OUT_CUBIC: 'ease-out', SPRING_DIALOG: {}, SPRING_NAVIGATION: {}, SPRING_SHEET: {}, prefersReducedMotion: () => true }));
 const { BulkEditOverlay } = await import('../../public/scripts/BulkEditOverlay.js');

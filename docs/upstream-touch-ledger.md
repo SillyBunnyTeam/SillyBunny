@@ -263,18 +263,16 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Remove the defaultResult and onOpen options; leave deletion handlers unchanged. |
 | Last reviewed | 2026-10-22, PR #870 Phase 2 audit fixes. |
 | Owner | UI integrator. |
-
-### `public/script.js` - chat render lifecycle
 | Field | Value |
 | --- | --- |
 | Area | Chat lifecycle. |
-| Divergence reason | SillyBunny adds mobile batching, bottom pinning, manual-scroll suppression, long-chat anchoring, streaming DOM throttles, and issue `#167` scroll stability behavior. |
+| Divergence reason | SillyBunny adds mobile batching, bottom pinning, manual-scroll suppression, long-chat anchoring, streaming DOM throttles, issue `#167` scroll stability behavior, and issue `#911` off-screen message skipping (`content-visibility` on laid-out history in `public/style.css`, plus swipe refreshes that only touch buttons whose display changes). |
 | Target seam | `public/scripts/chat-render-lifecycle/`. |
-| Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, and update batching to the lifecycle module. |
-| Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
+| Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, off-screen message tracking, and update batching to the lifecycle module. |
+| Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-render-lifecycle-offscreen-messages.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
 | Validation | `node --check public/script.js`, focused lifecycle Jest `chat-render-lifecycle-scroll-state.test.js chat-render-lifecycle-script-wiring.test.js`, `npm run check:frontend-budgets`, plus prior lifecycle lint/unit/e2e packs on this stack. |
 | Rollback path | Disable affected lifecycle routes with the permanent device-local kill switch while correcting the routed implementation. |
-| Last reviewed | 2026-06-13 initial-load scroll-state route. |
+| Last reviewed | 2026-10-22 issue `#911` off-screen message skipping route. |
 | Owner | Refactor integrator. |
 
 ### `public/script.js` - generation lifecycle
@@ -289,6 +287,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert lifecycle calls in `public/script.js` while keeping existing provider and prompt paths intact. |
 | Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
+
+### `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, and `src/endpoints/chats.js` - server-owned chat generations
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, `src/endpoints/chats.js` |
+| Area | Generation lifecycle and chat persistence. |
+| Divergence reason | SillyBunny lets the server finish a chat reply when the page that asked for it goes away, because phones freeze and close background tabs during a generation. `Generate()` must send a commit plan with each committable request, mark its streaming message so the server replaces only an unfinished reply, and skip its own save when the server kept its copy. Upstream stops the stream on `beforeunload`, which a leave-site prompt can cancel, so the hand-off and the stop run on `pagehide`. A group reply written this way must carry the rest of its round so the round can go on, and the server must save chats with the same locking, integrity and backup handling as a browser save. |
+| Target seam | `public/scripts/server-generations.js`, `public/scripts/resumable-generation.js`, `public/scripts/generation-commit-plan.js`, `src/generation-commit.js`. |
+| Adapter shape | `Generate()` registers a commit plan before each committable request (`registerGenerationCommitPlan()`), then awaits `settleGenerationCommit()` before it saves the finished reply; on `committed` it unblocks and calls `reloadServerCommittedReply()` instead of saving. `StreamingProcessor.onStartStreaming()` sets `extra[GENERATION_PLACEHOLDER_KEY]` on the streaming message, and `finalizeIntermediaryMessage()` deletes it. The window `pagehide` handler stops the stream unless the page goes into the back/forward cache; the `beforeunload` handler no longer stops it. `generateGroupWrapper()` records the members still to speak in `groupRoundRemaining`, read by `getGroupRoundRemaining()`, and `resumeGroupRound()` runs them. `parseAutoReasoningFromString()` exposes the live reasoning parse. `updateChatRecords()` saves through `trySaveChat()`, whose `integrity` option restores a chat's earlier slug when a commit is taken back. |
+| Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/server-generations-frontend.test.js`, `tests/server-generation-commit.test.js`, `tests/server-generation-commit.e2e.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- story-mode-request-controls.test.js resumable-generation-frontend.test.js server-generations-frontend.test.js server-generation-commit.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against Bun 1.3.14 and Node servers, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `registerGenerationCommitPlan()` and `settleGenerationCommit()` calls, the `GENERATION_PLACEHOLDER_KEY` lines in `onStartStreaming()` and `finalizeIntermediaryMessage()`, and the `pagehide` handler, then put `streamingProcessor.onStopStreaming()` back in the `beforeunload` handler. Requests then carry no commit plan, so the server never writes replies, and `fetchResumable()` still resumes dropped streams. `getGroupRoundRemaining()`, `resumeGroupRound()`, `parseAutoReasoningFromString()` and `updateChatRecords()` are used only by `public/scripts/server-generations.js` and `src/generation-commit.js`, so they go with those modules. |
+| Last reviewed | 2026-10-23 PR #877 review fixes. |
+| Owner | Generation lifecycle owner. |
 
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
@@ -459,6 +471,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-11 PR 2.1 mobile breakpoint ledger. |
 | Owner | Refactor integrator and mobile shell owner. |
 
+### `public/index.html` - Data & Security Usage Stats row
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-settings-content.js` (`SB_DATA_SECURITY_SECTIONS` and the Data & Security `general` category). |
+| Adapter shape | Keep one static `#user_stats_controls` row after `#account_controls`. Its button keeps the upstream `user_stats_button` class and `Usage Stats` i18n key, so the upstream binding in `public/script.js` opens `userStatsHandler()`. |
+| Protecting tests | `tests/unit/sillybunny-settings-content.test.js`, `tests/startup-on-demand.e2e.js` (`Data & Security opens Usage Stats`). |
+| Validation | `npm run test:unit --prefix tests -- unit/sillybunny-settings-content.test.js`, `npm run test:e2e --prefix tests -- startup-on-demand.e2e.js -g "Data & Security"`, `npm run lint`, `npm run check:frontend-budgets`, browser check at 1440px and 390px. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 PR `#870` Data & Security Usage Stats row. |
+| Owner | TODO(copy) |
+
 ### `public/css/backgrounds.css` - background image transparency
 | Field | Value |
 | --- | --- |
@@ -614,6 +640,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Remove the router mounts from `src/server-startup.js` and revert the Conversation REST endpoint module without touching persisted `settings.json` data. |
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
+
+### `src/server-startup.js` - listen retry and port-conflict diagnostics
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js`. |
+| Area | Server lifecycle. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/server-listen.js`. |
+| Adapter shape | `#startHTTPorHTTPS()` runs the IPv6 and IPv4 binds at the same time through `retryOnAddressInUse()` and calls `reportPortHolders()` on the first retry. Both create functions close a server that failed to bind and call `trackListeningServer()` once it listens. `#handleServerListenFail()` calls `reportPortHolders()` again and prints the `diagnosePortConflict()` result through `formatPortConflictBanner()` before it exits. `#getAddressInUseMessage()` uses `APP_NAME` and adds the Bun socket-inheritance hint only when `hasBunSocketInheritBug()` is true. |
+| Protecting tests | `tests/server-listen.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- server-listen.test.js`, `node --check src/server-startup.js`, `npm run lint`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
+| Owner | TODO(copy) |
 
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |

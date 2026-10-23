@@ -9859,7 +9859,10 @@ function buildInChatAgentsPanel() {
         id: 'agents',
     });
 
-    const column = createElement('div', { className: 'sb-shell-column ica-agents-column' });
+    const column = createElement('div', {
+        className: 'sb-shell-column ica-agents-column',
+        attrs: { 'data-sb-presentation': 'manual' },
+    });
     const controller = mountAgentsPanel(column);
     scroller.appendChild(column);
 

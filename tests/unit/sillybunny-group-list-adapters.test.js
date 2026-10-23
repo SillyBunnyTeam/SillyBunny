@@ -374,11 +374,12 @@ describe('pagination-independent group member actions', () => {
 
 describe('group member peek boundary', () => {
     function setup(overrides = {}) {
-        return loadFunctions(['canPeekGroupMember', 'openGroupMemberDefinition', 'openCharacterDefinition'], {
+        return loadFunctions(['canPeekGroupMember', 'canRestoreGroupMemberPeek', 'openGroupMemberDefinition', 'openCharacterDefinition'], {
             selected_group: 'group-1',
             openGroupId: 'group-1',
             getEditedGroup: () => ({ members: ['alice.png'] }),
             characters: [{ avatar: 'alice.png' }],
+            this_chid: undefined,
             is_group_generating: false,
             is_send_press: false,
             getGroupCharacterBlock: jest.fn(() => $('<div data-chid="0"></div>')),
@@ -410,6 +411,34 @@ describe('group member peek boundary', () => {
     ])('refuses unsafe or unavailable peeks: %p', async overrides => {
         const context = setup(overrides);
         await expect(context.api.openGroupMemberDefinition('alice.png')).resolves.toBe(false);
+        expect(context.setCharacterId).not.toHaveBeenCalled();
+        expect(context.unshallowCharacter).not.toHaveBeenCalled();
+    });
+
+    test('Back peeks the member already peeked over the selected chat group after another group editor opened', async () => {
+        const context = setup({ openGroupId: 'other-group', this_chid: '0' });
+        expect(context.api.canPeekGroupMember('alice.png')).toBe(false);
+        expect(context.api.canRestoreGroupMemberPeek('alice.png')).toBe(true);
+        expect(context.api.canRestoreGroupMemberPeek('bob.png')).toBe(false);
+        await expect(context.api.openGroupMemberDefinition('alice.png')).resolves.toBe(false);
+        expect(context.setCharacterId).not.toHaveBeenCalled();
+        await expect(context.api.openGroupMemberDefinition('alice.png', { restore: true })).resolves.toBe(true);
+        expect(context.setCharacterId).toHaveBeenCalledWith('0');
+        expect(context.select_selected_character).toHaveBeenCalledWith('0');
+    });
+
+    test('Back peeks an edited member again after a group reply cleared the peeked character', () => {
+        expect(setup().api.canRestoreGroupMemberPeek('alice.png')).toBe(true);
+    });
+
+    test.each([
+        { selected_group: null, this_chid: '0' },
+        { openGroupId: 'other-group' },
+        { is_group_generating: true, this_chid: '0' },
+        { is_send_press: true, this_chid: '0' },
+    ])('Back refuses peeks outside a group chat, of members neither peekable nor peeked, or while busy: %p', async overrides => {
+        const context = setup(overrides);
+        await expect(context.api.openGroupMemberDefinition('alice.png', { restore: true })).resolves.toBe(false);
         expect(context.setCharacterId).not.toHaveBeenCalled();
         expect(context.unshallowCharacter).not.toHaveBeenCalled();
     });

@@ -75,7 +75,7 @@ describe('character editor quick edit', () => {
 
     test('migrates spoiler_free_mode only when the new key was never saved', () => {
         expect(powerUserSource).toContain(
-            "if (!Object.hasOwn(savedPowerUserSettings, 'characterEditorQuickEdit')) {\n"
+            'if (!Object.hasOwn(savedPowerUserSettings, \'characterEditorQuickEdit\')) {\n'
             + '        power_user.characterEditorQuickEdit = !!savedPowerUserSettings.spoiler_free_mode;\n'
             + '    }',
         );

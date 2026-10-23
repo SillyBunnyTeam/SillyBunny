@@ -87,13 +87,15 @@ const SB_SETTINGS_TAB_SECTIONS = Object.freeze({
  * Header-adjacent controls that describe the server or the account rather than the UI shell.
  *
  * They are authored in `#user-settings-block`'s header rows because that is where the markup
- * happened to sit, but Language, Account, Version, and the cache controls all act on saved data or
- * the backend, so they read as Data & Security content. They move in this order, ahead of Import &
- * Restore, so that tab opens on Language -> Account -> Version -> Clear cache -> Import.
+ * happened to sit, but Language, Account, Usage Stats, Version, and the cache controls all act on
+ * saved data or the backend, so they read as Data & Security content. They move in this order, ahead
+ * of Import & Restore, so that tab opens on Language -> Account -> Usage Stats -> Version -> Clear
+ * cache -> Import.
  */
 const SB_DATA_SECURITY_SECTIONS = Object.freeze([
     '#UI-language-block',
     '#account_controls',
+    '#user_stats_controls',
     '#version_display',
     '#user-settings-utility-actions',
 ]);
@@ -130,6 +132,7 @@ const SB_REQUIRED_SECTIONS = Object.freeze({
 const SB_DATA_SECURITY_REQUIRED_SECTIONS = Object.freeze([
     'UI-language-block',
     'account_controls',
+    'user_stats_controls',
     'version_display',
     'user-settings-utility-actions',
 ]);
@@ -448,8 +451,8 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'general',
                 title: 'General',
-                description: 'Language, account, version, and browser cache',
-                rows: ['#UI-language-block', '#account_controls', '#version_display', '#user-settings-utility-actions'],
+                description: 'Language, account, usage stats, version, and browser cache',
+                rows: ['#UI-language-block', '#account_controls', '#user_stats_controls', '#version_display', '#user-settings-utility-actions'],
             },
             { section: '#SillyTavernImportSection' },
         ]),

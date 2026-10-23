@@ -15,6 +15,7 @@ import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { eventSource, event_types } from './events.js';
 import { animateListChange, prefersReducedMotion, stopMotion } from './sillybunny-motion.js';
 import { getFolders, getFolderId, setFolder, setFolderExpanded, subscribe as subscribeFolders } from './sillybunny-folders.js';
+import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
@@ -752,13 +753,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             }
         };
         try {
+            // Key the record to the clicked row, not a library index: the library can reload while the chat loads.
+            const key = String(entry.kind === 'group' ? (entry.data.id ?? entry.item.id) : (entry.data.avatar ?? entry.item.avatar));
             const selected = entry.kind === 'group'
-                ? await dataModules.groups.openGroupById(String(entry.data.id ?? entry.item.id), { switchMenu: false, onAccepted })
+                ? await dataModules.groups.openGroupById(key, { switchMenu: false, onAccepted })
                 : await dataModules.script.selectCharacterById(Number(entry.data.chid ?? entry.entity.id), { switchMenu: false, onAccepted });
             if (!selected) {
                 await reopen();
                 return;
             }
+            // Row activation stops the click before RossAscends-mods.js can record the Auto-load Last Chat entity.
+            rememberOpenedEntity(entry.kind, key);
             if (pendingActivation !== activation || destroyed || selection.isActive || state.view !== activation.view) return;
             syncActiveRows();
         } catch (error) {

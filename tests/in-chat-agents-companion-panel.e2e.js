@@ -17,7 +17,6 @@ for (const width of [1440, 390]) {
             const driver = await openEditorAgents(page, baseURL, width);
             await seedCompanionPanel(page);
             const reference = await driver.root.locator('.ica-agents-box').first().evaluate(appearance);
-            const headerSize = await driver.root.locator('.sb-list-header__button:visible').first().evaluate(node => node.getBoundingClientRect().width);
             await page.evaluate(() => window.$('#themes').val('Libadwaita Light').trigger('change'));
             await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'light');
             const lightReference = await driver.root.locator('.ica-agents-box').first().evaluate(appearance);
@@ -41,7 +40,7 @@ for (const width of [1440, 390]) {
                 expect.soft(style.width).toBe(style.height);
                 expect.soft(style.width).toBeGreaterThanOrEqual(width === 390 ? 44 : 40);
             }
-            expect(await panel.locator('[data-action="panel-close"]').evaluate(node => node.offsetWidth)).toBe(headerSize);
+            expect(await panel.locator('[data-action="panel-close"]').evaluate(node => node.offsetWidth)).toBe(width === 390 ? 44 : 40);
             for (const card of await panel.locator('.ica--tpanel-agent').all()) expect(await card.evaluate(appearance)).toEqual(reference);
             expect(await page.locator('.ica--companion-card').evaluate(appearance)).toEqual(reference);
             const surface = await panel.evaluate(node => ({ blur: getComputedStyle(node).backdropFilter, overflow: node.scrollWidth - node.clientWidth }));

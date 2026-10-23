@@ -99,9 +99,37 @@ function createEntry(searchText, displayText, tabId, tabLabel, dedupeKey, action
     };
 }
 
+async function rememberOpened(kind, key) {
+    try {
+        const { rememberOpenedEntity } = await import('./sillybunny-auto-load.js');
+        rememberOpenedEntity(kind, key);
+    } catch {
+        // The chat is open either way; only the Auto-load Last Chat entity stays behind.
+    }
+}
+
+// Groups open without switchMenu so search leaves the Characters page where it was, but an Editor tab
+// still showing a character, or the no-chat empty state, no longer matches the open chat.
+async function refreshStaleCharacterEditor() {
+    try {
+        const panel = globalThis.document?.getElementById('right-nav-panel');
+        if (!panel?.classList.contains('openDrawer') || !['character_edit', 'editor_empty'].includes(panel.dataset.menuType)) return;
+        // A phone page on its section list keeps the Editor off-screen, and opening the tab would slide it in.
+        // Choosing Editor there resolves the open chat anyway.
+        const onPhoneSectionList = Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches)
+            && !globalThis.document.getElementById('sb-settings-page')?.classList.contains('sb-settings-page--content');
+        if (onPhoneSectionList) return;
+        await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');
+    } catch {
+        // Navigation can be unavailable while the shell is being mounted.
+    }
+}
+
 async function openCharacter(index) {
     try {
         const context = getSearchContext();
+        // Read the avatar before the open: the library can reload while the chat loads.
+        const avatar = String(getCharacterList(context)[index]?.avatar ?? '');
         // The app's own selection path opens the editor, fills its fields and starts a session; the
         // editor renders from that form rather than from data, so opening the session directly would
         // show whatever card was last loaded. A false result means a pending chat save blocked it.
@@ -113,6 +141,7 @@ async function openCharacter(index) {
                 const module = await import('../script.js');
                 if (typeof module?.selectCharacterById === 'function') {
                     if (await module.selectCharacterById(index) === false) return;
+                    if (avatar) await rememberOpened('character', avatar);
                     await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');
                     return;
                 }
@@ -121,6 +150,7 @@ async function openCharacter(index) {
             }
         } else {
             if (await selectById(index) === false) return;
+            if (avatar) await rememberOpened('character', avatar);
             await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');
             return;
         }
@@ -135,18 +165,19 @@ async function openCharacter(index) {
 
 async function openGroup(group) {
     try {
-        const context = getSearchContext();
-        // Opening a chat without an id would fail and leave the user on the current page, so only the
-        // group's own page is a reliable destination when it has no chat yet.
-        const chatId = String(group?.chat_id ?? '');
-        if (chatId && typeof context?.openGroupChat === 'function') {
-            try {
-                await context.openGroupChat(group.id, chatId);
-                return;
-            } catch {
-                // Fall through to the group page if the active chat is unavailable.
-            }
+        // openGroupChat only swaps the chat file of the group that is already selected, so it would
+        // leave the previous character or group selected under this group's messages.
+        const { openGroupById } = await import('./group-chats.js');
+        const groupId = String(group.id);
+        if (await openGroupById(groupId, { switchMenu: false })) {
+            await rememberOpened('group', groupId);
+            await refreshStaleCharacterEditor();
         }
+        return;
+    } catch {
+        // Fall through to the groups page if opening the group throws.
+    }
+    try {
         await globalThis.SillyBunnyShell?.openTab?.('characters', 'groups');
     } catch {
         // Navigation can be unavailable while the shell is being mounted.

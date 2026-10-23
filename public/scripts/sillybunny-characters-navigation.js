@@ -2,13 +2,16 @@ import { characters, this_chid, selectCharacterById } from '../script.js';
 import {
     groupEditorTargetExists,
     canPeekGroupMember,
+    canRestoreGroupMemberPeek,
     openGroupMemberDefinition,
     openGroupEditor,
     captureGroupEditorListState,
     restoreGroupEditorListState,
+    selected_group,
 } from './group-chats.js';
 import { t } from './i18n.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
+import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 import {
     world_names, openWorldInfoEditor, getWorldInfoEditorState,
     captureWorldInfoEditorListState, restoreWorldInfoEditorListState,
@@ -65,13 +68,18 @@ objectNavigation.register('character-editor', {
         const index = characters.findIndex(character => character?.avatar === target.id);
         if (index < 0) return false;
 
-        const peek = target.via === 'group-member' && canPeekGroupMember(target.id);
+        // Back over a group chat peeks again, since selecting the character would replace that chat.
+        const peek = restore
+            ? canRestoreGroupMemberPeek(target.id)
+            : target.via === 'group-member' && canPeekGroupMember(target.id);
         if (restore && !peek && characters[this_chid]?.avatar !== target.id) {
             return listDestination('characters', 'character-list').open({ focusAvatar: target.id }, { isCurrent });
         }
         const opened = peek
-            ? await openGroupMemberDefinition(target.id, { isCurrent })
+            ? await openGroupMemberDefinition(target.id, { isCurrent, restore: Boolean(restore) })
             : await selectCharacterById(index, { switchMenu: true });
+        // Only a forward open switches chats: Back stays on the selected character and a peek keeps the group chat.
+        if (opened && !peek && !restore) rememberOpenedEntity('character', target.id);
         if (!isCurrent() || !opened) return false;
         const ready = await waitForCharacterEditor(target.id, isCurrent);
         if (!isCurrent() || !ready) return false;
@@ -87,7 +95,11 @@ objectNavigation.register('group-editor', {
     exists: id => groupEditorTargetExists(id),
     async open(target, { restore = null, isCurrent }) {
         if (!isCurrent()) return false;
-        const opened = await openGroupEditor(target.id, { switchChat: target.via === 'group-list', isCurrent });
+        const switchChat = target.via === 'group-list';
+        const opened = await openGroupEditor(target.id, { switchChat, isCurrent });
+        // Without switchChat the editor opens over whichever chat is already open. With it, the chat can
+        // switch even when the editor never shows or a newer navigation supersedes this one.
+        if (switchChat && selected_group === target.id) rememberOpenedEntity('group', target.id);
         if (!isCurrent() || !opened) return false;
         if (restore) await restoreGroupEditorListState(restore);
         return isCurrent();

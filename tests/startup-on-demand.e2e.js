@@ -152,6 +152,20 @@ test('Data & Security hosts the Import & Restore drawer', async ({ page }) => {
     await expect(page.locator('#sb-appearance-content #SillyTavernImportSection')).toHaveCount(0);
 });
 
+test('Data & Security opens Usage Stats', async ({ page }) => {
+    await page.route('**/api/stats/get', route => route.fulfill({
+        json: { 'usage.png': { user_msg_count: 4, non_user_msg_count: 9, total_swipe_count: 2 } },
+    }));
+    await openApp(page);
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
+    const row = page.locator('[data-sb-panel="data-security"] #user_stats_controls');
+    await row.getByRole('button', { name: 'Usage Stats', exact: true }).click();
+    const stats = page.locator('dialog[open] .rm_stat_block');
+    await expect(stats.filter({ hasText: 'User Messages' })).toContainText('4');
+    await expect(stats.filter({ hasText: 'Character Messages' })).toContainText('7');
+    await expect(stats.filter({ hasText: 'Swipes' })).toContainText('2');
+});
+
 test('failed cleanup import can be retried by opening the tool again', async ({ page }) => {
     let attempts = 0;
     await page.route(cleanupScript, async route => {

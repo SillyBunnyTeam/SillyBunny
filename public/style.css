@@ -1413,6 +1413,20 @@ body .panelControlBar {
     transition: background-color 200ms ease;
 }
 
+#chat > .mes {
+    /* SillyBunny: a message skipped by content-visibility is size-contained, and the #chat column
+       flexbox would shrink it to its padding. Unskipped messages never shrink, so this changes nothing else. */
+    flex-shrink: 0;
+}
+
+/* SillyBunny: long chats lag when every message renders on every frame (#911). Once a message has been
+   laid out, the chat render lifecycle adds .sb-mes-sized, so contain-intrinsic-size: auto holds its real
+   height whenever it is far enough off screen to skip. The newest messages always render because
+   streaming, swipes, and edits happen there. */
+#chat > .mes.sb-mes-sized:not(.last_mes):not(:nth-last-child(-n + 20)) {
+    content-visibility: auto;
+}
+
 #chat .mes.selected {
     /* background-color: rgb(from var(--SmartThemeQuoteColor) r g b / .5); */
     background-color: rgb(102, 0, 0);

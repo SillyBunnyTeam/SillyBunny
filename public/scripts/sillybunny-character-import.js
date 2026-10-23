@@ -8,6 +8,7 @@ import { createEntityRow } from './sillybunny-editor/entity-row.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { confirmActiveEditorLeave } from './sillybunny-editor/navigation.js';
+import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const mounted = new WeakMap();
 
@@ -180,7 +181,7 @@ export function mountCharacterImport(host) {
                 if (!await confirmActiveEditorLeave()) return;
                 const id = characters.findIndex(character => character.avatar === result.id);
                 if (id < 0) return;
-                await selectCharacterById(id, { switchMenu: false });
+                if (await selectCharacterById(id, { switchMenu: false })) rememberOpenedEntity('character', result.id);
             }));
             actions.push(resultButton(t`Edit`, 'pencil', () => {
                 returnFocus = `import-result:${index}`;

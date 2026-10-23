@@ -1,4 +1,3 @@
-/* global document, window */
 import { expect, test } from '@playwright/test';
 import { dismissOnboardingIfPresent, dismissOpenDialogIfPresent } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
