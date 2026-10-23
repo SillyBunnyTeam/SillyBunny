@@ -1,7 +1,7 @@
 ---
 status: in-progress
-phase: 2
-updated: 2026-10-22
+phase: 5
+updated: 2026-10-23
 ---
 
 # Implementation Plan: SillyBunny Android APK (first-party install method)
@@ -303,8 +303,8 @@ Spec:
 
 1. **Welcome.** Ask for notification permission (Android 13+); denial must not block installation/server startup. Offer the battery-optimisation exemption (optional, never forced, also available in Settings). An FGS still requires its notification when permission is denied, though only Task Manager may show it (R2, §2).
 2. **Preflight:**
-   - free storage check. S2.5 measured about 940 MB installed before user data on x86_64: natives 110 MB, `runtime/` 33 MB, checkout 691 MB (including `node_modules` 452 MB and `.git` 79 MB) and `home/` with the npm cache 108 MB. Peak usage during installation is not measured yet; the threshold needs it plus a margin (task 2.6)
-   - network check; on a metered or mobile connection, show a warning with the **measured** estimated download size (clone + `npm ci`; S2.5: about 175–187 MB on x86_64, clone ~79 MB plus `npm ci` ~98–108 MB) and let the user continue
+   - free storage check: require `FirstRunStorage.REQUIRED_FREE_BYTES`, 1,341,351,936 B (about 1.34 GB): the measured peak plus 50% (P2.6). On x86_64 emulators (API 37 with 16 KB pages, API 29), sampled every 2 s from Welcome through the first start's `npm ci` to the loaded UI, the app's data directory only grew, so its peak is its installed size: 868–894 MB by `du` (`df` saw 735–761 MB; `du` counts 8 KiB for each small file where `df` uses 4 KiB). It holds the checkout, 716 MB (`node_modules` 463 MB, `.git` 82 MB), `home/` with the npm cache, 110 MB, `runtime/`, 34 MB, and up to 33 MB of caches (the WebView's and Node's compile cache). The extracted natives (113 MB on x86_64) arrive with the APK, before the check. The margin covers later growth of the repository and the npm tree, and other file systems
+   - network check; on a metered or mobile connection, show a warning with the **measured** estimated download size (clone + `npm ci`) and let the user continue. P2.6 measured the clone at 80.6–80.7 MB and the first start's `npm ci` at 98.5–98.7 MB, 179.1–179.3 MB together, cloning `feat/android-apk` on x86_64 (per-UID netstats); S2.5's standalone `npm ci` with audit traffic received up to 108 MB
 3. **Lay out the runtime** (§2.2).
 4. **Install.** Run `libbash.so install.sh --no-start --dir filesDir/SillyBunny --ref BuildConfig.DEFAULT_REF --use-node` with the APK-mode env (§2.5), and show streamed progress and log output; no runtime picker while Bun is deferred.
 5. **On success:** start `ServerService` → WebView.
@@ -686,7 +686,7 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
 
 ## 10. Known risks and unknowns (verify early, in Phase 2)
 
-Report keys: **S2.4** = `s24-bun.md`; **R2** = `r2-android-platform.md` (2026-10-20 cutoff, validated 2026-10-21); **S2.7b** = `s27-downloads-audit.md`; **P4-T** = `p4-termux-runtime.md`; **P3-B** = `p3-B-server-gate.md`; **T3.7** = `t37-touch-ledger.md`; **S2.2** = `s22-termux-git-bash.md`; **S2.2b** = `s22b-api36.md`; **S2.5** = `s25-app-install.md`; **S2.1** = `s21-node-ndk.md`; **P5.2** = `p523-runtime-packaging.md`; **P5.4** = `p54-server-service.md`; **P5.5** = `p55-first-run.md`; **P5.7** = `p57-settings.md`; **P5.8** = `p58-app-updater.md`; **P5.9** = `p59-repair.md`; **P4.x** = `p4x-node-pipeline.md`; **P4.5** = `p45b-notices.md`; **P5.10** = `p510-documents-provider.md`; **P7.2** = `p7-release-tooling.md`; **P7.x** = `p7x-release-workflow.md`; **P6.x** = `p6x-ci-smoke.md`; **P5.int** = `p5int-app-integration.md`; **P6.1** = `p61-smoke-fixtures.md`; **P5.6a** = `p56a-webview-shell.md`; **P5.6b** = `p56b-webview-transfers.md`; **P5.6** = `p56-webview.md`.
+Report keys: **S2.4** = `s24-bun.md`; **R2** = `r2-android-platform.md` (2026-10-20 cutoff, validated 2026-10-21); **S2.7b** = `s27-downloads-audit.md`; **P4-T** = `p4-termux-runtime.md`; **P3-B** = `p3-B-server-gate.md`; **T3.7** = `t37-touch-ledger.md`; **S2.2** = `s22-termux-git-bash.md`; **S2.2b** = `s22b-api36.md`; **S2.5** = `s25-app-install.md`; **S2.1** = `s21-node-ndk.md`; **P5.2** = `p523-runtime-packaging.md`; **P5.4** = `p54-server-service.md`; **P5.5** = `p55-first-run.md`; **P5.7** = `p57-settings.md`; **P5.8** = `p58-app-updater.md`; **P5.9** = `p59-repair.md`; **P4.x** = `p4x-node-pipeline.md`; **P4.5** = `p45b-notices.md`; **P5.10** = `p510-documents-provider.md`; **P7.2** = `p7-release-tooling.md`; **P7.x** = `p7x-release-workflow.md`; **P6.x** = `p6x-ci-smoke.md`; **P5.int** = `p5int-app-integration.md`; **P6.1** = `p61-smoke-fixtures.md`; **P5.6a** = `p56a-webview-shell.md`; **P5.6b** = `p56b-webview-transfers.md`; **P5.6** = `p56-webview.md`; **P2.6** = `p26-measurements.md`.
 
 - **Exec via symlinks:** task 2.2 is complete: S2.2 real `untrusted_app` tests cover API 29/4 KB; P4-T and S2.2b cover committed-pipeline outputs on API 37/16 KB and API 36/4 KB. Required filtered HTTPS clone/Git operations, symlinks and writable-copy EACCES pass; API 36 adds 19 cloned-repository/39 local checks, repaired shell alias and group stop. API 29 used the earlier spike payload, not a rerun of final outputs; API 33/35 and ARM/OEM execution remain **UNVERIFIED**. `run-as` is not production exec proof (S2.2, §4; P4-T, §5; S2.2b, §§4–6; R2, §2).
 - **ELF/page-size checks:** P4-T audits all 51 final Termux ELFs: arm64/x86_64 LOADs ≥ `0x4000`; ARM32 retains `0x1000` and needs rebuilding if ARM32 16 KB support is required. All five S2.4 Bun candidates pass static 16 KB LOAD checks, but tested x86_64 JavaScript still aborts on 16 KB pages. S2.1's Node ELFs for all three ABIs, ARMv7 included, pass 16 KB checks: every LOAD has `p_align 0x4000` with congruent offsets, and each RELRO ends on a 16 KB boundary, because the recipe passes explicit 16 KB linker flags. Task 2.7 is complete; only the ARM32 Termux payload stays at 4 KB. ZIP alignment alone proves neither ELF compatibility nor runtime page-size independence (P4-T, §§5–6; S2.4, §4; R2, §§1–2).
@@ -699,13 +699,13 @@ Report keys: **S2.4** = `s24-bun.md`; **R2** = `r2-android-platform.md` (2026-10
 - **The phantom-process limit defaults to 32 system-wide**, configurable by DeviceConfig, not a per-app entitlement. Foreground importance is not an exemption; excessive-child-CPU enforcement and Android 17 RAM-dependent limits are separate. Keep git and npm work sequential (R2, §2).
 - **OEM battery killers** despite the foreground service; the exemption prompt helps but doesn't guarantee survival.
 - **Launch token in health probes (P5.4):** probes start only after the server child announces its 127.0.0.1 listener, so an app holding the port before the server binds never receives the token. Residuals: a short race between the child-alive check and the connection; a server that closes its listener without exiting is still probed; and if the announcement line changes, the app waits in Starting until its 30-minute startup timeout (`tests/android-listener-announcement.test.js` catches that). A challenge-response check would remove the first two but needs a server change; it is the maintainers' decision.
-- **First-run download size and time** on mobile; measure it (task 2.6).
+- **First-run download size and time (P2.6):** on x86_64 emulators over the host's connection, the clone received 80.6–80.7 MB and the first start's `npm ci` 98.5–98.7 MB, and the UI showed 61–86 s after Welcome. A later start downloads about 157 KB on the prerelease channel (the releases list and `start.sh`'s update check). Mobile networks, ARM devices and `release`/`staging` checkouts were not measured; both downloads grow with the repository history and the dependency tree.
 - **Repair migration:** committed `tests/android-bootstrap-scripts.test.js` executes the real installer against temporary Git fixtures: opt-in migration in APK/desktop modes, exact refusal without the flag, unchanged source, migrated config/data/plugins/extensions/secrets/certs, custom relative and reused absolute data roots, and invalid/nested/non-empty-target guards. WSL rerun: 41/41 tests passed. This covers task 2.7's script check, not native Repair/SAF or damaged-metadata recovery (§4.7).
 - **WebView exports/capabilities:** S2.7b completes the static downloads audit, not native verification. Immediate-revocation detached anchors require early Blob acquisition; attachment headers also occur on import/preview responses. §4.5/task 5.6 must cover suggested filenames, cookies, 53 file inputs (15 multiple), storage/Web Locks, clipboard, auth/popups, service workers, dialogs and media. Payload bounds, complete interception timing and device behavior remain **UNVERIFIED** (S2.7b, §§3, 6; R2, §4).
 - **R2 evidence limits:** dependency metadata/API/source and signing/ZIP fixture checks are not a Gradle integration build, device update/rotation, native-DCL execution, OEM LAN/SAF/provider-race validation or hosted emulator performance proof. Keep those **UNVERIFIED** until their implementation/runtime checks pass (R2, verification).
 - **`.npmrc` `allow-git=none` / `allow-file=none`** effects on the server-plugin `npm ci` path. These are already the same on desktop, so just confirm.
 
-P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6 remains open). ZIP estimates are DEFLATE level 9 for native + assets + license inputs, excluding the manifest; the shipping APK also needs Node/npm/app code/notices (P4-T, §4).
+P4-T component sizes in bytes (component inputs; the release APK sizes of P2.6 follow the table). ZIP estimates are DEFLATE level 9 for native + assets + license inputs, excluding the manifest; the shipping APK also needs Node/npm/app code/notices (P4-T, §4).
 
 | Payload | arm64-v8a | armeabi-v7a | x86_64 (CI only) |
 |---|---:|---:|---:|
@@ -713,6 +713,17 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 | Native + runtime assets | 17,658,779 | 13,059,955 | 18,126,811 |
 | Native + assets + license inputs (93 files) | 18,476,736 | 13,877,912 | 18,944,768 |
 | ZIP estimate, same 93 files | 8,670,285 | 7,812,034 | 8,300,699 |
+
+P2.6 release APKs (unsigned, `assembleRelease -PincludeX86_64 -PdefaultRef=release`, all runtime inputs, `81087e54c`). Natives are DEFLATE-compressed so the installer extracts them; release builds do not minify, so the dex is 24 MB.
+
+| Bytes | arm64-v8a | armeabi-v7a | x86_64 (CI only) |
+|---|---:|---:|---:|
+| APK file | 71,265,976 | 69,510,394 | 71,993,097 |
+| Natives extracted (21 files) | 110,319,347 | 100,417,155 | 112,704,659 |
+| Natives in the APK | 41,991,531 | 40,235,865 | 42,718,779 |
+| `libnode.so` extracted | 92,870,224 | 87,573,196 | 94,787,384 |
+| Dex (stored) | 24,008,840 | 24,008,840 | 24,008,840 |
+| Assets extracted / in the APK | 7,012,922 / 4,609,912 | 7,012,922 / 4,609,912 | 7,012,922 / 4,609,912 |
 
 ---
 
@@ -722,15 +733,15 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 - [x] 1.3 Read `AGENTS.md`, `PRODUCT.md`, `DESIGN.md`/`DESIGN.json`, `SECURITY.md`, `CONTRIBUTING.md`, `docs/upstream-sync.md`
 - [x] 1.4 Open a **draft** PR to `staging` early (ask the maintainer for the title/body; never write them)
 
-## Phase 2: De-risking spikes (throwaway; results recorded in Notes) [IN PROGRESS]
+## Phase 2: De-risking spikes (throwaway; results recorded in Notes) [DONE]
 - [x] 2.1 Build upstream Node (spike pin v24.22.0; release line open, §9) for arm64 + x86_64 with the NDK (ST-android patches as reference). Confirm `process.platform === 'android'`, `/system/bin/sh` for `shell: true`, ICU/Intl, WASM, worker_threads
 - [x] 2.2 Repackage Termux git + bash (+ libs). Confirm exec via symlinks from `filesDir` → `nativeLibraryDir` on API 29, 36 and 37 emulators. Run `git clone --filter=blob:none` over HTTPS, `fetch`, `pull --ff-only`, `stash`, `checkout`, `show`
 - [x] 2.3 Prove the npm trampoline: `npm ci --omit=dev` of SillyBunny on the emulator, honouring `.npmrc` (npm ≥ 11.10.0)
 - [x] 2.4 Verify that Bun's official Android zip runs on API 29+ (arm64 device or emulator image) and can run `bun install` + the server
 - [x] 2.5 Run `install.sh` + `start.sh` from an actual app-launched process with the APK-mode env (prototype flags); verify SELinux identity/resolved executables and list missing toybox commands/Termux path issues. `run-as` is inspection, not production exec proof (R2, §2)
-- [ ] **2.6 Measure: Node-only APK size per ABI, first-run download (clone + `npm ci`), installed storage footprint, cold-start time; Bun-size comparison deferred with the bundle (§9.10)** ← CURRENT
+- [x] 2.6 Measure: Node-only APK size per ABI, first-run download (clone + `npm ci`), installed storage footprint, cold-start time; Bun-size comparison deferred with the bundle (§9.10)
 - [x] 2.7 Check the 16 KB alignment of every ELF; check `install.sh --migrate-from` on a git checkout; audit how SillyBunny triggers downloads (blob/data URLs)
-- [ ] 2.8 Write the findings into §10 / Notes, and adjust the plan if anything changes a decision (escalate to the maintainers if it does)
+- [x] 2.8 Write the findings into §10 / Notes, and adjust the plan if anything changes a decision (escalate to the maintainers if it does)
 
 ## Phase 3: Base repository changes [DONE]
 - [x] 3.1 APK mode in `start.sh`, `scripts/self-update.sh`, `scripts/bootstrap/install.sh`, `scripts/install-prerequisites.sh` (§3.1), with inline comments
@@ -759,7 +770,7 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 - [x] 5.8 Update checker + PackageInstaller flow + `update-blocked.json` handling + post-update notification (§5.4–5.6)
 - [x] 5.9 Repair + leftover-folder management (§4.7)
 - [x] 5.10 `DocumentsProvider` for `data/` + `config.yaml` (§4.8)
-- [ ] 5.11 Android lint clean; every user-facing string is `lorum ipsum` in resources
+- [ ] **5.11 Android lint clean; every user-facing string is `lorum ipsum` in resources** ← CURRENT
 
 ## Phase 6: CI smoke tests [PENDING]
 - [x] 6.1 Fixtures: git remote builder, mock LLM, fixture extension, fixture plugin, update-manifest server (§7.1)
@@ -840,6 +851,7 @@ P4-T component sizes in bytes (not complete APK/first-run measurements; task 2.6
 - 2026-10-23: Stage A of tasks 6.2-6.4 is committed in `e11f0ebf9` (a debug-only hook provider), `141355a84` (the UiAutomator side), `c881205be` (the 14-step runner, `tests/android-smoke/run-smoke.js`) and `166b3bb68` (`android-smoke.yml`, called by bootstrap-smoke for Android-relevant pull requests, by nightly and by release). The smoke reports `skipped` with a notice while `runtime.lock` leaves Node unpinned. After the P6.x reviews, step 6 needs the posted post-update notification (id 5801 on `app_updates`), and the Android change list includes the smoke's own test-package inputs. The lead added a `ref` input, so nightly tests the staging SHA that its gate resolved (the event commit of a scheduled run is the default branch's tip), and nightly's report now counts the Android result. Stage B (track p6x) runs the 14 steps on devices after `MainActivity` is wired (task 5.5). Scheduled workflows run from the default branch, so the nightly changes take effect only after they reach `release`.
 - 2026-10-23: Tasks 7.1, 7.3 and 7.4 complete, and task 7.2's checks now run in the release workflow: `6c5028398` (the build recipe, signing, the staged-runtime check and the manifest attach, under `android/release/`), `117fc4f86` (`release.yml`: decide, android-build, android-smoke, android-sign, android-reattach and draft-release) and `4653f2943` (CODEOWNERS for `android/**`). Only `android-sign` uses the `android-signing` environment and sees the four signing secrets; the maintainers create that environment, its secrets and the keystore (§6.3). An unpinned `runtime.lock` skips the APKs with a notice while no release has `android-update.json`, and fails before drafting after that. After the P7.x review, the unsigned APKs and the sources archive are kept for 30 days, as long as the signing approval can wait, and the draft job makes the release decision again right before drafting, so two tags that wait for approval cannot draft the same versionCode. The lead re-ran the release, workflow and smoke suites in WSL (642 tests), lint, actionlint and the debug and release gates (1281 unit tests). Open: the signing certificate is not compared with the previous release's; a re-run of draft-release creates a second draft; never publish a draft whose manifest attach failed. Task 7.5 (the fork dry run) is next.
 - 2026-10-23: Tasks 5.5 and 5.9 complete in `1bdb51c49` (`install.sh` as a runtime asset), `e9c9e9980` (`ServerManager`), `0fadc94a4` (the build's repository URL for `install.sh`), `44e768f52` (the launch flow in `MainActivity`) and `255b3e22c` (the device run). Every launch follows §2.4: the updater hook, `RuntimeLayout.ensure` (its error screen starts nothing), an unfinished Repair, the first run while no finished checkout exists, then a server start from the visible activity, with a screen for every `ServerState`, a launch cookie per server session and a native bar (Settings, Open in browser). `ServerManager` lays out the runtime itself, so a `START_STICKY` recreation without `MainActivity` works. After a failed or declined APK install it restores a server that `stopForUpdate()` stopped, at the next visible activity when none is visible, and it removes a stale `.git/index.lock` when no run or setup job of the app is alive. First run and Repair pass `--repo BuildConfig.REPO_URL` to `install.sh`; in release builds that is the official URL, `install.sh`'s default. The real-runtime device run (first run, relaunch, Stop and Start, a killed node, Repair, seeded data unchanged, the bar and the keyboard at phone and large sizes) passed on API 37 (16 KB pages) and API 29 against a fixture remote. The API 29 factory image's WebView (74) cannot run the frontend, so there the evidence is the page load with the launch cookie and the version warning. After the P5.int review, showing the first run marks notifications as asked, so a Repair opened from it does not ask again. The lead re-ran the debug and release gates (1335 unit tests, lint 0 errors and 0 warnings).
+- 2026-10-23: Task 2.6 measured the integrated app (P2.6, `81087e54c`), and `ae118bac4` applies the results. Unsigned release APKs: arm64-v8a 71.3 MB, armeabi-v7a 69.5 MB, x86_64 72.0 MB; natives extract to 110.3/100.4/112.7 MB (`libnode.so` 92.9/87.6/94.8 MB), and the unminified dex is 24 MB. On x86_64 emulators (API 37 with 16 KB pages, API 29), cloning `feat/android-apk` from GitHub and installing from the npm registry, the clone received 80.6–80.7 MB and `npm ci` 98.5–98.7 MB, and the UI showed 61–86 s after Welcome. The app's data directory peaked at its final size, 868–894 MB by `du` (735–761 MB by `df`); natives add 113 MB. `REQUIRED_FREE_BYTES` is now the measured peak plus 50%, 1,341,351,936 B, which replaces the UNVERIFIED value in the task 5.5 entry of 2026-10-22. The real `StatFs` check shows the storage error 16 MiB below the threshold and starts the install 16 MiB above it on both images. The metered-network estimate now uses the measured downloads (clone 81 MB, 179–189 MB in total). Start-up of the debug build (median of 5): API 37 cold 9.6 s to the loaded page and 19.7 s until the frontend has booted, warm 1.5 s and 12.2 s; API 29 cold 6.4 s and warm 0.54 s to the loaded page (WebView 74 cannot run the frontend). ARM devices are NOT RUN (sizes only); the Bun comparison stays deferred (§9.10). Release builds do not minify; R8 would shrink the dex, but it needs keep rules and a device re-run, which is the maintainers' decision. With these findings in §4.3, §10 and Notes, task 2.8 and Phase 2 are complete. The lead re-ran the debug and release gates (1335 unit tests, lint 0 errors and 0 warnings).
 
 ---
 
