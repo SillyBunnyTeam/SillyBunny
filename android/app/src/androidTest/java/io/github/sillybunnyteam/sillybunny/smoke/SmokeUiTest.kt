@@ -9,6 +9,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import io.github.sillybunnyteam.sillybunny.repair.RepairTags
+import io.github.sillybunnyteam.sillybunny.server.ServerManager
+import io.github.sillybunnyteam.sillybunny.server.ServerState
 import io.github.sillybunnyteam.sillybunny.settings.SettingsTags
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -40,13 +42,15 @@ class SmokeUiTest {
 
     /**
      * Step 1: Welcome (notifications allowed, battery exemption skipped), the metered-network warning when
-     * [expectMetered][flag], and the clone, `npm ci` and `init` until the first run reports Installed or
-     * hands over to the app.
+     * [expectMetered][flag], the clone, and the first start, whose `start.sh` runs `npm ci` and `init` before the
+     * server: the step ends when that server is Running. Ending earlier would let `am instrument` stop the app in
+     * the middle of the dependency install.
      */
     @Test
     fun firstRun() {
         val expectMetered = flag("expectMetered")
         val deadline = deadline(seconds("timeoutSeconds", 40 * 60L))
+        val server = ServerManager.get(instrumentation.targetContext)
         ui.launchApp()
         assertNotNull("no first-run screen", ui.waitForAny(FIRST_RUN_SCREENS, SCREEN_MILLIS))
         if (ui.present("firstrun_welcome")) {
@@ -56,13 +60,13 @@ class SmokeUiTest {
         }
         var continued = SystemClock.uptimeMillis()
         var sawMetered = false
-        var sawInstall = false
-        var goneSince = 0L
         while (SystemClock.uptimeMillis() < deadline) {
-            // Continue asks for notifications first on API 33+ when Welcome did not.
+            // On API 33+ Continue asks for notifications when Welcome did not, and so can the app before its first start.
             ui.allowPermission()
+            val state = server.state.value
             when {
-                ui.present("firstrun_installed") -> return assertMetered(expectMetered, sawMetered)
+                state is ServerState.Running -> return assertMetered(expectMetered, sawMetered)
+                state is ServerState.Failed -> fail("the first start failed: ${state.lastLines.takeLast(FAILED_LINES)}")
                 ui.present("firstrun_error") -> fail("first run failed: ${ui.tagsMatching("firstrun_error_.*")}")
                 ui.present("firstrun_metered") || ui.present("firstrun_cellular") -> {
                     sawMetered = true
@@ -76,21 +80,11 @@ class SmokeUiTest {
                     ui.clickIfShown("firstrun_continue")
                     continued = SystemClock.uptimeMillis()
                 }
-                ui.presentMatching("firstrun_.*") -> {
-                    sawInstall = sawInstall || ui.present("firstrun_installing") || ui.present("firstrun_preparing")
-                    goneSince = 0L
-                }
-                // Installed can pass quickly once the app moves on to the server.
-                sawInstall -> {
-                    if (goneSince == 0L) goneSince = SystemClock.uptimeMillis()
-                    if (SystemClock.uptimeMillis() - goneSince >= HANDOVER_MILLIS) {
-                        return assertMetered(expectMetered, sawMetered)
-                    }
-                }
             }
             SystemClock.sleep(POLL_MILLIS)
         }
-        fail("the first run did not finish within the timeout")
+        val last = server.state.value::class.simpleName
+        fail("the first start did not reach Running within the timeout: $last; tags ${ui.tagsMatching("[a-z]+_.*")}")
     }
 
     /** Step 5: the min-app-version gate's prompt for an APK update, dismissed with Later. */
@@ -232,8 +226,8 @@ class SmokeUiTest {
         const val OFFER_MILLIS = 60_000L
         const val PERMISSION_MILLIS = 15_000L
         const val DIALOG_MILLIS = 10_000L
-        const val HANDOVER_MILLIS = 10_000L
         const val RETRY_MILLIS = 15_000L
         const val POLL_MILLIS = 1_000L
+        const val FAILED_LINES = 20
     }
 }

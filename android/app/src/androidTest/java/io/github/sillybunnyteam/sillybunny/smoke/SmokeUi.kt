@@ -2,6 +2,7 @@ package io.github.sillybunnyteam.sillybunny.smoke
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Rect
 import android.os.SystemClock
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
@@ -36,7 +37,11 @@ internal class SmokeUi(private val device: UiDevice, private val context: Contex
     fun tagsMatching(pattern: String): List<String> =
         device.findObjects(By.res(Pattern.compile(pattern))).mapNotNull { it.resourceName }
 
-    /** Waits for [tag], scrolling the screen's scrollable column both ways meanwhile. */
+    /**
+     * Waits for [tag], scrolling the screen's scrollable column to one end and back meanwhile. An end is where a
+     * scroll leaves the tagged elements where they were: [UiObject2.scroll] reports the end only through a scroll
+     * event, which a Compose column does not send, so its result would turn back after every scroll.
+     */
     fun find(tag: String, timeoutMillis: Long = 10_000): UiObject2? {
         val deadline = SystemClock.uptimeMillis() + timeoutMillis
         var direction = Direction.DOWN
@@ -44,9 +49,24 @@ internal class SmokeUi(private val device: UiDevice, private val context: Contex
             device.wait(Until.findObject(By.res(tag)), POLL_MILLIS)?.let { return it }
             if (SystemClock.uptimeMillis() >= deadline) return null
             val column = device.findObject(By.scrollable(true)) ?: continue
-            if (!column.scroll(direction, 0.8f)) {
+            val before = taggedLayout()
+            try {
+                column.scroll(direction, 0.8f)
+            } catch (_: StaleObjectException) {
+                continue
+            }
+            if (taggedLayout() == before) {
                 direction = if (direction == Direction.DOWN) Direction.UP else Direction.DOWN
             }
+        }
+    }
+
+    /** The tagged elements on screen and their bounds, which a scroll moves. */
+    private fun taggedLayout(): List<Pair<String?, Rect>> = device.findObjects(By.res(TAGGED)).mapNotNull {
+        try {
+            it.resourceName to it.visibleBounds
+        } catch (_: StaleObjectException) {
+            null
         }
     }
 
@@ -80,13 +100,22 @@ internal class SmokeUi(private val device: UiDevice, private val context: Contex
 
     fun gone(tag: String, timeoutMillis: Long): Boolean = device.wait(Until.gone(By.res(tag)), timeoutMillis) == true
 
-    /** Allows a runtime-permission dialog if one is on screen or appears within [timeoutMillis]. */
+    /**
+     * Allows a runtime-permission dialog if one is on screen or appears within [timeoutMillis]. A tap while the
+     * dialog opens can go to a window that takes no input yet (seen on API 37), so the button gets a new tap
+     * until the dialog closes.
+     */
     fun allowPermission(timeoutMillis: Long = 0): Boolean {
         val selector = By.res(Pattern.compile(".*:id/permission_allow_button"))
-        val button = if (timeoutMillis > 0) device.wait(Until.findObject(selector), timeoutMillis) else device.findObject(selector)
-        if (!tap(button)) return false
-        device.wait(Until.gone(selector), DIALOG_MILLIS)
-        return true
+        var button = if (timeoutMillis > 0) device.wait(Until.findObject(selector), timeoutMillis) else device.findObject(selector)
+        if (button == null) return false
+        val deadline = SystemClock.uptimeMillis() + DIALOG_MILLIS
+        while (SystemClock.uptimeMillis() < deadline) {
+            tap(button)
+            if (device.wait(Until.gone(selector), RETAP_MILLIS) == true) return true
+            button = device.findObject(selector) ?: return true
+        }
+        return false
     }
 
     /**
@@ -108,7 +137,9 @@ internal class SmokeUi(private val device: UiDevice, private val context: Contex
         const val LAUNCH_MILLIS = 30_000L
         const val POLL_MILLIS = 500L
         const val DIALOG_MILLIS = 10_000L
+        const val RETAP_MILLIS = 2_000L
         const val SETTINGS = "com.android.settings"
+        val TAGGED: Pattern = Pattern.compile(".+")
         val INSTALLER: Pattern = Pattern.compile(".*packageinstaller")
         val INSTALL_LABEL: Pattern = Pattern.compile("(?i)update|install")
     }
