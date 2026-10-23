@@ -13140,7 +13140,11 @@ function revealSettingsCategoryFor(target) {
     }
 }
 
+/** Counts search jumps, so that the delayed steps of a jump stop when a newer jump replaces it. */
+let searchJumpCount = 0;
+
 function revealSearchMatch(shellKey, match) {
+    const jump = ++searchJumpCount;
     closeAllDropdowns({ except: shellKey });
 
     // Entries with a custom action (e.g. persona results) bypass DOM scrolling
@@ -13170,12 +13174,20 @@ function revealSearchMatch(shellKey, match) {
     // The search result already selects a destination, so show it past the mobile sidebar.
     if (isMobileViewport()) setSettingsMobileContentView(true);
 
+    // The jump finishes on timers. A page that the user opens or closes in the meantime must not be
+    // undone, so each delayed step below stops when the stack shows a different page than it expects.
+    const stackKey = `${shellKey}:${match.tabId}`;
+    const openRowAtJump = sbSubpageStacks.get(stackKey)?.openRowId ?? null;
+
     window.setTimeout(() => {
         // SillyBunny: subpage-hosted tabs route through the stack, not the old drawer routing.
         // Matches inside the store would otherwise trigger jQuery slideToggle on inline-drawer
         // toggles, injecting inline display:block and bleeding the old panel into view.
-        const stack = sbSubpageStacks.get(`${shellKey}:${match.tabId}`);
+        const stack = sbSubpageStacks.get(stackKey);
         if (stack) {
+            if (jump !== searchJumpCount || stack.openRowId !== openRowAtJump) {
+                return;
+            }
             const row = stack.rows.find(r => {
                 const source = r.source?.();
                 return source instanceof HTMLElement && source.contains(match.element);
@@ -13186,6 +13198,7 @@ function revealSearchMatch(shellKey, match) {
                     ? 0
                     : SB_SUBPAGE_DURATION;
                 window.setTimeout(() => {
+                    if (jump !== searchJumpCount || stack.openRowId !== row.id) return;
                     if (!(match.element instanceof HTMLElement)) return;
                     expandHiddenAccordions(match.element);
                     scrollElementIntoManagedView(match.element, {

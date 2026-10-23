@@ -1,7 +1,12 @@
 /** @jest-environment jsdom */
 import { describe, test, expect } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { buildExtensionsSubpage } from '../../public/scripts/sillybunny-settings-subpage-descriptors.js';
-import { createSubpageStack } from '../../public/scripts/sillybunny-settings-subpage.js';
+import { createSubpageStack, SB_SUBPAGE_DURATION } from '../../public/scripts/sillybunny-settings-subpage.js';
+
+const tabs = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
+const section = (source, from, to) => source.slice(source.indexOf(from), source.indexOf(to));
 
 /** A settings drawer titled the way extensions title their own. */
 function drawer(title) {
@@ -112,5 +117,100 @@ describe('Extensions list groups', () => {
         stack.sync();
         expect(groupHeadings(host)).toEqual(['System Extensions', 'User-installed Extensions']);
         expect(host.querySelector('[data-sb-subpage-row="dice_container"]').hidden).toBe(false);
+    });
+});
+
+/**
+ * The tab module's `revealSearchMatch`, run against one Extensions stack. Its timers wait in a queue
+ * until the test runs them, so a test can act between a jump and the delayed steps that finish it.
+ */
+function loadSearchJump() {
+    const { host, stack } = mountStack(buildExtensionsSubpage(buildPanel()).rows);
+    const timers = [];
+    const scrolled = [];
+    const revealSearchMatch = runInNewContext(`${section(tabs, 'function revealSearchMatch(', 'function setActiveTab(')} revealSearchMatch;`, {
+        HTMLElement,
+        SB_SUBPAGE_DURATION,
+        sbSubpageStacks: new Map([['right:extensions', stack]]),
+        searchJumpCount: 0,
+        window: { setTimeout: callback => timers.push(callback), matchMedia: () => ({ matches: true }) },
+        closeAllDropdowns: () => {},
+        openShell: () => {},
+        isMobileViewport: () => false,
+        setSettingsMobileContentView: () => {},
+        expandHiddenAccordions: () => {},
+        scrollElementIntoManagedView: element => scrolled.push(element),
+        pulseSearchTarget: () => {},
+        revealSettingsCategoryFor: () => {},
+        openCharacterPanelTab: () => {},
+    });
+    // Looked up in the whole document, because an open page holds its section outside the panel.
+    const inputOf = containerId => document.querySelector(`#${containerId} input`);
+    const jumpTo = containerId => revealSearchMatch('right', { shellKey: 'right', tabId: 'extensions', element: inputOf(containerId) });
+    const runNextTimer = () => timers.shift()();
+    const runTimers = () => {
+        while (timers.length) {
+            runNextTimer();
+        }
+    };
+    return { host, stack, scrolled, inputOf, jumpTo, runNextTimer, runTimers };
+}
+
+describe('Search jumps into the Extensions list', () => {
+    test('a jump opens the page that holds the match, then scrolls to it', () => {
+        const { stack, scrolled, inputOf, jumpTo, runTimers } = loadSearchJump();
+
+        jumpTo('regex_container');
+        runTimers();
+
+        expect(stack.openRowId).toBe('regex_container');
+        expect(scrolled).toEqual([inputOf('regex_container')]);
+    });
+
+    test('Back before the jump finishes keeps the page closed', () => {
+        const { stack, scrolled, jumpTo, runTimers } = loadSearchJump();
+        stack.open('regex_container');
+
+        jumpTo('regex_container');
+        stack.backButton.click();
+        runTimers();
+
+        expect(stack.isOpen()).toBe(false);
+        expect(scrolled).toEqual([]);
+    });
+
+    test('Back while the page slides in stops the jump before it scrolls', () => {
+        const { stack, scrolled, jumpTo, runNextTimer, runTimers } = loadSearchJump();
+
+        jumpTo('regex_container');
+        runNextTimer();
+        expect(stack.openRowId).toBe('regex_container');
+        stack.backButton.click();
+        runTimers();
+
+        expect(stack.isOpen()).toBe(false);
+        expect(scrolled).toEqual([]);
+    });
+
+    test('a page the user opens before the jump finishes stays open', () => {
+        const { host, stack, scrolled, jumpTo, runTimers } = loadSearchJump();
+
+        jumpTo('regex_container');
+        host.querySelector('[data-sb-subpage-row="sd_container"]').click();
+        runTimers();
+
+        expect(stack.openRowId).toBe('sd_container');
+        expect(scrolled).toEqual([]);
+    });
+
+    test('a newer jump replaces an older one whose timers have not run', () => {
+        const { stack, scrolled, inputOf, jumpTo, runTimers } = loadSearchJump();
+
+        jumpTo('regex_container');
+        jumpTo('sd_container');
+        runTimers();
+
+        expect(stack.openRowId).toBe('sd_container');
+        expect(scrolled).toEqual([inputOf('sd_container')]);
     });
 });
