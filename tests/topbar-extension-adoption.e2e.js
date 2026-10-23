@@ -1,4 +1,3 @@
-/* global document, HTMLElement, window */
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 

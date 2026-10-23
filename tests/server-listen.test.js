@@ -179,6 +179,20 @@ describe('listen retry on an occupied port', () => {
     });
 });
 
+describe('Bun socket inheritance check', () => {
+    test.each([
+        ['Bun 1.3.14 on Windows', true, 'win32', { bun: '1.3.14' }],
+        ['Bun 1.4.0 on Windows', false, 'win32', { bun: '1.4.0' }],
+        ['Bun 2.0.0 on Windows', false, 'win32', { bun: '2.0.0' }],
+        ['Node.js on Windows', false, 'win32', { node: '24.22.1' }],
+        ['Bun 1.3.14 on Linux', false, 'linux', { bun: '1.3.14' }],
+    ])('%s: %s', async (label, expected, platform, versions) => {
+        const { hasBunSocketInheritBug } = await loadListenModule();
+
+        expect(hasBunSocketInheritBug({ platform, versions })).toBe(expected);
+    });
+});
+
 describe('port holder diagnostics', () => {
     const NETSTAT_OUTPUT = [
         'Active Connections',
@@ -211,7 +225,7 @@ describe('port holder diagnostics', () => {
         expect(parseTasklistProcessName('', 4321)).toBeNull();
     });
 
-    test('names a live Windows holder and flags a dead one as an inherited handle', async () => {
+    test('names a live Windows holder and flags a dead one as an inherited handle on Bun before 1.4.0', async () => {
         const { describePortHolders, BUN_SOCKET_INHERIT_ISSUE_URL } = await loadListenModule();
         const liveRunner = jest.fn(async (command) => command === 'netstat'
             ? '  TCP    127.0.0.1:4444    0.0.0.0:0    LISTENING    4321'
@@ -223,10 +237,23 @@ describe('port holder diagnostics', () => {
         const liveLines = await describePortHolders(4444, { runCommand: liveRunner, platform: 'win32' });
         expect(liveLines).toEqual(['Port 4444 is held open by "bun.exe" (PID 4321).']);
 
-        const deadLines = await describePortHolders(4444, { runCommand: deadRunner, platform: 'win32' });
+        const deadLines = await describePortHolders(4444, { runCommand: deadRunner, platform: 'win32', versions: { bun: '1.3.14' } });
         expect(deadLines).toHaveLength(1);
         expect(deadLines[0]).toContain('no longer running');
         expect(deadLines[0]).toContain(BUN_SOCKET_INHERIT_ISSUE_URL);
+    });
+
+    test.each([
+        ['Bun 1.4.0', { bun: '1.4.0' }],
+        ['Node.js', { node: '24.22.1' }],
+    ])('reports a dead Windows holder without blaming the Bun bug on %s', async (runtime, versions) => {
+        const { describePortHolders } = await loadListenModule();
+        const deadRunner = jest.fn(async (command) => command === 'netstat'
+            ? '  TCP    127.0.0.1:4444    0.0.0.0:0    LISTENING    4321'
+            : 'INFO: No tasks are running which match the specified criteria.');
+
+        const lines = await describePortHolders(4444, { runCommand: deadRunner, platform: 'win32', versions });
+        expect(lines).toEqual(['Port 4444 is attributed to PID 4321, which is no longer running.']);
     });
 
     test('relays raw socket tool output on POSIX and stays quiet when tools fail', async () => {

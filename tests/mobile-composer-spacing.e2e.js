@@ -1,4 +1,3 @@
-/* global document, getComputedStyle, HTMLElement */
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 

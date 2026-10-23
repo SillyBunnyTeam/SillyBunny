@@ -144,7 +144,7 @@
         "sillybunny": "./src/server-global.js",
         "sillytavern": "./src/server-global.js"
     },
-    "packageManager": "bun@1.3.14",
+    "packageManager": "bun@1.4.4",
     "main": "server.js",
     "devDependencies": {
         "@types/archiver": "^6.0.3",

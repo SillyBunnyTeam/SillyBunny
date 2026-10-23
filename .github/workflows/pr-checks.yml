@@ -60,6 +60,12 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Install test dependencies
+        run: npm ci --ignore-scripts --prefix tests
+
+      - name: Run ESLint on tests
+        run: npm run lint --prefix tests
+
   run-tests:
     name: ✅ Run Unit Tests on PR
     runs-on: ubuntu-latest
@@ -89,6 +95,15 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit --prefix tests
+
+      - name: Check agent template versions
+        # The merge ref holds only this PR's changes on top of the base branch; fork checkouts do not have it.
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags --depth=2 "https://github.com/$BASE_REPOSITORY.git" "+refs/pull/$PR_NUMBER/merge:refs/remotes/pr/merge"
+          node scripts/bump-agent-template-versions.js --check --base 'refs/remotes/pr/merge^1' --head refs/remotes/pr/merge
 
   frontend-budgets:
     name: ✅ Check Frontend Assets
@@ -131,10 +146,57 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Install dependencies with Bun
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Run Bun startup smoke
         run: bun src/server-init.js
+
+  run-node-checks:
+    name: ✅ Check Node Runtime
+    runs-on: ubuntu-latest
+    if: always()
+    timeout-minutes: 10
+    env:
+      SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+            ref: ${{ github.event.pull_request.head.sha }}
+            repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Initialize server state
+        run: npm run init
+
+      - name: Node boot smoke
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/node-boot.log"
+          node server.js --browserLaunchEnabled=false > "$log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          deadline=$((SECONDS + 120))
+          until curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
+              echo 'Node server did not become ready.' >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo 'Node server is up.'
