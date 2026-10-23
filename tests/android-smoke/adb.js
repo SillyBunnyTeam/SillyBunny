@@ -186,6 +186,19 @@ export function parseEmulatorVersion(text) {
 }
 
 /**
+ * The emulator's version from its launcher. Plain `-version` runs the windowed Linux QEMU, which needs
+ * `libpulse.so.0` and `libxkbfile.so.1`; without them it exits 127 and prints no version. `-no-window` selects the
+ * headless QEMU, the one the smoke's emulator runs.
+ * @param {string} emulator The `emulator` launcher.
+ * @param {typeof runCommand} [run] Runs the command.
+ * @returns {Promise<{version: string|null, buildId: string|null}>} Version.
+ */
+export async function readEmulatorVersion(emulator, run = runCommand) {
+    const result = await run(emulator, ['-no-window', '-version'], { timeoutMs: 60_000 });
+    return parseEmulatorVersion(`${result.stdout}\n${result.stderr}`);
+}
+
+/**
  * `key=value` lines (AVD `.ini` files, `source.properties`).
  * @param {string} text Contents.
  * @returns {Record<string, string>} Values.

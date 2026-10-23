@@ -26,6 +26,7 @@ import {
     parsePingResolution,
     parseProcesses,
     parseWebViewPackage,
+    readEmulatorVersion,
     shellCommand,
     shellQuote,
 } from './android-smoke/adb.js';
@@ -853,6 +854,18 @@ describe('adb.js parsers', () => {
         expect(accelUsable('ERROR   | /dev/kvm is not found.', 0)).toBe(false);
         expect(parseEmulatorVersion('INFO | Android emulator version 37.2.12.0 (build_id 16428233) (CL:N/A)')).toEqual({ version: '37.2.12.0', buildId: '16428233' });
         expect(parseEmulatorVersion('garbage')).toEqual({ version: null, buildId: null });
+    });
+
+    test('reads the emulator build through the headless QEMU', async () => {
+        const calls = [];
+        const run = async (file, args) => {
+            calls.push([file, ...args]);
+            return args.includes('-no-window')
+                ? { code: 0, stdout: 'Android emulator version 37.2.12.0 (build_id 16428233) (CL:N/A)\n', stderr: '' }
+                : { code: 127, stdout: '', stderr: 'qemu-system-x86_64: error while loading shared libraries: libpulse.so.0\n' };
+        };
+        await expect(readEmulatorVersion('/sdk/emulator/emulator', run)).resolves.toEqual({ version: '37.2.12.0', buildId: '16428233' });
+        expect(calls).toEqual([['/sdk/emulator/emulator', '-no-window', '-version']]);
     });
 
     test('reads AVD ini files, package versions and processes', () => {

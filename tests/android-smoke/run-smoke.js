@@ -41,11 +41,11 @@ import {
     Adb,
     isErrorDialogWindow,
     parseDnsAddresses,
-    parseEmulatorVersion,
     parseFocusedWindow,
     parseIni,
     parsePackageVersion,
     parsePingResolution,
+    readEmulatorVersion,
     runCommand,
 } from './adb.js';
 import {
@@ -356,8 +356,7 @@ async function commandPreflight(values) {
         if (!result.accel.usable) {
             throw new Error(`emulator -accel-check: ${`${accel.stdout} ${accel.stderr}`.trim().slice(0, 500)}`);
         }
-        const version = await runCommand(emulator, ['-version'], { timeoutMs: 60_000 });
-        result.emulator = parseEmulatorVersion(`${version.stdout}\n${version.stderr}`);
+        result.emulator = await readEmulatorVersion(emulator);
         if (values['emulator-build'] && result.emulator.buildId !== values['emulator-build']) {
             throw new Error(`emulator build ${result.emulator.buildId}, expected ${values['emulator-build']}`);
         }
