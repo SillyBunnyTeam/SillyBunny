@@ -705,37 +705,37 @@ def stage_local(pins, locals_):
 def abi_path(value):
     abi, separator, path = value.partition('=')
     if not separator or abi not in ABIS or not path:
-        raise argparse.ArgumentTypeError('lorum ipsum')
+        raise argparse.ArgumentTypeError('TODO(copy)')
     return abi, Path(path)
 
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'lorum ipsum\n')
+        self.exit(2, 'TODO(copy)\n')
 
     def format_usage(self):
-        return 'lorum ipsum\n'
+        return 'TODO(copy)\n'
 
     def format_help(self):
-        return 'lorum ipsum\n'
+        return 'TODO(copy)\n'
 
 
 def main(arguments=None):
-    parser = Parser(add_help=False, description='lorum ipsum')
-    parser.add_argument('-h', '--help', action='help', help='lorum ipsum')
-    parser.add_argument('--runtime-lock', type=Path, default=RUNTIME_LOCK, help='lorum ipsum')
-    parser.add_argument('--sources-lock', type=Path, default=SOURCES_LOCK, help='lorum ipsum')
-    parser.add_argument('--output', type=Path, default=NODE_OUT, help='lorum ipsum')
-    parser.add_argument('--cache', type=Path, default=CACHE, help='lorum ipsum')
-    parser.add_argument('--offline', action='store_true', help='lorum ipsum')
-    parser.add_argument('--with-ndk', action='store_true', help='lorum ipsum')
-    parser.add_argument('--ndk', type=Path, help='lorum ipsum')
+    parser = Parser(add_help=False, description='TODO(copy)')
+    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
+    parser.add_argument('--runtime-lock', type=Path, default=RUNTIME_LOCK, help='TODO(copy)')
+    parser.add_argument('--sources-lock', type=Path, default=SOURCES_LOCK, help='TODO(copy)')
+    parser.add_argument('--output', type=Path, default=NODE_OUT, help='TODO(copy)')
+    parser.add_argument('--cache', type=Path, default=CACHE, help='TODO(copy)')
+    parser.add_argument('--offline', action='store_true', help='TODO(copy)')
+    parser.add_argument('--with-ndk', action='store_true', help='TODO(copy)')
+    parser.add_argument('--ndk', type=Path, help='TODO(copy)')
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument('--abi', action='append', choices=sorted(ABIS), help='lorum ipsum')
-    mode.add_argument('--local', action='append', type=abi_path, help='lorum ipsum')
-    mode.add_argument('--audit', type=abi_path, help='lorum ipsum')
-    mode.add_argument('--build-inputs', choices=sorted(ABIS), help='lorum ipsum')
-    mode.add_argument('--check-config', type=abi_path, help='lorum ipsum')
+    mode.add_argument('--abi', action='append', choices=sorted(ABIS), help='TODO(copy)')
+    mode.add_argument('--local', action='append', type=abi_path, help='TODO(copy)')
+    mode.add_argument('--audit', type=abi_path, help='TODO(copy)')
+    mode.add_argument('--build-inputs', choices=sorted(ABIS), help='TODO(copy)')
+    mode.add_argument('--check-config', type=abi_path, help='TODO(copy)')
     args = parser.parse_args(arguments)
     pins = load_pins(args.runtime_lock, args.sources_lock)
     if args.build_inputs:
@@ -744,26 +744,26 @@ def main(arguments=None):
     if args.check_config:
         abi, source = args.check_config
         if abi not in pins.abis or args.ndk is None:
-            parser.error('lorum ipsum')
+            parser.error('TODO(copy)')
         print(json.dumps(check_config(abi, source, args.ndk, pins.node['api']), sort_keys=True))
         return
     if args.audit:
         abi, path = args.audit
         if abi not in pins.abis:
-            parser.error('lorum ipsum')
+            parser.error('TODO(copy)')
         print(json.dumps(audit_elf(path, abi, pins.node['api']), sort_keys=True))
         return
     if args.local:
         locals_ = dict(args.local)
         if len(locals_) != len(args.local) or not set(locals_) <= set(pins.abis):
-            parser.error('lorum ipsum')
+            parser.error('TODO(copy)')
         check_output(args.output, NODE_OUT_LAYOUT)
         files, source = stage_local(pins, locals_)
         abis = write_node_out(args.output, pins.version, files, source)
     else:
         selected = sorted(set(args.abi or pins.abis))
         if not set(selected) <= set(pins.abis):
-            parser.error('lorum ipsum')
+            parser.error('TODO(copy)')
         # Refuse an output this tool does not own before downloading anything.
         check_output(args.output, NODE_OUT_LAYOUT)
         with tempfile.TemporaryDirectory(prefix='node-fetch-') as work:
@@ -776,10 +776,10 @@ if __name__ == '__main__':
     try:
         main()
     except (NodeError, sources.SourceError) as error:
-        print('lorum ipsum', file=sys.stderr)
+        print('TODO(copy)', file=sys.stderr)
         print(json.dumps({'code': error.code, **error.details}, sort_keys=True, default=str), file=sys.stderr)
         sys.exit(1)
     except (OSError, subprocess.SubprocessError, ValueError) as error:
-        print('lorum ipsum', file=sys.stderr)
+        print('TODO(copy)', file=sys.stderr)
         print(json.dumps({'code': type(error).__name__}, sort_keys=True), file=sys.stderr)
         sys.exit(1)

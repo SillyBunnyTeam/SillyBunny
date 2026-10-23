@@ -961,7 +961,7 @@ class FetchTests(FakeOras):
                 with self.assertRaises(SystemExit) as caught, contextlib.redirect_stderr(io.StringIO()) as stderr:
                     self.run_cli(*arguments)
                 self.assertEqual(caught.exception.code, 2)
-                self.assertEqual(stderr.getvalue(), 'lorum ipsum\n')
+                self.assertEqual(stderr.getvalue(), 'TODO(copy)\n')
         self.assertFalse(self.output.exists())
 
     def test_output_symlink_is_not_replaced(self):
@@ -1232,7 +1232,7 @@ class BuildScriptTests(unittest.TestCase):
                                         stderr=subprocess.PIPE, text=True, env={**os.environ, **environment})
                 self.assertEqual(result.returncode, 1)
                 lines = result.stderr.splitlines()
-                self.assertEqual(lines[0], 'lorum ipsum')
+                self.assertEqual(lines[0], 'TODO(copy)')
                 self.assertEqual(json.loads(lines[1])['code'], code)
 
 

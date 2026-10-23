@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: lorum ipsum
+        description: TODO(copy)
         type: boolean
         default: false
 
@@ -242,5 +242,5 @@ jobs:
           git push --force origin "$branch"
           open=$(gh pr list --head "$branch" --state open --json number --jq length)
           if [ "$open" = 0 ]; then
-            gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title 'lorum ipsum' --body 'lorum ipsum'
+            gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title 'TODO(copy)' --body 'TODO(copy)'
           fi

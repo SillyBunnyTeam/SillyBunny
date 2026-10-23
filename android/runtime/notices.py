@@ -32,7 +32,7 @@ from urllib.parse import quote, urlsplit
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).absolute().parent
-PLACEHOLDER = 'lorum ipsum'
+PLACEHOLDER = 'TODO(copy)'
 NOTICES_NAME = 'THIRD_PARTY_NOTICES'
 INDEX_NAME = 'THIRD_PARTY_NOTICES.json'
 SECTIONS = ('android', 'node', 'npm', 'termux')

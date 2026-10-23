@@ -1598,36 +1598,36 @@ def refresh(runtime, runtime_path, cache, repository=None, history_tip=None):
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'lorum ipsum\n')
+        self.exit(2, 'TODO(copy)\n')
 
     def format_usage(self):
-        return 'lorum ipsum\n'
+        return 'TODO(copy)\n'
 
     def format_help(self):
-        return 'lorum ipsum\n'
+        return 'TODO(copy)\n'
 
 
 def main():
-    parser = Parser(add_help=False, description='lorum ipsum')
-    parser.add_argument('-h', '--help', action='help', help='lorum ipsum')
-    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='lorum ipsum')
-    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='lorum ipsum')
-    parser.add_argument('--cache', type=Path, default=ROOT / 'cache' / 'sources', help='lorum ipsum')
-    parser.add_argument('--output', type=Path, default=ROOT / 'out' / 'SillyBunny-android-sources.tar.zst', help='lorum ipsum')
-    parser.add_argument('--offline', action='store_true', help='lorum ipsum')
-    parser.add_argument('--require-node', action='store_true', help='lorum ipsum')
-    parser.add_argument('--refresh-lock', action='store_true', help='lorum ipsum')
-    parser.add_argument('--dry-run', action='store_true', help='lorum ipsum')
-    parser.add_argument('--history-repo', type=Path, help='lorum ipsum')
-    parser.add_argument('--history-tip', help='lorum ipsum')
-    parser.add_argument('--verify', type=Path, help='lorum ipsum')
+    parser = Parser(add_help=False, description='TODO(copy)')
+    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
+    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='TODO(copy)')
+    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='TODO(copy)')
+    parser.add_argument('--cache', type=Path, default=ROOT / 'cache' / 'sources', help='TODO(copy)')
+    parser.add_argument('--output', type=Path, default=ROOT / 'out' / 'SillyBunny-android-sources.tar.zst', help='TODO(copy)')
+    parser.add_argument('--offline', action='store_true', help='TODO(copy)')
+    parser.add_argument('--require-node', action='store_true', help='TODO(copy)')
+    parser.add_argument('--refresh-lock', action='store_true', help='TODO(copy)')
+    parser.add_argument('--dry-run', action='store_true', help='TODO(copy)')
+    parser.add_argument('--history-repo', type=Path, help='TODO(copy)')
+    parser.add_argument('--history-tip', help='TODO(copy)')
+    parser.add_argument('--verify', type=Path, help='TODO(copy)')
     args = parser.parse_args()
     if args.verify:
         manifest = verify_archive(args.verify)
         print(json.dumps({'verified': len(manifest['members']) + 1, 'sha256': digest(args.verify)}, sort_keys=True))
         return
     if args.dry_run and not args.refresh_lock or (args.history_repo or args.history_tip) and not args.refresh_lock:
-        parser.error('lorum ipsum')
+        parser.error('TODO(copy)')
     cache = Cache(args.cache / 'objects', args.offline)
     with (args.cache / '.sources.lock').open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
@@ -1653,7 +1653,7 @@ if __name__ == '__main__':
     try:
         main()
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError) as error:
-        print('lorum ipsum', file=sys.stderr)
+        print('TODO(copy)', file=sys.stderr)
         if isinstance(error, SourceError):
             print(json.dumps({'code': error.code, **error.details}, sort_keys=True), file=sys.stderr)
         else:

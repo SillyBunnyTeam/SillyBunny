@@ -210,24 +210,24 @@ def write_output(output, data, summary):
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'lorum ipsum\n')
+        self.exit(2, 'TODO(copy)\n')
 
     def format_usage(self):
-        return 'lorum ipsum\n'
+        return 'TODO(copy)\n'
 
     def format_help(self):
-        return 'lorum ipsum\n'
+        return 'TODO(copy)\n'
 
 
 def main(arguments=None):
-    parser = Parser(add_help=False, description='lorum ipsum')
-    parser.add_argument('-h', '--help', action='help', help='lorum ipsum')
-    parser.add_argument('--runtime-lock', type=Path, default=node.RUNTIME_LOCK, help='lorum ipsum')
-    parser.add_argument('--sources-lock', type=Path, default=node.SOURCES_LOCK, help='lorum ipsum')
-    parser.add_argument('--cache', type=Path, default=node.CACHE, help='lorum ipsum')
-    parser.add_argument('--offline', action='store_true', help='lorum ipsum')
-    parser.add_argument('--output', type=Path, default=NPM_OUT, help='lorum ipsum')
-    parser.add_argument('--provenance', type=Path, help='lorum ipsum')
+    parser = Parser(add_help=False, description='TODO(copy)')
+    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
+    parser.add_argument('--runtime-lock', type=Path, default=node.RUNTIME_LOCK, help='TODO(copy)')
+    parser.add_argument('--sources-lock', type=Path, default=node.SOURCES_LOCK, help='TODO(copy)')
+    parser.add_argument('--cache', type=Path, default=node.CACHE, help='TODO(copy)')
+    parser.add_argument('--offline', action='store_true', help='TODO(copy)')
+    parser.add_argument('--output', type=Path, default=NPM_OUT, help='TODO(copy)')
+    parser.add_argument('--provenance', type=Path, help='TODO(copy)')
     args = parser.parse_args(arguments)
     pins = node.load_pins(args.runtime_lock, args.sources_lock)
     # Refuse an output this tool does not own before reading or downloading the tarball.
@@ -247,10 +247,10 @@ if __name__ == '__main__':
     try:
         main()
     except (node.NodeError, node.sources.SourceError) as error:
-        print('lorum ipsum', file=sys.stderr)
+        print('TODO(copy)', file=sys.stderr)
         print(json.dumps({'code': error.code, **error.details}, sort_keys=True, default=str), file=sys.stderr)
         sys.exit(1)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
-        print('lorum ipsum', file=sys.stderr)
+        print('TODO(copy)', file=sys.stderr)
         print(json.dumps({'code': type(error).__name__}, sort_keys=True), file=sys.stderr)
         sys.exit(1)

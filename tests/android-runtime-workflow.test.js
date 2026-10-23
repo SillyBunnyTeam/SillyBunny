@@ -46,7 +46,7 @@ describe('Android runtime workflow', () => {
             ],
         });
         expect(workflow.on.workflow_dispatch).toEqual({
-            inputs: { publish: { description: 'lorum ipsum', type: 'boolean', default: false } },
+            inputs: { publish: { description: 'TODO(copy)', type: 'boolean', default: false } },
         });
         expect(source).not.toMatch(/pull_request/);
     });
@@ -159,7 +159,7 @@ describe('Android runtime workflow', () => {
         expect(step.env).toEqual({ GH_TOKEN: '${{ github.token }}', PUBLISHED: '${{ needs.publish.outputs.published }}' });
         expect(step.run).toMatch(/update-node-digests\.py --published/);
         expect(step.run).toMatch(/git add android\/runtime\.lock android\/runtime\/sources\.lock\n/);
-        expect(step.run).toMatch(/gh pr create --base "\$GITHUB_REF_NAME" --head "\$branch" --title 'lorum ipsum' --body 'lorum ipsum'/);
+        expect(step.run).toMatch(/gh pr create --base "\$GITHUB_REF_NAME" --head "\$branch" --title 'TODO\(copy\)' --body 'TODO\(copy\)'/);
     });
 
     test('lets a re-run of the digest PR job replace its branch and open the PR only once', () => {
