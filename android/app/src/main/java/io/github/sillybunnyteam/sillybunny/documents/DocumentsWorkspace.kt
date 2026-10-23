@@ -55,7 +55,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
             throw failure.cause ?: failure
         } catch (failure: InterruptedException) {
             Thread.currentThread().interrupt()
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
     }
 
@@ -77,7 +77,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
     }
 
     fun requireAvailable() {
-        if (!isAvailable) throw FileNotFoundException("lorum ipsum")
+        if (!isAvailable) throw FileNotFoundException("TODO(copy)")
     }
 
     fun releaseProvider() {
@@ -136,7 +136,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
         ids.clear()
         currentRootId()?.let(::revokeGrants)
         newGeneration()
-        if (maintenanceFile.exists() && !maintenanceFile.delete()) throw FileNotFoundException("lorum ipsum")
+        if (maintenanceFile.exists() && !maintenanceFile.delete()) throw FileNotFoundException("TODO(copy)")
         maintenance = false
         rootsChanged(currentRootId())
     }
@@ -290,7 +290,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
         } else {
             newGeneration()
         }
-        if (!stored.matches(DocumentFiles.UUID_PATTERN)) throw FileNotFoundException("lorum ipsum")
+        if (!stored.matches(DocumentFiles.UUID_PATTERN)) throw FileNotFoundException("TODO(copy)")
         generation = stored
         return stored
     }

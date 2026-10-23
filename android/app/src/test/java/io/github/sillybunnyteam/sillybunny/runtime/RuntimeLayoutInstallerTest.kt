@@ -253,7 +253,7 @@ class RuntimeLayoutInstallerTest {
             broken.breakPayload()
             val error = failed(broken.installer().ensure())
             assertEquals("case $index", reason, error.reason)
-            assertEquals("lorum ipsum", error.message)
+            assertEquals("TODO(copy)", error.message)
             assertFalse("case $index", Files.exists(broken.paths.runtimeDir.toPath(), LinkOption.NOFOLLOW_LINKS))
             assertEquals("case $index", 0, broken.filesDir.list()!!.count { it.startsWith("runtime") })
             assertTrue(broken.paths.homeDir.isDirectory)

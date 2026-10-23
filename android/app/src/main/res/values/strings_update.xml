@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="update_title">lorum ipsum</string>
-    <string name="update_required_title">lorum ipsum</string>
-    <string name="update_available_body">lorum ipsum</string>
-    <string name="update_required_body">lorum ipsum</string>
-    <string name="update_confirm">lorum ipsum</string>
-    <string name="update_later">lorum ipsum</string>
-    <string name="update_retry">lorum ipsum</string>
-    <string name="update_checking">lorum ipsum</string>
-    <string name="update_downloading">lorum ipsum</string>
-    <string name="update_installing">lorum ipsum</string>
-    <string name="update_unknown_sources">lorum ipsum</string>
-    <string name="update_error">lorum ipsum</string>
-    <string name="update_up_to_date">lorum ipsum</string>
-    <string name="update_updated">lorum ipsum</string>
-    <string name="update_notification_channel">lorum ipsum</string>
-    <string name="update_replaced_title">lorum ipsum</string>
-    <string name="update_replaced_body">lorum ipsum</string>
-    <string name="update_install_title">lorum ipsum</string>
-    <string name="update_install_body">lorum ipsum</string>
+    <string name="update_title">TODO(copy)</string>
+    <string name="update_required_title">TODO(copy)</string>
+    <string name="update_available_body">TODO(copy)</string>
+    <string name="update_required_body">TODO(copy)</string>
+    <string name="update_confirm">TODO(copy)</string>
+    <string name="update_later">TODO(copy)</string>
+    <string name="update_retry">TODO(copy)</string>
+    <string name="update_checking">TODO(copy)</string>
+    <string name="update_downloading">TODO(copy)</string>
+    <string name="update_installing">TODO(copy)</string>
+    <string name="update_unknown_sources">TODO(copy)</string>
+    <string name="update_error">TODO(copy)</string>
+    <string name="update_up_to_date">TODO(copy)</string>
+    <string name="update_updated">TODO(copy)</string>
+    <string name="update_notification_channel">TODO(copy)</string>
+    <string name="update_replaced_title">TODO(copy)</string>
+    <string name="update_replaced_body">TODO(copy)</string>
+    <string name="update_install_title">TODO(copy)</string>
+    <string name="update_install_body">TODO(copy)</string>
 </resources>

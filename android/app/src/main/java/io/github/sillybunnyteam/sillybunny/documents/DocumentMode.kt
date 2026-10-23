@@ -21,7 +21,7 @@ internal data class DocumentMode(val readable: Boolean, val writable: Boolean, v
             "wa" -> DocumentMode(false, true, false, true)
             "rw" -> DocumentMode(true, true, false, false)
             "rwt" -> DocumentMode(true, true, true, false)
-            else -> throw FileNotFoundException("lorum ipsum")
+            else -> throw FileNotFoundException("TODO(copy)")
         }
     }
 }

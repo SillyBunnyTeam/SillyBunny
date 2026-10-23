@@ -31,6 +31,6 @@ class RuntimeLayoutException(
     }
 
     companion object {
-        const val MESSAGE = "lorum ipsum"
+        const val MESSAGE = "TODO(copy)"
     }
 }

@@ -8,7 +8,7 @@
 
 static int fail(int error)
 {
-    fprintf(stderr, "lorum ipsum %d\n", error ? error : EIO);
+    fprintf(stderr, "TODO(copy) %d\n", error ? error : EIO);
     return 127;
 }
 

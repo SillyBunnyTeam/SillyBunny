@@ -8,7 +8,7 @@ internal object DocumentNames {
             name.contains('\\') || name.any { Character.isISOControl(it) } || !validUnicode(name) ||
             name.toByteArray(Charsets.UTF_8).size > 255
         ) {
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
         return name
     }
@@ -28,12 +28,12 @@ internal object DocumentNames {
 
     fun relative(path: String): List<String> {
         if (path.isEmpty() || path.toByteArray(Charsets.UTF_8).size > 4096) {
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
         val parts = path.split('/')
         parts.forEach(::validate)
         if (parts.first() != "data" && (parts.size != 1 || parts.first() != "config.yaml")) {
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
         return parts
     }

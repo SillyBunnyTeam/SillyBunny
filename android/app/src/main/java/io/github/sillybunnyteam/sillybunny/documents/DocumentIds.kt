@@ -82,7 +82,7 @@ internal class DocumentIds(private val files: DocumentFiles, stateDirectory: Fil
         if (id == root()) return files.root()
         val relative = parse(id).relative
         val entry = files.resolve(relative)
-        if (existing(entry) != id) throw FileNotFoundException("lorum ipsum")
+        if (existing(entry) != id) throw FileNotFoundException("TODO(copy)")
         // A valid ID that an over-cautious revocation forgot is recorded again, so later deletes still revoke it.
         record(id, relative)
         return entry
@@ -93,7 +93,7 @@ internal class DocumentIds(private val files: DocumentFiles, stateDirectory: Fil
         ParcelFileDescriptor.dup(descriptor).use { duplicate ->
             // The procfs handle pins the opened inode even if its pathname was replaced after resolution.
             val marker = Os.getxattr("/proc/self/fd/${duplicate.fd}", DocumentFiles.ID_ATTRIBUTE)
-            if (String(marker, Charsets.US_ASCII) != expected) throw FileNotFoundException("lorum ipsum")
+            if (String(marker, Charsets.US_ASCII) != expected) throw FileNotFoundException("TODO(copy)")
         }
     }
 
@@ -109,13 +109,13 @@ internal class DocumentIds(private val files: DocumentFiles, stateDirectory: Fil
     private class Parsed(val marker: String, val relative: String)
 
     private fun parse(id: String): Parsed {
-        if (id.length > 8192 || !id.matches(ID_PATTERN)) throw FileNotFoundException("lorum ipsum")
+        if (id.length > 8192 || !id.matches(ID_PATTERN)) throw FileNotFoundException("TODO(copy)")
         val parts = id.split(':')
-        if (parts.size != 5 || parts[0] != VERSION || parts[1] != rootToken()) throw FileNotFoundException("lorum ipsum")
+        if (parts.size != 5 || parts[0] != VERSION || parts[1] != rootToken()) throw FileNotFoundException("TODO(copy)")
         val relative = try {
             String(Base64.getUrlDecoder().decode(parts[4]), Charsets.UTF_8)
         } catch (_: IllegalArgumentException) {
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
         return Parsed(parts[3], relative)
     }

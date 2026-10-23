@@ -38,9 +38,9 @@ class PackageReplacedReceiverTest {
         PackageReplacedReceiver().onReceive(context, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
 
         val notification = notifications.activeNotifications.single().notification
-        assertEquals("lorum ipsum", notification.extras.getCharSequence(Notification.EXTRA_TITLE))
-        assertEquals("lorum ipsum", notification.extras.getCharSequence(Notification.EXTRA_TEXT))
-        assertEquals("lorum ipsum", notifications.getNotificationChannel(notification.channelId).name)
+        assertEquals("TODO(copy)", notification.extras.getCharSequence(Notification.EXTRA_TITLE))
+        assertEquals("TODO(copy)", notification.extras.getCharSequence(Notification.EXTRA_TEXT))
+        assertEquals("TODO(copy)", notifications.getNotificationChannel(notification.channelId).name)
         val pending = shadowOf(notification.contentIntent)
         assertTrue(pending.isActivity)
         assertTrue(pending.isImmutable)

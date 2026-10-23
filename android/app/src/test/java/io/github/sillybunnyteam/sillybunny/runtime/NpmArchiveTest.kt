@@ -178,6 +178,6 @@ class NpmArchiveTest {
     private fun assertRejected(label: String = "", block: () -> Unit) {
         val error = assertThrows(label, RuntimeLayoutException::class.java) { block() }
         assertEquals(label, RuntimeLayoutException.Reason.NPM_ARCHIVE, error.reason)
-        assertEquals("lorum ipsum", error.message)
+        assertEquals("TODO(copy)", error.message)
     }
 }

@@ -29,8 +29,8 @@ internal class DocumentProxy(
     override fun onGetSize(): Long = perform { if (truncatePending) 0L else Os.fstat(descriptor).st_size }
 
     override fun onRead(offset: Long, size: Int, data: ByteArray): Int = perform {
-        if (!mode.readable) throw ErrnoException("lorum ipsum", OsConstants.EBADF)
-        if (offset < 0 || size !in 0..data.size) throw ErrnoException("lorum ipsum", OsConstants.EINVAL)
+        if (!mode.readable) throw ErrnoException("TODO(copy)", OsConstants.EBADF)
+        if (offset < 0 || size !in 0..data.size) throw ErrnoException("TODO(copy)", OsConstants.EINVAL)
         if (truncatePending) return@perform 0
         var read = 0
         while (read < size) {
@@ -42,8 +42,8 @@ internal class DocumentProxy(
     }
 
     override fun onWrite(offset: Long, size: Int, data: ByteArray): Int = perform {
-        if (!mode.writable) throw ErrnoException("lorum ipsum", OsConstants.EBADF)
-        if (offset < 0 || size !in 0..data.size) throw ErrnoException("lorum ipsum", OsConstants.EINVAL)
+        if (!mode.writable) throw ErrnoException("TODO(copy)", OsConstants.EBADF)
+        if (offset < 0 || size !in 0..data.size) throw ErrnoException("TODO(copy)", OsConstants.EINVAL)
         truncateIfPending()
         var written = 0
         while (written < size) {
@@ -52,7 +52,7 @@ internal class DocumentProxy(
             } else {
                 Os.pwrite(descriptor, data, written, size - written, offset + written)
             }
-            if (count <= 0) throw ErrnoException("lorum ipsum", OsConstants.EIO)
+            if (count <= 0) throw ErrnoException("TODO(copy)", OsConstants.EIO)
             written += count
         }
         written
@@ -69,7 +69,7 @@ internal class DocumentProxy(
 
     fun checkActive() {
         if (!active || !workspace.isAvailable) {
-            throw ErrnoException("lorum ipsum", OsConstants.EBADF)
+            throw ErrnoException("TODO(copy)", OsConstants.EBADF)
         }
     }
 
@@ -123,7 +123,7 @@ internal class DocumentProxy(
         } catch (failure: ErrnoException) {
             throw failure
         } catch (_: Exception) {
-            throw ErrnoException("lorum ipsum", OsConstants.EIO)
+            throw ErrnoException("TODO(copy)", OsConstants.EIO)
         }
     }
 

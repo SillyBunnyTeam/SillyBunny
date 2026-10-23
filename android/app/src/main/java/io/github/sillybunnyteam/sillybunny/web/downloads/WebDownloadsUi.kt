@@ -34,7 +34,7 @@ import io.github.sillybunnyteam.sillybunny.web.files.retained
  * only for it.
  *
  * When the installed WebView lacks `DOCUMENT_START_SCRIPT` or `WEB_MESSAGE_LISTENER`, page exports
- * cannot be captured; the first one that is lost shows a dialog (copy `lorum ipsum`) whose action
+ * cannot be captured; the first one that is lost shows a dialog (copy `TODO(copy)`) whose action
  * calls [onOpenInBrowser], for example the shell's Open in browser.
  *
  * Lifetime: the returned instance lives in a ViewModel of the activity, so it survives activity

@@ -33,7 +33,7 @@ internal class DocumentFiles(filesDir: File) {
         val path = parent.file.toPath().resolve(name)
         val stat = Os.lstat(path.toString())
         if (!OsConstants.S_ISDIR(stat.st_mode) && !OsConstants.S_ISREG(stat.st_mode)) {
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
         return Entry(path.toFile(), relative, stat)
     }
@@ -71,10 +71,10 @@ internal class DocumentFiles(filesDir: File) {
 
     private fun verified(entry: Entry, bytes: ByteArray): String {
         val value = String(bytes, Charsets.US_ASCII)
-        if (!value.matches(UUID_PATTERN)) throw FileNotFoundException("lorum ipsum")
+        if (!value.matches(UUID_PATTERN)) throw FileNotFoundException("TODO(copy)")
         val current = Os.lstat(entry.file.path)
         if (current.st_dev != entry.stat.st_dev || current.st_ino != entry.stat.st_ino || current.st_mode != entry.stat.st_mode) {
-            throw FileNotFoundException("lorum ipsum")
+            throw FileNotFoundException("TODO(copy)")
         }
         return value
     }
@@ -108,17 +108,17 @@ internal class DocumentFiles(filesDir: File) {
                 (!OsConstants.S_ISDIR(current.st_mode) && !OsConstants.S_ISREG(current.st_mode)) ||
                 (index < components.lastIndex && !OsConstants.S_ISDIR(current.st_mode))
             ) {
-                throw FileNotFoundException("lorum ipsum")
+                throw FileNotFoundException("TODO(copy)")
             }
             // A same-UID server/plugin can race this walk; it already has direct access to private data.
             // Refuse symlinks anyway, then verify the opened path and inode before any file I/O.
-            if (path.toFile().canonicalFile.toPath() != path) throw FileNotFoundException("lorum ipsum")
+            if (path.toFile().canonicalFile.toPath() != path) throw FileNotFoundException("TODO(copy)")
         }
-        if (!path.startsWith(checkout.toPath())) throw FileNotFoundException("lorum ipsum")
+        if (!path.startsWith(checkout.toPath())) throw FileNotFoundException("TODO(copy)")
         val entry = Entry(path.toFile(), parts.takeIf { it.isNotEmpty() }?.joinToString("/"), stat!!)
-        if (parts.isEmpty() && !entry.directory) throw FileNotFoundException("lorum ipsum")
-        if (parts == listOf("data") && !entry.directory) throw FileNotFoundException("lorum ipsum")
-        if (parts == listOf("config.yaml") && entry.directory) throw FileNotFoundException("lorum ipsum")
+        if (parts.isEmpty() && !entry.directory) throw FileNotFoundException("TODO(copy)")
+        if (parts == listOf("data") && !entry.directory) throw FileNotFoundException("TODO(copy)")
+        if (parts == listOf("config.yaml") && entry.directory) throw FileNotFoundException("TODO(copy)")
         return entry
     }
 
@@ -137,7 +137,7 @@ internal class DocumentFiles(filesDir: File) {
                     actual.st_dev != entry.stat.st_dev || actual.st_ino != entry.stat.st_ino ||
                     actual.st_mode != entry.stat.st_mode || !OsConstants.S_ISREG(actual.st_mode)
                 ) {
-                    throw FileNotFoundException("lorum ipsum")
+                    throw FileNotFoundException("TODO(copy)")
                 }
             }
             return fd
@@ -171,9 +171,9 @@ internal class DocumentFiles(filesDir: File) {
                 continue
             }
             // A directory with entries. Same-UID code could swap it for a symlink; refuse one that is not itself.
-            if (path.toFile().canonicalFile.toPath() != path) throw FileNotFoundException("lorum ipsum")
+            if (path.toFile().canonicalFile.toPath() != path) throw FileNotFoundException("TODO(copy)")
             val names = path.toFile().list()
-            if (names.isNullOrEmpty()) throw FileNotFoundException("lorum ipsum")
+            if (names.isNullOrEmpty()) throw FileNotFoundException("TODO(copy)")
             names.forEach { name -> pending.addLast(path.resolve(name)) }
         }
     }
