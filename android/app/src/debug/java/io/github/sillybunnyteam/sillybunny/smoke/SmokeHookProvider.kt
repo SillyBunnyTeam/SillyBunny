@@ -7,6 +7,9 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.Process
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import io.github.sillybunnyteam.sillybunny.server.ServerManager
 import io.github.sillybunnyteam.sillybunny.server.ServerState
 import io.github.sillybunnyteam.sillybunny.web.BrowserHandoff
@@ -19,7 +22,10 @@ import org.json.JSONObject
  * - `content call --uri content://<applicationId>.smoke --method state` gives the server state, and the
  *   port while it runs;
  * - `--method handoff` gives a fresh single-use handoff code for the running server, which the smoke
- *   redeems through `adb forward` to get the launch cookie.
+ *   redeems through `adb forward` to get the launch cookie;
+ * - `--method kill --arg <pid>` sends SIGKILL to a process of the app, as a crash of the server would end it.
+ *   The signal comes from the app's own process, because on API 29 `run-as` may signal the app's processes
+ *   but not kill them (SELinux).
  *
  * Each reply is a Bundle with one string, `json`. The launch token never leaves the process: a handoff
  * code proves it without revealing it, and expires after [BrowserHandoff.LIFETIME_MILLIS].
@@ -38,6 +44,7 @@ class SmokeHookProvider : ContentProvider() {
         val reply = when (method) {
             METHOD_STATE -> state(ServerManager.existing()?.state?.value)
             METHOD_HANDOFF -> handoff(ServerManager.existing()?.state?.value)
+            METHOD_KILL -> kill(arg)
             else -> JSONObject().put("error", "unknown-method")
         }
         return Bundle().apply { putString(KEY_JSON, reply.toString()) }
@@ -66,6 +73,20 @@ class SmokeHookProvider : ContentProvider() {
             .put("code", BrowserHandoff.code(state.session.token, nonce, expiry))
             .put("path", BrowserHandoff.PATH)
             .put("port", state.session.port)
+    }
+
+    /** The app's own process is refused: the reply could not reach adb. kill(2) refuses other users' processes. */
+    private fun kill(arg: String?): JSONObject {
+        val pid = arg?.toIntOrNull()
+        if (pid == null || pid <= 0 || pid == Process.myPid()) {
+            return JSONObject().put("error", "bad-pid")
+        }
+        return try {
+            Os.kill(pid, OsConstants.SIGKILL)
+            JSONObject().put("killed", pid)
+        } catch (e: ErrnoException) {
+            JSONObject().put("error", OsConstants.errnoName(e.errno) ?: "errno-${e.errno}")
+        }
     }
 
     private fun name(state: ServerState?): String = when (state) {
@@ -98,6 +119,7 @@ class SmokeHookProvider : ContentProvider() {
     private companion object {
         const val METHOD_STATE = "state"
         const val METHOD_HANDOFF = "handoff"
+        const val METHOD_KILL = "kill"
         const val KEY_JSON = "json"
         const val SHELL_UID = 2000
         const val ROOT_UID = 0
