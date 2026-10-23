@@ -39,6 +39,9 @@ import { WebLlmVectorProvider } from './webllm.js';
 import { applyLegacyVectorEnabledSetting, bindVectorEnabledSettingsStore, getPersistableVectorSettings, getVectorEnabledState, normalizeVectorEnabledOptions, stripLegacyVectorEnabledSetting } from './settings-utils.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import { oai_settings } from '../../openai.js';
+// SillyBunny: The shared alert keeps vector-index deletion Cancel-focused and non-default.
+import { openAlert } from '../../sillybunny-editor/dialog.js';
+import { t } from '../../i18n.js';
 
 /**
  * @typedef {object} HashedMessage
@@ -2472,7 +2475,15 @@ export async function init() {
     }));
 
     registerDebugFunction('purge-everything', 'Purge all vector indices', 'Obliterate all stored vectors for all sources. No mercy.', async () => {
-        if (!confirm('Are you sure?')) {
+        // SillyBunny: The shared alert keeps this irreversible debug action Cancel-focused.
+        const response = await openAlert({
+            heading: 'Are you sure?',
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'purge', label: t`Yes`, appearance: 'destructive' },
+            ],
+        });
+        if (response !== 'purge') {
             return;
         }
         await purgeAllVectorIndexes();

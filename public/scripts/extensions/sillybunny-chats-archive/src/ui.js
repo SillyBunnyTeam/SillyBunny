@@ -28,6 +28,7 @@ import {
     saveOrganization,
     searchScope,
 } from './api.js';
+import { openAlert } from '../../../sillybunny-editor/dialog.js';
 
 const KINDS = [
     ['solo', 'Characters'],
@@ -1798,14 +1799,21 @@ function namedItemHasReferences(organization, type, id) {
     ));
 }
 
-function deleteNamedItem(ctx, state, ui, type, item) {
-    if (type === 'views' && !globalThis.confirm(tr(ctx, 'Delete saved view {name}?', { name: item.name }))) {
-        return;
-    }
-    if ((type === 'folders' || type === 'collections')
-        && namedItemHasReferences(state.organization, type, item.id)
-        && !globalThis.confirm(tr(ctx, 'Delete {name} and remove it from chats and saved views?', { name: item.name }))) {
-        return;
+async function deleteNamedItem(ctx, state, ui, type, item) {
+    const message = type === 'views'
+        ? tr(ctx, 'Delete saved view {name}?', { name: item.name })
+        : (type === 'folders' || type === 'collections') && namedItemHasReferences(state.organization, type, item.id)
+            ? tr(ctx, 'Delete {name} and remove it from chats and saved views?', { name: item.name })
+            : null;
+    if (message) {
+        const response = await openAlert({
+            heading: message,
+            responses: [
+                { id: 'cancel', label: tr(ctx, 'Cancel') },
+                { id: 'delete', label: tr(ctx, 'Delete'), appearance: 'destructive' },
+            ],
+        });
+        if (response !== 'delete') return;
     }
     state.organization = normalizeOrganization({
         ...state.organization,
@@ -1864,7 +1872,14 @@ async function importOrganization(ctx, state, ui) {
         ui.backup.status.textContent = tr(ctx, 'This organization backup is invalid or unsupported.');
         return;
     }
-    if (!globalThis.confirm(tr(ctx, 'Replace all current folders, collections, saved views, tags, and favorites?'))) {
+    const response = await openAlert({
+        heading: tr(ctx, 'Replace all current folders, collections, saved views, tags, and favorites?'),
+        responses: [
+            { id: 'cancel', label: tr(ctx, 'Cancel') },
+            { id: 'replace', label: tr(ctx, 'Replace'), appearance: 'destructive' },
+        ],
+    });
+    if (response !== 'replace') {
         return;
     }
     state.organizationLoadAbort?.abort();

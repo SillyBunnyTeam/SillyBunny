@@ -47,8 +47,6 @@ import {
     shapeChatRecords,
     sortRows,
 } from '../public/scripts/extensions/sillybunny-chats-archive/src/core.js';
-import { navigateAndConfirm } from '../public/scripts/extensions/sillybunny-chats-archive/src/ui.js';
-
 jest.unstable_mockModule('../src/endpoints/chats.js', () => ({ CHAT_BACKUPS_PREFIX: 'chat_' }));
 jest.unstable_mockModule('../src/endpoints/settings.js', () => ({ getSettingsBackupFilePrefix: () => 'settings_' }));
 jest.unstable_mockModule('../src/util.js', () => ({
@@ -56,8 +54,12 @@ jest.unstable_mockModule('../src/util.js', () => ({
     recoverFileWriteSync: () => {},
     tryParse: value => JSON.parse(value),
 }));
+jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ openAlert: jest.fn() }));
 
-const { DataMaidService } = await import('../src/endpoints/data-maid.js');
+const [{ DataMaidService }, { navigateAndConfirm }] = await Promise.all([
+    import('../src/endpoints/data-maid.js'),
+    import('../public/scripts/extensions/sillybunny-chats-archive/src/ui.js'),
+]);
 
 const extensionRoot = new URL('../public/scripts/extensions/sillybunny-chats-archive/', import.meta.url);
 const [entry, ui, manifestText, extensionsEndpoint] = await Promise.all([

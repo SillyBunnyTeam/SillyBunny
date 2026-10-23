@@ -3827,25 +3827,15 @@ function clearAllBrowserCookies() {
 }
 
 async function confirmClearCookiesAndCache() {
-    const context = getSillyTavernContext();
-    if (!context?.Popup?.show?.confirm) {
-        return window.confirm('Clear cookies & cache? This removes browser-accessible SillyBunny cookies and cached UI data, then reloads the page.');
-    }
-
-    const result = await context?.Popup?.show?.confirm?.(
-        'Clear cookies & cache?',
-        'This removes browser-accessible SillyBunny cookies, browser cache, temporary session data, and IndexedDB cache stores, then reloads the page. Saved settings and account data stay intact, but you may need to sign in again if your setup uses browser cookies.',
-        {
-            okButton: 'Clear cookies & cache',
-            cancelButton: 'Cancel',
-        },
-    );
-
-    if (context?.POPUP_RESULT) {
-        return result === context.POPUP_RESULT.AFFIRMATIVE;
-    }
-
-    return result === true || result === 1;
+    const response = await openAlert({
+        heading: 'Clear cookies & cache?',
+        body: 'This removes browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact. Clearing browser cookies may require you to sign in again.',
+        responses: [
+            { id: 'cancel', label: t`Cancel` },
+            { id: 'clear', label: 'Clear cookies & cache', appearance: 'destructive' },
+        ],
+    });
+    return response === 'clear';
 }
 
 async function clearServerCookies() {
@@ -10695,8 +10685,15 @@ async function handleSillyTavernFolderImport() {
         return;
     }
 
-    const confirmed = window.confirm(`Import data from this folder into the current SillyBunny account?\n\n${sourcePath}\n\nFiles with the same name will be replaced, and the page will reload when the import finishes.`);
-    if (!confirmed) {
+    const response = await openAlert({
+        heading: 'Import data from this folder into the current SillyBunny account?',
+        body: `${sourcePath}\n\nFiles with the same name will be replaced, and the page will reload when the import finishes.`,
+        responses: [
+            { id: 'cancel', label: t`Cancel` },
+            { id: 'import', label: 'Import', appearance: 'destructive' },
+        ],
+    });
+    if (response !== 'import') {
         return;
     }
 
@@ -10738,8 +10735,15 @@ async function handleSillyTavernExtensionSync() {
         return;
     }
 
-    const confirmed = window.confirm(`Sync third-party extensions from this SillyTavern folder into the current SillyBunny account?\n\n${sourcePath}\n\nMatching extension folders will be replaced. SillyBunny will show a detailed report instead of reloading immediately.`);
-    if (!confirmed) {
+    const response = await openAlert({
+        heading: 'Sync third-party extensions from this SillyTavern folder into the current SillyBunny account?',
+        body: `${sourcePath}\n\nMatching extension folders will be replaced. SillyBunny will show a detailed report instead of reloading immediately.`,
+        responses: [
+            { id: 'cancel', label: t`Cancel` },
+            { id: 'sync', label: t`Yes`, appearance: 'destructive' },
+        ],
+    });
+    if (response !== 'sync') {
         return;
     }
 
@@ -10787,8 +10791,15 @@ async function handleSillyTavernZipImport(file) {
         return;
     }
 
-    const confirmed = window.confirm(`Import this SillyTavern backup ZIP into the current SillyBunny account?\n\n${file.name}\n\nFiles with the same name will be replaced, and the page will reload when the import finishes.`);
-    if (!confirmed) {
+    const response = await openAlert({
+        heading: 'Import this SillyTavern backup ZIP into the current SillyBunny account?',
+        body: `${file.name}\n\nFiles with the same name will be replaced, and the page will reload when the import finishes.`,
+        responses: [
+            { id: 'cancel', label: t`Cancel` },
+            { id: 'import', label: 'Import', appearance: 'destructive' },
+        ],
+    });
+    if (response !== 'import') {
         if (refs.zipFileInput instanceof HTMLInputElement) {
             refs.zipFileInput.value = '';
         }

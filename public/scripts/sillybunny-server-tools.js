@@ -1,5 +1,7 @@
 import { yaml } from '../lib.js';
 import { normalizeBackendSettingsRows } from './sillybunny-settings-presentation.js';
+import { openAlert } from './sillybunny-editor/dialog.js';
+import { t } from './i18n.js';
 
 const SB_CONSOLE_LOG_LIMIT = 260;
 const SB_CONSOLE_LOG_REFRESH_MS = 2500;
@@ -1017,8 +1019,15 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        if (updateServerConfigDirtyState() && !window.confirm('Discard your unsaved config edits and reload config.yaml from disk?')) {
-            return;
+        if (updateServerConfigDirtyState()) {
+            const response = await openAlert({
+                heading: 'Discard your unsaved config edits and reload config.yaml from disk?',
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'discard', label: t`Discard`, appearance: 'destructive' },
+                ],
+            });
+            if (response !== 'discard') return;
         }
 
         await refreshServerAdminPanel({ includeConfig: true, forceConfig: true });
@@ -1128,7 +1137,16 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        if (!window.confirm('Clear cached thumbnails for this user? They will be rebuilt as images are loaded.')) {
+        const response = await openAlert({
+            heading: 'Clear cached thumbnails for this user?',
+            body: 'They will be rebuilt as images are loaded.',
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'clear', label: t`Yes`, appearance: 'suggested' },
+            ],
+            defaultResponse: 'clear',
+        });
+        if (response !== 'clear') {
             return;
         }
 
@@ -1392,13 +1410,23 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             ? `\n\nChanged files: ${changedFiles.map(f => f.path).join(', ')}`
             : '';
 
-        const confirmMessage = hasLocalChanges
-            ? `You have local changes.${changedFilesText}\n\nDo you want to auto-stash your changes and switch to "${targetBranch}"?\n\nThe server will restart after switching.`
-            : `Switch to branch "${targetBranch}"?\n\nThe server will restart after switching.`;
+        const confirmHeading = hasLocalChanges
+            ? 'You have local changes.'
+            : `Switch to branch "${targetBranch}"?`;
+        const confirmBody = hasLocalChanges
+            ? `${changedFilesText}\n\nDo you want to auto-stash your changes and switch to "${targetBranch}"?\n\nThe server will restart after switching.`
+            : 'The server will restart after switching.';
+        const response = await openAlert({
+            heading: confirmHeading,
+            body: confirmBody,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'switch', label: t`Switch`, appearance: hasLocalChanges ? 'destructive' : 'suggested' },
+            ],
+            defaultResponse: hasLocalChanges ? null : 'switch',
+        });
 
-        const confirmed = confirm(confirmMessage);
-
-        if (!confirmed) {
+        if (response !== 'switch') {
             // Reset select to current branch
             selectElement.value = currentBranch;
             return;

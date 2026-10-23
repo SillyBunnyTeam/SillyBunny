@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Phase 7 Native Browser Dialog Replacements
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js`; `public/scripts/sillybunny-server-tools.js`; `public/scripts/sillybunny-tabs.js`; `public/scripts/extensions/sillybunny-chats-archive/src/ui.js`; `public/scripts/extensions/vectors/index.js`; `public/scripts/extensions/tts/speecht5.js`; `public/scripts/extensions/guided-generations/scripts/guidedSwipe.js`. |
+| Area | Server and draft reload, cache reset, SillyTavern data import/sync, archive organization edits, vector/speaker deletion, and Guided Swipe error reporting. |
+| Divergence reason | Draft loss and irreversible actions use the shared Alert tier with safe keyboard defaults; Guided Swipe errors use a non-blocking toast instead of a browser error dialog. |
+| Target seam | `public/scripts/sillybunny-editor/dialog.js`; the existing global toast service. |
+| Adapter shape | Keep the existing action handlers and messages; await `openAlert()` for confirmations, focus Cancel and avoid Return confirmation for destructive actions, retain an affirmative default for regenerable thumbnail-cache clearing, and replace Guided Swipe `alert()` calls with `toastr.error()`. |
+| Protecting tests | `tests/unit/native-dialog-replacements.test.js`; `tests/unit/sillybunny-dialog.test.js`; `tests/unit/tts-voices-dialog.test.js`; `tests/guided-generations-steering.test.js`; `tests/sillybunny-chats-archive.test.js`; `tests/native-dialog-replacements.e2e.js`; `tests/sillybunny-chats-archive.e2e.js`; `tests/sillybunny-backend-settings.e2e.js`. |
+| Validation | 2026-10-23: root lint, ESLint for changed test files, and `git diff --check` pass; the broader tests-package lint command remains blocked by existing errors in unrelated test files. Frontend budgets pass (16 blocking stylesheets / 1005.0 KiB; 24 startup scripts / 2025.0 KiB). Full Jest: 426 suites passed; 6,442 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: native-dialog replacements 4/4, Chat Archive 15/15, dialog tiers 18/18, Popup scroll 2/2, startup-on-demand 8/8, and backend settings 21/22. The remaining backend-settings failure is the existing unsaved-template discard assertion at line 729. Visually reviewed four desktop/mobile Alert captures in `/tmp/opencode/phase7-dialog-shots/`; message wrapping and action visibility are clear. |
+| Rollback path | Restore the original native confirmation/error calls and remove the corresponding shared-alert imports; no persisted data format changes. |
+| Last reviewed | 2026-10-23, PR #870 Phase 7. |
+| Owner | UI integrator. |
+
 ### Phase 6.2–6.3 Chat History and file-deletion dialogs
 | Field | Value |
 | --- | --- |

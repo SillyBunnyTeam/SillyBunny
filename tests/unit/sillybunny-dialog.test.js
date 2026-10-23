@@ -445,6 +445,27 @@ describe('openAlert', () => {
         await expect(result).resolves.toBe('ok');
     });
 
+    test('destructive responses stay out of the Return default and keep Cancel focused', async () => {
+        const result = openAlert({
+            heading: 'Delete this speaker?',
+            responses: [
+                { id: 'cancel', label: 'Cancel' },
+                { id: 'delete', label: 'Delete', appearance: 'destructive' },
+            ],
+        });
+        const host = getTopmostDialog();
+        const deleteButton = host.querySelector('[data-response="delete"]');
+        expect(document.activeElement).toBe(host.querySelector('[data-response="cancel"]'));
+        expect(deleteButton.classList.contains('is-destructive')).toBe(true);
+
+        host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        await settle();
+        expect(host.isConnected).toBe(true);
+
+        host.querySelector('[data-response="cancel"]').click();
+        await expect(result).resolves.toBe('cancel');
+    });
+
     test('an alert opens above an open dialog instead of becoming a page', async () => {
         const dialog = openDialog({ title: 'Window', tier: 'window' });
         const result = openAlert({ heading: 'Sure?', responses: [{ id: 'cancel', label: 'Cancel' }] });

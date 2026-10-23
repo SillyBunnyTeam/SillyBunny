@@ -41,6 +41,11 @@ test.beforeAll(async () => {
                 response.end(fixtureHtml(url.searchParams.has('long'), url.searchParams.has('duplicate-characters')));
                 return;
             }
+            if (url.pathname === '/sillybunny-editor/dialog.js') {
+                response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+                response.end('export const openAlert = async () => "cancel";');
+                return;
+            }
             const asset = url.pathname.startsWith('/extension/')
                 ? { root: extensionRoot, relativePath: url.pathname.slice('/extension/'.length) }
                 : url.pathname.startsWith('/public/')
