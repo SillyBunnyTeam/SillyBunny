@@ -101,23 +101,29 @@ This is the largest class by a wide margin.
 ### Runtimes, Termux, launchers and updates
 
 - **Breaks:** the wrong runtime or shell behaviour on one platform.
-- **Files:** `Start-Node.bat`, `scripts/`, `src/npm-launcher.js`, `src/endpoints/server-admin.js`.
-- **Guards:** `server.js` runs under `src/server-supervisor.js`. It loads `src/server-log-buffer.js` first and imports `src/server-main.js` last. Do not change this import order.
+- **Files:** `Start-Node.bat`, `start.sh`, `scripts/`, `src/npm-launcher.js`, `src/endpoints/server-admin.js`, `src/android-app-gate.js`.
+- **Guards:**
+  - `server.js` runs under `src/server-supervisor.js`. It loads `src/server-log-buffer.js` first and imports `src/server-main.js` last. Do not change this import order.
+  - The Android app sets `SILLYBUNNY_ANDROID_APP=1` (`ProcessEnvironment.kt`). `start.sh` then skips the Termux, prerequisite and runtime detection paths (`is_android_app()`) and picks Node.js, because the APK bundles git, Node.js and npm but not Bun. Each of these divergences has a `# SillyBunny:` comment.
+  - A checkout update that needs a newer Android app stops before it changes `HEAD`. `scripts/self-update.sh` and the `/update` and `/switch-branch` routes in `src/endpoints/server-admin.js` (through `src/android-app-gate.js`) read `android/min-app-version` at the fetched commit, and then update to that commit only. Both write `update-blocked.json`, from which the app shows its update prompt; the routes also refuse with `android_app_update_required`.
 - **Bun and disconnects:** under Bun 1.3.12 and 1.3.14 an Express response emits no `close` when the client disconnects; the request and its socket do. Node emits all three, and emits the response's `close` from inside the socket's. The streamed routes in `src/resumable-generations.js` use `whenClientGone()`, which watches both and runs once (test: `tests/server-generation-commit.test.js`). Still on the response's `close`: `src/endpoints/backends/chat-completions.js`, `src/endpoints/server-admin.js`, `src/endpoints/chat-archive.js`, `src/server-listen.js`.
 - **Bun and the listen port:** before Bun 1.4.0, sockets on Windows are inheritable (oven-sh/bun#36936, fixed by oven-sh/bun#36938). A process that the server starts, such as git during an update, can keep the port bound after the server exits. `engines.bun` still allows 1.3.14. The listen retry window in `src/server-listen.js` and `GIT_OPTIONS` in `src/endpoints/server-admin.js` (no background git maintenance during updates) guard against it. `hasBunSocketInheritBug()` limits the port-conflict hint and the dead-holder diagnostic to Bun before 1.4.0 on Windows (test: `tests/server-listen.test.js`). Before Bun 1.4.3, `closeAllConnections()` does nothing once `close()` has run (oven-sh/bun#43557), so `closeListeningServers()` also destroys the tracked sockets.
-- **Tests:** `tests/server-supervisor.test.js`, `tests/base64-atomic-writes.test.js`, `tests/server-admin-update-install.test.js`, `tests/server-plugin-manager.test.js`, `tests/server-plugin-update-helper.test.js`.
+- **Tests:** `tests/server-supervisor.test.js`, `tests/base64-atomic-writes.test.js`, `tests/server-admin-update-install.test.js`, `tests/server-plugin-manager.test.js`, `tests/server-plugin-update-helper.test.js`, `tests/android-app-mode-scripts.test.js`, `tests/android-bootstrap-scripts.test.js`, `tests/android-self-update-scripts.test.js`, `tests/server-admin-android-gate.test.js`.
 - **No test:** `c1a87366c` (#522, Bun bootstrap on Termux), `cd7429421` (issue #672, unescaped parentheses in `Start-Node.bat`).
 - **Fixes:** #806 (explicit Base64 decode on Bun), #912 (run npm through Node.js on Windows).
 
 ### Security and credentials
 
 - **Breaks:** untrusted card scripts reach remote resources; secrets cross scopes.
-- **Files:** `public/scripts/card-script-sandbox/`, `public/scripts/card-script-runtime.js`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`.
+- **Files:** `public/scripts/card-script-sandbox/`, `public/scripts/card-script-runtime.js`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, `src/middleware/launchToken.js`.
 - **Guards:**
   - The card-script sandbox CSP blocks network access (`connect-src 'none'`).
   - Sandbox frames have an opaque origin, so `event.origin` cannot be checked. `handleSandboxMessage()` checks `event.source`, the message schema, the nonce, the message ID and the rate limit, then the command allowlist. It rejects unknown commands.
   - Card scripts need user confirmation before they run (`confirmCardScriptExecution()`). This gate applies only to card scripts; other imported behaviour has no general gate.
-- **Tests:** `tests/card-script-runtime.test.js`, `tests/card-script-sandbox-wrapper.test.js`, `tests/openai-prompt-logging-wiring.test.js`, `tests/openai-preset-utils.test.js`.
+  - In the Android app, `src/middleware/launchToken.js` runs right after helmet and before body parsing, logging, authentication and static files (`src/server-main.js`), so other apps on the device cannot use the local server.
+  - The cookie-clearing route keeps the `sillybunny_launch` cookie while the gate is on; clearing it would lock the Android browser out of the server.
+  - The browser handoff answers with a page that moves to `/`, not a `302` (`c008eb38f`): Chrome does not send a `SameSite=Strict` cookie on the redirect of a navigation that another app started.
+- **Tests:** `tests/card-script-runtime.test.js`, `tests/card-script-sandbox-wrapper.test.js`, `tests/openai-prompt-logging-wiring.test.js`, `tests/openai-preset-utils.test.js`, `tests/launch-token.test.js`, `tests/launch-token-server-wiring.test.js`.
 - **Fixes:** #110 (sandbox helpers), #144 (block remote loads from the sandbox), #348 (gate verbose prompt logging), #560 (bind custom endpoint profiles to their saved secrets).
 - **Order matters:** at startup, `readSecretState()` (`public/scripts/secrets.js`) runs before `getSettings()` calls `accountStorage.init()`, and `accountStorage.getItem()` returns `null` until then. Call `checkOpenRouterAuth()` only after `getSettings()` (`public/script.js`). An earlier call does not find the PKCE code verifier and removes the OAuth query from the URL, so the OpenRouter key exchange never happens. SillyTavern moved the call out of `readSecretState()` in `97dba399e`; the SillyTavern 1.18 port (`9fe08ef34`) kept it. Test: `tests/openrouter-oauth-return.test.js`.
 
