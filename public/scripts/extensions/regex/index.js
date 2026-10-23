@@ -1337,6 +1337,7 @@ async function onRegexDebuggerOpenClick() {
         const content = $('#regex_debugger_final_output').html();
         const popupContent = $('<div class="regex-popup-content"></div>').html(content);
         // SillyBunny: expanded debugger views are Window-tier pages; the shared frame owns scrolling.
+        popupContent.addClass('sb-document');
         callGenericPopup(popupContent, POPUP_TYPE.TEXT, t`Final Output`, { tier: 'window', title: t`Final Output`, wide: true, large: true, allowVerticalScrolling: true });
     });
 

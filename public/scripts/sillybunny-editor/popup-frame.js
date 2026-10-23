@@ -255,6 +255,10 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
             closeButton.style.display = 'none';
         }
         dlg.prepend(header);
+        const contentScroller = dlg.querySelector('.popup-content');
+        const syncHeaderShade = () => header.toggleAttribute('data-scrolled', contentScroller?.scrollTop > 0);
+        contentScroller?.addEventListener('scroll', syncHeaderShade, { passive: true });
+        cleanups.push(() => contentScroller?.removeEventListener('scroll', syncHeaderShade));
         cleanups.push(bindHeaderLayout(header));
         if (bar) {
             // The footer stays inside buttonControls for extension queries and custom autofocus.
@@ -302,6 +306,11 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
         if (!resolved) return;
         framed = true;
         dlg.classList.add('sb-dialog', `sb-dialog--${resolved}`);
+        // SillyBunny: document windows (maximized editors, notes, inspectors, debugger output)
+        // use a View body instead of a Window body.
+        if (resolved === 'window' && dlg.querySelector('.sb-document')) {
+            dlg.classList.add('sb-dialog--view');
+        }
         dlg.setAttribute(MODAL_ATTRIBUTE, '');
         if (resolved === 'alert') buildAlert();
         else buildHeaderFrame();

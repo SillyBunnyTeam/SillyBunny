@@ -34,18 +34,23 @@
     --sb-spring-navigation: cubic-bezier(0.16, 1, 0.3, 1);
     --sb-z-base: 0;
     --sb-z-raised: 10;
+    /* Layer ladder: chat < expression sprites < zoomed avatars < docked side panels < top bar <
+       shell drawers / sidebar < settings page < popovers / menus / toasts < dialogs (top layer). */
     --sb-z-dropdown: 100;
+    --sb-z-sprites: 100;
+    --sb-z-zoomed-avatar: 200;
+    --sb-z-side-panel: 300;
     --sb-z-sticky: 500;
     --sb-z-shell: 1000;
     --sb-z-shell-panel: 1100;
     --sb-z-shell-sidebar: 1200;
     --sb-z-overlay: 2000;
     --sb-z-modal: 3000;
-    --sb-z-modal-content: 3100;
+    --sb-z-modal-content: 3000;
     --sb-z-popout: 4000;
     --sb-z-toast: 5000;
     --sb-z-streaming: 6000;
-    --sb-z-context-menu: 8000;
+    --sb-z-context-menu: 4000;
     --sb-z-loader: 9000;
     --sb-z-critical: 10000;
     --sb-color-warning: var(--color-warning, #ffc252);
@@ -197,6 +202,10 @@
     --sb-chat-view-bg: var(--sb-layer-view-source);
     --sb-layer-bottombar: var(--sb-layer-bottombar-source);
     --sb-layer-window: var(--sb-layer-window-source);
+    /* Alert surfaces keep the dialog layer; document windows (maximized editors, inspectors)
+       use the View layer like a document body. */
+    --sb-layer-alert: var(--sb-layer-dialog);
+    --sb-layer-view-surface: var(--sb-layer-view);
     /* Complementary rail (Conversation pals rail, Settings sidebar and its header).
        libadwaita sidebar-bg: #2e2e32 in Libadwaita dark, #ebebed in light. */
     --sb-sidebar-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
@@ -270,7 +279,7 @@ input[type="submit"] {
 .avatar_zoom_container,
 .zoomed_avatar,
 .avatar_zoom {
-    z-index: calc(var(--sb-z-modal-content) + 5) !important;
+    z-index: var(--sb-z-zoomed-avatar) !important;
 }
 
 .zoomed_avatar > :is(.zoomed_avatar_container, .avatar_zoom_container) {
@@ -279,7 +288,7 @@ input[type="submit"] {
 }
 
 .zoomed_avatar > .panelControlBar {
-    z-index: calc(var(--sb-z-modal-content) + 6) !important;
+    z-index: calc(var(--sb-z-zoomed-avatar) + 1) !important;
     pointer-events: auto;
 }
 
@@ -6713,6 +6722,7 @@ dialog.popup.sb-dialog {
     margin: auto;
     padding: 0;
     border: 1px solid var(--SmartThemeBorderColor);
+    text-shadow: none;
     background: var(--sb-layer-dialog);
     box-shadow: var(--sb-shadow-dialog);
     overflow: hidden;
@@ -6766,6 +6776,33 @@ dialog.popup.sb-dialog--alert {
     max-width: min(372px, calc(100dvw - 32px));
     border-radius: var(--sb-radius-alert);
     text-align: center;
+}
+
+dialog.popup.sb-dialog--alert,
+dialog.popup.sb-dialog--alert > .popup-body {
+    background: var(--sb-layer-alert);
+}
+
+dialog.popup.sb-dialog--dialog {
+    background: var(--sb-layer-window);
+}
+
+dialog.popup.sb-dialog--window {
+    background: var(--sb-layer-window);
+}
+
+dialog.popup.sb-dialog--dialog > .sb-dialog__header {
+    border-bottom-color: transparent;
+    background: var(--sb-layer-window);
+}
+
+dialog.popup.sb-dialog--dialog > .sb-dialog__header[data-scrolled='true'] {
+    border-bottom-color: var(--sb-shell-border);
+}
+
+dialog.popup.sb-dialog--window > .sb-dialog__header {
+    border-bottom-color: var(--sb-shell-border);
+    background: var(--sb-layer-headerbar);
 }
 
 dialog.popup.sb-dialog--alert > .popup-body {
@@ -7433,7 +7470,8 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     max-height: 100%;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-overlay);
-    background: var(--sb-layer-dialog);
+    text-shadow: none;
+    background: var(--sb-layer-window);
     box-shadow: var(--sb-shadow-dialog);
     color: var(--SmartThemeBodyColor);
     overflow: hidden;
@@ -7446,6 +7484,11 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     min-width: min(300px, 100%);
     max-width: min(372px, 100%);
     border-radius: var(--sb-radius-alert);
+}
+
+.sb-dialog--dialog,
+.sb-dialog--window {
+    background: var(--sb-layer-window);
 }
 
 .sb-dialog--alert.sb-dialog--wide {
@@ -7485,11 +7528,16 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     flex-direction: column;
     flex: 0 1 auto;
     min-height: 0;
-    background: var(--sb-layer-dialog);
+    background: var(--sb-layer-window);
 }
 
 .sb-dialog--window :is(.sb-dialog__pages, .sb-dialog__page) {
     flex: 1 1 auto;
+}
+
+/* In document windows even pushed pages stay on the View surface. */
+.sb-dialog--window.sb-dialog--view :is(.sb-dialog__pages, .sb-dialog__page) {
+    background: var(--sb-layer-view-surface);
 }
 
 /* Pushed pages: the entering page stays in flow so a content-sized dialog follows it. */
@@ -7513,8 +7561,17 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     box-sizing: border-box;
     min-height: 56px;
     padding: 6px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-    background: var(--sb-sidebar-bg);
+    border-bottom: 1px solid transparent;
+    background: var(--sb-layer-window);
+}
+
+.sb-dialog--dialog .sb-dialog__header[data-scrolled='true'] {
+    border-bottom-color: var(--sb-shell-border);
+}
+
+.sb-dialog--window .sb-dialog__header {
+    border-bottom-color: var(--sb-shell-border);
+    background: var(--sb-layer-headerbar);
 }
 
 .sb-dialog__header-start,
@@ -7656,6 +7713,21 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     overflow-y: auto;
     overscroll-behavior: contain;
     overflow-wrap: anywhere;
+    background: var(--sb-layer-window);
+}
+
+/* Document windows (maximized editors, notes, inspectors, debugger output) use a View body
+   instead of a Window body, and their textareas and output lose their own frames. */
+.sb-dialog--window.sb-dialog--view,
+.sb-dialog--window.sb-dialog--view .sb-dialog__body {
+    background: var(--sb-layer-view-surface);
+}
+
+.sb-dialog--window.sb-dialog--view textarea,
+.sb-dialog--window.sb-dialog--view .regex-popup-content {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
 }
 
 .sb-dialog__bottom-bar {

@@ -2250,6 +2250,8 @@ export function initChatUtilities() {
         const wrapper = document.createElement('div');
         // SillyBunny: this marker lets the Window body hand its only scroll area to the textarea.
         wrapper.classList.add('sb-maximized-editor');
+        // SillyBunny: an editor is a document, so its Window body uses the View surface.
+        wrapper.classList.add('sb-document');
         wrapper.classList.add('height100p', 'wide100p', 'flex-container');
         wrapper.classList.add('flexFlowColumn', 'justifyCenter', 'alignitemscenter');
         const textarea = document.createElement('textarea');

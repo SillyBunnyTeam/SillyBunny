@@ -243,6 +243,80 @@ async function round2Screenshot(page, name) {
     await page.screenshot({ path: `${round2Screens}/${name}.png` });
 }
 
+for (const { width, height } of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`Refine floating entry stays legible and hides its placeholder at ${width}px`, async ({ page, baseURL }, testInfo) => {
+        const editor = await setup(page, baseURL, width);
+        await page.setViewportSize({ width, height });
+        await mockEditorModel(page);
+        await editor.open('pre');
+        await editor.prompt.fill('A prompt to refine.');
+        await activateAgentEditorAction(page, editor.detail, 'Refine…');
+
+        const dialog = page.locator('dialog[open]');
+        const input = dialog.locator('#ica--refine-custom');
+        await expect(dialog.locator('.sb-dialog__title')).toHaveText('Refine');
+        await expect(input).toBeVisible();
+        await input.evaluate(node => node.blur());
+
+        const readStyles = () => input.evaluate(node => {
+            const title = node.labels[0];
+            const field = node.closest('.ds-row-entry__field');
+            const fieldBox = field.getBoundingClientRect();
+            const titleBox = title.getBoundingClientRect();
+            const placeholder = getComputedStyle(node, '::placeholder');
+            const titleStyle = getComputedStyle(title);
+            return {
+                focused: document.activeElement === node,
+                fieldCenter: fieldBox.top + fieldBox.height / 2,
+                titleCenter: titleBox.top + titleBox.height / 2,
+                fieldTop: fieldBox.top,
+                titleTop: titleBox.top,
+                titleFontSize: parseFloat(titleStyle.fontSize),
+                inputFontSize: parseFloat(getComputedStyle(node).fontSize),
+                titleTransform: titleStyle.transform,
+                placeholderColor: placeholder.color,
+                placeholderOpacity: placeholder.opacity,
+                placeholderTextShadow: placeholder.textShadow,
+                titleTextShadow: titleStyle.textShadow,
+            };
+        });
+        const isTransparent = style => style.placeholderOpacity === '0'
+            || style.placeholderColor === 'transparent'
+            || style.placeholderColor === 'rgba(0, 0, 0, 0)';
+
+        const empty = await readStyles();
+        await testInfo.attach('Refine empty field styles', { body: JSON.stringify(empty), contentType: 'application/json' });
+        expect(empty.focused).toBe(false);
+        expect(isTransparent(empty)).toBe(true);
+        expect(empty.placeholderTextShadow).toBe('none');
+        expect(Math.abs(empty.titleCenter - empty.fieldCenter)).toBeLessThanOrEqual(3);
+        expect(empty.titleFontSize).toBe(empty.inputFontSize);
+        expect(empty.titleTextShadow).toBe('none');
+        await mkdir('/tmp/opencode/round1-step1-shots/after', { recursive: true });
+        await page.mouse.move(1, 1);
+        await page.screenshot({ path: `/tmp/opencode/round1-step1-shots/after/refine-dialog-${width}x${height}.png` });
+
+        await input.focus();
+        const focused = await readStyles();
+        expect(focused.focused).toBe(true);
+        expect(isTransparent(focused)).toBe(true);
+        expect(focused.placeholderTextShadow).toBe('none');
+        expect(focused.titleTop - focused.fieldTop).toBeLessThan(12);
+        expect(focused.titleFontSize).toBeLessThan(focused.inputFontSize);
+        expect(focused.titleTextShadow).toBe('none');
+
+        await input.fill('A custom refinement instruction.');
+        await input.blur();
+        const filled = await readStyles();
+        expect(filled.focused).toBe(false);
+        expect(isTransparent(filled)).toBe(true);
+        expect(filled.placeholderTextShadow).toBe('none');
+        expect(filled.titleTop - filled.fieldTop).toBeLessThan(12);
+        expect(filled.titleFontSize).toBeLessThan(filled.inputFontSize);
+        expect(filled.titleTextShadow).toBe('none');
+    });
+}
+
 async function outerScroll(detail) {
     return detail.evaluate(node => {
         const positions = [];

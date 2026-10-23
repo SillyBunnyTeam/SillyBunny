@@ -468,6 +468,7 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     top: 0;
     left: 0;
     z-index: var(--sb-z-context-menu);
+    text-shadow: none;
     min-inline-size: 200px;
     max-inline-size: min(300px, calc(100vw - 16px));
     padding: 6px;
@@ -507,6 +508,7 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     position: fixed;
     inset: auto 0 0 0;
     z-index: var(--sb-z-modal, 3000);
+    text-shadow: none;
     display: flex;
     flex-direction: column;
     gap: 6px;

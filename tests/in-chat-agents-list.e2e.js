@@ -15,7 +15,7 @@ const READS = new Set([
 
 async function openAgents(page, baseURL, width = 1440) {
     const origin = new URL(baseURL).origin;
-    if (new URL(baseURL).port !== '4455') throw new Error('Agents QA requires the isolated 4455 instance');
+    if (!['4455', '4457'].includes(new URL(baseURL).port)) throw new Error('Agents QA requires an isolated test instance');
     const writes = [];
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));

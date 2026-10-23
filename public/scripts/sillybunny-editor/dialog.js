@@ -376,6 +376,8 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
     const status = element('div', 'sb-dialog__status');
     status.setAttribute('aria-live', 'polite');
     const body = element('div', 'sb-dialog__body');
+    const syncHeaderShade = () => header.toggleAttribute('data-scrolled', body.scrollTop > 0);
+    body.addEventListener('scroll', syncHeaderShade, { passive: true });
     if (search) {
         const field = element('label', 'sb-dialog__search');
         searchInput = /** @type {HTMLInputElement} */ (element('input', 'text_pole sb-dialog__search-input'));
@@ -427,6 +429,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
             if (node) node.disabled = !enabled;
         },
         destroy() {
+            body.removeEventListener('scroll', syncHeaderShade);
             unbindHeaderLayout();
             searchControl?.destroy();
         },

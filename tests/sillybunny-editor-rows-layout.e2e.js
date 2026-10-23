@@ -141,7 +141,7 @@ for (const width of [1440, 360]) {
             await page.locator('#empty').focus();
             const focused = await geometry(page, 'empty');
             expect(isFloated(focused)).toBe(true);
-            expect(focused.placeholderColor).not.toBe('rgba(0, 0, 0, 0)');
+            expect(focused.placeholderColor).toBe('rgba(0, 0, 0, 0)');
 
             expect(isFloated(await geometry(page, 'filled'))).toBe(true);
 

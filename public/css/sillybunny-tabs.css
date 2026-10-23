@@ -6340,6 +6340,7 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     top: 50%;
     overflow: hidden;
     color: var(--sb-input-placeholder);
+    text-shadow: none !important;
     font-weight: 400;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -6399,12 +6400,8 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
 .ds-row-entry--floating .ds-row-entry__field > input::placeholder {
     color: transparent !important;
     opacity: 1;
+    text-shadow: none !important;
 }
-
-.ds-row-entry--floating .ds-row-entry__field > input:focus::placeholder {
-    color: var(--sb-input-placeholder) !important;
-}
-
 /* Same focus treatment as the shell's other text entries (sillybunny-theme.css shell entry rules). */
 .ds-row.ds-row-entry--floating .ds-row-entry__field > input:is(:focus, :focus-visible):not([disabled]) {
     border-color: var(--sb-composer-focus-border);
@@ -6418,8 +6415,14 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
 }
 
 .ds-row-entry--floating > .ds-row-entry__caption {
-    margin-block-start: -4px;
-    padding-block-end: 8px;
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    margin-block-start: 6px;
+    padding: 0 12px 8px;
+    box-sizing: border-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .ds-row-entry__status {
@@ -9996,10 +9999,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     text-shadow: none;
 }
 
-#sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus::placeholder {
-    color: var(--sb-input-placeholder) !important;
-}
-
 .sb-connections-provider .ds-row-entry__line > .ds-row-entry__field {
     flex: 1 1 0;
 }
@@ -10050,7 +10049,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     background: var(--sb-flat-active-bg);
 }
 
-.sb-connections-provider .ds-select-row > .ds-row-entry__caption {
+.sb-connections-provider :is(.ds-select-row, .ds-row-entry--floating) > .ds-row-entry__caption {
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;

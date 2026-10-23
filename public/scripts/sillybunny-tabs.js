@@ -7566,6 +7566,8 @@ async function openCreatorNotesFullscreen() {
 
     const wrapper = document.createElement('div');
     wrapper.className = 'sb-creator-notes-fullscreen';
+    // SillyBunny: the notes body is a document, so its Window body uses the View surface.
+    wrapper.classList.add('sb-document');
     wrapper.append(spoiler);
 
     try {

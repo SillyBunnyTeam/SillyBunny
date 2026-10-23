@@ -171,7 +171,7 @@ export async function seedEditorAgents(page) {
 }
 
 export async function openEditorAgents(page, baseURL, width, { seed = true } = {}) {
-    if (new URL(baseURL).port !== '4455') throw new Error('Agent editor QA requires the isolated 4455 instance');
+    if (!['4455', '4457'].includes(new URL(baseURL).port)) throw new Error('Agent editor QA requires an isolated test instance');
     const origin = new URL(baseURL).origin;
     const writes = [];
     const errors = [];

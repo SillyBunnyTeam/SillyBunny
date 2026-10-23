@@ -564,14 +564,15 @@ describe('createEntryRow floating title', () => {
         expect(control.labels[0]).toBe(title);
     });
 
-    test('a created input gets a blank placeholder so the CSS can tell an empty field from a filled one', () => {
+    test('a floating hint moves to aria-description and the placeholder stays blank', () => {
         const { control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
         expect(control.getAttribute('placeholder')).toBe(' ');
         const filled = createEntryRow({ label: 'Name', field: 'name', floating: true, placeholder: 'Model name' });
-        expect(filled.control.placeholder).toBe('Model name');
+        expect(filled.control.getAttribute('placeholder')).toBe(' ');
+        expect(filled.control.getAttribute('aria-description')).toBe('Model name');
     });
 
-    test('adoption keeps identity, type, placeholder and listeners for text, URL and search inputs', () => {
+    test('adoption keeps identity, type, accessible hint and listeners for text, URL and search inputs', () => {
         for (const type of ['text', 'url', 'search']) {
             const control = input(type, 'value');
             control.placeholder = 'Example';
@@ -583,17 +584,19 @@ describe('createEntryRow floating title', () => {
             expect(result.control).toBe(control);
             expect(control.type).toBe(type);
             expect(control.id).toBe(`existing-${type}`);
-            expect(control.placeholder).toBe('Example');
+            expect(control.getAttribute('placeholder')).toBe(' ');
+            expect(control.getAttribute('aria-description')).toBe('Example');
             expect(old.children).toHaveLength(0);
             change(control);
             expect(listener).toHaveBeenCalledTimes(1);
         }
     });
 
-    test('an adopted input without a placeholder gets a blank one and keeps any it has', () => {
+    test('an adopted input without a placeholder gets a blank marker', () => {
         const control = input('text');
         createEntryRow({ label: 'Field', field: 'field', floating: true, input: control });
         expect(control.getAttribute('placeholder')).toBe(' ');
+        expect(control.hasAttribute('aria-description')).toBe(false);
     });
 
     test('rejects inputs whose type is not single-line text', () => {

@@ -419,7 +419,8 @@ export async function visualNovelUpdateLayers(container) {
 
         const avatar = element.data('avatar');
         const layerIndex = layerIndices.indexOf(avatar);
-        element.css('z-index', layerIndex);
+        // SillyBunny: sprite layers sit above chat but below zoomed avatars (the shared layer ladder).
+        element.css('z-index', `calc(var(--sb-z-sprites, 100) + ${layerIndex})`);
         element.show();
 
         const promise = new Promise(resolve => {

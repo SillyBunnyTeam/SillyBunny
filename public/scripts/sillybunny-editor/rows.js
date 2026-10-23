@@ -3,6 +3,7 @@
 let nextRowId = 0;
 const reservedIds = new Map();
 const idReservations = new WeakMap();
+const floatingDescriptionSources = new WeakMap();
 
 function releaseId(node) {
     const id = idReservations.get(node);
@@ -354,6 +355,23 @@ function prepareFloatingInput(input, id) {
     return control;
 }
 
+export function prepareFloatingPlaceholder(control, { describe = true } = {}) {
+    const hint = control.getAttribute('placeholder')?.trim();
+    if (hint) {
+        control.dataset.sbFloatingPlaceholder = hint;
+        if (describe) {
+            if (!floatingDescriptionSources.has(control)) {
+                floatingDescriptionSources.set(control, control.getAttribute('aria-description') ?? '');
+            }
+            const description = [floatingDescriptionSources.get(control), hint]
+                .filter((value, index, values) => value && values.indexOf(value) === index)
+                .join(' ');
+            if (control.getAttribute('aria-description') !== description) control.setAttribute('aria-description', description);
+        }
+    }
+    if (control.getAttribute('placeholder') !== ' ') control.setAttribute('placeholder', ' ');
+}
+
 function prepareEntryInput(input, id) {
     // Popup's public mainInput is a textarea, including its single-line name prompts.
     if (input?.tagName !== 'TEXTAREA') {
@@ -378,7 +396,9 @@ function secretStatus(control, { savedText, missingText }) {
     status.append(icon, text);
     associateDescription(control, status);
     const read = () => {
-        const placeholder = control.getAttribute('placeholder') ?? '';
+        const rawPlaceholder = control.getAttribute('placeholder')?.trim();
+        if (rawPlaceholder) control.dataset.sbFloatingPlaceholder = rawPlaceholder;
+        const placeholder = control.dataset.sbFloatingPlaceholder ?? '';
         const state = savedText && placeholder.startsWith(savedText) ? 'saved'
             : missingText && placeholder.startsWith(missingText) ? 'missing'
                 : 'unknown';
@@ -386,6 +406,7 @@ function secretStatus(control, { savedText, missingText }) {
         status.hidden = state === 'unknown';
         icon.className = `fa-solid ${state === 'saved' ? 'fa-circle-check' : 'fa-circle-exclamation'}`;
         text.textContent = placeholder;
+        prepareFloatingPlaceholder(control, { describe: false });
     };
     read();
     // secrets.js reports key status by rewriting the placeholder; follow it rather than edit secrets.js.
@@ -415,8 +436,7 @@ function revealToggle(control, label) {
 }
 
 function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
-    // :placeholder-shown tells an empty field from a filled one, including programmatic .val() writes.
-    if (!control.hasAttribute('placeholder')) control.setAttribute('placeholder', ' ');
+    prepareFloatingPlaceholder(control);
     const row = element('div', 'ds-row ds-row-entry ds-row-entry--floating');
     markField(row, field);
     const line = element('span', 'ds-row-entry__line');

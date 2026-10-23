@@ -1,4 +1,4 @@
-import { createEntryRow } from './sillybunny-editor/rows.js';
+import { createEntryRow, prepareFloatingPlaceholder } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 
 const GATES = '[data-source], [data-tg-type], [data-tg-type-mode], [data-source-mode], [data-mode], [data-cc-type], #openai_external_category, #pollinations_key_section, #oai_max_context_unlocked_block, .reverse_proxy_warning, .displayNone';
@@ -135,7 +135,7 @@ export function applyConnectionsFormPass(block, ctx) {
         const { title } = fieldContext(upstreamRow, block);
         if (!title || !canMove(upstreamRow, upstreamRow.parentElement)) continue;
         touch(input);
-        if (!input.hasAttribute('placeholder')) input.setAttribute('placeholder', ' ');
+        prepareFloatingPlaceholder(input);
         const shell = document.createElement('div');
         shell.className = 'ds-row ds-row-entry ds-row-entry--floating sb-connections-model-row';
         shell.dataset.sbEditorField = input.id;
