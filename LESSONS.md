@@ -149,6 +149,21 @@ This is the largest class by a wide margin.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
 
+### Dependencies and lockfiles
+
+- **Breaks:** `package-lock.json` and `bun.lock` drift apart, or Bun cannot read `bun.lock` and resolves again from the registry without the release-age gate.
+- **Files:** `package-lock.json`, `bun.lock`, `tests/package-lock.json`, `.npmrc`, `Dockerfile`, `start.sh`, `Start.bat`, `Start-Node.bat`.
+- **Guards:**
+  - Both lockfiles ship. The Bun launchers install from `bun.lock` with `--frozen-lockfile` (`start.sh:250`, `Start.bat:141-145`), and so does the Docker image (`Dockerfile:24`). `Start-Node.bat` and CI's `npm ci` use `package-lock.json`. The launchers restore the tracked lockfiles after an install (`start.sh:306-313`, `Start.bat:168-174`).
+  - When a frozen Bun install fails, the launchers retry without `--frozen-lockfile` (`start.sh:275-288`, `Start.bat:162-165`). The retry resolves from the registry and does not use the committed `bun.lock`.
+  - `npm audit` reads only `package-lock.json`. Check `bun.lock` with `bun audit`.
+  - `min-release-age=7` in `.npmrc` applies to npm only. Bun 1.4.4 ignores it and chose an `electron-to-chromium` release from the day before. Bun reads `--minimum-release-age=<seconds>` or `minimumReleaseAge` in `bunfig.toml`. To keep the gate, update `package-lock.json` with npm, move `bun.lock` aside and run `bun pm migrate`. Without a `bun.lock`, `bun install` also migrates from `package-lock.json`.
+  - Bun 1.4 writes `"lockfileVersion": 2` for a new or migrated lockfile (oven-sh/bun#31539). Bun 1.3.14, which `engines.bun` still allows, stops with `Unknown lockfile version`. Version 2 adds only parse-time checks, and Bun 1.4 keeps an existing version 1 lockfile at version 1 (oven-sh/bun#31602). After a migration, set the version back to 1 and check that frozen installs on Bun 1.4.4 and 1.3.14 leave `bun.lock` byte-identical.
+  - After a change to `overrides`, Bun 1.4.4 fails a frozen install with `overrides in package.json changed since bun.lock was saved`, and the launcher retry then resolves without the gate. Regenerate both lockfiles after an `overrides` edit.
+  - `tests/` and `src/electron/` have their own `package.json` and do not read the root `.npmrc`. In `tests/`, `npm config get` reports `min-release-age=null`, `ignore-scripts=false` and `allow-git=all`, so pass `--min-release-age=7 --ignore-scripts` there.
+- **Fixes:** the v1.2.8 release commit `221de633c` replaced `"version": "1.2.7"` with `"1.2.8"` throughout `package-lock.json`, which also changed `@types/range-parser` and `is-callable`. Their `resolved` and `integrity` still pointed at 1.2.7 and no 1.2.8 exists, so `npm ci` installed 1.2.7, but `bun pm migrate` built 1.2.8 tarball URLs that returned 404. `scripts/bump-version.js` now edits only `version` and `packages[""].version`.
+- **Limit:** a name@version comparison of the two lockfiles always lists the npm aliases `string-width-cjs`, `strip-ansi-cjs` and `wrap-ansi-cjs`, and `@jimp/plugin-blur`. npm satisfies the `@jimp/plugin-blur` peer of `@jimp/plugin-shadow@0.22.12` with a top-level 1.6.x copy, and Bun reuses 0.22.12.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
