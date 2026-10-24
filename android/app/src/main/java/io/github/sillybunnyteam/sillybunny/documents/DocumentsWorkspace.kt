@@ -154,19 +154,39 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
             notifyDocument(it)
             notifyChildren(it)
         }
+        notifyRoots()
+    }
+
+    /** The roots cursor shows a summary read from `config.yaml`, so a change there notifies it. */
+    fun notifyRoots() {
         notify(DocumentsContract.buildRootsUri(authority))
     }
 
-    fun usesCustomDataRoot(): Boolean? {
-        requireAvailable()
-        val entry = try {
-            files.resolve("config.yaml")
+    /**
+     * Whether `config.yaml`'s `dataRoot` sends the server's data outside the `data` folder this provider shows.
+     * Null when that is unknown: no checkout, maintenance, an unreadable file or a value this reader cannot parse.
+     * The server reads the key with a YAML parser and joins a relative value to the checkout, which is its working
+     * directory, so the value is resolved the same way, then its symlinks. A folder inside `data` still counts as
+     * shown. Nothing here changes what the provider exposes.
+     */
+    fun dataRootElsewhere(): Boolean? {
+        if (!isAvailable) return null
+        return try {
+            val value = configuredDataRoot() ?: return null
+            val checkout = files.checkout.toPath()
+            val target = checkout.resolve(value).normalize().toFile().canonicalFile.toPath()
+            !target.startsWith(checkout.resolve("data"))
         } catch (_: Exception) {
-            return null
+            null
         }
-        if (entry.stat.st_size > 65_536) return null
+    }
+
+    /** The `dataRoot` value: the server's default when the key is absent, null when it cannot be read with certainty. */
+    private fun configuredDataRoot(): String? {
+        val entry = files.resolve("config.yaml")
+        if (entry.stat.st_size > MAX_CONFIG_BYTES) return null
         val descriptor = files.open(entry, OsConstants.O_RDONLY)
-        val bytes = ByteArray(65_537)
+        val bytes = ByteArray(MAX_CONFIG_BYTES + 1)
         val size = try {
             var total = 0
             while (total < bytes.size) {
@@ -178,23 +198,55 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
         } finally {
             Os.close(descriptor)
         }
-        if (size > 65_536) return null
-        val lines = String(bytes, 0, size, Charsets.UTF_8).lineSequence().filter { it.startsWith("dataRoot:") }.toList()
-        if (lines.isEmpty()) return false
-        if (lines.size != 1) return null
-        val scalar = lines.single().substringAfter(':').trim()
-        val value = when {
-            scalar.startsWith('"') -> scalar.substringAfter('"').substringBefore('"').takeIf {
-                scalar.substringAfter('"').contains('"') && !it.contains('\\')
+        if (size > MAX_CONFIG_BYTES) return null
+        val lines = String(bytes, 0, size, Charsets.UTF_8).removePrefix("\uFEFF").lines()
+        val keys = lines.indices.filter { DATA_ROOT_KEY.matches(lines[it]) }
+        if (keys.isEmpty()) return DEFAULT_DATA_ROOT
+        val line = keys.singleOrNull() ?: return null
+        // An indented line after the key continues its value, or holds it when the key line has none.
+        val next = lines.getOrNull(line + 1)
+        if (next != null && (next.startsWith(' ') || next.startsWith('\t')) && next.isNotBlank() &&
+            !next.trimStart().startsWith('#')
+        ) {
+            return null
+        }
+        return yamlScalar(DATA_ROOT_KEY.matchEntire(lines[line])!!.groupValues[1].trim())
+    }
+
+    /**
+     * One flow scalar on one line, as a YAML parser reads it: double-quoted without escapes, single-quoted, or
+     * plain up to a comment. Null for YAML null, block scalars, flow collections, anchors, tags, aliases, escapes
+     * and anything malformed.
+     */
+    private fun yamlScalar(text: String): String? {
+        fun commentOnly(rest: String) = rest.isEmpty() || rest[0].isWhitespace() && (rest.isBlank() || rest.trimStart()[0] == '#')
+        return when {
+            text.isEmpty() || text.startsWith('#') -> null
+            text.startsWith('"') -> {
+                val end = text.indexOf('"', 1)
+                text.substring(1, maxOf(end, 1)).takeIf { end > 0 && '\\' !in it && commentOnly(text.substring(end + 1)) }
             }
-            scalar.startsWith('\'') -> scalar.substringAfter('\'').substringBefore('\'').takeIf {
-                scalar.substringAfter('\'').contains('\'')
+            text.startsWith('\'') -> {
+                val value = StringBuilder()
+                var index = 1
+                while (index < text.length) {
+                    if (text[index] != '\'') {
+                        value.append(text[index++])
+                    } else if (text.getOrNull(index + 1) == '\'') {
+                        value.append('\'')
+                        index += 2
+                    } else {
+                        return value.toString().takeIf { commentOnly(text.substring(index + 1)) }
+                    }
+                }
+                null
             }
-            scalar.startsWith('[') || scalar.startsWith('{') || scalar.startsWith('|') || scalar.startsWith('>') -> null
-            else -> scalar.substringBefore(" #").trim()
-        } ?: return null
-        if (value.isEmpty() || value == "null" || value == "~") return null
-        return value.trimEnd('/') !in setOf("data", "./data")
+            text[0] in "[]{}|>&*!%@`,?" -> null
+            else -> {
+                val plain = text.split(Regex("[ \t]#"), limit = 2)[0].trimEnd()
+                plain.takeIf { ": " !in it && !it.endsWith(':') && it !in YAML_NULLS }
+            }
+        }
     }
 
     /**
@@ -312,6 +364,14 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
     companion object {
         private const val TAG = "SillyBunnyDocuments"
         private val workspaces = mutableMapOf<String, DocumentsWorkspace>()
+        private const val MAX_CONFIG_BYTES = 65_536
+
+        /** The server's default when `config.yaml` has no `dataRoot` (src/command-line.js). */
+        private const val DEFAULT_DATA_ROOT = "./data"
+
+        /** A top-level `dataRoot` key, plain or quoted, and the rest of its line. */
+        private val DATA_ROOT_KEY = Regex("""(?:dataRoot|"dataRoot"|'dataRoot')[ \t]*:(?:[ \t](.*))?""")
+        private val YAML_NULLS = setOf("~", "null", "Null", "NULL")
 
         fun get(context: Context): DocumentsWorkspace = synchronized(workspaces) {
             val application = context.applicationContext

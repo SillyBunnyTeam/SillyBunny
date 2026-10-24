@@ -104,6 +104,7 @@ internal class DocumentProxy(
             workspace.observers.written(relative)
             workspace.notifyDocument(documentId)
             workspace.notifyParentOf(relative)
+            if (relative == CONFIG) workspace.notifyRoots()
         } catch (failure: Exception) {
             // Maintenance and shutdown close every lease in a loop; one failed notification must not stop it.
             Log.w(TAG, "Announcing a closed document lease failed", failure)
@@ -129,5 +130,8 @@ internal class DocumentProxy(
 
     companion object {
         private const val TAG = "SillyBunnyDocuments"
+
+        /** Its `dataRoot` decides the roots cursor's summary. */
+        private const val CONFIG = "config.yaml"
     }
 }

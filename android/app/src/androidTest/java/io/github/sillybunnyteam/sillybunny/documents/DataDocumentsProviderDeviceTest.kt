@@ -234,6 +234,30 @@ class DataDocumentsProviderDeviceTest {
     }
 
     @Test
+    fun theRootSummaryFollowsTheConfiguredDataRoot() {
+        val rootsUri = DocumentsContract.buildRootsUri(authority)
+        val notice = context.getString(R.string.documents_data_root_elsewhere)
+        fun summary(): String? = query(rootsUri).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            cursor.getString(cursor.getColumnIndexOrThrow(Root.COLUMN_SUMMARY))
+        }
+        assertEquals(null, summary())
+
+        val config = child(rootTreeDocument(), "config.yaml")
+        assertNotifies(listOf(rootsUri)) { write(config, "wt", "dataRoot: ../elsewhere\n") }
+        assertEquals(notice, summary())
+
+        // A direct server write reaches the roots through the listed root's observer.
+        children(rootDocument())
+        assertNotifies(listOf(rootsUri)) { File(checkout, "config.yaml").writeText("dataRoot: ./data/default-user\n") }
+        assertEquals(null, summary())
+
+        File(checkout, "config.yaml").writeText("dataRoot: /storage/emulated/0/SillyBunny\n")
+        assertEquals(notice, summary())
+        assertEquals(setOf("data", "config.yaml"), children(rootDocument()).map { it.name }.toSet())
+    }
+
+    @Test
     fun wPreservesTheTailButWtTruncatesShorterReplacements() {
         val data = child(rootTreeDocument(), "data")
         val seed = child(data, "seed.txt")

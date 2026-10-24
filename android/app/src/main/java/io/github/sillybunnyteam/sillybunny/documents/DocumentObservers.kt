@@ -15,7 +15,7 @@ import java.io.File
  * inodes and the exposed metadata (mode, size, mtime) with the last snapshot. It never computes IDs for new
  * children, so it neither marks files nor records IDs, and it notifies only what changed: the directory's
  * children URI, its document URI and its parent's listing when names changed (both show the directory's
- * modified time), and the issued IDs of changed or replaced children.
+ * modified time), the issued IDs of changed or replaced children, and the roots URI when `config.yaml` changed.
  * Events that leave the exposed state unchanged, such as the provider's own marking or the provider's own
  * mutations (recorded through [created], [removed] and [written]), are dropped without a refresh.
  */
@@ -200,6 +200,8 @@ internal class DocumentObservers(private val workspace: DocumentsWorkspace) {
                 namesChanged = true
             }
         }
+        // The roots cursor's summary comes from config.yaml, which the server or a shell can write directly.
+        val configChanged = directory.relative == null && watch.children[CONFIG] != next[CONFIG]
         watch.children = next
         if (namesChanged) {
             workspace.notifyDocument(watch.documentId)
@@ -208,6 +210,7 @@ internal class DocumentObservers(private val workspace: DocumentsWorkspace) {
         }
         if (namesChanged || rowsChanged) workspace.notifyChildren(watch.documentId)
         changedIds.forEach(workspace::notifyDocument)
+        if (configChanged) workspace.notifyRoots()
     }
 
     /** The directory at the watched path, if it is still the document that was listed. */
@@ -242,7 +245,8 @@ internal class DocumentObservers(private val workspace: DocumentsWorkspace) {
     companion object {
         private const val MAX_DIRECTORIES = 64
         private const val DEBOUNCE_MILLIS = 100L
-        private val ROOT_CHILDREN = listOf("data", "config.yaml")
+        private const val CONFIG = "config.yaml"
+        private val ROOT_CHILDREN = listOf("data", CONFIG)
         private const val EVENTS = FileObserver.CLOSE_WRITE or FileObserver.MOVED_FROM or FileObserver.MOVED_TO or
             FileObserver.CREATE or FileObserver.DELETE or FileObserver.DELETE_SELF or FileObserver.MOVE_SELF or FileObserver.ATTRIB
     }

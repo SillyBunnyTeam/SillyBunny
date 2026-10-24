@@ -619,12 +619,12 @@ class DataDocumentsProviderTest {
         check(File(checkout, "data").mkdirs())
         val config = File(checkout, "config.yaml")
         config.writeText("dataRoot: ./data\n")
-        assertEquals(false, DataDocumentsProvider.usesCustomDataRoot(context))
+        assertEquals(false, DataDocumentsProvider.dataRootElsewhere(context))
         config.writeText("dataRoot: '/private/elsewhere'\n")
-        assertEquals(true, DataDocumentsProvider.usesCustomDataRoot(context))
+        assertEquals(true, DataDocumentsProvider.dataRootElsewhere(context))
         assertTrue(childId(rootId(), "data").isNotEmpty())
         config.writeText("dataRoot: |\n  elsewhere\n")
-        assertEquals(null, DataDocumentsProvider.usesCustomDataRoot(context))
+        assertEquals(null, DataDocumentsProvider.dataRootElsewhere(context))
     }
 
     @Test

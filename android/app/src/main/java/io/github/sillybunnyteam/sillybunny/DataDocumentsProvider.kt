@@ -44,11 +44,18 @@ class DataDocumentsProvider : DocumentsProvider() {
                 null
             }
             if (root != null) {
+                // Only when asked for: the check reads config.yaml. An unknown answer shows nothing.
+                val summary = if (Root.COLUMN_SUMMARY in columns && dataRootElsewhere() == true) {
+                    context.getString(R.string.documents_data_root_elsewhere)
+                } else {
+                    null
+                }
                 addRow(columns.map { column ->
                     when (column) {
                         Root.COLUMN_ROOT_ID -> "sillybunny"
                         Root.COLUMN_DOCUMENT_ID -> rootId
                         Root.COLUMN_TITLE -> context.getString(R.string.app_name)
+                        Root.COLUMN_SUMMARY -> summary
                         // The provider supports creation below the root's data anchor; direct root siblings remain refused.
                         Root.COLUMN_FLAGS -> Root.FLAG_LOCAL_ONLY or Root.FLAG_SUPPORTS_IS_CHILD or Root.FLAG_SUPPORTS_CREATE
                         Root.COLUMN_ICON -> R.mipmap.ic_launcher
@@ -304,13 +311,18 @@ class DataDocumentsProvider : DocumentsProvider() {
             }
         }
 
+        /**
+         * True when `config.yaml` sends the server's data outside the `data` folder this provider shows, false
+         * when it does not, null when that is unknown. Blocking: it reads `config.yaml` on the documents worker.
+         */
         @JvmStatic
-        fun usesCustomDataRoot(context: Context): Boolean? = DocumentsWorkspace.get(context).call { usesCustomDataRoot() }
+        fun dataRootElsewhere(context: Context): Boolean? = DocumentsWorkspace.get(context).call { dataRootElsewhere() }
 
         private val ROOT_PROJECTION = arrayOf(
             Root.COLUMN_ROOT_ID,
             Root.COLUMN_DOCUMENT_ID,
             Root.COLUMN_TITLE,
+            Root.COLUMN_SUMMARY,
             Root.COLUMN_FLAGS,
             Root.COLUMN_ICON,
             Root.COLUMN_MIME_TYPES,
