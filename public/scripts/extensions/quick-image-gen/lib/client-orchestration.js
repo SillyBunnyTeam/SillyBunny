@@ -1,3 +1,5 @@
+import { cloneNovelAIPreciseReferenceState } from "./generation-semantics.js";
+
 export function createPromiseQueue() {
     let tail = Promise.resolve();
     return function enqueue(task) {
@@ -494,12 +496,16 @@ export function normalizeCharacterReferenceRecord(value, legacyProvider = "") {
     if (typeof value.localRefImage === "string" && value.localRefImage) {
         normalized.localRefImage = value.localRefImage;
     }
+    if (value.naiPreciseReference && typeof value.naiPreciseReference === "object") {
+        normalized.naiPreciseReference = cloneNovelAIPreciseReferenceState(value.naiPreciseReference);
+    }
     return normalized;
 }
 
 export function getCharacterProviderReferences(record, provider) {
     const normalized = normalizeCharacterReferenceRecord(record);
     if (provider === "local") return normalized.localRefImage || "";
+    if (provider === "novelai") return cloneNovelAIPreciseReferenceState(normalized.naiPreciseReference);
     const key = CHARACTER_REFERENCE_ARRAY_KEYS[provider];
     return key ? [...(normalized[key] || [])] : [];
 }
@@ -510,6 +516,10 @@ export function hasCharacterReferenceOverrides(record) {
 
 export function setCharacterProviderReferences(record, provider, references) {
     const normalized = normalizeCharacterReferenceRecord(record);
+    if (provider === "novelai") {
+        normalized.naiPreciseReference = cloneNovelAIPreciseReferenceState(references);
+        return normalized;
+    }
     if (provider === "local") {
         const value = typeof references === "string" ? references : "";
         if (value) normalized.localRefImage = value;

@@ -9,6 +9,7 @@ import { materializeAndValidateProviderOutput } from '../public/scripts/extensio
 import { normalizeProviderResult } from '../public/scripts/extensions/quick-image-gen/lib/provider-contract.js';
 import { buildTextAIRequestMessages } from '../public/scripts/extensions/quick-image-gen/lib/prompt-pipeline.js';
 import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/lib/security.js';
+import { buildNovelAIPreciseReferenceParameters } from '../public/scripts/novelai-precise-reference.js';
 
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
 const qigSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/index.js', import.meta.url)), 'utf8');
@@ -167,6 +168,7 @@ describe('Conversation extension media integration', () => {
             prompt_prefix: 'photo of {{char}}', negative_prompt: 'blur',
             character_prompts: { conversation: 'blue eyes', roleplay: 'wrong character' },
             character_negative_prompts: { conversation: 'hat' },
+            novel_precise_reference: { enabled: false, references: [] },
         } };
         const secretState = { novel: true };
         const save = jest.fn(async () => 'conversation-selfie.png');
@@ -189,6 +191,7 @@ describe('Conversation extension media integration', () => {
             substituteParams: (text, options) => text.replaceAll('{{char}}', options?.name2Override || 'Roleplay'),
             getRequestHeaders: () => ({}),
             loadNovelSchedulers: () => ['karras'],
+            buildNovelAIPreciseReferenceParameters,
             humanizedDateTime: () => 'timestamp',
             saveBase64AsFile: save,
             sendMessage,
@@ -218,6 +221,7 @@ describe('Conversation extension media integration', () => {
             steps: 23, scale: 6, width: 832, height: 1216, seed: 42,
             prompt: 'photo of Conversation, blue eyes, selfie at a desk',
             negative_prompt: 'watermark, blur, hat',
+            precise_reference: [],
         }) }]);
         expect(save).toHaveBeenCalledWith('image-data', 'Conversation', 'Conversation_timestamp', 'png');
         expect(sendMessage).not.toHaveBeenCalled();
