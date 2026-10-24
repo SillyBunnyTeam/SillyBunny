@@ -932,7 +932,7 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
 
 .ica--tpanel-handle {
     position: fixed;
-    z-index: calc(var(--sb-z-popout, 4000) - 1);
+    z-index: calc(var(--sb-z-overlay, 2000) - 1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -971,6 +971,12 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
 .ica--tpanel-handle:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* SillyBunny: modal surfaces must cover the fixed companion handle as well as the page. */
+body:has(dialog[open]) .ica--tpanel-handle {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .ica--tpanel-handle[data-edge="right"],

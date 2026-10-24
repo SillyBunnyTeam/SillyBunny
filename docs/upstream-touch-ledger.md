@@ -862,6 +862,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-14 profile change notice. |
 | Owner | In-Chat Agents maintainer. |
 
+### Bulk tag entry, World Info move dialog and companion handle layering
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/BulkEditOverlay.js`; `public/scripts/extensions/in-chat-agents/style.css`; `public/scripts/sillybunny-world-info-editor.js`. |
+| Area | Bulk tag editing, In-Chat Agents popups, and World Info entry transfer. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-editor/dialog.js`; `public/scripts/sillybunny-world-info-editor.js`; `public/scripts/extensions/in-chat-agents/style.css`. |
+| Adapter shape | Keep the upstream bulk-tag input and handlers, apply the shared dialog-entry class, keep the companion handle below modal surfaces, and configure World Info transfer to expose only Cancel, Move, and Copy. |
+| Protecting tests | `tests/character-list.e2e.js`; `tests/in-chat-agents-list.e2e.js`; `tests/in-chat-agents-windows.e2e.js`; `tests/world-info-editor.e2e.js`. |
+| Validation | Root lint, focused E2E at 1440×900 and 390×844, frontend budget check and `git diff --check`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-25. |
+| Owner | TODO(copy) |
+
 ### Settings, personas, presets, and prompt context
 | Field | Value |
 | --- | --- |

@@ -518,10 +518,10 @@ export function mountWorldInfoEditor(container) {
                 const prompt = element('p', '', t`Move/Copy '${title}' to:`);
                 prompt.append(element('strong', '', target));
                 const popup = new Popup(prompt, POPUP_TYPE.CONFIRM, '', {
+                    okButton: false,
                     cancelButton: t`Cancel`,
                     customButtons: [{ text: t`Move`, result: POPUP_RESULT.CUSTOM1 }, { text: t`Copy`, result: POPUP_RESULT.CUSTOM2 }],
                 });
-                popup.okButton.hidden = true;
                 const choice = await popup.show();
                 if (![POPUP_RESULT.CUSTOM1, POPUP_RESULT.CUSTOM2].includes(choice) || state.name !== source) return;
                 if (!(await shell.guardLeave())) return;

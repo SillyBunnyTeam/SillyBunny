@@ -335,6 +335,11 @@ for (const width of [1440, 390]) {
             await page.getByRole('menuitem', { name: label, exact: true }).click();
             const picker = page.getByRole('dialog', { name: label.slice(0, -1), exact: true });
             await expect(picker.getByRole('combobox')).toBeFocused();
+            if (width === 390) {
+                const handleLayer = await page.locator('.ica--tpanel-handle').evaluate(node => Number.parseInt(getComputedStyle(node).zIndex, 10));
+                const overlayLayer = await page.evaluate(() => Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sb-z-overlay'), 10));
+                expect(handleLayer).toBeLessThan(overlayLayer);
+            }
             const headings = await picker.locator('.sb-picker__group-heading').allTextContents();
             expect(headings.some(heading => heading.includes(' · '))).toBe(true);
             await expect(picker.getByRole('option').filter({ hasText: /Pathfinder|Anti-Slop Regex|Director Core|NSFW Mode/ })).toHaveCount(0);

@@ -121,6 +121,9 @@ for (const width of [1440, 390]) {
             await card.getByRole('button', { name: 'Edit companion note', exact: true }).click();
             const dialog = page.locator('dialog[open]');
             await expect(dialog).toHaveClass(/sb-dialog--window/);
+            const handleLayer = await page.locator('.ica--tpanel-handle').evaluate(node => Number.parseInt(getComputedStyle(node).zIndex, 10));
+            const overlayLayer = await page.evaluate(() => Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sb-z-overlay'), 10));
+            expect(handleLayer).toBeLessThan(overlayLayer);
             await expect(dialog.locator('.sb-dialog__title')).toHaveText('Edit companion note');
             await expect(dialog.locator('.popup-button-cancel')).toHaveText('Cancel');
             await expect(dialog.locator('.popup-button-ok')).toHaveText('Save Note');

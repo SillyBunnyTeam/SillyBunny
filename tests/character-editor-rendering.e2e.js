@@ -111,6 +111,45 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
     });
 }
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`character editor popups keep their actions reachable at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await openEditor(page);
+
+        await openExportMenu(page);
+        await expect(page.locator(viewport.width < 451 ? '.sb-action-sheet' : '.sb-action-popover')).toBeVisible();
+        await page.keyboard.press('Escape');
+
+        await page.evaluate(() => { void import('/script.js').then(app => app.duplicateCharacter()); });
+        const duplicate = page.locator('dialog.popup[open]');
+        await expect(duplicate).toContainText('duplicate this character');
+        await duplicate.locator('.popup-button-cancel').click();
+
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const personas = await import('/scripts/personas.js');
+            const { power_user } = await import('/scripts/power-user.js');
+            const character = app.characters[app.this_chid];
+            const avatar = character.avatar;
+            power_user.personas[avatar] = 'QA Connected Persona';
+            power_user.persona_descriptions[avatar] = {
+                title: '', description: 'QA persona', position: 0, depth: 2, role: 0, lorebook: '',
+                connections: [{ type: 'character', id: avatar }], appendices: [], activeAppendices: {},
+            };
+            void personas.showCharConnections();
+        });
+        await expect(page.locator('dialog.popup[open]')).toContainText('Persona Connections');
+        await page.keyboard.press('Escape');
+
+        await page.locator('#world_button').click({ modifiers: ['Shift'] });
+        await expect(page.locator('dialog.popup[open]')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await page.locator('#sb_character_editor_toolbar .chat_lorebook_button').click({ modifiers: ['Shift'] });
+        await expect(page.locator('dialog.popup[open]')).toBeVisible();
+        await page.keyboard.press('Escape');
+    });
+}
+
 for (const theme of ['Libadwaita', 'Libadwaita Light']) test(`editor headings match Customize typography in ${theme}`, async ({ page }) => {
     await openEditor(page);
     await page.evaluate(theme => $('#themes').val(theme).trigger('change'), theme);

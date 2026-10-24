@@ -223,6 +223,7 @@ class BulkTagPopupHandler {
                         <div id="bulk_tag_popup_import_existing_tags" class="menu_button" title="Import existing tags from selected characters" data-i18n="[title]Import existing tags from selected characters">
                             Import Existing
                         </div>`;
+        // SillyBunny: The shared entry class keeps this adopted field aligned with framed dialog searches.
         return `<div id="bulk_tag_shadow_popup">
             <div id="bulk_tag_popup" class="wider_dialogue_popup">
                 <div id="bulk_tag_popup_holder">
@@ -232,7 +233,7 @@ class BulkTagPopupHandler {
                     <br>
                     <div id="bulk_tags_div" class="marginBot5" data-characters='${characterData}'>
                         <div class="tag_controls">
-                            <input id="bulkTagInput" class="text_pole tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" maxlength="25" />
+                            <input id="bulkTagInput" class="text_pole sb-dialog__entry tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" maxlength="25" />
                             <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
                         </div>
                         <div id="bulkTagList" class="m-t-1 tags"></div>

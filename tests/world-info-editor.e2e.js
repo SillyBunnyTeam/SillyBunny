@@ -484,12 +484,45 @@ test.describe('World Info selection mode', () => {
         await editor.locator('[data-action-id="delete"]').click();
         const popup = page.locator('dialog.popup[open]');
         await expect(popup).toContainText('(2)');
+        await expect(popup.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+        await expect(popup.locator('.popup-button-cancel')).toBeFocused();
         await acceptPopup(popup);
         await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
         expect(saves).toHaveLength(1);
         await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
         await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
     });
+
+    for (const width of [1440, 390]) {
+        test(`${width}px row actions use immediate Duplicate and two-choice Move/Copy`, async ({ page }) => {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.evaluate(async name => {
+                const { saveWorldInfo, updateWorldInfoList } = await import('./scripts/world-info.js');
+                if (!await saveWorldInfo(name, { entries: {} }, true)) throw new Error('Could not save target lorebook');
+                await updateWorldInfoList();
+            }, TARGET_BOOK);
+            const editor = await openBook(page);
+            await row(editor, 'Alpha').locator('.sb-wi-row-menu').click();
+            await page.getByRole('menuitem', { name: 'Duplicate', exact: true }).click();
+            await expect(editor.locator('.sb-wi-row')).toHaveCount(4);
+
+            const copy = editor.locator('.sb-wi-row').nth(3);
+            await copy.scrollIntoViewIfNeeded();
+            await copy.dispatchEvent('click');
+            await expect(editor.locator('.sb-wi-detail')).toBeVisible();
+            await editor.locator('.sb-wi-detail .sb-wi-detail-back').click();
+            await expect(editor.locator('.sb-wi-detail')).toBeHidden();
+            await copy.locator('.sb-wi-row-menu').click();
+            await page.getByRole('menuitem', { name: 'Move/Copy', exact: true }).click();
+            await page.locator('.sb-picker__option').filter({ hasText: TARGET_BOOK }).click();
+
+            const transfer = page.locator('dialog.popup[open]');
+            await expect(transfer.locator('.popup-button-ok')).toBeHidden();
+            await expect(transfer.locator('.popup-button-custom')).toHaveCount(2);
+            await expect(transfer.getByText('Yes', { exact: true })).toBeHidden();
+            await transfer.locator('.popup-button-cancel').click();
+        });
+    }
 
     test('bulk Copy retains sources and selection; bulk Move removes sources and clears selection', async ({ page }) => {
         await page.evaluate(async name => {

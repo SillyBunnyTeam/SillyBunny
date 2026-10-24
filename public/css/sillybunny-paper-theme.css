@@ -83,9 +83,9 @@ body::after {
 .drawer-content,
 .popup,
 .menu_button:not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
-input,
-textarea,
-select,
+input:not(.sb-dialog__entry),
+textarea:not(.sb-dialog__entry),
+select:not(.sb-dialog__entry),
 button:not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
     border-radius: 14px !important;
 }
