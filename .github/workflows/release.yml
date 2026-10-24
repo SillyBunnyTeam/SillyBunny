@@ -35,6 +35,7 @@ jobs:
       default-ref: ${{ steps.android.outputs.default-ref }}
       inputs-hash: ${{ steps.android.outputs.inputs-hash }}
       previous-tag: ${{ steps.android.outputs.previous-tag }}
+      expected-signing-cert: ${{ steps.android.outputs.expected-signing-cert }}
 
     steps:
       - name: Checkout tag
@@ -112,6 +113,7 @@ jobs:
             echo "default-ref=$(jq -r '.defaultRef' "$decision")"
             echo "inputs-hash=$(jq -r '.inputsHash' "$decision")"
             echo "previous-tag=$(jq -r '.previous.tag // empty' "$decision")"
+            echo "expected-signing-cert=$(jq -r '.expectedSigningCert // empty' "$decision")"
           } >> "$GITHUB_OUTPUT"
           if [ "$action" = skip ]; then
             echo '::notice title=TODO(copy)::TODO(copy)'
@@ -285,6 +287,21 @@ jobs:
         if: always()
         run: rm -f android/.gradle/signing/release.keystore
 
+      - name: Check the signing certificate
+        env:
+          EXPECTED: ${{ needs.decide.outputs.expected-signing-cert }}
+          CERTIFICATE: ${{ steps.sign.outputs.certificate }}
+        run: |
+          set -euo pipefail
+          if ! check=$(node android/release/release-decision.mjs --check-signing-cert "$CERTIFICATE" \
+            --expected-signing-cert "$EXPECTED"); then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+          if [ -z "$EXPECTED" ]; then
+            printf 'TODO(copy)\n\n- signing-cert-sha256: `%s`\n' "$(jq -r '.signingCert' <<< "$check")" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Write android-update.json
         env:
           TAG: ${{ github.ref_name }}
@@ -359,6 +376,19 @@ jobs:
           node android/release/update-manifest.mjs --validate "$out/android-update.json" --prerelease "$PRERELEASE" \
             --inputs-hash "$INPUTS_HASH" "${apk_args[@]}"
 
+      # The previous release's android-update.json can change after decide reads it.
+      - name: Check the signing certificate
+        env:
+          EXPECTED: ${{ needs.decide.outputs.expected-signing-cert }}
+        run: |
+          set -euo pipefail
+          certificate=$(jq -r '.signingCertSha256' "$RUNNER_TEMP/android-release/android-update.json")
+          if ! node android/release/release-decision.mjs --check-signing-cert "$certificate" \
+            --expected-signing-cert "$EXPECTED" > /dev/null; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+
       - name: Upload the APKs and android-update.json
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -421,29 +451,6 @@ jobs:
         with:
           node-version: 24
 
-      # Another tag's run can draft a release while this run waits for the signing approval, and the versionCode
-      # rule counts drafts, so decide's result must still hold right before drafting.
-      - name: Check the Android decision again
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
-          ANDROID: ${{ needs.decide.outputs.android }}
-          INPUTS_HASH: ${{ needs.decide.outputs.inputs-hash }}
-          PREVIOUS_TAG: ${{ needs.decide.outputs.previous-tag }}
-        run: |
-          set -euo pipefail
-          decision="$RUNNER_TEMP/android-decision-again.json"
-          if ! node android/release/release-decision.mjs --prerelease "$PRERELEASE" --commit "$GITHUB_SHA" \
-            --github-repository "$GITHUB_REPOSITORY" --github-api-url "$GITHUB_API_URL" --exclude-tag "$TAG" \
-            --skip-unpinned-runtime > "$decision" \
-            || ! jq -e --arg action "$ANDROID" --arg hash "$INPUTS_HASH" --arg previous "$PREVIOUS_TAG" \
-              '.action == $action and .inputsHash == $hash and (.previous.tag // "") == $previous' "$decision" > /dev/null; then
-            echo '::error title=TODO(copy)::TODO(copy)'
-            echo '{"code":"android-decision-changed"}' >&2
-            exit 1
-          fi
-
       - name: Download the APKs and android-update.json
         if: needs.decide.outputs.android != 'skip'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -489,6 +496,38 @@ jobs:
             echo '::error title=TODO(copy)::TODO(copy)'
             echo '{"code":"android-release-tag"}' >&2
             exit 1
+          fi
+
+      # Another tag's run can draft a release while this run waits for the signing approval, and the versionCode
+      # and signing certificate rules count drafts, so decide's result must still hold right before drafting.
+      - name: Check the Android decision again
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+          ANDROID: ${{ needs.decide.outputs.android }}
+          INPUTS_HASH: ${{ needs.decide.outputs.inputs-hash }}
+          PREVIOUS_TAG: ${{ needs.decide.outputs.previous-tag }}
+        run: |
+          set -euo pipefail
+          decision="$RUNNER_TEMP/android-decision-again.json"
+          if ! node android/release/release-decision.mjs --prerelease "$PRERELEASE" --commit "$GITHUB_SHA" \
+            --github-repository "$GITHUB_REPOSITORY" --github-api-url "$GITHUB_API_URL" --exclude-tag "$TAG" \
+            --skip-unpinned-runtime > "$decision" \
+            || ! jq -e --arg action "$ANDROID" --arg hash "$INPUTS_HASH" --arg previous "$PREVIOUS_TAG" \
+              '.action == $action and .inputsHash == $hash and (.previous.tag // "") == $previous' "$decision" > /dev/null; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '{"code":"android-decision-changed"}' >&2
+            exit 1
+          fi
+          if [ "$ANDROID" != skip ]; then
+            certificate=$(jq -r '.signingCertSha256' "$RUNNER_TEMP/android-release/android-update.json")
+            expected=$(jq -r '.expectedSigningCert // empty' "$decision")
+            if ! node android/release/release-decision.mjs --check-signing-cert "$certificate" \
+              --expected-signing-cert "$expected" > /dev/null; then
+              echo '::error title=TODO(copy)::TODO(copy)'
+              exit 1
+            fi
           fi
 
       - name: Collect release assets
