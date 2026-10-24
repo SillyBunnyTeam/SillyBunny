@@ -14831,7 +14831,12 @@ async function runChatCleanup() {
         ${renderChatCleanupList(candidates)}`,
         POPUP_TYPE.CONFIRM,
         null,
-        { wider: true, allowVerticalScrolling: true },
+        {
+            wider: true,
+            allowVerticalScrolling: true,
+            // SillyBunny: Cleanup defaults to cancel so the destructive action is always opt-in.
+            defaultResult: POPUP_RESULT.NEGATIVE,
+        },
     );
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
         return;

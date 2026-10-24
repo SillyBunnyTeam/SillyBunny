@@ -7866,7 +7866,8 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 #tag_view_list .text_pole.sb-dialog__entry,
 .sb-folder-manager .text_pole.sb-dialog__entry,
 .sb-action-popover .text_pole.sb-dialog__entry,
-.sb-action-sheet .text_pole.sb-dialog__entry {
+.sb-action-sheet .text_pole.sb-dialog__entry,
+.sb-chat-history-dialog .text_pole.sb-dialog__entry {
     box-sizing: border-box;
     width: 100%;
     height: 34px;
@@ -7885,7 +7886,8 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 #tag_view_list .text_pole.sb-dialog__entry:focus,
 .sb-folder-manager .text_pole.sb-dialog__entry:focus,
 .sb-action-popover .text_pole.sb-dialog__entry:focus,
-.sb-action-sheet .text_pole.sb-dialog__entry:focus {
+.sb-action-sheet .text_pole.sb-dialog__entry:focus,
+.sb-chat-history-dialog .text_pole.sb-dialog__entry:focus {
     outline: 2px solid var(--sb-focus-ring);
     outline-offset: -2px;
     box-shadow: none;

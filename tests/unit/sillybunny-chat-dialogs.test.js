@@ -5,7 +5,9 @@ import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 const openDialog = jest.fn();
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join('') }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-editor/dialog.js', () => ({ openDialog }));
+jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: jest.fn() }));
 const { openChatHistoryDialog, openMassDeleteChatDialog } = await import('../../public/scripts/sillybunny-chat-dialogs.js');
+const { openActionMenu } = await import('../../public/scripts/sillybunny-action-menu.js');
 const { releaseRowIds } = await import('../../public/scripts/sillybunny-editor/rows.js');
 
 const frames = [];
@@ -14,7 +16,17 @@ function createFrame(options) {
     const root = document.createElement('section');
     root.className = `sb-dialog ${options.className ?? ''}`;
     const body = document.createElement('div');
-    root.append(body);
+    body.className = 'sb-dialog__body';
+    const page = document.createElement('section');
+    const header = document.createElement('header');
+    header.className = 'sb-dialog__header';
+    const headerStart = document.createElement('div');
+    headerStart.className = 'sb-dialog__header-start';
+    const headerEnd = document.createElement('div');
+    headerEnd.className = 'sb-dialog__header-end';
+    header.append(headerStart, headerEnd);
+    page.append(header, body);
+    root.append(page);
     if (options.content) body.append(options.content);
     document.body.append(root);
 
@@ -33,11 +45,28 @@ function createFrame(options) {
     const frame = {
         options,
         root,
+        page,
+        header,
+        surface: root,
         body,
         search,
         searchInput,
         closed,
         close: jest.fn((response, reason) => resolveClosed({ response, reason })),
+        push: jest.fn(spec => {
+            const childPage = document.createElement('section');
+            childPage.className = spec.className ?? '';
+            const childHeader = document.createElement('header');
+            childHeader.className = 'sb-dialog__header';
+            const childBody = document.createElement('div');
+            childBody.className = 'sb-dialog__body';
+            if (spec.content) childBody.append(spec.content);
+            childPage.append(childHeader, childBody);
+            root.append(childPage);
+            let resolvePageClosed;
+            const pageClosed = new Promise(resolve => { resolvePageClosed = resolve; });
+            return { root, page: childPage, closed: pageClosed, resolveClosed: resolvePageClosed };
+        }),
         setResponseEnabled: jest.fn(),
         resolveClosed,
     };
@@ -72,10 +101,59 @@ function historyMarkup() {
     datedLabel.append(datedText, dated);
     const list = document.createElement('div');
     list.id = 'select_chat_div';
-    popup.append(heading, search, close, datedLabel, list);
+    const header = document.createElement('div');
+    header.setAttribute('name', 'selectChatPopupHeader');
+    const help = document.createElement('a');
+    help.className = 'notes-link';
+    help.href = 'https://docs.sillytavern.app/usage/core-concepts/chatfilemanagement/';
+    heading.append(help);
+    const newChat = document.createElement('button');
+    newChat.id = 'newChatFromManageScreenButton';
+    const importButton = document.createElement('button');
+    importButton.id = 'chat_import_button';
+    const backupsButton = document.createElement('button');
+    backupsButton.setAttribute('aria-controls', 'chat_backups_list');
+    header.append(heading, search, close, newChat, importButton, backupsButton);
+    const management = document.createElement('div');
+    management.id = 'chat_management_tools';
+    const labelGroup = document.createElement('div');
+    labelGroup.className = 'chat_label_group';
+    for (const id of ['chat_auto_label_current', 'chat_auto_label_dated', 'chat_tools_cancel']) {
+        const button = document.createElement('button');
+        button.id = id;
+        labelGroup.append(button);
+    }
+    const cleanupGroup = document.createElement('div');
+    cleanupGroup.className = 'chat_cleanup_group';
+    cleanupGroup.setAttribute('aria-label', 'Chat cleanup tools');
+    for (const [id, value] of [['chat_cleanup_age', '90'], ['chat_cleanup_keep', '25']]) {
+        const input = document.createElement('input');
+        input.id = id;
+        input.type = 'number';
+        input.min = '0';
+        input.max = '9999';
+        input.step = '1';
+        input.value = value;
+        cleanupGroup.append(input);
+    }
+    const unit = document.createElement('select');
+    unit.id = 'chat_cleanup_unit';
+    unit.setAttribute('aria-label', 'Cleanup age unit');
+    unit.append(new Option('days', 'days'));
+    cleanupGroup.append(unit, datedLabel);
+    for (const id of ['chat_cleanup_preview', 'chat_cleanup_run']) {
+        const button = document.createElement('button');
+        button.id = id;
+        cleanupGroup.append(button);
+    }
+    management.append(labelGroup, cleanupGroup);
+    const status = document.createElement('div');
+    status.id = 'chat_cleanup_status';
+    status.setAttribute('aria-live', 'polite');
+    popup.append(header, management, status, list);
     legacyHost.append(popup);
     document.body.append(legacyHost);
-    return { legacyHost, popup, heading, search, close, datedLabel, dated, list };
+    return { legacyHost, popup, heading, search, close, datedLabel, dated, list, management, labelGroup, cleanupGroup, status, newChat, importButton, backupsButton };
 }
 
 beforeEach(() => {
@@ -87,6 +165,7 @@ afterEach(() => {
     releaseRowIds(document.body);
     document.body.replaceChildren();
     openDialog.mockReset();
+    openActionMenu.mockReset();
 });
 
 test('mass delete keeps live checkbox values, current-chat protection and dialog response state', async () => {
@@ -156,14 +235,24 @@ test('Chat History moves the source nodes, proxies frame search and restores its
     expect(source.search.hidden).toBe(true);
     expect(source.close.hidden).toBe(true);
     expect(source.legacyHost.classList.contains('sb-chat-history-compat-open')).toBe(true);
+    expect(frame.header.querySelector('.sb-chat-history-new-chat')).not.toBeNull();
+    expect(frame.options.subtitle).toBe('');
     source.search.value = 'QA query';
     expect(openChatHistoryDialog()).toBe(frame);
     expect(frame.search.setQuery).toHaveBeenLastCalledWith('QA query', { notify: false });
 
+    frame.header.querySelector('.sb-chat-history-menu').click();
+    const cleanupItem = openActionMenu.mock.lastCall[0].sections[0].items.find(item => item.label === 'Chat cleanup tools');
+    cleanupItem.onSelect();
     const switchRow = frame.root.querySelector('.chat_cleanup_checkbox');
     expect(switchRow.querySelector('#chat_cleanup_only_dated')).toBe(source.dated);
     expect(source.dated.getAttribute('role')).toBe('switch');
     expect(source.dated.checked).toBe(true);
+    expect(frame.root.querySelector('#chat_cleanup_age')).not.toBeNull();
+    expect(frame.root.querySelector('#chat_cleanup_unit')).not.toBeNull();
+    expect(frame.root.querySelector('#chat_cleanup_keep')).not.toBeNull();
+    expect(frame.root.querySelector('#chat_cleanup_preview')).not.toBeNull();
+    expect(frame.root.querySelector('#chat_cleanup_run')).not.toBeNull();
     frame.options.search.onChange('history query');
     expect(source.search.value).toBe('history query');
     expect(searchEvents).toHaveBeenCalledTimes(1);
@@ -185,6 +274,9 @@ test('Chat History moves the source nodes, proxies frame search and restores its
     expect(source.heading.hidden).toBe(false);
     expect(source.search.hidden).toBe(false);
     expect(source.close.hidden).toBe(false);
+    expect(source.management.hidden).toBe(false);
+    expect(source.labelGroup.parentElement).toBe(source.management);
+    expect(source.cleanupGroup.parentElement).toBe(source.management);
 });
 
 test('Chat History closes when an upstream flow hides its compatibility wrapper', async () => {

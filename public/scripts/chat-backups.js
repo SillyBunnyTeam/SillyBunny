@@ -678,7 +678,12 @@ class BackupsBrowser {
 
     renderButton() {
         if (this.#buttonElement) {
-            return;
+            if (this.#buttonElement.isConnected) {
+                return;
+            }
+            // SillyBunny: Chat History removes generated backup controls while restoring the legacy tree.
+            this.#buttonElement = null;
+            this.#buttonChevronIcon = null;
         }
 
         const sibling = document.getElementById('select_chat_search');
@@ -725,7 +730,11 @@ class BackupsBrowser {
 
     renderBackupsList() {
         if (this.#backupsListElement) {
-            return;
+            if (this.#backupsListElement.isConnected) {
+                return;
+            }
+            // SillyBunny: Chat History removes generated backup controls while restoring the legacy tree.
+            this.#backupsListElement = null;
         }
 
         const sibling = document.getElementById('select_chat_div');

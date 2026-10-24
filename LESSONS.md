@@ -92,6 +92,12 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`, `tests/server-generation-commit.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/story-mode-request-controls.test.js`.
 - **Fixes:** #819 (queued saves across swipes clone chats), #849 (staged reloads wipe chats), #373 (extra pre-write backups push older backups out), #856 (issue #706: a chat saves when opened).
 
+### Dialog adapters and legacy DOM
+
+- **Breaks:** moving Chat History controls into a shared Window can lose the original cleanup tree, leave dynamically created backup nodes behind, or return focus to a detached mobile sheet action.
+- **Guard:** record source parents, sibling positions, child order and hidden state before adoption; restore the source before removing the page and use a connected mobile chat-chip fallback when the sheet opener is disposed. Keep backup visibility driven by the list-page parent state.
+- **Tests:** `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/mobile-character-toggle-and-panels.e2e.js`.
+
 ### Cache, boot and reload
 
 - **Breaks:** boot continues before the cache is invalidated; a module is evaluated twice.

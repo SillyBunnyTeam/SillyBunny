@@ -609,13 +609,7 @@
         display: none;
     }
 
-    #select_chat_popup {
-        align-items: start;
-        height: min-content;
-        align-content: start;
-        width: calc(100vw - 20px);
-        max-width: unset;
-    }
+    /* SillyBunny: Chat History uses the shared Window bottom sheet instead of legacy popup sizing. */
 
     #wiActivationSettings,
     #wiTopBlock {

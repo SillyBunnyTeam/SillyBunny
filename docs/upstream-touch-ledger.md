@@ -111,13 +111,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Phase 6.2–6.3 Chat History and file-deletion dialogs
 | Field | Value |
 | --- | --- |
-| File | `public/script.js`; `public/style.css`. |
+| File | `public/script.js`; `public/style.css`; `public/css/mobile-styles.css`; `public/css/popup-safari-fix.css`; `public/css/chat-backups.css`. |
 | Area | Chat History and saved-chat deletion. |
 | Divergence reason | TODO(copy) |
 | Target seam | `public/scripts/sillybunny-chat-dialogs.js`; `public/scripts/sillybunny-editor/dialog.js`. |
-| Adapter shape | Move the existing `#select_chat_popup` node into the shared Window, adopt the existing `Dated only` input into a switch row, proxy frame-search changes through the existing input handler, and restore the node to the hidden compatibility wrapper on close. Keep the wrapper's legacy display state observable while the frame owns the visible surface. Use a Cancel-first destructive Alert for `.PastChat_cross`. |
-| Protecting tests | `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. |
-| Validation | 2026-10-23: root lint, `git diff --check`, and frontend budgets pass (16 blocking stylesheets / 1005.4 KiB). Full Jest: 425 suites passed; 6,425 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: overlays, character-list, mobile-shell smoke, dialog tiers, and Popup scroll 103/103; the foundation message-actions Chromium desktop project passed 6 tests and skipped 3. Chat load, export, delete, rename, save, and settings-save requests were intercepted. Desktop 1440×844 and phone 390×844 screenshots were reviewed in `/tmp/opencode/dialogs-phase6-shots/`. |
+| Adapter shape | Move existing Chat History nodes into the shared Window, adopt the existing cleanup controls as preference rows, proxy frame-search changes through the existing input handler, and restore every source node on close. Keep the wrapper's legacy display state observable while the frame owns the visible surface. Remove upstream mobile sizing that conflicts with the Window frame. Use a Cancel-first destructive Alert for `.PastChat_cross`. |
+| Protecting tests | `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/mobile-character-toggle-and-panels.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/chat-backups.test.js`; `tests/chat-backup-sequence.test.js`; `tests/backups-hardening.test.js`. |
+| Validation | Chat History cleanup and backup-page regression coverage, focused/full overlay E2E, mobile shell checks, chat-dialog unit tests, root/tests lint, `git diff --check`, and frontend budget validation. |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-24 compliance pass; Phase 6.2–6.3 validation recorded 2026-10-23. |
 | Owner | TODO(copy) |
@@ -897,9 +897,9 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Chat recovery, character assets, thumbnails, and media metadata. |
 | Divergence reason | SillyBunny adds backup recovery presentation and mobile-aware character/media handling without changing upstream chat or image formats. |
 | Target seam | `public/scripts/sillybunny-tabs.js`, `src/endpoints/conversation-utils.js`, and the thumbnail/image-metadata helpers. |
-| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. |
-| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`. |
-| Validation | Focused unit tests, `node --check` on endpoint/client files, `npm run lint`. |
+| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. Treat disconnected backup controls as stale so the browser can recreate them after Chat History restores its legacy tree. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`, `tests/sillybunny-overlays.e2e.js`. |
+| Validation | Focused unit tests, Chat History overlay E2E, `node --check` on endpoint/client files, `npm run lint`. |
 | Rollback path | Revert backup UI and mobile/media adapters without deleting user chat or character data. |
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Chat and media integrator. |

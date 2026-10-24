@@ -10,13 +10,7 @@ body.safari .popup .popup-body {
     max-height: 90dvh;
 }
 
-body.safari #select_chat_div {
-    height: auto;
-}
-
-body.safari #select_chat_popup {
-    height: max-content;
-}
+/* SillyBunny: Chat History now owns its mobile height in the shared Window frame. */
 
 /* Safari iOS flex gap fix: Safari adds gap before first/after last flex items in wrapping contexts */
 @supports (-webkit-touch-callout: none) {

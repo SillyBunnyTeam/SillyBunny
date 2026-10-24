@@ -12,11 +12,12 @@ test.describe.configure({ timeout: 90_000 });
 function chatFixtures(currentChatId) {
     const oldTimestamp = Date.now() - (60 * 24 * 60 * 60 * 1000);
     return [
-        { file_name: currentChatId, last_mes: Date.now(), chat_items: 2, preview_message: 'Current chat' },
+        { file_name: currentChatId, last_mes: Date.now(), chat_items: 2, message_count: 2, file_size: '2 KB', preview_message: 'Current chat' },
         ...Array.from({ length: 16 }, (_, index) => ({
             file_name: index === 0 ? 'QA History Rename' : `QA History Chat ${String(index).padStart(2, '0')}`,
             last_mes: oldTimestamp + index * 1000,
             chat_items: index + 1,
+            message_count: index + 1,
             preview_message: `History preview ${index}`,
             file_size: `${index + 1} KB`,
         })),
@@ -86,11 +87,28 @@ async function openChatActions(page, width) {
     return page.locator('#sb-bottom-chat-bar .sb-bottom-chat-management-actions');
 }
 
+function chatHistoryFocusTarget(page, width) {
+    if (width <= 768) return page.locator('.sb-bottom-chat-chip');
+    return page.locator('#sb-bottom-chat-bar .sb-bottom-chat-management-actions').getByRole('button', { name: 'View chat files', exact: true });
+}
+
 function massDeleteFrame(page, width) {
     const selector = width <= 768
         ? '.sb-dialog-host[data-tier="dialog"]:has(.sb-dialog__page.sb-chat-mass-delete)'
         : '.sb-dialog-host[data-tier="window"]:has(.sb-dialog.sb-chat-mass-delete)';
     return page.locator(selector);
+}
+
+async function snapshotLegacyChatTree(page) {
+    return page.locator('#select_chat_popup').evaluate(root => {
+        const visit = node => ({
+            tag: node.tagName,
+            id: node.id,
+            classes: node.className,
+            children: node.id === 'select_chat_div' ? [] : [...node.children].map(visit),
+        });
+        return visit(root);
+    });
 }
 
 for (const width of [1440, 390]) {
@@ -160,9 +178,110 @@ for (const width of [1440, 390]) {
             const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
             await expect(frame).toBeVisible();
             await expect(frame.locator('.sb-dialog__title')).toContainText('Chat History');
+            await expect(frame.locator('.sb-dialog__subtitle')).toContainText('Seraphina');
             const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
             await expect(search).toBeVisible();
-            const datedOnly = frame.locator('.chat_cleanup_checkbox');
+            const searchMetrics = await page.evaluate(() => {
+                const tagSearchHost = document.createElement('div');
+                tagSearchHost.id = 'tag_view_list';
+                const tagSearch = document.createElement('input');
+                tagSearch.className = 'text_pole sb-dialog__entry';
+                tagSearchHost.append(tagSearch);
+                document.body.append(tagSearchHost);
+                const read = node => {
+                    const style = getComputedStyle(node);
+                    return [style.height, style.paddingInline, style.borderRadius, style.backgroundColor];
+                };
+                const tagMetrics = read(tagSearch);
+                tagSearchHost.remove();
+                return { tagMetrics, chatMetrics: read(document.querySelector('.sb-chat-history-dialog .sb-dialog__search-input')) };
+            });
+            expect(searchMetrics.chatMetrics).toEqual(searchMetrics.tagMetrics);
+            const historyRows = frame.locator('#select_chat_div .select_chat_block');
+            const currentRow = frame.locator('#select_chat_div .select_chat_block[highlight="true"]');
+            await expect(currentRow).toHaveAttribute('aria-current', 'true');
+            await page.mouse.move(10, 10);
+            const rowBackgrounds = await historyRows.evaluateAll(rows => rows.map(row => getComputedStyle(row).backgroundColor));
+            expect(rowBackgrounds.every(background => background === rowBackgrounds[0])).toBe(true);
+            const rowData = await historyRows.filter({ hasText: 'QA History Chat 01' }).first().evaluate(row => ({
+                title: row.querySelector('.select_chat_block_filename')?.textContent,
+                date: row.querySelector('.chat_messages_date')?.textContent?.trim(),
+                size: row.querySelector('.chat_file_size')?.textContent?.trim(),
+                messageCount: row.querySelector('.chat_messages_num')?.textContent?.trim(),
+                preview: row.querySelector('.select_chat_block_mes')?.textContent,
+                actionNames: [...row.querySelectorAll('.sb-chat-history-row-actions > *')].map(action => action.getAttribute('aria-label') || action.title),
+            }));
+            const rowTypeMetrics = await page.evaluate(() => {
+                const tagHost = document.createElement('div');
+                tagHost.className = 'sb-tag-manager';
+                tagHost.innerHTML = '<div class="tag_view_item"><span class="ds-entity-row__title">Tag title</span><span class="ds-entity-row__subtitle">Tag subtitle</span></div>';
+                const swipeHost = document.createElement('div');
+                swipeHost.innerHTML = '<div class="swipe_picker_block"><span class="select_chat_block_filename">Swipe title</span><span class="select_chat_info">Swipe metadata</span><span class="select_chat_block_mes">Swipe preview</span></div>';
+                document.body.append(tagHost, swipeHost);
+                const read = node => {
+                    const style = getComputedStyle(node);
+                    return { size: style.fontSize, weight: style.fontWeight };
+                };
+                const chatRow = document.querySelector('.sb-chat-history-row');
+                const metrics = {
+                    chatTitle: read(chatRow.querySelector('.sb-chat-history-row-title .select_chat_block_filename')),
+                    chatMetadata: read(chatRow.querySelector('.select_chat_info')),
+                    chatPreview: read(chatRow.querySelector('.select_chat_block_mes')),
+                    tagTitle: read(tagHost.querySelector('.ds-entity-row__title')),
+                    tagSubtitle: read(tagHost.querySelector('.ds-entity-row__subtitle')),
+                    swipeTitle: read(swipeHost.querySelector('.select_chat_block_filename')),
+                    swipeMetadata: read(swipeHost.querySelector('.select_chat_info')),
+                    swipePreview: read(swipeHost.querySelector('.select_chat_block_mes')),
+                };
+                tagHost.remove();
+                swipeHost.remove();
+                return metrics;
+            });
+            expect(rowTypeMetrics.chatTitle).toEqual(rowTypeMetrics.tagTitle);
+            expect(rowTypeMetrics.tagTitle).toEqual({ size: '13.5px', weight: '600' });
+            expect(rowTypeMetrics.tagSubtitle).toEqual({ size: '11.25px', weight: '400' });
+            expect(rowTypeMetrics.chatMetadata).toEqual(rowTypeMetrics.tagSubtitle);
+            expect(rowTypeMetrics.chatPreview).toEqual(rowTypeMetrics.tagSubtitle);
+            expect(rowTypeMetrics.swipeTitle).toEqual({ size: '13.2px', weight: '700' });
+            expect(rowTypeMetrics.swipePreview.size).toBe('12.9px');
+            expect(rowData.title).toContain('QA History Chat 01');
+            expect(rowData.date).toBeTruthy();
+            expect(rowData.size).toBe('2 KB');
+            expect(rowData.size).not.toMatch(/[(),]/);
+            expect(rowData.messageCount).toBe('2 💬');
+            expect(rowData.messageCount).not.toMatch(/[(),]/);
+            expect(rowData.preview).toBe('History preview 1');
+            expect(rowData.actionNames).toEqual(['Rename chat file', 'Export JSONL chat file', 'Delete chat file']);
+            const banner = frame.locator('.sb-chat-history-banner');
+            await page.evaluate(() => {
+                document.querySelector('#chat_cleanup_status').textContent = 'Auto-labeling chats…';
+                document.querySelector('#chat_tools_cancel').classList.remove('displayNone');
+            });
+            await expect(banner).toBeVisible();
+            await expect(banner.locator('#chat_cleanup_status')).toHaveAttribute('aria-live', 'polite');
+            await frame.getByRole('button', { name: 'Menu', exact: true }).click();
+            for (const name of ['Import Chat', 'Backups', 'Label current', 'Label dated', 'Chat cleanup tools', 'Help']) {
+                await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
+            }
+            await frame.getByRole('menuitem', { name: 'Chat cleanup tools', exact: true }).click();
+            const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
+            await expect(cleanup).toBeVisible();
+            await expect(cleanup.locator('.sb-dialog__title')).toHaveText('Chat cleanup tools');
+            await expect(banner).toBeVisible();
+            const cleanupFooter = cleanup.locator(':scope > .sb-dialog__bottom-bar');
+            await expect(cleanupFooter.locator('#chat_cleanup_preview')).toBeVisible();
+            await expect(cleanupFooter.locator('#chat_cleanup_run')).toHaveClass(/is-destructive/);
+            await expect(cleanup.locator('#chat_cleanup_age')).toBeVisible();
+            await expect(cleanup.locator('#chat_cleanup_unit')).toBeVisible();
+            await expect(cleanup.locator('.ds-chat-history-unit-row .ds-select-row__arrow')).toBeVisible();
+            await expect(cleanup.locator('#chat_cleanup_keep')).toBeVisible();
+            const ageStyles = await cleanup.locator('#chat_cleanup_age').evaluate(node => {
+                const style = getComputedStyle(node);
+                return { height: style.height, background: style.backgroundColor, appearance: style.appearance };
+            });
+            expect(ageStyles.height).toBe('34px');
+            expect(ageStyles.appearance).toBe('textfield');
+            const datedOnly = cleanup.locator('.chat_cleanup_checkbox');
             await expect(datedOnly.getByRole('switch', { name: 'Dated only', exact: true })).toBeChecked();
             const switchGeometry = await datedOnly.evaluate(row => {
                 const label = row.querySelector('.ds-row-label').getBoundingClientRect();
@@ -172,6 +291,8 @@ for (const width of [1440, 390]) {
             expect(switchGeometry.controlLeft).toBeGreaterThan(switchGeometry.labelRight);
             await datedOnly.getByRole('switch', { name: 'Dated only', exact: true }).uncheck();
             await expect(page.locator('#chat_cleanup_only_dated')).not.toBeChecked();
+            await cleanup.getByRole('button', { name: 'Back', exact: true }).click();
+            await expect(cleanup).toHaveCount(0);
 
             const lastRow = frame.locator('#select_chat_div .select_chat_block_wrapper').last();
             await lastRow.scrollIntoViewIfNeeded();
@@ -183,9 +304,14 @@ for (const width of [1440, 390]) {
             const filteredRows = frame.locator('#select_chat_div .select_chat_block_wrapper');
             await expect(filteredRows).toHaveCount(1);
             const renameRow = frame.locator('#select_chat_div .select_chat_block_wrapper').filter({ hasText: 'QA History Rename' });
-            await renameRow.locator('.exportRawChatButton').click();
+            await renameRow.getByRole('button', { name: 'Export JSONL chat file', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Export JSONL chat file', exact: true }).click();
             await expect.poll(() => exportRequests.length).toBe(1);
             expect(exportRequests[0]).toMatchObject({ file: 'QA History Rename.jsonl', format: 'jsonl' });
+            await renameRow.getByRole('button', { name: 'Export JSONL chat file', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Download chat as plain text document', exact: true }).click();
+            await expect.poll(() => exportRequests.length).toBe(2);
+            expect(exportRequests[1]).toMatchObject({ file: 'QA History Rename.jsonl', format: 'txt' });
             await renameRow.locator('.renameChatButton').click();
             const renamePopup = page.locator('dialog.popup[open]');
             await expect(renamePopup).toBeVisible();
@@ -206,11 +332,130 @@ for (const width of [1440, 390]) {
             await page.keyboard.press('Enter');
             await expect(confirm).toHaveCount(0);
             expect(deleteRequests).toHaveLength(0);
-            // The legacy skull spins continuously on hover, so dispatch its production click handler without the stability wait.
             await deleteRow.locator('.PastChat_cross').evaluate(node => node.click());
             await page.locator('dialog[role="alertdialog"] [data-response="delete"]').click();
             await expect.poll(() => deleteRequests.length).toBe(1);
             expect(deleteRequests[0].chatfile).toBe('QA History Renamed.jsonl');
+        });
+
+        test('Chat History restores its complete legacy tree after cleanup navigation and reopen', async ({ page }) => {
+            const { fixtures } = await prepareChat(page);
+            const focusTarget = chatHistoryFocusTarget(page, width);
+            const expectedTree = await snapshotLegacyChatTree(page);
+
+            const openCleanupAndReturn = async () => {
+                const actions = await openChatActions(page, width);
+                const opener = actions.getByRole('button', { name: 'View chat files', exact: true });
+                await opener.click();
+                const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+                await expect(frame).toBeVisible();
+                await frame.locator('.sb-chat-history-menu').click();
+                await frame.getByRole('menuitem', { name: 'Chat cleanup tools', exact: true }).click();
+                const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
+                await cleanup.locator('#chat_cleanup_preview').click();
+                await cleanup.getByRole('button', { name: 'Back', exact: true }).click();
+                await frame.locator('.sb-dialog__close').click();
+                await expect(frame).toHaveCount(0);
+                await expect(focusTarget).toBeFocused();
+            };
+
+            await openCleanupAndReturn();
+            await expect.poll(() => snapshotLegacyChatTree(page)).toEqual(expectedTree);
+            await openCleanupAndReturn();
+            await expect.poll(() => snapshotLegacyChatTree(page)).toEqual(expectedTree);
+            expect(fixtures.length).toBeGreaterThan(0);
+        });
+
+        test('Chat History toggles the Backups view and restores the chat list', async ({ page }) => {
+            await page.route('**/api/backups/chat/get', route => route.fulfill({ json: [] }));
+            await prepareChat(page);
+            const actions = await openChatActions(page, width);
+            await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
+            let frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await expect(frame).toBeVisible();
+            await frame.locator('.sb-chat-history-menu').click();
+            await frame.getByRole('menuitem', { name: 'Backups', exact: true }).click();
+            await expect(frame.locator('#chat_backups_list')).toBeVisible();
+            await expect(frame.locator('#select_chat_div')).toBeHidden();
+            await expect(frame.locator('.sb-chat-history-list-page')).toHaveClass(/chatBackupsOpen/);
+            await frame.locator('.sb-chat-history-menu').click();
+            await frame.getByRole('menuitem', { name: 'Backups', exact: true }).click();
+            await expect(frame.locator('#chat_backups_list')).toBeHidden();
+            await expect(frame.locator('#select_chat_div')).toBeVisible();
+            await expect(frame.locator('.sb-chat-history-list-page')).not.toHaveClass(/chatBackupsOpen/);
+            await frame.locator('.sb-dialog__close').click();
+            await expect(frame).toHaveCount(0);
+            const reopenedActions = await openChatActions(page, width);
+            await reopenedActions.getByRole('button', { name: 'View chat files', exact: true }).click();
+            frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await frame.locator('.sb-chat-history-menu').click();
+            await page.getByRole('menuitem', { name: 'Backups', exact: true }).click();
+            await expect(frame.locator('#chat_backups_list')).toBeVisible();
+        });
+
+        test('Chat History covers its navigation, labeling, cleanup, import, and cancel handlers', async ({ page }) => {
+            const { fixtures, chatLoadRequests } = await prepareChat(page);
+            let releaseGeneration;
+            let generationRequests = 0;
+            await page.route('**/api/backends/chat-completions/generate', async route => {
+                generationRequests += 1;
+                await new Promise(resolve => { releaseGeneration = resolve; });
+                await route.abort().catch(() => {});
+            });
+
+            let actions = await openChatActions(page, width);
+            await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
+            let frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await expect(frame).toBeVisible();
+
+            const loadsBeforeNewChat = chatLoadRequests.length;
+            await frame.locator('.sb-chat-history-new-chat').click();
+            await expect.poll(() => chatLoadRequests.length).toBeGreaterThan(loadsBeforeNewChat);
+            await expect(frame).toHaveCount(0);
+
+            actions = await openChatActions(page, width);
+            await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
+            frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await expect(frame).toBeVisible();
+
+            await frame.locator('.sb-chat-history-menu').click();
+            const chooserPromise = page.waitForEvent('filechooser');
+            await page.getByRole('menuitem', { name: 'Import Chat', exact: true }).click();
+            await chooserPromise;
+
+            await frame.locator('.sb-chat-history-menu').click();
+            await page.getByRole('menuitem', { name: 'Label current', exact: true }).click();
+            await expect.poll(() => generationRequests).toBe(1);
+            await expect(frame.locator('.sb-chat-history-banner')).toBeVisible();
+            await frame.locator('#chat_tools_cancel').click();
+            releaseGeneration?.();
+            await expect(frame.locator('#chat_tools_cancel')).toHaveClass(/displayNone/);
+
+            fixtures[1].file_name = '2026-01-01@00h00m00s000ms';
+            await frame.locator('.sb-chat-history-menu').click();
+            await page.getByRole('menuitem', { name: 'Label dated', exact: true }).click();
+            await page.locator('dialog.popup[open]').last().locator('.popup-button-ok').click();
+            await expect.poll(() => generationRequests).toBe(2);
+            await expect(frame.locator('.sb-chat-history-banner')).toBeVisible();
+            await frame.locator('#chat_tools_cancel').click();
+            releaseGeneration?.();
+
+            await frame.locator('.sb-chat-history-menu').click();
+            await page.getByRole('menuitem', { name: 'Chat cleanup tools', exact: true }).click();
+            const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
+            await cleanup.locator('#chat_cleanup_age').fill('30');
+            await cleanup.locator('#chat_cleanup_keep').fill('0');
+            await cleanup.getByRole('switch', { name: 'Dated only', exact: true }).uncheck();
+            fixtures.slice(1).forEach(chat => { chat.last_mes = Date.now() - (120 * 24 * 60 * 60 * 1000); });
+            await cleanup.locator('#chat_cleanup_preview').click();
+            const previewTitle = page.getByText('Cleanup preview', { exact: true }).last();
+            await expect(previewTitle).toBeVisible();
+            await page.getByRole('button', { name: 'Back', exact: true }).last().click();
+            await cleanup.locator('#chat_cleanup_run').click();
+            const confirmation = page.locator('dialog.popup[open]:visible').last();
+            await expect(confirmation.locator('.popup-button-cancel')).toBeFocused();
+            await confirmation.locator('.popup-button-cancel').click();
+            expect(fixtures.length).toBeGreaterThan(0);
         });
 
         test('selecting a saved chat loads it and closes Chat History', async ({ page }) => {
@@ -229,6 +474,25 @@ for (const width of [1440, 390]) {
                 return String(app.getCurrentChatId?.() ?? app.chatId ?? '').replace(/\.jsonl$/i, '');
             })).toBe(selectedChat);
             await expect(frame).toHaveCount(0);
+        });
+
+        test('Chat History shows shared empty states for an empty list and an empty search', async ({ page }) => {
+            const { fixtures } = await prepareChat(page);
+            fixtures.splice(0);
+            const actions = await openChatActions(page, width);
+            await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
+
+            const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await expect(frame).toBeVisible();
+            const statusPage = frame.locator('#select_chat_div .sb-status-page');
+            await expect(statusPage).toContainText('TODO(copy)');
+
+            await frame.getByRole('searchbox', { name: 'Search', exact: true }).fill('missing');
+            await expect(statusPage).toContainText('No results');
+            await expect(statusPage).not.toContainText('TODO(copy)');
+            await frame.locator('.sb-dialog__close').click();
+            await expect(frame).toHaveCount(0);
+            await expect(page.locator('#select_chat_popup').locator('xpath=..')).toHaveAttribute('id', 'shadow_select_chat_popup');
         });
     });
 }
