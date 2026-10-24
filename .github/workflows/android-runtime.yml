@@ -3,8 +3,10 @@ name: Android Node Runtime
 # Builds Node for the Android APK with android/runtime/build-node.sh (plan §5.2, task 4.2), publishes each ABI to
 # GHCR with oras plus a build-provenance attestation, then opens a PR that pins the published digests in
 # android/runtime.lock (android/runtime/update-node-digests.py). Pull requests never trigger it: only staging pushes
-# that touch the Node pins or this pipeline, and manual runs. Publishing happens only from staging, and only the
+# that touch the runtime pins or this pipeline, and manual runs. Publishing happens only from staging, and only the
 # SillyBunnyTeam repository runs it: on forks the plan job is skipped, and with it every job that needs it.
+# The mirror job copies every Termux deb and source input that the locks pin into the same GHCR package
+# (android/runtime/runtime-mirror.py), because release builds read those inputs only from there.
 
 on:
   push:
@@ -15,6 +17,9 @@ on:
       - android/runtime/sources.lock
       - android/runtime/patches/node/**
       - android/runtime/build-node.sh
+      # These two scripts choose the pins that the mirror tag hashes, so they can change the tag with no lock change.
+      - android/runtime/runtime-mirror.py
+      - android/runtime/sources.py
       - .github/workflows/android-runtime.yml
   workflow_dispatch:
     inputs:
@@ -43,6 +48,7 @@ jobs:
       contents: read
     outputs:
       build: ${{ steps.plan.outputs.build }}
+      mirror: ${{ steps.mirror.outputs.mirror }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +67,19 @@ jobs:
           else
             echo 'build=false' >> "$GITHUB_OUTPUT"
           fi
+
+      # When --plan cannot tell, for example because GHCR is unreachable, the mirror job runs anyway. This step must
+      # never stop the Node jobs, and the mirror job reports its own errors.
+      - name: Check the input mirror
+        id: mirror
+        run: |
+          if python3 -I -B android/runtime/runtime-mirror.py --plan > "$RUNNER_TEMP/mirror.json" \
+            && [ "$(jq -r .present "$RUNNER_TEMP/mirror.json")" = true ]; then
+            echo 'mirror=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'mirror=true' >> "$GITHUB_OUTPUT"
+          fi
+          cat "$RUNNER_TEMP/mirror.json"
 
   build:
     name: Build Node (${{ matrix.abi }})
@@ -244,3 +263,57 @@ jobs:
           if [ "$open" = 0 ]; then
             gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title 'TODO(copy)' --body 'TODO(copy)'
           fi
+
+  mirror:
+    name: Publish the input mirror
+    needs: plan
+    if: >-
+      needs.plan.outputs.mirror == 'true' && github.ref == 'refs/heads/staging'
+      && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: android-runtime-mirror
+      cancel-in-progress: false
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Staging downloads third-party bytes and runs dpkg-deb on them, so it runs before the login writes
+      # registry credentials to disk.
+      - name: Stage the pinned inputs
+        run: python3 -I -B android/runtime/runtime-mirror.py --stage "$RUNNER_TEMP/mirror"
+
+      - name: Set up oras
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.5/oras_1.3.5_linux_amd64.tar.gz
+          checksum: f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Never delete inputs-* versions from this package. Old pins can be built only from them, and the Termux
+      # debs in each one must keep their corresponding source in the same manifest.
+      - name: Push the mirror
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/mirror"
+          reference=$(cat "$stage/reference")
+          test "${reference%:*}" = "$IMAGE"
+          mapfile -t files < "$stage/oras-files"
+          (cd "$stage" && oras push --artifact-type application/vnd.sillybunnyteam.android.inputs.v1 \
+            --annotation "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --annotation 'org.opencontainers.image.description=TODO(copy)' \
+            --export-manifest manifest.json "$reference" "${files[@]}")
+          test "$(oras resolve "$reference")" = "sha256:$(sha256sum "$stage/manifest.json" | cut -d ' ' -f 1)"
+          python3 -I -B android/runtime/runtime-mirror.py --check
