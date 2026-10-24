@@ -66,8 +66,8 @@ describe('chat file hardening wiring', () => {
 
         expect(source).toContain('classList.add(\'chatBackupsOpen\')');
         expect(source).toContain('classList.remove(\'chatBackupsOpen\')');
-        expect(adapter).toContain('const showingBackups = popup.classList.contains(\'chatBackupsOpen\')');
-        expect(adapter).toContain('backupsList.hidden = !showingBackups');
+        expect(adapter).toContain('const showingBackups = pageContent.classList.contains(\'chatBackupsOpen\')');
+        expect(adapter).toContain('currentBackupsList.hidden = !showingBackups');
         expect(adapter).toContain('chatList.hidden = showingBackups');
         expect(styles).toContain('.chatBackupsList');
     });
