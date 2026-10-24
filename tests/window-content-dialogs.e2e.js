@@ -119,11 +119,12 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expect(profile.locator('.userResetAllButton')).toBeInViewport();
         await expect(profile.locator('.sb-dialog__close')).toBeInViewport();
 
-        await profile.locator('.userSettingsSnapshotsButton').click();
+        await profile.locator('.sb-dialog__close').click();
+        const dataSecurity = page.locator('[data-sb-panel="data-security"]');
+        await dataSecurity.locator('#settings_snapshots_button').click();
         const snapshots = await openWindow(page, '.snapshotList');
         await expectWindowFrame(snapshots, viewport);
-        await expect(snapshots).toHaveClass(/sb-dialog--page/);
-        await expect(profile).toHaveAttribute('data-sb-covered', '');
+        await expect(snapshots.getByRole('button', { name: 'Back', exact: true })).toHaveCount(0);
         await expect(snapshots.locator('.sb-dialog__title')).toHaveText('Settings Snapshots');
         await expect(snapshots.locator('.snapshotList > .snapshot')).toHaveCount(1);
         await expect(snapshots.locator('.snapshotList > .snapshot .snapshotName')).toHaveText(SNAPSHOT_FIXTURE.name);
@@ -142,10 +143,7 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expect(confirm).toHaveCount(0);
         expect(state.snapshotRequests).toEqual(['get-snapshots', 'load-snapshot']);
         await expect(snapshots).toBeVisible();
-        await snapshots.getByRole('button', { name: 'Back', exact: true }).click();
-        await expect(profile).toBeVisible();
-        await expect(profile).not.toHaveAttribute('data-sb-covered');
-        await profile.locator('.sb-dialog__close').click();
+        await snapshots.locator('.sb-dialog__close').click();
         expect(state.users).toEqual([]);
         expect(state.snapshotRequests).not.toContain('restore-snapshot');
     });

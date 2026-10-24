@@ -64,7 +64,7 @@ export async function openAccountProfile(page) {
     await page.locator('#account_button').waitFor({ state: 'attached' });
     await page.locator('#account_button').dispatchEvent('click');
     const popup = page.locator('dialog.popup[open]').last();
-    await popup.locator('.userSettingsSnapshotsButton').waitFor();
+    await popup.locator('.userResetAllButton').waitFor();
     return page.locator(`dialog.popup[data-id="${await popup.getAttribute('data-id')}"]`);
 }
 

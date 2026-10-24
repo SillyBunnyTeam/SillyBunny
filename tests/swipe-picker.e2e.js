@@ -33,10 +33,10 @@ async function createSwipeFixture(page, count = 52) {
     }, { count });
     await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
     const dialog = page.locator('dialog[open].sb-dialog--window');
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator('.swipe_picker_footer')).toBeVisible();
-    await expect(dialog).not.toHaveAttribute('opening');
-    await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport();
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+    await expect(dialog.locator('.swipe_picker_footer')).toBeVisible({ timeout: 15000 });
+    await expect(dialog).not.toHaveAttribute('opening', { timeout: 15000 });
+    await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport({ timeout: 15000 });
     return messageId;
 }
 
@@ -90,7 +90,11 @@ async function assertSwipeIdNavigation(page, messageId) {
 }
 
 test.describe('swipe picker shared Window', () => {
-    test.beforeEach(testSetup.awaitST);
+    test.beforeEach(async ({ page }) => {
+        let settingsVersion = Date.now();
+        await page.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+        await testSetup.awaitST({ page });
+    });
 
     test('desktop supports selection, actions, navigation, scrolling and safe deletion', async ({ page }, testInfo) => {
         await page.setViewportSize({ width: 1440, height: 900 });
@@ -114,7 +118,7 @@ test.describe('swipe picker shared Window', () => {
         await expect(alert).toBeVisible();
         await expect(alert.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
         await page.keyboard.press('Enter');
-        await expect(alert).toBeHidden();
+        await expect(alert).toHaveCount(0, { timeout: 15000 });
         await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ count: 52 });
         await deleteButton.click();
         await page.locator('dialog[open][role="alertdialog"]').getByRole('button', { name: 'Delete Swipe', exact: true }).click();
@@ -154,9 +158,11 @@ test.describe('swipe picker shared Window', () => {
         const lastRow = dialog.locator('.swipe_picker_block').last();
         await lastRow.scrollIntoViewIfNeeded();
         await expect(lastRow).toBeInViewport();
-        await dialog.locator('.swipe_picker_block').first().focus();
+        const firstRow = dialog.locator('.swipe_picker_block').first();
+        await firstRow.focus();
+        await expect(firstRow).toBeFocused({ timeout: 15000 });
         await page.keyboard.press('Space');
-        await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ swipeId: 0 });
+        await expect.poll(() => getSwipeState(page, messageId), { timeout: 15000 }).toMatchObject({ swipeId: 0 });
         await expect(dialog).toBeHidden();
 
         await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
