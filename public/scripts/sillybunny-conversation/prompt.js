@@ -240,7 +240,7 @@ export async function convertImageUrlsToBase64(imageUrls, concurrency = 3) {
     return results;
 }
 
-export async function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName(), { groupId = '', personaId = getConversationPersonaId() } = {}) {
+export async function buildConversationPromptMessages(messages, directive, speakerName = getCurrentCharName(), { groupId = '', personaId = getConversationPersonaId(), worldInfo = null } = {}) {
     const promptMessages = [{
         role: 'user',
         content: 'Conversation transcript:',
@@ -306,6 +306,17 @@ export async function buildConversationPromptMessages(messages, directive, speak
             role: 'user',
             content: '(No prior DM messages.)',
             identifier: 'conversation-empty-transcript',
+        });
+    }
+
+    // Depth counts back from the newest transcript message, as Roleplay counts chat messages.
+    // Inserting the deepest entries first keeps the entries already inserted out of that count.
+    const depthEntries = [...(worldInfo?.depth ?? [])].sort((first, second) => second.depth - first.depth);
+    for (const { depth, role, content } of depthEntries) {
+        promptMessages.splice(Math.max(1, promptMessages.length - depth), 0, {
+            role,
+            content,
+            identifier: `conversation-world-info-depth-${depth}-${role}`,
         });
     }
 
@@ -428,7 +439,7 @@ export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(
     memorySummaryTimers.set(memoryKey, timer);
 }
 
-export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, branchId = '', groupId = getConversationGroupIdForAvatar(threadAvatar), personaId = getConversationPersonaId() } = {}) {
+export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, branchId = '', groupId = getConversationGroupIdForAvatar(threadAvatar), personaId = getConversationPersonaId(), worldInfo = null } = {}) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const userName = getConversationPersonaName(personaId, 'User');
@@ -456,6 +467,10 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         fields.push(groundedRules);
     }
 
+    // Lorebook entries take the places that Roleplay gives them: around the character fields and the author's note.
+    if (worldInfo?.before) {
+        fields.push(worldInfo.before);
+    }
     if (character?.description) {
         fields.push(`Character description:\n${formatPromptText(character.description, 2400)}`);
     }
@@ -465,9 +480,18 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     if (character?.scenario) {
         fields.push(`Background context:\n${formatPromptText(character.scenario, 1200)}`);
     }
+    if (worldInfo?.after) {
+        fields.push(worldInfo.after);
+    }
+    if (worldInfo?.authorsNoteBefore) {
+        fields.push(worldInfo.authorsNoteBefore);
+    }
     const authorNote = settings.authors_note || getCharacterAuthorNote(avatar);
     if (authorNote) {
         fields.push(`Conversation author's note:\n${authorNote.replace('{{char}}', charName).replace('{{user}}', userName)}`);
+    }
+    if (worldInfo?.authorsNoteAfter) {
+        fields.push(worldInfo.authorsNoteAfter);
     }
     if (settings.lorebook_override) {
         fields.push(`Conversation lorebook focus: ${settings.lorebook_override}. Prefer this lore/context over roleplay scene continuity.`);
