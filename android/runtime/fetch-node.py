@@ -59,7 +59,6 @@ SEMVER = re.compile(r'([0-9]+)\.([0-9]+)\.([0-9]+)\Z')
 HASH = re.compile(r'[0-9a-f]{64}\Z')
 SHA1 = re.compile(r'[0-9a-f]{40}\Z')
 OCI_DIGEST = re.compile(r'sha256:[0-9a-f]{64}\Z')
-GHCR_REPOSITORY = re.compile(r'ghcr\.io(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*){2,}\Z')
 NDK_URL = re.compile(r'https://dl\.google\.com/android/repository/android-ndk-r[0-9]+[a-z]?-linux\.zip\Z')
 NDK_REVISION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+\Z')
 PATCH_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._+-]*\.patch\Z')
@@ -282,7 +281,7 @@ def validate_node(runtime, lock, patches):
     for abi, binary in sorted(binaries.items()):
         if not isinstance(binary, dict) or set(binary) != {'repository', 'tag', 'digest', 'sha256', 'size'}:
             fail('node-binary', abi=abi)
-        if not GHCR_REPOSITORY.fullmatch(str(binary['repository'])):
+        if not sources.GHCR_REPOSITORY.fullmatch(str(binary['repository'])):
             fail('node-binary-repository', abi=abi)
         pinned = [binary['digest'] is not None, binary['sha256'] is not None, binary['size'] is not None]
         expected_tag = artifact_tag(version, patch_set['sha256'], abi)
@@ -315,8 +314,9 @@ def load_pins(runtime_lock=RUNTIME_LOCK, sources_lock=SOURCES_LOCK):
 
 
 def verified_source(pins, cache=CACHE, offline=False):
-    """The pinned Node source tarball, checked against its pin, the pinned SHASUMS256.txt and, with gpgv, its signature."""
-    store = sources.Cache(Path(cache) / 'objects', offline)
+    """The pinned Node source tarball, checked against its pin, the pinned SHASUMS256.txt and, with gpgv, its signature.
+    A download tries the input mirror that runtime.lock names before the origin."""
+    store = sources.Cache(Path(cache) / 'objects', offline, mirror=pins.runtime.get('mirror', {}).get('repository'))
     node = pins.sources['node']
     paths = {key: store.get(node[key]['url'], node[key]['sha256']) for key in ('source', 'shasums', 'signature', 'keyring')}
     listed = re.findall(r'^([0-9a-f]{64})  ' + re.escape(node['source']['filename']) + r'$',

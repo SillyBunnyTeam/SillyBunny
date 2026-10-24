@@ -2,6 +2,8 @@
 import hashlib
 import importlib.util
 import io
+import json
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -15,6 +17,24 @@ ROOT = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location('package_termux', ROOT / 'package-termux.py')
 termux = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(termux)
+MIRROR = 'ghcr.io/example/runtime'
+
+
+def runtime_lock(**changes):
+    packages = [{
+        'name': name, 'version': '1.0',
+        'debs': {abi: {'filename': f'pool/main/{name[0]}/{name}/{name}_1.0_{arch}.deb',
+                       'sha256': hashlib.sha256(f'{name} {arch}'.encode()).hexdigest()}
+                 for abi, (arch, _, _) in termux.ABI_ARCHES.items()},
+    } for name in ('bash', 'ca-certificates', 'git')]
+    lock = {
+        'schema': 1, 'abis': list(termux.ABI_ARCHES),
+        'termux': {'repository': 'https://packages.example.invalid/apt/termux-main', 'suite': 'stable',
+                   'component': 'main', 'packages': packages},
+        'node': None, 'npm': None, 'bun': None,
+    }
+    lock.update(changes)
+    return lock
 
 
 def extract_members(payload, members):
@@ -89,6 +109,159 @@ class DownloadTests(ScratchTestCase):
         self.assertEqual(destination.read_bytes(), contents)
         run.assert_not_called()
         require_tools.assert_not_called()
+
+
+class MirrorDebTests(ScratchTestCase):
+    def setUp(self):
+        super().setUp()
+        self.cache = self.directory / 'cache'
+        self.contents = {abi: f'fixture git {arch} deb\n'.encode() for abi, (arch, _, _) in termux.ABI_ARCHES.items()}
+        debs = {abi: {'filename': f'pool/main/g/git/git_2.56.0_{arch}.deb',
+                      'sha256': hashlib.sha256(self.contents[abi]).hexdigest()}
+                for abi, (arch, _, _) in termux.ABI_ARCHES.items()}
+        debs['x86_64']['sha256'] = debs['x86_64']['sha256'].upper()
+        self.debs = debs
+        self.lock = {'termux': {'repository': 'https://packages.example.invalid/apt/termux-main',
+                                'packages': [{'name': 'git', 'version': '2.56.0', 'debs': debs}]},
+                     'mirror': {'repository': MIRROR}}
+        self.served = {}
+        self.asked = []
+        self.downloaded = []
+        for target, replacement in ((termux, 'require_tools'), (termux, 'run'), (termux.sources, 'mirror_blob')):
+            patch = mock.patch.object(target, replacement, side_effect=getattr(self, 'fake_' + replacement))
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def fake_require_tools(self, *names):
+        pass
+
+    def fake_mirror_blob(self, repository, sha256, destination):
+        self.assertEqual(repository, MIRROR)
+        self.asked.append(sha256)
+        if sha256 not in self.served:
+            return False
+        Path(destination).write_bytes(self.served[sha256])
+        return True
+
+    def fake_run(self, arguments, **kwargs):
+        values = [str(item) for item in arguments]
+        if values[0] == 'dpkg-deb':
+            abi = next(abi for abi, pin in self.debs.items() if Path(values[-1]).name == pin['sha256'].lower() + '.deb')
+            fields = f'Package: git\nVersion: 2.56.0\nArchitecture: {termux.ABI_ARCHES[abi][0]}\n'
+            return subprocess.CompletedProcess(values, 0, stdout=fields, stderr='')
+        if values[0] == 'curl':
+            self.downloaded.append(values[-1])
+            abi = next(abi for abi, pin in self.debs.items() if values[-1].endswith('/' + pin['filename']))
+            Path(values[values.index('--output') + 1]).write_bytes(self.contents[abi])
+            return subprocess.CompletedProcess(values, 0)
+        raise AssertionError(('unexpected command', values))
+
+    def fetch(self, mirror_only=False):
+        with mock.patch('sys.stdout', new_callable=io.StringIO):
+            return termux.fetch_debs(self.lock, self.cache, mirror_only)
+
+    def digests(self):
+        return [self.debs[abi]['sha256'].lower() for abi in termux.ABI_ARCHES]
+
+    def cached(self):
+        return sorted(path.name for path in (self.cache / 'debs').iterdir())
+
+    def test_mirror_hit_means_no_origin_download(self):
+        self.served = {sha256: self.contents[abi] for abi, sha256 in zip(termux.ABI_ARCHES, self.digests())}
+        debs = self.fetch()
+        self.assertEqual(self.downloaded, [])
+        self.assertEqual(self.asked, self.digests())
+        for abi in termux.ABI_ARCHES:
+            ((name, path),) = debs[abi]
+            self.assertEqual(name, 'git')
+            self.assertEqual(path, self.cache / 'debs' / (self.debs[abi]['sha256'].lower() + '.deb'))
+            self.assertEqual(path.read_bytes(), self.contents[abi])
+
+    def test_mirror_miss_downloads_from_the_origin(self):
+        self.fetch()
+        self.assertEqual(self.asked, self.digests())
+        self.assertEqual(self.downloaded, [f'https://packages.example.invalid/apt/termux-main/{self.debs[abi]["filename"]}'
+                                           for abi in termux.ABI_ARCHES])
+        self.assertEqual(self.cached(), sorted(sha256 + '.deb' for sha256 in self.digests()))
+
+    def test_mirror_only_miss_fails_without_an_origin_download(self):
+        with self.assertRaisesRegex(ValueError, 'Not in the mirror: pool/main/g/git/git_2.56.0_aarch64.deb'):
+            self.fetch(mirror_only=True)
+        self.assertEqual(self.downloaded, [])
+        self.assertEqual(self.cached(), [])
+
+    def test_mismatching_mirror_bytes_fail_and_leave_nothing_at_the_destination(self):
+        self.served = {self.digests()[0]: b'tampered deb'}
+        for mirror_only in (False, True):
+            with self.subTest(mirror_only=mirror_only):
+                with self.assertRaisesRegex(ValueError, 'SHA256 mismatch from the mirror'):
+                    self.fetch(mirror_only)
+                self.assertEqual(self.downloaded, [])
+                self.assertEqual(self.cached(), [])
+
+    def test_cached_deb_needs_no_mirror_request(self):
+        destination = self.cache / 'debs' / (self.digests()[0] + '.deb')
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(self.contents['arm64-v8a'])
+        self.fetch()
+        self.assertEqual(self.asked, self.digests()[1:])
+
+    def test_lock_without_mirror_never_asks_the_mirror(self):
+        del self.lock['mirror']
+        self.fetch()
+        self.assertEqual(self.asked, [])
+        self.assertEqual(len(self.downloaded), 3)
+
+
+class MirrorLockTests(ScratchTestCase):
+    def test_mirror_field_is_checked_as_sources_validate_runtime_checks_it(self):
+        termux.validate_lock(runtime_lock())
+        valid = [{'repository': MIRROR}, {'repository': 'ghcr.io/sillybunnyteam/sillybunny-android-runtime'}]
+        invalid = [None, {}, 'ghcr.io/example/runtime', {'repository': MIRROR, 'tag': 'inputs'},
+                   {'repository': 'docker.io/example/runtime'}, {'repository': 'ghcr.io/example'},
+                   {'repository': 'ghcr.io/Example/runtime'}, {'repository': MIRROR + ':inputs-0123456789ab'},
+                   {'repository': MIRROR + '@sha256:' + '0' * 64}, {'repository': None}]
+        for mirror in valid + invalid:
+            with self.subTest(mirror=mirror):
+                lock = runtime_lock(mirror=mirror)
+                try:
+                    termux.sources.validate_runtime(lock)
+                except termux.sources.SourceError as error:
+                    self.assertEqual(error.code, 'runtime-mirror')
+                    self.assertIn(mirror, invalid)
+                    with self.assertRaisesRegex(ValueError, 'runtime.lock mirror must be'):
+                        termux.validate_lock(lock)
+                else:
+                    self.assertIn(mirror, valid)
+                    termux.validate_lock(lock)
+
+    def main(self, lock, *arguments):
+        root = self.directory / 'android' / 'runtime'
+        root.mkdir(parents=True, exist_ok=True)
+        (root.parent / 'runtime.lock').write_text(json.dumps(lock), encoding='utf-8')
+        with mock.patch.object(termux, 'ROOT', root), mock.patch.object(termux, 'build') as build, \
+                mock.patch.object(termux, 'update_lock') as update, \
+                mock.patch.object(sys, 'argv', ['package-termux.py', *arguments]), \
+                mock.patch('sys.stderr', new_callable=io.StringIO):
+            termux.main()
+        update.assert_not_called()
+        return build
+
+    def test_command_line_passes_mirror_only_to_the_build(self):
+        lock = runtime_lock(mirror={'repository': MIRROR})
+        root = self.directory / 'android' / 'runtime'
+        for arguments, mirror_only in (((), False), (('--mirror-only',), True)):
+            with self.subTest(arguments=arguments):
+                build = self.main(lock, *arguments)
+                build.assert_called_once_with(lock, root.parent / 'runtime.lock', root / 'cache', mirror_only)
+
+    def test_mirror_only_needs_a_lock_mirror_and_cannot_update_the_lock(self):
+        for lock, arguments in ((runtime_lock(), ('--mirror-only',)),
+                                (runtime_lock(mirror={'repository': MIRROR}), ('--mirror-only', '--update-lock'))):
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(SystemExit) as caught:
+                    self.main(lock, *arguments)
+                self.assertEqual(caught.exception.code, 2)
 
 
 class ShellPatchTests(ScratchTestCase):

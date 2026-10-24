@@ -1194,7 +1194,7 @@ class BuildInputTests(LockFixture):
         listing = f'{node_lock["source"]["sha256"]}  {node_lock["source"]["filename"]}\n'
 
         class FakeCache:
-            def __init__(self, directory, offline):
+            def __init__(self, directory, offline, mirror=None):
                 self.offline = offline
 
             def get(self, url, sha):
@@ -1207,6 +1207,28 @@ class BuildInputTests(LockFixture):
                              (paths['source'], {'status': 'not-checked', 'reason': 'gpgv-missing'}))
             paths['shasums'].write_text(listing.replace(node_lock['source']['sha256'], '0' * 64), encoding='ascii')
             self.assert_code('node-source-shasums', node.verified_source, self.pins(), self.directory, True)
+
+    def test_source_files_come_from_the_lock_mirror_before_their_origins(self):
+        stores = []
+
+        class Stop(Exception):
+            pass
+
+        class RecordingCache:
+            def __init__(self, directory, offline, mirror=None):
+                stores.append((Path(directory), offline, mirror))
+
+            def get(self, url, sha):
+                raise Stop
+
+        with mock.patch.object(sources, 'Cache', RecordingCache):
+            with self.assertRaises(Stop):
+                node.verified_source(self.pins(), self.directory)
+            self.edit_runtime(lambda runtime: runtime.pop('mirror'))
+            with self.assertRaises(Stop):
+                node.verified_source(self.pins(), self.directory, offline=True)
+        self.assertEqual(stores, [(self.directory / 'objects', False, self.runtime['mirror']['repository']),
+                                  (self.directory / 'objects', True, None)])
 
 
 class BuildScriptTests(unittest.TestCase):

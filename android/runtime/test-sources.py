@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -99,6 +100,61 @@ def no_external_processes(arguments, **kwargs):
     if not isinstance(arguments, (list, tuple)) or Path(str(arguments[0])).name != 'zstd':
         raise AssertionError(('unexpected external process', arguments))
     return REAL_POPEN(arguments, **kwargs)
+
+
+MIRROR = 'ghcr.io/example/runtime'
+TOKEN_URL = 'https://ghcr.io/token?scope=repository%3Aexample%2Fruntime%3Apull&service=ghcr.io'
+
+
+class FakeCurl:
+    """Answers the curl commands of the mirror reader (token and blob requests) and of origin downloads.
+
+    blobs maps a digest to the bytes that GHCR serves, origin maps a URL to its bytes, statuses forces the HTTP
+    status of the next blob requests, token_body replaces the token answer's JSON, and unreachable names the requests
+    whose curl fails ('token' or 'blob')."""
+
+    def __init__(self, blobs=None, origin=None, statuses=(), token_status=b'200', unreachable=(), token_body=None):
+        self.blobs = dict(blobs or {})
+        self.origin = dict(origin or {})
+        self.statuses = list(statuses)
+        self.token_status = token_status
+        self.unreachable = unreachable
+        self.token_body = token_body
+        self.tokens = 0
+        self.calls = []
+
+    def __call__(self, arguments, **kwargs):
+        values = [str(item) for item in arguments]
+        if values[0] != 'curl':
+            return no_external_commands(arguments, **kwargs)
+        self.calls.append((values, kwargs.get('input')))
+        url = values[-1]
+        if url.startswith('https://ghcr.io/token?'):
+            if 'token' in self.unreachable:
+                raise subprocess.CalledProcessError(7, values)
+            self.tokens += 1
+            body = json.dumps({'token': f'fixture-token-{self.tokens}'}).encode('ascii') if self.token_body is None \
+                else self.token_body
+            Path(values[values.index('--output') + 1]).write_bytes(body)
+            return subprocess.CompletedProcess(values, 0, stdout=self.token_status, stderr=b'')
+        output = Path(values[values.index('--output') + 1])
+        if url.startswith('https://ghcr.io/v2/'):
+            if 'blob' in self.unreachable:
+                raise subprocess.CalledProcessError(28, values)
+            digest = url.rsplit(':', 1)[1]
+            status = self.statuses.pop(0) if self.statuses else 200 if digest in self.blobs else 404
+            output.write_bytes(self.blobs[digest] if status == 200 else b'{"errors":[{"code":"BLOB_UNKNOWN"}]}')
+            return subprocess.CompletedProcess(values, 0, stdout=str(status).encode('ascii'), stderr=b'')
+        if url not in self.origin:
+            raise subprocess.CalledProcessError(22, values)
+        output.write_bytes(self.origin[url])
+        return subprocess.CompletedProcess(values, 0, stdout=b'', stderr=b'')
+
+    def urls(self):
+        return [values[-1] for values, _ in self.calls]
+
+    def blob_inputs(self):
+        return [data for values, data in self.calls if values[-1].startswith('https://ghcr.io/v2/')]
 
 
 class ScratchTestCase(unittest.TestCase):
@@ -878,6 +934,363 @@ class CacheTests(ScratchTestCase):
         self.assert_source_error('unsafe-cache-object', cache.get,
                                  'https://example.invalid/source.tar', expected)
         self.assertEqual(outside.read_bytes(), b'pinned contents')
+        self.commands.assert_not_called()
+
+
+class MirrorTests(ScratchTestCase):
+    def setUp(self):
+        super().setUp()
+        tools = mock.patch.object(sources, 'require_tools')
+        tools.start()
+        self.addCleanup(tools.stop)
+        tokens = mock.patch.dict(sources._mirror_tokens, clear=True)
+        tokens.start()
+        self.addCleanup(tokens.stop)
+        self.contents = b'pinned source contents'
+        self.sha256 = sha256(self.contents)
+        self.url = 'https://example.invalid/source.tar'
+        self.blob_url = 'https://ghcr.io/v2/example/runtime/blobs/sha256:' + self.sha256
+
+    def cache(self, curl, **options):
+        self.commands.side_effect = curl
+        return sources.Cache(self.directory / 'objects', **{'mirror': MIRROR, **options})
+
+    def test_mirror_hit_is_stored_without_an_origin_request(self):
+        curl = FakeCurl(blobs={self.sha256: self.contents}, origin={self.url: self.contents})
+        cache = self.cache(curl)
+        path = cache.get(self.url, self.sha256)
+        self.assertEqual(path, cache.directory / self.sha256)
+        self.assertEqual(path.read_bytes(), self.contents)
+        self.assertEqual(curl.urls(), [TOKEN_URL, self.blob_url])
+        self.assertEqual(list(cache.directory.iterdir()), [path])
+        self.assertEqual(cache.get(self.url, self.sha256), path)
+        self.assertEqual(len(curl.calls), 2)
+
+    def test_mirror_404_falls_back_to_the_origin_and_verifies_it(self):
+        for origin, code in ((self.contents, None), (b'tampered origin contents', 'sha256-mismatch')):
+            with self.subTest(origin=origin):
+                curl = FakeCurl(origin={self.url: origin})
+                cache = self.cache(curl)
+                if code is None:
+                    self.assertEqual(cache.get(self.url, self.sha256).read_bytes(), self.contents)
+                else:
+                    self.assert_source_error(code, cache.get, self.url, self.sha256)
+                    self.assertEqual(list(cache.directory.iterdir()), [])
+                self.assertEqual(curl.urls()[-2:], [self.blob_url, self.url])
+                (cache.directory / self.sha256).unlink(missing_ok=True)
+
+    def test_mirror_only_miss_fails_without_an_origin_request_or_partial_file(self):
+        for mirror in (MIRROR, None):
+            with self.subTest(mirror=mirror):
+                curl = FakeCurl(origin={self.url: self.contents})
+                cache = self.cache(curl, mirror=mirror, mirror_only=True)
+                error = self.assert_source_error('mirror-miss', cache.get, self.url, self.sha256)
+                self.assertEqual(error.details, {'url': self.url, 'sha256': self.sha256})
+                self.assertNotIn(self.url, curl.urls())
+                self.assertEqual(list(cache.directory.iterdir()), [])
+        self.assertEqual(curl.calls, [])
+
+    def test_mismatching_mirror_bytes_fail_without_fallback_or_publication(self):
+        for mirror_only in (False, True):
+            with self.subTest(mirror_only=mirror_only):
+                curl = FakeCurl(blobs={self.sha256: b'tampered mirror contents'}, origin={self.url: self.contents})
+                cache = self.cache(curl, mirror_only=mirror_only)
+                error = self.assert_source_error('sha256-mismatch', cache.get, self.url, self.sha256)
+                self.assertEqual(error.details, {'sha256': self.sha256, 'mirror': MIRROR})
+                self.assertNotIn(self.url, curl.urls())
+                self.assertEqual(list(cache.directory.iterdir()), [])
+
+    def test_refused_token_is_replaced_once_and_the_blob_request_repeated(self):
+        for status in (401, 403):
+            with self.subTest(status=status):
+                sources._mirror_tokens.clear()
+                curl = FakeCurl(blobs={self.sha256: self.contents}, statuses=[status])
+                path = self.cache(curl).get(self.url, self.sha256)
+                self.assertEqual(path.read_bytes(), self.contents)
+                self.assertEqual(curl.tokens, 2)
+                self.assertEqual(curl.blob_inputs(), [b'Authorization: Bearer fixture-token-1\n',
+                                                      b'Authorization: Bearer fixture-token-2\n'])
+                path.unlink()
+        sources._mirror_tokens.clear()
+        curl = FakeCurl(blobs={self.sha256: self.contents}, origin={self.url: self.contents}, statuses=[401, 401])
+        self.assertEqual(self.cache(curl).get(self.url, self.sha256).read_bytes(), self.contents)
+        self.assertEqual(curl.tokens, 2)
+        self.assertEqual(curl.urls()[-1], self.url)
+
+    def test_token_refused_for_a_missing_or_private_package_is_asked_once_per_process(self):
+        curl = FakeCurl(origin={self.url: self.contents, self.url + '2': b'second'}, token_status=b'403')
+        cache = self.cache(curl)
+        cache.get(self.url, self.sha256)
+        cache.get(self.url + '2', sha256(b'second'))
+        self.assertEqual(curl.urls(), [TOKEN_URL, self.url, self.url + '2'])
+        self.assertIsNone(sources._mirror_tokens['example/runtime'])
+
+    def test_unreachable_mirror_falls_back_or_fails_with_mirror_miss(self):
+        for unreachable in ('token', 'blob'):
+            for mirror_only in (False, True):
+                with self.subTest(unreachable=unreachable, mirror_only=mirror_only):
+                    sources._mirror_tokens.clear()
+                    curl = FakeCurl(blobs={self.sha256: self.contents}, origin={self.url: self.contents},
+                                    unreachable=(unreachable,))
+                    cache = self.cache(curl, mirror_only=mirror_only)
+                    if mirror_only:
+                        self.assert_source_error('mirror-miss', cache.get, self.url, self.sha256)
+                        self.assertNotIn(self.url, curl.urls())
+                        self.assertEqual(list(cache.directory.iterdir()), [])
+                    else:
+                        self.assertEqual(cache.get(self.url, self.sha256).read_bytes(), self.contents)
+                        self.assertEqual(curl.urls()[-1], self.url)
+                        (cache.directory / self.sha256).unlink()
+
+    def pins(self, count):
+        contents = [f'pinned source {index}\n'.encode('ascii') for index in range(count)]
+        pins = [{'url': f'https://example.invalid/{index}', 'sha256': sha256(data)}
+                for index, data in enumerate(contents)]
+        return pins, {pin['sha256']: data for pin, data in zip(pins, contents)}
+
+    def test_failed_token_request_is_sent_once_per_process(self):
+        pins, blobs = self.pins(24)
+        origin = {pin['url']: blobs[pin['sha256']] for pin in pins}
+        for failure in ({'unreachable': ('token',)}, {'token_status': b'503'}, {'token_status': b'429'}):
+            for mirror_only in (False, True):
+                with self.subTest(**failure, mirror_only=mirror_only):
+                    sources._mirror_tokens.clear()
+                    curl = FakeCurl(blobs=blobs, origin=origin, **failure)
+                    cache = self.cache(curl, mirror_only=mirror_only)
+                    if mirror_only:
+                        self.assert_source_error('mirror-miss', cache.fetch_all, pins)
+                        self.assertEqual(list(cache.directory.iterdir()), [])
+                    else:
+                        cache.fetch_all(pins)
+                        self.assertEqual(sorted(path.name for path in cache.directory.iterdir()), sorted(blobs))
+                        for path in cache.directory.iterdir():
+                            path.unlink()
+                    self.assertEqual(curl.urls().count(TOKEN_URL), 1)
+                    self.assertEqual(sorted(url for url in curl.urls() if url != TOKEN_URL),
+                                     [] if mirror_only else sorted(origin))
+
+    def test_token_answer_that_is_not_one_bearer_token_is_never_sent(self):
+        for body in (b'{"token": "fixture\\nX-Injected: 1"}', b'{"token": "two words"}', b'{"token": ""}',
+                     b'{"token": 7}', b'{}', b'not json'):
+            with self.subTest(body=body):
+                sources._mirror_tokens.clear()
+                curl = FakeCurl(blobs={self.sha256: self.contents}, origin={self.url: self.contents}, token_body=body)
+                self.assertEqual(self.cache(curl).get(self.url, self.sha256).read_bytes(), self.contents)
+                self.assertEqual(curl.urls(), [TOKEN_URL, self.url])
+                error = self.assert_source_error('mirror-unreachable', sources.mirror_status, MIRROR,
+                                                 'blobs/sha256:' + self.sha256, self.directory / 'blob')
+                self.assertEqual(error.details, {'status': '200'})
+                self.assertEqual(curl.urls(), [TOKEN_URL, self.url])
+                (self.directory / 'objects' / self.sha256).unlink()
+
+    def test_concurrent_refusals_of_one_token_fetch_one_new_token(self):
+        pins, blobs = self.pins(24)
+        curl = FakeCurl(blobs=blobs, statuses=[401] * 12)
+        # fetch_all's 12 workers each get their first 401 only once all 12 have sent the first token.
+        refused = threading.Barrier(12, timeout=60)
+
+        def answer(arguments, **kwargs):
+            result = curl(arguments, **kwargs)
+            if result.stdout == b'401':
+                refused.wait()
+            return result
+
+        cache = self.cache(answer)
+        cache.fetch_all(pins)
+        self.assertEqual(curl.tokens, 2)
+        self.assertEqual(sorted(path.name for path in cache.directory.iterdir()), sorted(blobs))
+        inputs = curl.blob_inputs()
+        self.assertEqual(inputs.count(b'Authorization: Bearer fixture-token-1\n'), 12)
+        self.assertEqual(inputs.count(b'Authorization: Bearer fixture-token-2\n'), 24)
+        self.assertEqual([url for url in curl.urls() if not url.startswith('https://ghcr.io/')], [])
+
+    def test_token_travels_on_stdin_only_and_the_blob_request_stays_on_https(self):
+        curl = FakeCurl(blobs={self.sha256: self.contents})
+        self.cache(curl).get(self.url, self.sha256)
+        (token, token_input), (blob, blob_input) = curl.calls
+        for values, max_time in ((token, '60'), (blob, '600')):
+            self.assertFalse(any('fixture-token' in value for value in values))
+            self.assertEqual(values[:2], ['curl', '-q'])
+            self.assertEqual(values[values.index('--proto') + 1], '=https')
+            self.assertIn('--tlsv1.2', values)
+            # A server that accepts the connection and never answers must not stall the build. The token request
+            # also holds the token lock, so every fetch_all worker would wait for it.
+            self.assertEqual(values[values.index('--connect-timeout') + 1], '30')
+            self.assertEqual(values[values.index('--max-time') + 1], max_time)
+        self.assertIsNone(token_input)
+        # Only an --output file holds a retried token answer alone; stdout carries just the status.
+        self.assertNotEqual(token[token.index('--output') + 1], '-')
+        self.assertEqual(token[token.index('--write-out') + 1], '%{http_code}')
+        self.assertEqual(blob_input, b'Authorization: Bearer fixture-token-1\n')
+        self.assertEqual(blob[blob.index('--proto-redir') + 1], '=https')
+        self.assertEqual(blob[blob.index('--header') + 1], '@-')
+        self.assertIn('--location', blob)
+        self.assertNotIn('--fail', blob)
+
+    def test_offline_cache_makes_no_request_even_with_a_mirror(self):
+        recovery = {'url': 'https://example.invalid/transport.tar.gz', 'sha256': 'b' * 64}
+        cache = sources.Cache(self.directory / 'objects', offline=True, mirror=MIRROR, mirror_only=True)
+        self.assert_source_error('offline-cache-miss', cache.get, self.url, self.sha256)
+        with mock.patch.object(sources, 'EXACT_GZIP_RECOVERIES', {self.sha256: recovery}):
+            self.assert_source_error('offline-cache-miss', cache.get_pin,
+                                     {'url': self.url, 'sha256': self.sha256, 'recovery': recovery})
+        self.commands.assert_not_called()
+
+    def test_recovery_pin_in_the_mirror_never_downloads_its_transport(self):
+        payload = b'fixture exact archive contents\n' * 64
+        transport = gzip.compress(payload, compresslevel=9, mtime=0)
+        recovered = bytearray(gzip.compress(payload, compresslevel=6, mtime=0))
+        recovered[9] = 3
+        recovered = bytes(recovered)
+        recovery = {'url': 'https://example.invalid/changed.tar.gz', 'sha256': sha256(transport),
+                    'format': 'gzip', 'level': 6, 'mtime': 0}
+        pin = {'url': 'https://example.invalid/original.tar.gz', 'sha256': sha256(recovered),
+               'filename': 'original.tar.gz', 'recovery': recovery}
+        origin = {recovery['url']: transport, pin['url']: b'regenerated archive bytes'}
+        with mock.patch.object(sources, 'EXACT_GZIP_RECOVERIES', {pin['sha256']: recovery}):
+            curl = FakeCurl(blobs={pin['sha256']: recovered}, origin=origin)
+            path = self.cache(curl).get_pin(pin)
+            self.assertEqual(path.read_bytes(), recovered)
+            self.assertEqual(curl.urls(), [TOKEN_URL, 'https://ghcr.io/v2/example/runtime/blobs/sha256:' + pin['sha256']])
+            path.unlink()
+            curl = FakeCurl(origin=origin)
+            error = self.assert_source_error('mirror-miss', self.cache(curl, mirror_only=True).get_pin, pin)
+            self.assertEqual(error.details, {'url': pin['url'], 'sha256': pin['sha256']})
+            self.assertEqual(len(curl.calls), 1)
+            self.assertEqual(list((self.directory / 'objects').iterdir()), [])
+            path = self.cache(curl).get_pin(pin)
+            self.assertEqual(path.read_bytes(), recovered)
+            self.assertEqual(curl.urls()[-1], recovery['url'])
+            self.assertNotIn(pin['url'], curl.urls())
+
+    def test_mirror_reader_rejects_an_invalid_repository_or_digest_without_a_request(self):
+        destination = self.directory / 'blob'
+        for repository in ('docker.io/example/runtime', 'ghcr.io/example', 'ghcr.io/Example/runtime', None):
+            with self.subTest(repository=repository):
+                self.assert_source_error('invalid-mirror', sources.mirror_blob, repository, self.sha256, destination)
+        for digest in (self.sha256.upper(), self.sha256[:-1], None):
+            with self.subTest(digest=digest):
+                self.assert_source_error('invalid-sha256', sources.mirror_blob, MIRROR, digest, destination)
+        self.commands.assert_not_called()
+
+
+class MirrorSnapshotTests(SourceFixture):
+    def setUp(self):
+        super().setUp()
+        tools = mock.patch.object(sources, 'require_tools')
+        tools.start()
+        self.addCleanup(tools.stop)
+        tokens = mock.patch.dict(sources._mirror_tokens, clear=True)
+        tokens.start()
+        self.addCleanup(tokens.stop)
+        self.system = self.lock['termux']['buildSystems'][0]
+        self.index = sources.snapshot_index_path(self.system, self.cache)
+        self.listing = self.index.read_bytes()
+        self.index.unlink()
+        self.cache.offline = False
+        self.cache.mirror = MIRROR
+
+    def listing_files(self, curl, **options):
+        self.commands.side_effect = curl
+        for name, value in options.items():
+            setattr(self.cache, name, value)
+        with mock.patch.object(sources, 'history_repository', return_value=(self.directory / 'history', HISTORY_TIP)) as history, \
+                mock.patch.object(sources, 'pin_tree', return_value=copy.deepcopy(self.snapshot_files)) as tree:
+            try:
+                return sources.build_system_files(self.system, self.cache)
+            finally:
+                self.cloned = history.called or tree.called
+
+    def test_missing_listing_comes_from_the_mirror_without_the_history_clone(self):
+        curl = FakeCurl(blobs={self.system['sha256']: self.listing})
+        self.assertEqual(self.listing_files(curl), self.snapshot_files)
+        self.assertFalse(self.cloned)
+        self.assertEqual(self.index.read_bytes(), self.listing)
+        self.assertEqual(curl.urls(), [TOKEN_URL, 'https://ghcr.io/v2/example/runtime/blobs/sha256:' + self.system['sha256']])
+        self.assertEqual(sorted(path.name for path in self.index.parent.iterdir()), [self.index.name])
+
+    def test_mirror_only_listing_miss_fails_without_cloning(self):
+        curl = FakeCurl()
+        error = self.assert_source_error('mirror-miss', self.listing_files, curl, mirror_only=True)
+        self.assertEqual(error.details, {'sha256': self.system['sha256']})
+        self.assertFalse(self.cloned)
+        self.assertEqual(list(self.index.parent.iterdir()), [])
+
+    def test_mismatching_listing_from_the_mirror_fails_without_cloning(self):
+        curl = FakeCurl(blobs={self.system['sha256']: self.listing + b'["extra"]\n'})
+        self.assert_source_error('sha256-mismatch', self.listing_files, curl)
+        self.assertFalse(self.cloned)
+        self.assertEqual(list(self.index.parent.iterdir()), [])
+
+    def test_listing_miss_falls_back_to_the_history_clone(self):
+        curl = FakeCurl()
+        self.assertEqual(self.listing_files(curl), self.snapshot_files)
+        self.assertTrue(self.cloned)
+        self.assertEqual(self.index.read_bytes(), self.listing)
+
+    def test_offline_listing_miss_makes_no_request(self):
+        self.cache.offline = True
+        self.assert_source_error('offline-snapshot-miss', self.listing_files, no_external_commands, mirror_only=True)
+        self.assertFalse(self.cloned)
+
+
+class MirrorLockTests(SourceFixture):
+    VALID = ('ghcr.io/sillybunnyteam/sillybunny-android-runtime', 'ghcr.io/example/runtime',
+             'ghcr.io/a-b/c.d_e', 'ghcr.io/a/b/c')
+    INVALID = (None, [], 'ghcr.io/example/runtime', {}, {'repository': MIRROR, 'tag': 'inputs'},
+               {'url': MIRROR}, {'repository': None}, {'repository': 1}, {'repository': 'docker.io/example/runtime'},
+               {'repository': 'ghcr.io/example'}, {'repository': 'ghcr.io/Example/runtime'},
+               {'repository': 'ghcr.io/example/runtime:inputs-0123456789ab'},
+               {'repository': 'ghcr.io/example/runtime@sha256:' + '0' * 64},
+               {'repository': 'https://ghcr.io/example/runtime'}, {'repository': 'ghcr.io/example/runtime/'},
+               {'repository': 'ghcr.io/example//runtime'}, {'repository': 'ghcr.io.example.invalid/a/b'},
+               {'repository': 'ghcr.io/example/runtime\n'}, {'repository': 'ghcr.io/example/-runtime'})
+
+    def test_runtime_mirror_is_optional_and_must_name_exactly_one_ghcr_repository(self):
+        self.assertEqual(sources.validate_runtime(self.runtime), {'git': '1.2.3-2'})
+        for repository in self.VALID:
+            with self.subTest(repository=repository):
+                self.runtime['mirror'] = {'repository': repository}
+                self.save_locks()
+                self.assertIsNone(self.validate())
+        for mirror in self.INVALID:
+            with self.subTest(mirror=mirror):
+                self.runtime['mirror'] = mirror
+                self.assert_source_error('runtime-mirror', sources.validate_runtime, self.runtime)
+
+    def run_main(self, *arguments):
+        cache = self.directory / 'command-line-cache'
+        argv = ['sources.py', '--runtime-lock', str(self.runtime_path), '--sources-lock', str(self.sources_path),
+                '--cache', str(cache), *arguments]
+        with mock.patch.object(sys, 'argv', argv), mock.patch.object(sources, 'build', return_value={}) as build, \
+                mock.patch('sys.stdout', new_callable=io.StringIO), mock.patch('sys.stderr', new_callable=io.StringIO):
+            sources.main()
+        return build
+
+    def test_command_line_passes_the_lock_mirror_and_mirror_only_to_the_cache(self):
+        for mirror, arguments, expected in (
+            (None, (), (None, False)),
+            (MIRROR, (), (MIRROR, False)),
+            (MIRROR, ('--mirror-only',), (MIRROR, True)),
+        ):
+            with self.subTest(mirror=mirror, arguments=arguments):
+                self.runtime.pop('mirror', None)
+                if mirror is not None:
+                    self.runtime['mirror'] = {'repository': mirror}
+                self.save_locks()
+                cache = self.run_main(*arguments).call_args.args[4]
+                self.assertEqual((cache.mirror, cache.mirror_only), expected)
+
+    def test_mirror_only_needs_a_lock_mirror_and_cannot_refresh_the_lock(self):
+        for mirror, arguments in ((None, ('--mirror-only',)), (MIRROR, ('--mirror-only', '--refresh-lock'))):
+            with self.subTest(arguments=arguments):
+                self.runtime.pop('mirror', None)
+                if mirror is not None:
+                    self.runtime['mirror'] = {'repository': mirror}
+                self.save_locks()
+                with self.assertRaises(SystemExit) as caught:
+                    self.run_main(*arguments)
+                self.assertEqual(caught.exception.code, 2)
         self.commands.assert_not_called()
 
 
@@ -2025,6 +2438,28 @@ class NodeTests(NodeFixture):
         self.save_locks()
         self.assert_source_error('node-and-npm-required', self.build, require_node=True)
         self.commands.assert_not_called()
+
+
+class DownloadPinsTests(NodeFixture):
+    def test_download_pins_are_exactly_the_pins_that_build_fetches_before_the_build_systems(self):
+        package = self.lock['termux']['packages'][0]
+        expected = [*package['files'], *package['sources'],
+                    *(self.node[key] for key in ('source', 'shasums', 'signature', 'keyring'))]
+        self.assertEqual(sources.download_pins(self.lock), expected)
+        self.assertEqual(sources.download_pins({**self.lock, 'node': None}), [*package['files'], *package['sources']])
+        calls = []
+
+        class Stop(Exception):
+            pass
+
+        def record(cache, pins):
+            calls.append(list(pins))
+            raise Stop
+
+        with mock.patch.object(sources.Cache, 'fetch_all', autospec=True, side_effect=record):
+            with self.assertRaises(Stop):
+                self.build(require_node=True)
+        self.assertEqual(calls, [expected])
 
 
 class NoticesTests(SourceFixture):

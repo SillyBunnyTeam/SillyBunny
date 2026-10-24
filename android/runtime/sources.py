@@ -17,8 +17,9 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 from pathlib import Path, PurePosixPath
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 
 ROOT = Path(__file__).resolve().parent
@@ -28,6 +29,9 @@ HASH = re.compile(r'[0-9a-f]{64}\Z')
 COMMIT = re.compile(r'[0-9a-f]{40}\Z')
 PACKAGE = re.compile(r'[a-z0-9][a-z0-9+.-]*\Z')
 NODE_VERSION = re.compile(r'(?:v)?([0-9]+\.[0-9]+\.[0-9]+)\Z')
+GHCR_REPOSITORY = re.compile(r'ghcr\.io(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*){2,}\Z')
+BEARER_TOKEN = re.compile(r'[A-Za-z0-9._~+/-]+=*\Z')
+MANIFEST_TYPES = 'application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json'
 NODE_KEYS_COMMIT = '481637f813e912c4aa3622d7964ab426c97b8e8d'
 NODE_KEYRING_URL = f'https://raw.githubusercontent.com/nodejs/release-keys/{NODE_KEYS_COMMIT}/gpg-only-active-keys/pubring.kbx'
 NODE_KEYRING_SHA256 = '140f2ad5260fd62773b6243ce8e1d3009645d558f121b8262c55e383dc285932'
@@ -198,10 +202,109 @@ def require_tools(*names):
             fail('missing-tool', tool=name)
 
 
+_mirror_tokens = {}
+_mirror_tokens_lock = threading.Lock()
+
+
+def valid_mirror(mirror):
+    return (isinstance(mirror, dict) and set(mirror) == {'repository'} and isinstance(mirror['repository'], str)
+            and GHCR_REPOSITORY.fullmatch(mirror['repository']) is not None)
+
+
+def _mirror_curl(arguments, **kwargs):
+    require_tools('curl')
+    try:
+        return run(['curl', '-q', '--silent', '--show-error', '--proto', '=https', '--tlsv1.2', '--retry', '3',
+                    '--connect-timeout', '30', *arguments], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                   **kwargs).stdout
+    except subprocess.CalledProcessError as error:
+        fail('mirror-unreachable', exit=error.returncode)
+
+
+def _request_mirror_token(name):
+    query = urlencode({'scope': f'repository:{name}:pull', 'service': 'ghcr.io'})
+    with tempfile.TemporaryDirectory(prefix='mirror-token-') as directory:
+        answer = Path(directory) / 'answer'
+        # curl empties an --output file before each retry. On stdout, the answer to a retried 429 or 503 would follow
+        # the failed answer's body, and the token would not parse.
+        status = _mirror_curl(['--max-time', '60', '--write-out', '%{http_code}', '--output', str(answer),
+                               'https://ghcr.io/token?' + query])
+        body = answer.read_bytes() if answer.exists() else b''
+    if status in (b'401', b'403'):
+        return None
+    try:
+        token = json.loads(body)['token'] if status == b'200' else None
+    except (ValueError, KeyError, TypeError):
+        token = None
+    if not isinstance(token, str) or not BEARER_TOKEN.fullmatch(token):
+        fail('mirror-unreachable', status=status.decode('ascii', 'replace'))
+    return token
+
+
+def _mirror_token(name, stale=None):
+    """The anonymous pull token for ghcr.io/<name>, or None when GHCR refuses one, as it does for a package that is
+    missing or private. A process asks once per name, and again only when the registry refused the token in stale.
+    A token request that fails is not sent again: every later call fails at once with the same error, so that an
+    unreachable mirror costs one round of curl retries per process instead of one per pin."""
+    with _mirror_tokens_lock:
+        if name not in _mirror_tokens or stale is not None and _mirror_tokens[name] == stale:
+            try:
+                _mirror_tokens[name] = _request_mirror_token(name)
+            except SourceError as error:
+                _mirror_tokens[name] = error
+                raise
+        token = _mirror_tokens[name]
+    if isinstance(token, SourceError):
+        fail(token.code, **token.details)
+    return token
+
+
+def mirror_status(repository, path, output, head=False):
+    """HTTP status of an anonymous GET, or HEAD, of https://ghcr.io/v2/<name>/<path>, with the body in output.
+
+    403 also stands for a pull token that GHCR refused. A 401 or 403 for a cached token fetches a new token and asks
+    once more. Fails with mirror-unreachable when there is no HTTP answer or no usable token answer."""
+    if not isinstance(repository, str) or not GHCR_REPOSITORY.fullmatch(repository):
+        fail('invalid-mirror', repository=repository)
+    name = repository.split('/', 1)[1]
+    manifest = path.startswith('manifests/')
+    token = None
+    for attempt in range(2):
+        token = _mirror_token(name, stale=token)
+        if token is None:
+            return 403
+        headers = f'Authorization: Bearer {token}\n' + (f'Accept: {MANIFEST_TYPES}\n' if manifest else '')
+        # The token goes in on stdin, so that it stays out of argv and out of error text. GHCR answers a blob GET with
+        # a redirect to another host, and curl sends a custom Authorization header to no other host.
+        status = _mirror_curl([*(['--head'] if head else []), '--location', '--proto-redir', '=https',
+                               '--max-time', '60' if manifest else '600', '--header', '@-',
+                               '--write-out', '%{http_code}', '--output', output, f'https://ghcr.io/v2/{name}/{path}'],
+                              input=headers.encode('ascii'))
+        if not re.fullmatch(rb'[0-9]{3}', status):
+            fail('mirror-unreachable')
+        if int(status) not in (401, 403) or attempt:
+            return int(status)
+
+
+def mirror_blob(repository, sha256, destination):
+    """Downloads blob sha256:<sha256> of the mirror into destination. Returns False when the mirror does not have it
+    or cannot be reached, so that the caller can fall back to the origin. The caller checks the bytes."""
+    if not isinstance(sha256, str) or not HASH.fullmatch(sha256):
+        fail('invalid-sha256', sha256=sha256)
+    try:
+        return mirror_status(repository, 'blobs/sha256:' + sha256, destination) == 200
+    except SourceError as error:
+        if error.code != 'mirror-unreachable':
+            raise
+        return False
+
+
 class Cache:
-    def __init__(self, directory, offline=False):
+    def __init__(self, directory, offline=False, mirror=None, mirror_only=False):
         self.directory = input_path(directory)
         self.offline = offline
+        self.mirror = mirror
+        self.mirror_only = mirror_only
         self.directory.mkdir(parents=True, exist_ok=True)
 
     def get(self, url, sha256):
@@ -218,6 +321,10 @@ class Cache:
         if self.offline:
             fail('offline-cache-miss', url=url, sha256=sha256)
         require_tools('curl')
+        if self.mirror is not None and self.from_mirror(sha256, destination):
+            return destination
+        if self.mirror_only:
+            fail('mirror-miss', url=url, sha256=sha256)
         with tempfile.NamedTemporaryFile(dir=self.directory, suffix='.part', delete=False) as stream:
             temporary = Path(stream.name)
         try:
@@ -232,6 +339,23 @@ class Cache:
         finally:
             temporary.unlink(missing_ok=True)
         return destination
+
+    def from_mirror(self, sha256, destination):
+        """Copies blob sha256 of the mirror to destination. Returns False when the mirror does not have it or cannot
+        be reached. Bytes that do not match fail with sha256-mismatch and never fall back to the origin."""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=destination.parent, suffix='.part', delete=False) as stream:
+            temporary = Path(stream.name)
+        try:
+            if not mirror_blob(self.mirror, sha256, temporary):
+                return False
+            if digest(temporary) != sha256:
+                fail('sha256-mismatch', sha256=sha256, mirror=self.mirror)
+            temporary.chmod(0o644)
+            temporary.replace(destination)
+            return True
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def store(self, contents):
         sha256 = hashlib.sha256(contents).hexdigest()
@@ -258,6 +382,11 @@ class Cache:
             return self.get(pin['url'], pin['sha256'])
         if recovery != EXACT_GZIP_RECOVERIES.get(pin['sha256']):
             fail('unsupported-source-recovery')
+        # The mirror holds the recovered archive under the pin's own SHA-256, so a hit needs no transport.
+        if self.mirror is not None and self.from_mirror(pin['sha256'], destination):
+            return self.get(pin['url'], pin['sha256'])
+        if self.mirror_only:
+            fail('mirror-miss', url=pin['url'], sha256=pin['sha256'])
         # The archived output must match the original recipe hash, not merely
         # uncompressed contents. The changed transport bytes are pinned too.
         transport = self.get(recovery['url'], recovery['sha256'])
@@ -310,6 +439,8 @@ def validate_runtime(runtime):
             fail('runtime-section-version', section=key)
     if runtime['bun'] is not None:
         fail('unsupported-runtime', section='bun')
+    if 'mirror' in runtime and not valid_mirror(runtime['mirror']):
+        fail('runtime-mirror')
     return packages
 
 
@@ -455,6 +586,10 @@ def build_system_files(system, cache, repository=None):
         input_path(index)
     except SourceError:
         fail('unsafe-snapshot-index')
+    if not cache.offline and not os.path.lexists(index):
+        found = cache.mirror is not None and cache.from_mirror(system['sha256'], index)
+        if not found and cache.mirror_only:
+            fail('mirror-miss', sha256=system['sha256'])
     try:
         metadata = index.lstat()
     except FileNotFoundError:
@@ -950,6 +1085,17 @@ def node_npm_version(path, node_version):
         return metadata['version']
 
 
+def download_pins(lock):
+    """The URL pins that build() downloads besides the build systems. The input mirror's tag covers them
+    (runtime-mirror.py), so a change here changes the tag."""
+    pins = []
+    for package in lock['termux']['packages']:
+        pins += package['files'] + package['sources']
+    if lock.get('node') is not None:
+        pins += [lock['node'][key] for key in ('source', 'shasums', 'signature', 'keyring')]
+    return pins
+
+
 def build(lock, runtime, runtime_path, sources_path, cache, destination, require_node=False):
     runtime_data = Path(runtime_path).read_bytes()
     sources_data = Path(sources_path).read_bytes()
@@ -960,7 +1106,6 @@ def build(lock, runtime, runtime_path, sources_path, cache, destination, require
     validate_sources(lock, runtime, runtime_sha256)
     if require_node and (lock.get('node') is None or lock.get('npm') is None):
         fail('node-and-npm-required')
-    pins = []
     recipe_files = {}
     for item in lock['termux']['packages']:
         for pin in item['files']:
@@ -968,11 +1113,7 @@ def build(lock, runtime, runtime_path, sources_path, cache, destination, require
             if key in recipe_files and recipe_files[key] != pin:
                 fail('conflicting-recipe-file', path=pin['path'])
             recipe_files[key] = pin
-    for package in lock['termux']['packages']:
-        pins += package['files'] + package['sources']
-    if lock.get('node') is not None:
-        pins += [lock['node'][key] for key in ('source', 'shasums', 'signature', 'keyring')]
-    cache.fetch_all(pins)
+    cache.fetch_all(download_pins(lock))
     for system in lock['termux']['buildSystems']:
         for pin in build_system_files(system, cache):
             key = (system['commit'], pin['path'])
@@ -1625,6 +1766,7 @@ def main():
     parser.add_argument('--history-repo', type=Path, help='TODO(copy)')
     parser.add_argument('--history-tip', help='TODO(copy)')
     parser.add_argument('--verify', type=Path, help='TODO(copy)')
+    parser.add_argument('--mirror-only', action='store_true', help='TODO(copy)')
     args = parser.parse_args()
     if args.verify:
         manifest = verify_archive(args.verify)
@@ -1632,11 +1774,17 @@ def main():
         return
     if args.dry_run and not args.refresh_lock or (args.history_repo or args.history_tip) and not args.refresh_lock:
         parser.error('TODO(copy)')
+    if args.mirror_only and args.refresh_lock:
+        parser.error('TODO(copy)')
     cache = Cache(args.cache / 'objects', args.offline)
     with (args.cache / '.sources.lock').open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         runtime = load_json(args.runtime_lock)
         validate_runtime(runtime)
+        if args.mirror_only and 'mirror' not in runtime:
+            parser.error('TODO(copy)')
+        cache.mirror = runtime.get('mirror', {}).get('repository')
+        cache.mirror_only = args.mirror_only
         if args.refresh_lock:
             if args.offline:
                 fail('offline-refresh-unsupported')

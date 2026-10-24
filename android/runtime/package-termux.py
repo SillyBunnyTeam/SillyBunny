@@ -5,6 +5,7 @@ import datetime
 import email.utils
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import posixpath
@@ -18,8 +19,13 @@ from collections import deque
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, urlsplit
 
+sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parent
+_SPEC = importlib.util.spec_from_file_location('runtime_sources', ROOT / 'sources.py')
+sources = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(sources)
+
 ABI_ARCHES = {
     'arm64-v8a': ('aarch64', 'EM_AARCH64', 64),
     'armeabi-v7a': ('arm', 'EM_ARM', 32),
@@ -145,6 +151,8 @@ def validate_lock(lock):
             pool_filename(deb.get('filename'))
     if not {'git', 'bash', 'ca-certificates'}.issubset(names):
         raise ValueError('runtime.lock must include git, bash and ca-certificates')
+    if 'mirror' in lock and not sources.valid_mirror(lock['mirror']):
+        raise ValueError('runtime.lock mirror must be an object with exactly one key, a ghcr.io repository')
 
 
 def download(repository, relative, destination, sha256=None, size=None, fresh=False):
@@ -321,15 +329,38 @@ def update_lock(lock, lock_path, cache, dry_run):
         print(f'Updated authenticated runtime.lock: {len(changes)} changes')
 
 
-def fetch_debs(lock, cache):
+def from_mirror(repository, pin, destination, mirror_only):
+    if repository is not None:
+        require_tools('curl')
+    sha256 = pin['sha256'].lower()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=destination.parent, suffix='.part', delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        if repository is not None and sources.mirror_blob(repository, sha256, temporary):
+            if digest(temporary) != sha256:
+                raise ValueError(f'SHA256 mismatch from the mirror: {pin["filename"]}')
+            print(f'From the mirror: {pin["filename"]}', flush=True)
+            temporary.replace(destination)
+        elif mirror_only:
+            raise ValueError(f'Not in the mirror: {pin["filename"]}')
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def fetch_debs(lock, cache, mirror_only=False):
     require_tools('dpkg-deb')
+    mirror = lock.get('mirror', {}).get('repository')
     debs = {}
     for abi, (architecture, _, _) in ABI_ARCHES.items():
         debs[abi] = []
         for package in lock['termux']['packages']:
             pin = package['debs'][abi]
-            path = download(lock['termux']['repository'], pin['filename'],
-                            cache / 'debs' / (pin['sha256'].lower() + '.deb'), pin['sha256'])
+            destination = cache / 'debs' / (pin['sha256'].lower() + '.deb')
+            # After a mirror hit, download() finds a verified cache file and never contacts the origin.
+            if not destination.exists() and (mirror is not None or mirror_only):
+                from_mirror(mirror, pin, destination, mirror_only)
+            path = download(lock['termux']['repository'], pin['filename'], destination, pin['sha256'])
             fields = parse_control(run(['dpkg-deb', '--field', path], stdout=subprocess.PIPE, text=True).stdout)[0]
             if fields.get('Package') != package['name'] or fields.get('Version') != package['version'] or fields.get('Architecture') not in (architecture, 'all'):
                 raise ValueError(f'Deb metadata differs from lock: {package["name"]}/{abi}')
@@ -638,7 +669,7 @@ def inventory(directory, prefix=''):
             for path in sorted(directory.rglob('*')) if path.is_file()]
 
 
-def build(lock, lock_path, cache):
+def build(lock, lock_path, cache, mirror_only=False):
     require_tools('patchelf', 'dpkg-deb')
     try:
         import elftools  # noqa: F401
@@ -648,7 +679,7 @@ def build(lock, lock_path, cache):
     match = re.search(r'(\d+)\.(\d+)', version)
     if not match or tuple(map(int, match.groups())) < (0, 18):
         raise ValueError(f'patchelf 0.18+ is required for 16 KB packaging; found {version}')
-    debs = fetch_debs(lock, cache)
+    debs = fetch_debs(lock, cache, mirror_only)
     with tempfile.TemporaryDirectory(prefix='termux-build-', dir=cache) as temporary:
         work = Path(temporary)
         output = work / 'out'
@@ -695,9 +726,12 @@ def main():
     parser = argparse.ArgumentParser(description='Fetch and validate the pinned Android Termux native payload.')
     parser.add_argument('--update-lock', action='store_true', help='Resolve the pinned package names through an authenticated live repository index.')
     parser.add_argument('--dry-run', action='store_true', help='Verify the complete lock update without rewriting runtime.lock; requires --update-lock.')
+    parser.add_argument('--mirror-only', action='store_true', help='Read the pinned debs only from the mirror that runtime.lock names, and fail when one is missing.')
     args = parser.parse_args()
     if args.dry_run and not args.update_lock:
         parser.error('--dry-run requires --update-lock')
+    if args.mirror_only and args.update_lock:
+        parser.error('--mirror-only cannot be used with --update-lock')
     lock_path = ROOT.parent / 'runtime.lock'
     cache = ROOT / 'cache'
     cache.mkdir(parents=True, exist_ok=True)
@@ -705,10 +739,12 @@ def main():
         fcntl.flock(guard, fcntl.LOCK_EX)
         lock = json.loads(lock_path.read_text(encoding='utf-8'))
         validate_lock(lock)
+        if args.mirror_only and 'mirror' not in lock:
+            parser.error('--mirror-only requires a mirror in runtime.lock')
         if args.update_lock:
             update_lock(lock, lock_path, cache, args.dry_run)
         else:
-            build(lock, lock_path, cache)
+            build(lock, lock_path, cache, args.mirror_only)
 
 
 if __name__ == '__main__':
