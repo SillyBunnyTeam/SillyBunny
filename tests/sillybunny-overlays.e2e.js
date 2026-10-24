@@ -499,6 +499,20 @@ for (const width of [1440, 390]) {
             await expect(frame).toHaveCount(0);
             await expect(page.locator('#select_chat_popup').locator('xpath=..')).toHaveAttribute('id', 'shadow_select_chat_popup');
         });
+
+        test('keeps its opened height while a search removes every chat', async ({ page }) => {
+            await prepareChat(page);
+            const actions = await openChatActions(page, width);
+            await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
+            const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await expect(frame).toBeVisible();
+            const openedHeight = await frame.evaluate(node => node.querySelector('.sb-dialog').getBoundingClientRect().height);
+            const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
+            await search.fill('no-chat-matches-this');
+            await expect(frame.locator('#select_chat_div .sb-status-page')).toContainText('No results');
+            const filteredHeight = await frame.evaluate(node => node.querySelector('.sb-dialog').getBoundingClientRect().height);
+            expect(filteredHeight).toBe(openedHeight);
+        });
     });
 }
 
