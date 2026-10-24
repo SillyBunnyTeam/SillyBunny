@@ -8067,9 +8067,12 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
         min-height: 44px;
     }
 
-    .sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__close) {
+    .sb-dialog :is(.sb-dialog__icon-button, .sb-dialog__close),
+    dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close {
         width: 44px;
+        min-width: 44px;
         height: 44px;
+        min-height: 44px;
     }
 }
 

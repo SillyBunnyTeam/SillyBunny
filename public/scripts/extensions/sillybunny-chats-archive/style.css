@@ -140,7 +140,8 @@ dialog.popup.sbca-dialog.sb-dialog--window .popup-content {
 }
 
 @media (any-pointer: coarse) {
-    .sbca-dialog .popup-button-close {
+    .sbca-dialog .popup-button-close,
+    dialog.popup.sb-dialog.sbca-dialog .sb-dialog__header > .popup-button-close {
         box-sizing: border-box;
         min-inline-size: var(--sb-mobile-touch-target, 44px);
         min-block-size: var(--sb-mobile-touch-target, 44px);
