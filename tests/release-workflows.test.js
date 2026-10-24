@@ -11,6 +11,7 @@ import { attachUpdateManifest } from '../android/release/attach-update-manifest.
 import { stagedRuntimeProblems } from '../android/release/check-staged-runtime.mjs';
 import { ReleaseToolError, UsageError } from '../android/release/common.mjs';
 import { decideRelease } from '../android/release/release-decision.mjs';
+import { formatSigningCert } from '../android/release/update-manifest.mjs';
 
 // Step scripts and CLIs run as child processes, which are slow on Windows.
 jest.setTimeout(60_000);
@@ -96,6 +97,7 @@ const ANDROID_SMOKE = './.github/workflows/android-smoke.yml';
 const SIGNING_SECRETS = ['ANDROID_KEYSTORE_B64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'];
 const ERROR_ANNOTATION = '::error title=TODO(copy)::TODO(copy)';
 const SIGNER = 'a6f296b190227ca0f0f6327ef06f3705f026a81562b10def548addb0f668e0f3';
+const OTHER_SIGNER = '88c7b96f568d4735349049df6693a0c029c71a52e45c179345f565e4634da7b8';
 const HASH_A = 'a1'.repeat(32);
 const HASH_B = 'b2'.repeat(32);
 const describePosix = process.platform === 'win32' ? describe.skip : describe;
@@ -133,6 +135,7 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
             'default-ref': '${{ steps.android.outputs.default-ref }}',
             'inputs-hash': '${{ steps.android.outputs.inputs-hash }}',
             'previous-tag': '${{ steps.android.outputs.previous-tag }}',
+            'expected-signing-cert': '${{ steps.android.outputs.expected-signing-cert }}',
         });
         // Tag validation moved into decide unchanged, so nothing downstream runs for a bad tag.
         expect(stepIndex(jobs.decide, 'Validate tag')).toBeLessThan(stepIndex(jobs.decide, 'Decide the Android APKs'));
@@ -262,10 +265,10 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
             'Check the Android jobs',
             'Checkout tag',
             'Setup Node.js',
-            'Check the Android decision again',
             'Download the APKs and android-update.json',
             'Download the sources archive',
             'Check the APKs against android-update.json',
+            'Check the Android decision again',
             'Collect release assets',
             'Attest release assets',
             'Create draft release',
@@ -299,6 +302,41 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
         expect(stepNamed(draft, 'Attach android-update.json').run).toContain('node android/release/attach-update-manifest.mjs --repository "$GITHUB_REPOSITORY"');
         // Nothing ever publishes, deletes or replaces a release or its assets.
         expect(releaseSource).not.toMatch(/gh release (edit|delete|upload)|--clobber|draft=false|--draft=false/);
+    });
+
+    test('every path to the android-release upload and to the draft checks the signing certificate first', () => {
+        const order = (job, names) => {
+            const indexes = names.map(name => stepIndex(job, name));
+            expect([names, indexes.every(index => index >= 0)]).toEqual([names, true]);
+            expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
+            return indexes;
+        };
+        const checks = [
+            [jobs['android-sign'], ['Sign the APKs', 'Delete the keystore', 'Check the signing certificate', 'Write android-update.json', 'Upload the signed APKs and android-update.json']],
+            [jobs['android-reattach'], ['Download and check the previous release\'s APKs', 'Check the signing certificate', 'Upload the APKs and android-update.json']],
+            [jobs['draft-release'], ['Download the APKs and android-update.json', 'Check the APKs against android-update.json', 'Check the Android decision again',
+                'Collect release assets', 'Attest release assets', 'Create draft release', 'Attach android-update.json']],
+        ];
+        for (const [job, names] of checks) {
+            const check = order(job, names)[names.findIndex(name => name.startsWith('Check the signing certificate') || name === 'Check the Android decision again')];
+            const step = job.steps[check];
+            expect(step.if).toBeUndefined();
+            expect(step['continue-on-error']).toBeUndefined();
+            expect(step.run).toMatch(/node android\/release\/release-decision\.mjs --check-signing-cert "\$(CERTIFICATE|certificate)" \\\n\s+--expected-signing-cert "\$(EXPECTED|expected)"/);
+            // No later step overrides the default success() condition, so nothing runs after a failed check.
+            const later = job.steps.slice(check + 1).filter(candidate => /always\(\)|failure\(\)|cancelled\(\)/.test(String(candidate.if ?? '')));
+            expect(later).toEqual([]);
+        }
+        expect(stepNamed(jobs['android-sign'], 'Check the signing certificate').env).toEqual({
+            EXPECTED: '${{ needs.decide.outputs.expected-signing-cert }}',
+            CERTIFICATE: '${{ steps.sign.outputs.certificate }}',
+        });
+        expect(stepNamed(jobs['android-reattach'], 'Check the signing certificate').env).toEqual({ EXPECTED: '${{ needs.decide.outputs.expected-signing-cert }}' });
+        // The draft compares the manifest it attaches with the decision it has just made again, not with decide's.
+        const again = stepNamed(jobs['draft-release'], 'Check the Android decision again').run;
+        expect(again).toContain('certificate=$(jq -r \'.signingCertSha256\' "$RUNNER_TEMP/android-release/android-update.json")');
+        expect(again).toContain('expected=$(jq -r \'.expectedSigningCert // empty\' "$decision")');
+        expect(again.indexOf('> "$decision"')).toBeLessThan(again.indexOf('--check-signing-cert'));
     });
 
     test('CODEOWNERS covers the Android app and its signing path', () => {
@@ -369,7 +407,7 @@ const UNPINNED_LOCK = {
     node: { ...PINNED_LOCK.node, binaries: { ...PINNED_LOCK.node.binaries, 'armeabi-v7a': { ...pinnedBinary('armeabi-v7a'), digest: null, sha256: null, size: null } } },
 };
 
-function manifestFixture({ versionCode = 1, prerelease = false, inputsHash = HASH_A, releaseTag, assets } = {}) {
+function manifestFixture({ versionCode = 1, prerelease = false, inputsHash = HASH_A, releaseTag, assets, signingCertSha256 = SIGNER } = {}) {
     return {
         schema: 1,
         versionCode,
@@ -378,7 +416,7 @@ function manifestFixture({ versionCode = 1, prerelease = false, inputsHash = HAS
         releaseTag: releaseTag ?? (prerelease ? `v2.${versionCode}.0-rc.1` : `v2.${versionCode}.0`),
         defaultRef: prerelease ? 'staging' : 'release',
         minSdk: 29,
-        signingCertSha256: SIGNER,
+        signingCertSha256,
         inputsHash,
         assets: assets ?? {
             'arm64-v8a': { name: 'SillyBunny-android-arm64-v8a.apk', sha256: 'cd'.repeat(32), size: 131073 },
@@ -732,7 +770,7 @@ function runStep(script, { env = {}, cwd, bin } = {}) {
 const sha256Of = bytes => createHash('sha256').update(bytes).digest('hex');
 
 /** RUNNER_TEMP contents for the draft job: android-release (APKs, manifest) and, for a build, android-sources. */
-function writeAndroidFiles(temp, { releaseTag = 'v2.3.0', sources = true } = {}) {
+function writeAndroidFiles(temp, { releaseTag = 'v2.3.0', sources = true, signingCertSha256 = SIGNER } = {}) {
     const dir = path.join(temp, 'android-release');
     mkdirSync(dir, { recursive: true });
     const assets = {};
@@ -741,7 +779,8 @@ function writeAndroidFiles(temp, { releaseTag = 'v2.3.0', sources = true } = {})
         writeFileSync(path.join(dir, `SillyBunny-android-${abi}.apk`), bytes);
         assets[abi] = { name: `SillyBunny-android-${abi}.apk`, sha256: sha256Of(bytes), size: bytes.length };
     }
-    writeFileSync(path.join(dir, 'android-update.json'), `${JSON.stringify(manifestFixture({ versionCode: 3, releaseTag, assets, inputsHash: HASH_B }), null, 2)}\n`);
+    const manifest = manifestFixture({ versionCode: 3, releaseTag, assets, inputsHash: HASH_B, signingCertSha256 });
+    writeFileSync(path.join(dir, 'android-update.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     if (sources) {
         mkdirSync(path.join(temp, 'android-sources'));
         writeFileSync(path.join(temp, 'android-sources', 'SillyBunny-android-sources.tar.zst'), randomBytes(512));
@@ -771,16 +810,18 @@ describePosix('release.yml step scripts (POSIX)', () => {
                 PRERELEASE: 'false', TAG: 'v2.3.0', GITHUB_SHA: 'c'.repeat(40), GITHUB_REPOSITORY: 'team/app', GITHUB_API_URL: API,
             } });
         };
-        const base = { defaultRef: 'release', inputsHash: HASH_B, previous: null };
+        const base = { defaultRef: 'release', inputsHash: HASH_B, previous: null, expectedSigningCert: null };
         const skip = run({ ...base, action: 'skip' });
         expect(skip.code).toBe(0);
-        expect(skip.outputs).toEqual({ 'action': 'skip', 'default-ref': 'release', 'inputs-hash': HASH_B, 'previous-tag': '' });
+        expect(skip.outputs).toEqual({ 'action': 'skip', 'default-ref': 'release', 'inputs-hash': HASH_B, 'previous-tag': '', 'expected-signing-cert': '' });
         expect(skip.stdout).toContain('::notice title=TODO(copy)::TODO(copy)\n');
         expect(skip.summary).toBe('TODO(copy)\n\n- android: `skip`\n- reason: `unpinned-runtime`\n');
         expect(readFileSync(path.join(dir, 'args'), 'utf8')).toBe(`android/release/release-decision.mjs --prerelease false --commit ${'c'.repeat(40)} --github-repository team/app --github-api-url ${API} --exclude-tag v2.3.0 --skip-unpinned-runtime\n`);
-        const reattach = run({ ...base, action: 'reattach', previous: { tag: 'v2.2.0' } });
+        const reattach = run({ ...base, action: 'reattach', previous: { tag: 'v2.2.0' }, expectedSigningCert: SIGNER });
         expect([reattach.code, reattach.outputs.action, reattach.outputs['previous-tag'], reattach.summary]).toEqual([0, 'reattach', 'v2.2.0', '']);
+        expect(reattach.outputs['expected-signing-cert']).toBe(SIGNER);
         expect(reattach.stdout).not.toContain('::notice');
+        expect(run({ ...base, action: 'build' }).outputs).toMatchObject({ 'action': 'build', 'expected-signing-cert': '' });
         const failed = run({}, 1);
         expect([failed.code, failed.outputs]).toEqual([1, {}]);
         expect(failed.stdout).toContain(ERROR_ANNOTATION);
@@ -802,22 +843,43 @@ describePosix('release.yml step scripts (POSIX)', () => {
     test('the draft job makes the decision again with decide\'s flags and stops if it changed', () => {
         const step = stepNamed(jobs['draft-release'], 'Check the Android decision again');
         const dir = mkdtempSync(path.join(temp, 'decide-again-'));
+        // A fake decision; the signing certificate check runs the real release-decision.mjs.
         const bin = makeBin(dir, {
-            node: 'printf \'%s\\n\' "$*" > "$NODE_ARGS"\ncat "$DECISION"\nexit "${DECISION_STATUS:-0}"\n',
+            node: [
+                'if [ "$2" = --check-signing-cert ]; then',
+                '    printf \'%s\\n\' "$*" > "$CHECK_ARGS"',
+                '    exec "$REAL_NODE" "$@"',
+                'fi',
+                'printf \'%s\\n\' "$*" > "$NODE_ARGS"',
+                'cat "$DECISION"',
+                'exit "${DECISION_STATUS:-0}"',
+                '',
+            ].join('\n'),
         });
+        const runner = path.join(dir, 'runner');
+        writeAndroidFiles(runner, { signingCertSha256: formatSigningCert(SIGNER) });
+        const checkArgs = path.join(dir, 'check-args');
         const run = (decision, env = {}, status = 0) => {
             writeFileSync(path.join(dir, 'decision.json'), JSON.stringify(decision));
-            return runStep(step.run, { bin, env: {
+            rmSync(checkArgs, { force: true });
+            return runStep(step.run, { cwd: repoRoot, bin, env: {
                 DECISION: path.join(dir, 'decision.json'), DECISION_STATUS: String(status), NODE_ARGS: path.join(dir, 'args'),
+                CHECK_ARGS: checkArgs, REAL_NODE: process.execPath, RUNNER_TEMP: runner,
                 PRERELEASE: 'false', TAG: 'v2.3.0', GITHUB_SHA: 'c'.repeat(40), GITHUB_REPOSITORY: 'team/app', GITHUB_API_URL: API,
                 ANDROID: 'build', INPUTS_HASH: HASH_B, PREVIOUS_TAG: '', ...env,
             } });
         };
-        const build = { action: 'build', defaultRef: 'release', inputsHash: HASH_B, previous: null };
+        const build = { action: 'build', defaultRef: 'release', inputsHash: HASH_B, previous: null, expectedSigningCert: SIGNER };
         expect(run(build).code).toBe(0);
         expect(readFileSync(path.join(dir, 'args'), 'utf8')).toBe(`android/release/release-decision.mjs --prerelease false --commit ${'c'.repeat(40)} --github-repository team/app --github-api-url ${API} --exclude-tag v2.3.0 --skip-unpinned-runtime\n`);
+        expect(readFileSync(checkArgs, 'utf8')).toBe(`android/release/release-decision.mjs --check-signing-cert ${formatSigningCert(SIGNER)} --expected-signing-cert ${SIGNER}\n`);
         expect(run({ ...build, action: 'reattach', previous: { tag: 'v2.2.0' } }, { ANDROID: 'reattach', PREVIOUS_TAG: 'v2.2.0' }).code).toBe(0);
-        expect(run({ ...build, action: 'skip' }, { ANDROID: 'skip' }).code).toBe(0);
+        // The first APK release: still no previous release with android-update.json.
+        expect(run({ ...build, expectedSigningCert: null }).code).toBe(0);
+        expect(readFileSync(checkArgs, 'utf8')).toBe(`android/release/release-decision.mjs --check-signing-cert ${formatSigningCert(SIGNER)} --expected-signing-cert \n`);
+        // A skip has no android-update.json to compare.
+        expect(run({ ...build, action: 'skip', expectedSigningCert: null }, { ANDROID: 'skip', RUNNER_TEMP: dir }).code).toBe(0);
+        expect(existsSync(checkArgs)).toBe(false);
         for (const [decision, status] of [
             [{ ...build, action: 'reattach', previous: { tag: 'v2.3.0-rc.1' } }, 0],
             [{ ...build, inputsHash: HASH_A }, 0],
@@ -829,6 +891,48 @@ describePosix('release.yml step scripts (POSIX)', () => {
             expect(result.stdout).toContain(ERROR_ANNOTATION);
             expect(JSON.parse(result.stderr.trim().split('\n').at(-1)).code).toBe('android-decision-changed');
         }
+        // Another tag's run drafted a release signed with another certificate while this one waited.
+        for (const [decision, env] of [
+            [{ ...build, expectedSigningCert: OTHER_SIGNER }, {}],
+            [{ ...build, action: 'reattach', previous: { tag: 'v2.2.0' }, expectedSigningCert: OTHER_SIGNER }, { ANDROID: 'reattach', PREVIOUS_TAG: 'v2.2.0' }],
+        ]) {
+            const result = run(decision, env);
+            expect([decision.action, result.code, result.stdout]).toEqual([decision.action, 1, `${ERROR_ANNOTATION}\n`]);
+            expect(JSON.parse(result.stderr.trim().split('\n').at(-1))).toEqual({ code: 'signing-cert-mismatch', expected: OTHER_SIGNER, actual: SIGNER });
+        }
+    });
+
+    test('the signing job stops before android-update.json when the certificate differs from the previous releases', () => {
+        const step = stepNamed(jobs['android-sign'], 'Check the signing certificate');
+        const run = (EXPECTED, CERTIFICATE) => runStep(step.run, { cwd: repoRoot, env: { EXPECTED, CERTIFICATE } });
+        const same = run(SIGNER, SIGNER);
+        expect([same.code, same.stdout, same.stderr, same.summary]).toEqual([0, '', '', '']);
+        expect(run(formatSigningCert(SIGNER), SIGNER).code).toBe(0);
+        const other = run(SIGNER, OTHER_SIGNER);
+        expect([other.code, other.stdout, other.summary]).toEqual([1, `${ERROR_ANNOTATION}\n`, '']);
+        expect(JSON.parse(other.stderr.trim().split('\n').at(-1))).toEqual({ code: 'signing-cert-mismatch', expected: SIGNER, actual: OTHER_SIGNER });
+        // The first APK release has nothing to compare with, so its certificate goes to the job summary.
+        const first = run('', SIGNER);
+        expect([first.code, first.stdout, first.summary]).toEqual([0, '', `TODO(copy)\n\n- signing-cert-sha256: \`${SIGNER}\`\n`]);
+        // An unusable signing output fails instead of passing as a first release.
+        for (const certificate of ['', 'null']) {
+            for (const expected of [SIGNER, '']) {
+                const broken = run(expected, certificate);
+                expect([certificate, expected, broken.code, broken.stdout, broken.summary]).toEqual([certificate, expected, 1, `${ERROR_ANNOTATION}\n`, '']);
+            }
+        }
+    });
+
+    test('a re-attach checks the previous release\'s certificate against decide\'s before the upload', () => {
+        const step = stepNamed(jobs['android-reattach'], 'Check the signing certificate');
+        const runner = path.join(temp, 'reattach-certificate');
+        writeAndroidFiles(runner, { releaseTag: 'v2.2.0', sources: false, signingCertSha256: formatSigningCert(SIGNER) });
+        const run = EXPECTED => runStep(step.run, { cwd: repoRoot, env: { RUNNER_TEMP: runner, EXPECTED } });
+        const same = run(SIGNER);
+        expect([same.code, same.stdout, same.stderr]).toEqual([0, '', '']);
+        const other = run(OTHER_SIGNER);
+        expect([other.code, other.stdout]).toEqual([1, `${ERROR_ANNOTATION}\n`]);
+        expect(JSON.parse(other.stderr.trim().split('\n').at(-1))).toEqual({ code: 'signing-cert-mismatch', expected: OTHER_SIGNER, actual: SIGNER });
     });
 
     test('the draft job runs only after Android jobs that match the decision', () => {

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crc32, deflateRawSync } from 'node:zlib';
 
-import { parseAppVersionProperties, parseMinAppVersion, ReleaseToolError } from '../android/release/common.mjs';
+import { parseAppVersionProperties, parseMinAppVersion, ReleaseToolError, UsageError } from '../android/release/common.mjs';
 import {
     ATTRIBUTE_INPUTS,
     canonicalInputsListing,
@@ -17,7 +17,7 @@ import {
     isPureDoc,
 } from '../android/release/inputs-hash.mjs';
 import { MAX_APK_BYTES, parseUpdateJson, validateManifestBytes, validateManifestText } from '../android/release/manifest-rules.mjs';
-import { decideRelease, fetchPreviousReleases } from '../android/release/release-decision.mjs';
+import { compareSigningCert, decideRelease, fetchPreviousReleases } from '../android/release/release-decision.mjs';
 import {
     buildManifest,
     checkApkRuntimeManifests,
@@ -487,7 +487,7 @@ describe('app version inputs', () => {
     });
 });
 
-function manifestFixture({ versionCode = 1, prerelease = false, inputsHash = HASH_A, releaseTag, versionName, defaultRef } = {}) {
+function manifestFixture({ versionCode = 1, prerelease = false, inputsHash = HASH_A, releaseTag, versionName, defaultRef, signingCertSha256 = SIGNER } = {}) {
     return {
         schema: 1,
         versionCode,
@@ -496,7 +496,7 @@ function manifestFixture({ versionCode = 1, prerelease = false, inputsHash = HAS
         releaseTag: releaseTag ?? (prerelease ? `v2.${versionCode}.0-rc.1` : `v2.${versionCode}.0`),
         defaultRef: defaultRef ?? (prerelease ? 'staging' : 'release'),
         minSdk: 29,
-        signingCertSha256: SIGNER,
+        signingCertSha256,
         inputsHash,
         assets: {
             'arm64-v8a': { name: 'SillyBunny-android-arm64-v8a.apk', sha256: 'cd'.repeat(32), size: 131073 },
@@ -695,6 +695,83 @@ describe('release decision (§6.1)', () => {
         for (const npm of [{ version: '11.10.0' }, { version: '11.10.0', source: 'registry' }]) {
             expect(unpinnedIn({ ...PINNED_LOCK, npm })).toEqual(['npm']);
         }
+    });
+});
+
+describe('the signing certificate of the previous releases', () => {
+    test('is null when no previous release has an android-update.json', () => {
+        expect(decide()).toMatchObject({ action: 'build', expectedSigningCert: null });
+        expect(decide({ prerelease: true })).toMatchObject({ action: 'build', expectedSigningCert: null });
+        const unpinned = { schema: 1, node: null, npm: null };
+        expect(decide({ runtimeLock: unpinned, skipUnpinnedRuntime: true })).toMatchObject({ action: 'skip', expectedSigningCert: null });
+    });
+
+    test('is the one certificate that every previous release names, drafts and both channels included', () => {
+        const draft = releaseOf(manifestFixture({ versionCode: 4, prerelease: true, signingCertSha256: OTHER_SIGNER }), { draft: true, publishedAt: null });
+        const stable = releaseOf(manifestFixture({ versionCode: 3, signingCertSha256: OTHER_SIGNER }));
+        const candidate = releaseOf(manifestFixture({ versionCode: 2, prerelease: true, signingCertSha256: OTHER_SIGNER }));
+        expect(decide({ previous: [draft, stable, candidate], versionCode: 5 })).toMatchObject({ action: 'build', expectedSigningCert: OTHER_SIGNER });
+        expect(decide({ previous: [candidate], versionCode: 5 })).toMatchObject({ action: 'build', previous: null, expectedSigningCert: OTHER_SIGNER });
+        expect(decide({ previous: [draft], versionCode: 5 })).toMatchObject({ action: 'build', previous: null, expectedSigningCert: OTHER_SIGNER });
+        const matching = releaseOf(manifestFixture({ versionCode: 2, inputsHash: HASH_B, versionName: '1.2.0', signingCertSha256: formatSigningCert(OTHER_SIGNER) }));
+        expect(decide({ previous: [matching] })).toMatchObject({ action: 'reattach', expectedSigningCert: OTHER_SIGNER });
+    });
+
+    test('compares every form android-update.json accepts in one normalized form', () => {
+        const forms = [formatSigningCert(SIGNER), formatSigningCert(SIGNER).toLowerCase(), SIGNER.toUpperCase(), SIGNER];
+        const previous = forms.map((signingCertSha256, index) => releaseOf(manifestFixture({ versionCode: index + 1, signingCertSha256 })));
+        expect(decide({ previous, versionCode: 5 }).expectedSigningCert).toBe(SIGNER);
+    });
+
+    test('fails and names the releases when the previous releases name different certificates', () => {
+        const previous = [
+            releaseOf(manifestFixture({ versionCode: 3 })),
+            releaseOf(manifestFixture({ versionCode: 2, prerelease: true, signingCertSha256: formatSigningCert(OTHER_SIGNER) }), { draft: true }),
+            releaseOf(manifestFixture({ versionCode: 1, signingCertSha256: formatSigningCert(SIGNER) })),
+        ];
+        const message = `the previous releases do not share one signing certificate: android-update.json names SHA-256 ${SIGNER} in v2.3.0, v2.1.0; `
+            + `${OTHER_SIGNER} in v2.2.0-rc.1 (a draft). Android refuses to update an app with an APK signed by a different certificate, `
+            + 'so a maintainer must resolve this by hand before the next release';
+        let error;
+        try {
+            decide({ previous, versionCode: 4 });
+        } catch (caught) {
+            error = caught;
+        }
+        expect(error).toBeInstanceOf(ReleaseToolError);
+        expect(error).not.toBeInstanceOf(UsageError);
+        expect(error.message).toBe(message);
+        const reattachable = [releaseOf(manifestFixture({ versionCode: 2, inputsHash: HASH_B, versionName: '1.2.0' })), previous[1]];
+        expect(() => decide({ previous: reattachable })).toThrow(/^the previous releases do not share one signing certificate: /);
+        expect(() => decide({ previous: reattachable, prerelease: true, versionCode: 5 })).toThrow(/do not share one signing certificate/);
+    });
+});
+
+describe('comparing a signing certificate with the expected one', () => {
+    test('normalizes case and colon separators before it compares', () => {
+        for (const form of [SIGNER, SIGNER.toUpperCase(), formatSigningCert(SIGNER), formatSigningCert(SIGNER).toLowerCase()]) {
+            expect(compareSigningCert({ expected: SIGNER, actual: form })).toEqual({ expected: SIGNER, actual: SIGNER, matches: true });
+            expect(compareSigningCert({ expected: form, actual: SIGNER })).toEqual({ expected: SIGNER, actual: SIGNER, matches: true });
+        }
+        expect(compareSigningCert({ expected: formatSigningCert(OTHER_SIGNER), actual: SIGNER })).toEqual({ expected: OTHER_SIGNER, actual: SIGNER, matches: false });
+        expect(compareSigningCert({ expected: SIGNER, actual: formatSigningCert(OTHER_SIGNER) })).toEqual({ expected: SIGNER, actual: OTHER_SIGNER, matches: false });
+    });
+
+    test('accepts any certificate when nothing is expected', () => {
+        expect(compareSigningCert({ expected: null, actual: formatSigningCert(OTHER_SIGNER) })).toEqual({ expected: null, actual: OTHER_SIGNER, matches: true });
+        expect(compareSigningCert({ actual: SIGNER })).toEqual({ expected: null, actual: SIGNER, matches: true });
+    });
+
+    test('refuses values that are not a certificate SHA-256', () => {
+        const colon = formatSigningCert(SIGNER);
+        for (const value of ['', SIGNER.slice(2), `${SIGNER}00`, `${colon}:`, colon.replaceAll(':', '-'), colon.replaceAll(':', ' '), ` ${SIGNER}`, `${SIGNER.slice(0, 63)}g`, undefined, null, 42, [SIGNER]]) {
+            expect(() => compareSigningCert({ expected: SIGNER, actual: value })).toThrow(UsageError);
+        }
+        for (const value of ['', 'null', colon.slice(3), 42]) {
+            expect(() => compareSigningCert({ expected: value, actual: SIGNER })).toThrow(UsageError);
+        }
+        expect(() => compareSigningCert({ expected: SIGNER, actual: 'xyz' })).toThrow('the checked signing certificate SHA-256 must be 64 hex digits or 32 colon-separated hex pairs, not "xyz"');
+        expect(() => compareSigningCert({ expected: 'xyz', actual: SIGNER })).toThrow('the expected signing certificate SHA-256 must be 64 hex digits or 32 colon-separated hex pairs, not "xyz"');
     });
 });
 
@@ -1594,6 +1671,43 @@ describe('command-line interfaces', () => {
         expect(runNode('release-decision.mjs', [...args, '--allow-unpinned-runtime']).stderr)
             .toMatch(/^release-decision: android\/runtime\.lock at [0-9a-f]{40} is not JSON: /);
         expect(runNode('release-decision.mjs', [...args, '--allow-unpinned-runtime=yes']).status).toBe(2);
+    });
+
+    test('release-decision names the certificate of the previous releases and checks a certificate against it', () => {
+        const repo = makeRepo({ 'android/app-version.properties': 'versionCode=3\nversionName=1.3.0\n' });
+        const previousFile = path.join(workDir, `previous-${++repoCount}.json`);
+        const args = ['--repo', repo, '--prerelease', 'false', '--previous', previousFile];
+        writeFileSync(previousFile, '[]\n');
+        expect(JSON.parse(runNode('release-decision.mjs', args).stdout)).toMatchObject({ action: 'build', expectedSigningCert: null });
+        const candidate = releaseOf(manifestFixture({ versionCode: 1, prerelease: true, signingCertSha256: formatSigningCert(SIGNER) }), { draft: true });
+        writeFileSync(previousFile, JSON.stringify([candidate]));
+        expect(JSON.parse(runNode('release-decision.mjs', args).stdout)).toMatchObject({ action: 'build', expectedSigningCert: SIGNER });
+        writeFileSync(previousFile, JSON.stringify([releaseOf(manifestFixture({ versionCode: 2, signingCertSha256: OTHER_SIGNER })), candidate]));
+        const conflict = runNode('release-decision.mjs', args);
+        expect([conflict.status, conflict.stdout]).toEqual([1, '']);
+        expect(conflict.stderr).toMatch(new RegExp(`^release-decision: the previous releases do not share one signing certificate: android-update\\.json names SHA-256 ${OTHER_SIGNER} in v2\\.2\\.0; ${SIGNER} in v2\\.1\\.0-rc\\.1 \\(a draft\\)\\. .*\\n$`));
+
+        const check = (...checkArgs) => runNode('release-decision.mjs', checkArgs);
+        const same = check('--check-signing-cert', SIGNER, '--expected-signing-cert', formatSigningCert(SIGNER));
+        expect([same.status, JSON.parse(same.stdout), same.stderr]).toEqual([0, { signingCert: SIGNER, expectedSigningCert: SIGNER }, '']);
+        const first = check('--check-signing-cert', formatSigningCert(OTHER_SIGNER), '--expected-signing-cert', '');
+        expect([first.status, JSON.parse(first.stdout), first.stderr]).toEqual([0, { signingCert: OTHER_SIGNER, expectedSigningCert: null }, '']);
+        const mismatch = check('--check-signing-cert', formatSigningCert(OTHER_SIGNER).toLowerCase(), '--expected-signing-cert', SIGNER.toUpperCase());
+        expect([mismatch.status, mismatch.stdout]).toEqual([1, '']);
+        expect(mismatch.stderr).toBe(`${JSON.stringify({ code: 'signing-cert-mismatch', expected: SIGNER, actual: OTHER_SIGNER })}\n`);
+
+        const malformed = check('--check-signing-cert', 'null', '--expected-signing-cert', SIGNER);
+        expect([malformed.status, malformed.stdout]).toEqual([2, '']);
+        expect(malformed.stderr).toBe('release-decision: the checked signing certificate SHA-256 must be 64 hex digits or 32 colon-separated hex pairs, not "null"\n');
+        expect(check('--check-signing-cert', SIGNER, '--expected-signing-cert', 'null').status).toBe(2);
+        expect(check('--check-signing-cert', '', '--expected-signing-cert', SIGNER).status).toBe(2);
+        const unexpected = check('--check-signing-cert', SIGNER);
+        expect(unexpected.status).toBe(2);
+        expect(unexpected.stderr).toBe('release-decision: --check-signing-cert needs --expected-signing-cert, empty when no previous release has an android-update.json\n');
+        expect(check('--check-signing-cert', SIGNER, '--expected-signing-cert', SIGNER, '--prerelease', 'false').stderr)
+            .toBe('release-decision: --prerelease cannot be used with --check-signing-cert\n');
+        expect(runNode('release-decision.mjs', [...args, '--expected-signing-cert', SIGNER]).stderr)
+            .toBe('release-decision: --expected-signing-cert needs --check-signing-cert\n');
     });
 
     test('update-manifest writes a manifest that its validator accepts', () => {
