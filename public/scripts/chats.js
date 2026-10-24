@@ -403,7 +403,8 @@ async function deleteMessageFile(messageBlock, messageId, fileIndex) {
         return;
     }
 
-    const confirm = await callGenericPopup('Are you sure you want to delete this file?', POPUP_TYPE.CONFIRM);
+    // SillyBunny: message file confirmations use an explicit destructive action.
+    const confirm = await callGenericPopup('Are you sure you want to delete this file?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
 
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
         console.debug('Delete file cancelled');
@@ -1300,7 +1301,8 @@ async function moveAttachment(attachment, source, callback) {
  */
 export async function deleteAttachment(attachment, source, callback, confirm = true) {
     if (confirm) {
-        const result = await callGenericPopup('Are you sure you want to delete this attachment?', POPUP_TYPE.CONFIRM);
+        // SillyBunny: deleting an attachment is destructive and names the delete action.
+        const result = await callGenericPopup('Are you sure you want to delete this attachment?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             return;

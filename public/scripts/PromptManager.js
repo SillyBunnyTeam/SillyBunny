@@ -9,7 +9,7 @@ import { power_user } from './power-user.js';
 import { debounce, waitUntilCondition, escapeHtml, uuidv4 } from './utils.js';
 import { debounce_timeout } from './constants.js';
 import { renderTemplateAsync } from './templates.js';
-import { Popup } from './popup.js';
+import { Popup, POPUP_RESULT } from './popup.js';
 import { t } from './i18n.js';
 import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -1048,7 +1048,8 @@ class PromptManager {
 
         // Delete selected prompt from list form and close edit form
         this.handleDeletePrompt = async (event) => {
-            Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null).then((userChoice) => {
+            // SillyBunny: prompt deletion names the destructive action.
+            Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') }).then((userChoice) => {
                 if (!userChoice) return;
                 const appendPromptFooter = /** @type {HTMLSelectElement} */(document.getElementById(this.configuration.prefix + 'prompt_manager_footer_append_prompt'));
                 const promptID = appendPromptFooter.value;
@@ -1132,7 +1133,12 @@ class PromptManager {
 
         // Import prompts for the selected character
         this.handleImport = () => {
-            Popup.show.confirm(t`Existing prompts with the same ID will be overridden. Do you want to proceed?`, null)
+            // SillyBunny: prompt import names the import action.
+            Popup.show.confirm(t`Existing prompts with the same ID will be overridden. Do you want to proceed?`, null, {
+                okButton: t`Import`,
+                defaultResult: POPUP_RESULT.NEGATIVE,
+                onOpen: popup => popup.okButton.classList.add('is-destructive'),
+            })
                 .then(userChoice => {
                     if (!userChoice) return;
 
@@ -1169,7 +1175,8 @@ class PromptManager {
 
         // Restore default state of a characters prompt order
         this.handleCharacterReset = () => {
-            Popup.show.confirm(t`This will reset the prompt order for this character. You will not lose any prompts.`, null)
+            // SillyBunny: prompt reset names the reset action.
+            Popup.show.confirm(t`This will reset the prompt order for this character. You will not lose any prompts.`, null, { okButton: t`Reset` })
                 .then(userChoice => {
                     if (!userChoice) return;
 

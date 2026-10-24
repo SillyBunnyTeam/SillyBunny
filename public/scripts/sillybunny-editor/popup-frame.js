@@ -6,16 +6,9 @@ import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, releaseOverlayLayers } from './overlay-host.js';
 import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures } from './dialog.js';
 
-/*
- * Frames upstream `Popup` dialogs in the shared Alert, Dialog and Window tiers (DESIGN.md Dialogs;
- * docs/dialogs.md). popup.js calls framePopup() from its constructor and the returned hooks from
- * show() and #hide(). Every public Popup element keeps its class and reference: .popup-content stays
- * in .popup-body, all responses stay in .popup-controls, and results are unchanged.
- * This module must not import popup.js.
- */
-
 // POPUP_TYPE values (popup.js), duplicated to avoid an import cycle.
 const TYPE_TEXT = 1;
+const TYPE_CONFIRM = 2;
 const TYPE_INPUT = 3;
 const TYPE_DISPLAY = 4;
 const TYPE_CROP = 5;
@@ -158,6 +151,12 @@ function layoutAlertResponses(controls, sheet) {
     if (widest * buttons.length + gap * (buttons.length - 1) > available + 1) controls.classList.add('is-stacked');
 }
 
+function replaceDefaultNegativeLabel(popup, cancelButtonProvided) {
+    if (popup.type !== TYPE_CONFIRM || cancelButtonProvided || !isShown(popup.cancelButton)) return;
+    popup.cancelButton.textContent = t`Cancel`;
+    popup.cancelButton.dataset.i18n = 'Cancel';
+}
+
 /** The Dialog or Window surface under `dlg`, if it is one (for page presentation). */
 function findParentSurface(dlg) {
     const below = [...document.querySelectorAll('dialog[open]:not([closing])')].filter(node => node !== dlg).at(-1);
@@ -172,7 +171,7 @@ function findParentSurface(dlg) {
  * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, allowEscapeClose?: boolean }} [options]
  * @returns {{ opened: () => void, closing: () => void, dispose: () => void }}
  */
-export function framePopup(popup, { tier = null, title = null, allowEscapeClose = true } = {}) {
+export function framePopup(popup, { tier = null, title = null, allowEscapeClose = true, cancelButtonProvided = false } = {}) {
     const { dlg } = popup;
     const cleanups = [];
     let parentSurface = null;
@@ -312,6 +311,7 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
             dlg.classList.add('sb-dialog--view');
         }
         dlg.setAttribute(MODAL_ATTRIBUTE, '');
+        replaceDefaultNegativeLabel(popup, cancelButtonProvided);
         if (resolved === 'alert') buildAlert();
         else buildHeaderFrame();
         const handle = document.createElement('div');

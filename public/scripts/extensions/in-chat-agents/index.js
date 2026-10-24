@@ -613,8 +613,10 @@ async function convertTrackersFromList() {
         toastr.info('Every tracker already runs as a companion.');
         return;
     }
+    // SillyBunny: confirmation labels identify the tracker conversion action.
     const result = await new Popup(`Convert ${inlineTrackers.length} tracker agent(s) to companion execution? They will run automatically on their own model and show in the Tracker panel.`, POPUP_TYPE.CONFIRM, '', {
         tier: 'alert',
+        okButton: t`Convert`,
     }).show();
     if (result !== POPUP_RESULT.AFFIRMATIVE) return;
     for (const agent of inlineTrackers) {
@@ -1458,11 +1460,12 @@ async function updateAgentFromSourceTemplate(agent) {
 
     const agentVersion = getAgentVersionValue(agent);
     const templateVersion = getTemplateVersionValue(template);
+    // SillyBunny: template updates use an explicit affirmative action label.
     const result = await new Popup(
         `Update "${escapeHtml(agent.name || template.name)}" from template v${escapeHtml(agentVersion)} to v${escapeHtml(templateVersion)}? Enabled state, quick toggle pin, order, and profile overrides will be kept.`,
         POPUP_TYPE.CONFIRM,
         '',
-        { tier: 'alert' },
+        { tier: 'alert', okButton: t`Update` },
     ).show();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -1487,11 +1490,12 @@ async function updateAllAgentsFromSourceTemplates() {
             return `<li>${escapeHtml(agent.name || template.name)} — v${escapeHtml(getAgentVersionValue(agent))} &rarr; v${escapeHtml(getTemplateVersionValue(template))}</li>`;
         })
         .join('');
+    // SillyBunny: bulk template updates use an explicit affirmative action label.
     const result = await new Popup(
         `Update ${outdatedAgents.length} agent(s) to their latest templates? Enabled state, quick toggle pin, order, and profile overrides will be kept.<ul class="ica--update-all-list">${names}</ul>`,
         POPUP_TYPE.CONFIRM,
         '',
-        { tier: 'alert', allowVerticalScrolling: true },
+        { tier: 'alert', allowVerticalScrolling: true, okButton: t`Update` },
     ).show();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {

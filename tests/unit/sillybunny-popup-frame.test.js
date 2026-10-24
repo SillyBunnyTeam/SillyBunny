@@ -152,6 +152,30 @@ describe('Popup heading promotion', () => {
 });
 
 describe('Popup frame adapter', () => {
+    test('Alert replaces the translated default negative response and preserves custom responses', () => {
+        setupDialogMedia();
+        const template = document.createElement('template');
+        template.id = 'popup_template';
+        template.setAttribute('popup-button-no', 'No');
+        document.body.append(template);
+
+        const defaultPopup = popupDom();
+        defaultPopup.cancelButton.textContent = 'No';
+        const defaultFrame = framePopup(defaultPopup);
+        defaultPopup.dlg.showModal();
+        defaultFrame.opened();
+        expect(defaultPopup.cancelButton.textContent).toBe('Cancel');
+        defaultFrame.dispose();
+
+        const customPopup = popupDom();
+        customPopup.cancelButton.textContent = 'Keep';
+        const customFrame = framePopup(customPopup, { cancelButtonProvided: true });
+        customPopup.dlg.showModal();
+        customFrame.opened();
+        expect(customPopup.cancelButton.textContent).toBe('Keep');
+        customFrame.dispose();
+    });
+
     test('Alert keeps its leading heading in the body and adopts one checkbox as an extra switch row', () => {
         setupDialogMedia();
         const popupValue = popupDom({ contentHtml: '<h3>Delete Character?</h3><p>Permanent.</p><label class="checkbox_label"><input id="delete-chat-files" type="checkbox"><small data-i18n="Also delete chat files">Also delete chat files</small></label>' });

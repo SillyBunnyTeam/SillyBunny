@@ -677,7 +677,12 @@ export class Popup {
         this.dlg.addEventListener('keydown', keyListener.bind(this));
 
         // SillyBunny: the frame lays itself out in show(), once the popup is in the DOM.
-        this.sbFrame = framePopup(this, { tier, title, allowEscapeClose });
+        this.sbFrame = framePopup(this, {
+            tier,
+            title,
+            allowEscapeClose,
+            cancelButtonProvided: Object.prototype.hasOwnProperty.call(arguments[3] ?? {}, 'cancelButton'),
+        });
     }
 
     /**

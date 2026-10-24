@@ -802,7 +802,12 @@ class PresetManager {
         const bodyText = !this.isAdvancedFormatting()
             ? t`You have unsaved changes to this preset. Discard them?`
             : t`You have unsaved changes to this template. Discard them?`;
-        const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText);
+        // SillyBunny: unsaved-change confirmation names the discard action.
+        const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText, {
+            okButton: t`Discard`,
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        });
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             return;

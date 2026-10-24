@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { clamp, escapeHtml, getFileExtension, sortMoments, timestampToMoment } from './utils.js';
 import { displayPastChats, getRequestHeaders, importCharacterChat, refreshCsrfToken } from '/script.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -212,7 +212,8 @@ class BackupsBrowser {
      */
     async deleteBackup(name, { confirm = true, silent = false } = {}) {
         if (confirm) {
-            const confirmed = await Popup.show.confirm(t`Are you sure?`);
+            // SillyBunny: backup confirmations use an explicit destructive action.
+            const confirmed = await Popup.show.confirm(t`Are you sure?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
             if (!confirmed) {
                 return false;
             }
@@ -358,10 +359,12 @@ class BackupsBrowser {
             return;
         }
 
+        // SillyBunny: backup cleanup is destructive and names the delete action.
         const confirmed = await Popup.show.confirm(
             t`Clean old backups?`,
             `<p>${escapeHtml(String(candidates.length))} ${t`backup(s) will be permanently deleted.`}</p>
             ${this.renderCleanupPreview(candidates)}`,
+            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') },
         );
         if (!confirmed) {
             return;

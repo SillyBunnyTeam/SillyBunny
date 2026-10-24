@@ -1,7 +1,7 @@
 import { characters, eventSource, event_types, getCurrentChatId, messageFormatting, reloadCurrentChat, saveSettingsDebounced, this_chid } from '../../../script.js';
 import { extension_settings, renderExtensionTemplateAsync } from '../../extensions.js';
 import { selected_group } from '../../group-chats.js';
-import { callGenericPopup, Popup, POPUP_TYPE } from '../../popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders, enumIcons } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -667,7 +667,8 @@ async function loadRegexScripts() {
             await onRegexEditorOpenClick(scriptHtml.attr('id'), scriptType);
         });
         scriptHtml.find('.move_to_global').on('click', async function () {
-            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to global?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: regex confirmations use explicit action labels.
+            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to global?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Move` });
 
             if (!confirm) {
                 return;
@@ -683,16 +684,20 @@ async function loadRegexScripts() {
                 toastr.error(t`Cannot edit scoped scripts in group chats.`);
                 return;
             }
-            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to scoped?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: regex confirmation names the move action.
+            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to scoped?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Move` });
             if (!confirm) {
                 return;
             }
             await moveRegexScript(script, SCRIPT_TYPES.SCOPED, scriptType);
         });
         scriptHtml.find('.move_to_preset').on('click', async function () {
+            // SillyBunny: regex confirmation names the move action.
             const confirm = await callGenericPopup(
                 t`Are you sure you want to move this regex script to preset?`,
                 POPUP_TYPE.CONFIRM,
+                '',
+                { okButton: t`Move` },
             );
             if (!confirm) {
                 return;
@@ -705,7 +710,8 @@ async function loadRegexScripts() {
             download(fileData, fileName, 'application/json');
         });
         scriptHtml.find('.delete_regex').on('click', async function () {
-            const confirm = await callGenericPopup(t`Are you sure you want to delete this regex script?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: deleting a regex script is destructive and names the delete action.
+            const confirm = await callGenericPopup(t`Are you sure you want to delete this regex script?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
             if (!confirm) {
                 return;
             }

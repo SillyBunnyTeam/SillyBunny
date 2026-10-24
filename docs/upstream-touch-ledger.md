@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Confirm response labels
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`; `public/scripts/popup.js`; `public/scripts/PromptManager.js`; `public/scripts/backgrounds.js`; `public/scripts/chat-backups.js`; `public/scripts/chats.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/group-chats.js`; `public/scripts/preset-manager.js`; `public/scripts/reasoning.js`; `public/scripts/secrets.js`; `public/scripts/world-info.js`. |
+| Area | Confirmation response labels and destructive confirmation defaults. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
+| Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`. |
+| Validation | Root lint; tests lint; focused and full unit suites; frontend budgets; Chromium confirmation and dialog regressions. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-24. |
+| Owner | TODO(copy) |
+
 ### Phase 7 Native Browser Dialog Replacements
 | Field | Value |
 | --- | --- |

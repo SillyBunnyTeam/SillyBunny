@@ -13,7 +13,10 @@ await jest.unstable_mockModule('../../public/scripts/RossAscends-mods.js', () =>
     shouldSendOnEnter: () => true,
 }));
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
-    t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+    t: (strings, ...values) => {
+        const text = strings.reduce((result, part, index) => result + part + (values[index] ?? ''), '');
+        return text === 'Cancel' ? (globalThis.__popupCancelTranslation ?? text) : text;
+    },
     translate: text => text,
 }));
 await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({
@@ -73,6 +76,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+    delete globalThis.__popupCancelTranslation;
     for (const popup of [...Popup.util.popups]) {
         if (isShown(popup)) await popup.completeCancelled();
     }
@@ -138,14 +142,30 @@ describe('Popup button visibility and captions per type', () => {
         expect(popup.okButton.textContent).toBe('OK');
     });
 
-    test('CONFIRM shows Yes and No by default and custom captions when given', () => {
+    test('CONFIRM uses translated Cancel only for the default negative response', async () => {
         const plain = new Popup('x', POPUP_TYPE.CONFIRM);
         expect(plain.okButton.textContent).toBe('Yes');
         expect(plain.cancelButton.textContent).toBe('No');
-        const custom = new Popup('x', POPUP_TYPE.CONFIRM, '', { okButton: 'Delete', cancelButton: 'Keep' });
-        expect(custom.okButton.textContent).toBe('Delete');
-        expect(custom.cancelButton.textContent).toBe('Keep');
-        expect(visible(custom.okButton) && visible(custom.cancelButton)).toBe(true);
+        const plainResult = plain.show();
+        await settle();
+        expect(plain.cancelButton.textContent).toBe('Cancel');
+        plain.cancelButton.click();
+        await expect(plainResult).resolves.toBe(POPUP_RESULT.NEGATIVE);
+
+        const explicitNo = new Popup('x', POPUP_TYPE.CONFIRM, '', { cancelButton: 'No' });
+        const explicitResult = explicitNo.show();
+        await settle();
+        expect(explicitNo.cancelButton.textContent).toBe('No');
+        explicitNo.cancelButton.click();
+        await expect(explicitResult).resolves.toBe(POPUP_RESULT.NEGATIVE);
+
+        globalThis.__popupCancelTranslation = 'Abbrechen';
+        const translated = new Popup('x', POPUP_TYPE.CONFIRM);
+        const translatedResult = translated.show();
+        await settle();
+        expect(translated.cancelButton.textContent).toBe('Abbrechen');
+        translated.cancelButton.click();
+        await expect(translatedResult).resolves.toBe(POPUP_RESULT.NEGATIVE);
     });
 
     test('INPUT shows the main input and Save', () => {
@@ -263,12 +283,14 @@ describe('Popup results', () => {
         await expect(secondResult).resolves.toBe(2);
     });
 
-    test('custom buttons go before OK, or after Cancel with appendAtEnd', () => {
+    test('custom buttons go before OK, or after Cancel with appendAtEnd', async () => {
         const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', {
             customButtons: [{ text: 'Before', result: 5 }, { text: 'After', result: 6, appendAtEnd: true }],
         });
+        void popup.show();
+        await settle();
         const order = [...popup.buttonControls.children].map(button => button.textContent);
-        expect(order).toEqual(['Before', 'Yes', 'No', 'After']);
+        expect(order).toEqual(['Before', 'Yes', 'Cancel', 'After']);
     });
 
     test('a custom button without a result runs its action and keeps the popup open', async () => {

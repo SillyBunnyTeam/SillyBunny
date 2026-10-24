@@ -1133,7 +1133,7 @@ describe('World Info selection mode', () => {
         await open(0);
         await open(7);
         await action('delete');
-        expect(confirm).toHaveBeenCalledWith('lorum ipsum (2)', 'This action is irreversible!');
+        expect(confirm).toHaveBeenCalledWith('lorum ipsum (2)', 'This action is irreversible!', expect.objectContaining({ okButton: 'Delete', defaultResult: 0 }));
         expect(deleteEntry.mock.calls).toEqual([[data, '0', { silent: true }], [data, '7', { silent: true }]]);
         expect(saveWorldInfo).toHaveBeenCalledTimes(1);
         expect(detail.destroy).toHaveBeenCalled();

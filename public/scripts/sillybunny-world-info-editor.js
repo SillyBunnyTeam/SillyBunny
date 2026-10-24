@@ -421,7 +421,11 @@ export function mountWorldInfoEditor(container) {
         const { name, data } = state;
         if (!(await shell.guardLeave())) return;
         if (state.data !== data) return;
-        if (!await Popup.show.confirm(t`Delete world info entry with UID: ${uid}?`, t`This action is irreversible!`)) return;
+        if (!await Popup.show.confirm(t`Delete world info entry with UID: ${uid}?`, t`This action is irreversible!`, {
+            okButton: t`Delete`,
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        })) return;
         if (state.data !== data) return;
         const result = await remove(deps, name, data, uid);
         if (!result.ok || state.data !== data) return finishListMutation(data, result);
@@ -459,7 +463,11 @@ export function mountWorldInfoEditor(container) {
         const { name, data } = state;
         if (!(await shell.guardLeave()) || state.data !== data) return;
         // HUMAN: replace — bulk delete confirmation; the selected count remains explicit.
-        if (!await Popup.show.confirm(`${t`lorum ipsum`} (${uids.length})`, t`This action is irreversible!`)) return;
+        if (!await Popup.show.confirm(`${t`lorum ipsum`} (${uids.length})`, t`This action is irreversible!`, {
+            okButton: t`Delete`,
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        })) return;
         if (state.data !== data) return;
         const targets = existingSelectedUids(uids);
         const result = await remove(deps, name, data, targets);

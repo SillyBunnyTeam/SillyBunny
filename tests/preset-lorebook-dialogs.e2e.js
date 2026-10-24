@@ -128,6 +128,80 @@ for (const viewport of PL_VIEWPORTS) {
         for (const link of links) expect(link.linked).toEqual(expect.arrayContaining([expect.objectContaining({ name: link.avatar.replace('.png', ''), extraBooks: [link.name] })]));
     });
 
+    test(`World Info import uses Cancel and Import response labels at ${size}`, async ({ page }) => {
+        const state = await bootPresetLorebookDialogs(page, viewport);
+        const openImport = async (avatar, bookName) => {
+            await page.evaluate(async ({ avatar, bookName }) => {
+                const core = await import('/script.js');
+                const { characters } = core;
+                const id = Object.keys(characters).find(key => characters[key].avatar === avatar);
+                if (bookName) characters[id].data.character_book.name = bookName;
+                $('#import_character_info').data('chid', Number(id));
+                window.__worldInfoImport = (await import('/scripts/world-info.js')).importEmbeddedWorldInfo(false);
+            }, { avatar, bookName });
+            const popup = page.locator('dialog.popup[open]').last();
+            await popup.waitFor();
+            return popup;
+        };
+
+        let popup = await openImport('pl-character-0.png', 'Book 0');
+        await expect(popup.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+        await expect(popup.getByRole('button', { name: 'Import', exact: true })).toBeVisible();
+        expect(await popup.locator('.popup-button-cancel').evaluate(node => {
+            const ok = node.parentElement.querySelector('.popup-button-ok');
+            return Boolean(ok && Number.parseInt(getComputedStyle(node).order, 10) < Number.parseInt(getComputedStyle(ok).order, 10));
+        })).toBe(true);
+        await expect(popup.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+        if (viewport.presentation === 'floating') {
+            expect(await popup.locator('.popup-button-cancel').evaluate(node => node.getBoundingClientRect().left))
+                .toBeLessThan(await popup.locator('.popup-button-ok').evaluate(node => node.getBoundingClientRect().left));
+        }
+        await expect(popup.locator('.popup-button-cancel')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(popup).toHaveCount(0);
+        expect(state.worlds).toHaveLength(0);
+
+        popup = await openImport('pl-character-1.png', 'Embedded 1');
+        await expect(popup.locator('.popup-button-cancel')).toBeVisible();
+        await expect(popup.locator('.popup-button-ok')).toHaveText('Import');
+        await expect(popup.locator('.popup-button-ok')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(popup).toHaveCount(0);
+        await expect.poll(() => state.worlds.length).toBe(1);
+    });
+
+    test(`First-run lorebook import protects collisions without marking new imports destructive at ${size}`, async ({ page }) => {
+        const state = await bootPresetLorebookDialogs(page, viewport);
+        const openFirstRunImport = async (avatar, bookName) => {
+            await page.evaluate(async ({ avatar, bookName }) => {
+                const core = await import('/script.js');
+                const { accountStorage } = await import('/scripts/util/AccountStorage.js');
+                const { checkEmbeddedWorld } = await import('/scripts/world-info.js');
+                const id = Object.keys(core.characters).find(key => core.characters[key].avatar === avatar);
+                core.characters[id].data.character_book.name = bookName;
+                accountStorage.removeItem(`AlertWI_${avatar}`);
+                checkEmbeddedWorld(Number(id));
+            }, { avatar, bookName });
+            const popup = page.locator('dialog.popup[open]').last();
+            await popup.waitFor();
+            return popup;
+        };
+
+        let popup = await openFirstRunImport('pl-character-0.png', 'Book 0');
+        await expect(popup.locator('.popup-button-cancel')).toBeFocused();
+        await expect(popup.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+        await page.keyboard.press('Enter');
+        await expect(popup).toHaveCount(0);
+        expect(state.worlds).toHaveLength(0);
+
+        popup = await openFirstRunImport('pl-character-1.png', 'First-run new book');
+        await expect(popup.locator('.popup-button-ok')).not.toHaveClass(/is-destructive/);
+        await expect(popup.locator('.popup-button-ok')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(popup).toHaveCount(0);
+        await expect.poll(() => state.worlds.length).toBe(1);
+    });
+
     test(`Lorebook sorting keeps autofocus, warnings and native/embedded order results at ${size}`, async ({ page }) => {
         const state = await bootPresetLorebookDialogs(page, viewport);
         let popup = await openPresetLorebookDialog(page, 'sorting');

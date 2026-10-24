@@ -52,6 +52,28 @@ test.beforeEach(async ({ page }) => {
     await page.route(/\/api\/(?:characters|groups|chats)\/(?:create|delete|duplicate|rename)$/, route => route.abort());
 });
 
+test('Start new chat reflects current-chat deletion in its destructive response and Return default', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await page.waitForFunction(() => !document.getElementById('preloader'));
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        const id = app.characters.findIndex(character => character.avatar === 'qa-list-character-0.png');
+        await app.selectCharacterById(id, { switchMenu: false });
+        document.getElementById('option_start_new_chat').click();
+    });
+    const popup = page.locator('dialog.popup[open]').last();
+    await expect(popup.locator('.popup-button-ok')).not.toHaveClass(/is-destructive/);
+    await popup.locator('#del_chat_checkbox').check();
+    await expect(popup.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+    await page.keyboard.press('Enter');
+    await expect(popup).toBeVisible();
+    await popup.locator('#del_chat_checkbox').uncheck();
+    await expect(popup.locator('.popup-button-ok')).not.toHaveClass(/is-destructive/);
+    await popup.locator('.popup-button-cancel').click();
+});
+
 test.afterEach(async ({ page }) => {
     await page.evaluate(async () => {
         if (!window.__sbCharacterListOriginalGroups) return;
@@ -951,7 +973,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const dialog = page.locator('dialog.popup[open]').last();
         await expect(dialog).toContainText('Delete 1 characters?');
         await expect(dialog.locator('#del_char_checkbox')).toBeVisible();
-        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
     });
 
@@ -971,7 +993,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await list(page).locator('.sb-selection-action[data-action-id="delete"]').click();
         const dialog = page.locator('dialog.popup[open]').last();
         await expect(dialog).toContainText('Delete 1 groups?');
-        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
         await enterSelection(page);
         await showView(page, 'characters');

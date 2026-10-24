@@ -727,7 +727,7 @@ test('Text Completions templates use the shared editor and guard backend and pre
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(dialog).toContainText('You have unsaved changes to this template. Discard them?');
-    await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(page.locator('#instruct_presets option:checked')).toHaveText('SB Prompt Editor Guard');
     await expect(editor.locator('.sb-prompt-detail')).toBeHidden();

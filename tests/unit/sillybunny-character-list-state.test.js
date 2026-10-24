@@ -821,7 +821,7 @@ describe('id-based list actions', () => {
         await expect(context.api.deleteGroupById('g1')).resolves.toBe(false);
         expect(context.deleteGroup).not.toHaveBeenCalled();
         await expect(context.api.deleteGroupById('g1')).resolves.toBe(true);
-        expect(context.Popup.show.confirm).toHaveBeenLastCalledWith('Delete the group?', expect.stringContaining('delete all your chats'));
+        expect(context.Popup.show.confirm).toHaveBeenLastCalledWith('Delete the group?', expect.stringContaining('delete all your chats'), expect.objectContaining({ okButton: 'Delete', defaultResult: 0 }));
         expect(context.deleteGroup).toHaveBeenCalledWith('g1');
         context.Popup.show.confirm.mockImplementationOnce(async () => { context.is_group_generating = true; return true; });
         await expect(context.api.deleteGroupById('g1')).resolves.toBe(false);

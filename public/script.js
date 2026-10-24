@@ -10166,7 +10166,9 @@ export async function deleteCharacterById(chid) {
     }
     const avatar = character.avatar;
     let deleteChats = false;
+    // SillyBunny: destructive character confirmation names the delete action.
     const confirmed = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
+        okButton: t`Delete`,
         // SillyBunny: destructive confirmations focus Cancel and style Delete in the shared frame.
         defaultResult: 0,
         onOpen: popup => popup.okButton.classList.add('is-destructive'),
@@ -11547,10 +11549,12 @@ export async function renameCharacter(name = null, { silent = false, renameChats
                     ? renameChats
                     : silent
                         ? false
+                        // SillyBunny: past-chat rename confirmation names the update action.
                         : await Popup.show.confirm(
                             t`Character renamed!`,
                             `<p>${t`Past chats will still contain the old character name. Would you like to update the character name in previous chats as well?`}</p>
                             <i><b>${t`Sprites folder (if any) should be renamed manually.`}</b></i>`,
+                            { okButton: t`Update` },
                         ) == POPUP_RESULT.AFFIRMATIVE;
 
                 if (renamePastChatsConfirm) {
@@ -15588,7 +15592,8 @@ export async function setCharacterSettingsOverrides() {
     });
 
     $template.find('.remove_scenario_override').on('click', async function () {
-        const confirm = await Popup.show.confirm(t`Are you sure you want to remove all overrides?`, t`This action cannot be undone.`);
+        // SillyBunny: override removal is destructive and names the remove action.
+        const confirm = await Popup.show.confirm(t`Are you sure you want to remove all overrides?`, t`This action cannot be undone.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
         if (!confirm) {
             return;
         }
@@ -17538,9 +17543,11 @@ export async function deleteCharacter(characterKey, { deleteChats = true } = {})
 
     const inTempChat = this_chid === undefined && name2 === neutralCharacterName;
     if (inTempChat) {
+        // SillyBunny: losing temporary-chat messages makes character deletion destructive.
         const confirmClose = await Popup.show.confirm(
             t`You are currently in a temporary chat.`,
             t`Deleting this character will close the chat and you will lose any unsaved messages. Do you want to proceed?`,
+            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') },
         );
         if (!confirmClose) {
             return false;
@@ -18427,7 +18434,20 @@ jQuery(async function () {
         } else if (id == 'option_start_new_chat') {
             if ((selected_group || this_chid !== undefined) && !is_send_press) {
                 let deleteCurrentChat = false;
+                // SillyBunny: deleting the current chat makes the new-chat action destructive.
                 const result = await Popup.show.confirm(t`Start new chat?`, await renderTemplateAsync('newChatConfirm'), {
+                    okButton: t`Start`,
+                    onOpen: popup => {
+                        const checkbox = popup.dlg.querySelector('#del_chat_checkbox');
+                        if (!(checkbox instanceof HTMLInputElement)) return;
+                        const syncDestructiveState = () => {
+                            const destructive = checkbox.checked;
+                            popup.defaultResult = destructive ? POPUP_RESULT.NEGATIVE : POPUP_RESULT.AFFIRMATIVE;
+                            popup.okButton.classList.toggle('is-destructive', destructive);
+                        };
+                        checkbox.addEventListener('change', syncDestructiveState);
+                        syncDestructiveState();
+                    },
                     onClose: () => { deleteCurrentChat = !!$('#del_chat_checkbox').prop('checked'); },
                 });
                 if (!result) {
@@ -19278,7 +19298,8 @@ jQuery(async function () {
                 const source = getCharacterSource(this_chid);
                 if (source && isValidUrl(source)) {
                     const url = new URL(source);
-                    const confirm = await Popup.show.confirm('Open Source', `<span>Do you want to open the link to ${url.hostname} in a new tab?</span><var>${url}</var>`);
+                    // SillyBunny: source confirmation names the open action.
+                    const confirm = await Popup.show.confirm('Open Source', `<span>Do you want to open the link to ${url.hostname} in a new tab?</span><var>${url}</var>`, { okButton: t`Open` });
                     if (confirm) {
                         window.open(source, '_blank');
                     }

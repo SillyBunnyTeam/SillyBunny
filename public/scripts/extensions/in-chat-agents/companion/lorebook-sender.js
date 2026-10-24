@@ -132,9 +132,12 @@ async function offerFallbackLorebookAttachment(context, bookName, attachToChat) 
         return;
     }
 
+    // SillyBunny: auxiliary lorebook confirmation names the add action.
     const confirmed = await context.callGenericPopup(
         'Add Lorebook Scout as an Auxiliary Lorebook to the current chat automatically?',
         context.POPUP_TYPE.CONFIRM,
+        '',
+        { okButton: 'Add' },
     );
     if (confirmed !== (context.POPUP_RESULT?.AFFIRMATIVE ?? 1)) {
         return;

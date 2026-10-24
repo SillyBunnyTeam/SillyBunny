@@ -6450,7 +6450,15 @@ export function checkEmbeddedWorld(chid) {
                         saveCharacterDebounced();
                     }
                 };
-                callGenericPopup(html, POPUP_TYPE.CONFIRM, '', { okButton: 'Yes' }).then(checkResult);
+                // SillyBunny: embedded lorebook confirmation names the import action and protects overwrites.
+                const overwritesExistingBook = world_names.includes(bookName);
+                callGenericPopup(html, POPUP_TYPE.CONFIRM, '', {
+                    okButton: t`Import`,
+                    ...(overwritesExistingBook ? {
+                        defaultResult: POPUP_RESULT.NEGATIVE,
+                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                    } : {}),
+                }).then(checkResult);
             } else {
                 toastr.info(
                     'To import and use it, select "Import Card Lore" in the "More..." dropdown menu on the character panel.',
@@ -6485,9 +6493,17 @@ export async function importEmbeddedWorldInfo(skipPopup = false) {
     }
     const existingBookName = findMatchingLorebookName(world_names, bookName);
     const persistedBookName = existingBookName ?? bookName;
+    const overwritesExistingBook = Boolean(existingBookName);
 
     if (!skipPopup) {
-        const confirmation = await Popup.show.confirm(t`Are you sure you want to import '${persistedBookName}'?`, world_names.includes(persistedBookName) ? t`It will overwrite the World/Lorebook with the same name.` : '');
+        // SillyBunny: lorebook import confirmation names the import action.
+        const confirmation = await Popup.show.confirm(t`Are you sure you want to import '${persistedBookName}'?`, overwritesExistingBook ? t`It will overwrite the World/Lorebook with the same name.` : '', {
+            okButton: t`Import`,
+            ...(overwritesExistingBook ? {
+                defaultResult: POPUP_RESULT.NEGATIVE,
+                onOpen: popup => popup.okButton.classList.add('is-destructive'),
+            } : {}),
+        });
         if (!confirmation) {
             return;
         }
