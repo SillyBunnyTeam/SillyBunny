@@ -55,14 +55,14 @@ class AppDeviceTest {
         ui.launch()
         checkNotNull(ui.find(WELCOME, LAYOUT_MILLIS)) { "no Welcome; tags ${ui.tags()}" }
         mark("welcome")
-        if (ui.clickIfShown(NOTIFICATIONS_ALLOW, CHOICE_MILLIS)) ui.allowPermission(PERMISSION_MILLIS)
+        if (ui.clickIfShown(NOTIFICATIONS_ALLOW, CHOICE_MILLIS)) awaitNotificationAnswer()
         ui.clickIfShown(BATTERY_SKIP, CHOICE_MILLIS)
         ui.click(CONTINUE)
         mark("continue")
         val deadline = start + FIRST_RUN_MILLIS
         while (true) {
             // Continue asks for the notification permission itself when Welcome did not.
-            ui.allowPermission(0)
+            allowNotifications()
             val tags = ui.tags()
             ui.failOnErrorScreens(tags)
             tags.filter { it in FIRST_RUN_MARKS }.forEach { mark(it) }
@@ -254,6 +254,23 @@ class AppDeviceTest {
         ui.awaitWebLayout("the keyboard to close") { !it.keyboardShown && it.bottom == before.bottom }
     }
 
+    /**
+     * Allows the dialog that Welcome's notification button opens, and waits until Welcome shows the answer. Until the
+     * dialog draws, its window takes every touch on Welcome, so a tap on Battery or Continue before the answer is lost.
+     */
+    private fun awaitNotificationAnswer() {
+        val deadline = ui.now() + PERMISSION_MILLIS
+        while (NOTIFICATION_ANSWERS.none { it in ui.tags() }) {
+            allowNotifications()
+            check(ui.now() < deadline) { "Welcome shows no answer to the notification request; tags ${ui.tags()}" }
+            SystemClock.sleep(AppDeviceUi.POLL_MILLIS)
+        }
+    }
+
+    private fun allowNotifications() {
+        check(ui.allowPermission(0)) { "the notification permission dialog stayed open; tags ${ui.tags()}" }
+    }
+
     private fun awaitNotification(shown: Boolean): Boolean {
         val deadline = ui.now() + AppDeviceUi.UI_MILLIS
         while (ui.serverNotificationShown() != shown) {
@@ -270,6 +287,11 @@ class AppDeviceTest {
         const val CONTINUE = "firstrun_continue"
         const val METERED_CONTINUE = "firstrun_metered_continue"
         val METERED = listOf("firstrun_metered", "firstrun_cellular")
+        val NOTIFICATION_ANSWERS = listOf(
+            "firstrun_notifications_granted",
+            "firstrun_notifications_denied",
+            "firstrun_notifications_blocked",
+        )
 
         /** First-run screens and app routes whose first appearance marks a phase of the first run. */
         val FIRST_RUN_MARKS = setOf(
@@ -296,7 +318,7 @@ class AppDeviceTest {
         // Sized past a slow emulator's first launch, clone, npm ci and Repair on a shared host.
         const val LAYOUT_MILLIS = 5 * 60_000L
         const val CHOICE_MILLIS = 3_000L
-        const val PERMISSION_MILLIS = 15_000L
+        const val PERMISSION_MILLIS = 60_000L
         const val FIRST_RUN_MILLIS = 40 * 60_000L
         const val START_MILLIS = 5 * 60_000L
         const val STOP_MILLIS = 60_000L

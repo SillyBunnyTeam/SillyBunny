@@ -103,12 +103,22 @@ internal class AppDeviceUi(private val instrumentation: Instrumentation) {
         }
     }
 
-    /** Allows a runtime-permission dialog that is on screen or shows within [timeoutMillis]. */
+    /**
+     * Allows a runtime-permission dialog that is on screen or shows within [timeoutMillis]. On API 33+ a tap while the
+     * dialog opens can go to a window that takes no input yet, so the allow button gets another tap until the dialog
+     * closes. The dialog counts as closed once its allow button stays away for [SETTLE_MILLIS].
+     * False when the dialog is still open after [DIALOG_MILLIS] of taps; true when it closed or when none showed.
+     */
     fun allowPermission(timeoutMillis: Long): Boolean {
         val selector = By.res(PERMISSION_ALLOW)
-        if (!tap(device.wait(Until.findObject(selector), timeoutMillis))) return false
-        device.wait(Until.gone(selector), UI_MILLIS)
-        return true
+        var button: UiObject2 = device.wait(Until.findObject(selector), timeoutMillis) ?: return true
+        val deadline = now() + DIALOG_MILLIS
+        while (now() < deadline) {
+            tap(button)
+            device.wait(Until.gone(selector), RETAP_MILLIS)
+            button = device.wait(Until.findObject(selector), SETTLE_MILLIS) ?: return true
+        }
+        return false
     }
 
     /** Fails on a screen that ends the run: an error screen or an update prompt nobody expects here. */
@@ -377,6 +387,9 @@ internal class AppDeviceUi(private val instrumentation: Instrumentation) {
         const val UI_MILLIS = 60_000L
         const val POLL_MILLIS = 500L
         private const val SHADE_MILLIS = 10_000L
+        private const val DIALOG_MILLIS = 10_000L
+        private const val RETAP_MILLIS = 2_000L
+        private const val SETTLE_MILLIS = 1_000L
         private const val SCRIPT_SECONDS = 10L
         private const val SCROLL_PERCENT = 0.8f
         private const val FAILED_LINES = 20
