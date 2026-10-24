@@ -66,6 +66,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-24 compliance pass. |
 | Owner | TODO(copy) |
 
+### Account windows and profile presentation
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/user.js`; `public/scripts/templates/userProfile.html`; `public/scripts/templates/admin.html`; `public/scripts/templates/snapshotsView.html`; `public/css/accounts.css`. |
+| Area | Account profile, administrator user list and settings snapshots. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-editor/adapters/window-content-dialogs.js`; shared dialog frame, rows and action menu. |
+| Adapter shape | Preserve source nodes, IDs, classes, request handlers and confirmation results; present profile properties in a content-sized Dialog, user and snapshot collections in shared Window rows, and expose existing administrator actions through the row overflow menu. |
+| Protecting tests | `tests/unit/window-content-dialogs.test.js`; `tests/window-content-dialogs.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/window-dialogs.e2e.js`. |
+| Validation | 2026-10-25: focused unit and Chromium account-window E2E at 1440×900, 390×844 and 844×390. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-25 account window redesign. |
+| Owner | TODO(copy) |
+
 ### Swipe Selection Window
 | Field | Value |
 | --- | --- |
@@ -327,7 +341,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Popup lifecycle and dialog presentation. |
 | Divergence reason | TODO(copy) |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; tier CSS in `public/css/sillybunny-theme.css`. |
-| Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. All response buttons remain descendants of `buttonControls`; custom responses use a measured footer wrapper inside it and do not grow to fill it. Cascade overrides correct upstream sizing and hidden overflow, including Safari. |
+| Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`/`size`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. All response buttons remain descendants of `buttonControls`; custom responses use a measured footer wrapper inside it and do not grow to fill it. Cascade overrides correct upstream sizing and hidden overflow, including Safari. Window framing locks content-sized height after first layout and uses one fill opt-in for list-heavy and editor surfaces. |
 | Protecting tests | `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/unit/sillybunny-dialog.test.js`, `tests/popup-scroll.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, and the popup-touching suites in the dialogs plan §2.10. |
 | Validation | `npm run lint`; focused Jest suites for Popup contract/frame/dialog/rows and Tag/Folder Managers; `popup-scroll`, dialog-frame, Tag Manager and Folder Manager Chromium E2E; frontend budget check. WebKit unavailable on this host because Playwright's system dependencies are missing; track in Phase 9. |
 | Rollback path | TODO(copy) |

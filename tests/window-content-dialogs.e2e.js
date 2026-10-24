@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import {
-    bootWindowContentDialogs, CUSTOM_BODY_YAML, EXPOSED_SECRET_SENTINEL, expectWindowFrame,
+    bootWindowContentDialogs, CUSTOM_BODY_YAML, EXPOSED_SECRET_SENTINEL, expectDialogFrame, expectWindowFrame,
     interceptExposedSecretViewer, openAccountProfile, openAdminPanel, SNAPSHOT_FIXTURE,
     SNAPSHOT_TEXT, WINDOW_CONTENT_VIEWPORTS,
 } from './helpers/window-content-dialogs.js';
@@ -34,6 +34,21 @@ async function expectTrailingEntryRows(root) {
         const controlRect = control.getBoundingClientRect();
         return controlRect.left >= labelRect.right - 1 || controlRect.top >= labelRect.bottom - 1;
     }))).toBe(true);
+}
+
+async function expectNoTrailingColonInRowTitles(root) {
+    const titles = await root.locator('.ds-row-label').allTextContents();
+    expect(titles.every(title => !/[:：]\s*$/u.test(title))).toBe(true);
+}
+
+async function expectLastContentNearBodyEnd(popup, selector) {
+    const gap = await popup.evaluate((node, lastSelector) => {
+        const body = node.querySelector('.popup-content');
+        const lastContent = node.querySelector(lastSelector);
+        return body.getBoundingClientRect().bottom - lastContent.getBoundingClientRect().bottom;
+    }, selector);
+    expect(gap).toBeGreaterThanOrEqual(-1);
+    expect(gap).toBeLessThanOrEqual(24);
 }
 
 async function openCharacterEditor(page) {
@@ -112,12 +127,33 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await protectMaintainerServer(page);
         const state = await bootWindowContentDialogs(page, viewport);
         const profile = await openAccountProfile(page);
-        await expectWindowFrame(profile, viewport);
+        await expectDialogFrame(profile, viewport);
+        await expect(profile.locator('.sb-account-properties .ds-row')).toHaveCount(4);
+        await expectNoTrailingColonInRowTitles(profile);
+        await expect(profile.locator('.sb-account-hero .userChangeNameButton')).toBeVisible();
+        await expect(profile.locator('.sb-account-hero .userAvatarChange')).toBeVisible();
+        await expect(profile.locator('.sb-account-hero .userAvatarRemove')).toBeVisible();
+        await expect(profile.locator('.userChangePasswordButton')).toHaveClass(/ds-row--activatable/);
+        await expect(profile.locator('.userResetSettingsButton')).toHaveClass(/ds-row--activatable/);
+        await expect(profile.locator('.userResetAllButton')).toHaveClass(/ds-row--activatable/);
         await expectOneWindowScroller(profile);
         await expect(profile.locator('.sb-dialog__title')).toHaveText('Account Info');
         await profile.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(profile.locator('.userResetAllButton')).toBeInViewport();
         await expect(profile.locator('.sb-dialog__close')).toBeInViewport();
+        await expectLastContentNearBodyEnd(profile, '.userResetAllButton');
+
+        await profile.locator('.userResetSettingsButton').click();
+        await page.locator('dialog.popup[open] #resetSettingsPassword').waitFor();
+        const openedReset = page.locator('dialog.popup[open]').last();
+        const destructiveConfirm = page.locator(`dialog.popup[data-id="${await openedReset.getAttribute('data-id')}"]`);
+        await expect(destructiveConfirm).toHaveClass(/sb-dialog--dialog/);
+        await expect(destructiveConfirm.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+        await expect(destructiveConfirm.locator('.popup-button-cancel')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect.poll(() => state.users.filter(user => user.endpoint === 'reset-settings')).toHaveLength(0);
+        await expect(destructiveConfirm).toHaveCount(0);
+        await expect(profile).toBeVisible();
 
         await profile.locator('.sb-dialog__close').click();
         const dataSecurity = page.locator('[data-sb-panel="data-security"]');
@@ -127,11 +163,19 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expect(snapshots.getByRole('button', { name: 'Back', exact: true })).toHaveCount(0);
         await expect(snapshots.locator('.sb-dialog__title')).toHaveText('Settings Snapshots');
         await expect(snapshots.locator('.snapshotList > .snapshot')).toHaveCount(1);
+        await expectNoTrailingColonInRowTitles(snapshots);
         await expect(snapshots.locator('.snapshotList > .snapshot .snapshotName')).toHaveText(SNAPSHOT_FIXTURE.name);
-        await snapshots.locator('.snapshotList > .snapshot .inline-drawer-toggle').click();
+        await snapshots.locator('.snapshotList > .snapshot .snapshotExpandButton').click();
+        await expect(snapshots.locator('.snapshotList > .snapshot .snapshotExpandButton')).toHaveAttribute('aria-expanded', 'true');
         await snapshots.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(snapshots.locator('.snapshotList > .snapshot .snapshotContent')).toBeInViewport();
         await expect(snapshots.locator('.snapshotList > .snapshot .snapshotContent')).toHaveValue(SNAPSHOT_TEXT);
+        await expectLastContentNearBodyEnd(snapshots, '.snapshotList > .snapshot');
+        await snapshots.locator('.snapshotList > .snapshot .snapshotExpandButton').click();
+        await expect(snapshots.locator('.snapshotList > .snapshot .snapshotExpandButton')).toHaveAttribute('aria-expanded', 'false');
+
+        await snapshots.locator('.sb-dialog__header .makeSnapshotButton').dispatchEvent('click');
+        await expect.poll(() => state.snapshotRequests.filter(request => request === 'make-snapshot')).toHaveLength(1);
 
         await snapshots.locator('.snapshotList > .snapshot .snapshotRestoreButton').click();
         const openedConfirm = page.locator('dialog.popup[open]').last();
@@ -141,7 +185,7 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expect(confirm.locator('.popup-button-cancel')).toBeFocused();
         await page.keyboard.press('Enter');
         await expect(confirm).toHaveCount(0);
-        expect(state.snapshotRequests).toEqual(['get-snapshots', 'load-snapshot']);
+        expect(state.snapshotRequests).toEqual(['get-snapshots', 'load-snapshot', 'make-snapshot', 'get-snapshots']);
         await expect(snapshots).toBeVisible();
         await snapshots.locator('.sb-dialog__close').click();
         expect(state.users).toEqual([]);
@@ -150,19 +194,78 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
 
     test(`Admin Window keeps the four original new-user fields and blocks account writes at ${size}`, async ({ page }) => {
         await protectMaintainerServer(page);
-        const state = await bootWindowContentDialogs(page, viewport, { admin: true });
+        const adminUsers = [
+            { handle: 'other-user', name: 'Other User', admin: true, enabled: true, password: true, created: 0, avatar: '/img/ai4.png' },
+            { handle: 'disabled-user', name: 'Disabled User', admin: false, enabled: false, password: false, created: 1, avatar: '/img/ai4.png' },
+        ];
+        const state = await bootWindowContentDialogs(page, viewport, { admin: true, adminUsers });
         const admin = await openAdminPanel(page);
         await expectWindowFrame(admin, viewport);
         await expectOneWindowScroller(admin);
-        await expect(admin.locator('.usersList .userAccount')).toHaveCount(1);
+        await expect(admin.locator('.usersList .userAccount')).toHaveCount(2);
+        const userRow = admin.locator('.usersList .userAccount').first();
+        const disabledRow = admin.locator('.usersList .userAccount').nth(1);
+        await expect(userRow).toHaveClass(/ds-pref-group/);
+        await expect(userRow.locator('.ds-entity-row__avatar')).toBeVisible();
+        await expect(userRow.locator('.ds-entity-row__title')).toContainText('Other User');
+        await expect(userRow.locator('.ds-entity-row__subtitle')).toContainText('other-user');
+        await expect(userRow.locator('.userChangeNameButton')).toBeVisible();
+        await expect(userRow.locator('.userOverflowButton')).toHaveAttribute('aria-label', 'Menu');
+        await userRow.locator('.userOverflowButton').click();
+        await expect(page.getByRole('menuitem', { name: 'Disable user account.' })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: 'Demote user to regular user.' })).toBeVisible();
+        await page.getByRole('menuitem', { name: 'Disable user account.' }).click();
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'disable')).toMatchObject({ handle: 'other-user' });
+        await disabledRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Enable user account.' }).click();
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'enable')).toMatchObject({ handle: 'disabled-user' });
+        await disabledRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Promote user to admin.' }).click();
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'promote')).toMatchObject({ handle: 'disabled-user' });
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Demote user to regular user.' }).click();
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'demote')).toMatchObject({ handle: 'other-user' });
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Download a backup of user data.' }).click();
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'backup')).toMatchObject({ handle: 'other-user' });
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Remove a custom avatar.' }).click();
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'change-avatar')).toMatchObject({ handle: 'other-user', avatar: '' });
+        const chooserPromise = page.waitForEvent('filechooser');
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Set a custom avatar.' }).click();
+        const chooser = await chooserPromise;
+        expect(chooser.isMultiple()).toBe(false);
+        await userRow.locator('.userChangeNameButton').click();
+        const nameDialog = page.locator('dialog.popup[open]').last();
+        await nameDialog.locator('.popup-input').waitFor();
+        await nameDialog.locator('.popup-input').fill('Renamed QA User');
+        await nameDialog.locator('.popup-button-ok').dispatchEvent('click');
+        await expect.poll(() => state.users.findLast(user => user.endpoint === 'change-name')).toMatchObject({ handle: 'other-user', name: 'Renamed QA User' });
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Change user password.' }).click();
+        let actionPage = page.locator('dialog.popup[open]').last();
+        await actionPage.locator('input[name="confirm"]').waitFor();
+        await actionPage.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Delete user account.' }).click();
+        actionPage = page.locator('dialog.popup[open]').last();
+        await expect(actionPage.locator('.popup-button-cancel')).toBeFocused();
+        await actionPage.locator('.popup-button-cancel').click();
         await admin.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(admin.locator('.usersList .userAccount').last()).toBeInViewport();
+        await expectLastContentNearBodyEnd(admin, '.usersList .userAccount:last-child');
 
-        await admin.locator('.newUserButton').click();
-        const form = admin.locator('.registerNewUserBlock:visible .userCreateForm');
+        await expect(admin.locator('.sb-dialog__header .newUserButton')).toHaveAttribute('aria-label', 'New User');
+        await admin.locator('.sb-dialog__header .newUserButton').click();
+        const formPage = page.locator('dialog.popup[open]').last();
+        await expect(formPage).toHaveClass(/sb-dialog--page/);
+        await expect(formPage.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+        const form = formPage.locator('.userCreateForm');
         const fields = form.locator('input[name]');
         await expect(fields).toHaveCount(4);
         await expect(form.locator('.ds-row-entry')).toHaveCount(4);
+        await expectNoTrailingColonInRowTitles(formPage);
         await expect(form.locator('input[name="password"]')).toHaveAttribute('type', 'password');
         await expect(form.locator('input[name="password"]')).toHaveAttribute('autocomplete', 'new-password');
         await expect(form.locator('input[name="confirm"]')).toHaveAttribute('type', 'password');
@@ -170,7 +273,7 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expect(form.locator('input[name="_name"]')).toHaveAttribute('autocomplete', 'username');
         await expect(form.locator('input[name="handle"]')).toHaveAttribute('pattern', '[a-z0-9-]+');
         await expectTrailingEntryRows(form);
-        await admin.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
+        await formPage.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(form.locator('.newUserRegisterFinalizeButton')).toBeInViewport();
         await form.locator('input[name="_name"]').fill('Window QA User');
         await expect(form.locator('input[name="handle"]')).toHaveValue('Window QA User');
@@ -255,6 +358,7 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await protectMaintainerServer(page);
         await bootWindowContentDialogs(page, viewport);
         const itemization = await openItemization(page, viewport);
+        await expect(itemization).toBeVisible();
         await itemization.locator('.sb-dialog__close').click();
     });
 
@@ -319,6 +423,28 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
     });
 
 }
+
+test('Long account lists keep the shared Window at its large-list height', async ({ page }) => {
+    const viewport = { width: 1440, height: 900, presentation: 'floating' };
+    const adminUsers = Array.from({ length: 14 }, (_, index) => ({
+        handle: `long-user-${index}`,
+        name: `Long List User ${index}`,
+        admin: false,
+        enabled: true,
+        password: false,
+        created: 1_700_000_000_000 + index,
+        avatar: '/img/ai4.png',
+    }));
+    await protectMaintainerServer(page);
+    await bootWindowContentDialogs(page, viewport, { admin: true, adminUsers });
+    const admin = await openAdminPanel(page);
+    await expectWindowFrame(admin, viewport);
+    const bodyHeight = await admin.locator('.popup-content').evaluate(node => node.getBoundingClientRect().height);
+    expect(bodyHeight).toBeGreaterThan(650);
+    await admin.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(admin.locator('.usersList .userAccount').last()).toBeInViewport();
+    await expect(admin.locator('.usersList .userAccount')).toHaveCount(14);
+});
 
 test('Raw desktop prompt stays inside its itemization Window at 1440×900', async ({ page }) => {
     const viewport = { width: 1440, height: 900, presentation: 'floating' };

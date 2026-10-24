@@ -15,7 +15,7 @@ export const SNAPSHOT_FIXTURE = {
 export const SNAPSHOT_TEXT = '{\n    "fixture": "snapshot content stays intercepted"\n}\n';
 export const CUSTOM_BODY_YAML = 'top_k: 20\nrepetition_penalty: 1.1';
 
-export async function bootWindowContentDialogs(page, viewport, { admin = false, configureSettings } = {}) {
+export async function bootWindowContentDialogs(page, viewport, { admin = false, adminUsers = null, configureSettings } = {}) {
     const state = { snapshotRequests: [], secretViewCalls: 0 };
     await page.context().route(/\/api\/settings\/(?:get-snapshots|load-snapshot|make-snapshot|restore-snapshot)$/, route => route.fulfill({ status: 400, body: 'Blocked by window-content dialog test' }));
     await page.context().route(/\/api\/secrets\//, route => {
@@ -31,6 +31,10 @@ export async function bootWindowContentDialogs(page, viewport, { admin = false, 
             configureSettings?.(settings);
         },
     });
+
+    if (adminUsers) {
+        await page.route('**/api/users/get', route => route.fulfill({ json: adminUsers }));
+    }
 
     await page.route('**/api/settings/get-snapshots', route => {
         state.snapshotRequests.push('get-snapshots');
@@ -79,6 +83,15 @@ export async function openAdminPanel(page) {
 
 export async function expectWindowFrame(popup, viewport) {
     await expect(popup).toHaveClass(/sb-dialog--window/);
+    await expect(popup).not.toHaveAttribute('opening');
+    const isPage = await popup.evaluate(node => node.classList.contains('sb-dialog--page'));
+    if (!isPage) {
+        await expect(popup).toHaveAttribute('data-presentation', viewport.presentation);
+    }
+}
+
+export async function expectDialogFrame(popup, viewport) {
+    await expect(popup).toHaveClass(/sb-dialog--dialog/);
     await expect(popup).not.toHaveAttribute('opening');
     const isPage = await popup.evaluate(node => node.classList.contains('sb-dialog--page'));
     if (!isPage) {

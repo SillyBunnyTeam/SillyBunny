@@ -247,6 +247,18 @@ for (const width of [1440, 390]) {
             await expect(manager(page)).toBeVisible();
         });
 
+        test('keeps its opened height while a search removes every row', async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            const openedHeight = await manager(page).evaluate(node => node.getBoundingClientRect().height);
+            const search = manager(page).getByRole('button', { name: 'Search', exact: true });
+            await search.click();
+            await manager(page).getByRole('searchbox', { name: 'Search', exact: true }).fill('no-tag-matches-this');
+            await expect(manager(page).getByRole('heading', { name: 'No results', exact: true })).toBeVisible();
+            const filteredHeight = await manager(page).evaluate(node => node.getBoundingClientRect().height);
+            expect(filteredHeight).toBe(openedHeight);
+        });
+
         test('tag rows open a member page with remove and add controls', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);

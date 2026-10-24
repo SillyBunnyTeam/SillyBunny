@@ -1,88 +1,79 @@
-<div class="flex-container flexFlowColumn justifyLeft flexGap10">
-    <div>
-        <h2 class="marginBot10 flex-container">
-            <span data-i18n="Hi,">Hi,</span><span class="userName margin0"></span>
-            <div data-require-accounts class="userChangeNameButton right_menu_button" title="Change display name.">
-                <i class="fa-fw fa-solid fa-pencil fa-xs"></i>
-            </div>
-        </h2>
-        <div class="accountsDisabledHint" style="display: none;">
-            <span data-i18n="To enable multi-account features, restart the SillyTavern server with">To enable multi-account features, restart the SillyTavern server with</span> <code>enableUserAccounts</code> <span data-i18n="set to true in the config.yaml file.">set to true in the config.yaml file.</span>
+<!-- SillyBunny: Existing account nodes stay intact so their handlers and translations remain bound. -->
+<div class="flex-container flexFlowColumn justifyLeft flexGap10 sb-dialog-rows sb-account-profile">
+    <h3 data-i18n="Account Info">Account Info</h3>
+    <section class="sb-account-hero flex-container flexFlowColumn alignItemsCenter flexGap10">
+        <div class="avatar" data-i18n="[title]To change your user avatar, use the buttons below or select a default persona in the Persona Management menu." title="To change your user avatar, use the buttons below or select a default persona in the Persona Management menu.">
+            <img src="img/ai4.png" alt="avatar">
         </div>
-    </div>
-    <div>
-        <h3 data-i18n="Account Info">
-            Account Info
-        </h3>
-        <div class="flex-container flexGap10">
-            <div class="flex-container flexFlowColumn alignItemsCenter flexNoGap">
-                <div class="avatar" data-i18n="[title]To change your user avatar, use the buttons below or select a default persona in the Persona Management menu." title="To change your user avatar, use the buttons below or select a default persona in the Persona Management menu.">
-                    <img src="img/ai4.png" alt="avatar">
-                </div>
-                <div class="flex-container alignItemsCenter">
-                    <div class="userAvatarChange right_menu_button" data-i18n="[title]Set your custom avatar." title="Set your custom avatar.">
-                        <i class="fa-fw fa-solid fa-image"></i>
-                    </div>
-                    <div class="userAvatarRemove right_menu_button" data-i18n="[title]Remove your custom avatar." title="Remove your custom avatar.">
-                        <i class="fa-fw fa-solid fa-trash"></i>
-                    </div>
-                </div>
+        <div class="sb-account-hero-content flex1 flex-container flexFlowColumn alignItemsCenter flexNoGap">
+            <h2 class="sb-account-name marginBot10 flex-container alignItemsCenter justifyCenter">
+                <span data-i18n="Hi,">Hi,</span><span class="userName margin0"></span>
+                <button type="button" data-require-accounts class="userChangeNameButton right_menu_button sb-dialog__icon-button" data-i18n="[title]Change display name." title="Change display name." aria-label="Change display name.">
+                    <i class="fa-fw fa-solid fa-pencil fa-xs"></i>
+                </button>
+            </h2>
+            <div class="sb-account-avatar-actions flex-container alignItemsCenter justifyCenter">
+                <button type="button" class="userAvatarChange right_menu_button sb-dialog__icon-button" data-i18n="[title]Set your custom avatar." title="Set your custom avatar." aria-label="Set your custom avatar.">
+                    <i class="fa-fw fa-solid fa-image"></i>
+                </button>
+                <button type="button" class="userAvatarRemove right_menu_button sb-dialog__icon-button" data-i18n="[title]Remove your custom avatar." title="Remove your custom avatar." aria-label="Remove your custom avatar.">
+                    <i class="fa-fw fa-solid fa-trash"></i>
+                </button>
                 <form>
                     <input type="file" class="avatarUpload" accept="image/*" hidden>
                 </form>
             </div>
-            <div class="flex1 flex-container flexGap10">
-                <div class="flex-container flexFlowColumn">
-                    <div>
-                        <span data-i18n="Handle:">Handle:</span>
-                        <span class="userHandle"></span>
-                    </div>
-                    <div>
-                        <span data-i18n="Role:">Role:</span>
-                        <span class="userRole"></span>
-                    </div>
-                </div>
-                <div class="flex-container flexFlowColumn">
-                    <div>
-                        <span data-i18n="Created:">Created:</span>
-                        <span class="userCreated"></span>
-                    </div>
-                    <div>
-                        <span data-i18n="Password:">Password:</span>
-                        <i class="hasPassword fa-fw fa-solid fa-lock" data-i18n="[title]This account is password protected." title="This account is password protected."></i>
-                        <i class="noPassword fa-fw fa-solid fa-lock-open" data-i18n="[title]This account is not password protected." title="This account is not password protected."></i>
-                    </div>
-                </div>
-            </div>
+        </div>
+    </section>
+    <div class="ds-pref-group sb-account-properties flex1" role="group" data-sb-field="account-info">
+        <div class="ds-row">
+            <span class="ds-row-text"><span class="ds-row-label" data-i18n="Handle:">Handle:</span></span>
+            <span class="ds-row-suffix userHandle"></span>
+        </div>
+        <div class="ds-row">
+            <span class="ds-row-text"><span class="ds-row-label" data-i18n="Created:">Created:</span></span>
+            <span class="ds-row-suffix userCreated"></span>
+        </div>
+        <div class="ds-row">
+            <span class="ds-row-text"><span class="ds-row-label" data-i18n="Role:">Role:</span></span>
+            <span class="ds-row-suffix userRole"></span>
+        </div>
+        <div class="ds-row">
+            <span class="ds-row-text"><span class="ds-row-label" data-i18n="Password:">Password:</span></span>
+            <span class="ds-row-suffix">
+                <i class="hasPassword fa-fw fa-solid fa-lock" data-i18n="[title]This account is password protected." title="This account is password protected." aria-label="This account is password protected."></i>
+                <i class="noPassword fa-fw fa-solid fa-lock-open" data-i18n="[title]This account is not password protected." title="This account is not password protected." aria-label="This account is not password protected."></i>
+            </span>
         </div>
     </div>
-    <!-- SillyBunny: Settings Snapshots and Download Backup are rows in the Data & Security Export category, so this section holds only Change Password and hides with it. -->
-    <div data-require-accounts>
-        <h3 data-i18n="Account Actions">
-            Account Actions
-        </h3>
-        <div class="flex-container flexFlowColumn flexNoGap">
-            <div data-require-accounts class="flex-container">
-                <div class="userChangePasswordButton menu_button menu_button_icon" title="Change your password.">
-                    <i class="fa-fw fa-solid fa-key"></i>
-                    <span data-i18n="Change Password">Change Password</span>
-                </div>
+    <section class="sb-editor-section" data-require-accounts>
+        <div class="ds-pref-group-header" data-require-accounts>
+            <h3 class="ds-pref-group-heading" data-i18n="Account Actions">Account Actions</h3>
+            <div class="ds-pref-group" role="group">
+                <button type="button" class="userChangePasswordButton menu_button menu_button_icon ds-row ds-row--activatable" title="Change your password.">
+                    <span class="ds-row-text"><span class="ds-row-label" data-i18n="Change Password">Change Password</span></span>
+                    <span class="ds-row-suffix"><i class="fa-fw fa-solid fa-key" aria-hidden="true"></i></span>
+                    <i class="fa-solid fa-chevron-right ds-row__chevron" aria-hidden="true"></i>
+                </button>
             </div>
         </div>
-    </div>
-    <div>
-        <h3 data-i18n="Danger Zone">
-            Danger Zone
-        </h3>
-        <div class="flex-container">
-            <div class="userResetSettingsButton menu_button menu_button_icon" data-i18n="[title]Reset your settings to factory defaults." title="Reset your settings to factory defaults.">
-                <i class="fa-fw fa-solid fa-cog warning"></i>
-                <span data-i18n="Reset Settings">Reset Settings</span>
-            </div>
-            <div class="userResetAllButton menu_button menu_button_icon" data-i18n="[title]Wipe all user data and reset your account to factory settings." title="Wipe all user data and reset your account to factory settings.">
-                <i class="fa-fw fa-solid fa-skull warning"></i>
-                <span data-i18n="Reset Everything">Reset Everything</span>
-            </div>
+    </section>
+    <section class="sb-editor-section">
+        <div class="ds-pref-group-header"><h3 class="ds-pref-group-heading" data-i18n="Danger Zone">Danger Zone</h3></div>
+        <div class="ds-pref-group" role="group">
+            <button type="button" class="userResetSettingsButton menu_button menu_button_icon ds-row ds-row--activatable" data-i18n="[title]Reset your settings to factory defaults." title="Reset your settings to factory defaults.">
+                <span class="ds-row-text"><span class="ds-row-label" data-i18n="Reset Settings">Reset Settings</span></span>
+                <span class="ds-row-suffix"><i class="fa-fw fa-solid fa-cog warning" aria-hidden="true"></i></span>
+                <i class="fa-solid fa-chevron-right ds-row__chevron" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="userResetAllButton menu_button menu_button_icon ds-row ds-row--activatable" data-i18n="[title]Wipe all user data and reset your account to factory settings." title="Wipe all user data and reset your account to factory settings.">
+                <span class="ds-row-text"><span class="ds-row-label" data-i18n="Reset Everything">Reset Everything</span></span>
+                <span class="ds-row-suffix"><i class="fa-fw fa-solid fa-skull warning" aria-hidden="true"></i></span>
+                <i class="fa-solid fa-chevron-right ds-row__chevron" aria-hidden="true"></i>
+            </button>
         </div>
+    </section>
+    <div class="accountsDisabledHint" style="display: none;">
+        <span data-i18n="To enable multi-account features, restart the SillyTavern server with">To enable multi-account features, restart the SillyTavern server with</span> <code>enableUserAccounts</code> <span data-i18n="set to true in the config.yaml file.">set to true in the config.yaml file.</span>
     </div>
 </div>

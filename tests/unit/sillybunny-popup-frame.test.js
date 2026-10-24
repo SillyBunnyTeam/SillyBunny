@@ -273,6 +273,23 @@ describe('Popup frame adapter', () => {
         }
     });
 
+    test('Window frames fill by default and support an explicit content size', () => {
+        setupDialogMedia();
+        const filled = popupDom();
+        const filledFrame = framePopup(filled, { tier: 'window' });
+        filled.dlg.showModal();
+        filledFrame.opened();
+        expect(filled.dlg.classList.contains('sb-dialog--fill')).toBe(true);
+        filledFrame.dispose();
+
+        const contentSized = popupDom();
+        const contentFrame = framePopup(contentSized, { tier: 'window', size: 'content' });
+        contentSized.dlg.showModal();
+        contentFrame.opened();
+        expect(contentSized.dlg.classList.contains('sb-dialog--fill')).toBe(false);
+        contentFrame.dispose();
+    });
+
     test('custom default responses stay inside buttonControls and receive autofocus', () => {
         setupDialogMedia();
         const value = popupDom();
@@ -454,7 +471,7 @@ describe('Popup frame adapter', () => {
         expect(caller).toHaveBeenCalledTimes(1);
     });
 
-    test('teardown disconnects the header and custom-response measurement observers', () => {
+    test('teardown disconnects the header, custom-response and Window-height observers', () => {
         setupDialogMedia();
         const previousObserver = globalThis.ResizeObserver;
         const observers = [];
@@ -465,13 +482,16 @@ describe('Popup frame adapter', () => {
         };
         try {
             const value = popupDom({ contentHtml: '<h3>Responses</h3>' });
+            value.dlg.classList.add('large_dialogue_popup');
             const custom = document.createElement('button');
             custom.className = 'popup-button-custom';
             value.buttonControls.prepend(custom);
-            const frame = framePopup(value, { tier: 'dialog' });
+            const frame = framePopup(value, { tier: 'window', size: 'fill' });
             value.dlg.showModal();
             frame.opened();
-            expect(observers).toHaveLength(2);
+            expect(value.dlg.classList.contains('large_dialogue_popup')).toBe(false);
+            expect(value.dlg.classList.contains('sb-dialog--fill')).toBe(true);
+            expect(observers).toHaveLength(3);
             frame.dispose();
             for (const observer of observers) expect(observer.disconnect).toHaveBeenCalledTimes(1);
         } finally {

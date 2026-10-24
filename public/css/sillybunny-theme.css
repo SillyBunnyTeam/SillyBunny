@@ -7021,13 +7021,16 @@ dialog.popup.sb-dialog--dialog {
     max-height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px)));
 }
 
-/* The shell's large pop-out footprint (Tag Manager); style.css sizes .large_dialogue_popup with !important. */
+/* The shell's large pop-out footprint (Tag Manager). */
 dialog.popup.sb-dialog--window {
     width: min(max(640px, var(--sheldWidth, 64vw)), calc(100dvw - 32px)) !important;
     min-width: 0 !important;
     max-width: calc(100dvw - 32px) !important;
-    height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px))) !important;
+    height: auto;
+    max-height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px)));
 }
+
+dialog.popup.sb-dialog--window.sb-dialog--fill { height: 90dvh; }
 
 dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) > .popup-body {
     height: auto;
@@ -7042,13 +7045,16 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     overscroll-behavior: contain;
 }
 
+dialog.popup.sb-dialog--window:not(.sb-dialog--fill) :is(.popup-body, .popup-content) { flex: 0 1 auto; }
+
 /* Maximized editors give the scrolling surface to the textarea, not both it and the Popup body. */
-dialog.popup.sb-dialog--window:has(.sb-maximized-editor) > .popup-body {
+dialog.popup.sb-dialog--window.sb-dialog--maximized-editor > .popup-body {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
 }
 
-dialog.popup.sb-dialog--window:has(.sb-maximized-editor) .popup-content {
+dialog.popup.sb-dialog--window.sb-dialog--maximized-editor .popup-content {
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -7056,14 +7062,14 @@ dialog.popup.sb-dialog--window:has(.sb-maximized-editor) .popup-content {
     overflow: hidden;
 }
 
-dialog.popup.sb-dialog--window .sb-maximized-editor {
+dialog.popup.sb-dialog--window.sb-dialog--maximized-editor .sb-maximized-editor {
     flex: 1 1 auto;
     align-items: stretch;
     justify-content: stretch;
     min-height: 0;
 }
 
-dialog.popup.sb-dialog--window .sb-maximized-editor > textarea.maximized_textarea {
+dialog.popup.sb-dialog--window.sb-dialog--maximized-editor .sb-maximized-editor > textarea.maximized_textarea {
     flex: 1 1 auto;
     width: 100%;
     height: 100%;
@@ -7171,8 +7177,8 @@ dialog.popup.sb-dialog[data-presentation='sheet'] {
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
 }
 
-dialog.popup.sb-dialog--window[data-presentation='sheet'] {
-    height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px - var(--sb-dialog-keyboard-inset, 0px)) !important;
+dialog.popup.sb-dialog--window.sb-dialog--fill[data-presentation='sheet'] {
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px - var(--sb-dialog-keyboard-inset, 0px));
 }
 
 dialog.popup.sb-dialog[data-presentation='sheet'] > .sb-dialog__header > .popup-controls > .sb-dialog__bottom-bar {
@@ -7648,9 +7654,13 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 /* The shell's large pop-out footprint (Tag Manager). */
 .sb-dialog--window {
     width: min(max(640px, var(--sheldWidth, 64vw)), 100%);
-    height: 90vh;
+    min-height: 360px;
+    height: fit-content;
+    max-height: 90dvh;
+}
+
+.sb-dialog--window.sb-dialog--fill {
     height: 90dvh;
-    max-height: 100%;
 }
 
 .sb-dialog__handle {
@@ -7676,6 +7686,10 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 
 .sb-dialog--window :is(.sb-dialog__pages, .sb-dialog__page) {
     flex: 1 1 auto;
+}
+
+.sb-dialog--window:not(.sb-dialog--fill) :is(.sb-dialog__pages, .sb-dialog__page) {
+    flex: 0 1 auto;
 }
 
 /* In document windows even pushed pages stay on the View surface. */
@@ -8083,7 +8097,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
 }
 
-.sb-dialog-host[data-presentation='sheet'] .sb-dialog--window {
+.sb-dialog-host[data-presentation='sheet'] .sb-dialog--window.sb-dialog--fill {
     height: 100%;
 }
 

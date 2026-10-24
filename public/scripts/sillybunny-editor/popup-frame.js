@@ -4,7 +4,7 @@ import { closePicker } from './picker.js';
 import { createSwitchRow, releaseRowIds } from './rows.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, releaseOverlayLayers } from './overlay-host.js';
-import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures } from './dialog.js';
+import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock } from './dialog.js';
 
 // POPUP_TYPE values (popup.js), duplicated to avoid an import cycle.
 const TYPE_TEXT = 1;
@@ -168,14 +168,15 @@ function findParentSurface(dlg) {
 
 /**
  * @param {object} popup A Popup instance (popup.js).
- * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, allowEscapeClose?: boolean }} [options]
+ * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean }} [options]
  * @returns {{ opened: () => void, closing: () => void, dispose: () => void }}
  */
-export function framePopup(popup, { tier = null, title = null, allowEscapeClose = true, cancelButtonProvided = false } = {}) {
+export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false } = {}) {
     const { dlg } = popup;
     const cleanups = [];
     let parentSurface = null;
     let framed = false;
+    let heightLock = null;
 
     function buildAlert() {
         const { body, content, buttonControls, closeButton } = popup;
@@ -305,9 +306,13 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
         if (!resolved) return;
         framed = true;
         dlg.classList.add('sb-dialog', `sb-dialog--${resolved}`);
+        const isDocument = dlg.matches('.sb-document, .sb-maximized-editor') || dlg.querySelector('.sb-document, .sb-maximized-editor');
+        if (resolved === 'window') dlg.classList.remove('large_dialogue_popup');
+        if (resolved === 'window' && (size === 'fill' || isDocument)) dlg.classList.add('sb-dialog--fill');
+        if (resolved === 'window' && dlg.querySelector('.sb-maximized-editor')) dlg.classList.add('sb-dialog--maximized-editor');
         // SillyBunny: document windows (maximized editors, notes, inspectors, debugger output)
         // use a View body instead of a Window body.
-        if (resolved === 'window' && dlg.querySelector('.sb-document')) {
+        if (resolved === 'window' && isDocument) {
             dlg.classList.add('sb-dialog--view');
         }
         dlg.setAttribute(MODAL_ATTRIBUTE, '');
@@ -324,6 +329,7 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
         const sync = () => {
             dlg.dataset.presentation = isSheet() ? 'sheet' : 'floating';
             if (resolved === 'alert') layoutAlertResponses(popup.buttonControls, isSheet());
+            heightLock?.refresh();
         };
         if (resolved !== 'alert') presentAsPage();
         sync();
@@ -387,7 +393,11 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
                 });
             },
         }));
-        cleanups.push(bindKeyboardInset(dlg));
+        cleanups.push(bindKeyboardInset(dlg, { onInsetChange: () => heightLock?.refresh() }));
+        if (resolved === 'window') {
+            heightLock = bindWindowHeightLock(dlg, { isFill: () => dlg.classList.contains('sb-dialog--fill') });
+            cleanups.push(() => heightLock?.destroy());
+        }
         // Moving controls into the header/body can change the native autofocus target. Re-apply the
         // Popup contract after framing so destructive Alerts focus Cancel and INPUTs focus their field.
         popup.setAutoFocus?.();

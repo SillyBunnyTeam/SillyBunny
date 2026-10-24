@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 
@@ -101,6 +102,16 @@ describe('openDialog structure', () => {
         expect(getTopmostDialog()).toBe(dialog.root);
     });
 
+    test('Window surfaces fill by default and content-sized Windows opt out explicitly', () => {
+        const filled = openDialog({ tier: 'window', title: 'Filled' });
+        expect(filled.surface.classList.contains('sb-dialog--fill')).toBe(true);
+        filled.forceClose();
+
+        const contentSized = openDialog({ tier: 'window', title: 'Content', size: 'content' });
+        expect(contentSized.surface.classList.contains('sb-dialog--fill')).toBe(false);
+        contentSized.forceClose();
+    });
+
     test('content can be a builder that receives the body', () => {
         const dialog = openDialog({ title: 'T', content: body => body.append(Object.assign(document.createElement('span'), { id: 'built' })) });
         expect(dialog.body.querySelector('#built')).not.toBeNull();
@@ -165,6 +176,68 @@ describe('openDialog structure', () => {
         dialog.setSubtitle('');
         expect(dialog.header.querySelector('.sb-dialog__title').textContent).toBe('New');
         expect(dialog.header.querySelector('.sb-dialog__subtitle').hidden).toBe(true);
+    });
+});
+
+describe('content-sized Window height lock', () => {
+    test('survives keyboard inset, presentation changes, pages, and reopen without stale height', async () => {
+        const previousResizeObserver = globalThis.ResizeObserver;
+        const previousAnimationFrame = globalThis.requestAnimationFrame;
+        const previousCancelAnimationFrame = globalThis.cancelAnimationFrame;
+        const observers = [];
+        let layoutHeight = 420;
+        let frameHeight = 800;
+        globalThis.ResizeObserver = class {
+            constructor(callback) { this.callback = callback; observers.push(this); }
+            observe() {}
+            disconnect() {}
+        };
+        globalThis.requestAnimationFrame = callback => { callback(); return 0; };
+        globalThis.cancelAnimationFrame = () => {};
+
+        try {
+            const dialog = openDialog({ tier: 'window', size: 'content', title: 'Root' });
+            Object.defineProperty(dialog.surface, 'offsetHeight', { configurable: true, get: () => layoutHeight });
+            dialog.root.getBoundingClientRect = () => ({ height: frameHeight });
+            observers.forEach(observer => observer.callback());
+            expect(dialog.surface.style.minHeight).toBe('420px');
+
+            sheet.matches = true;
+            sheet.listeners.forEach(listener => listener({ matches: true }));
+            expect(dialog.root.dataset.presentation).toBe('sheet');
+            expect(dialog.surface.style.minHeight).toBe('420px');
+
+            dialog.root.style.setProperty('--sb-dialog-keyboard-inset', '200px');
+            layoutHeight = 200;
+            frameHeight = 200;
+            observers.forEach(observer => observer.callback());
+            expect(dialog.surface.style.minHeight).toBe('200px');
+
+            dialog.root.style.setProperty('--sb-dialog-keyboard-inset', '0px');
+            layoutHeight = 540;
+            frameHeight = 800;
+            observers.forEach(observer => observer.callback());
+            expect(dialog.surface.style.minHeight).toBe('540px');
+
+            const page = dialog.push({ title: 'Page' });
+            layoutHeight = 600;
+            observers.forEach(observer => observer.callback());
+            expect(dialog.surface.style.minHeight).toBe('600px');
+            page.close();
+            await expect(page.closed).resolves.toEqual({ response: 'back' });
+
+            dialog.forceClose();
+            await dialog.closed;
+            expect(dialog.surface.style.minHeight).toBe('');
+
+            const reopened = openDialog({ tier: 'window', size: 'content', title: 'Reopened' });
+            expect(reopened.surface.style.minHeight).toBe('');
+            reopened.forceClose();
+        } finally {
+            globalThis.ResizeObserver = previousResizeObserver;
+            globalThis.requestAnimationFrame = previousAnimationFrame;
+            globalThis.cancelAnimationFrame = previousCancelAnimationFrame;
+        }
     });
 });
 

@@ -247,13 +247,16 @@ export function bindSheetGestures({ surface, scrim = null, targets, startSelecto
  * @param {HTMLElement} host
  * @returns {() => void}
  */
-export function bindKeyboardInset(host) {
+export function bindKeyboardInset(host, { onInsetChange = null } = {}) {
     const viewport = window.visualViewport;
     let frame = 0;
+    let previousInset = null;
     function sync() {
         frame = 0;
         const inset = viewport ? Math.max(0, Math.round(window.innerHeight - viewport.offsetTop - viewport.height)) : 0;
         host.style.setProperty('--sb-dialog-keyboard-inset', `${inset}px`);
+        if (inset !== previousInset) onInsetChange?.(inset);
+        previousInset = inset;
         const focused = document.activeElement;
         if (inset > 0 && focused instanceof HTMLElement && host.contains(focused) && focused.matches('input, textarea, select, [contenteditable]')) {
             focused.scrollIntoView?.({ block: 'nearest' });
@@ -275,14 +278,82 @@ export function bindKeyboardInset(host) {
     };
 }
 
+/** Keeps a content-sized Window at its largest laid-out height until it closes. */
+export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
+    let minimumHeight = null;
+    let frame = 0;
+
+    function keyboardInset() {
+        const value = Number.parseFloat(
+            surface.style.getPropertyValue('--sb-dialog-keyboard-inset')
+            || surface.parentElement?.style.getPropertyValue('--sb-dialog-keyboard-inset'),
+        );
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    function availableHeight() {
+        const maxHeight = getComputedStyle(surface).maxHeight.trim();
+        if (maxHeight.endsWith('px')) {
+            const value = Number.parseFloat(maxHeight);
+            if (Number.isFinite(value)) return value;
+        }
+        const parent = surface.parentElement;
+        if (!parent || parent === document.body) return Number.POSITIVE_INFINITY;
+        const style = getComputedStyle(parent);
+        return Math.max(0, parent.getBoundingClientRect().height
+            - (Number.parseFloat(style.paddingBlockStart) || 0)
+            - (Number.parseFloat(style.paddingBlockEnd) || 0));
+    }
+
+    function sync() {
+        frame = 0;
+        if (!surface.isConnected) return;
+        if (isFill()) {
+            surface.style.removeProperty('min-height');
+            return;
+        }
+
+        const height = surface.offsetHeight;
+        if (minimumHeight === null) {
+            if (height <= 0) return;
+            minimumHeight = height;
+        } else if (!keyboardInset() && height > minimumHeight) {
+            minimumHeight = height;
+        }
+
+        surface.style.setProperty('min-height', `${Math.ceil(Math.min(minimumHeight, availableHeight()))}px`);
+    }
+
+    function schedule() {
+        if (frame) return;
+        if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(sync);
+        else sync();
+    }
+
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    resizeObserver?.observe(surface);
+    sync();
+    schedule();
+
+    return {
+        refresh: schedule,
+        destroy() {
+            if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+            resizeObserver?.disconnect();
+            surface.style.removeProperty('min-height');
+        },
+    };
+}
+
 /**
  * The transparent full-viewport modal host with a scrim, shared by alerts, dialogs and windows.
  * Exported for tests and popup-frame.js; feature code uses openDialog/openAlert.
  * @param {object} options
  * @param {'alert'|'dialog'|'window'} options.tier
  * @param {string} [options.className]
+ * @param {'content'|'fill'} [options.size='fill']
  */
-export function createDialogFrame({ tier, className = '' }) {
+export function createDialogFrame({ tier, className = '', size = 'fill' }) {
     const host = /** @type {HTMLDialogElement} */ (element('dialog', 'sb-dialog-host'));
     host.setAttribute(MODAL_ATTRIBUTE, '');
     host.dataset.tier = tier;
@@ -290,6 +361,7 @@ export function createDialogFrame({ tier, className = '' }) {
     scrim.setAttribute('aria-hidden', 'true');
     const surface = element('section', `sb-dialog sb-dialog--${tier}`);
     if (className) surface.classList.add(...className.split(/\s+/).filter(Boolean));
+    if (tier === 'window' && size === 'fill') surface.classList.add('sb-dialog--fill');
     const handle = element('div', 'sb-dialog__handle');
     handle.setAttribute('aria-hidden', 'true');
     surface.append(handle);
@@ -495,16 +567,17 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  *     'escape', 'scrim', 'swipe', 'programmatic', or an extra response id.
  * @param {() => HTMLElement|null} [o.initialFocus]
  * @param {string} [o.className] Added to the surface or, when pushed, to the page.
+ * @param {'content'|'fill'} [o.size='fill'] Whether the Window body fills the frame.
  */
 export function openDialog({
     tier = 'dialog', title, subtitle = '', content = null, search = null, menu = null, menuLabel,
-    responses = null, canClose = null, initialFocus = null, className = '',
+    responses = null, canClose = null, initialFocus = null, className = '', size = 'fill',
 }) {
     const parentHost = getTopmostDialog();
     const parent = parentHost ? frames.get(/** @type {HTMLDialogElement} */ (parentHost)) : null;
-    if (parent) return parent.pushPage({ title, subtitle, content, search, menu, menuLabel, responses, canClose, initialFocus, className });
+    if (parent) return parent.pushPage({ title, subtitle, content, search, menu, menuLabel, responses, canClose, initialFocus, className, size });
 
-    const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className });
+    const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className, size });
     const { host, scrim, surface, query, isSheet, syncPresentation } = frame;
     const pagesNode = element('div', 'sb-dialog__pages');
     surface.append(pagesNode);
@@ -513,6 +586,7 @@ export function openDialog({
     /** @type {'open'|'closing'|'closed'} */
     let state = 'open';
     let pending = false;
+    let heightLock = null;
     let finish;
     const closed = new Promise(resolve => finish = resolve);
     /** @type {{ view: ReturnType<typeof createPage>, spec: object, resolve: Function }[]} */
@@ -562,6 +636,7 @@ export function openDialog({
         query.removeEventListener('change', layoutChanged);
         unbindGestures();
         unbindKeyboard();
+        heightLock?.destroy();
         for (const entry of stack) entry.view.destroy();
         frames.delete(host);
         releaseOverlayLayers(host);
@@ -594,6 +669,7 @@ export function openDialog({
             if (prefersReducedMotion()) remove();
             else play(leaving, [{ transform: 'none' }, { transform: 'translateX(100%)' }], { ...SPRING_NAVIGATION, fill: 'forwards', onEnd: remove });
             (entry.returnFocus?.isConnected ? entry.returnFocus : firstFocusable(previous.view.page))?.focus({ preventScroll: true });
+            heightLock?.refresh();
             entry.resolve({ response });
             return true;
         });
@@ -622,6 +698,7 @@ export function openDialog({
         const previous = topPage();
         stack.push(entry);
         pagesNode.append(view.page);
+        heightLock?.refresh();
         host.setAttribute('aria-labelledby', view.titleNode.id);
         if (previous) {
             previous.view.page.inert = true;
@@ -705,7 +782,7 @@ export function openDialog({
         surface, scrim, targets: [surface], startSelector: '.sb-dialog__handle, .sb-dialog__header', isActive: isSheet,
         requestClose: offset => requestDismiss('swipe', offset),
     });
-    const unbindKeyboard = bindKeyboardInset(host);
+    const unbindKeyboard = bindKeyboardInset(host, { onInsetChange: () => heightLock?.refresh() });
 
     function layoutChanged() {
         if (state !== 'open') return;
@@ -714,11 +791,15 @@ export function openDialog({
         surface.style.removeProperty('transform');
         scrim.style.removeProperty('opacity');
         syncPresentation();
+        heightLock?.refresh();
     }
     query.addEventListener('change', layoutChanged);
 
     document.body.append(host);
     host.showModal();
+    if (host.dataset.tier === 'window') {
+        heightLock = bindWindowHeightLock(surface, { isFill: () => surface.classList.contains('sb-dialog--fill') });
+    }
     openMotion(frame);
     (initialFocus?.() ?? (root.search?.isOpen ? root.searchInput : root.searchToggle) ?? firstFocusable(root.body) ?? root.buttons.get('cancel') ?? root.closeButton)?.focus({ preventScroll: true });
 

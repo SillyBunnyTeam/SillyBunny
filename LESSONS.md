@@ -163,6 +163,7 @@ This is the largest class by a wide margin.
 - **Shared entries:** upstream `.text_pole` rules and surface-specific selectors can silently fork dialog search fields. Keep the shared `.sb-dialog__entry` rule more specific than those inputs, remove surface copies, and compare rest/focus metrics across the manager overlays in their e2e suites.
 - **Adopted rows:** moving an upstream list into shared dialog chrome must preserve the original action nodes as the handler boundary. Add adapter unit coverage for every forwarded action and keyboard route, plus an e2e that reaches the overflow actions through the production menu.
 - **Touch close controls:** nested Popup close nodes can bypass direct-child coarse-pointer rules. Keep Close in the shared header layout and assert its 44×44 box on coarse-pointer Data Bank and Tag Manager surfaces.
+- **Window filtering:** content-sized Windows can shrink when a live search removes rows. Keep Window surfaces fill-sized by default, opt only deliberately short Windows into content sizing, and lock a content-sized frame at its largest laid-out height. Tests: `tests/tag-manager.e2e.js`; `tests/sillybunny-overlays.e2e.js`; the Window and media dialog suites.
 
 ### Upstream compatibility and sync
 

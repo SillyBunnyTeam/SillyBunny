@@ -632,7 +632,9 @@ async function viewSettingsSnapshots() {
                 e.stopPropagation();
                 restoreSnapshot(snapshot.name, () => location.reload());
             });
-            snapshotBlock.find('.inline-drawer-toggle').on('click', async () => {
+            snapshotBlock.on('inline-drawer-toggle', async () => {
+                const expandButton = snapshotBlock.find('.snapshotExpandButton');
+                expandButton.attr('aria-expanded', snapshotBlock.find('.inline-drawer-icon').hasClass('up') ? 'true' : 'false');
                 const contentBlock = snapshotBlock.find('.snapshotContent');
                 if (!contentBlock.val()) {
                     const content = await loadSnapshotContent(snapshot.name);
@@ -644,8 +646,9 @@ async function viewSettingsSnapshots() {
     }
 
     // SillyBunny: snapshots use the shared Window body and preserve the existing action/list nodes.
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, ...snapshotsOptions(template) });
+    // SillyBunny: bind before framing moves the header action so the live handler is never lost.
     template.find('.makeSnapshotButton').on('click', () => makeSnapshot(renderSnapshots));
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, ...snapshotsOptions(template) });
     renderSnapshots();
 }
 
@@ -710,10 +713,10 @@ async function resetEverything(callback) {
 async function openUserProfile() {
     await getCurrentUser();
     const template = $(await renderTemplateAsync('userProfile'));
+    template.find('.sb-account-properties .userRole').text(currentUser.admin ? 'Admin' : 'User');
     template.find('.userName').text(currentUser.name);
     template.find('.userHandle').text(currentUser.handle);
     template.find('.avatar img').attr('src', currentUser.avatar);
-    template.find('.userRole').text(currentUser.admin ? 'Admin' : 'User');
     template.find('.userCreated').text(new Date(currentUser.created).toLocaleString());
     template.find('.hasPassword').toggle(currentUser.password);
     template.find('.noPassword').toggle(!currentUser.password);
@@ -857,8 +860,12 @@ async function openAdminPanel() {
     }
 
     const template = $(await renderTemplateAsync('admin'));
+    const adminOptions = adminPanelOptions(template);
 
     template.find('.adminNav > button').on('click', function () {
+        if (this.classList.contains('newUserButton')) {
+            return;
+        }
         const target = String($(this).data('target-tab'));
         template.find('.navTab').each(function () {
             $(this).toggle(this.classList.contains(target));
@@ -866,8 +873,9 @@ async function openAdminPanel() {
     });
 
     template.find('.createUserDisplayName').on('input', async function () {
+        const form = $(this).closest('.userCreateForm');
         const slug = await slugify(String($(this).val()));
-        template.find('.createUserHandle').val(slug);
+        form.find('.createUserHandle').val(slug);
     });
 
     template.find('.userCreateForm').on('submit', function (event) {
@@ -877,13 +885,29 @@ async function openAdminPanel() {
 
         event.preventDefault();
         createUser(event.target, () => {
-            template.find('.manageUsersButton').trigger('click');
+            event.target.closest('dialog.popup')?.querySelector('.sb-dialog__back')?.click();
             renderUsers();
         });
     });
 
+    // SillyBunny: the new-user form is a pushed Window page, while the existing submit handler stays on the live form.
+    template.find('.newUserButton').on('click', function (event) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const form = adminOptions.newUserForm?.();
+        if (!form) return;
+        void callGenericPopup(form, POPUP_TYPE.TEXT, '', {
+            okButton: 'Close',
+            tier: 'window',
+            size: 'content',
+            title: t`New User`,
+            allowVerticalScrolling: true,
+            onClose: () => adminOptions.restoreNewUserForm?.(),
+        });
+    });
+
     // SillyBunny: the admin view is a Window; its new-user inputs retain their source identities.
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false, ...adminPanelOptions(template) });
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false, ...adminOptions });
     renderUsers();
 }
 

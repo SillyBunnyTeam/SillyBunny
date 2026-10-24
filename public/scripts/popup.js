@@ -64,6 +64,7 @@ export const POPUP_RESULT = {
  * @property {string?} [cropImage=null] - Image URL to display in the crop popup
  * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: explicit dialog presentation tier.
  * @property {string?} [title=null] - SillyBunny: header title; null promotes the content's leading heading
+ * @property {'content'|'fill'} [size='fill'] - SillyBunny: whether a Window fills its frame.
  */
 
 /**
@@ -223,6 +224,7 @@ export class Popup {
         // SillyBunny: tier and title for the shared dialog frame.
         tier = null,
         title = null,
+        size = 'fill',
     } = {}) {
         Popup.util.popups.push(this);
 
@@ -680,6 +682,7 @@ export class Popup {
         this.sbFrame = framePopup(this, {
             tier,
             title,
+            size,
             allowEscapeClose,
             cancelButtonProvided: Object.prototype.hasOwnProperty.call(arguments[3] ?? {}, 'cancelButton'),
         });

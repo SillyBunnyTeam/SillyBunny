@@ -3,7 +3,7 @@
 import { afterEach, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
-jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join('') }));
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join(''), translate: value => value }));
 const adapters = await import('../../public/scripts/sillybunny-editor/adapters/window-content-dialogs.js');
 const { releaseRowIds } = await import('../../public/scripts/sillybunny-editor/rows.js');
 
@@ -23,15 +23,15 @@ afterEach(() => {
     document.body.replaceChildren();
 });
 
-test('account profile promotes its existing heading into the Window title', () => {
+test('account profile uses the Dialog title and keeps its existing controls', () => {
     const node = root(template('userProfile')).firstElementChild;
     const heading = node.querySelector('h3[data-i18n="Account Info"]');
     const changeName = node.querySelector('.userChangeNameButton');
     const options = adapters.accountProfileOptions(node);
 
-    expect(options.tier).toBe('window');
-    expect(node.firstElementChild).toBe(heading);
-    expect(heading.dataset.i18n).toBe('Account Info');
+    expect(options.tier).toBe('dialog');
+    expect(options.title).toBe('Account Info');
+    expect(heading.isConnected).toBe(false);
     expect(node.querySelector('.userChangeNameButton')).toBe(changeName);
     options.onClose();
 });
