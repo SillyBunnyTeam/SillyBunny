@@ -1,13 +1,15 @@
+<!-- SillyBunny: keep the upstream source nodes so attachment handlers and drop targets remain compatible with the Window adapter. -->
 <div class="wide100p padding5 dataBankAttachments">
     <h2 class="marginBot5">
         <span data-i18n="Data Bank">
             Data Bank
         </span>
     </h2>
-    <div data-i18n="These files will be available for extensions that support attachments (e.g. Vector Storage).">
+    <!-- SillyBunny: expose the introductory copy as a separate body block so the shared Window can keep legacy instructions above the lists. -->
+    <div class="dataBankIntro" data-i18n="These files will be available for extensions that support attachments (e.g. Vector Storage).">
         These files will be available for extensions that support attachments (e.g. Vector Storage).
     </div>
-    <div class="marginTopBot5">
+    <div class="dataBankIntro">
         <span data-i18n="Supported file types: Plain Text, PDF, Markdown, HTML, EPUB." >
             Supported file types: Plain Text, PDF, Markdown, HTML, EPUB.
         </span>
@@ -15,7 +17,8 @@
             Drag and drop files here to upload.
         </span>
     </div>
-    <div class="flex-container marginTopBot5">
+    <!-- SillyBunny: retain upstream sort and search nodes for the adapter to forward into shared controls. -->
+    <div class="flex-container marginTopBot5 dataBankLegacyToolbar">
         <input type="search" id="attachmentSearch" class="attachmentSearch text_pole margin0 flex1" placeholder="Search...">
         <select id="attachmentSort" class="attachmentSort text_pole margin0 flex1 textarea_compact">
             <option data-sort-field="created" data-sort-order="desc" data-i18n="Date (Newest First)">
@@ -80,7 +83,8 @@
         <small data-i18n="These files are available for all characters in all chats.">
             These files are available for all characters in all chats.
         </small>
-        <div class="globalAttachmentsList attachmentsList"></div>
+        <!-- SillyBunny: give the adopted list the shared preference-group surface and list semantics. -->
+        <div class="globalAttachmentsList attachmentsList ds-pref-group" role="list"></div>
         <hr>
     </div>
     <div class="justifyLeft characterAttachmentsBlock marginBot10">
@@ -106,7 +110,8 @@
                 </span>
             </small>
         </div>
-        <div class="characterAttachmentsList attachmentsList"></div>
+        <!-- SillyBunny: give the adopted list the shared preference-group surface and list semantics. -->
+        <div class="characterAttachmentsList attachmentsList ds-pref-group" role="list"></div>
         <hr>
     </div>
     <div class="justifyLeft chatAttachmentsBlock marginBot10">
@@ -125,23 +130,28 @@
                 These files are available for all characters in the current chat.
             </small>
         </div>
-        <div class="chatAttachmentsList attachmentsList"></div>
+        <!-- SillyBunny: give the adopted list the shared preference-group surface and list semantics. -->
+        <div class="chatAttachmentsList attachmentsList ds-pref-group" role="list"></div>
     </div>
 
     <div class="attachmentListItemTemplate template_element">
+        <!-- SillyBunny: keep the upstream action nodes while adding shared row text and suffix seams. -->
         <div class="attachmentListItem flex-container alignItemsCenter flexGap10">
             <div class="attachmentListItemCheckboxContainer"><input type="checkbox" class="attachmentListItemCheckbox"></div>
             <div class="attachmentFileIcon fa-solid fa-file-alt"></div>
-            <div class="attachmentListItemName flex1"></div>
-            <small class="attachmentListItemCreated"></small>
-            <small class="attachmentListItemSize"></small>
-            <div class="viewAttachmentButton right_menu_button fa-fw fa-solid fa-magnifying-glass" title="View attachment content"></div>
-            <div class="disableAttachmentButton right_menu_button fa-fw fa-solid fa-comment" title="Disable attachment"></div>
-            <div class="enableAttachmentButton right_menu_button fa-fw fa-solid fa-comment-slash" title="Enable attachment"></div>
-            <div class="moveAttachmentButton right_menu_button fa-fw fa-solid fa-arrows-alt" title="Move attachment"></div>
-            <div class="editAttachmentButton right_menu_button fa-fw fa-solid fa-pencil" title="Edit attachment"></div>
-            <div class="downloadAttachmentButton right_menu_button fa-fw fa-solid fa-download" title="Download attachment"></div>
-            <div class="deleteAttachmentButton right_menu_button fa-fw fa-solid fa-trash" title="Delete attachment"></div>
+            <div class="attachmentListItemText flex1 ds-row-text">
+                <div class="attachmentListItemName"></div>
+                <small class="attachmentListItemMeta ds-row-subtitle"><span class="attachmentListItemCreated"></span><span aria-hidden="true"> · </span><span class="attachmentListItemSize"></span></small>
+            </div>
+            <div class="attachmentRowActions ds-row-suffix">
+                <div class="viewAttachmentButton right_menu_button fa-fw fa-solid fa-magnifying-glass" title="View attachment content"></div>
+                <div class="disableAttachmentButton right_menu_button fa-fw fa-solid fa-comment" title="Disable attachment"></div>
+                <div class="enableAttachmentButton right_menu_button fa-fw fa-solid fa-comment-slash" title="Enable attachment"></div>
+                <div class="moveAttachmentButton right_menu_button fa-fw fa-solid fa-arrows-alt" title="Move attachment"></div>
+                <div class="editAttachmentButton right_menu_button fa-fw fa-solid fa-pencil" title="Edit attachment"></div>
+                <div class="downloadAttachmentButton right_menu_button fa-fw fa-solid fa-download" title="Download attachment"></div>
+                <div class="deleteAttachmentButton right_menu_button fa-fw fa-solid fa-trash" title="Delete attachment"></div>
+            </div>
         </div>
     </div>
 

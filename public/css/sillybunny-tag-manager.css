@@ -1,15 +1,5 @@
 /* Tag Management content. The frame (host, header bar, search row, body, sheet) is the shared
    Window-tier dialog in sillybunny-theme.css (sillybunny-editor/dialog.js). */
-#tag_view_list .text_pole {
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-flat-hover-bg);
-    color: var(--sb-shell-text);
-    font-family: inherit;
-    font-size: var(--sb-type-control);
-    box-shadow: none;
-}
-
 #tag_view_list .text_pole::placeholder {
     color: var(--SmartThemeBodyColor) !important;
     opacity: 1;

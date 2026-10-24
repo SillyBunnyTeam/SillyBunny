@@ -59,6 +59,8 @@ import { accountStorage } from './util/AccountStorage.js';
 import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE, SCROLL_BEHAVIOR, SWIPE_DIRECTION } from './constants.js';
 // SillyBunny: adopt preference radios into shared dialog rows without changing persistence.
 import { creatorStylesPreferenceOptions, externalMediaOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: Data Bank presentation stays in a dedicated adapter so upstream attachment handlers remain source-compatible.
+import { decorateDataBankRow, frameDataBankManager } from './sillybunny-editor/adapters/data-bank-dialog.js';
 
 /**
  * @typedef {Object} FileAttachment
@@ -1415,11 +1417,28 @@ async function openAttachmentManager() {
             attachmentTemplate.find('.moveAttachmentButton').on('click', () => moveAttachment(attachment, source, renderAttachments));
             attachmentTemplate.find('.enableAttachmentButton').toggle(isDisabled).on('click', () => enableAttachment(attachment, renderAttachments));
             attachmentTemplate.find('.disableAttachmentButton').toggle(!isDisabled).on('click', () => disableAttachment(attachment, renderAttachments));
+            // SillyBunny: keep upstream action nodes intact so the shared menu forwards to their existing handlers.
+            decorateDataBankRow(attachmentTemplate.get(0), {
+                view: attachmentTemplate.find('.viewAttachmentButton').get(0),
+                actions: [
+                    ...(isDisabled
+                        ? [{ label: t`Enable`, icon: 'fa-solid fa-comment', button: attachmentTemplate.find('.enableAttachmentButton').get(0) }]
+                        : [{ label: t`Disable`, icon: 'fa-solid fa-comment-slash', button: attachmentTemplate.find('.disableAttachmentButton').get(0) }]),
+                    { label: t`Move`, icon: 'fa-solid fa-arrows-alt', button: attachmentTemplate.find('.moveAttachmentButton').get(0) },
+                    { label: t`Edit`, icon: 'fa-solid fa-pencil', button: attachmentTemplate.find('.editAttachmentButton').get(0) },
+                    { label: t`Download`, icon: 'fa-solid fa-download', button: attachmentTemplate.find('.downloadAttachmentButton').get(0) },
+                    { label: t`Delete`, icon: 'fa-solid fa-trash', button: attachmentTemplate.find('.deleteAttachmentButton').get(0) },
+                ],
+            });
             template.find(sources[source]).append(attachmentTemplate);
 
             if (selected.includes(attachment.url)) {
                 attachmentTemplate.find('.attachmentListItemCheckbox').prop('checked', true);
             }
+        }
+        // SillyBunny: preserve an explicit empty row because shared list surfaces do not use pseudo-content placeholders.
+        if (sortedAttachmentList.length === 0 && !filterString) {
+            template.find(sources[source]).append($('<div class="attachmentEmptyRow ds-row"></div>').text(t`No data`));
         }
     }
 
@@ -1521,6 +1540,12 @@ async function openAttachmentManager() {
 
         const chatName = getCurrentChatId() || 'Unnamed chat';
         template.find('.chatAttachmentsName').text(chatName);
+
+        // SillyBunny: report filtered counts through the shared status page without changing attachment state.
+        const visibleCount = template.find('.attachmentsList > .attachmentListItem').length;
+        const totalCount = globalAttachments.length + characterAttachments.length + chatAttachments.length;
+        dataBankFrame?.report(visibleCount, totalCount);
+        template.toggleClass('dataBank-search-empty', Boolean(filterString) && visibleCount === 0);
     }
 
     const dragDropHandler = new DragAndDropHandler('.popup', async (files, event) => {
@@ -1547,6 +1572,8 @@ async function openAttachmentManager() {
     let filterString = '';
 
     const template = $(await renderExtensionTemplateAsync('attachments', 'manager', {}));
+    // SillyBunny: keep the shared frame handle beside the legacy template for lifecycle cleanup.
+    let dataBankFrame = null;
 
     template.find('.attachmentSearch').on('input', function () {
         filterString = String($(this).val());
@@ -1573,7 +1600,8 @@ async function openAttachmentManager() {
             }
 
             if (action.confirmMessage) {
-                const confirm = await callGenericPopup(action.confirmMessage, POPUP_TYPE.CONFIRM);
+                // SillyBunny: forward the destructive confirmation policy so bulk Delete keeps a negative default.
+                const confirm = await callGenericPopup(action.confirmMessage, POPUP_TYPE.CONFIRM, '', action.confirmOptions);
                 if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
                     return;
                 }
@@ -1615,6 +1643,8 @@ async function openAttachmentManager() {
 
     template.find('.bulkActionDelete').on('click', handleBulkAction({
         confirmMessage: 'Are you sure you want to delete the selected attachments?',
+        // SillyBunny: Enter must cancel bulk deletion because it cannot be undone.
+        confirmOptions: { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') },
         perform: async (attachment, source) => await deleteAttachment(attachment, source, () => { }, false),
     }));
 
@@ -1637,7 +1667,18 @@ async function openAttachmentManager() {
     await verifyAttachments();
     await renderAttachments();
     // SillyBunny: make the manager an explicit Window while retaining its .popup drop target.
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { tier: 'window', wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true });
+    // SillyBunny: move the existing Data Bank controls into shared Window chrome without changing their handlers.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', {
+        tier: 'window', title: t`Data Bank`, wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true,
+        onOpen: popup => {
+            dataBankFrame = frameDataBankManager(popup, {
+                onSearch() {
+                    dataBankFrame.report(template.find('.attachmentsList > .attachmentListItem').length, getDataBankAttachments(true).length);
+                },
+            });
+        },
+        onClose: () => dataBankFrame?.destroy(),
+    });
 
     cleanupFn();
     dragDropHandler.destroy();

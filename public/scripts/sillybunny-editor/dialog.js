@@ -84,11 +84,18 @@ function firstFocusable(root) {
 
 /** Keep titles centred when they fit, then let unequal header controls provide the spare space. */
 export function bindHeaderLayout(header) {
-    const sides = [...header.querySelectorAll(':scope > .sb-dialog__header-start, :scope > .sb-dialog__header-end, :scope > .popup-controls > :is(.popup-button-ok, .popup-button-cancel), :scope > .popup-button-close')];
+    const sideSelector = ':scope > .sb-dialog__header-start, :scope > .sb-dialog__header-end, :scope > .popup-controls > :is(.popup-button-ok, .popup-button-cancel), :scope > .popup-button-close';
     const titles = header.querySelector(':scope > .sb-dialog__titles');
     const title = titles?.querySelector(':scope > .sb-dialog__title');
     const measuredWidth = node => node ? node.offsetWidth || [...node.children].reduce((sum, child) => sum + child.getBoundingClientRect().width, 0) : 0;
+    const keepCloseLast = () => {
+        const end = header.querySelector(':scope > .sb-dialog__header-end');
+        const close = end?.querySelector(':scope > .popup-button-close, :scope > .sb-dialog__close');
+        if (close && end.lastElementChild !== close) end.append(close);
+    };
     const sync = () => {
+        keepCloseLast();
+        const sides = [...header.querySelectorAll(sideSelector)];
         const width = Math.max(0, ...sides.map(measuredWidth));
         header.style.setProperty('--sb-dialog-header-side', `${width}px`);
         if (!titles || !title) return;
@@ -106,13 +113,17 @@ export function bindHeaderLayout(header) {
         header.toggleAttribute('data-header-centering-loose', needsLooseCentering);
     };
     sync();
-    if (typeof ResizeObserver === 'undefined') return () => {};
-    const observer = new ResizeObserver(sync);
-    observer.observe(header);
-    sides.forEach(node => observer.observe(node));
-    if (titles) observer.observe(titles);
-    if (title) observer.observe(title);
-    return () => observer.disconnect();
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync);
+    resizeObserver?.observe(header);
+    header.querySelectorAll(sideSelector).forEach(node => resizeObserver?.observe(node));
+    if (titles) resizeObserver?.observe(titles);
+    if (title) resizeObserver?.observe(title);
+    const mutationObserver = typeof MutationObserver === 'undefined' ? null : new MutationObserver(sync);
+    mutationObserver?.observe(header, { childList: true, subtree: true });
+    return () => {
+        resizeObserver?.disconnect();
+        mutationObserver?.disconnect();
+    };
 }
 
 function appendContent(target, content) {

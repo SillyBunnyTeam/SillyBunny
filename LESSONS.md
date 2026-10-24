@@ -160,6 +160,9 @@ This is the largest class by a wide margin.
 - **Guard:** scope textarea sizing to the adapter rows that need it, not generic dialog descendants. `89cd805db` keeps the `8lh` minimum on the window-content adapter's scenario and YAML rows; regression: `tests/in-chat-agents-editor.e2e.js` (regex fields at least 160px).
 - **Floating rows:** an empty entry row can paint its placeholder underneath the floated title. Keep the hint in `aria-description` and suppress the painted placeholder while the title floats. Fixed in `357be55f7`; regression: `tests/sillybunny-editor-rows-layout.e2e.js`.
 - **Layer order:** side panels and zoomed avatars must stay below Settings and shell drawers. Keep sprite, avatar, panel, shell, settings, popover, and dialog layers in one ordered ladder. Fixed in `357be55f7`; tests: `tests/libadwaita-surface-layers-css.test.js`, `tests/side-panel-adapters.e2e.js`.
+- **Shared entries:** upstream `.text_pole` rules and surface-specific selectors can silently fork dialog search fields. Keep the shared `.sb-dialog__entry` rule more specific than those inputs, remove surface copies, and compare rest/focus metrics across the manager overlays in their e2e suites.
+- **Adopted rows:** moving an upstream list into shared dialog chrome must preserve the original action nodes as the handler boundary. Add adapter unit coverage for every forwarded action and keyboard route, plus an e2e that reaches the overflow actions through the production menu.
+- **Touch close controls:** nested Popup close nodes can bypass direct-child coarse-pointer rules. Keep Close in the shared header layout and assert its 44×44 box on coarse-pointer Data Bank and Tag Manager surfaces.
 
 ### Upstream compatibility and sync
 

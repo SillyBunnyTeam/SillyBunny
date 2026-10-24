@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The viewport matrix adds mobile-only sheet gesture assertions. */
 
 const manager = page => page.locator('#tag_view_list');
@@ -55,6 +56,18 @@ async function prepare(page, width) {
     await expect(page.locator('.sb-character-list .character_select')).toBeVisible();
 }
 
+test.describe('coarse-pointer Tag Manager close target', () => {
+    test.use({ hasTouch: true });
+    for (const width of [1440, 390]) {
+        test(`keeps Close at 44×44 at ${width}px`, async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            const close = await manager(page).locator('.sb-dialog__close').boundingBox();
+            expect(close).toMatchObject({ width: 44, height: 44 });
+        });
+    }
+});
+
 async function openFromList(page) {
     await page.locator('.sb-character-list [data-action-id="more"]').click();
     await page.getByRole('menuitem', { name: 'Manage tags', exact: true }).click();
@@ -74,6 +87,11 @@ for (const width of [1440, 390]) {
         test('opens from both entry points; searches, creates, validates and reverts without keystroke saves', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);
+            const endControlRights = await manager(page).locator('.sb-dialog__header-end > *').evaluateAll(nodes => nodes
+                .filter(node => node.getClientRects().length > 0)
+                .map(node => ({ className: node.className, right: node.getBoundingClientRect().right })));
+            const closeRight = endControlRights.find(control => control.className.includes('sb-dialog__close'))?.right;
+            expect(closeRight).toBe(Math.max(...endControlRights.map(control => control.right)));
             await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}.png` });
             await expect(page.locator('.sb-dialog-host:has(> #tag_view_list)')).toHaveAttribute('data-presentation', width <= 450 ? 'sheet' : 'floating');
             if (width === 1440) {
@@ -103,6 +121,9 @@ for (const width of [1440, 390]) {
             }
             await manager(page).getByRole('button', { name: 'Search', exact: true }).click();
             const search = manager(page).getByRole('searchbox', { name: 'Search', exact: true });
+            await expectSharedDialogEntryStyles(search);
+            await page.evaluate(() => Promise.all(Array.from(document.querySelectorAll('.sb-dialog__search'), field => field.getAnimations()).flat().map(animation => animation.finished.catch(() => {}))));
+            await page.screenshot({ path: `/tmp/opencode/round4-shots/tag-manager-search-${width}.png` });
             await search.fill('no-tag-matches-this');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
             await expect(row(page, 'qa-tag-beta')).toBeHidden();

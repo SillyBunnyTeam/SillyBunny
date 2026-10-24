@@ -1050,3 +1050,17 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 - Does the rollback path avoid user data changes?
 - Does the PR keep upstream sync work separate from fork feature work?
 - Did validation name the lifecycle affected: fresh install, restart after update, stale assets, mobile viewport, long chat, streaming, swipe, or settings save?
+
+### Data Bank Window redesign
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/extensions/attachments/manager.html`; `public/scripts/extensions/attachments/style.css`. |
+| Area | Data Bank attachment manager presentation and row actions. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-editor/adapters/data-bank-dialog.js`. |
+| Adapter shape | Keep source inputs, attachment IDs, scopes, render functions, existing action nodes and callbacks; frame the manager as a Window, forward shared menu actions to the original controls, and retain the `.popup` drop target. |
+| Protecting tests | `tests/window-dialogs.e2e.js` covers search, sort, coarse-pointer Close, keyboard/bulk behavior, `.popup` drop, and every row overflow action; `tests/unit/data-bank-dialog-adapter.test.js` covers source validation, sort forwarding, action forwarding, and keyboard activation; regression suites: `tests/tag-manager.e2e.js`, `tests/character-folders.e2e.js`, `tests/sillybunny-overlays.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, `tests/sillybunny-dialog-tiers.e2e.js`, `tests/popup-scroll.e2e.js`. |
+| Validation | 2026-10-25: Chromium verification on port 4460 passed the requested 180-test E2E matrix twice, 442 unit suites (6682 passed, 2 skipped), root/tests lint with no errors, `git diff --check`, and the frontend budget at 1017.7 KiB blocking CSS. Final screenshots inspected for Data Bank main/bulk at 1440×900 and 390×844 plus Tag Manager search-open at both sizes. Attachment stylesheet reduced from 418 to 255 lines. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-25 implementation pass. |
+| Owner | TODO(copy) |

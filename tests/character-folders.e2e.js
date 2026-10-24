@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 
 function readPayload(request) {
     const body = request.postDataBuffer();
@@ -120,6 +121,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect(manager.locator(`[data-folder-id="${folderId}"]`)).toBeVisible();
             await manager.getByRole('button', { name: 'Search', exact: true }).click();
             const managerSearch = manager.getByRole('searchbox', { name: 'Search', exact: true });
+            await expectSharedDialogEntryStyles(managerSearch);
             await managerSearch.fill('no-folder-matches-this');
             await expect(manager.locator('.sb-folder-manager__folder-row:not([hidden])')).toHaveCount(0);
             await expect(manager.getByRole('heading', { name: 'No results', exact: true })).toBeVisible();

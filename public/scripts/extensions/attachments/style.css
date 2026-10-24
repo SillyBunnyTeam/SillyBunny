@@ -1,63 +1,255 @@
-.attachmentsList:empty {
-    width: 100%;
-    height: 100%;
-}
-
-.attachmentsList:empty::before {
+/* SillyBunny: keep Data Bank presentation in its lazy extension stylesheet so the blocking shell budget does not grow. */
+.dataBankAttachments {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    content: "No data";
-    font-weight: bolder;
-    width: 100%;
-    height: 100%;
-    opacity: 0.8;
-    min-height: 3rem;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
 }
 
-.attachmentListItem {
-    padding: 10px;
-}
-
-.attachmentListItem.disabled .attachmentListItemName {
-    text-decoration: line-through;
-    opacity: 0.75;
-}
-
-.attachmentListItem.disabled .attachmentFileIcon {
-    opacity: 0.75;
-    cursor: not-allowed;
-}
-
-.attachmentListItemSize {
-    min-width: 4em;
-    text-align: right;
-}
-
-.attachmentListItemCreated {
-    text-align: right;
-}
-
-.attachmentListItemCheckboxContainer,
-.attachmentBulkActionsContainer,
-.attachmentsBulkEditCheckbox {
+.dataBankAttachments > h2 {
     display: none;
 }
 
-@supports selector(:has(*)) {
-    .dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentsBulkEditButton {
-        color: var(--golden);
+.dataBankAttachments .dataBankIntro {
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-meta, 0.86em);
+    line-height: 1.4;
+}
+
+.dataBankAttachments .dataBankIntro + .dataBankIntro {
+    margin-top: 4px;
+}
+
+.sb-data-bank-search {
+    box-sizing: border-box;
+    max-width: 100%;
+}
+
+.dataBankAttachments .dataBankLegacyToolbar,
+.dataBankAttachments .attachmentSort {
+    display: none !important;
+}
+
+.dataBankAttachments :is(.globalAttachmentsBlock, .characterAttachmentsBlock, .chatAttachmentsBlock) {
+    margin: 18px 0 0;
+}
+
+.dataBankAttachments :is(.globalAttachmentsTitle, .characterAttachmentsTitle, .chatAttachmentsTitle) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 3px;
+    padding: 0 4px;
+}
+
+.dataBankAttachments :is(.globalAttachmentsTitle, .characterAttachmentsTitle, .chatAttachmentsTitle) > span:first-child {
+    min-width: 0;
+}
+
+.dataBankAttachments .openActionModalButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    margin-inline-start: auto;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
+    box-shadow: none;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .dataBankAttachments .openActionModalButton:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.dataBankAttachments :is(.globalAttachmentsBlock, .characterAttachmentsBlock, .chatAttachmentsBlock) > small,
+.dataBankAttachments .characterAttachmentsBlock > .flex-container,
+.dataBankAttachments .chatAttachmentsBlock > .flex-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 4px 8px;
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-meta, 0.86em);
+    line-height: 1.4;
+}
+
+.dataBankAttachments .ds-pref-group-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 0 8px;
+    padding: 0 4px;
+}
+
+.dataBankAttachments .ds-pref-group-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dataBankAttachments .ds-pref-group-subtitle > :is(small, .flex-container) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dataBankAttachments .ds-pref-group-subtitle :is(small, strong) {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+.dataBankAttachments .attachmentsList {
+    overflow: hidden;
+}
+
+.dataBankAttachments .attachmentsList:empty::before {
+    content: none;
+}
+
+.dataBankAttachments .attachmentFileIcon {
+    flex: 0 0 24px;
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+    text-align: center;
+}
+
+.dataBankAttachments .attachmentListItemName {
+    overflow: hidden;
+    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataBankAttachments .attachmentListItemMeta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataBankAttachments .attachmentRowActions > .right_menu_button {
+    display: none;
+}
+
+.dataBankAttachments .attachmentRowActions > .viewAttachmentButton,
+.dataBankAttachments .attachmentRowActions > .attachmentRowMenu {
+    display: grid;
+}
+
+.dataBankAttachments .attachmentListItem.disabled {
+    opacity: 0.6;
+}
+
+.dataBankAttachments .attachmentListItem.disabled .attachmentListItemName {
+    text-decoration: line-through;
+}
+
+.dataBankAttachments .attachmentEmptyRow {
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+}
+
+.dataBankAttachments .attachmentListItemCheckboxContainer,
+.dataBankAttachments .attachmentsBulkEditCheckbox {
+    display: none;
+}
+
+.dataBankAttachments .attachmentListItemCheckboxContainer {
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.dataBankAttachments .attachmentListItemCheckbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--sb-accent);
+}
+
+.dataBankAttachments .data-bank-search-status {
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+    font-weight: 400;
+}
+
+.dataBankAttachments .data-bank-search-status:not([hidden]) {
+    display: flex;
+}
+
+.dataBankAttachments.dataBank-search-empty :is(.globalAttachmentsBlock, .characterAttachmentsBlock, .chatAttachmentsBlock) {
+    display: none;
+}
+
+.dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentListItemCheckboxContainer {
+    display: inline-flex;
+}
+
+.dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentFileIcon {
+    display: none;
+}
+
+.sb-data-bank-window .sb-data-bank-action-bar {
+    display: none !important;
+    width: 100%;
+    background: var(--sb-layer-window);
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+.sb-data-bank-window:has(.attachmentsBulkEditCheckbox:checked) .sb-data-bank-action-bar {
+    display: flex !important;
+}
+
+.sb-data-bank-window .sb-data-bank-action-bar .bulkActionDelete {
+    color: var(--sb-color-danger);
+}
+
+.sb-data-bank-window:has(.attachmentsBulkEditCheckbox:checked) .sb-data-bank-bulk-toggle {
+    background: var(--sb-flat-selected-bg);
+}
+
+@media (max-width: 450px) {
+    .dataBankAttachments {
+        padding-inline: 4px;
     }
 
-    .dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentBulkActionsContainer {
-        display: flex;
+    .dataBankAttachments :is(.globalAttachmentsTitle, .characterAttachmentsTitle, .chatAttachmentsTitle) .openActionModalButton {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        overflow: hidden;
+        justify-content: center;
+        padding-inline: 0;
+        font-size: 0;
+        flex: 0 0 44px;
+        border-radius: 50%;
     }
 
-    .dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentListItemCheckboxContainer {
-        display: inline-flex;
+    .dataBankAttachments .openActionModalButton i {
+        font-size: 1rem;
     }
 
-    .dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentFileIcon {
+    .dataBankAttachments .openActionModalButton span {
         display: none;
+    }
+
+    .dataBankAttachments .sb-data-bank-action-bar {
+        justify-content: flex-end;
+        padding-inline: 8px;
+    }
+
+    .dataBankAttachments .sb-data-bank-action-bar > .flex-container {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dataBankAttachments .attachmentListItem {
+        transition: none;
     }
 }

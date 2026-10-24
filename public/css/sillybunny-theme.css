@@ -7142,6 +7142,13 @@ dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close {
     opacity: 1;
 }
 
+/* Header end slots keep custom actions before Close, regardless of insertion order. */
+dialog.popup.sb-dialog .sb-dialog__header > .sb-dialog__header-end > :is(.popup-button-close, .sb-dialog__close) {
+    order: 999;
+    position: static;
+    flex: 0 0 auto;
+}
+
 dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close.sb-dialog__back {
     grid-column: 1;
     justify-self: start;
@@ -7863,11 +7870,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     transform: translateY(-50%);
 }
 
-#tag_view_list .text_pole.sb-dialog__entry,
-.sb-folder-manager .text_pole.sb-dialog__entry,
-.sb-action-popover .text_pole.sb-dialog__entry,
-.sb-action-sheet .text_pole.sb-dialog__entry,
-.sb-chat-history-dialog .text_pole.sb-dialog__entry {
+:is(.sb-dialog, .sb-dialog-host, dialog.popup, .sb-action-popover, .sb-action-sheet) .text_pole.sb-dialog__entry {
     box-sizing: border-box;
     width: 100%;
     height: 34px;
@@ -7883,11 +7886,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 
 .sb-dialog__search .sb-dialog__search-input { text-indent: 20px; }
 
-#tag_view_list .text_pole.sb-dialog__entry:focus,
-.sb-folder-manager .text_pole.sb-dialog__entry:focus,
-.sb-action-popover .text_pole.sb-dialog__entry:focus,
-.sb-action-sheet .text_pole.sb-dialog__entry:focus,
-.sb-chat-history-dialog .text_pole.sb-dialog__entry:focus {
+:is(.sb-dialog, .sb-dialog-host, dialog.popup, .sb-action-popover, .sb-action-sheet) .text_pole.sb-dialog__entry:focus {
     outline: 2px solid var(--sb-focus-ring);
     outline-offset: -2px;
     box-shadow: none;
@@ -7905,6 +7904,11 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 @media (pointer: coarse) {
     .sb-dialog__entry,
     .sb-dialog__search .sb-dialog__search-input {
+        height: 44px;
+        min-height: 44px;
+    }
+
+    :is(.sb-dialog, .sb-dialog-host, dialog.popup, .sb-action-popover, .sb-action-sheet) .text_pole.sb-dialog__entry {
         height: 44px;
         min-height: 44px;
     }
@@ -7985,7 +7989,8 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 }
 
 /* Group headings as in Connections: body size, weight 700, no box. */
-.sb-dialog .ds-pref-group-heading {
+.sb-dialog .ds-pref-group-heading,
+dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     margin: 0;
     padding: 0;
     border: 0;

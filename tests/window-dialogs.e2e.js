@@ -5,6 +5,7 @@ import {
     expectInsideBody, expectNoSecretLeaks, expectParentRestored, expectPushedPage,
     expectWindow, openApiKeyManager, openDataBank, openRegex,
 } from './helpers/window-dialogs.js';
+import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 
 test.setTimeout(90000);
 test.use({ serviceWorkers: 'block' });
@@ -15,6 +16,18 @@ async function readExtensions(page) {
         return { attachments: extension_settings.attachments, regex: extension_settings.regex };
     });
 }
+
+test.describe('coarse-pointer Data Bank close target', () => {
+    test.use({ hasTouch: true });
+    for (const viewport of WINDOW_VIEWPORTS) {
+        test(`keeps Close at 44×44 at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+            await bootWindowDialogs(page, viewport);
+            const manager = await openDataBank(page);
+            const close = await manager.locator('.popup-button-close').boundingBox();
+            expect(close).toMatchObject({ width: 44, height: 44 });
+        });
+    }
+});
 
 async function flushSettings(page) {
     await page.evaluate(async () => (await import('/script.js')).saveSettings());
@@ -110,24 +123,133 @@ for (const viewport of WINDOW_VIEWPORTS) {
         const state = await bootWindowDialogs(page, viewport);
         const manager = await openDataBank(page);
         await expectWindow(manager, viewport);
+        await captureWindowSurface(page, viewport, 'data-bank-main');
+        const bulkBox = await manager.locator('.attachmentsBulkEditButton').boundingBox();
+        const closeBox = await manager.locator('.popup-button-close').boundingBox();
+        expect(bulkBox).not.toBeNull();
+        expect(closeBox).not.toBeNull();
+        expect(bulkBox.x + bulkBox.width <= closeBox.x || closeBox.x + closeBox.width <= bulkBox.x
+            || bulkBox.y + bulkBox.height <= closeBox.y || closeBox.y + closeBox.height <= bulkBox.y).toBe(true);
+        const endControlRights = await manager.locator('.sb-dialog__header-end > *').evaluateAll(nodes => nodes
+            .filter(node => node.getClientRects().length > 0)
+            .map(node => ({ className: node.className, right: node.getBoundingClientRect().right })));
+        const closeRight = endControlRights.find(control => control.className.includes('popup-button-close'))?.right;
+        expect(closeRight).toBe(Math.max(...endControlRights.map(control => control.right)));
+        await expect(manager.locator('.attachmentsBulkEditButton')).toHaveClass(/sb-header-icon-button/);
+        await expect(manager.locator('.attachmentsBulkEditButton')).toHaveAttribute('aria-label', 'Bulk Edit');
+        await expect(manager.locator('.attachmentsBulkEditButton i')).toHaveClass(/fa-check-square/);
+        const headingStyles = await manager.locator('.globalAttachmentsTitle').evaluate(node => {
+            const probeSurface = document.createElement('dialog');
+            probeSurface.className = 'popup sb-dialog sb-dialog--window';
+            const probeContent = document.createElement('div');
+            probeContent.className = 'popup-content';
+            const probeHeading = document.createElement('h3');
+            probeHeading.className = 'ds-pref-group-heading';
+            probeContent.append(probeHeading);
+            probeSurface.append(probeContent);
+            document.body.append(probeSurface);
+            const actual = getComputedStyle(node);
+            const reference = getComputedStyle(probeHeading);
+            const result = {
+                actual: { fontSize: actual.fontSize, fontWeight: actual.fontWeight, letterSpacing: actual.letterSpacing },
+                reference: { fontSize: reference.fontSize, fontWeight: reference.fontWeight, letterSpacing: reference.letterSpacing },
+            };
+            probeSurface.remove();
+            return result;
+        });
+        expect(headingStyles.actual).toEqual(headingStyles.reference);
+        await expect(manager.locator('.sb-data-bank-search-toggle')).toHaveAttribute('aria-expanded', 'false');
+        await expect(manager.locator('.sb-data-bank-search-toggle')).not.toHaveAttribute('aria-pressed', 'true');
         const rows = manager.locator('.globalAttachmentsList .attachmentListItem');
         await expect(rows).toHaveCount(ATTACHMENT_COUNT);
+        await expect(manager.locator('.characterAttachmentsList .attachmentEmptyRow')).toHaveText('No data');
+        await expect(manager.locator('.chatAttachmentsList .attachmentEmptyRow')).toHaveText('No data');
+        await expect(manager.locator('.sb-data-bank-search-toggle')).toBeVisible();
+        await manager.locator('.sb-data-bank-search-toggle').click();
+        await expect(manager.locator('#attachmentSearch')).toBeVisible();
+        await expectSharedDialogEntryStyles(manager.locator('#attachmentSearch'));
+        await expect(manager.locator('.sb-data-bank-search-toggle')).toHaveAttribute('aria-expanded', 'true');
+        await manager.locator('#attachmentSearch').fill('attachment 28');
+        await expect(rows).toHaveCount(1);
+        await manager.locator('#attachmentSearch').fill('');
+        await expect(rows).toHaveCount(ATTACHMENT_COUNT);
+        await manager.locator('#attachmentSearch').fill('no-matching-attachment');
+        await expect(rows).toHaveCount(0);
+        await expect(manager.locator('.data-bank-search-status')).toHaveText('No results');
+        await manager.locator('#attachmentSearch').fill('');
+        await expect(rows).toHaveCount(ATTACHMENT_COUNT);
+        await manager.locator('.sb-data-bank-search-toggle').click();
+        await expect(manager.locator('#attachmentSearch')).toBeHidden();
+        await expect(manager.locator('.sb-data-bank-search-toggle')).toHaveAttribute('aria-expanded', 'false');
+        await manager.locator('.sb-data-bank-sort').click();
+        await manager.getByRole('menuitemradio', { name: 'Name (Z-A)' }).click();
+        await expect(rows.first().locator('.attachmentListItemName')).toHaveText('Window attachment 28.txt');
+        const sortState = await page.evaluate(async () => {
+            const { accountStorage } = await import('/scripts/util/AccountStorage.js');
+            return [accountStorage.getItem('DataBank_sortField'), accountStorage.getItem('DataBank_sortOrder')];
+        });
+        expect(sortState).toEqual(['name', 'desc']);
+        await manager.locator('.sb-data-bank-sort').click();
+        await manager.getByRole('menuitemradio', { name: 'Name (A-Z)' }).click();
+        for (const [section, source] of [['characterAttachmentsBlock', 'character'], ['chatAttachmentsBlock', 'chat']]) {
+            await manager.locator(`.${section} .openActionModalButton`).click();
+            await expect(manager.locator('.actionButtonsModal')).toHaveAttribute('data-attachment-manager-target', source);
+            await manager.locator('.globalAttachmentsTitle').click();
+        }
         const body = manager.locator('.popup-content');
         expect(await body.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
         await rows.last().scrollIntoViewIfNeeded();
-        await expectInsideBody(rows.last().locator('.deleteAttachmentButton'), manager);
-        for (const action of ['view', 'disable', 'move', 'edit', 'download', 'delete']) {
-            await expectInsideBody(rows.last().locator(`.${action}AttachmentButton`), manager);
-        }
-        expect(await rows.last().evaluate(row => [...row.querySelectorAll('.right_menu_button')]
-            .every(button => Boolean(row.querySelector('.attachmentListItemName').compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING)))).toBe(true);
+        await expect(rows.last().locator('.attachmentListItemName')).toHaveText('Window attachment 28.txt');
+        await expect(rows.last().locator('.attachmentListItemMeta')).toContainText('1000 B');
+        await expect(rows.last().locator('.viewAttachmentButton')).toBeVisible();
+        await expect(rows.last().locator('.attachmentRowMenu')).toBeVisible();
+        const rowBounds = await rows.last().boundingBox();
+        const menuBounds = await rows.last().locator('.attachmentRowMenu').boundingBox();
+        expect(menuBounds.x).toBeGreaterThan(rowBounds.x + rowBounds.width / 2);
+        await expect(rows.last().locator('.right_menu_button')).toHaveCount(7);
+        await expect(rows.last().locator('.disableAttachmentButton')).toBeHidden();
         expect(await body.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
         await captureWindowSurface(page, viewport, 'data-bank-last-row');
 
+        const deletesBeforeConfirm = state.deletes.length;
+        await rows.first().locator('.attachmentRowMenu').click();
+        await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+        const deleteAlert = page.getByRole('alertdialog');
+        await expect(deleteAlert).toBeVisible();
+        await expect(deleteAlert.locator('.popup-button-cancel')).toBeFocused();
+        await page.keyboard.press('Enter');
+        expect(state.deletes).toHaveLength(deletesBeforeConfirm);
+        await expect(deleteAlert).toHaveCount(0);
+
+        await rows.first().locator('.attachmentRowMenu').click();
+        await page.getByRole('menuitem', { name: 'Disable', exact: true }).click();
+        await expect(rows.first()).toHaveClass(/disabled/);
+        await rows.first().locator('.attachmentRowMenu').click();
+        await page.getByRole('menuitem', { name: 'Enable', exact: true }).click();
+        await expect(rows.first()).not.toHaveClass(/disabled/);
+
+        await rows.first().locator('.attachmentRowMenu').click();
+        await page.getByRole('menuitem', { name: 'Move', exact: true }).click();
+        const moveDialog = await currentPopup(page, '.moveAttachmentTarget');
+        await expect(moveDialog.locator('.moveAttachmentTarget')).toBeVisible();
+        await moveDialog.locator('.popup-button-cancel').click();
+        await expect(moveDialog).toHaveCount(0);
+
+        const downloadPromise = page.waitForEvent('download');
+        await rows.first().locator('.attachmentRowMenu').click();
+        await page.getByRole('menuitem', { name: 'Download', exact: true }).click();
+        expect((await downloadPromise).suggestedFilename()).toBe('Window attachment 01.txt');
+
         await manager.locator('.attachmentsBulkEditButton').click();
         await expect(manager.locator('.attachmentsBulkEditCheckbox')).toBeChecked();
+        await expect(manager.locator('.attachmentsBulkEditButton')).toHaveAttribute('aria-pressed', 'true');
         expect(await manager.locator('.dataBankAttachments').evaluate(node => node.matches(':has(.attachmentsBulkEditCheckbox:checked)'))).toBe(true);
-        await expect(manager.locator('.attachmentBulkActionsContainer')).toHaveCSS('display', 'flex');
+        await expect(manager.locator('.sb-data-bank-action-bar')).toHaveCSS('display', 'flex');
+        await captureWindowSurface(page, viewport, 'data-bank-bulk');
+        const actionBarBounds = await manager.locator('.sb-data-bank-action-bar').boundingBox();
+        const bodyBounds = await body.boundingBox();
+        expect(actionBarBounds.y).toBeGreaterThanOrEqual(bodyBounds.y + bodyBounds.height - 1);
+        expect(actionBarBounds.x + actionBarBounds.width).toBeLessThanOrEqual((await manager.boundingBox()).x + (await manager.boundingBox()).width + 1);
         await expect(rows.first().locator('.attachmentListItemCheckboxContainer')).toHaveCSS('display', 'flex');
         await expect(rows.first().locator('.attachmentFileIcon')).toBeHidden();
         await manager.locator('.attachmentsBulkEditButton').click();
@@ -135,12 +257,37 @@ for (const viewport of WINDOW_VIEWPORTS) {
         await expect(manager.locator('.attachmentBulkActionsContainer')).toBeHidden();
         await expect(rows.first().locator('.attachmentListItemCheckboxContainer')).toBeHidden();
         await expect(rows.first().locator('.attachmentFileIcon')).toBeVisible();
+        if (viewport.width <= 450) {
+            const add = manager.locator('.globalAttachmentsTitle .openActionModalButton');
+            await expect(add).toHaveCSS('width', '44px');
+            await expect(add.locator('span')).toBeHidden();
+        }
         await manager.locator('.attachmentsBulkEditButton').click();
         await rows.first().locator('.attachmentListItemCheckbox').check();
         await manager.locator('.bulkActionDisable').click();
         await expect(rows.first()).toHaveClass(/disabled/);
         await expect(manager.locator('.attachmentsBulkEditCheckbox')).not.toBeChecked();
         await expect(manager.locator('.attachmentBulkActionsContainer')).toBeHidden();
+
+        await manager.locator('.attachmentsBulkEditButton').click();
+        await manager.locator('.bulkActionSelectAll').click();
+        await expect(manager.locator('.attachmentListItemCheckbox:checked')).toHaveCount(ATTACHMENT_COUNT);
+        await manager.locator('.bulkActionSelectNone').click();
+        await expect(manager.locator('.attachmentListItemCheckbox:checked')).toHaveCount(0);
+        await rows.first().locator('.attachmentListItemCheckbox').check();
+        await manager.locator('.bulkActionEnable').click();
+        await expect(rows.first()).not.toHaveClass(/disabled/);
+
+        const deletesBeforeBulkConfirm = state.deletes.length;
+        await manager.locator('.attachmentsBulkEditButton').click();
+        await rows.first().locator('.attachmentListItemCheckbox').check();
+        await manager.locator('.bulkActionDelete').click();
+        const bulkDeleteAlert = await currentPopup(page, '.popup-content');
+        await expect(bulkDeleteAlert).toHaveAttribute('role', 'alertdialog');
+        await expect(bulkDeleteAlert.locator('.popup-button-cancel')).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(bulkDeleteAlert).toHaveCount(0);
+        expect(state.deletes).toHaveLength(deletesBeforeBulkConfirm);
 
         const transfer = await page.evaluateHandle(() => {
             const data = new DataTransfer();
@@ -180,7 +327,8 @@ for (const viewport of WINDOW_VIEWPORTS) {
             await expectParentRestored(page, viewer, manager);
         }
         for (const exit of ['cancel', 'escape']) {
-            await row.locator('.editAttachmentButton').click();
+            await row.locator('.attachmentRowMenu').click();
+            await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
             const editor = await currentPopup(page, '[name="notepadFileContent"]');
             await expectPushedPage(editor, manager);
             await expect(editor.locator('[name="notepadFileContent"]')).toHaveValue(ATTACHMENT_TEXT);
@@ -192,7 +340,8 @@ for (const viewport of WINDOW_VIEWPORTS) {
             expect(state.uploads).toEqual([]);
             expect(state.deletes).toEqual([]);
         }
-        await row.locator('.editAttachmentButton').click();
+        await row.locator('.attachmentRowMenu').click();
+        await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
         const editor = await currentPopup(page, '[name="notepadFileContent"]');
         await expectPushedPage(editor, manager);
         await editor.locator('[name="notepadFileName"]').fill('saved-window-attachment.txt');

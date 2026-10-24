@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
@@ -181,12 +182,16 @@ for (const width of [1440, 390]) {
             await expect(frame.locator('.sb-dialog__subtitle')).toContainText('Seraphina');
             const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
             await expect(search).toBeVisible();
+            await expectSharedDialogEntryStyles(search);
             const searchMetrics = await page.evaluate(() => {
                 const tagSearchHost = document.createElement('div');
-                tagSearchHost.id = 'tag_view_list';
+                tagSearchHost.className = 'popup sb-dialog sb-dialog--window';
                 const tagSearch = document.createElement('input');
                 tagSearch.className = 'text_pole sb-dialog__entry';
-                tagSearchHost.append(tagSearch);
+                const tagSearchBody = document.createElement('div');
+                tagSearchBody.className = 'popup-content';
+                tagSearchBody.append(tagSearch);
+                tagSearchHost.append(tagSearchBody);
                 document.body.append(tagSearchHost);
                 const read = node => {
                     const style = getComputedStyle(node);
