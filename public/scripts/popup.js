@@ -62,7 +62,7 @@ export const POPUP_RESULT = {
  * @property {(popup: Popup) => Promise<void?>|void?} [onOpen=null] - Handler called after the popup opens
  * @property {number?} [cropAspect=null] - Aspect ratio for the crop popup
  * @property {string?} [cropImage=null] - Image URL to display in the crop popup
- * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: dialog tier; null maps the size options (docs/dialogs.md)
+ * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: explicit dialog presentation tier.
  * @property {string?} [title=null] - SillyBunny: header title; null promotes the content's leading heading
  */
 

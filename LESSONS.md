@@ -35,6 +35,7 @@ This is the largest class by a wide margin.
 - **Limit:** `tests/webkit-prefix-companions.test.js` checks `backdrop-filter` and `user-select` in fork `.css`, inline CSS in JavaScript and HTML, and bundled agent templates. It skips the upstream-origin files in `tests/fixtures/upstream-origin-public-files.json` and does not check camelCase style properties such as `style.backdropFilter`. It uses its own brace scanner because `@adobe/css-tools` 4.4.4 does not parse CSS nesting and drops rules in `public/style.css`.
 - **Side-panel sheets:** adopted upstream panel sources can retain mobile `100dvw` sizing; constrain the source and its descendants to the panel. Size sheets from available space, not their intrinsic height: a flex child with percentage sizing can otherwise collapse the source and its nested scroller to zero. Keep same-side docked panels split across the measured chat-shell height. Tests: `tests/side-panel-adapters.e2e.js` (390×844, 360×740, 1440×900, split panels) and `tests/mobile-shell-smoke.e2e.js` (MovingUI containment).
 - **Detached modal content:** moving mobile chat tools into a shared dialog without hiding the source fragment leaves its search field painted in the document. This was introduced by `aa19e952a` and affected the Characters mobile opening path as well as Toggle Panels. Keep detached dialog content hidden and inert until the frame owns it, then hide it again after disposal. Test: `tests/mobile-character-toggle-and-panels.e2e.js`.
+- **Popup scroll:** upstream `popup.css` sets `min-height: fit-content` and hides overflow on tall desktop popups, which clips the final rows. The tier frame fixes this; `tests/popup-scroll.e2e.js` checks the last row and visible response. Characterized by `e78207e03`, framed by `5d0d2dd9b`.
 - **No test:** #438 (iOS overscroll blanks the page, keyboard moves the composer).
 - **Fixes:** #658 (composer stays above the iOS keyboard), #840 (touch scroll in expanded mobile editors), #914 (pickers open during scroll).
 
@@ -139,6 +140,14 @@ This is the largest class by a wide margin.
 - **Breaks:** a wait passes at once, so the test checks state too early or proves nothing.
 - **Cause:** `page.waitForFunction()` takes a returned Promise as a truthy result (checked with `@playwright/test` 1.64.1), so an `async` predicate never waits. Read module values into `window` first, then wait on a synchronous predicate, as `tests/server-generation-commit.e2e.js` does.
 - **Open:** `tests/nanogpt-controls.e2e.js` and `tests/pathfinder-settings.e2e.js` still wait on `async` predicates.
+- **Backend-dependent fixtures:** tests that open Chat Completion prompt rows (`.sb-prompt-row`) fail when the server's saved `main_api` is another backend, because those rows do not render. `tests/in-chat-agents-list.e2e.js` and `tests/sillybunny-mobile-overlays.e2e.js` force `main_api: "openai"` through settings interception (`028a5c62e`). `tests/world-info-editor.e2e.js` (q56) still depends on the saved backend.
+
+### Dialog surfaces and layering
+
+- **Breaks:** a broad `.sb-dialog` descendant textarea rule changes the in-chat Agents Regex editor height (159.75px instead of 160px).
+- **Guard:** scope textarea sizing to the adapter rows that need it, not generic dialog descendants. `89cd805db` keeps the `8lh` minimum on the window-content adapter's scenario and YAML rows; regression: `tests/in-chat-agents-editor.e2e.js` (regex fields at least 160px).
+- **Floating rows:** an empty entry row can paint its placeholder underneath the floated title. Keep the hint in `aria-description` and suppress the painted placeholder while the title floats. Fixed in `357be55f7`; regression: `tests/sillybunny-editor-rows-layout.e2e.js`.
+- **Layer order:** side panels and zoomed avatars must stay below Settings and shell drawers. Keep sprite, avatar, panel, shell, settings, popover, and dialog layers in one ordered ladder. Fixed in `357be55f7`; tests: `tests/libadwaita-surface-layers-css.test.js`, `tests/side-panel-adapters.e2e.js`.
 
 ### Upstream compatibility and sync
 

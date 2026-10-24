@@ -391,6 +391,7 @@ async function openSwipePicker(messageId) {
         },
     });
 
+    // SillyBunny: keep the existing picker class while the shared Window owns presentation.
     popup.dlg.classList.add('swipe_picker_popup');
 
     swipeIdInput = popup.dlg.querySelector(`#${swipeIdInputId}`);

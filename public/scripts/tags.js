@@ -2264,6 +2264,7 @@ async function onTagDeleteClick() {
         }).val(null).trigger('change');
     }
 
+    // SillyBunny: keep the merge control in the shared destructive Alert.
     const alertBody = document.createElement('div');
     const headingSelector = 'h1, h2, h3, h4, h5, h6';
     popupContent.filter(headingSelector).add(popupContent.find(headingSelector)).remove();

@@ -82,6 +82,7 @@
     color: var(--golden);
 }
 
+/* SillyBunny: make the legacy bulk editor a transparent child of the shared Dialog. */
 .sb-dialog.sb-bulk-tag-dialog #bulk_tag_shadow_popup {
     position: static;
     z-index: auto;

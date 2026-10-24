@@ -245,6 +245,7 @@ mark.red_hl {
     color: var(--text_color_black);
 }
 
+/* SillyBunny: keep expanded Regex content in the shared Window scroller. */
 .expanded-regex-content {
     flex-grow: 1;
     min-width: 0;

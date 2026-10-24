@@ -361,7 +361,7 @@ export function createFolderManager(scope, adapter) {
         members.list.replaceChildren(...rows);
     }
 
-    /** The members view is a page pushed inside the frame; its header shows Back (DESIGN.md Dialogs, pages). */
+    /** The members view is a page in the frame, so its header returns to the folder list. */
     function openMembers(folderId) {
         const folder = getFolders(scope).find(candidate => candidate.id === folderId);
         if (!folder || !frame || members) return;

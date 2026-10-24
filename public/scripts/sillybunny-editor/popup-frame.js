@@ -41,7 +41,7 @@ export function findLeadingHeading(content) {
 }
 
 /**
- * Promotion rule (DESIGN.md Dialogs): an Alert becomes a Dialog when its content holds more than
+ * An Alert becomes a Dialog when its content holds more than
  * one boolean control or any other control besides the main input and custom inputs, when it is an
  * INPUT with more than three rows, or when its content is taller than half the viewport.
  */
@@ -221,7 +221,7 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
             for (const label of content.querySelectorAll('label.checkbox_label')) adoptBooleanLabel(label, cleanups);
         }
 
-        // Extra responses (P-1): Cancel at the header start, the affirmative at the end, the rest below.
+        // Keep Cancel and the affirmative action at opposite ends of the header.
         const extras = [...buttonControls.querySelectorAll(':scope > .popup-button-custom')];
         let bar = null;
         if (extras.length) {
@@ -239,7 +239,7 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
             closeButton.classList.add('sb-dialog__close');
             closeButton.classList.replace('fa-circle-xmark', 'fa-xmark');
             if (okOnly) {
-                // P-2: OK hides; the header Close returns OK's result so callers that check for it keep working.
+                // Return the OK result so existing callers keep their response contract.
                 okButton.style.display = 'none';
                 const forward = event => {
                     if (!(event.target instanceof Node) || !closeButton.contains(event.target)) return;
@@ -292,7 +292,7 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
         });
         const close = popup.closeButton;
         if (close.style.display !== 'none') {
-            // P-4: an immediate-apply page shows Back at the start instead of Close.
+            // Immediate-apply pages return to their parent instead of closing the dialog.
             close.classList.replace('fa-xmark', 'fa-arrow-left');
             close.title = t`Back`;
             close.setAttribute('aria-label', close.title);

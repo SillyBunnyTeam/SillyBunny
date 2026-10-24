@@ -57,6 +57,7 @@
     display: none;
 }
 
+/* SillyBunny: let the shared Window body provide the single results scroller. */
 .dataMaidResultsList {
     text-align: left;
     display: flex;

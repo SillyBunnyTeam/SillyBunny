@@ -1,7 +1,7 @@
 /**
  * Shared breakpoints. Overlays (alerts, dialogs, windows, menus, pickers) become bottom sheets
  * under the AdwDialog condition; the shell layout keeps SillyBunny's own 768px breakpoint.
- * See DESIGN.md Navigation (Adaptive sizes) and Dialogs.
+ * Keep dialog breakpoints shared across the editor surfaces.
  */
 
 /** libadwaita adw-dialog.c PORTRAIT_CONDITION / LANDSCAPE_CONDITION. */

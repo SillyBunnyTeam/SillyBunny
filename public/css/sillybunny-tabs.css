@@ -4521,7 +4521,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     gap: 5px;
 }
 
-@media screen and (max-width: 700px) {
+@media screen and (max-width: 43.75rem) {
     :is(.sb-dialog.sb-chat-history-dialog, .sb-dialog__page.sb-chat-history-dialog) #select_chat_popup .chat_cleanup_group {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));

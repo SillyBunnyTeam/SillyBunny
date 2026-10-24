@@ -333,7 +333,7 @@ export class QuickReplySet {
                     dom.append(hintP);
                 }
             }
-            // SillyBunny: use Popup's existing custom response path so Copy is a neutral P-1 footer action.
+            // SillyBunny: keep Copy neutral so Transfer remains the suggested action.
             const dlg = new Popup(dom, POPUP_TYPE.CONFIRM, null, {
                 ...quickReplyTransferOptions(dom), okButton: 'Transfer', cancelButton: 'Cancel',
                 customButtons: [{ text: 'Copy', classes: ['qr--copy'], result: POPUP_RESULT.AFFIRMATIVE, appendAtEnd: true, action: () => { isCopy = true; } }],

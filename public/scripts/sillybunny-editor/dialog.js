@@ -18,7 +18,7 @@ import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, getTopmostDialog, hostOverlayLayer, releaseOverlayLayers } from './overlay-host.js';
 
 /*
- * Shared Libadwaita dialog frame (DESIGN.md Dialogs).
+ * Shared dialog frame.
  * - openAlert mirrors AdwAlertDialog: heading, body, optional extra child, 1–3 responses.
  * - openDialog mirrors AdwDialog with a header bar: the Dialog tier follows its content up to
  *   640px wide; the Window tier takes the shell's large pop-out footprint.
@@ -447,8 +447,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
 }
 
 /**
- * Opens a Dialog- or Window-tier frame (§3.5 of the dialogs plan; docs/dialogs.md).
- * Opened while another frame is on top, it is pushed as a page into that frame (DESIGN.md Dialogs, stacking).
+ * Opens a Dialog- or Window-tier frame. When another frame is active, this frame becomes a page in it.
  *
  * @param {object} o
  * @param {'dialog'|'window'} [o.tier='dialog']
@@ -756,7 +755,7 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
     const result = new Promise(resolve => finish = resolve);
 
     // AdwAlertDialog lays responses out side by side at equal widths when the widest fits that
-    // share, and stacks them otherwise. Sheets always stack (DESIGN.md Dialogs, narrow widths).
+    // share, and stacks them otherwise. Sheets always stack.
     function layoutResponses() {
         responsesNode.classList.remove('is-stacked');
         if (isSheet()) {

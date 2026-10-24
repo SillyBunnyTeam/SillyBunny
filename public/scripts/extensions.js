@@ -1638,7 +1638,7 @@ async function showExtensionsDetails() {
             okButton: t`Close`,
             customButtons: [],
             allowVerticalScrolling: true,
-            // SillyBunny: the Extensions manager is a Window-tier dialog (docs/dialogs.md).
+            // SillyBunny: the Extensions manager needs a full-height scrolling surface.
             tier: 'window',
             onClosing: async () => {
                 if (waitingForSave) {

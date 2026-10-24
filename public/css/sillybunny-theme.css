@@ -2366,7 +2366,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     margin: 0;
 }
 
-@media (max-width: 450px), (max-height: 360px) {
+@media (max-width: 450px), (max-height: 22.5rem) {
     .swipe_picker_popup .swipe_picker_footer {
         justify-content: center;
         padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
@@ -6996,7 +6996,7 @@ dialog.popup.sb-dialog--alert > .popup-controls.is-measuring > .menu_button {
     white-space: nowrap;
 }
 
-/* Stacked: affirmative on top, Cancel at the bottom within thumb reach (DESIGN.md Dialogs). */
+/* Stacked: keep Cancel at the bottom within thumb reach. */
 dialog.popup.sb-dialog--alert > .popup-controls.is-stacked {
     flex-direction: column-reverse;
     gap: 8px;
@@ -7219,8 +7219,7 @@ dialog.popup.sb-dialog--alert[data-presentation='sheet'] .popup-content {
     padding: 0;
 }
 
-/* A Dialog or Window opened from another is presented as a page in the parent's place (DESIGN.md
-   Dialogs, stacking). The parent stays laid out but hidden until the page closes. */
+/* Keep the parent laid out but hidden until the pushed page closes. */
 dialog.popup.sb-dialog--page {
     position: fixed;
     inset: auto;
@@ -7332,8 +7331,7 @@ dialog.popup.sb-dialog--page::backdrop {
     }
 }
 
-/* Legacy callPopup (#shadow_popup/#dialogue_popup): Alert-tier look only. No core caller remains;
-   third-party extensions may still use it. Cancel first, the affirmative last (DESIGN.md Dialogs). */
+/* Keep legacy callPopup available to extensions, with Cancel before the affirmative action. */
 #shadow_popup {
     background-color: var(--sb-dialog-backdrop);
     backdrop-filter: none;
@@ -7563,7 +7561,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 }
 
 /* Shared dialog frame (sillybunny-editor/dialog.js): Alert, Dialog and Window tiers over one
-   transparent modal host. DESIGN.md Dialogs. Sheets follow OVERLAY_SHEET_QUERY (AdwDialog). */
+   transparent modal host. Sheets follow OVERLAY_SHEET_QUERY. */
 .sb-dialog-host[open] {
     position: fixed;
     inset: 0;
@@ -7977,7 +7975,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     white-space: nowrap;
 }
 
-/* Stacked: affirmative on top, Cancel at the bottom within thumb reach (DESIGN.md Dialogs). */
+/* Stacked: keep Cancel at the bottom within thumb reach. */
 .sb-dialog__responses.is-stacked {
     flex-direction: column-reverse;
     gap: 8px;
