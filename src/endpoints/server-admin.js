@@ -49,8 +49,8 @@ import {
 
 const GIT_OPTIONS = Object.freeze({
     timeout: { block: 10 * 60 * 1000 },
-    // Keep update-time git from detaching background maintenance: under
-    // released Bun builds on Windows a detached child inherits the listen
+    // Keep update-time git from detaching background maintenance: under Bun
+    // builds before 1.4.0 on Windows a detached child inherits the listen
     // socket handle and keeps the port bound across the restart (#710,
     // oven-sh/bun#36936).
     config: ['gc.auto=0', 'maintenance.auto=false'],
