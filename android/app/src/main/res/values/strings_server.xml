@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server foreground service notification (task 5.4). -->
+    <string name="server_notification_channel">TODO(copy)</string>
+    <string name="server_notification_title">TODO(copy)</string>
+    <string name="server_notification_running">TODO(copy)</string>
+    <string name="server_notification_setup">TODO(copy)</string>
+    <string name="server_notification_stop">TODO(copy)</string>
+</resources>

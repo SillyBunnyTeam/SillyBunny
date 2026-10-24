@@ -147,6 +147,20 @@ If you already have a local `staging` branch, run `git switch staging` instead. 
 - Quarantine metadata from ZIP downloads: `xattr -dr com.apple.quarantine /path/to/SillyBunny`
 - Stripped permissions from unzip: `chmod +x Start*.command start*.sh scripts/*.sh`
 
+### TODO(copy)
+
+<!--
+MANDATORY: maintainers write this section about the Android app (APK). It is a placeholder (docs/android-apk-plan.md §8 and §9.13); add it to the Table of Contents once it is written.
+Cover:
+- The APK as the recommended way to run SillyBunny on Android 10 and later: the stable download links (plan §5.4), and which file to pick (arm64-v8a for 64-bit phones, which is nearly all of them; armeabi-v7a for phones that run only 32-bit apps).
+- First install: allowing "install unknown apps"; Android developer verification where it applies (plan §9.1); the notification permission and the battery-optimization prompt; the first-run download (about 180 to 190 MB) and the free storage it needs (about 1.34 GB).
+- Data: where it lives; backups (SillyBunny's backup download, and the Files app's access to data/); Repair; what uninstalling does (the keep-data prompt).
+- Node only: the APK bundles Node.js and does not package Bun for now (plan §9.10); Bun support outside the APK is unchanged.
+- Termux stays documented and supported (Android 9 and older, power users), and stays visible while the APK is not registered for developer verification (plan §9.1).
+-->
+
+TODO(copy)
+
 ### Termux (Android) notes
 
 ```bash

@@ -515,14 +515,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | File | `src/endpoints/content-manager.js`, `src/server-init.js`, `src/server-main.js`, `src/util.js`, `src/plugin-loader.js`. |
-| Area | Install, defaults, server lifecycle, and runtime utilities. |
-| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. |
-| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, and the bundled-content helpers in `content-manager.js`. |
-| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. |
-| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, and root lint. |
-| Validation | `npm run init`, `node --check src/server-init.js`, `node --check src/server-main.js`, `npm run lint`. |
-| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Area | Install, defaults, server lifecycle, runtime utilities, and Android app runtime. |
+| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. TODO(copy) |
+| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, the bundled-content helpers in `content-manager.js`, and `src/middleware/launchToken.js` for launch authentication, health probes, and browser handoff. |
+| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. In `src/server-main.js`, mount `createLaunchTokenMiddleware()` immediately after helmet and exempt `LAUNCH_COOKIE_NAME` from `/api/cookies/clear` only while enabled. Both hooks are inert unless `SILLYBUNNY_LAUNCH_TOKEN` is non-empty. |
+| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/launch-token.test.js`, `tests/launch-token-server-wiring.test.js`, and root lint. |
+| Validation | Android hooks: `node --check src/server-main.js`, `npm run test:unit --prefix tests -- launch-token.test.js launch-token-server-wiring.test.js`. Existing initialization checks: `npm run init`, `node --check src/server-init.js`, `npm run lint`. |
+| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. TODO(copy) |
+| Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918 (Android hooks; prior initialization review 2026-07-28). |
 | Owner | Runtime and release integrator. |
 
 ### Chat backups, characters, and thumbnails
@@ -539,10 +539,23 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Chat and media integrator. |
 
+### `start.sh` - Android app runtime
+| Field | Value |
+| --- | --- |
+| Area | Android app runtime. |
+| Divergence reason | TODO(copy) |
+| Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependencies; no separate seam yet for APK runtime selection. |
+| Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, and the prerequisite call. Honor Node/Bun overrides, otherwise default APK launches to Node; keep existing update/dependency helper calls. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
+| Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
+| Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918. |
+| Owner | TODO(copy) |
+
 ### Repository policy, launchers, packaging, and build infrastructure
 | Field | Value |
 | --- | --- |
-| File | Root upstream-origin files, `.github/**`, `docker/**`, `package.json`, lockfiles, launcher scripts, `webpack.config.js`, and repository policy/setup documents. |
+| File | Root upstream-origin files, `.github/**`, `docker/**`, `package.json`, lockfiles, launcher scripts, `webpack.config.js`, and repository policy/setup documents not named by a narrower active entry. |
 | Area | Release policy, packaging, launch, CI, container runtime, and project identity. |
 | Divergence reason | SillyBunny carries fork branch policy, branding, Bun-first and Node-compatible launch paths, constrained installs, release automation, and container defaults. |
 | Target seam | `.github/workflows/`, launcher scripts, `scripts/dependency-state.js`, `src/runtime.js`, and Docker entrypoints. |

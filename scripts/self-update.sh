@@ -14,12 +14,17 @@ fi
 finish_early() {
     local message="$1"
 
+    # The APK gate logs before status I/O, then passes an empty message to exit once.
     if (( OPTIONAL )); then
-        echo "Skipping self-update: $message" >&2
+        if [[ -n "$message" ]]; then
+            echo "Skipping self-update: $message" >&2
+        fi
         exit 0
     fi
 
-    echo "Self-update failed: $message" >&2
+    if [[ -n "$message" ]]; then
+        echo "Self-update failed: $message" >&2
+    fi
     exit 1
 }
 
@@ -50,6 +55,78 @@ restore_lone_bun_lock_change() {
     git reset HEAD -- bun.lock >/dev/null 2>&1 || true
     if ! git checkout -- bun.lock >/dev/null 2>&1; then
         finish_early "could not restore generated bun.lock."
+    fi
+}
+
+# SillyBunny Android app: normalize decimal version codes without shell integer overflow.
+normalize_android_version() {
+    local value="$1"
+
+    [[ "$value" =~ ^[0-9]+$ ]] || return 1
+    while [[ ${#value} -gt 1 && "$value" == 0* ]]; do
+        value="${value#0}"
+    done
+    printf '%s' "$value"
+}
+
+# SillyBunny Android app: gate the fetched code before any update decision.
+check_android_app_update() {
+    local installed required=null reason='' part branch temporary
+    local minimum_parts=()
+    local LC_ALL=C
+
+    # Pin the app's check and update to one commit even if the tracking ref moves.
+    checked_upstream="$(git rev-parse '@{upstream}' 2>/dev/null)" || finish_early "TODO(copy)"
+
+    if (( behind > 0 )); then
+        installed="$(normalize_android_version "${SILLYBUNNY_ANDROID_APP_VERSION_CODE:-}")" || installed=0
+
+        # NUL-delimited fields retain whitespace, detect binary input and carry git's result.
+        while IFS= read -r -d '' part; do
+            minimum_parts+=("$part")
+        done < <(if git show "$checked_upstream:android/min-app-version" 2>/dev/null; then
+            printf '\0ok\0'
+        else
+            printf '\0missing\0'
+        fi)
+
+        # Missing files predate the app's launch-token/update gates; never treat them as 0.
+        if [[ "${minimum_parts[${#minimum_parts[@]}-1]}" == missing ]]; then
+            reason=missing
+        elif (( ${#minimum_parts[@]} != 2 )) || [[ ! "${minimum_parts[0]}" =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
+            reason=invalid
+        else
+            required="$(normalize_android_version "${BASH_REMATCH[1]}")"
+            if (( ${#required} > ${#installed} )) \
+                || { (( ${#required} == ${#installed} )) && [[ "$required" > "$installed" ]]; }; then
+                reason=newer
+            fi
+        fi
+
+        if [[ -n "$reason" ]]; then
+            if (( OPTIONAL )); then
+                echo "Skipping self-update: TODO(copy)" >&2
+            else
+                echo "Self-update failed: TODO(copy)" >&2
+            fi
+            if [[ -n "${SILLYBUNNY_ANDROID_STATUS_DIR:-}" ]]; then
+                branch="${current_branch//\\/\\\\}"
+                branch="${branch//\"/\\\"}"
+                temporary="$SILLYBUNNY_ANDROID_STATUS_DIR/.update-blocked.json.$$"
+                # Keep the shared status format atomic; a status I/O error must not allow a pull.
+                if ! { mkdir -p -- "$SILLYBUNNY_ANDROID_STATUS_DIR" \
+                    && printf '{"required":%s,"installed":%s,"reason":"%s","upstream":"%s","branch":"%s"}\n' \
+                        "$required" "$installed" "$reason" "$checked_upstream" "$branch" > "$temporary" \
+                    && mv -f -- "$temporary" "$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json"; }; then
+                    rm -f -- "$temporary" || true
+                fi
+            fi
+            finish_early ""
+        fi
+    fi
+
+    if [[ -n "${SILLYBUNNY_ANDROID_STATUS_DIR:-}" ]]; then
+        rm -f -- "$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json" || finish_early "TODO(copy)"
     fi
 }
 
@@ -88,6 +165,11 @@ fi
 
 read -r ahead behind < <(git rev-list --left-right --count HEAD...@{upstream})
 
+# SillyBunny Android app: other install methods retain their existing update flow.
+if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]; then
+    check_android_app_update
+fi
+
 if (( ahead > 0 && behind > 0 )); then
     finish_early "branch '$current_branch' has diverged from '$upstream_ref'. Resolve it manually before using self-update."
 fi
@@ -105,8 +187,15 @@ fi
 before_rev="$(git rev-parse --short HEAD)"
 
 echo "Updating SillyBunny..."
-if ! git pull --ff-only; then
-    finish_early "git pull --ff-only failed."
+if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]; then
+    # A pull would refetch and could merge an unchecked commit in the Android app.
+    if ! git merge --ff-only "$checked_upstream"; then
+        finish_early "TODO(copy)"
+    fi
+else
+    if ! git pull --ff-only; then
+        finish_early "git pull --ff-only failed."
+    fi
 fi
 
 after_rev="$(git rev-parse --short HEAD)"

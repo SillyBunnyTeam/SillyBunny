@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>fixture-frame</title></head><body>
+<script>
+// Served from the other loopback port: the bridge and the page script must not exist here.
+parent.postMessage({
+    bridge: typeof globalThis.sillybunnyTransfers,
+    api: typeof globalThis[Symbol.for('sillybunny.transfers')],
+}, '*');
+</script>
+</body></html>

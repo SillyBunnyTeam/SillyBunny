@@ -46,6 +46,7 @@ Read the docs below in full before you start; they change more often than this f
 - Versions: `npm run version:bump -- X.Y.Z`; check with `npm run version:check`.
 - After editing an existing in-chat agent template: `npm run agents:bump-template-versions`.
 - Android debug build: `cd android && ./gradlew assembleDebug` (needs JDK 21).
+- Android smoke: on a booted x86_64 emulator, `node tests/android-smoke/run-smoke.js preflight`, then `run --apk <app> --update-apk <app, versionCode + 1> --test-apk <test>`; build the APKs as `.github/workflows/android-smoke.yml` does.
 
 ## Repo map
 

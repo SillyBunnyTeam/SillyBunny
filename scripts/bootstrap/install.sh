@@ -17,6 +17,8 @@ ref="$DEFAULT_REF"
 ref_overridden=0
 repo="$DEFAULT_REPO"
 migrate_from=''
+# Repair can opt in to copying user state from an existing Git checkout.
+allow_git_source=0
 start_after=1
 runtime_override=''
 migrated_items=()
@@ -51,6 +53,7 @@ Options:
   --repo <url-or-path>    Repository to clone (default: the official repository)
   --migrate-from <path>   Copy data, settings, plugins and extensions from an
                           old non-Git (ZIP) install. The old folder is not changed.
+  --allow-git-source      TODO(copy)
   --use-bun               Force Bun as the runtime (default on Linux/Windows)
   --use-node              Force Node.js as the runtime (default on macOS,
                           where it is installed automatically if missing)
@@ -63,7 +66,17 @@ have_command() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# The Android APK supplies its own runtimes instead of using host prerequisites.
+is_android_app() {
+    [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]
+}
+
 is_termux() {
+    # The APK is not Termux, even if its environment contains Termux variables.
+    if is_android_app; then
+        return 1
+    fi
+
     [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/files/usr ]]
 }
 
@@ -99,6 +112,10 @@ parse_args() {
                 require_value "$1" "${2-}"
                 migrate_from="$2"
                 shift
+                ;;
+            --allow-git-source)
+                # Repair opts out of only the Git-source refusal, on any platform.
+                allow_git_source=1
                 ;;
             --use-bun)
                 runtime_override='bun'
@@ -197,6 +214,11 @@ have_working_git() {
 }
 
 install_git() {
+    # APK mode already supplies Git and cannot use desktop package managers.
+    if is_android_app; then
+        return 0
+    fi
+
     if have_working_git; then
         return
     fi
@@ -246,6 +268,11 @@ install_git() {
 # are already done, and clones of older refs (e.g. a pinned tag) whose prerequisites
 # script cannot install Node.js on macOS exit non-zero here.
 install_macos_node() {
+    # The APK bundles Node.js; do not run the clone's desktop prerequisites.
+    if is_android_app; then
+        return 0
+    fi
+
     [[ "$(uname -s 2>/dev/null)" == Darwin ]] || return 0
     if [[ "$runtime_override" == bun ]]; then
         return 0
@@ -286,9 +313,13 @@ validate_migration_source() {
         # .git. Old ZIP releases that were packaged from a git clone also contain .git
         # but do not have the self-update script, so migration from them is allowed.
         if [[ -f "$migrate_from/scripts/self-update.sh" ]]; then
-            die "$migrate_from is already a Git install and updates itself. Run its start.sh instead of migrating."
+            # Repair preserves the old checkout; all other migration checks still apply.
+            if (( ! allow_git_source )); then
+                die "$migrate_from is already a Git install and updates itself. Run its start.sh instead of migrating."
+            fi
+        else
+            log "Note: $migrate_from contains a .git folder but no self-update script; treating it as a ZIP release."
         fi
-        log "Note: $migrate_from contains a .git folder but no self-update script; treating it as a ZIP release."
     fi
 
     if [[ "$migrate_from" == "$install_dir" ]]; then

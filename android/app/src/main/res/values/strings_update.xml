@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_title">TODO(copy)</string>
+    <string name="update_required_title">TODO(copy)</string>
+    <string name="update_available_body">TODO(copy)</string>
+    <string name="update_required_body">TODO(copy)</string>
+    <string name="update_confirm">TODO(copy)</string>
+    <string name="update_later">TODO(copy)</string>
+    <string name="update_retry">TODO(copy)</string>
+    <string name="update_checking">TODO(copy)</string>
+    <string name="update_downloading">TODO(copy)</string>
+    <string name="update_installing">TODO(copy)</string>
+    <string name="update_unknown_sources">TODO(copy)</string>
+    <string name="update_error">TODO(copy)</string>
+    <string name="update_up_to_date">TODO(copy)</string>
+    <string name="update_updated">TODO(copy)</string>
+    <string name="update_notification_channel">TODO(copy)</string>
+    <string name="update_replaced_title">TODO(copy)</string>
+    <string name="update_replaced_body">TODO(copy)</string>
+    <string name="update_install_title">TODO(copy)</string>
+    <string name="update_install_body">TODO(copy)</string>
+</resources>
