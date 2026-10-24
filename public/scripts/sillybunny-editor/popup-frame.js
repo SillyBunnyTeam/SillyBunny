@@ -56,7 +56,7 @@ export function shouldPromoteAlert(popup) {
 }
 
 /**
- * Tier for a popup, or null when it keeps its own frame (crop, transparent, image zoom, swipe picker).
+ * Tier for a popup, or null when it keeps its own frame (crop, transparent, image zoom).
  * @param {object} popup
  * @param {'alert'|'dialog'|'window'|null} [explicit]
  */
@@ -65,7 +65,7 @@ export function resolvePopupTier(popup, explicit = null) {
     if (TIERS.has(explicit)) return explicit === 'alert' && popup.type === TYPE_DISPLAY ? 'dialog' : explicit;
     const { dlg, content } = popup;
     if (popup.type === TYPE_CROP) return null;
-    if (dlg.matches('.transparent_dialogue_popup, .swipe_picker_popup') || content.querySelector('.img_enlarged_container')) return null;
+    if (dlg.matches('.transparent_dialogue_popup') || content.querySelector('.img_enlarged_container')) return null;
     if (dlg.classList.contains('large_dialogue_popup')) return 'window';
     if (dlg.matches('.wide_dialogue_popup, .wider_dialogue_popup')) return 'dialog';
     if (popup.type === TYPE_DISPLAY) return 'dialog';
@@ -234,7 +234,7 @@ export function framePopup(popup, { tier = null, title = null, allowEscapeClose 
         const responses = [okButton, cancelButton].filter(isShown);
         const okOnly = popup.type === TYPE_TEXT && responses.length === 1 && responses[0] === okButton && !extras.length;
         header.append(buttonControls, closeButton);
-        if (popup.type === TYPE_DISPLAY || okOnly || (!responses.length && !extras.length)) {
+        if (popup.type === TYPE_DISPLAY || okOnly || (!responses.length && !extras.length) || dlg.classList.contains('swipe_picker_popup')) {
             closeButton.style.display = '';
             closeButton.classList.add('sb-dialog__close');
             closeButton.classList.replace('fa-circle-xmark', 'fa-xmark');

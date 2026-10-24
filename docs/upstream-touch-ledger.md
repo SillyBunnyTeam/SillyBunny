@@ -24,6 +24,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Swipe Selection Window
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/swipe-picker.js`. |
+| Area | Swipe selection and swipe actions. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; shared destructive Alert in `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Keep swipe data, IDs, selection, branch/copy/delete handlers, preview expansion, input bounds, and swipe result semantics; request the shared Window tier and use the shared Alert for the existing preference-gated delete confirmation. |
+| Protecting tests | `tests/swipe-picker.e2e.js`; `tests/libadwaita-swipe-styling.test.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; swipe and message-action suites found by `grep tests/`. |
+| Validation | 2026-10-24: root/tests lint; full Jest (437 suites, 6,634 passed, 2 skipped); frontend budgets; diff check; Swipe Picker E2E at 1440×900 and 390×844 (2/2, including 52-row scrolling, current marker, copy, branch save interception, destructive Alert safety, Go navigation and Escape); AddSwipeNoReload + dialog tiers + Popup scroll + conversation message actions Chromium (27/27). |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-24. |
+| Owner | TODO(copy) |
+
 ### Confirm response labels
 | Field | Value |
 | --- | --- |

@@ -2204,13 +2204,84 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 
 /* libadwaita swipe picker: borderless rows, flat hover, neutral selection like the shell tabs. */
 .swipe_picker_block {
-    gap: 6px;
-    margin-top: 2px;
-    padding: 10px 12px;
+    position: relative;
+    gap: 8px;
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-bottom: 1px solid var(--sb-shell-border);
     border-color: transparent;
-    border-radius: var(--sb-radius-control);
+    border-bottom-color: var(--sb-shell-border);
+    border-radius: 0;
     background: transparent;
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+.swipe_picker_div {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-card);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.swipe_picker_block:last-child {
+    border-bottom: 0;
+}
+
+.swipe_picker_block #select_chat_name_wrapper {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+}
+
+.swipe_picker_block #select_chat_name_wrapper > :first-child {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center;
+    min-width: 0;
+}
+
+.swipe_picker_block #select_chat_name_wrapper > :first-child::before {
+    display: inline-flex;
+    width: 24px;
+    align-items: center;
+    justify-content: flex-start;
+    color: transparent;
+    font: var(--fa-font-solid);
+    font-size: 12px;
+}
+
+.swipe_picker_block[highlight] #select_chat_name_wrapper > :first-child::before {
+    content: '\f00c';
+    color: var(--sb-accent);
+}
+
+.swipe_picker_block #select_chat_name_wrapper > :last-child {
+    display: contents;
+}
+
+.swipe_picker_block .select_chat_info {
+    display: block;
+    grid-area: 2 / 1 / 3 / 3;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.swipe_picker_block .select_chat_info > * {
+    display: inline;
+    white-space: nowrap;
+}
+
+.swipe_picker_block .select_chat_info .chat_file_size {
+    margin-inline-start: 6px;
+}
+
+.swipe_picker_block .select_chat_actions {
+    grid-area: 1 / 2;
+    justify-self: end;
 }
 
 /* Cancels upstream's sticky white hover on touch; hover-capable devices get the flat fill below. */
@@ -2236,36 +2307,70 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     background: var(--sb-flat-selected-bg);
 }
 
+.swipe_picker_block:active {
+    background: var(--sb-flat-active-bg);
+}
+
 .swipe_picker_block .select_chat_block_mes {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
     font-size: calc(var(--mainFontSize) * 0.86);
     line-height: var(--sb-line-body);
     color: var(--sb-muted-fg);
 }
 
-/* Swipe picker close: a libadwaita circular flat button with a plain cross. swipe-picker.js sets
-   inline display:block, width/height:auto, so the glyph is centred with text-align and a
-   line-height equal to the min-size box instead of flex. Padding lives here rather than in the
-   picker script: the button's box model belongs with its sizing. */
-.swipe_picker_popup .popup-button-close.right_menu_button.fa-solid {
-    flex: 0 0 auto;
-    padding: 0;
-    min-inline-size: 34px;
-    max-inline-size: 34px;
-    min-block-size: 34px;
-    max-block-size: 34px;
-    border-radius: 999px;
-    line-height: 34px;
-    text-align: center;
+.swipe_picker_popup .popup-content {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.swipe_picker_popup .popup-button-close::before {
-    content: '\f00d';
+.swipe_picker_popup .swipe_picker_div {
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 /* The Swipe ID entry matches the shell entries: tinted fill, no rest border, accent focus. */
 .swipe_picker_popup .popup-controls input {
     border-color: transparent;
     background-color: var(--sb-composer-input-bg);
+}
+
+.swipe_picker_popup .swipe_picker_footer {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border-top: 1px solid var(--sb-shell-border);
+    background: var(--sb-layer-window);
+}
+
+.swipe_picker_footer .swipe_picker_id_row {
+    gap: 10px;
+    margin-inline-end: 0;
+}
+
+.swipe_picker_footer .popup-button-custom {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 60px;
+    max-width: none;
+    margin: 0;
+}
+
+@media (max-width: 450px), (max-height: 360px) {
+    .swipe_picker_popup .swipe_picker_footer {
+        justify-content: center;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    }
 }
 
 .swipe_picker_popup .popup-controls input.text_pole:is(:focus, :focus-visible) {
@@ -2278,11 +2383,27 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: 32px;
-    block-size: 32px;
+    inline-size: 40px;
+    block-size: 40px;
     padding: 0;
     border-radius: 999px;
     transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), transform var(--sb-transition-fast);
+}
+
+.swipe_picker_block :is(.swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
+    cursor: pointer;
+}
+
+.swipe_picker_block :is([role="button"], .swipe_picker_expand_label):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    .swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
+        inline-size: 44px;
+        block-size: 44px;
+    }
 }
 
 @media (hover: hover) {
@@ -2299,7 +2420,22 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 
 .swipe_picker_block .select_chat_block_filename {
     font-size: calc(var(--mainFontSize) * 0.88);
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor);
+    opacity: 1;
+}
+
+.swipe_picker_block .swipe_picker_current {
+    margin-inline-start: 4px;
+    color: var(--sb-accent);
+    font-size: var(--sb-type-meta);
     font-weight: 600;
+}
+
+.swipe_picker_block .select_chat_info .select_chat_block_filename {
+    color: var(--sb-muted-fg);
+    font-weight: 400;
+    opacity: 1;
 }
 
 .swipe_picker_block .chat_messages_date,

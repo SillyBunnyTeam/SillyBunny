@@ -1,7 +1,9 @@
 import { branchChat } from './bookmarks.js';
 import { SWIPE_DIRECTION, SWIPE_SOURCE } from './constants.js';
 import { t } from './i18n.js';
-import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+// SillyBunny: committed swipe deletion uses the shared alert contract.
+import { openAlert } from './sillybunny-editor/dialog.js';
 import { power_user } from './power-user.js';
 import { isMobile } from './RossAscends-mods.js';
 import { getTokenCountAsync } from './tokenizers.js';
@@ -62,15 +64,6 @@ async function openSwipePicker(messageId) {
     const swipeIdInputId = `swipe_picker_id_${messageId}`;
     const wrapper = document.createElement('div');
     wrapper.classList.add('flex-container', 'flexFlowColumn', 'flexNoGap', 'wide100p', 'flex1', 'overflowHidden');
-
-    const header = document.createElement('div');
-    header.classList.add('swipe_picker_header', 'flex-container', 'alignItemsCenter', 'justifySpaceBetween', 'gap10px');
-
-    const description = document.createElement('h3');
-    description.classList.add('margin0', 'justifyLeft');
-    description.textContent = t`Swipe Selection`;
-    header.appendChild(description);
-    wrapper.appendChild(header);
 
     const listContainer = document.createElement('div');
     listContainer.classList.add('swipe_picker_div', 'flex1', 'marginTop10');
@@ -162,6 +155,10 @@ async function openSwipePicker(messageId) {
                 .attr({
                     title: t`Create Branch`,
                     'data-i18n': '[title]Create Branch',
+                    // SillyBunny: cloned div controls need a keyboard and assistive-technology role.
+                    role: 'button',
+                    tabindex: '0',
+                    'aria-label': t`Create Branch`,
                 })
                 .removeClass('exportRawChatButton fa-solid fa-file-export')
                 .addClass('swipe_picker_branch mes_button fa-fw fa-regular fa-code-branch')
@@ -171,10 +168,21 @@ async function openSwipePicker(messageId) {
                     setSelectedSwipe(index);
                     branchActionSwipeId = index;
                     await popup.completeCancelled();
+                })
+                .on('keydown', event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    event.currentTarget.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 });
+            // SillyBunny: cloned div controls need a keyboard and assistive-technology role.
             deleteButton
                 .removeAttr('file_name')
-                .attr('aria-disabled', String(!canDeleteSwipe))
+                .attr({
+                    'aria-disabled': String(!canDeleteSwipe),
+                    role: 'button',
+                    tabindex: canDeleteSwipe ? '0' : '-1',
+                    'aria-label': t`Delete Swipe`,
+                })
                 .removeClass('fa-skull')
                 .addClass('swipe_picker_delete fa-fw fa-trash-can')
                 .toggleClass('hoverglow', canDeleteSwipe)
@@ -207,13 +215,18 @@ async function openSwipePicker(messageId) {
                             ? selectedSwipeId
                             : Math.min(selectedSwipeId, message.swipes.length - 2);
 
+                    // SillyBunny: destructive swipe confirmations use the shared Alert while preserving the existing preference gate.
                     if (power_user.confirm_message_delete) {
-                        const result = await callGenericPopup(t`Are you sure you want to delete swipe #${index + 1}?`, POPUP_TYPE.CONFIRM, null, {
-                            okButton: t`Delete Swipe`,
-                            cancelButton: t`Cancel`,
+                        const result = await openAlert({
+                            heading: t`Delete Swipe`,
+                            body: t`Are you sure you want to delete swipe #${index + 1}?`,
+                            responses: [
+                                { id: 'cancel', label: t`Cancel` },
+                                { id: 'delete', label: t`Delete Swipe`, appearance: 'destructive' },
+                            ],
                         });
 
-                        if (result !== POPUP_RESULT.AFFIRMATIVE) {
+                        if (result !== 'delete') {
                             return;
                         }
                     }
@@ -230,6 +243,11 @@ async function openSwipePicker(messageId) {
                     }
 
                     await renderSwipeList();
+                })
+                .on('keydown', event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    event.currentTarget.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 });
 
             // Add expand/collapse toggle
@@ -238,6 +256,7 @@ async function openSwipePicker(messageId) {
             expandCheckbox.type = 'checkbox';
             expandCheckbox.id = expandCheckboxId;
             expandCheckbox.classList.add('swipe_picker_expand_toggle');
+            expandCheckbox.setAttribute('aria-label', t`Expand/Collapse`);
             block[0].prepend(expandCheckbox);
 
             const expandLabel = document.createElement('label');
@@ -252,23 +271,52 @@ async function openSwipePicker(messageId) {
             copyButton.classList.add('swipe_picker_copy', 'fa-solid', 'fa-fw', 'fa-copy');
             copyButton.title = t`Copy`;
             copyButton.setAttribute('data-i18n', '[title]Copy');
+            // SillyBunny: cloned div controls need a keyboard and assistive-technology role.
+            copyButton.setAttribute('role', 'button');
+            copyButton.setAttribute('tabindex', '0');
+            copyButton.setAttribute('aria-label', t`Copy`);
             copyButton.addEventListener('click', async (event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 await copyText(swipeText);
                 toastr.info(t`Copied!`, '', { timeOut: 2000 });
             });
+            copyButton.addEventListener('keydown', event => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                copyButton.click();
+            });
 
             // Insert new buttons before the branch button
             branchButton.before(expandLabel, copyButton);
 
-            template.find('.select_chat_block_filename').text(`#${index + 1}${index === Number(message.swipe_id ?? 0) ? ` ${t`[Current]`}` : ''}`);
+            const swipeTitle = block.find('.select_chat_block_filename').first()[0];
+            swipeTitle.textContent = `#${index + 1}`;
+            if (index === Number(message.swipe_id ?? 0)) {
+                const currentMarker = document.createElement('span');
+                currentMarker.className = 'swipe_picker_current';
+                currentMarker.textContent = t`[Current]`;
+                swipeTitle.append(' ', currentMarker);
+            }
             template.find('.chat_messages_date').text(sendDate);
             template.find('.chat_file_size').text(swipeDetails.length ? `(${swipeDetails[0]}${swipeDetails.length > 1 ? ',' : ')'}` : '');
             template.find('.chat_messages_num').text(swipeDetails.length > 1 ? `${swipeDetails.slice(1).join(', ')})` : '');
             template.find('.select_chat_block_mes').text(previewText ? swipeText : t`(empty swipe)`);
 
-            block.on('click', () => setSelectedSwipe(index));
+            // SillyBunny: keyboard activation must use the same selection and commit path as a row double click.
+            block.attr({ role: 'button', tabindex: '0' });
+            block.on('click', async (event) => {
+                if (event.target instanceof Element && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle')) return;
+                setSelectedSwipe(index);
+                if (canJumpToSwipe) await popup.completeAffirmative();
+            });
+            block.on('keydown', async (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                if (event.target instanceof Element && event.target !== block[0] && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle')) return;
+                event.preventDefault();
+                setSelectedSwipe(index);
+                if (canJumpToSwipe) await popup.completeAffirmative();
+            });
             block.on('dblclick', async () => {
                 if (!canJumpToSwipe) {
                     return;
@@ -292,9 +340,13 @@ async function openSwipePicker(messageId) {
         }
     }
 
+    // SillyBunny: the shared Window owns the title, Close control, and overlay presentation.
     popup = new Popup(wrapper, POPUP_TYPE.CONFIRM, '', {
-        okButton: canJumpToSwipe ? t`Go` : false,
+        okButton: false,
         cancelButton: false,
+        customButtons: canJumpToSwipe ? [{ text: t`Go`, result: POPUP_RESULT.AFFIRMATIVE, appendAtEnd: true, classes: ['menu_button_primary'] }] : null,
+        tier: 'window',
+        title: t`Swipe Selection`,
         customInputs: [{
             id: swipeIdInputId,
             label: t`Swipe ID`,
@@ -306,6 +358,11 @@ async function openSwipePicker(messageId) {
         wider: true,
         allowVerticalScrolling: true,
         onOpen: function () {
+            const footer = popup.buttonControls.querySelector('.sb-dialog__bottom-bar');
+            if (footer instanceof HTMLElement) {
+                footer.classList.add('swipe_picker_footer');
+                if (swipeIdLabel instanceof HTMLLabelElement) footer.prepend(swipeIdLabel);
+            }
             scrollToSelectedSwipe();
             if (swipeIdInput instanceof HTMLInputElement) {
                 swipeIdInput.focus({ preventScroll: true });
@@ -335,22 +392,12 @@ async function openSwipePicker(messageId) {
     });
 
     popup.dlg.classList.add('swipe_picker_popup');
-    popup.closeButton.style.display = 'block';
-    popup.closeButton.classList.add('opacity50p', 'hoverglow', 'fontsize120p');
-    popup.closeButton.style.position = 'static';
-    popup.closeButton.style.top = 'auto';
-    popup.closeButton.style.right = 'auto';
-    popup.closeButton.style.width = 'auto';
-    popup.closeButton.style.height = 'auto';
-    popup.closeButton.style.filter = 'none';
-    header.appendChild(popup.closeButton);
 
     swipeIdInput = popup.dlg.querySelector(`#${swipeIdInputId}`);
     const swipeIdLabel = popup.dlg.querySelector(`label[for="${swipeIdInputId}"]`);
 
     if (swipeIdLabel instanceof HTMLLabelElement) {
-        swipeIdLabel.classList.add('flex-container', 'alignItemsCenter', 'justifyCenter', 'gap10px', 'margin0');
-        popup.buttonControls.insertBefore(swipeIdLabel, canJumpToSwipe ? popup.okButton : popup.buttonControls.firstChild);
+        swipeIdLabel.classList.add('flex-container', 'alignItemsCenter', 'justifyCenter', 'gap10px', 'margin0', 'swipe_picker_id_row');
         popup.inputControls.style.display = 'none';
     }
 
