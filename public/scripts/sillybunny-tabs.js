@@ -5779,6 +5779,10 @@ function buildMobileChatTools() {
         syncConnectionProfileSelection(connectionSelect.value);
     });
 
+    // SillyBunny: keep the detached dialog content out of the page until its modal host owns it.
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    if ('inert' in overlay) overlay.inert = true;
     document.body.appendChild(overlay);
 
     getChatbarState().mobileTools = {
@@ -5810,6 +5814,9 @@ function setMobileChatToolsOpenState(shouldOpen, { restoreFocus = false } = {}) 
     const wasOpen = getChatbarState().mobileToolsOpen;
     getChatbarState().mobileToolsOpen = isOpen;
     if (isOpen && !wasOpen) {
+        refs.content.hidden = false;
+        refs.content.setAttribute('aria-hidden', 'false');
+        if ('inert' in refs.content) refs.content.inert = false;
         const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         refs.restoreFocusAfterClose = false;
         const dialog = openDialog({
@@ -5838,6 +5845,11 @@ function setMobileChatToolsOpenState(shouldOpen, { restoreFocus = false } = {}) 
             refs.restoreFocusAfterClose = false;
             refs.dialog = null;
             refs.overlay = null;
+            sourceHeader.append(closeButton);
+            refs.content.prepend(sourceHeader);
+            refs.content.hidden = true;
+            refs.content.setAttribute('aria-hidden', 'true');
+            if ('inert' in refs.content) refs.content.inert = true;
             getChatbarState().mobileToolsOpen = false;
             queueMobileModalStateSync();
             if (shouldRestoreFocus && returnFocus?.isConnected) {
