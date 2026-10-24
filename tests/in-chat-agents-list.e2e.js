@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
-import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -15,7 +15,7 @@ const READS = new Set([
 
 async function openAgents(page, baseURL, width = 1440) {
     const origin = new URL(baseURL).origin;
-    if (!['4455', '4457'].includes(new URL(baseURL).port)) throw new Error('Agents QA requires an isolated test instance');
+    assertIsolatedServer(baseURL, 'Agents');
     const writes = [];
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));

@@ -18,6 +18,16 @@ export async function showToasts(page) {
     await page.evaluate(() => document.documentElement.setAttribute('data-qa-show-toasts', ''));
 }
 
+/**
+ * Stops a spec whose fixtures can change saved data before it reaches the maintainer's local server.
+ * CI also serves on port 4444, but on a throwaway checkout, so it may run these specs.
+ */
+export function assertIsolatedServer(baseURL, area) {
+    if (new URL(baseURL).port === '4444' && !process.env.CI) {
+        throw new Error(`${area} QA must not run against port 4444 outside CI; start an isolated test server on another port.`);
+    }
+}
+
 /** Installs browser-QA safety defaults; a test may override a route with its in-memory fixture. */
 export async function protectMaintainerServer(page) {
     const titlePath = test.info().titlePath;
