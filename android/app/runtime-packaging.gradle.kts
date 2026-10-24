@@ -14,8 +14,8 @@
 //   the pinned Node source tarball, for the notices (android/runtime/build-sources.sh downloads, authenticates
 //   and keeps it there).
 //
-// Order (p45b): fetch-termux.sh, fetch-node.py, build-npm.py and build-sources.sh stage the inputs; then Gradle
-// generates the notices and builds. THIRD_PARTY_NOTICES and THIRD_PARTY_NOTICES.json are generated, never staged:
+// Order: fetch-termux.sh, fetch-node.py, build-npm.py and build-sources.sh stage the inputs (the release recipe runs
+// build-sources.sh before build-npm.py --offline); then Gradle generates the notices and builds. THIRD_PARTY_NOTICES and THIRD_PARTY_NOTICES.json are generated, never staged:
 // generate<Variant>SillyBunnyNotices runs android/runtime/notices.py over the Termux license files, the Node
 // tarball (LICENSE and deps/npm), the committed android/runtime/licenses/npm texts and the Android library list
 // that notices.gradle.kts generates, so fetch-termux.sh replacing out/ cannot drop them.

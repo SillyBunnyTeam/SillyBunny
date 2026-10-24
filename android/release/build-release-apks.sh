@@ -11,16 +11,21 @@
 # Exit 0 when built, 1 when a check or step fails, 2 on a usage error. A failure prints the placeholder line and
 # one JSON line {"code": ..., ...} on stderr.
 #
-# The steps, in one checkout and in track p45b's order:
-#   1. android/runtime/fetch-termux.sh
+# The steps, in one checkout:
+#   1. android/runtime/fetch-termux.sh --mirror-only
 #   2. android/runtime/fetch-node.py for the release ABIs, from the GHCR digests android/runtime.lock pins;
 #      never --local, because releases ship only the published Node builds
-#   3. android/runtime/build-npm.py
-#   4. android/runtime/build-sources.sh --require-node: the sources archive. It also leaves the pinned Node source
-#      tarball in android/runtime/cache/sources, where the Gradle notices task reads it
+#   3. android/runtime/build-sources.sh --mirror-only --require-node: the sources archive. It also leaves the pinned
+#      Node source files in android/runtime/cache/sources, where build-npm.py reads them and the Gradle notices task
+#      reads the tarball
+#   4. android/runtime/build-npm.py --offline
 #   5. check-staged-runtime.mjs: node.json and npm.json carry their source attribution and match runtime.lock
 #   6. Gradle :app:assembleRelease -PdefaultRef=<channel>, unsigned (the signing variables must be unset) and
 #      without -PincludeX86_64 (update-manifest.mjs refuses APKs whose runtime lists x86_64)
+# With --mirror-only, steps 1 and 3 read the pinned Termux debs and sources, the Node source files included, only
+# from the GHCR mirror that android/runtime.lock names, never from their origins, so every release build shows that
+# the mirror is complete. build-npm.py has no such mode, so it runs after step 3 and --offline keeps it to the files
+# that step 3 cached.
 # The host needs Linux, network access, python3 with pyelftools, patchelf, zstd, oras, Node.js, JDK 21 (JAVA_HOME,
 # or java on PATH) and the Android SDK packages android/app/build.gradle.kts names (ANDROID_HOME or
 # ANDROID_SDK_ROOT).
@@ -80,10 +85,10 @@ mkdir -p "$out"
 [ -z "$(ls -A "$out")" ] || fail output-not-empty dir "$out"
 out=$(CDPATH='' cd -- "$out" && pwd)
 
-run_step fetch-termux bash "$runtime/fetch-termux.sh"
+run_step fetch-termux bash "$runtime/fetch-termux.sh" --mirror-only
 run_step fetch-node python3 -I -B "$runtime/fetch-node.py" --abi arm64-v8a --abi armeabi-v7a
-run_step build-npm python3 -I -B "$runtime/build-npm.py"
-run_step build-sources bash "$runtime/build-sources.sh" --require-node --output "$out/SillyBunny-android-sources.tar.zst"
+run_step build-sources bash "$runtime/build-sources.sh" --mirror-only --require-node --output "$out/SillyBunny-android-sources.tar.zst"
+run_step build-npm python3 -I -B "$runtime/build-npm.py" --offline
 run_step check-staged-runtime node "$root/android/release/check-staged-runtime.mjs"
 run_step assemble-release bash -c 'cd "$1/android" && ./gradlew --no-daemon --console=plain "-PdefaultRef=$2" :app:assembleRelease' \
     gradle "$root" "$channel"

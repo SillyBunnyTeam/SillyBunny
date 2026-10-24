@@ -221,6 +221,15 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
         expect(step.run).toContain('>> "$GITHUB_STEP_SUMMARY"');
     });
 
+    test('decide checks the input mirror right after the decision, only for a build and without a token', () => {
+        expect(stepIndex(jobs.decide, 'Check the input mirror')).toBe(stepIndex(jobs.decide, 'Decide the Android APKs') + 1);
+        const step = stepNamed(jobs.decide, 'Check the input mirror');
+        expect(step.if).toBe('steps.android.outputs.action == \'build\'');
+        expect([step.env, jobs.decide.env, release.env]).toEqual([undefined, undefined, undefined]);
+        expect(step.run).toContain('if ! python3 -I -B android/runtime/runtime-mirror.py --check; then');
+        expect(step.run).toContain(`echo '${ERROR_ANNOTATION}'`);
+    });
+
     test('the build runs the one recipe script with only the channel and an output directory', () => {
         const build = jobs['android-build'];
         const runs = build.steps.map(step => step.run).filter(Boolean);
@@ -300,13 +309,14 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
 });
 
 describe('Android release scripts', () => {
-    test('the build recipe runs track p45b\'s order from the pinned digests, unsigned and without x86_64', () => {
+    test('the build recipe reads the pinned inputs only from the input mirror and the pinned digests, unsigned and without x86_64', () => {
         const recipe = readRepoFile('android/release/build-release-apks.sh');
+        // build-sources.sh caches the Node source files from the mirror before build-npm.py reads them offline.
         const order = [
-            'run_step fetch-termux bash "$runtime/fetch-termux.sh"',
+            'run_step fetch-termux bash "$runtime/fetch-termux.sh" --mirror-only\n',
             'run_step fetch-node python3 -I -B "$runtime/fetch-node.py" --abi arm64-v8a --abi armeabi-v7a',
-            'run_step build-npm python3 -I -B "$runtime/build-npm.py"',
-            'run_step build-sources bash "$runtime/build-sources.sh" --require-node --output "$out/SillyBunny-android-sources.tar.zst"',
+            'run_step build-sources bash "$runtime/build-sources.sh" --mirror-only --require-node --output "$out/SillyBunny-android-sources.tar.zst"',
+            'run_step build-npm python3 -I -B "$runtime/build-npm.py" --offline\n',
             'run_step check-staged-runtime node "$root/android/release/check-staged-runtime.mjs"',
             './gradlew --no-daemon --console=plain "-PdefaultRef=$2" :app:assembleRelease',
         ].map(line => recipe.indexOf(line));
@@ -314,6 +324,11 @@ describe('Android release scripts', () => {
         expect([...order].sort((a, b) => a - b)).toEqual(order);
         const commands = recipe.split('\n').filter(line => !line.trimStart().startsWith('#')).join('\n');
         expect(commands).not.toMatch(/--local|includeX86_64|-PrequireRuntime|sillybunny\.nodeDir/);
+    });
+
+    test('the smoke build keeps the origin fallback of the input mirror', () => {
+        // A pin refresh PR's smoke builds pins that only the merge to staging mirrors.
+        expect(readRepoFile('.github/workflows/android-smoke.yml')).not.toContain('--mirror-only');
     });
 
     test('the signing script zipaligns before signing, signs v2 and v3 only, and passes passwords by reference', () => {
@@ -772,6 +787,18 @@ describePosix('release.yml step scripts (POSIX)', () => {
         expect(run({ ...base, action: 'publish' }).code).toBe(1);
     });
 
+    test('decide fails with an error annotation when runtime-mirror.py --check finds no input mirror', () => {
+        const step = stepNamed(jobs.decide, 'Check the input mirror');
+        const dir = mkdtempSync(path.join(temp, 'mirror-check-'));
+        const bin = makeBin(dir, { python3: 'printf \'%s\\n\' "$*" > "$PYTHON_ARGS"\nexit "$CHECK_STATUS"\n' });
+        const run = status => runStep(step.run, { bin, env: { PYTHON_ARGS: path.join(dir, 'args'), CHECK_STATUS: String(status) } });
+        const present = run(0);
+        expect([present.code, present.stdout]).toEqual([0, '']);
+        expect(readFileSync(path.join(dir, 'args'), 'utf8')).toBe('-I -B android/runtime/runtime-mirror.py --check\n');
+        const missing = run(1);
+        expect([missing.code, missing.stdout]).toEqual([1, `${ERROR_ANNOTATION}\n`]);
+    });
+
     test('the draft job makes the decision again with decide\'s flags and stops if it changed', () => {
         const step = stepNamed(jobs['draft-release'], 'Check the Android decision again');
         const dir = mkdtempSync(path.join(temp, 'decide-again-'));
@@ -1003,10 +1030,10 @@ describePosix('the Android release scripts with fake tools (POSIX)', () => {
         const built = run(['release', out]);
         expect([built.status, built.stderr.includes('TODO(copy)')]).toEqual([0, false]);
         expect(built.log).toEqual([
-            'fetch-termux.sh ',
+            'fetch-termux.sh --mirror-only',
             'fetch-node.py --abi arm64-v8a --abi armeabi-v7a',
-            'build-npm.py ',
-            `build-sources.sh --require-node --output ${out}/SillyBunny-android-sources.tar.zst`,
+            `build-sources.sh --mirror-only --require-node --output ${out}/SillyBunny-android-sources.tar.zst`,
+            'build-npm.py --offline',
             `node ${root}/android/release/check-staged-runtime.mjs`,
             'gradlew --no-daemon --console=plain -PdefaultRef=release :app:assembleRelease',
         ]);

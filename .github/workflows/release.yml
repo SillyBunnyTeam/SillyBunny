@@ -118,6 +118,17 @@ jobs:
             printf 'TODO(copy)\n\n- android: `skip`\n- reason: `unpinned-runtime`\n' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # build-release-apks.sh reads the pinned Termux debs and sources only from the mirror, so a missing
+      # mirror fails here, before anything is built or drafted.
+      - name: Check the input mirror
+        if: steps.android.outputs.action == 'build'
+        run: |
+          set -euo pipefail
+          if ! python3 -I -B android/runtime/runtime-mirror.py --check; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+
   # The whole recipe is android/release/build-release-apks.sh, under android/ where inputsHash covers it; this
   # job passes only the channel and the output directory. No signing secrets reach it.
   android-build:
