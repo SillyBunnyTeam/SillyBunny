@@ -24,6 +24,24 @@ val appVersionName = appVersion.getProperty("versionName")?.takeIf { it.isNotBla
 val defaultRef = providers.gradleProperty("defaultRef").getOrElse("staging").also {
     require(it == "staging" || it == "release") { "defaultRef must be staging or release." }
 }
+
+/**
+ * Whether `git check-ref-format --branch` accepts [name] outside a repository, where `@{-N}` does not expand: the
+ * name does not start with "-" and is not "HEAD", and refs/heads/[name] passes the rules of git-check-ref-format(1).
+ */
+fun isGitBranchName(name: String): Boolean =
+    name.isNotEmpty() && !name.startsWith("-") && name != "HEAD" && !name.endsWith(".") &&
+        name.split('/').all { component ->
+            component.isNotEmpty() && !component.startsWith(".") && !component.endsWith(".lock") &&
+                ".." !in component && "@{" !in component &&
+                component.none { it.code < 0x20 || it.code == 0x7f || it in " ~^:?*[\\" }
+        }
+
+// Debug builds may default to any branch, for example a feature branch under test. Only the debug build type reads
+// this value, so a release build always keeps defaultRef.
+val debugDefaultRef = providers.gradleProperty("debugDefaultRef").orNull?.also {
+    require(isGitBranchName(it)) { "debugDefaultRef must be a valid git branch name." }
+}
 val officialRepoUrl = "https://github.com/SillyBunnyTeam/SillyBunny.git"
 val officialUpdateManifestUrl =
     "https://github.com/SillyBunnyTeam/SillyBunny/releases/latest/download/android-update.json"
@@ -122,6 +140,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "DEFAULT_REF", buildConfigString(debugDefaultRef ?: defaultRef))
             buildConfigField(
                 "String",
                 "REPO_URL",
@@ -209,27 +228,50 @@ kotlin {
 
 dependencies {
     implementation(platform(libs.compose.bom))
+    implementation(libs.activity)
     implementation(libs.activity.compose)
+    implementation(libs.androidx.annotation)
+    implementation(libs.core)
     implementation(libs.core.ktx)
+    implementation(libs.lifecycle.common)
+    implementation(libs.lifecycle.runtime)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.lifecycle.viewmodel)
     implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.viewmodel.savedstate)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.compose.foundation)
     implementation(libs.compose.foundation.layout)
     implementation(libs.compose.material3)
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.runtime.annotation)
+    implementation(libs.compose.runtime.saveable)
     implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.text)
+    implementation(libs.compose.ui.unit)
+    implementation(libs.compose.ui.util)
     implementation(libs.androidx.webkit)
     // Compose UI tests host composables in the library's debug-only ComponentActivity.
     debugImplementation(libs.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.robolectric.annotations)
+    testImplementation(libs.robolectric.shadowapi)
+    testImplementation(libs.robolectric.shadows.framework)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
     // Compose UI tests also run on Robolectric, so screens are testable without an emulator.
     testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test)
     testImplementation(libs.compose.ui.test.junit4)
 
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.monitor)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.test.ext.junit)
