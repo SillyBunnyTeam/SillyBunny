@@ -1,10 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The pixel art of public/img/icon-256x256.png: one square per cell of its 24 x 30 grid. 2 dp per cell is the
+     largest whole-dp scale at which every cell stays inside the 66 dp circle that no mask clips, and the offsets
+     center the bunny on that circle. The first path fills every cell in the light body color and the dark colors
+     come last, so that anti-aliased edges show neither the background nor a dark seam. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="@color/warm_signal"
-        android:pathData="M36,36h36v36h-36z" />
+    <group
+        android:scaleX="2"
+        android:scaleY="2"
+        android:translateX="31"
+        android:translateY="25">
+        <path
+            android:fillColor="#FFF2E2"
+            android:pathData="M0,19h1v-4h1v-2h1v-1h-1v-2h-1v-6h1v-2h1v-1h1v-1h3v1h1v1h1v2h1v4h3v-4h1v-2h1v-1h1v-1h3v1h1v1h1v2h1v6h-1v2h-1v1h1v2h1v4h2v1h-2v1h-1v1h3v1h-4v1h-1v1h-1v4h-1v1h-3v-1h-1v-1h-3v1h-1v1h-3v-1h-1v-4h-1v-1h-1v-1h-3v-1h2v-1h-1v-1h-1z" />
+        <path
+            android:fillColor="#F7B1B9"
+            android:pathData="M3,5h1v-1h1v-1h1v1h1v1h1v4h-2v1h-1v1h-1v-1h-1zM15,5h1v-1h1v-1h1v1h1v1h1v5h-1v1h-1v-1h-1v-1h-2z" />
+        <path
+            android:fillColor="#FFF9F2"
+            android:pathData="M7,23h1v-1h1v-1h2v4h-2v-1h-2zM8,18h1v-2h5v2h1v2h-2v-1h-1v-1h-1v1h-1v1h-2zM11,25h1v-4h2v1h1v1h1v1h-2v1h-2v1h-1z" />
+        <path
+            android:fillColor="#F6BEC6"
+            android:pathData="M3,20h1v-1h1v-1h2v1h1v1h-4v1h4v-1h1v2h-6zM5,23h2v1h-2zM14,20h1v-1h1v-1h2v1h1v1h-4v1h4v-1h1v2h-6zM16,23h2v1h-2z" />
+        <path
+            android:fillColor="#E8C8B4"
+            android:pathData="M2,20h1v2h-1zM3,23h2v1h1v1h-2v-1h-1zM4,18h1v1h-1zM17,24h1v-1h2v1h-1v1h-2zM18,18h1v1h-1zM20,20h1v2h-1z" />
+        <path
+            android:fillColor="#E8897B"
+            android:pathData="M9,20h1v-1h1v-1h1v1h1v1h1v1h-1v-1h-3v1h-1z" />
+        <path
+            android:fillColor="#FFF9F5"
+            android:pathData="M7,16h1v1h-1zM15,16h1v1h-1z" />
+        <path
+            android:fillColor="#6F5454"
+            android:pathData="M0,19h4v1h-4zM0,22h8v1h-8zM4,20h4v1h-4zM15,20h4v1h-4zM15,22h9v1h-9zM19,19h5v1h-5z" />
+        <path
+            android:fillColor="#2F2323"
+            android:pathData="M6,16h1v1h1v-1h1v2h-1v1h-1v-1h-1zM7,15h1v1h-1zM14,16h1v1h1v-1h1v2h-1v1h-1v-1h-1zM15,15h1v1h-1z" />
+        <path
+            android:fillColor="#4A3636"
+            android:pathData="M1,4h1v6h-1zM1,15h1v4h-1zM1,20h1v1h-1zM2,2h1v2h-1zM2,10h1v2h-1zM2,13h1v-1h1v1h-1v2h-1zM3,1h1v-1h3v1h1v1h-1v-1h-3v1h-1zM4,11h1v-1h1v1h-1v1h-1zM5,25h1v4h-1zM6,9h2v1h-2zM6,24h3v1h-3zM6,29h3v-4h2v1h-1v1h3v-1h-1v-1h2v-1h3v1h-3v4h-1v-1h-3v1h-1v1h-3zM8,2h1v2h-1zM8,8h1v-4h1v4h3v-4h1v-2h1v2h-1v4h1v1h-7zM10,20h3v1h-1v4h-1v-4h-1zM14,29h3v1h-3zM15,1h1v-1h3v1h-3v1h-1zM15,9h2v1h-2zM17,10h1v1h1v1h-1v-1h-1zM17,25h1v4h-1zM19,1h1v1h-1zM19,12h1v-2h1v-6h1v6h-1v2h-1v1h-1zM20,2h1v2h-1zM20,13h1v2h-1zM21,15h1v4h-1zM21,20h1v1h-1z" />
+    </group>
 </vector>

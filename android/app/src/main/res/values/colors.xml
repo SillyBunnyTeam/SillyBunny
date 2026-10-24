@@ -4,4 +4,7 @@
     <color name="linen_text">#CFCFC5</color>
     <color name="warm_signal">#C9C6A8</color>
     <color name="shadow_ink">#050607</color>
+    <!-- The bunny's muzzle color. On a dark background such as the web manifest's #202124, the bunny's dark outline
+         disappears. -->
+    <color name="ic_launcher_background">#FFF9F2</color>
 </resources>
