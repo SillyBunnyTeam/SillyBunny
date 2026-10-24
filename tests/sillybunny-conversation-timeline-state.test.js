@@ -8,6 +8,10 @@ const extractCharacterReplyCommands = jest.fn(rawText => ({ text: String(rawText
 const generateConversationRaw = jest.fn();
 const saveConversationThread = jest.fn();
 const commitCharacterReplyCommands = jest.fn();
+const buildConversationPromptMessages = jest.fn(async () => []);
+const buildConversationSystemPrompt = jest.fn(() => '');
+const worldInfo = { before: 'Lore before.', after: '', authorsNoteBefore: '', authorsNoteAfter: '', depth: [] };
+const getConversationWorldInfo = jest.fn(async () => worldInfo);
 
 function storeKey(personaId, avatar, groupId = '') {
     return [personaId, avatar, groupId].join('|');
@@ -75,8 +79,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partne
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles: () => [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({
-    buildConversationPromptMessages: async () => [],
-    buildConversationSystemPrompt: () => '',
+    buildConversationPromptMessages,
+    buildConversationSystemPrompt,
     renderConversationAttachments: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
@@ -125,6 +129,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
     updateLastPreviewFromConversation: jest.fn(),
     withTypingParticipant: (_participant, task) => task(),
 }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-info.js', () => ({ getConversationWorldInfo }));
 
 const stateModule = await import('../public/scripts/sillybunny-conversation/state.js');
 const {
@@ -175,6 +180,9 @@ describe('conversation timeline operation identity', () => {
         extractCharacterReplyCommands.mockReset().mockImplementation(rawText => ({ text: String(rawText || '').trim(), selfieRequests: [] }));
         saveConversationThread.mockClear();
         commitCharacterReplyCommands.mockClear();
+        buildConversationPromptMessages.mockClear();
+        buildConversationSystemPrompt.mockClear();
+        getConversationWorldInfo.mockClear();
         stateModule.regenerationBusyKeys.clear();
         stateModule.activeConversationGenerationOperations.clear();
         stateModule.activeConversationReplyOperations.clear();
@@ -222,7 +230,7 @@ describe('conversation timeline operation identity', () => {
         const firstRun = regenerateConversationMessage('message-1');
         const duplicateRun = regenerateConversationMessage('message-1');
         const secondRun = regenerateConversationMessage('message-2');
-        await Promise.resolve();
+        await new Promise(resolve => setTimeout(resolve, 0));
         expect(generateConversationRaw).toHaveBeenCalledTimes(2);
         expect(stateModule.conversationState.conversationReplyBusy).toBe(true);
 
@@ -304,6 +312,22 @@ describe('conversation timeline operation identity', () => {
         await regenerateConversationMessage('message-1');
 
         expect(message.extra.conversation_commands).toBeUndefined();
+    });
+
+    test('scans lorebooks for the regenerated speaker without the replaced message', async () => {
+        generateConversationRaw.mockResolvedValueOnce('replacement');
+        const messages = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages;
+
+        await regenerateConversationMessage('message-2');
+
+        expect(getConversationWorldInfo).toHaveBeenCalledWith([messages[0]], {}, {
+            avatar: 'char.png',
+            personaId: 'persona-a.png',
+            trigger: 'regenerate',
+        });
+        expect(buildConversationPromptMessages.mock.calls[0][3]).toEqual({ groupId: '', personaId: 'persona-a.png', worldInfo });
+        expect(buildConversationSystemPrompt.mock.calls[0][2]).toMatchObject({ personaId: 'persona-a.png', worldInfo });
+        expect(generateConversationRaw.mock.calls[0][0].responseLength).toBe(100);
     });
 
     test('changes the rendered thread identity when only the persona changes', () => {

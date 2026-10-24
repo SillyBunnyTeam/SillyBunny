@@ -3837,8 +3837,14 @@ async function resetBundledAgentsFromSettings() {
         cancelAgentGeneration();
         refreshGenerationUi();
     });
+    eventSource.on(event_types.GENERATION_STARTED, (_type, _params, isDryRun) => {
+        if (isDryRun) {
+            return;
+        }
+
+        refreshGenerationUi();
+    });
     for (const eventName of [
-        event_types.GENERATION_STARTED,
         event_types.GENERATION_ENDED,
         event_types.GENERATION_STOPPED,
     ]) {

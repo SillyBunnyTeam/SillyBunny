@@ -57,6 +57,7 @@ import {
     saveConversationThread,
 } from './thread-store.js';
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
+import { getConversationWorldInfo } from './world-info.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -1269,11 +1270,17 @@ export async function regenerateConversationMessage(messageId) {
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
+        const transcript = sourceMessages.slice(0, -1);
+        const worldInfo = await getConversationWorldInfo(transcript, settings, {
+            avatar: speakerAvatar,
+            personaId: context.personaId,
+            trigger: 'regenerate',
+        });
         const prompt = await buildConversationPromptMessages(
-            sourceMessages.slice(0, -1),
+            transcript,
             '[System directive: Regenerate the selected Conversation reply. Keep the same speaker, casual DM style, and current context. Output only the replacement message.]',
             speakerName,
-            { groupId: context.groupId, personaId: context.personaId },
+            { groupId: context.groupId, personaId: context.personaId, worldInfo },
         );
         const response = await withTypingParticipant(
             { avatar: speakerAvatar, name: speakerName },
@@ -1284,6 +1291,7 @@ export async function regenerateConversationMessage(messageId) {
                     branchId: context.branchId,
                     groupId: context.groupId,
                     personaId: context.personaId,
+                    worldInfo,
                 }),
                 responseLength: getConversationReplyMaxTokens(settings),
                 trimNames: true,
@@ -1811,6 +1819,13 @@ export function buildSettingsDrawerHtml() {
             </div>
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i><span>Context overrides</span></h4>
+                <div class="sb-conversation-field-stack">
+                    <label class="checkbox_label">
+                        <input id="sb_conv_lorebooks_enabled" type="checkbox" />
+                        <span>Use Character Lorebooks <span class="sb-conversation-setting-scope">Global</span></span>
+                    </label>
+                    <p class="sb-conversation-field-hint" data-sb-copy-placeholder="true">TODO(copy)</p>
+                </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_lorebook_override">Lorebook Override</label>
                     <select id="sb_conv_lorebook_override" class="text_pole textarea_compact wide100p">

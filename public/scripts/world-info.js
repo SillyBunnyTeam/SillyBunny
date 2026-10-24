@@ -206,6 +206,15 @@ let worldInfoListViewFilter = WORLD_INFO_LIST_VIEW_FILTERS.all;
  * @property {Set<any>} allActivatedEntries All entries.
  */
 
+// SillyBunny: Conversation mode scans the lore of a character who is not in the active chat.
+/**
+ * @typedef {object} WIScanTarget A character scanned away from the active chat.
+ * @property {number} characterId Index in `characters` of the character whose books and filters apply.
+ * @property {string} [chatWorld] Book scanned in place of the chat lorebook.
+ * @property {string} [personaWorld] Book scanned in place of the persona lorebook.
+ * @property {string} [userName] Value of {{user}} in entry keys and content.
+ */
+
 /**
  * @typedef {object} WIEntryFieldDefinition
  * @property {any} default - Default value for the field
@@ -265,14 +274,22 @@ class WorldInfoBuffer {
      */
     #startDepth = 0;
 
+    // SillyBunny: a scan target puts its own names into {{char}} and {{user}} keys.
+    /**
+     * @type {(value: string) => string} Macro substitution for entry keys
+     */
+    #substitute;
+
     /**
      * Initialize the buffer with the given messages.
      * @param {string[]} messages Array of messages to add to the buffer
      * @param {WIGlobalScanData} globalScanData Chat independent context to be scanned
+     * @param {(value: string) => string} [substitute] Macro substitution for entry keys
      */
-    constructor(messages, globalScanData) {
+    constructor(messages, globalScanData, substitute = substituteParams) {
         this.#initDepthBuffer(messages);
         this.#globalScanData = globalScanData;
+        this.#substitute = substitute;
     }
 
     /**
@@ -465,7 +482,7 @@ class WorldInfoBuffer {
 
         // Increment score for every key found in the buffer
         if (Array.isArray(entry.key)) {
-            const normalizedKeys = entry.key.map(key => normalizeWorldInfoKey(key, substituteParams)).filter(Boolean);
+            const normalizedKeys = entry.key.map(key => normalizeWorldInfoKey(key, this.#substitute)).filter(Boolean);
             numberOfPrimaryKeys = normalizedKeys.length;
             for (const key of normalizedKeys) {
                 if (this.matchKeys(bufferState, key, entry)) {
@@ -476,7 +493,7 @@ class WorldInfoBuffer {
 
         // Increment score for every secondary key found in the buffer
         if (Array.isArray(entry.keysecondary)) {
-            const normalizedKeys = entry.keysecondary.map(key => normalizeWorldInfoKey(key, substituteParams)).filter(Boolean);
+            const normalizedKeys = entry.keysecondary.map(key => normalizeWorldInfoKey(key, this.#substitute)).filter(Boolean);
             numberOfSecondaryKeys = normalizedKeys.length;
             for (const key of normalizedKeys) {
                 if (this.matchKeys(bufferState, key, entry)) {
@@ -5178,8 +5195,10 @@ export async function createNewWorldInfo(worldName, { interactive = false } = {}
     return true;
 }
 
-async function getCharacterLore() {
-    const character = characters[this_chid];
+// SillyBunny: a scan target reads its own character's books and skips only the books its own scan covers.
+async function getCharacterLore(scanTarget = null) {
+    const characterId = scanTarget ? scanTarget.characterId : this_chid;
+    const character = characters[characterId];
     const name = character?.name;
     /** @type {Set<string>} */
     let worldsToSearch = new Set();
@@ -5190,7 +5209,7 @@ async function getCharacterLore() {
     }
 
     // TODO: Maybe make the utility function not use the window context?
-    const fileName = getCharaFilename(this_chid);
+    const fileName = getCharaFilename(characterId);
     const extraCharLore = world_info.charLore?.find((e) => e.name === fileName);
     if (extraCharLore) {
         worldsToSearch = new Set([...worldsToSearch, ...extraCharLore.extraBooks]);
@@ -5207,12 +5226,12 @@ async function getCharacterLore() {
             continue;
         }
 
-        if (chat_metadata[METADATA_KEY] === worldName) {
+        if ((scanTarget ? scanTarget.chatWorld : chat_metadata[METADATA_KEY]) === worldName) {
             console.debug(`[WI] Character ${name}'s world ${worldName} is already activated in chat lore! Skipping...`);
             continue;
         }
 
-        if (power_user.persona_description_lorebook === worldName) {
+        if ((scanTarget ? scanTarget.personaWorld : power_user.persona_description_lorebook) === worldName) {
             console.debug(`[WI] Character ${name}'s world ${worldName} is already activated in persona lore! Skipping...`);
             continue;
         }
@@ -5263,8 +5282,9 @@ async function getGlobalLore() {
     return entries;
 }
 
-async function getChatLore() {
-    const chatWorld = chat_metadata[METADATA_KEY];
+// SillyBunny: a scan target names the book it scans in place of the chat lorebook.
+async function getChatLore(scanTarget = null) {
+    const chatWorld = scanTarget ? scanTarget.chatWorld : chat_metadata[METADATA_KEY];
 
     if (!chatWorld) {
         return [];
@@ -5283,9 +5303,10 @@ async function getChatLore() {
     return entries;
 }
 
-async function getPersonaLore() {
-    const chatWorld = chat_metadata[METADATA_KEY];
-    const personaWorld = power_user.persona_description_lorebook;
+// SillyBunny: a scan target names the book it scans in place of the persona lorebook.
+async function getPersonaLore(scanTarget = null) {
+    const chatWorld = scanTarget ? scanTarget.chatWorld : chat_metadata[METADATA_KEY];
+    const personaWorld = scanTarget ? scanTarget.personaWorld : power_user.persona_description_lorebook;
 
     if (!personaWorld) {
         return [];
@@ -5309,7 +5330,8 @@ async function getPersonaLore() {
     return entries;
 }
 
-export async function getSortedEntries() {
+// SillyBunny: listeners of WORLDINFO_ENTRIES_LOADED expect the active chat's lore, so a scan target does not notify them.
+export async function getSortedEntries(scanTarget = null) {
     try {
         const [
             globalLore,
@@ -5318,12 +5340,14 @@ export async function getSortedEntries() {
             personaLore,
         ] = await Promise.all([
             getGlobalLore(),
-            getCharacterLore(),
-            getChatLore(),
-            getPersonaLore(),
+            getCharacterLore(scanTarget),
+            getChatLore(scanTarget),
+            getPersonaLore(scanTarget),
         ]);
 
-        await eventSource.emit(event_types.WORLDINFO_ENTRIES_LOADED, { globalLore, characterLore, chatLore, personaLore });
+        if (!scanTarget) {
+            await eventSource.emit(event_types.WORLDINFO_ENTRIES_LOADED, { globalLore, characterLore, chatLore, personaLore });
+        }
 
         let entries;
 
@@ -5432,12 +5456,18 @@ function parseDecorators(content) {
  * @param {number} maxContext The maximum context size of the generation.
  * @param {boolean} isDryRun Whether to perform a dry run.
  * @param {WIGlobalScanData} globalScanData Chat independent context to be scanned
+ * @param {WIScanTarget|null} [scanTarget=null] Character scanned in place of the active one. The scan then leaves the active chat's prompts, timed effects, forced activations and listeners alone.
  * @returns {Promise<WIActivated>} The world info activated.
  */
 //MARK: checkWorldInfo
-export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData = defaultGlobalScanData) {
+export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData = defaultGlobalScanData, scanTarget = null) {
     const context = getContext();
-    const buffer = new WorldInfoBuffer(chat, globalScanData);
+    // SillyBunny: a scan target puts its own names into {{char}} and {{user}}.
+    const targetName = scanTarget ? characters[scanTarget.characterId]?.name : undefined;
+    const substitute = scanTarget
+        ? value => substituteParams(value, { name1Override: scanTarget.userName, name2Override: targetName })
+        : substituteParams;
+    const buffer = new WorldInfoBuffer(chat, globalScanData, substitute);
 
     console.debug(`[WI] --- START WI SCAN (on ${chat.length} messages, trigger = ${globalScanData.trigger})${isDryRun ? ' (DRY RUN)' : ''} ---`);
 
@@ -5445,7 +5475,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
     // Add the depth or AN if enabled
     // Put this code here since otherwise, the chat reference is modified
-    for (const key of Object.keys(context.extensionPrompts)) {
+    // SillyBunny: prompts injected into the active chat do not belong to a scan target.
+    for (const key of scanTarget ? [] : Object.keys(context.extensionPrompts)) {
         if (context.extensionPrompts[key]?.scan) {
             const prompt = await getExtensionPromptByName(key);
             if (prompt) {
@@ -5470,8 +5501,9 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     }
 
     console.debug(`[WI] Context size: ${maxContext}; WI budget: ${budget} (max% = ${world_info_budget}%, cap = ${world_info_budget_cap})`);
-    const sortedEntries = await getSortedEntries();
-    const timedEffects = new WorldInfoTimedEffects(chat, sortedEntries, isDryRun);
+    const sortedEntries = await getSortedEntries(scanTarget);
+    // SillyBunny: sticky and cooldown state is stored in the active chat, so a scan target only applies delays.
+    const timedEffects = new WorldInfoTimedEffects(chat, sortedEntries, isDryRun || Boolean(scanTarget));
 
     timedEffects.checkTimedEffects();
 
@@ -5542,8 +5574,9 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             }
 
             // Check if this entry applies to the character or if it's excluded
+            // SillyBunny: a scan target's character filters apply to its own character.
             if (entry.characterFilter && entry.characterFilter?.names?.length > 0) {
-                const nameIncluded = entry.characterFilter.names.includes(getCharaFilename());
+                const nameIncluded = entry.characterFilter.names.includes(scanTarget ? getCharaFilename(scanTarget.characterId) : getCharaFilename());
                 const filtered = entry.characterFilter.isExclude ? nameIncluded : !nameIncluded;
 
                 if (filtered) {
@@ -5553,7 +5586,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             }
 
             if (entry.characterFilter && entry.characterFilter?.tags?.length > 0) {
-                const tagKey = getTagKeyForEntity(this_chid);
+                const tagKey = getTagKeyForEntity(scanTarget ? scanTarget.characterId : this_chid);
 
                 if (tagKey) {
                     const tagMapEntry = context.tagMap[tagKey];
@@ -5612,7 +5645,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 continue;
             }
 
-            if (buffer.getExternallyActivated(entry)) {
+            // SillyBunny: forced activations are meant for the active chat's next generation.
+            if (!scanTarget && buffer.getExternallyActivated(entry)) {
                 log('externally activated');
                 activatedNow.add(buffer.getExternallyActivated(entry));
                 continue;
@@ -5641,7 +5675,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
             // PRIMARY KEYWORDS
             let primaryKeyMatch = entry.key.find(key => {
-                const normalizedKey = normalizeWorldInfoKey(key, substituteParams);
+                const normalizedKey = normalizeWorldInfoKey(key, substitute);
                 return normalizedKey && buffer.matchKeys(textToScan, normalizedKey, entry);
             });
 
@@ -5651,7 +5685,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             }
 
             const normalizedSecondaryKeys = Array.isArray(entry.keysecondary)
-                ? entry.keysecondary.map(key => normalizeWorldInfoKey(key, substituteParams)).filter(Boolean)
+                ? entry.keysecondary.map(key => normalizeWorldInfoKey(key, substitute)).filter(Boolean)
                 : [];
             const hasSecondaryKeywords = entry.selective && normalizedSecondaryKeys.length;
 
@@ -5770,7 +5804,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             }
 
             // Substitute macros inline, for both this checking and also future processing
-            entry.content = substituteParams(entry.content);
+            entry.content = substitute(entry.content);
             const nextContent = `${acceptedContent}${entry.content}\n`;
 
             if (!entry.ignoreBudget && (textToScanTokens + (await getTokenCountAsync(nextContent))) >= budget) {
@@ -5890,7 +5924,10 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             },
             timedEffects,
         };
-        await eventSource.emit(event_types.WORLDINFO_SCAN_DONE, args);
+        // SillyBunny: listeners of WORLDINFO_SCAN_DONE expect the active chat's scan.
+        if (!scanTarget) {
+            await eventSource.emit(event_types.WORLDINFO_SCAN_DONE, args);
+        }
 
         // Some fields are allowed to be changed by listeners, those will be handled here manually. They can be updated via changed the args from the listeners.
         // Any array provided directly can be modified by updating it's elements, adding or removing elements. This has to be done consistently.
@@ -5920,7 +5957,8 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     // TODO (kingbri): Change to use WI Anchor positioning instead of separate top/bottom arrays
     [...allActivatedEntries.values()].sort(sortFn).forEach((entry) => {
         const regexDepth = entry.position === world_info_position.atDepth ? (entry.depth ?? DEFAULT_DEPTH) : null;
-        const content = getRegexedString(entry.content, regex_placement.WORLD_INFO, { depth: regexDepth, isMarkdown: false, isPrompt: true });
+        // SillyBunny: regex scripts put a scan target's name into {{char}}.
+        const content = getRegexedString(entry.content, regex_placement.WORLD_INFO, { characterOverride: targetName, depth: regexDepth, isMarkdown: false, isPrompt: true });
 
         if (!content) {
             console.debug(`[WI] Entry ${entry.uid}`, 'skipped adding to prompt due to empty content', entry);
@@ -5984,14 +6022,18 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     const worldInfoBefore = WIBeforeEntries.length ? WIBeforeEntries.join('\n') : '';
     const worldInfoAfter = WIAfterEntries.length ? WIAfterEntries.join('\n') : '';
 
-    if (shouldWIAddPrompt) {
+    // SillyBunny: the Author's Note prompt belongs to the active chat.
+    if (shouldWIAddPrompt && !scanTarget) {
         const originalAN = context.extensionPrompts[NOTE_MODULE_NAME].value;
         const ANWithWI = `${ANTopEntries.join('\n')}\n${originalAN}\n${ANBottomEntries.join('\n')}`.replace(/(^\n)|(\n$)/g, '');
         context.setExtensionPrompt(NOTE_MODULE_NAME, ANWithWI, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());
     }
 
     timedEffects.setTimedEffects(Array.from(allActivatedEntries.values()));
-    buffer.resetExternalEffects();
+    // SillyBunny: forced activations stay queued for the active chat's own scan.
+    if (!scanTarget) {
+        buffer.resetExternalEffects();
+    }
     timedEffects.cleanUp();
 
     console.log(`[WI] ${isDryRun ? 'Hypothetically adding' : 'Adding'} ${allActivatedEntries.size} entries to prompt`, Array.from(allActivatedEntries.values()));

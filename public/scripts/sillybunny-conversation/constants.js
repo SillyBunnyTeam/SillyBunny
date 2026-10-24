@@ -256,6 +256,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     auto_chat_cooldown: DEFAULT_AUTO_CHAT_COOLDOWN,
     auto_chat_names: '',
     roleplay_reactions: false,
+    lorebooks_enabled: true,
     lorebook_override: '',
     connection_profile: '',
     authors_note: '',
@@ -304,6 +305,7 @@ export const SETTINGS_FIELDS = Object.freeze([
     { id: 'sb_conv_auto_chat_cooldown', key: 'auto_chat_cooldown', prop: 'value', type: 'number', fallback: DEFAULT_AUTO_CHAT_COOLDOWN, min: 1 },
     { id: 'sb_conv_auto_chat_names', key: 'auto_chat_names', prop: 'value' },
     { id: 'sb_conv_roleplay_reactions', key: 'roleplay_reactions', prop: 'checked' },
+    { id: 'sb_conv_lorebooks_enabled', key: 'lorebooks_enabled', prop: 'checked' },
     { id: 'sb_conv_lorebook_override', key: 'lorebook_override', prop: 'value' },
     { id: 'sb_conv_connection_profile', key: 'connection_profile', prop: 'value' },
     { id: 'sb_conv_authors_note', key: 'authors_note', prop: 'value' },
@@ -342,6 +344,7 @@ export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([
     'grounded_dialogue_rules_enabled',
     'grounded_dialogue_rules',
     'connection_profile',
+    'lorebooks_enabled',
 ]);
 export const GLOBAL_CONVERSATION_SETTINGS_KEY_SET = new Set(GLOBAL_CONVERSATION_SETTINGS_KEYS);
 export const THREAD_CONVERSATION_SETTINGS_KEYS = Object.freeze(
