@@ -342,6 +342,62 @@ async function expectEditorBackRestoration(page, view) {
     await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState())).toEqual(origin);
 }
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`empty Characters and Groups use a centred status page at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await setSearch(page, 'no matching entity');
+        await expect(list(page).locator('.sb-character-list__box')).toBeHidden();
+        await expect(list(page).locator('.sb-status-page__title')).toHaveText('No results');
+        await expect(list(page).locator('.sb-status-page__description')).toHaveCount(0);
+
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const groups = await import('/scripts/group-chats.js');
+            app.entitiesFilter.setFilterData('search', '', true);
+            document.getElementById('character_search_bar').value = '';
+            app.characters.splice(0, app.characters.length);
+            groups.groups.splice(0, groups.groups.length);
+            await app.printCharacters(false);
+        });
+        const status = list(page).locator('.sb-character-list__status');
+        await expect(status).toBeVisible();
+        await expect(list(page).locator('.empty_block')).toHaveCount(0);
+        await expect(status.locator('.sb-status-page__description')).toHaveText('There are no items to display.');
+        await expect(status.locator('.sb-status-page__title')).not.toHaveText('');
+        await expect(status.locator('.sb-status-page')).toHaveCSS('align-items', 'center');
+        await expect(status.locator('.sb-status-page')).toHaveCSS('justify-content', 'center');
+        const typography = await status.locator('.sb-status-page').evaluate(element => {
+            const title = getComputedStyle(element.querySelector('.sb-status-page__title'));
+            const description = getComputedStyle(element.querySelector('.sb-status-page__description'));
+            return { titleSize: parseFloat(title.fontSize), descriptionSize: parseFloat(description.fontSize), titleWeight: Number(title.fontWeight) };
+        });
+        expect(typography.titleSize).toBeGreaterThan(typography.descriptionSize * 1.25);
+        expect(typography.titleWeight).toBeGreaterThanOrEqual(700);
+        await page.evaluate(() => {
+            window.__sbEmptyStatusCreateClicked = false;
+            document.getElementById('rm_button_create').addEventListener('click', () => {
+                window.__sbEmptyStatusCreateClicked = true;
+            }, { once: true });
+        });
+        await status.locator('.sb-status-page__action').click();
+        expect(await page.evaluate(() => window.__sbEmptyStatusCreateClicked)).toBe(true);
+
+        await showView(page, 'groups');
+        const groupStatus = list(page).locator('.sb-character-list__status');
+        await expect(groupStatus).toBeVisible();
+        await expect(list(page).locator('.sb-character-list__box')).toBeHidden();
+        await expect(list(page).locator('.empty_block')).toHaveCount(0);
+        await expect(groupStatus.locator('.sb-status-page__description')).toHaveText('There are no items to display.');
+        const groupTypography = await groupStatus.locator('.sb-status-page').evaluate(element => {
+            const title = getComputedStyle(element.querySelector('.sb-status-page__title'));
+            const description = getComputedStyle(element.querySelector('.sb-status-page__description'));
+            return { titleSize: parseFloat(title.fontSize), descriptionSize: parseFloat(description.fontSize), titleWeight: Number(title.fontWeight) };
+        });
+        expect(groupTypography.titleSize).toBeGreaterThan(groupTypography.descriptionSize * 1.25);
+        expect(groupTypography.titleWeight).toBeGreaterThanOrEqual(700);
+    });
+}
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 375, height: 812 }]) {
     test(`editor avatar and tag removal are native keyboard controls at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);

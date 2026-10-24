@@ -13,7 +13,7 @@ describe('createStatusPage', () => {
         expect(element.querySelector('i').classList.contains('fa-book')).toBe(true);
         expect(element.querySelector('i').classList.contains('sb-status-page__icon')).toBe(true);
         expect(element.querySelector('i').getAttribute('aria-hidden')).toBe('true');
-        expect(element.querySelector('h3').className).toBe('sb-status-page__title');
+        expect(element.querySelector('h3').className).toBe('sb-status-page__title title-1');
         expect(element.querySelector('h3').textContent).toBe('Empty library');
         expect(element.querySelector('p').className).toBe('sb-status-page__description');
         expect(element.querySelector('p').textContent).toBe('Choose a book.');
@@ -23,6 +23,7 @@ describe('createStatusPage', () => {
     test('supports compact mode and omits an absent description', () => {
         const { element } = createStatusPage({ icon: 'book', title: 'Library', compact: true });
         expect(element.classList.contains('sb-status-page--compact')).toBe(true);
+        expect(element.querySelector('h3').classList.contains('title-2')).toBe(true);
         expect(element.querySelector('p')).toBeNull();
     });
 

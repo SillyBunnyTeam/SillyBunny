@@ -1009,9 +1009,12 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (!model.sourceCount && !hasVisibleFolder) {
             const template = await dataModules.script.getEmptyBlock?.();
             const legacy = template?.[0] ?? template;
+            const legacyTitle = legacy?.querySelector?.('h1')?.textContent?.trim()
+                || legacy?.find?.('h1')?.text?.()?.trim();
             const empty = createStatusPage({
                 icon: 'address-card',
-                title: legacy?.textContent?.trim() || t`No results`,
+                title: legacyTitle || t`No results`,
+                description: t`There are no items to display.`,
                 actions: [{ label: t`New`, primary: true, onActivate: () => {
                     globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.(state.view);
                     clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create');
@@ -1022,7 +1025,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             const empty = createStatusPage({ icon: 'magnifying-glass', title: t`No results`, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
-        if (revision === renderRevision) status.replaceChildren(...(content ? [content] : []));
+        if (revision !== renderRevision) return;
+        const isEmpty = Boolean(content);
+        box.hidden = isEmpty;
+        status.hidden = !isEmpty;
+        status.replaceChildren(...(content ? [content] : []));
     }
 
     async function render(model) {

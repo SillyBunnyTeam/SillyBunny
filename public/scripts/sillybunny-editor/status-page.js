@@ -15,7 +15,7 @@ export function createStatusPage({ icon, title, description, actions = [], compa
     const glyph = document.createElement('i');
     glyph.setAttribute('aria-hidden', 'true');
     const heading = document.createElement('h3');
-    heading.className = 'sb-status-page__title';
+    heading.className = `sb-status-page__title ${compact ? 'title-2' : 'title-1'}`;
     const detail = document.createElement('p');
     detail.className = 'sb-status-page__description';
     element.append(glyph, heading);

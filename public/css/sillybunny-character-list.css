@@ -325,8 +325,11 @@
 }
 
 .sb-character-list__status {
-    flex: 0 0 auto;
-    margin: 8px;
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
 }
 
 .sb-character-list__status:empty {

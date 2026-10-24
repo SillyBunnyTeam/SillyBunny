@@ -79,7 +79,7 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
     entitiesFilter: { setFilterData, clearFuzzySearchCaches: jest.fn() },
     getBackBlock: () => template('<span class="ch_name">Go back</span>'),
     getHiddenBlock: async count => template(`<p>${count} hidden</p>`),
-    getEmptyBlock: async () => template('<p>No characters found</p>'),
+    getEmptyBlock: async () => template('<div><h1>No characters found</h1><p>There are no items to display.</p></div>'),
     toggleCharacterFavoriteById, duplicateCharacter, deleteCharacterById,
     characterGroupOverlay, characters: characterLibrary, selectCharacterById,
     setActiveCharacter, setActiveGroup, saveSettingsDebounced,
@@ -672,10 +672,20 @@ describe('shared Characters/Groups list', () => {
         model.entities = [];
         model.sourceCount = 0;
         await mount();
-        expect(document.querySelector('.sb-character-list__status').textContent).toContain('No characters found');
+        const status = document.querySelector('.sb-character-list__status');
+        expect(status.querySelector('.sb-status-page__title').textContent).toBe('No characters found');
+        expect(status.querySelector('.sb-status-page__description').textContent).toBe('There are no items to display.');
+        expect(status.querySelector('.sb-status-page__title').nextElementSibling).toBe(status.querySelector('.sb-status-page__description'));
+        expect(document.querySelector('.sb-character-list__box').hidden).toBe(true);
+        const create = jest.fn();
+        document.getElementById('rm_button_create').addEventListener('click', create);
+        status.querySelector('.sb-status-page__action').click();
+        expect(create).toHaveBeenCalledTimes(1);
         model.sourceCount = 3;
         await mounted.render(model);
-        expect(document.querySelector('.sb-character-list__status').textContent).toContain('No results');
+        expect(status.querySelector('.sb-status-page__title').textContent).toBe('No results');
+        expect(status.querySelector('.sb-status-page__description')).toBeNull();
+        expect(document.querySelector('.sb-character-list__box').hidden).toBe(true);
     });
 
     test('failed first render restores engines and can be retried', async () => {

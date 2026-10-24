@@ -334,10 +334,12 @@ body.reduced-motion .sb-list-editor__divider::before {
 
 .sb-status-page {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    width: 100%;
+    gap: 0;
     min-width: 0;
     padding: 64px 24px;
     color: var(--sb-shell-text);
@@ -347,27 +349,35 @@ body.reduced-motion .sb-list-editor__divider::before {
 
 .sb-status-page__icon {
     color: var(--sb-muted-fg);
-    font-size: 64px;
+    font-size: 128px;
     line-height: 1.1;
-    opacity: 0.65;
+    opacity: 0.5;
+    margin-block-end: 24px;
 }
 
 .sb-status-page__title {
     max-width: 36ch;
-    margin: 0;
-    font-size: 1.2em;
-    font-weight: 700;
-    line-height: 1.3;
+    margin: 0 0 12px;
+    font-size: var(--sb-type-display) !important;
+    font-weight: 800 !important;
+    line-height: 1.12 !important;
     overflow-wrap: anywhere;
     text-wrap: balance;
 }
 
+.sb-status-page h3.sb-status-page__title {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+}
+
 .sb-status-page__description {
     max-width: 36ch;
-    margin: 0;
+    margin: 0 0 24px;
     color: var(--sb-muted-fg);
-    font-size: var(--sb-type-control);
-    line-height: 1.5;
+    font-size: var(--sb-type-body);
+    line-height: 1.55;
     overflow-wrap: anywhere;
 }
 
@@ -378,7 +388,11 @@ body.reduced-motion .sb-list-editor__divider::before {
     justify-content: center;
     gap: 12px;
     max-width: 100%;
-    margin-block-start: 8px;
+    margin: 0;
+}
+
+.sb-status-page__title + .sb-status-page__actions {
+    margin-block-start: 12px;
 }
 
 .sb-status-page__action {
@@ -391,6 +405,10 @@ body.reduced-motion .sb-list-editor__divider::before {
     overflow: hidden;
     text-overflow: ellipsis;
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-status-page__action.is-suggested {
+    border-radius: var(--sb-radius-pill, 999px);
 }
 
 .sb-status-page .sb-status-page__action.is-suggested:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
@@ -409,12 +427,17 @@ body.reduced-motion .sb-list-editor__divider::before {
 }
 
 .sb-status-page--compact {
-    gap: 12px;
+    gap: 0;
     padding-block: 32px;
 }
 
 .sb-status-page--compact .sb-status-page__icon {
-    font-size: 32px;
+    font-size: 96px;
+}
+
+.sb-status-page--compact .sb-status-page__title {
+    font-size: var(--sb-type-headline) !important;
+    line-height: 1.18 !important;
 }
 
 @media (pointer: coarse) {
