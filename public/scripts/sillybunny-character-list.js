@@ -1015,6 +1015,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 icon: 'address-card',
                 title: legacyTitle || t`No results`,
                 description: t`There are no items to display.`,
+                compact: true,
                 actions: [{ label: t`New`, primary: true, onActivate: () => {
                     globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.(state.view);
                     clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create');
@@ -1022,7 +1023,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             });
             content = empty.element;
         } else if (!model.entities.length && !hasVisibleFolder) {
-            const empty = createStatusPage({ icon: 'magnifying-glass', title: t`No results`, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
+            const empty = createStatusPage({ icon: 'magnifying-glass', title: t`No results`, compact: true, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
         if (revision !== renderRevision) return;

@@ -109,6 +109,7 @@ label[for="extensions_notify_updates"] input[type="checkbox"] {
     font-weight: normal;
 }
 
+/* SillyBunny: preserve enough title space while extension controls stay in the row suffix. */
 .extensions_info .extension_block {
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 76%, transparent);
     border-radius: 18px;
@@ -246,9 +247,11 @@ input.extension_missing[type="checkbox"] {
     overflow-wrap: anywhere;
 }
 
+/* SillyBunny: keep extension action controls trailing and collapse crowded rows through the adapter menu. */
 .extensions_info .extension_actions {
     display: flex;
-    flex-wrap: wrap;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
     gap: 8px;
     align-items: center;
     align-self: center;
@@ -335,18 +338,99 @@ input.extension_missing[type="checkbox"] {
     }
 
     .extensions_info .extension_actions {
-        width: 100%;
+        width: auto;
         justify-content: flex-end;
     }
 }
 
 @media screen and (max-width: 600px) {
     .extensions_info .extension_text_block {
-        white-space: normal;
-        overflow: visible;
-        text-overflow: clip;
-        overflow-wrap: anywhere;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        overflow-wrap: normal;
     }
+
+}
+
+.extensions_info .extension_block {
+    align-items: center;
+    min-width: 0;
+}
+
+.extensions_info .extension_text_block {
+    display: contents;
+}
+
+/* SillyBunny: titles yield width to the permanent trailing action and switch controls. */
+.extensions_info .extension_text_block > :not(.extension_actions) {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.extensions_info .extension_actions > button.menu_button {
+    display: inline-flex;
+    flex: 0 0 40px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--sb-shell-text);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.extensions_info .extension_actions > button.menu_button.sb-extension-actions-menu {
+    display: none;
+}
+
+@media (hover: hover) {
+    .extensions_info .extension_actions > button.menu_button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.extensions_info .extension_actions > button.menu_button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.extensions_info .extension_actions > button.menu_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    .extensions_info .extension_actions > button.menu_button {
+        flex-basis: 44px;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+}
+
+/* SillyBunny: the row adapter retains upstream action buttons as hidden click transports in the overflow state. */
+.extensions_info .extension_block.sb-extension-actions-collapsed .extension_actions > button.menu_button:not(.sb-extension-actions-menu) {
+    display: none;
+}
+
+.extensions_info .extension_block.sb-extension-actions-collapsed .extension_actions > button.menu_button.sb-extension-actions-menu {
+    display: inline-flex;
+}
+
+.extensions_info .extension_block.sb-extension-actions-collapsed .extension_text_block > :not(.extension_actions) {
+    flex: 1 1 40%;
+    min-width: 40%;
 }
 
 @media (prefers-reduced-motion: reduce) {

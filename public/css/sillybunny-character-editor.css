@@ -120,9 +120,7 @@
     min-height: 52px;
 }
 
-/* Shared flat icon-button base for the header and toolbar.
-   DESIGN.md: flat buttons are transparent, borderless, control-radius, and show
-   a fill only on hover/active/selected. */
+/* Header icon geometry stays local because editor controls are smaller than shell controls. */
 .sb-editor-icon-button {
     flex: 0 0 auto;
     display: inline-flex;
@@ -134,44 +132,12 @@
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: var(--sb-radius-control, 9px);
-    background: transparent;
-    color: var(--sb-shell-text);
+    border-radius: var(--sb-icon-control-radius, 10px);
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-@media (hover: hover) {
-    .sb-editor-icon-button:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.sb-editor-icon-button:active {
-    background: var(--sb-flat-active-bg);
-}
-
-/* Toggled / selected state, e.g. the favourite star and quick edit.
-   DESIGN.md: selection is an accent ink on a flat selected fill, never a glow. */
-.sb-editor-icon-button[aria-pressed='true'] {
-    background: var(--sb-flat-selected-bg);
-    color: var(--sb-accent);
-}
-
-@media (hover: hover) {
-    .sb-editor-icon-button[aria-pressed='true']:hover {
-        background: var(--sb-flat-selected-hover-bg);
-    }
 }
 
 .sb-editor-icon-button:disabled {
-    opacity: 0.5;
     cursor: default;
-}
-
-/* A disabled title is not a control the user can act on; do not draw a fill. */
-.sb-editor-icon-button:disabled:hover {
-    background: transparent;
 }
 
 .sb-editor-icon-button i {
@@ -409,7 +375,7 @@
    win without !important, matching how the rest of the shell scopes its
    overrides. Without it the toolbar renders as a mix of bordered chips and flat
    buttons. */
-#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button) {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):not(.sb-header-icon-button) {
     flex: 0 0 auto;
     width: var(--sb-control-icon-physical-size, 36px);
     min-width: var(--sb-control-icon-physical-size, 36px);
@@ -426,25 +392,16 @@
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-/* sillybunny-theme.css:1044 supplies its own hover fill for .menu_button, which
-   would fight the flat hover below unless it is overridden at the same weight. */
 @media (hover: hover) {
-    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):hover {
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):not(.sb-header-icon-button):hover {
         background: var(--sb-flat-hover-bg);
         border-color: transparent;
         box-shadow: none;
     }
 }
 
-#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):active {
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):not(.sb-header-icon-button):active {
     background: var(--sb-flat-active-bg);
-}
-
-/* Favourite is a stateful toggle; upstream signals it with .fav_on. Surface that
-   as the same selected treatment the aria-pressed buttons use. */
-#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(#favorite_button, #group_favorite_button).fav_on {
-    background: var(--sb-flat-selected-bg);
-    color: var(--sb-accent);
 }
 
 /* Transport elements kept in the DOM for their handlers and for extensions.

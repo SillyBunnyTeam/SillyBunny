@@ -356,6 +356,10 @@ body.reduced-motion .sb-list-editor__divider::before {
 }
 
 .sb-status-page__title {
+    display: block;
+    flex: 0 0 auto;
+    width: min(100%, 36ch);
+    min-height: 0;
     max-width: 36ch;
     margin: 0 0 12px;
     font-size: var(--sb-type-display) !important;
@@ -373,6 +377,10 @@ body.reduced-motion .sb-list-editor__divider::before {
 }
 
 .sb-status-page__description {
+    display: block;
+    flex: 0 0 auto;
+    width: min(100%, 36ch);
+    min-height: 0;
     max-width: 36ch;
     margin: 0 0 24px;
     color: var(--sb-muted-fg);
@@ -427,6 +435,7 @@ body.reduced-motion .sb-list-editor__divider::before {
 }
 
 .sb-status-page--compact {
+    justify-content: flex-start;
     gap: 0;
     padding-block: 32px;
 }
@@ -438,6 +447,97 @@ body.reduced-motion .sb-list-editor__divider::before {
 .sb-status-page--compact .sb-status-page__title {
     font-size: var(--sb-type-headline) !important;
     line-height: 1.18 !important;
+}
+
+.sb-header-icon-button,
+.sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+    border: 0;
+    background: transparent;
+    color: var(--sb-shell-text);
+    opacity: 1;
+    outline: none;
+    box-shadow: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+.sb-header-icon-button:is(:hover) {
+    color: var(--sb-shell-text);
+}
+
+@media (hover: hover) {
+    .sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .sb-header-icon-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-header-icon-button.sb-header-icon-button[aria-pressed='true']:hover,
+    .sb-header-icon-button.sb-header-icon-button[aria-checked='true']:hover,
+    .sb-header-icon-button.sb-header-icon-button.menu_button[aria-pressed='true']:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .sb-header-icon-button.sb-header-icon-button.menu_button[aria-checked='true']:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        background: var(--sb-flat-selected-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-header-icon-button.sb-header-icon-button:active {
+    background: var(--sb-flat-active-bg);
+    color: var(--sb-shell-text);
+}
+
+#right-nav-panel .sb-header-icon-button.sb-header-icon-button:is([aria-pressed='true'], [aria-checked='true']):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+    background: var(--sb-flat-selected-bg);
+    color: var(--sb-shell-text);
+}
+
+.sb-header-icon-button.sb-header-icon-button[aria-pressed='true'],
+.sb-header-icon-button.sb-header-icon-button[aria-checked='true'],
+.sb-header-icon-button.sb-header-icon-button.menu_button[aria-pressed='true']:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+.sb-header-icon-button.sb-header-icon-button.menu_button[aria-checked='true']:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+    background: var(--sb-flat-selected-bg);
+    color: var(--sb-shell-text);
+}
+
+.sb-header-icon-button.sb-header-icon-button[aria-pressed='true']:active,
+.sb-header-icon-button.sb-header-icon-button[aria-checked='true']:active,
+.sb-header-icon-button.sb-header-icon-button.menu_button[aria-pressed='true']:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.sb-header-icon-button.sb-header-icon-button.menu_button[aria-checked='true']:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
+    background: var(--sb-flat-active-bg);
+    color: var(--sb-shell-text);
+}
+
+.sb-header-icon-button.menu_button.world_set,
+.sb-header-icon-button.menu_button.fav_on,
+.sb-header-icon-button.world_set,
+.sb-header-icon-button.fav_on {
+    background: var(--sb-flat-selected-bg);
+    /* Keep upstream public/style.css .fav_on/.world_set status rules intact; their !important declarations must remain upstream-compatible. */
+    color: var(--sb-accent) !important;
+}
+
+@media (hover: hover) {
+    #right-nav-panel .sb-header-icon-button.sb-header-icon-button:is([aria-pressed='true'], [aria-checked='true']):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        background: var(--sb-flat-selected-hover-bg);
+        color: var(--sb-shell-text);
+    }
+
+    .sb-header-icon-button.menu_button.world_set:hover,
+    .sb-header-icon-button.menu_button.fav_on:hover,
+    .sb-header-icon-button.world_set:hover,
+    .sb-header-icon-button.fav_on:hover {
+        background: var(--sb-flat-selected-hover-bg);
+        color: var(--sb-accent);
+    }
+}
+
+.sb-header-icon-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-header-icon-button:disabled,
+.sb-header-icon-button[aria-disabled='true'] {
+    opacity: 0.5;
 }
 
 @media (pointer: coarse) {

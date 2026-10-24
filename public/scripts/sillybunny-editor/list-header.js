@@ -43,7 +43,7 @@ export function createListHeader({ title, subtitle = '', actions = [], className
     for (const action of actions) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'sb-list-header__button';
+        button.className = 'sb-list-header__button sb-header-icon-button';
         button.dataset.actionId = action.id;
         button.setAttribute('aria-label', action.label);
         button.title = action.label;

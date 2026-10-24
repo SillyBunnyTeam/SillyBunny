@@ -1377,41 +1377,9 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     padding: 0;
     border: 0;
     border-radius: var(--sb-icon-control-radius);
-    background: transparent;
-    color: inherit;
     font-size: var(--sb-type-control);
     line-height: 1;
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
-}
-
-.ica-agents-editor .sb-list-header__button:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.ica-agents-editor .sb-list-header__button[aria-pressed='true'] {
-    background: var(--sb-flat-selected-bg);
-}
-
-@media (hover: hover) {
-    .ica-agents-editor .sb-list-header__button:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-
-    .ica-agents-editor .sb-list-header__button[aria-pressed='true']:hover {
-        background: var(--sb-flat-selected-hover-bg);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .ica-agents-editor .sb-list-header__button {
-        transition: none;
-    }
-}
-
-body.reduced-motion .ica-agents-editor .sb-list-header__button {
-    transition: none;
 }
 
 .ica-agents-search {

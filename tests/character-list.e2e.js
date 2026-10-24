@@ -365,7 +365,7 @@ async function expectEditorBackRestoration(page, view) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
-    test(`empty Characters and Groups use a centred status page at ${viewport.width}px`, async ({ page }) => {
+    test(`empty Characters and Groups use a top status page at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
         await setSearch(page, 'no matching entity');
         await expect(list(page).locator('.sb-character-list__box')).toBeHidden();
@@ -386,8 +386,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(list(page).locator('.empty_block')).toHaveCount(0);
         await expect(status.locator('.sb-status-page__description')).toHaveText('There are no items to display.');
         await expect(status.locator('.sb-status-page__title')).not.toHaveText('');
-        await expect(status.locator('.sb-status-page')).toHaveCSS('align-items', 'center');
-        await expect(status.locator('.sb-status-page')).toHaveCSS('justify-content', 'center');
+        const statusBox = await status.boundingBox();
+        const statusPageBox = await status.locator('.sb-status-page').boundingBox();
+        const paneBox = await list(page).boundingBox();
+        expect(statusBox).not.toBeNull();
+        expect(statusPageBox).not.toBeNull();
+        expect(paneBox).not.toBeNull();
+        expect(Math.abs(statusPageBox.y - paneBox.y - 172)).toBeLessThanOrEqual(4);
         const typography = await status.locator('.sb-status-page').evaluate(element => {
             const title = getComputedStyle(element.querySelector('.sb-status-page__title'));
             const description = getComputedStyle(element.querySelector('.sb-status-page__description'));

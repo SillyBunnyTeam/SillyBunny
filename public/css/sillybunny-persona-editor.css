@@ -108,7 +108,6 @@
     border: 0;
     border-radius: var(--sb-radius-control);
     background: transparent;
-    color: inherit;
     box-shadow: none;
     font-family: inherit;
     cursor: pointer;
@@ -247,24 +246,18 @@
 }
 
 @media (hover: hover) {
-    #PersonaManagement .sb-persona-editor .menu_button:not(:disabled):hover {
+    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-#PersonaManagement .sb-persona-editor button:focus-visible {
+#PersonaManagement .sb-persona-editor button:not(.sb-header-icon-button):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-#PersonaManagement .sb-persona-editor .sb-persona-list-header .menu_button_icon:disabled {
-    background: transparent;
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
 @media (pointer: coarse), (max-width: 768px) {
-    #PersonaManagement .sb-persona-editor .menu_button {
+    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button) {
         min-width: 44px;
         min-height: 44px;
     }
@@ -287,12 +280,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #PersonaManagement .sb-persona-editor .menu_button {
+    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button) {
         transition: none;
     }
 }
 
-body.reduced-motion #PersonaManagement .sb-persona-editor .menu_button {
+body.reduced-motion #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button) {
     transition: none;
 }
 

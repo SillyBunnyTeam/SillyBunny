@@ -24,6 +24,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Extension row action overflow adapter
+| Field | Value |
+| --- | --- |
+| File | `public/css/extensions-panel.css` |
+| Area | Extensions manager row layout and action overflow. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-extension-actions.js`. |
+| Adapter shape | Keep upstream action buttons and delegated handlers in the row; the owned adapter measures the row, hides crowded inline controls, and exposes their existing clicks through one shared action menu. |
+| Protecting tests | `tests/extensions-row-actions.e2e.js`; `tests/extensions-discover.test.js`; `tests/extensions-disable.test.js`; `tests/extensions-bundled-third-party.test.js`. |
+| Validation | 2026-10-24: root/tests lint, extension unit specs, `git diff --check`, and Chromium E2E at 1440×900 and 390×844. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-24 reviewer-fix pass. |
+| Owner | TODO(copy) |
+
+### Shared header icon-button markup
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Character and group editor header controls. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/css/sillybunny-editor-shell.css`; shared header-icon-button class. |
+| Adapter shape | Preserve existing IDs, handlers, transport nodes and icon geometry; add the shared state class to visible editor header controls. |
+| Protecting tests | `tests/header-icon-button-parity.e2e.js`; `tests/character-list.e2e.js`; `tests/world-info-editor.e2e.js`. |
+| Validation | 2026-10-24: root/tests lint, header parity E2E in both bundled themes, and `git diff --check`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-24 reviewer-fix pass. |
+| Owner | TODO(copy) |
+
 ### Dialog frame surface and layer adjustments
 | Field | Value |
 | --- | --- |

@@ -6841,7 +6841,8 @@
                         <!-- SillyBunny: flat scrolling character sheet replaces the four sub-tab panels; every upstream field ID and wrapper ID is kept for extension compatibility. -->
                         <form id="form_create" class="sb-editor-sheet" action="javascript:void(null);" method="post" enctype="multipart/form-data">
                             <header class="sb-editor-header" id="sb_character_editor_header">
-                                <button class="sb-editor-icon-button sb-editor-back" id="sb_character_editor_back" type="button" title="Back to character list" aria-label="Back to character list" data-i18n="[title]Back to character list;[aria-label]Back to character list">
+                                <!-- SillyBunny: shared header-icon-button state styling keeps editor controls consistent with list and settings headers. -->
+                                <button class="sb-editor-icon-button sb-header-icon-button sb-editor-back" id="sb_character_editor_back" type="button" title="Back to character list" aria-label="Back to character list" data-i18n="[title]Back to character list;[aria-label]Back to character list">
                                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                                 </button>
                                 <!-- SillyBunny: the title doubles as the rename affordance (the legacy
@@ -6871,15 +6872,15 @@
                             </header>
 
                             <div class="sb-editor-toolbar form_create_bottom_buttons_block" id="sb_character_editor_toolbar">
-                                <div id="favorite_button" class="sb-editor-icon-button menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
+                                <div id="favorite_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
                                 <input type="hidden" id="fav_checkbox" name="fav" />
-                                <div id="world_button" class="sb-editor-icon-button menu_button fa-solid fa-globe" title="Character Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to World Info' popup" data-i18n="[title]world_button_title"><span class="sr-only" data-i18n="Character Lore">Character Lore</span></div>
-                                <div class="chat_lorebook_button sb-editor-icon-button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
-                                <div id="char_connections_button" class="sb-editor-icon-button menu_button fa-solid fa-face-smile" title="Connected Personas" data-i18n="[title]Connected Personas"></div>
-                                <div id="export_button" class="sb-editor-icon-button menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
-                                <div id="dupe_button" class="sb-editor-icon-button menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
+                                <div id="world_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-globe" title="Character Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to World Info' popup" data-i18n="[title]world_button_title"><span class="sr-only" data-i18n="Character Lore">Character Lore</span></div>
+                                <div class="chat_lorebook_button sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-passport" title="Chat Lore&#10;&#10;Click to load&#10;Shift/Alt-click or long-press to open 'Link to Chat Lorebook' popup" data-i18n="[title]chat_lorebook_button_title"></div>
+                                <div id="char_connections_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-face-smile" title="Connected Personas" data-i18n="[title]Connected Personas"></div>
+                                <div id="export_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
+                                <div id="dupe_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
                                 <span class="sb-editor-toolbar-spacer" aria-hidden="true"></span>
-                                <button id="sb_character_editor_quick_edit" class="sb-editor-icon-button" type="button" aria-pressed="false" title="Quick edit mode" aria-label="Quick edit mode" data-i18n="[title]Quick edit mode;[aria-label]Quick edit mode">
+                                <button id="sb_character_editor_quick_edit" class="sb-editor-icon-button sb-header-icon-button" type="button" aria-pressed="false" title="Quick edit mode" aria-label="Quick edit mode" data-i18n="[title]Quick edit mode;[aria-label]Quick edit mode">
                                     <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                                 </button>
                                 <!-- SillyBunny: #char-management-dropdown is kept as a hidden transport,
@@ -6900,7 +6901,7 @@
                                     <option id="import_tags" data-i18n="Import Tags">Import Tags</option>
                                     <option id="set_as_assistant" data-i18n="Set / Unset as Welcome Page Assistant">Set / Unset as Welcome Page Assistant</option>
                                 </select>
-                                <button id="sb_character_editor_more" class="sb-editor-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="More character actions" aria-label="More character actions" data-i18n="[title]More character actions;[aria-label]More character actions">
+                                <button id="sb_character_editor_more" class="sb-editor-icon-button sb-header-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="More character actions" aria-label="More character actions" data-i18n="[title]More character actions;[aria-label]More character actions">
                                     <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
                                 </button>
                                 <!-- SillyBunny: recovered from the hidden #rm_PinAndTabs so these actions
@@ -7267,7 +7268,7 @@
                          sillybunny-character-editor.css; only the group-specific row layout lives here. -->
                     <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu sb-editor-sheet">
                         <header class="sb-editor-header" id="sb_group_editor_header">
-                            <button class="sb-editor-icon-button sb-editor-back" id="sb_group_editor_back" type="button" title="Back to groups" aria-label="Back to groups" data-i18n="[title]Back to groups;[aria-label]Back to groups">
+                            <button class="sb-editor-icon-button sb-header-icon-button sb-editor-back" id="sb_group_editor_back" type="button" title="Back to groups" aria-label="Back to groups" data-i18n="[title]Back to groups;[aria-label]Back to groups">
                                 <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
                             </button>
                             <!-- SillyBunny: the title doubles as the rename affordance, matching the
@@ -7286,10 +7287,10 @@
                         </header>
 
                         <div class="sb-editor-toolbar" id="sb_group_editor_toolbar">
-                            <div id="group_favorite_button" class="sb-editor-icon-button menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
+                            <div id="group_favorite_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-star" title="Add to Favorites" data-i18n="[title]Add to Favorites" data-label="FAV."></div>
                             <input id="rm_group_fav" type="hidden" />
                             <span class="sb-editor-toolbar-spacer" aria-hidden="true"></span>
-                            <button id="sb_group_editor_more" class="sb-editor-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Group actions" aria-label="Group actions" data-i18n="[title]Group actions;[aria-label]Group actions">
+                            <button id="sb_group_editor_more" class="sb-editor-icon-button sb-header-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Group actions" aria-label="Group actions" data-i18n="[title]Group actions;[aria-label]Group actions">
                                 <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
                             </button>
                             <!-- SillyBunny: transports. These keep their upstream handlers and IDs

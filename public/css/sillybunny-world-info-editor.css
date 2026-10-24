@@ -143,7 +143,6 @@
     border: 0;
     border-radius: var(--sb-radius-control);
     background: transparent;
-    color: inherit;
     box-shadow: none;
     font-family: inherit;
     cursor: pointer;
@@ -398,7 +397,7 @@
 }
 
 @media (hover: hover) {
-    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):hover {
+    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):not(.sb-header-icon-button):hover {
         background: var(--sb-flat-hover-bg);
     }
 
@@ -407,12 +406,12 @@
     }
 }
 
-#WorldInfo .sb-wi-editor :is(button, .sb-wi-row):focus-visible {
+#WorldInfo .sb-wi-editor :is(button, .sb-wi-row):not(.sb-header-icon-button):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-#WorldInfo .sb-wi-editor .menu_button:disabled {
+#WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button):disabled {
     background: var(--sb-raised-bg);
     color: var(--sb-muted-fg);
     opacity: 0.6;
@@ -420,11 +419,6 @@
 }
 
 /* Flat header icon buttons stay flat when disabled (no book open); only the glyph dims. */
-#WorldInfo .sb-wi-editor .sb-wi-list-header .menu_button_icon:disabled {
-    background: transparent;
-    opacity: 0.4;
-}
-
 .sb-wi-list-titles > span[hidden] {
     display: none;
 }
@@ -435,7 +429,7 @@
         min-height: 44px;
     }
 
-    #WorldInfo .sb-wi-editor .menu_button,
+    #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button),
     #WorldInfo .sb-wi-editor .sb-wi-grip {
         min-width: 44px;
         min-height: 44px;
@@ -461,13 +455,13 @@
 
 @media (prefers-reduced-motion: reduce) {
     .sb-wi-row,
-    #WorldInfo .sb-wi-editor .menu_button {
+    #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button) {
         transition: none;
     }
 }
 
 body.reduced-motion .sb-wi-row,
-body.reduced-motion #WorldInfo .sb-wi-editor .menu_button {
+body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button) {
     transition: none;
 }
 

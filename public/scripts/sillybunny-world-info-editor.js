@@ -200,6 +200,7 @@ export function mountWorldInfoEditor(container) {
     const searchButton = button(t`Search`, 'magnifying-glass', () => searchControl.toggle());
     // HUMAN: replace — Sort control label.
     const filterButton = button(t`lorum ipsum`, 'arrow-down-wide-short', trigger => openFilterMenu(trigger), 'sb-wi-sort-button');
+    [bookActions, newEntryButton, searchButton, filterButton].forEach(control => control.classList.add('sb-header-icon-button'));
     filterButton.setAttribute('aria-haspopup', 'menu');
     filterButton.setAttribute('aria-expanded', 'false');
     listHeader.append(bookSwitcher, headerSpacer, searchButton, newEntryButton, filterButton, bookActions);

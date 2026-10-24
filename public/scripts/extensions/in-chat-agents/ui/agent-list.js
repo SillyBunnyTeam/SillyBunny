@@ -287,7 +287,7 @@ export function mountAgentsPanel(column) {
             })),
         }];
     }
-    const filterButton = element('button', 'sb-list-header__button ica-agents-filter');
+    const filterButton = element('button', 'sb-list-header__button sb-header-icon-button ica-agents-filter');
     filterButton.type = 'button';
     filterButton.title = t`Filter Agents`;
     filterButton.setAttribute('aria-label', t`Filter Agents`);
