@@ -37,8 +37,10 @@
 //   Prints the decision as JSON:
 //     { "action": "reattach" | "build" | "skip", "previous": <the most recent same-channel release or null>,
 //       "reasons": [...], "prerelease", "defaultRef", "inputsHash", "versionCode", "versionName",
-//       "minAppVersion", "highestPreviousVersionCode", "unpinnedRuntime", "commit" }
+//       "minAppVersion", "highestPreviousVersionCode", "unpinnedRuntime", "expectedSigningCert", "commit" }
 //   "unpinnedRuntime" lists node and npm while android/runtime.lock does not pin their payloads ([] once it does).
+//   "expectedSigningCert" is the signing certificate SHA-256 that every previous android-update.json names, as
+//   64 lowercase hex digits, or null when no previous release has one. This release's APKs must carry it.
 //   "versionCode" and "versionName" are the ones this release carries. "previous" names the release's
 //   "tag" and its "assets" (ABI -> APK asset name). To re-attach, download android-update.json and those
 //   APKs from the release "previous.tag", confirm them with
@@ -46,6 +48,16 @@
 //       --apk <abi>=<file> (for every asset)
 //   and attach them to the new release unchanged, under the same names.
 //   Exit 0 with a decision, 1 when a §6.1 rule fails (message on stderr), 2 on a usage error.
+//
+// Check the signing certificate of this release's APKs or of the android-update.json about to be attached:
+//   node android/release/release-decision.mjs --check-signing-cert <sha256> --expected-signing-cert <sha256>
+//     --check-signing-cert     the certificate SHA-256 to check
+//     --expected-signing-cert  the decision's "expectedSigningCert"; empty when it is null, which accepts any
+//                              certificate
+//   Both take either form android-update.json accepts: 64 hex digits, or 32 colon-separated hex pairs.
+//   Prints { "signingCert", "expectedSigningCert" } as 64 lowercase hex digits (null for an empty expectation).
+//   Exit 0 when the certificates match or nothing is expected; 1 when they differ, with the line
+//   {"code":"signing-cert-mismatch","expected":"<hex>","actual":"<hex>"} on stderr; 2 on a usage error.
 //
 // Rules (§6.1):
 //   - versionName must pass the app's android-update.json rule (1 to 128 characters, not blank, no control
@@ -61,6 +73,9 @@
 //   - Every previous manifest must pass the app's parser rules (manifest-rules.mjs); a non-prerelease one
 //     must also pass the stable channel's rules, and a release's own prerelease flag must match its
 //     manifest's.
+//   - Every previous manifest, drafts and both channels included, must name the same signing certificate,
+//     because Android refuses to update an installed app with an APK signed by a different certificate. The
+//     decision fails and names the releases when they disagree; a maintainer resolves that by hand.
 //   - Re-attach when inputsHash equals that of the most recent previous non-draft release of the same
 //     channel. "Most recent" means the highest versionCode; ties go to the later publishedAt, then to
 //     the earlier position in the list (newest first, as the GitHub API lists releases). Every build
@@ -96,7 +111,14 @@ import {
     UsageError,
 } from './common.mjs';
 import { inputsHashAtCommit, RUNTIME_LOCK_PATH } from './inputs-hash.mjs';
-import { decodeManifestBytes, isManifestText, isStableDownloadTag, MAX_MANIFEST_BYTES, validateManifestText } from './manifest-rules.mjs';
+import {
+    decodeManifestBytes,
+    isManifestText,
+    isStableDownloadTag,
+    MAX_MANIFEST_BYTES,
+    normalizeFingerprint,
+    validateManifestText,
+} from './manifest-rules.mjs';
 
 export const MANIFEST_ASSET_NAME = 'android-update.json';
 
@@ -143,6 +165,46 @@ export function normalizePreviousReleases(previous) {
         }
         return { tag: tag ?? manifest.releaseTag, draft, releasePrerelease, publishedAt, manifest, index };
     });
+}
+
+/**
+ * The signing certificate that every normalized previous release names (64 lowercase hex digits), or null
+ * without previous releases. Throws a ReleaseToolError that names the releases when they disagree.
+ */
+function sharedSigningCert(entries) {
+    const tagsByCert = new Map();
+    for (const entry of entries) {
+        const tags = tagsByCert.get(entry.manifest.signingCert) ?? [];
+        tags.push(entry.draft ? `${entry.tag} (a draft)` : entry.tag);
+        tagsByCert.set(entry.manifest.signingCert, tags);
+    }
+    if (tagsByCert.size > 1) {
+        const named = [...tagsByCert].map(([cert, tags]) => `${cert} in ${tags.join(', ')}`).join('; ');
+        throw new ReleaseToolError(`the previous releases do not share one signing certificate: android-update.json names SHA-256 ${named}. Android refuses to update an app with an APK signed by a different certificate, so a maintainer must resolve this by hand before the next release`);
+    }
+    return tagsByCert.size === 0 ? null : [...tagsByCert.keys()][0];
+}
+
+/**
+ * Compares a certificate SHA-256 with the expected one (the decision's expectedSigningCert; null accepts any).
+ * Both take either form android-update.json accepts. Returns { expected, actual, matches } with both in the
+ * normalized form, 64 lowercase hex digits. Throws a UsageError for a value that is not a certificate SHA-256.
+ */
+export function compareSigningCert({ expected = null, actual } = {}) {
+    const normalized = (value, name) => {
+        const hex = normalizeFingerprint(value);
+        if (hex === null) {
+            throw new UsageError(`the ${name} signing certificate SHA-256 must be 64 hex digits or 32 colon-separated hex pairs, not ${describeText(value)}`);
+        }
+        return hex;
+    };
+    const normalizedActual = normalized(actual, 'checked');
+    const normalizedExpected = expected === null ? null : normalized(expected, 'expected');
+    return {
+        expected: normalizedExpected,
+        actual: normalizedActual,
+        matches: normalizedExpected === null || normalizedExpected === normalizedActual,
+    };
 }
 
 function publishedTime(entry) {
@@ -268,6 +330,7 @@ export function decideRelease({
             minAppVersion: bigintToJson(minimum),
             highestPreviousVersionCode: null,
             unpinnedRuntime: unpinned,
+            expectedSigningCert: null,
         };
     }
     if (unpinned.length > 0 && !allowUnpinnedRuntime) {
@@ -275,6 +338,7 @@ export function decideRelease({
     }
     const channel = prerelease ? 'prerelease' : 'stable';
     const entries = normalizePreviousReleases(previous);
+    const expectedSigningCert = sharedSigningCert(entries);
     const highest = mostRecentRelease(entries);
     const latest = mostRecentRelease(entries.filter(entry => !entry.draft && entry.manifest.prerelease === prerelease));
     const current = BigInt(versionCode);
@@ -291,6 +355,7 @@ export function decideRelease({
         minAppVersion: bigintToJson(minimum),
         highestPreviousVersionCode: highest === null ? null : bigintToJson(highest.manifest.versionCode),
         unpinnedRuntime: unpinned,
+        expectedSigningCert,
     });
 
     if (latest !== null && latest.manifest.inputsHash === inputsHash) {
@@ -473,6 +538,26 @@ function readPreviousFile(file) {
     }
 }
 
+const CHECK_OPTIONS = ['check-signing-cert', 'expected-signing-cert'];
+
+function checkSigningCertCli(values) {
+    const other = Object.keys(values).find(name => !CHECK_OPTIONS.includes(name));
+    if (other !== undefined) {
+        throw new UsageError(`--${other} cannot be used with --check-signing-cert`);
+    }
+    const expected = values['expected-signing-cert'];
+    if (expected === undefined) {
+        throw new UsageError('--check-signing-cert needs --expected-signing-cert, empty when no previous release has an android-update.json');
+    }
+    const check = compareSigningCert({ expected: expected === '' ? null : expected, actual: values['check-signing-cert'] });
+    if (!check.matches) {
+        process.stderr.write(`${JSON.stringify({ code: 'signing-cert-mismatch', expected: check.expected, actual: check.actual })}\n`);
+        process.exitCode = 1;
+        return;
+    }
+    process.stdout.write(`${JSON.stringify({ signingCert: check.actual, expectedSigningCert: check.expected })}\n`);
+}
+
 async function main(argv) {
     const values = parseCliArgs(argv, {
         'prerelease': { type: 'string' },
@@ -484,7 +569,16 @@ async function main(argv) {
         'skip-unpinned-runtime': { type: 'boolean' },
         'commit': { type: 'string' },
         'repo': { type: 'string' },
+        'check-signing-cert': { type: 'string' },
+        'expected-signing-cert': { type: 'string' },
     });
+    if (values['check-signing-cert'] !== undefined) {
+        checkSigningCertCli(values);
+        return;
+    }
+    if (values['expected-signing-cert'] !== undefined) {
+        throw new UsageError('--expected-signing-cert needs --check-signing-cert');
+    }
     const prerelease = parseBooleanOption(requireOption(values, 'prerelease'), 'prerelease');
     if (values['allow-unpinned-runtime'] === true && values['skip-unpinned-runtime'] === true) {
         throw new UsageError('TODO(copy) {"code":"conflicting-options","options":["--allow-unpinned-runtime","--skip-unpinned-runtime"]}');
