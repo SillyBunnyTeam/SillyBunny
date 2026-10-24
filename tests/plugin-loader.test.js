@@ -42,7 +42,7 @@ async function importPluginLoader(config, { commandExists = false, gitFactory = 
         CheckRepoActions: {
             IS_REPO_ROOT: 'IS_REPO_ROOT',
         },
-        default: gitFactory || defaultGitFactory,
+        simpleGit: gitFactory || defaultGitFactory,
     }));
 
     return await import('../src/plugin-loader.js');
