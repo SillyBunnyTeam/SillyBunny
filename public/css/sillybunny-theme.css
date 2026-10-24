@@ -7701,6 +7701,10 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     background: var(--sb-layer-window);
 }
 
+.sb-dialog__header[data-header-centering-loose] {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
 .sb-dialog--dialog .sb-dialog__header[data-scrolled='true'] {
     border-bottom-color: var(--sb-shell-border);
 }
@@ -7828,17 +7832,86 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 .sb-dialog__search {
     display: flex;
     align-items: center;
-    gap: 8px;
     flex: 0 0 auto;
-    padding: 8px 16px;
-    background: var(--sb-sidebar-bg);
-    color: var(--sb-muted-fg);
+    box-sizing: border-box;
+    min-height: 0;
+    padding: 6px 6px 7px;
+    border-bottom: 1px solid var(--sb-headerbar-shade);
+    background: var(--sb-layer-headerbar);
+    color: var(--sb-shell-text);
+    overflow: hidden;
 }
 
-.sb-dialog__search .sb-dialog__search-input {
+.sb-dialog__search-entry {
+    position: relative;
     flex: 1;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    border-radius: 9px;
+    background: transparent;
+}
+
+.sb-dialog__search-entry > i {
+    position: absolute;
+    z-index: 1;
+    inset-inline-start: 9px;
+    top: 50%;
+    color: currentColor;
+    opacity: 0.7;
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+
+#tag_view_list .text_pole.sb-dialog__entry,
+.sb-folder-manager .text_pole.sb-dialog__entry,
+.sb-action-popover .text_pole.sb-dialog__entry,
+.sb-action-sheet .text_pole.sb-dialog__entry {
+    box-sizing: border-box;
     width: 100%;
+    height: 34px;
+    min-height: 34px;
     margin: 0;
+    padding-inline: 9px;
+    border: 0;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--sb-shell-text) 10%, transparent);
+    color: var(--sb-shell-text);
+    box-shadow: none;
+}
+
+.sb-dialog__search .sb-dialog__search-input { text-indent: 20px; }
+
+#tag_view_list .text_pole.sb-dialog__entry:focus,
+.sb-folder-manager .text_pole.sb-dialog__entry:focus,
+.sb-action-popover .text_pole.sb-dialog__entry:focus,
+.sb-action-sheet .text_pole.sb-dialog__entry:focus {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: -2px;
+    box-shadow: none;
+}
+
+.sb-dialog__search[data-state='closed'] {
+    display: none;
+}
+
+.sb-dialog__search[data-state='opening'],
+.sb-dialog__search[data-state='closing'] {
+    will-change: height, opacity;
+}
+
+@media (pointer: coarse) {
+    .sb-dialog__entry,
+    .sb-dialog__search .sb-dialog__search-input {
+        height: 44px;
+        min-height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-dialog__search {
+        transition: none;
+    }
 }
 
 .sb-dialog__body {

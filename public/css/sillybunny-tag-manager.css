@@ -35,43 +35,15 @@
     background: var(--sb-flat-active-bg);
 }
 
-.sb-tag-manager__create {
-    margin-bottom: 16px;
-}
-
-.sb-tag-manager__create .ds-row-suffix {
-    display: flex;
-    flex: 1;
-    gap: 0;
-    min-width: 0;
-}
-
-.sb-tag-manager__create-row {
-    min-height: 48px;
-    padding: 4px 8px 4px 12px;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-card);
-    background: var(--sb-flat-hover-bg);
-}
-
-.sb-tag-manager__create .sb-tag-manager__new {
-    flex: 1;
-    width: 0;
-    min-width: 0;
-    margin: 0;
-    min-height: 40px;
-    padding-inline: 4px 8px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-}
-
 .sb-tag-manager .tag_view_item {
     margin: 0;
     padding-inline: 8px;
     flex-wrap: wrap;
     content-visibility: visible;
 }
+
+.sb-tag-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+.sb-tag-manager .ds-entity-row--activatable:active { background: var(--sb-flat-active-bg); }
 
 .sb-tag-manager .ds-entity-row__avatar {
     display: grid;
@@ -181,12 +153,9 @@
 }
 
 @media (pointer: coarse) {
-    .sb-tag-manager :is(.sb-tag-manager__button, .sb-tag-manager__name, .sb-tag-manager__new) {
+    .sb-tag-manager :is(.sb-tag-manager__button, .sb-tag-manager__name) {
         min-height: 44px;
         min-width: 44px;
     }
 
-    .sb-tag-manager__create-row {
-        min-height: 52px;
-    }
 }

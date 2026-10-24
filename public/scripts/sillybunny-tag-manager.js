@@ -1,12 +1,11 @@
 import { t, translate } from './i18n.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
-import { createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
-import { openActionMenu } from './sillybunny-action-menu.js';
+import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261018b', id: 'deferred-editor-shell-css' },
@@ -159,19 +158,6 @@ export function createTagManager(adapter) {
         clear() { frame?.search?.clear(); },
         report(shown, total) { frame?.search?.report(shown, total); },
     };
-    const newInput = element('input', 'text_pole sb-tag-manager__new');
-    newInput.setAttribute('aria-label', t`Create a new tag`);
-    newInput.placeholder = t`Create a new tag`;
-    const newError = element('small', 'sb-tag-manager__error');
-    newError.id = 'sb-tag-manager-new-error';
-    newError.hidden = true;
-    newInput.setAttribute('aria-describedby', newError.id);
-    const createButton = button(t`Create a new tag`, 'plus', () => createPending(), 'sb-tag-manager__add');
-    const newEntry = createRow({ label: '', field: 'new-tag', suffix: [newInput, createButton] });
-    newEntry.row.classList.add('sb-tag-manager__create-row');
-    newEntry.row.querySelector('.ds-row-text').remove();
-    const newGroup = element('div', 'ds-pref-group sb-tag-manager__create');
-    newGroup.append(newEntry.row, newError);
     const list = element('div', 'ds-pref-group ds-entity-list tag_view_list_tags');
     list.setAttribute('role', 'list');
     list.setAttribute('aria-label', t`Tag Management`);
@@ -182,7 +168,7 @@ export function createTagManager(adapter) {
     restoreInput.accept = '.json';
     restoreInput.hidden = true;
     const content = document.createDocumentFragment();
-    content.append(newGroup, list, empty, restoreInput);
+    content.append(list, empty, restoreInput);
 
     function setError(input, error, message = '') {
         error.textContent = message;
@@ -318,6 +304,7 @@ export function createTagManager(adapter) {
                 title: member.name,
                 avatar: member.avatar ?? null,
                 suffix: [remove],
+                compatClasses: { row: ['ds-entity-row--surface'] },
             }).row;
         });
         if (!rows.length) rows.push(createStatusPage({ icon: 'users', title: t`No Members`, compact: true }).element);
@@ -462,7 +449,7 @@ export function createTagManager(adapter) {
         const sorted = adapter.sort(state.tags, counts);
         const query = search.query.trim().toLowerCase();
         const scroller = frame?.body ?? null;
-        const focused = list.contains(document.activeElement) || newGroup.contains(document.activeElement) ? document.activeElement : null;
+        const focused = list.contains(document.activeElement) ? document.activeElement : null;
         const pendingField = focused instanceof HTMLInputElement ? {
             value: focused.value, start: focused.selectionStart, end: focused.selectionEnd, direction: focused.selectionDirection,
         } : null;
@@ -502,29 +489,46 @@ export function createTagManager(adapter) {
         sortable?.setDisabled(Boolean(query));
     }
 
-    function createPending() {
-        if (!newInput.value.trim()) return;
-        const parsed = parseTagName(newInput.value, getState().tags);
-        setError(newInput, newError, parsed.ok ? '' : parsed.error);
+    function createPending(input, error, popover) {
+        const parsed = parseTagName(input.value, getState().tags);
+        setError(input, error, parsed.ok ? '' : parsed.error);
         if (!parsed.ok) return;
         const tag = create(parsed.name);
-        newInput.value = '';
         search.clear();
         commit();
         refresh();
+        popover.close();
         controls.get(tag.id)?.input.focus({ preventScroll: false });
     }
-    newInput.addEventListener('blur', createPending);
-    newInput.addEventListener('keydown', event => {
-        if (event.isComposing) return;
-        if (event.key === 'Enter') { event.preventDefault(); createPending(); }
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            newInput.value = '';
-            setError(newInput, newError);
-        }
-    });
+
+    function openCreatePopover(trigger) {
+        const content = element('div', 'sb-manager-name-popover');
+        const label = element('strong', 'sb-manager-name-popover__label', t`Create a new tag`);
+        const input = element('input', 'text_pole sb-dialog__entry sb-manager-name-popover__input');
+        input.type = 'text';
+        label.id = 'sb-tag-manager-new-label';
+        const error = element('small', 'sb-tag-manager__error sb-manager-name-popover__error');
+        error.hidden = true;
+        input.setAttribute('aria-describedby', error.id = 'sb-tag-manager-new-error');
+        const create = element('button', 'menu_button sb-dialog__response is-suggested menu_button_primary sb-manager-name-popover__create', t`Create`);
+        create.type = 'button';
+        create.disabled = true;
+        const updateValidity = () => {
+            const parsed = parseTagName(input.value, getState().tags);
+            create.disabled = !parsed.ok;
+            setError(input, error, input.value.trim() && !parsed.ok ? parsed.error : '');
+        };
+        create.addEventListener('click', () => createPending(input, error, popup));
+        input.addEventListener('input', updateValidity);
+        input.addEventListener('keydown', event => {
+            if (event.isComposing || event.keyCode === 229) return;
+            if (event.key !== 'Enter') return;
+            updateValidity();
+            if (!create.disabled) { event.preventDefault(); create.click(); }
+        });
+        content.append(label, input, error, create);
+        const popup = openPopover({ trigger, content, title: t`Create a new tag`, titleLabel: label, titleInput: input, bounds: frame?.surface ?? null, initialFocus: () => input });
+    }
     const unbindKeyboard = bindListKeyboard(list, {
         keySourceSelector: '.drag-handle',
         onOpen: row => { openMembers(getState().tags.find(tag => tag.id === row.id)); return true; },
@@ -562,6 +566,9 @@ export function createTagManager(adapter) {
                 canClose: () => canClose(),
             });
             frame.surface.id = 'tag_view_list';
+            const add = button(t`Create a new tag`, 'plus', openCreatePopover, 'sb-tag-manager__add');
+            add.classList.add('sb-dialog__icon-button');
+            frame.header.querySelector('.sb-dialog__header-end').prepend(add);
             frame.closed.then(dispose);
             refresh();
         },

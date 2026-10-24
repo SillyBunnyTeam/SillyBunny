@@ -14,7 +14,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     translate: text => text,
 }));
 
-const { openDialog, openAlert, getTopmostDialog, hostOverlayLayer, bindSheetGestures } = await import('../../public/scripts/sillybunny-editor/dialog.js');
+const { openDialog, openAlert, getTopmostDialog, hostOverlayLayer, bindSheetGestures, bindHeaderLayout } = await import('../../public/scripts/sillybunny-editor/dialog.js');
 const { OVERLAY_SHEET_QUERY, LAYOUT_MOBILE_QUERY } = await import('../../public/scripts/sillybunny-editor/breakpoints.js');
 
 const settle = async () => { for (let index = 0; index < 10; index++) await Promise.resolve(); };
@@ -56,6 +56,33 @@ describe('breakpoints', () => {
 });
 
 describe('openDialog structure', () => {
+    test('header centering uses loose tracks when the title cannot fit beside the controls', () => {
+        const header = document.createElement('header');
+        header.className = 'sb-dialog__header';
+        const start = document.createElement('div');
+        start.className = 'sb-dialog__header-start';
+        const titles = document.createElement('div');
+        titles.className = 'sb-dialog__titles';
+        const title = document.createElement('h2');
+        title.className = 'sb-dialog__title';
+        const end = document.createElement('div');
+        end.className = 'sb-dialog__header-end';
+        header.append(start, titles, end);
+        titles.append(title);
+        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 390 });
+        Object.defineProperty(start, 'offsetWidth', { configurable: true, value: 38 });
+        Object.defineProperty(end, 'offsetWidth', { configurable: true, value: 132 });
+        Object.defineProperty(title, 'scrollWidth', { configurable: true, value: 130 });
+        Object.defineProperty(title, 'clientWidth', { configurable: true, value: 80 });
+        const cleanup = bindHeaderLayout(header);
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+        cleanup();
+        Object.defineProperty(title, 'scrollWidth', { configurable: true, value: 48 });
+        Object.defineProperty(title, 'clientWidth', { configurable: true, value: 80 });
+        const shortTitleCleanup = bindHeaderLayout(header);
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(false);
+        shortTitleCleanup();
+    });
     test.each(['dialog', 'window'])('%s tier: native modal host, scrim, surface, header and scrolling body', tier => {
         const content = document.createElement('p');
         const dialog = openDialog({ tier, title: 'Title', subtitle: 'Sub', content, className: 'my-surface' });

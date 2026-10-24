@@ -5,12 +5,14 @@ import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globa
 let menuOptions;
 let pickerOptions;
 const openActionMenu = jest.fn(options => menuOptions = options);
+let popoverOptions;
+const openPopover = jest.fn(options => { popoverOptions = options; return { close: jest.fn(), get isOpen() { return true; } }; });
 const closeActionMenu = jest.fn();
 const openPicker = jest.fn(options => pickerOptions = options);
 const closePicker = jest.fn();
 
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
-    openActionMenu,
+    openActionMenu, openPopover,
     closeActionMenu,
     MOBILE_QUERY: '(max-width: 768px)',
 }));
@@ -59,6 +61,7 @@ beforeEach(() => {
     settings = { sb_folders: folders.normalizeFoldersData(null) };
     folders.configureFolderStore({ powerUser: settings, saveSettingsDebounced: save, idFactory: () => `folder-${++id}` });
     menuOptions = null;
+    popoverOptions = null;
     pickerOptions = null;
 });
 
@@ -75,16 +78,24 @@ function mount(scope = 'groups') {
 }
 
 describe('Folder Manager', () => {
-    test('creates folders on Enter and reports empty names inline', () => {
+    test('creates folders from the header plus and reports empty names inline', () => {
         mount();
-        const input = manager.root.querySelector('.sb-folder-manager__new');
+        manager.root.querySelector('.sb-folder-manager__add').click();
+        const input = popoverOptions.content.querySelector('input');
+        expect(input.placeholder).toBe('');
+        expect(popoverOptions.titleInput).toBe(input);
+        expect(popoverOptions.titleLabel.textContent).toBe('New Folder');
         input.value = '  Scenes  ';
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+        expect(folders.getFolders('groups')).toEqual([]);
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true }));
+        expect(folders.getFolders('groups')).toEqual([]);
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
         expect(folders.getFolders('groups').map(folder => folder.name)).toEqual(['Scenes']);
         input.value = ' ';
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         expect(input.getAttribute('aria-invalid')).toBe('true');
-        expect(manager.root.querySelector('.sb-folder-manager__error').textContent).toBe('Enter a folder name.');
+        expect(popoverOptions.content.querySelector('.sb-folder-manager__error').textContent).toBe('Enter a folder name.');
     });
 
     test('renames inline and exposes colour, expansion, ordering and delete actions', async () => {
@@ -170,7 +181,7 @@ describe('Folder Manager', () => {
         expect(manager.host.classList.contains('sb-dialog-host')).toBe(true);
         expect(manager.root.classList.contains('sb-dialog--window')).toBe(true);
         expect(manager.root.querySelector('.sb-dialog__title').textContent).toBe('Folders');
-        expect(document.activeElement).toBe(manager.root.querySelector('.sb-folder-manager__new'));
+        expect(document.activeElement).toBe(manager.root.querySelector('.sb-dialog__search-toggle'));
         manager.root.querySelector('.sb-dialog__close').click();
         await manager.closed;
         expect(manager.host.isConnected).toBe(false);

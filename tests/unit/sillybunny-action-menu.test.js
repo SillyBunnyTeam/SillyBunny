@@ -10,7 +10,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
 await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () => ({
     blockUpstreamDrawerClose: jest.fn(), createSheetController: jest.fn(),
 }));
-const { openActionMenu, closeActionMenu, isActionMenuOpen, positionPopover } = await import('../../public/scripts/sillybunny-action-menu.js');
+const { openActionMenu, openPopover, closeActionMenu, isActionMenuOpen, positionPopover } = await import('../../public/scripts/sillybunny-action-menu.js');
 let mobileMatches = false;
 
 beforeEach(() => {
@@ -31,6 +31,41 @@ function trigger() {
 }
 
 describe('action menu optional sections', () => {
+    test('opens custom content in the anchored shared popover host', () => {
+        const button = trigger();
+        const content = document.createElement('form');
+        const label = document.createElement('strong');
+        label.textContent = 'Create';
+        const input = document.createElement('input');
+        content.append(label, input);
+        openPopover({ trigger: button, content, title: 'Create', titleLabel: label, titleInput: input, initialFocus: () => input });
+
+        const popover = document.querySelector('.sb-custom-popover');
+        expect(popover.contains(content)).toBe(true);
+        expect(popover.getAttribute('role')).toBe('dialog');
+        expect(document.activeElement).toBe(input);
+        expect(button.getAttribute('aria-expanded')).toBe('true');
+        expect(label.id).toBe('sb-custom-popover-title');
+        expect(input.getAttribute('aria-labelledby')).toBe(label.id);
+    });
+
+    test('custom popovers cycle Tab and Shift+Tab through enabled controls', () => {
+        const button = trigger();
+        const content = document.createElement('div');
+        const input = document.createElement('input');
+        const create = document.createElement('button');
+        create.textContent = 'Create';
+        content.append(input, create);
+        openPopover({ trigger: button, content, initialFocus: () => input });
+
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(create);
+        create.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(input);
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(create);
+    });
+
     test('can keep a nested action menu as a popover on mobile', () => {
         mobileMatches = true;
         openActionMenu({

@@ -1,13 +1,12 @@
 import { t } from './i18n.js';
 import { folderCountLabel } from './sillybunny-editor/folder-row.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
-import { createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
-import { openActionMenu } from './sillybunny-action-menu.js';
+import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 import {
     createFolder,
     deleteFolder,
@@ -162,29 +161,11 @@ export function createFolderManager(scope, adapter) {
     status.setAttribute('aria-live', 'polite');
     const list = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__list');
     list.setAttribute('role', 'list');
-    const createInput = element('input', 'text_pole sb-folder-manager__new');
-    createInput.type = 'text';
-    createInput.placeholder = t`New Folder`;
-    createInput.setAttribute('aria-label', t`New Folder`);
-    const createError = element('small', 'sb-folder-manager__error');
-    createError.hidden = true;
-    const createButton = button(t`New Folder`, 'plus', createPending, 'sb-folder-manager__add');
-    const createEntry = createRow({ label: '', field: 'new-folder', suffix: [createInput, createButton] });
-    createEntry.row.classList.add('sb-folder-manager__create-row');
-    createEntry.row.querySelector('.ds-row-text')?.remove();
-    const createGroup = element('div', 'ds-pref-group sb-folder-manager__create');
-    createGroup.append(createEntry.row, createError);
     const content = document.createDocumentFragment();
-    content.append(createGroup, list, status);
+    content.append(list, status);
     let sortable;
     let unbindKeyboard;
     let unsubscribe;
-
-    function setCreateError(message = '') {
-        createError.textContent = message;
-        createError.hidden = !message;
-        createInput.setAttribute('aria-invalid', String(Boolean(message)));
-    }
 
     function currentItems() {
         const source = adapter?.getItems?.() ?? [];
@@ -207,6 +188,7 @@ export function createFolderManager(scope, adapter) {
             suffix: [remove],
         });
         entity.row.classList.add('sb-folder-manager__member-row');
+        entity.row.classList.add('ds-entity-row--surface');
         return entity.row;
     }
 
@@ -416,17 +398,18 @@ export function createFolderManager(scope, adapter) {
         else refresh();
     }
 
-    function createPending() {
-        const parsed = folderName(createInput.value);
+    function createPending(input, error, popover) {
+        const parsed = folderName(input.value);
         if (!parsed.ok) {
-            setCreateError(parsed.error);
-            createInput.focus({ preventScroll: true });
+            error.textContent = parsed.error;
+            error.hidden = false;
+            input.setAttribute('aria-invalid', 'true');
+            input.focus({ preventScroll: true });
             return;
         }
-        setCreateError();
         const folder = createFolder(scope, parsed.name);
-        createInput.value = '';
         refresh();
+        popover.close();
         entries.get(folder.id)?.input.focus({ preventScroll: true });
     }
 
@@ -457,17 +440,36 @@ export function createFolderManager(scope, adapter) {
         finish();
     }
 
-    createInput.addEventListener('input', () => { if (folderName(createInput.value).ok) setCreateError(); });
-    createInput.addEventListener('keydown', event => {
-        if (event.isComposing) return;
-        if (event.key === 'Enter') { event.preventDefault(); createPending(); }
-        if (event.key === 'Escape' && createInput.value) {
-            event.preventDefault();
-            event.stopPropagation();
-            createInput.value = '';
-            setCreateError();
-        }
-    });
+    function openCreatePopover(trigger) {
+        const content = element('div', 'sb-manager-name-popover');
+        const label = element('strong', 'sb-manager-name-popover__label', t`New Folder`);
+        const input = element('input', 'text_pole sb-dialog__entry sb-manager-name-popover__input');
+        input.type = 'text';
+        label.id = 'sb-folder-manager-new-label';
+        const error = element('small', 'sb-folder-manager__error sb-manager-name-popover__error');
+        error.hidden = true;
+        input.setAttribute('aria-describedby', error.id = 'sb-folder-manager-new-error');
+        const create = element('button', 'menu_button sb-dialog__response is-suggested menu_button_primary sb-manager-name-popover__create', t`Create`);
+        create.type = 'button';
+        create.disabled = true;
+        const updateValidity = () => {
+            const parsed = folderName(input.value);
+            create.disabled = !parsed.ok;
+            error.textContent = parsed.ok ? '' : parsed.error;
+            error.hidden = parsed.ok || !input.value;
+            input.setAttribute('aria-invalid', String(!parsed.ok && Boolean(input.value)));
+        };
+        create.addEventListener('click', () => createPending(input, error, popup));
+        input.addEventListener('input', updateValidity);
+        input.addEventListener('keydown', event => {
+            if (event.isComposing || event.keyCode === 229) return;
+            if (event.key !== 'Enter') return;
+            updateValidity();
+            if (!create.disabled) { event.preventDefault(); create.click(); }
+        });
+        content.append(label, input, error, create);
+        const popup = openPopover({ trigger, content, title: t`New Folder`, titleLabel: label, titleInput: input, bounds: frame?.surface ?? null, initialFocus: () => input });
+    }
     unbindKeyboard = bindListKeyboard(list, {
         rowSelector: '.sb-folder-manager__folder-row',
         keySourceSelector: '.drag-handle',
@@ -497,7 +499,7 @@ export function createFolderManager(scope, adapter) {
         closed,
         refresh,
         close,
-        focus: () => (members ? members.add : frame?.search?.isOpen ? frame.searchInput : frame?.searchToggle ?? createInput)?.focus({ preventScroll: true }),
+        focus: () => (members ? members.add : frame?.search?.isOpen ? frame.searchInput : frame?.searchToggle)?.focus({ preventScroll: true }),
         show() {
             if (frame) return;
             frame = openDialog({
@@ -505,9 +507,11 @@ export function createFolderManager(scope, adapter) {
                 title: t`Folders`,
                 className: 'sb-folder-manager',
                 content,
-                initialFocus: () => createInput,
                 search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
             });
+            const add = button(t`New Folder`, 'plus', openCreatePopover, 'sb-folder-manager__add');
+            add.classList.add('sb-dialog__icon-button');
+            frame.header.querySelector('.sb-dialog__header-end').prepend(add);
             frame.closed.then(dispose);
         },
     };

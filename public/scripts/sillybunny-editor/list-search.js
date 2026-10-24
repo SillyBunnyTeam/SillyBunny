@@ -1,4 +1,4 @@
-import { play, stopMotion, animateOut, MOTION_SLOW } from '../sillybunny-motion.js';
+import { play, stopMotion, animateOut, MOTION_SLOW, prefersReducedMotion } from '../sillybunny-motion.js';
 import { t } from '../i18n.js';
 
 /**
@@ -49,6 +49,9 @@ export function createListSearch({
         trigger.setAttribute('aria-controls', field.id || (field.id = `${input.id}-field`));
         trigger.setAttribute('aria-expanded', String(!field.hidden));
     }
+    field.setAttribute('aria-hidden', String(Boolean(field.hidden)));
+    field.inert = Boolean(field.hidden);
+    field.dataset.state = field.hidden ? 'closed' : 'open';
 
     function emit(next) {
         if (next === query) return;
@@ -77,8 +80,18 @@ export function createListSearch({
         if (!field.hidden) { input.focus({ preventScroll: true }); return; }
         stopMotion(field);
         field.hidden = false;
+        field.inert = false;
+        field.setAttribute('aria-hidden', 'false');
+        field.dataset.state = 'opening';
         syncTrigger();
-        play(field, [{ height: '0px', marginBlock: '0px', opacity: 0 }, { height: revealedHeight(), marginBlock: '8px', opacity: 1 }], { duration: MOTION_SLOW });
+        if (prefersReducedMotion()) {
+            field.dataset.state = 'open';
+        } else {
+            play(field, [{ height: '0px', marginBlock: '0px', opacity: 0 }, { height: revealedHeight(), marginBlock: '0px', opacity: 1 }], {
+                duration: MOTION_SLOW,
+                onEnd: () => field.dataset.state = 'open',
+            });
+        }
         input.focus({ preventScroll: true });
     }
 
@@ -86,10 +99,16 @@ export function createListSearch({
         if (field.hidden) return;
         stopMotion(field);
         const height = revealedHeight();
-        animateOut(field, [{ height, marginBlock: '8px', opacity: 1 }, { height: '0px', marginBlock: '0px', opacity: 0 }], () => {
+        field.inert = true;
+        field.setAttribute('aria-hidden', 'true');
+        field.dataset.state = 'closing';
+        const finish = () => {
             field.hidden = true;
+            field.dataset.state = 'closed';
             syncTrigger();
-        }, { duration: MOTION_SLOW });
+        };
+        if (prefersReducedMotion()) finish();
+        else animateOut(field, [{ height, marginBlock: '0px', opacity: 1 }, { height: '0px', marginBlock: '0px', opacity: 0 }], finish, { duration: MOTION_SLOW });
         clearTimeout(timer);
         input.value = '';
         emit('');

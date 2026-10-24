@@ -76,19 +76,121 @@ for (const width of [1440, 390]) {
             await openFromList(page);
             await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}.png` });
             await expect(page.locator('.sb-dialog-host:has(> #tag_view_list)')).toHaveAttribute('data-presentation', width <= 450 ? 'sheet' : 'floating');
+            if (width === 1440) {
+                await page.emulateMedia({ reducedMotion: 'no-preference' });
+                await page.evaluate(() => document.body.classList.remove('reduced-motion'));
+                expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(false);
+                const hoverRow = row(page, 'qa-tag-beta');
+                const backgroundBefore = await hoverRow.evaluate(node => getComputedStyle(node).backgroundColor);
+                await hoverRow.hover();
+                expect(await hoverRow.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(backgroundBefore);
+                expect(await hoverRow.evaluate(node => getComputedStyle(node).transitionProperty)).toContain('background-color');
+                await page.emulateMedia({ reducedMotion: 'reduce' });
+                expect(await hoverRow.evaluate(node => getComputedStyle(node).transitionProperty)).toBe('none');
+                await page.emulateMedia({ reducedMotion: 'no-preference' });
+            }
+            const title = manager(page).locator('.sb-dialog__title');
+            if (width === 390) {
+                await expect(title).toHaveText('Tag Management');
+                expect(await title.evaluate(node => node.scrollWidth)).toBeLessThanOrEqual(await title.evaluate(node => node.clientWidth));
+            } else {
+                const titleCenter = await title.evaluate(node => node.getBoundingClientRect().left + node.getBoundingClientRect().width / 2);
+                const headerCenter = await title.evaluate(node => {
+                    const { left, width: headerWidth } = node.closest('.sb-dialog__header').getBoundingClientRect();
+                    return left + headerWidth / 2;
+                });
+                expect(Math.abs(titleCenter - headerCenter)).toBeLessThanOrEqual(1);
+            }
             await manager(page).getByRole('button', { name: 'Search', exact: true }).click();
             const search = manager(page).getByRole('searchbox', { name: 'Search', exact: true });
+            await search.fill('no-tag-matches-this');
+            await expect(row(page, 'qa-tag-alpha')).toBeHidden();
+            await expect(row(page, 'qa-tag-beta')).toBeHidden();
+            await expect(manager(page).getByRole('heading', { name: 'No results', exact: true })).toBeVisible();
             await search.fill('Beta');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
             await expect(row(page, 'qa-tag-beta')).toBeVisible();
+            await expect(manager(page).locator('.tag_view_item:not([hidden])')).toHaveCount(1);
             await page.keyboard.press('Escape');
             await expect(search).toHaveValue('');
             await expect(search).toBeVisible();
             await page.keyboard.press('Escape');
             await expect(search).toBeHidden();
-            const create = manager(page).getByRole('textbox', { name: 'Create a new tag', exact: true });
+            await page.waitForFunction(() => {
+                const field = document.querySelector('#tag_view_list .sb-dialog__search');
+                return field?.hidden && field.getBoundingClientRect().height === 0;
+            });
+            const searchToggle = manager(page).getByRole('button', { name: 'Search', exact: true });
+            await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+            await expect(searchToggle).not.toHaveAttribute('aria-pressed', 'true');
+            await searchToggle.click();
+            await expect(search).toBeVisible();
+            await expect(searchToggle).toHaveAttribute('aria-expanded', 'true');
+            await searchToggle.click();
+            await expect(search).toBeHidden();
+            await page.waitForFunction(() => {
+                const field = document.querySelector('#tag_view_list .sb-dialog__search');
+                return field?.hidden && field.getBoundingClientRect().height === 0;
+            });
+            await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
+            const addTag = manager(page).getByRole('button', { name: 'Create a new tag', exact: true });
+            if (width > 450) {
+                await addTag.focus();
+                await page.keyboard.press('Enter');
+            } else {
+                await addTag.click();
+            }
+            const create = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('textbox', { name: 'Create a new tag', exact: true });
             await create.fill('QA New');
-            await create.press('Enter');
+            const createButton = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('button', { name: 'Create', exact: true });
+            await expect(createButton).toBeEnabled();
+            await create.fill('');
+            await expect(createButton).toBeDisabled();
+            await create.fill('QA Alpha');
+            await expect(createButton).toBeDisabled();
+            await create.fill('QA New');
+            await expect(createButton).toBeEnabled();
+            await page.mouse.move(20, 20);
+            const suggestedBackground = await manager(page).evaluate(node => {
+                const reference = document.createElement('button');
+                reference.className = 'menu_button menu_button_primary sb-dialog__response is-suggested';
+                node.append(reference);
+                const background = getComputedStyle(reference).backgroundColor;
+                reference.remove();
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                context.fillStyle = background;
+                context.fillRect(0, 0, 1, 1);
+                return [...context.getImageData(0, 0, 1, 1).data];
+            });
+            await expect.poll(() => createButton.evaluate(node => {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                context.fillStyle = getComputedStyle(node).backgroundColor;
+                context.fillRect(0, 0, 1, 1);
+                return [...context.getImageData(0, 0, 1, 1).data];
+            })).toEqual(suggestedBackground);
+            await page.evaluate(() => Promise.all(Array.from(document.querySelectorAll('.sb-dialog__search'), field => field.getAnimations()).flat().map(animation => animation.finished.catch(() => {}))));
+            if (width > 450) {
+                const searchMetrics = await manager(page).locator('.sb-dialog__search-input').evaluate(node => {
+                    const style = getComputedStyle(node);
+                    return [style.height, style.paddingInline, style.borderRadius, style.backgroundColor];
+                });
+                const createMetrics = await create.evaluate(node => {
+                    const style = getComputedStyle(node);
+                    return [style.height, style.paddingInline, style.borderRadius, style.backgroundColor];
+                });
+                expect(createMetrics).toEqual(searchMetrics);
+                expect(await create.evaluate(node => [getComputedStyle(node).outlineStyle, getComputedStyle(node).outlineWidth, getComputedStyle(node).outlineOffset])).toEqual(['solid', '2px', '-2px']);
+                await page.keyboard.press('Tab');
+                await expect(createButton).toBeFocused();
+                await page.keyboard.press('Shift+Tab');
+                await expect(create).toBeFocused();
+                await page.keyboard.press('Tab');
+                await page.keyboard.press('Enter');
+            } else {
+                await create.press('Enter');
+            }
             await expect(manager(page).getByRole('textbox', { name: 'Rename', exact: true })).toHaveCount(3);
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/tags.js')).tags.some(tag => tag.name === 'QA New'))).toBe(true);
             const field = row(page, fixtureTag).getByRole('textbox', { name: 'Rename', exact: true });

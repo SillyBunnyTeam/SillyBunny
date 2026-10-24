@@ -186,6 +186,16 @@
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
+.ds-entity-row--surface {
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .ds-entity-row--surface:hover { background: var(--sb-flat-hover-bg); }
+}
+
+.ds-entity-row--surface:active { background: var(--sb-flat-active-bg); }
+
 .ds-entity-row.is-selected {
     background: var(--sb-flat-selected-bg);
 }
@@ -789,6 +799,7 @@
     .ds-tag-chips .tag .tag_remove,
     .ds-entity-row .ds-entity-row__button,
     .ds-entity-row--activatable,
+    .ds-entity-row--surface,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text),
@@ -798,7 +809,7 @@
     }
 }
 
-body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-entity-row .ds-entity-row__button, .ds-entity-row--activatable,
+body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-entity-row .ds-entity-row__button, .ds-entity-row--activatable, .ds-entity-row--surface,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text), .ds-tag-filter .tag, .ds-tag-filter .sb-tag-filter-menu-button) {

@@ -190,7 +190,7 @@ function activate(event, onSelect) {
 }
 
 function getItems() {
-    return open ? Array.from(/** @type {NodeListOf<HTMLElement>} */ (open.menu.querySelectorAll(ITEM_SELECTOR))) : [];
+    return open?.menu ? Array.from(/** @type {NodeListOf<HTMLElement>} */ (open.menu.querySelectorAll(ITEM_SELECTOR))) : [];
 }
 
 function handleMenuKeydown(event) {
@@ -287,7 +287,7 @@ function ensureSheet() {
     const controller = createSheetController({
         sheet: element,
         backdrop,
-        getInitialFocus: () => (open?.keyboard ? getItems()[0] : null) ?? title,
+        getInitialFocus: () => open?.initialFocus?.() ?? (open?.keyboard ? getItems()[0] : null) ?? title,
         getReturnFocus: () => (open?.trigger?.isConnected ? open.trigger : null),
         canAnimateClose: () => isMobileLayout(),
         onClose: () => finishClose(),
@@ -433,6 +433,58 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     });
 }
 
+export function openPopover({ trigger, content, title = '', titleLabel = null, titleInput = null, bounds = null, initialFocus = null, onClose = null }) {
+    if (!(trigger instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        throw new TypeError('openPopover requires a trigger and content element');
+    }
+    initialize();
+    closeActionMenu({ animate: false, restoreFocus: false });
+    if (isMobileLayout()) {
+        const frame = ensureSheet();
+        if (titleLabel && titleInput) {
+            titleLabel.hidden = true;
+            titleInput.setAttribute('aria-labelledby', SHEET_TITLE_ID);
+        }
+        frame.title.textContent = title;
+        frame.title.hidden = !title;
+        frame.subtitle.hidden = true;
+        frame.body.replaceChildren(content);
+        hostOverlayLayer(frame.backdrop, frame.element);
+        open = { kind: 'sheet', trigger, keyboard: false, initialFocus, onClose };
+        setTriggerExpanded(trigger, true);
+        frame.controller.open();
+        return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
+    }
+
+    const popover = document.createElement('div');
+    popover.className = 'sb-action-popover sb-custom-popover';
+    popover.tabIndex = -1;
+    popover.setAttribute('role', 'dialog');
+    if (title) popover.setAttribute('aria-label', title);
+    if (titleLabel && titleInput) {
+        titleLabel.hidden = false;
+        titleLabel.id ||= 'sb-custom-popover-title';
+        titleInput.setAttribute('aria-labelledby', titleLabel.id);
+    }
+    popover.append(content);
+    popover.addEventListener('keydown', handlePopoverKeydown);
+    popover.addEventListener('focusout', handlePopoverFocusOut);
+    blockUpstreamDrawerClose(popover);
+    hostOverlayLayer(popover);
+    const origin = positionPopover(popover, trigger, null, bounds);
+    open = { kind: 'popover', trigger, popover, keyboard: false, custom: true, initialFocus, onClose, bounds };
+    setTriggerExpanded(trigger, true);
+    animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
+        duration: MOTION_FAST,
+        easing: MOTION_EASE_OUT_CUBIC,
+        styles: { 'transform-origin': origin },
+    });
+    requestAnimationFrame(() => {
+        if (open?.popover === popover) (initialFocus?.() ?? popover)?.focus({ preventScroll: true });
+    });
+    return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
+}
+
 export function closeActionMenu({ animate = true, restoreFocus = false } = {}) {
     const state = open;
     if (!state) {
@@ -475,6 +527,19 @@ function handlePopoverKeydown(event) {
         return;
     }
     if (event.key === 'Tab') {
+        if (open?.custom) {
+            const focusable = [...open.popover.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+                .filter(node => !node.hidden && node.getAttribute('aria-hidden') !== 'true');
+            if (!focusable.length) return;
+            const currentIndex = focusable.indexOf(document.activeElement);
+            const nextIndex = event.shiftKey
+                ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+                : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+            event.preventDefault();
+            event.stopPropagation();
+            focusable[nextIndex].focus({ preventScroll: true });
+            return;
+        }
         // Menus close when focus moves on, as GTK popover menus do.
         closeActionMenu({ restoreFocus: true });
         event.preventDefault();

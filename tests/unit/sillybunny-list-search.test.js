@@ -10,6 +10,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
     play: mockPlay,
     stopMotion: mockStopMotion,
     animateOut: mockAnimateOut,
+    prefersReducedMotion: () => false,
     MOTION_SLOW: 300,
 }));
 
@@ -120,7 +121,7 @@ describe('createListSearch', () => {
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
         expect(document.activeElement).toBe(input);
         expect(mockStopMotion).toHaveBeenCalledWith(field);
-        expect(mockPlay).toHaveBeenCalledWith(field, expect.any(Array), { duration: 300 });
+        expect(mockPlay).toHaveBeenCalledWith(field, expect.any(Array), expect.objectContaining({ duration: 300 }));
         typeQuery(input, 'term');
         onChange.mockClear();
 

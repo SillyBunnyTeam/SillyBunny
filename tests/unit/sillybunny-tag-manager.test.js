@@ -5,10 +5,12 @@ import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globa
 import fs from 'node:fs';
 
 let menuOptions;
+let popoverOptions;
 const openActionMenu = jest.fn(options => menuOptions = options);
 const closeActionMenu = jest.fn();
+const openPopover = jest.fn(options => { popoverOptions = options; return { close: jest.fn(), get isOpen() { return true; } }; });
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
-    openActionMenu, closeActionMenu, MOBILE_QUERY: '(max-width: 768px)', positionPopover: jest.fn(),
+    openActionMenu, openPopover, closeActionMenu, MOBILE_QUERY: '(max-width: 768px)', positionPopover: jest.fn(),
 }));
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
@@ -22,11 +24,12 @@ let adapter;
 let mobile;
 const names = () => [...manager.root.querySelectorAll('.tag_view_item')].map(row => row.id);
 const input = id => manager.root.querySelector(`[id="${id}"] .sb-tag-manager__name`);
-const key = (node, value) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
+const key = (node, value, options = {}) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...options }));
 
 beforeEach(() => {
     jest.clearAllMocks();
     menuOptions = null;
+    popoverOptions = null;
     mobile = { matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() };
     window.matchMedia = () => mobile;
     HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
@@ -173,30 +176,40 @@ describe('tag manager interactions', () => {
         expect(input('alpha').getAttribute('aria-invalid')).toBe('true');
     });
 
-    test('creation happens on commit, not keystrokes; duplicate creation is rejected', () => {
+    test('creation stays disabled until a valid name and rejects duplicates', () => {
         mount();
-        const field = manager.root.querySelector('.sb-tag-manager__new');
+        manager.root.querySelector('.sb-tag-manager__add').click();
+        const field = popoverOptions.content.querySelector('input');
+        const create = popoverOptions.content.querySelector('button');
+        expect(create.disabled).toBe(true);
         field.value = 'New tag';
         field.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(adapter.create).not.toHaveBeenCalled();
+        key(field, 'Enter', { isComposing: true });
+        key(field, 'Enter', { keyCode: 229 });
         expect(adapter.create).not.toHaveBeenCalled();
         key(field, 'Enter');
         expect(adapter.create).toHaveBeenCalledWith('New tag');
         expect(input('new').value).toBe('New tag');
-        field.value = 'alpha';
-        key(field, 'Enter');
+        manager.root.querySelector('.sb-tag-manager__add').click();
+        const duplicate = popoverOptions.content.querySelector('input');
+        const duplicateButton = popoverOptions.content.querySelector('button');
+        duplicate.value = 'alpha';
+        duplicate.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(duplicateButton.disabled).toBe(true);
         expect(adapter.create).toHaveBeenCalledTimes(1);
-        expect(field.getAttribute('aria-invalid')).toBe('true');
     });
 
-    test('the creation entry uses one placeholder and a labelled plus affordance', () => {
+    test('the header plus opens a labelled name popover', () => {
         mount();
-        const entry = manager.root.querySelector('[data-sb-editor-field="new-tag"]');
-        expect(entry.textContent).toBe('');
-        const field = entry.querySelector('input');
-        expect(field.placeholder).toBe('Create a new tag');
-        field.value = 'From plus';
-        entry.querySelector('.sb-tag-manager__add').click();
-        expect(adapter.create).toHaveBeenCalledWith('From plus');
+        const add = manager.root.querySelector('.sb-tag-manager__add');
+        expect(add.getAttribute('aria-label')).toBe('Create a new tag');
+        add.click();
+        const field = popoverOptions.content.querySelector('input');
+        expect(field.placeholder).toBe('');
+        expect(popoverOptions.titleInput).toBe(field);
+        expect(popoverOptions.titleLabel.textContent).toBe('Create a new tag');
+        expect(popoverOptions.content.querySelector('strong').textContent).toBe('Create a new tag');
     });
 
     test.each(['alphabetical', 'by_entries'])('dragging from %s keeps the grip and switches to manual ordering', mode => {

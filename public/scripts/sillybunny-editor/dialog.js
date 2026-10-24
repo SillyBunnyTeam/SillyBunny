@@ -82,18 +82,36 @@ function firstFocusable(root) {
     return all.find(isVisible) ?? all[0] ?? null;
 }
 
-/** Reserve equal button tracks so the title stays centred while its own track can shrink. */
+/** Keep titles centred when they fit, then let unequal header controls provide the spare space. */
 export function bindHeaderLayout(header) {
     const sides = [...header.querySelectorAll(':scope > .sb-dialog__header-start, :scope > .sb-dialog__header-end, :scope > .popup-controls > :is(.popup-button-ok, .popup-button-cancel), :scope > .popup-button-close')];
+    const titles = header.querySelector(':scope > .sb-dialog__titles');
+    const title = titles?.querySelector(':scope > .sb-dialog__title');
+    const measuredWidth = node => node ? node.offsetWidth || [...node.children].reduce((sum, child) => sum + child.getBoundingClientRect().width, 0) : 0;
     const sync = () => {
-        const width = Math.max(0, ...sides.map(node => node.offsetWidth));
+        const width = Math.max(0, ...sides.map(measuredWidth));
         header.style.setProperty('--sb-dialog-header-side', `${width}px`);
+        if (!titles || !title) return;
+        const start = measuredWidth(header.querySelector(':scope > .sb-dialog__header-start'));
+        const end = measuredWidth(header.querySelector(':scope > .sb-dialog__header-end'));
+        const controls = measuredWidth(header.querySelector(':scope > .popup-controls'));
+        const trailing = Math.max(end, controls);
+        const style = getComputedStyle(header);
+        const padding = (parseFloat(style.paddingInlineStart) || 0) + (parseFloat(style.paddingInlineEnd) || 0);
+        const available = Math.max(0, header.clientWidth - padding - 12);
+        const titleWidth = title.scrollWidth;
+        const centeredCapacity = Math.max(0, available - (width * 2));
+        const looseCapacity = Math.max(0, available - start - trailing);
+        const needsLooseCentering = titleWidth > centeredCapacity + 1 && titleWidth <= looseCapacity + 1;
+        header.toggleAttribute('data-header-centering-loose', needsLooseCentering);
     };
     sync();
     if (typeof ResizeObserver === 'undefined') return () => {};
     const observer = new ResizeObserver(sync);
     observer.observe(header);
     sides.forEach(node => observer.observe(node));
+    if (titles) observer.observe(titles);
+    if (title) observer.observe(title);
     return () => observer.disconnect();
 }
 
@@ -383,12 +401,15 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
         searchToggle = iconButton(t`Search`, 'magnifying-glass', 'sb-dialog__search-toggle');
         const field = element('label', 'sb-dialog__search');
         field.hidden = Boolean(search.collapsed);
-        searchInput = /** @type {HTMLInputElement} */ (element('input', 'text_pole sb-dialog__search-input'));
+        const entry = element('span', 'sb-dialog__search-entry');
+        searchInput = /** @type {HTMLInputElement} */ (element('input', 'text_pole sb-dialog__entry sb-dialog__search-input'));
         searchInput.type = 'search';
+        searchInput.setAttribute('role', 'searchbox');
         searchInput.placeholder = search.placeholder ?? t`Search`;
         searchInput.setAttribute('aria-label', search.label ?? t`Search`);
         field.id = uid('sb-dialog-search');
-        field.append(icon('magnifying-glass'), searchInput);
+        entry.append(icon('magnifying-glass'), searchInput);
+        field.append(entry);
         page.append(field);
         (start.childElementCount ? end : start).append(searchToggle);
         searchInput.addEventListener('keydown', event => {
