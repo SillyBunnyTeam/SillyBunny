@@ -153,7 +153,6 @@ test.describe('swipe picker shared Window', () => {
         expect(goBounds.right).toBeLessThan(footerBounds.right - 8);
         await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport();
         await mkdir('/tmp/opencode/round1-step6-shots', { recursive: true });
-        await page.screenshot({ path: '/tmp/opencode/round1-step6-shots/after-phone.png', fullPage: false });
 
         const lastRow = dialog.locator('.swipe_picker_block').last();
         await lastRow.scrollIntoViewIfNeeded();

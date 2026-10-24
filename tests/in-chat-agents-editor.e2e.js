@@ -294,7 +294,6 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 390, hei
         expect(empty.titleTextShadow).toBe('none');
         await mkdir('/tmp/opencode/round1-step1-shots/after', { recursive: true });
         await page.mouse.move(1, 1);
-        await page.screenshot({ path: `/tmp/opencode/round1-step1-shots/after/refine-dialog-${width}x${height}.png` });
 
         await input.focus();
         const focused = await readStyles();
