@@ -338,6 +338,7 @@ describe('tag manager interactions', () => {
         jest.useFakeTimers();
         mount();
         const search = manager.root.querySelector('.sb-dialog__search-input');
+        manager.root.querySelector('.sb-dialog__search-toggle').click();
         search.value = 'alpha';
         search.dispatchEvent(new Event('input'));
         jest.advanceTimersByTime(300);

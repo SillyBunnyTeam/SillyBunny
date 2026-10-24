@@ -24,6 +24,14 @@ async function openAgents(page, baseURL, width = 1440) {
         const request = route.request();
         const url = new URL(request.url());
         if (url.origin !== origin) return route.abort();
+        if (url.pathname === '/api/settings/get') {
+            const response = await route.fetch();
+            const data = await response.json();
+            const settings = JSON.parse(data.settings);
+            settings.main_api = 'openai';
+            data.settings = JSON.stringify(settings);
+            return route.fulfill({ response, json: data });
+        }
         if (!url.pathname.startsWith('/api/') || request.method() === 'GET') return route.continue();
         if (READS.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) return route.continue();
         if (/^\/api\/chats\/(?:group\/)?get$/.test(url.pathname) && request.postDataJSON()?.allow_create !== true) return route.continue();
@@ -273,7 +281,7 @@ for (const width of [1440, 390]) {
         const search = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
         await menu(page, root);
         await expect(page.getByRole('menuitemcheckbox')).toHaveCount(0);
-        await expect(page.getByRole('menuitem', { name: 'Settings', exact: true }).locator('i')).toHaveClass('fa-solid fa-gear');
+        await expect(page.getByRole('menuitem', { name: 'Settings', exact: true }).locator('i')).toHaveClass(/fa-gear/);
         await page.keyboard.press('Escape');
         await expect(filter).toBeHidden();
         await expect(trigger).toHaveAttribute('aria-pressed', 'false');

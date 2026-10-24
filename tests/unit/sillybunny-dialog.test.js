@@ -228,7 +228,7 @@ describe('openDialog closing', () => {
 });
 
 describe('openDialog focus', () => {
-    test('initial focus: initialFocus, else the search field, else the first body control', () => {
+    test('initial focus: initialFocus, else the open search field, else the first body control', () => {
         const target = document.createElement('input');
         const first = openDialog({ title: 'T', content: target, initialFocus: () => target });
         expect(document.activeElement).toBe(target);
@@ -245,6 +245,7 @@ describe('openDialog focus', () => {
         const onChange = jest.fn();
         const dialog = openDialog({ title: 'T', search: { onChange, placeholder: 'Find' } });
         const input = dialog.surface.querySelector('.sb-dialog__search-input');
+        expect(dialog.surface.querySelector('.sb-dialog__search').hidden).toBe(false);
         expect(input.placeholder).toBe('Find');
         expect(input.getAttribute('aria-label')).toBe('Search');
         input.value = 'abc';
@@ -255,6 +256,9 @@ describe('openDialog focus', () => {
         expect(input.value).toBe('');
         expect(dialog.isOpen).toBe(true);
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(dialog.isOpen).toBe(true);
+        const cancel = new Event('cancel', { cancelable: true });
+        dialog.root.dispatchEvent(cancel);
         await expect(dialog.closed).resolves.toEqual({ response: 'close' });
     });
 });
@@ -397,6 +401,8 @@ describe('pages', () => {
         const dialog = openDialog({ title: 'Root' });
         const page = dialog.push({ title: 'Child', search: { onChange() {} } });
         const input = page.page.querySelector('.sb-dialog__search-input');
+        page.page.querySelector('.sb-dialog__search-toggle').click();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         await expect(page.closed).resolves.toEqual({ response: 'back' });
     });

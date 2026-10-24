@@ -19,7 +19,8 @@ import { t } from '../i18n.js';
  * @param {number} [options.debounce=0]      Milliseconds; 0 filters synchronously on every input.
  * @param {string} [options.heightProperty]  Custom property holding the revealed field height.
  * @param {boolean} [options.shortcuts=true] Enables Ctrl/Cmd+F and type-to-search inside `scope`.
- * @param {string} [options.typeToSearchSelector] Focus targets that accept type-to-search. Defaults to list rows.
+ * @param {boolean} [options.escapeClearsFirst=false] Keeps an open search visible for one Escape after clearing its query.
+ * @param {string} [options.typeToSearchSelector='[data-sb-list-key]'] Focus target filter for type-to-search.
  * @returns {{ toggle: (show?: boolean) => void, open: () => void, close: () => void, clear: () => void,
  *   setQuery: (value: string, options?: { notify?: boolean }) => void, report: (shown: number, total: number) => void,
  *   readonly query: string, readonly isOpen: boolean, destroy: () => void }}
@@ -35,6 +36,7 @@ export function createListSearch({
     debounce = 0,
     heightProperty = '',
     shortcuts = true,
+    escapeClearsFirst = false,
     typeToSearchSelector = '[data-sb-list-key]',
 }) {
     let query = input.value ?? '';
@@ -133,6 +135,10 @@ export function createListSearch({
         if (event.key !== 'Escape' || event.isComposing) return;
         event.preventDefault();
         event.stopPropagation();
+        if (escapeClearsFirst && input.value) {
+            clear();
+            return;
+        }
         close();
     };
 
@@ -158,7 +164,9 @@ export function createListSearch({
             return;
         }
         if (mod || event.altKey || event.key?.length !== 1 || event.key === ' ') return;
-        if (!(event.target instanceof Element) || !event.target.matches(typeToSearchSelector)) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target || target.matches('input, textarea, select, [contenteditable], button, a[href]')) return;
+        if (typeToSearchSelector && !target.matches(typeToSearchSelector) && target.closest(typeToSearchSelector) === null) return;
         event.preventDefault();
         open();
         input.value += event.key;

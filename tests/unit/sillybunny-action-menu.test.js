@@ -64,6 +64,7 @@ describe('action menu optional sections', () => {
         expect(radioItems[1].querySelector('.sb-action-menu-indicator-dot')).toBeNull();
         expect(checkboxItems[0].querySelector('.sb-action-menu-indicator-check')).not.toBeNull();
         expect(checkboxItems[1].querySelector('.sb-action-menu-indicator-check')).toBeNull();
+        expect(radioItems[0].querySelector('.sb-action-menu-indicator')).not.toBeNull();
         expect(menu.querySelectorAll('.sb-action-menu-item > .fa-check, .sb-action-menu-item > .fa-star')).toHaveLength(0);
     });
 

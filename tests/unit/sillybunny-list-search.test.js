@@ -136,19 +136,22 @@ describe('createListSearch', () => {
         expect(mockAnimateOut).toHaveBeenCalledWith(field, expect.any(Array), expect.any(Function), { duration: 300 });
     });
 
-    test('Escape in the input closes search without reaching document listeners', () => {
-        const { search, input, field, onChange } = makeSearch();
+    test('Escape clears the query first, then closes search without reaching document listeners', () => {
+        const { search, input, field, onChange } = makeSearch({ escapeClearsFirst: true });
         search.open();
         typeQuery(input, 'term');
         const ancestor = listenOnDocument();
 
-        const event = keydown(input, 'Escape');
+        const clearEvent = keydown(input, 'Escape');
 
-        expect(field.hidden).toBe(true);
+        expect(field.hidden).toBe(false);
         expect(search.query).toBe('');
         expect(onChange).toHaveBeenLastCalledWith('');
-        expect(event.defaultPrevented).toBe(true);
+        expect(clearEvent.defaultPrevented).toBe(true);
         expect(ancestor).not.toHaveBeenCalled();
+
+        keydown(input, 'Escape');
+        expect(field.hidden).toBe(true);
     });
 
     test.each(['ctrlKey', 'metaKey'])('%s+F inside scope opens search and consumes the event', modifier => {

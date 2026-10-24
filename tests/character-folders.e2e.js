@@ -95,6 +95,14 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await manager.locator('.sb-folder-manager__add').click();
             const folderId = await page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolders('characters')[0].id);
             await expect(manager.locator(`[data-folder-id="${folderId}"]`)).toBeVisible();
+            const folderRow = manager.locator(`[data-folder-id="${folderId}"]`);
+            await folderRow.locator('.sb-folder-manager__dot').click();
+            await expect(manager.locator('.sb-dialog__back').last()).toBeVisible();
+            await manager.locator('.sb-dialog__back').last().click();
+            await folderRow.focus();
+            await page.keyboard.press('Enter');
+            await expect(manager.locator('.sb-dialog__back').last()).toBeVisible();
+            await manager.locator('.sb-dialog__back').last().click();
             await name.fill('QA Delete Folder');
             await manager.locator('.sb-folder-manager__add').click();
             const deleteFolderId = await page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolders('characters').find(folder => folder.name === 'QA Delete Folder').id);
@@ -114,7 +122,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect.poll(() => page.evaluate(async id => (await import('/scripts/sillybunny-folders.js')).getFolders('characters').some(folder => folder.id === id), deleteFolderId)).toBe(false);
 
             await manager.locator(`[data-folder-id="${folderId}"] .sb-folder-manager__count`).click();
-            await expect(manager.locator('.sb-dialog__back')).toBeVisible();
+            await expect(manager.locator('.sb-dialog__back').last()).toBeVisible();
             await manager.locator('.sb-folder-manager__add-member').click();
             const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
             await expect(picker).toBeVisible();
@@ -124,7 +132,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-2.png'))).toBe(folderId);
             await manager.locator('.sb-folder-manager__remove').click();
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-2.png'))).toBeNull();
-            await manager.locator('.sb-dialog__back').click();
+            await manager.locator('.sb-dialog__back').last().click();
 
             await manager.locator('.sb-dialog__close').click();
 

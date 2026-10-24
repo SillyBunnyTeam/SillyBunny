@@ -12,10 +12,12 @@ import {
     event_types,
     DEFAULT_PRINT_TIMEOUT,
     printCharacters,
+    getThumbnailUrlForViewport,
+    default_avatar,
 } from '../script.js';
 import { FILTER_TYPES, FILTER_STATES, DEFAULT_FILTER_STATE, isFilterState, FilterHelper } from './filters.js';
 
-import { groupCandidatesFilter, groupMembersFilter, groups, selected_group } from './group-chats.js';
+import { groupCandidatesFilter, groupMembersFilter, groups, selected_group, getGroupAvatarElement } from './group-chats.js';
 import { download, onlyUnique, parseJsonFile, uuidv4, flashHighlight, equalsIgnoreCaseAndAccents, includesIgnoreCaseAndAccents, removeFromArray, getFreeName, findChar, escapeHtml } from './utils.js';
 import { power_user } from './power-user.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
@@ -33,6 +35,8 @@ import { enumTypes, SlashCommandEnumValue } from './slash-commands/SlashCommandE
 import { animateHeightFrom, animateIn, fadeOutAndRemove } from './sillybunny-motion.js';
 // SillyBunny: share the dialog lifecycle and chip colour updates — see docs/ui-migration.md
 import { openTagManager, refreshTagManager, updateTagColors } from './sillybunny-tag-manager.js';
+// SillyBunny: tag deletion uses the shared destructive alert so Return cannot confirm it.
+import { openAlert } from './sillybunny-editor/dialog.js';
 
 export {
     TAG_FOLDER_TYPES,
@@ -1839,6 +1843,8 @@ async function onViewTagsListClick() {
     // SillyBunny: one opener retains upstream actions and live data identities — see docs/ui-migration.md
     await openTagManager({
         getState: () => ({ tags, tagMap: tag_map, characters, groups, settings: power_user }),
+        getAvatar: character => ({ src: character.avatar === 'none' ? default_avatar : getThumbnailUrlForViewport('avatar', character.avatar), alt: '' }),
+        getGroupAvatar: group => getGroupAvatarElement(group),
         folderTypes: TAG_FOLDER_TYPES,
         sort: sortTags,
         create: createNewTag,
@@ -1858,6 +1864,8 @@ async function onViewTagsListClick() {
             },
             folder: row => onTagAsFolderClick.call(row),
             color: (event, property) => onTagColorize(event, (tag, color) => tag[property] = color, property === 'color' ? 'background-color' : 'color'),
+            addMember: (tag, key) => addTagsToEntity(tag, key),
+            removeMember: (tag, key) => removeTagFromEntity(tag, key),
         },
     });
 }
@@ -2256,13 +2264,17 @@ async function onTagDeleteClick() {
         }).val(null).trigger('change');
     }
 
-    const result = await callGenericPopup(popupContent, POPUP_TYPE.CONFIRM, '', {
-        // SillyBunny: merging/deleting a tag is a Dialog with a destructive affirmative.
-        tier: 'dialog',
-        defaultResult: POPUP_RESULT.NEGATIVE,
-        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+    const alertBody = document.createElement('div');
+    const headingSelector = 'h1, h2, h3, h4, h5, h6';
+    popupContent.filter(headingSelector).add(popupContent.find(headingSelector)).remove();
+    alertBody.append(...popupContent.toArray().filter(node => !/^H[1-6]$/.test(node.tagName)));
+    const result = await openAlert({
+        heading: t`Delete Tag`,
+        bodyNode: alertBody,
+        responses: [{ id: 'cancel', label: t`Cancel` }, { id: 'delete', label: t`Delete`, appearance: 'destructive' }],
+        closeResponse: 'cancel',
     });
-    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+    if (result !== 'delete') {
         return;
     }
 

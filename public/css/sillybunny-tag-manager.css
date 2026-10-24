@@ -25,7 +25,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: var(--sb-radius-control);
+    border-radius: 50%;
     background: transparent;
     color: var(--SmartThemeBodyColor);
     box-shadow: none;
@@ -42,7 +42,16 @@
 .sb-tag-manager__create .ds-row-suffix {
     display: flex;
     flex: 1;
-    gap: 8px;
+    gap: 0;
+    min-width: 0;
+}
+
+.sb-tag-manager__create-row {
+    min-height: 48px;
+    padding: 4px 8px 4px 12px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-flat-hover-bg);
 }
 
 .sb-tag-manager__create .sb-tag-manager__new {
@@ -50,11 +59,16 @@
     width: 0;
     min-width: 0;
     margin: 0;
+    min-height: 40px;
+    padding-inline: 4px 8px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
 }
 
 .sb-tag-manager .tag_view_item {
     margin: 0;
-    gap: 10px;
+    padding-inline: 8px;
     flex-wrap: wrap;
     content-visibility: visible;
 }
@@ -100,6 +114,18 @@
     box-shadow: none;
 }
 
+.sb-tag-manager .tag_view_item .ds-entity-row__title,
+.sb-tag-manager .tag_view_item .sb-tag-manager__name {
+    font-size: calc(var(--sb-type-body) * 0.9);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.sb-tag-manager .tag_view_item .ds-entity-row__subtitle {
+    font-size: calc(var(--sb-type-body) * 0.75);
+    line-height: 1.4;
+}
+
 .sb-tag-manager .sb-tag-manager__name:focus {
     background: var(--sb-layer-view);
     box-shadow: var(--sb-focus-ring-inset);
@@ -125,6 +151,19 @@
     flex: 1 0 100%;
 }
 
+.sb-tag-manager__members {
+    margin-top: 12px;
+}
+
+.sb-tag-manager__member-add {
+    align-self: flex-end;
+}
+
+.sb-tag-manager .sb-tag-manager__button {
+    border-radius: 999px;
+    background: transparent !important;
+}
+
 .sb-tag-manager__colors .tag_view_color_picker {
     display: flex;
     align-items: center;
@@ -145,5 +184,9 @@
     .sb-tag-manager :is(.sb-tag-manager__button, .sb-tag-manager__name, .sb-tag-manager__new) {
         min-height: 44px;
         min-width: 44px;
+    }
+
+    .sb-tag-manager__create-row {
+        min-height: 52px;
     }
 }

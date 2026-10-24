@@ -170,6 +170,7 @@ export function createFolderManager(scope, adapter) {
     createError.hidden = true;
     const createButton = button(t`New Folder`, 'plus', createPending, 'sb-folder-manager__add');
     const createEntry = createRow({ label: '', field: 'new-folder', suffix: [createInput, createButton] });
+    createEntry.row.classList.add('sb-folder-manager__create-row');
     createEntry.row.querySelector('.ds-row-text')?.remove();
     const createGroup = element('div', 'ds-pref-group sb-folder-manager__create');
     createGroup.append(createEntry.row, createError);
@@ -250,10 +251,23 @@ export function createFolderManager(scope, adapter) {
             activation: 'navigate',
         });
         entity.row.classList.add('sb-folder-manager__folder-row');
+        entity.row.setAttribute('role', 'button');
+        entity.row.tabIndex = 0;
+        entity.row.setAttribute('aria-haspopup', 'dialog');
         entity.slots.grip?.classList.add('drag-handle');
         entity.row.dataset.folderId = folder.id;
+        entity.row.addEventListener('click', event => {
+            if (event.target.closest('button, input, .drag-handle')) return;
+            openMembers(folder.id);
+        });
+        entity.row.addEventListener('keydown', event => {
+            if (event.isComposing || event.target !== entity.row || !['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            openMembers(folder.id);
+        });
         const state = { row: entity.row, input, error, dot, scope };
         entries.set(folder.id, state);
+        entity.slots.grip?.addEventListener('click', event => event.stopPropagation());
         const commitName = (focusInvalid = false) => {
             const parsed = folderName(input.value);
             if (!parsed.ok) {
@@ -319,16 +333,20 @@ export function createFolderManager(scope, adapter) {
         }
         const liveIds = new Set(folders.map(folder => folder.id));
         for (const id of entries.keys()) if (!liveIds.has(id)) entries.delete(id);
-        list.hidden = !folders.length;
-        if (!folders.length) {
+        const query = frame?.search?.query.trim().toLowerCase() ?? '';
+        for (const row of list.children) row.hidden = Boolean(query) && !row.querySelector('.sb-folder-manager__name')?.value.toLowerCase().includes(query);
+        const shown = [...list.children].filter(row => !row.hidden).length;
+        list.hidden = !shown;
+        if (!shown) {
             status.hidden = false;
             status.replaceChildren(createStatusPage({
                 icon: 'folder-open',
-                title: t`No Folders`,
-                description: scope === 'groups' ? t`Create a folder to sort groups in the list.` : t`Create a folder to sort characters in the list.`,
+                title: query ? t`No results` : t`No Folders`,
+                description: query ? '' : scope === 'groups' ? t`Create a folder to sort groups in the list.` : t`Create a folder to sort characters in the list.`,
                 compact: true,
             }).element);
         } else status.hidden = true;
+        frame?.search?.report(shown, folders.length);
     }
 
     function renderMemberList(folder) {
@@ -348,14 +366,14 @@ export function createFolderManager(scope, adapter) {
         const folder = getFolders(scope).find(candidate => candidate.id === folderId);
         if (!folder || !frame || members) return;
         const add = button(t`Add`, 'plus', () => addMember(folder), 'sb-folder-manager__add-member');
-        const toolbar = element('div', 'sb-folder-manager__members-toolbar');
-        toolbar.append(add);
         const memberList = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__members');
         memberList.setAttribute('role', 'list');
         const pageContent = document.createDocumentFragment();
-        pageContent.append(toolbar, memberList);
+        pageContent.append(memberList);
         const page = frame.push({ title: folder.name, content: pageContent, initialFocus: () => add });
-        members = { folderId: folder.id, page, toolbar, list: memberList };
+        add.classList.add('sb-dialog__icon-button');
+        page.header.querySelector('.sb-dialog__header-end').append(add);
+        members = { folderId: folder.id, page, add, list: memberList };
         renderMemberList(folder);
         page.closed.then(() => {
             members = null;
@@ -370,7 +388,7 @@ export function createFolderManager(scope, adapter) {
             return { value: key, label: String(adapter.getName(item) ?? key), subtitle: assigned.has(key) ? t`In this folder` : undefined };
         });
         openPicker({
-            trigger: members?.toolbar.querySelector('.sb-folder-manager__add-member'),
+            trigger: members?.add,
             title: t`Add to Folder`,
             items,
             selected: null,
@@ -450,14 +468,9 @@ export function createFolderManager(scope, adapter) {
             setCreateError();
         }
     });
-    list.addEventListener('click', event => {
-        if (event.target.closest('button, input')) return;
-        const row = event.target.closest('.sb-folder-manager__folder-row');
-        if (row) openMembers(row.dataset.folderId);
-    });
     unbindKeyboard = bindListKeyboard(list, {
         rowSelector: '.sb-folder-manager__folder-row',
-        onOpen: row => { openMembers(row.dataset.folderId); return true; },
+        keySourceSelector: '.drag-handle',
         onRename: row => { row.querySelector('input')?.focus(); return true; },
     });
     sortable = bindSortable(list, {
@@ -484,7 +497,7 @@ export function createFolderManager(scope, adapter) {
         closed,
         refresh,
         close,
-        focus: () => (members ? members.toolbar.querySelector('.sb-folder-manager__add-member') : createInput)?.focus({ preventScroll: true }),
+        focus: () => (members ? members.add : frame?.search?.isOpen ? frame.searchInput : frame?.searchToggle ?? createInput)?.focus({ preventScroll: true }),
         show() {
             if (frame) return;
             frame = openDialog({
@@ -493,6 +506,7 @@ export function createFolderManager(scope, adapter) {
                 className: 'sb-folder-manager',
                 content,
                 initialFocus: () => createInput,
+                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
             });
             frame.closed.then(dispose);
         },

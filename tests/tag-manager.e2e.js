@@ -76,11 +76,16 @@ for (const width of [1440, 390]) {
             await openFromList(page);
             await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}.png` });
             await expect(page.locator('.sb-dialog-host:has(> #tag_view_list)')).toHaveAttribute('data-presentation', width <= 450 ? 'sheet' : 'floating');
+            await manager(page).getByRole('button', { name: 'Search', exact: true }).click();
             const search = manager(page).getByRole('searchbox', { name: 'Search', exact: true });
             await search.fill('Beta');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
             await expect(row(page, 'qa-tag-beta')).toBeVisible();
-            await search.fill('');
+            await page.keyboard.press('Escape');
+            await expect(search).toHaveValue('');
+            await expect(search).toBeVisible();
+            await page.keyboard.press('Escape');
+            await expect(search).toBeHidden();
             const create = manager(page).getByRole('textbox', { name: 'Create a new tag', exact: true });
             await create.fill('QA New');
             await create.press('Enter');
@@ -117,6 +122,26 @@ for (const width of [1440, 390]) {
             await page.locator('.sb-character-list .sb-tag-filter-menu-button').click();
             await page.getByRole('button', { name: 'Manage tags', exact: true }).last().click();
             await expect(manager(page)).toBeVisible();
+        });
+
+        test('tag rows open a member page with remove and add controls', async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            const tagRow = row(page, fixtureTag);
+            await tagRow.locator('.ds-entity-row__avatar').click();
+            const managerWindow = page.locator('.sb-dialog-host:has(> #tag_view_list)');
+            await expect(managerWindow.locator('.sb-dialog__back').last()).toBeVisible();
+            await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(1);
+            await managerWindow.locator('.sb-tag-manager__members .sb-tag-manager__member-remove').click();
+            await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(0);
+            await managerWindow.getByRole('button', { name: 'Add', exact: true }).click();
+            const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+            await picker.getByRole('option', { name: 'QA tag character', exact: true }).click();
+            await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(1);
+            await managerWindow.locator('.sb-dialog__back').last().click();
+            await tagRow.focus();
+            await page.keyboard.press('Space');
+            await expect(managerWindow.locator('.sb-dialog__back').last()).toBeVisible();
         });
 
         test('colour picker updates a list chip immediately, and slash-command writers refresh the open dialog', async ({ page }) => {
@@ -194,6 +219,14 @@ for (const width of [1440, 390]) {
             await prepare(page, width);
             await openFromList(page);
             let menu = await headerMenu(page);
+            const indicator = menu.locator('[role="menuitemradio"] .sb-action-menu-indicator').first();
+            const label = menu.locator('[role="menuitemradio"] .sb-action-menu-label').first();
+            expect((await indicator.boundingBox()).x).toBeLessThan((await label.boundingBox()).x);
+            const headingStyles = await menu.locator('.sb-action-menu-section-title').first().evaluate(node => {
+                const style = getComputedStyle(node);
+                return { background: style.backgroundColor, radius: style.borderRadius };
+            });
+            expect(headingStyles).toEqual({ background: 'rgba(0, 0, 0, 0)', radius: '0px' });
             await expect(menu.getByRole('menuitemcheckbox', { name: 'Tags as Folders', exact: true })).toHaveCount(0);
             await expect(row(page, fixtureTag).locator('.sb-tag-manager__folder')).toHaveCount(0);
             await page.keyboard.press('Escape');
@@ -220,11 +253,12 @@ for (const width of [1440, 390]) {
             await page.keyboard.press('Escape');
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
             await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-            await expect(page.locator('#merge_tag_select')).toBeAttached();
-            const deleteDialog = page.locator('dialog.popup[open]').last();
-            await expect(deleteDialog.locator('.popup-button-cancel')).toBeFocused();
+            const deleteDialog = page.locator('.sb-dialog-host[role="alertdialog"][open]');
+            await expect(deleteDialog.locator('#merge_tag_select')).toBeAttached();
+            await expect(deleteDialog.locator(':is(h1, h2, h3, h4, h5, h6)')).toHaveCount(1);
+            await expect(deleteDialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
             await page.keyboard.press('Enter');
-            await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
+            await expect(deleteDialog).toHaveCount(0);
             await expect(row(page, fixtureTag)).toBeVisible();
         });
     });

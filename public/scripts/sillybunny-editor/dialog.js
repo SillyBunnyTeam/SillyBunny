@@ -373,31 +373,41 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
 
     let searchControl = null;
     let searchInput = null;
+    let searchToggle = null;
     const status = element('div', 'sb-dialog__status');
     status.setAttribute('aria-live', 'polite');
     const body = element('div', 'sb-dialog__body');
     const syncHeaderShade = () => header.toggleAttribute('data-scrolled', body.scrollTop > 0);
     body.addEventListener('scroll', syncHeaderShade, { passive: true });
     if (search) {
+        searchToggle = iconButton(t`Search`, 'magnifying-glass', 'sb-dialog__search-toggle');
         const field = element('label', 'sb-dialog__search');
+        field.hidden = Boolean(search.collapsed);
         searchInput = /** @type {HTMLInputElement} */ (element('input', 'text_pole sb-dialog__search-input'));
         searchInput.type = 'search';
         searchInput.placeholder = search.placeholder ?? t`Search`;
         searchInput.setAttribute('aria-label', search.label ?? t`Search`);
+        field.id = uid('sb-dialog-search');
         field.append(icon('magnifying-glass'), searchInput);
         page.append(field);
-        searchControl = createListSearch({
-            field, input: searchInput, scope: page, scroller: body, status,
-            debounce: search.debounce ?? 0, onChange: query => search.onChange?.(query),
-        });
-        // The field is always shown (there is no reveal button), so Escape only clears it.
+        (start.childElementCount ? end : start).append(searchToggle);
         searchInput.addEventListener('keydown', event => {
             if (event.key !== 'Escape' || event.isComposing) return;
             event.preventDefault();
             event.stopImmediatePropagation();
-            if (searchInput.value) searchControl.clear();
-            else onBack?.('escape');
+            if (search.escapeClearsFirst && searchInput.value) searchControl.clear();
+            else {
+                searchControl.close();
+                if (nested) onBack?.('escape');
+            }
         }, true);
+        searchControl = createListSearch({
+            field, input: searchInput, trigger: searchToggle, scope: page, scroller: body, status,
+            typeToSearchSelector: search.typeToSearchSelector,
+            escapeClearsFirst: true,
+            debounce: search.debounce ?? 0, onChange: query => search.onChange?.(query),
+        });
+        searchToggle.addEventListener('click', () => searchControl.toggle());
     }
     appendContent(body, content);
     page.append(body);
@@ -417,7 +427,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
     const unbindHeaderLayout = bindHeaderLayout(header);
 
     return {
-        page, header, titleNode, body, bottomBar, status, buttons, menuButton, closeButton,
+        page, header, titleNode, body, bottomBar, status, buttons, menuButton, closeButton, searchToggle,
         search: searchControl, searchInput,
         setTitle(text) { titleNode.textContent = text; },
         setSubtitle(text) {
@@ -592,7 +602,7 @@ export function openDialog({
             };
             if (prefersReducedMotion()) hidePrevious();
             else play(view.page, [{ transform: 'translateX(100%)' }, { transform: 'none' }], { ...SPRING_NAVIGATION, onEnd: hidePrevious });
-            (spec.initialFocus?.() ?? view.searchInput ?? firstFocusable(view.body) ?? firstFocusable(view.header))?.focus({ preventScroll: true });
+            (spec.initialFocus?.() ?? (view.search?.isOpen ? view.searchInput : view.searchToggle) ?? firstFocusable(view.body) ?? firstFocusable(view.header))?.focus({ preventScroll: true });
         }
         return { entry, pageClosed };
     }
@@ -602,6 +612,8 @@ export function openDialog({
             header: view.header,
             body: view.body,
             search: view.search,
+            searchInput: view.searchInput,
+            searchToggle: view.searchToggle,
             setTitle: view.setTitle,
             setSubtitle: view.setSubtitle,
             setResponseEnabled: view.setResponseEnabled,
@@ -643,6 +655,11 @@ export function openDialog({
     });
     host.addEventListener('cancel', event => {
         event.preventDefault();
+        const view = topPage()?.view;
+        if (view?.search?.isOpen) {
+            view.search.close();
+            return;
+        }
         void requestDismiss('escape');
     });
     host.addEventListener('close', () => {
@@ -672,7 +689,7 @@ export function openDialog({
     document.body.append(host);
     host.showModal();
     openMotion(frame);
-    (initialFocus?.() ?? root.searchInput ?? firstFocusable(root.body) ?? root.buttons.get('cancel') ?? root.closeButton)?.focus({ preventScroll: true });
+    (initialFocus?.() ?? (root.search?.isOpen ? root.searchInput : root.searchToggle) ?? firstFocusable(root.body) ?? root.buttons.get('cancel') ?? root.closeButton)?.focus({ preventScroll: true });
 
     return {
         root: host,

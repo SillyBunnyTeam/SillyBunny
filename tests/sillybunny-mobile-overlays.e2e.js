@@ -21,6 +21,17 @@ async function waitForApp(page) {
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
 }
 
+async function useChatCompletionSettings(page) {
+    await page.route('**/api/settings/get', async route => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const settings = JSON.parse(data.settings);
+        settings.main_api = 'openai';
+        data.settings = JSON.stringify(settings);
+        return route.fulfill({ response, json: data });
+    });
+}
+
 async function openPersonaEntry(page) {
     await page.evaluate(async () => {
         const { user_avatar } = await import('/scripts/personas.js');
@@ -129,6 +140,7 @@ for (const layout of layouts) {
 
         test('Prompt properties use the shared Dialog when the editor switches to its summary', async ({ page }) => {
             await protectMaintainerServer(page);
+            await useChatCompletionSettings(page);
             await page.goto('/');
             await waitForApp(page);
             const editor = await openPromptEntry(page);

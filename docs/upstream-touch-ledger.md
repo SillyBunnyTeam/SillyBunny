@@ -180,6 +180,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-22, PR #870 Phase 3.22–3.23. |
 | Owner | UI integrator. |
 
+### Tag deletion alert
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/tags.js` |
+| Area | Tag Manager destructive deletion confirmation. |
+| Divergence reason | TODO(copy) |
+| Target seam | Shared `openAlert` confirmation frame. |
+| Adapter shape | Preserve the existing tag reference merge control and deletion persistence; replace only the confirmation surface and response IDs. |
+| Protecting tests | `tests/tag-manager.e2e.js`; dialog tier and alert keyboard tests. |
+| Validation | Root lint; tests lint; focused and full unit tests; tag-manager Chromium E2E at desktop and phone widths. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-24. |
+| Owner | TODO(copy) |
+
 ### Utility dialogs - shared content rows
 | Field | Value |
 | --- | --- |

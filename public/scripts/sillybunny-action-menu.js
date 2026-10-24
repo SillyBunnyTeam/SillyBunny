@@ -158,7 +158,11 @@ function buildMenu(sections, label) {
             const text = document.createElement('span');
             text.className = 'sb-action-menu-label';
             text.textContent = item.label;
-            button.append(kind ? createStateIndicator(kind, checked) : createIcon(item.icon), text);
+            const leading = kind ? createStateIndicator(kind, checked)
+                : item.icon ? createIcon(item.icon) : document.createElement('span');
+            if (!kind && !item.icon) leading.classList.add('sb-action-menu-leading');
+            leading.setAttribute('aria-hidden', 'true');
+            button.append(leading, text);
             if (item.detail) {
                 const detail = document.createElement('span');
                 detail.className = 'sb-action-menu-detail';
