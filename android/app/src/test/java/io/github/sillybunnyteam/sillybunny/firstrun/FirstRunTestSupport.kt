@@ -8,6 +8,8 @@ import io.github.sillybunnyteam.sillybunny.server.ServerHost
 import io.github.sillybunnyteam.sillybunny.server.ServerState
 import io.github.sillybunnyteam.sillybunny.server.SetupJob
 import io.github.sillybunnyteam.sillybunny.server.SetupState
+import io.github.sillybunnyteam.sillybunny.settings.AndroidLocalNetworkAccess
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkAccess
 import java.io.File
 import java.time.Clock
 import java.time.Instant
@@ -80,9 +82,11 @@ internal class FirstRunFixture(root: File) {
     var onInspect: () -> Unit = {}
     val clock: Clock = Clock.fixed(Instant.parse("2026-10-21T12:00:00Z"), ZoneOffset.UTC)
 
+    /** [localNetwork] null keeps the real adapter, which has no permission to offer below API 37. */
     fun dependencies(
         io: CoroutineDispatcher,
         context: Context = ApplicationProvider.getApplicationContext(),
+        localNetwork: LocalNetworkAccess? = null,
     ): FirstRunDependencies = FirstRunDependencies(
         context = context,
         paths = paths,
@@ -95,6 +99,7 @@ internal class FirstRunFixture(root: File) {
         defaultRef = REF,
         notifications = notifications,
         battery = { exempt },
+        localNetwork = localNetwork ?: AndroidLocalNetworkAccess(context),
         storage = {
             storageCalls++
             availableBytes

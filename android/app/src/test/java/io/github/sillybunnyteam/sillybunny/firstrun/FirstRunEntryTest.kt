@@ -20,6 +20,10 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.Lifecycle
 import io.github.sillybunnyteam.sillybunny.server.SetupState
+import io.github.sillybunnyteam.sillybunny.settings.FakeLocalNetwork
+import io.github.sillybunnyteam.sillybunny.settings.LOCAL_NETWORK_PERMISSION
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkAccess
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,8 +60,8 @@ class FirstRunEntryTest {
         fixture = FirstRunFixture(temporary.root)
     }
 
-    private fun start(): FirstRunController {
-        val dependencies = fixture.dependencies(Dispatchers.Main)
+    private fun start(localNetwork: LocalNetworkAccess? = null): FirstRunController {
+        val dependencies = fixture.dependencies(Dispatchers.Main, localNetwork = localNetwork)
         lateinit var controller: FirstRunController
         compose.runOnUiThread { controller = FirstRun.controller(compose.activity, dependencies) }
         val owner = object : ActivityResultRegistryOwner {
@@ -86,6 +90,9 @@ class FirstRunEntryTest {
         compose.runOnUiThread { registry.answer(result) }
         compose.waitForIdle()
     }
+
+    private fun canAskAgain(value: Boolean) = shadowOf(compose.activity.packageManager)
+        .setShouldShowRequestPermissionRationale(LOCAL_NETWORK_PERMISSION, value)
 
     private fun moveTo(state: Lifecycle.State) {
         compose.activityRule.scenario.moveToState(state)
@@ -231,6 +238,62 @@ class FirstRunEntryTest {
         assertTrue(registry.inputs.isEmpty())
         compose.onNodeWithTag("firstrun_battery_skipped").assertExists()
         compose.onNodeWithTag("firstrun_continue").assertExists()
+    }
+
+    @Test
+    fun belowApi37ThereIsNoLocalNetworkItem() {
+        val controller = start()
+        assertEquals(LocalNetworkStatus.NOT_REQUIRED, controller.state.value.localNetwork)
+        compose.onNodeWithTag("firstrun_battery").assertExists()
+        compose.onNodeWithTag("firstrun_local_network").assertDoesNotExist()
+    }
+
+    @Test
+    fun theLocalNetworkItemAsksOnlyWhenTappedUntilTheSystemStops() {
+        val access = FakeLocalNetwork()
+        val controller = start(access)
+        compose.onNodeWithTag("firstrun_local_network").assertExists()
+        assertTrue("nothing is requested on its own", registry.inputs.isEmpty())
+
+        tap("firstrun_local_network_allow")
+        assertEquals(listOf<Any?>(LOCAL_NETWORK_PERMISSION), registry.inputs)
+        canAskAgain(true)
+        answer(false)
+        assertEquals(LocalNetworkStatus.DENIED, controller.state.value.localNetwork)
+        compose.onNodeWithTag("firstrun_local_network_denied").assertExists()
+
+        tap("firstrun_local_network_allow")
+        assertEquals(2, registry.inputs.size)
+        canAskAgain(false)
+        answer(false)
+        assertEquals(LocalNetworkStatus.BLOCKED, controller.state.value.localNetwork)
+        compose.onNodeWithTag("firstrun_local_network_blocked").assertExists()
+        compose.onNodeWithTag("firstrun_local_network_allow").assertDoesNotExist()
+        assertEquals(listOf(false to true, false to false), access.answers)
+        assertEquals(FirstRunStage.Welcome, controller.state.value.stage)
+    }
+
+    @Test
+    fun aGrantShowsOnTheLocalNetworkItem() {
+        val controller = start(FakeLocalNetwork())
+        tap("firstrun_local_network_allow")
+        answer(true)
+        assertEquals(LocalNetworkStatus.GRANTED, controller.state.value.localNetwork)
+        compose.onNodeWithTag("firstrun_local_network_granted").assertExists()
+        compose.onNodeWithTag("firstrun_local_network_allow").assertDoesNotExist()
+    }
+
+    @Test
+    fun continueNeverAsksForLocalNetworkAccess() {
+        fixture.notifications.required = false
+        val access = FakeLocalNetwork()
+        val controller = start(access)
+        tap("firstrun_continue")
+        assertTrue(registry.inputs.isEmpty())
+        assertTrue(controller.state.value.stage is FirstRunStage.Installing)
+        assertEquals(1, fixture.host.jobs.size)
+        assertEquals(LocalNetworkStatus.NOT_ASKED, controller.state.value.localNetwork)
+        assertTrue(access.answers.isEmpty())
     }
 
     @Test

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="firstrun_local_network_title">TODO(copy)</string>
+    <string name="firstrun_local_network_body">TODO(copy)</string>
+    <string name="firstrun_local_network_allow">TODO(copy)</string>
+    <string name="firstrun_local_network_denied">TODO(copy)</string>
+    <string name="firstrun_local_network_blocked">TODO(copy)</string>
+    <string name="firstrun_local_network_granted">TODO(copy)</string>
+    <string name="settings_local_network">TODO(copy)</string>
+    <string name="settings_local_network_granted">TODO(copy)</string>
+    <string name="settings_local_network_not_granted">TODO(copy)</string>
+    <string name="settings_local_network_blocked">TODO(copy)</string>
+    <string name="settings_data_root_elsewhere">TODO(copy)</string>
+    <string name="documents_data_root_elsewhere">TODO(copy)</string>
+</resources>

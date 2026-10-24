@@ -4,6 +4,8 @@ import android.content.Context
 import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import io.github.sillybunnyteam.sillybunny.server.ServerHost
+import io.github.sillybunnyteam.sillybunny.settings.AndroidLocalNetworkAccess
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkAccess
 import java.io.File
 import java.time.Clock
 import kotlinx.coroutines.CoroutineDispatcher
@@ -79,6 +81,7 @@ class FirstRunDependencies(
     val defaultRef: String = BuildConfig.DEFAULT_REF,
     val notifications: NotificationPermission = AndroidNotificationPermission(context),
     val battery: BatteryExemption = AndroidBatteryExemption(context),
+    val localNetwork: LocalNetworkAccess = AndroidLocalNetworkAccess(context),
     val storage: StorageProbe = StatFsStorageProbe(paths.filesDir),
     val network: NetworkProbe = ConnectivityNetworkProbe(context),
     val checkout: CheckoutInspector = FileCheckoutInspector(paths.checkoutDir),

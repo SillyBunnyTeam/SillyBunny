@@ -67,12 +67,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.R
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus
 
 /**
  * The first-run flow's entry point (plan §4.3). It reports the activity's started state to [controller], runs
- * the notification and battery requests, and handles system back: back closes the log view, and otherwise
- * leaves the app without cancelling a running install. On API 33+, Continue first requests `POST_NOTIFICATIONS`
- * when it was never asked, then continues whatever the answer.
+ * the notification, battery and local-network requests, and handles system back: back closes the log view, and
+ * otherwise leaves the app without cancelling a running install. On API 33+, Continue first requests
+ * `POST_NOTIFICATIONS` when it was never asked, then continues whatever the answer. Only the local-network item's
+ * own button asks for that permission.
  *
  * [onInstalled] runs once the install succeeded while the activity is started, and again after a recreation in
  * that state, so it must be idempotent. [onRepair] and [onShareLogs] come from the error screen.
@@ -116,10 +118,16 @@ fun FirstRunScreen(
     val batteryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         controller.onBatteryExemptionResult()
     }
+    val localNetworkLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        val permission = controller.localNetworkPermission
+        val canAskAgain = activity != null && permission != null &&
+            ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+        controller.onLocalNetworkPermissionResult(it, canAskAgain)
+    }
     val packageName = LocalContext.current.packageName
     val latestOnRepair by rememberUpdatedState(onRepair)
     val latestOnShareLogs by rememberUpdatedState(onShareLogs)
-    val actions = remember(controller, notificationLauncher, batteryLauncher, packageName) {
+    val actions = remember(controller, notificationLauncher, batteryLauncher, localNetworkLauncher, packageName) {
         object : FirstRunActions {
             override fun requestNotifications() {
                 AndroidNotificationPermission.requestPermission()?.let { notificationLauncher.launch(it) }
@@ -132,6 +140,10 @@ fun FirstRunScreen(
             }
 
             override fun skipBatteryExemption() = controller.skipBatteryExemption()
+
+            override fun requestLocalNetwork() {
+                controller.localNetworkPermission?.let { localNetworkLauncher.launch(it) }
+            }
 
             override fun continueFromWelcome() {
                 val permission = AndroidNotificationPermission.requestPermission()
@@ -186,6 +198,8 @@ interface FirstRunActions {
 
     fun skipBatteryExemption()
 
+    fun requestLocalNetwork()
+
     fun continueFromWelcome()
 
     fun continueOnMeteredNetwork()
@@ -232,7 +246,7 @@ internal fun FirstRunContent(state: FirstRunUiState, actions: FirstRunActions) {
     } else {
         when (val stage = state.stage) {
             FirstRunStage.Loading -> ProgressScreen("firstrun_loading", R.string.firstrun_loading)
-            FirstRunStage.Welcome -> WelcomeScreen(state.notifications, state.battery, actions)
+            FirstRunStage.Welcome -> WelcomeScreen(state.notifications, state.battery, state.localNetwork, actions)
             FirstRunStage.Checking -> ProgressScreen("firstrun_checking", R.string.firstrun_checking)
             is FirstRunStage.MeteredWarning -> MeteredScreen(stage.cellular, actions)
             FirstRunStage.Preparing -> ProgressScreen("firstrun_preparing", R.string.firstrun_preparing)
@@ -327,7 +341,12 @@ private fun ProgressScreen(tag: String, @StringRes message: Int) {
 }
 
 @Composable
-private fun WelcomeScreen(notifications: NotificationStatus, battery: BatteryStatus, actions: FirstRunActions) {
+private fun WelcomeScreen(
+    notifications: NotificationStatus,
+    battery: BatteryStatus,
+    localNetwork: LocalNetworkStatus,
+    actions: FirstRunActions,
+) {
     ScreenColumn("firstrun_welcome") {
         Title(R.string.firstrun_welcome_title)
         Body(R.string.firstrun_welcome_body)
@@ -376,7 +395,37 @@ private fun WelcomeScreen(notifications: NotificationStatus, battery: BatterySta
                 }
             }
         }
+        if (localNetwork != LocalNetworkStatus.NOT_REQUIRED) {
+            LocalNetworkCard(localNetwork, actions)
+        }
         ActionButton(R.string.firstrun_continue, "firstrun_continue", actions::continueFromWelcome)
+    }
+}
+
+/** Optional: Continue never asks for it, and no answer blocks or delays the install. */
+@Composable
+private fun LocalNetworkCard(status: LocalNetworkStatus, actions: FirstRunActions) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth().testTag("firstrun_local_network")) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.firstrun_local_network_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.firstrun_local_network_body), style = MaterialTheme.typography.bodyMedium)
+            when (status) {
+                LocalNetworkStatus.NOT_ASKED, LocalNetworkStatus.DENIED -> {
+                    if (status == LocalNetworkStatus.DENIED) {
+                        Status(R.string.firstrun_local_network_denied, "firstrun_local_network_denied")
+                    }
+                    FilledTonalButton(
+                        onClick = actions::requestLocalNetwork,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("firstrun_local_network_allow"),
+                    ) { Text(stringResource(R.string.firstrun_local_network_allow)) }
+                }
+                LocalNetworkStatus.BLOCKED ->
+                    Status(R.string.firstrun_local_network_blocked, "firstrun_local_network_blocked")
+                LocalNetworkStatus.GRANTED ->
+                    Status(R.string.firstrun_local_network_granted, "firstrun_local_network_granted")
+                LocalNetworkStatus.NOT_REQUIRED -> Unit
+            }
+        }
     }
 }
 

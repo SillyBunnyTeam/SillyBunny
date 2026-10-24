@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -122,6 +123,33 @@ class FirstRunScreensTest {
         absent("firstrun_battery_allow")
         absent("firstrun_battery_skip")
         exists("firstrun_continue")
+    }
+
+    @Test
+    fun theLocalNetworkItemIsOptionalAndShowsEveryAnswer() {
+        val welcome = FirstRunUiState(stage = FirstRunStage.Welcome)
+        show(welcome)
+        absent("firstrun_local_network")
+
+        update(welcome.copy(localNetwork = LocalNetworkStatus.NOT_ASKED))
+        exists("firstrun_local_network")
+        absent("firstrun_local_network_denied")
+        tap("firstrun_local_network_allow")
+
+        update(welcome.copy(localNetwork = LocalNetworkStatus.DENIED))
+        exists("firstrun_local_network_denied")
+        tap("firstrun_local_network_allow")
+
+        update(welcome.copy(localNetwork = LocalNetworkStatus.BLOCKED))
+        exists("firstrun_local_network_blocked")
+        absent("firstrun_local_network_allow")
+
+        update(welcome.copy(localNetwork = LocalNetworkStatus.GRANTED))
+        exists("firstrun_local_network_granted")
+        absent("firstrun_local_network_allow")
+        exists("firstrun_battery")
+        tap("firstrun_continue")
+        assertEquals(listOf("requestLocalNetwork", "requestLocalNetwork", "continueFromWelcome"), actions.calls)
     }
 
     @Test
@@ -266,6 +294,10 @@ class FirstRunScreensTest {
 
         override fun skipBatteryExemption() {
             calls += "skipBatteryExemption"
+        }
+
+        override fun requestLocalNetwork() {
+            calls += "requestLocalNetwork"
         }
 
         override fun continueFromWelcome() {

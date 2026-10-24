@@ -70,11 +70,31 @@ class FirstRunController(
         }
     }
 
-    /** Re-reads the notification permission and battery exemption, which the user may change in Settings. */
+    /**
+     * Re-reads the notification permission, the battery exemption and local-network access, which the user may
+     * change in Settings.
+     */
     fun refreshPermissions() {
         mutableState.update {
-            it.copy(notifications = currentNotifications(it.notifications), battery = currentBattery(it.battery))
+            it.copy(
+                notifications = currentNotifications(it.notifications),
+                battery = currentBattery(it.battery),
+                localNetwork = dependencies.localNetwork.status(),
+            )
         }
+    }
+
+    /** The local-network permission to request, or null where none exists. */
+    val localNetworkPermission: String?
+        get() = dependencies.localNetwork.permission
+
+    /**
+     * The result of the optional local-network request. [canAskAgain] is `shouldShowRequestPermissionRationale`
+     * read right after the result. Nothing else depends on it, so the stage never changes here.
+     */
+    fun onLocalNetworkPermissionResult(granted: Boolean, canAskAgain: Boolean) {
+        val next = dependencies.localNetwork.onRequestResult(granted, canAskAgain)
+        mutableState.update { it.copy(localNetwork = next) }
     }
 
     /**
@@ -241,6 +261,7 @@ class FirstRunController(
             it.copy(
                 notifications = currentNotifications(saved?.notifications ?: NotificationStatus.NOT_ASKED),
                 battery = currentBattery(saved?.battery ?: BatteryStatus.NOT_EXEMPT),
+                localNetwork = dependencies.localNetwork.status(),
             )
         }
         val setup = host.setup.value

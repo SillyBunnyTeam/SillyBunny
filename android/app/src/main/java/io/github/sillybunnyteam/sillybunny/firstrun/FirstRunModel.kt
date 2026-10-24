@@ -1,5 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.firstrun
 
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus
+
 /** The notification-permission row on the Welcome screen (plan §4.3 step 1). A denial never blocks anything. */
 enum class NotificationStatus {
     /** Below API 33 notifications need no runtime permission. */
@@ -120,6 +122,8 @@ data class FirstRunUiState(
     val stage: FirstRunStage = FirstRunStage.Loading,
     val notifications: NotificationStatus = NotificationStatus.NOT_ASKED,
     val battery: BatteryStatus = BatteryStatus.NOT_EXEMPT,
+    /** The optional Welcome item; it never blocks or delays Continue. */
+    val localNetwork: LocalNetworkStatus = LocalNetworkStatus.NOT_REQUIRED,
     val visible: Boolean = false,
     val logs: FirstRunLogView? = null,
     val confirmingCancel: Boolean = false,
