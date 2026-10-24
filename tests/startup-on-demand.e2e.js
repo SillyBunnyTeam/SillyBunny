@@ -166,6 +166,65 @@ test('Data & Security opens Usage Stats', async ({ page }) => {
     await expect(stats.filter({ hasText: 'Swipes' })).toContainText('2');
 });
 
+async function openExportCategory(page) {
+    await openApp(page);
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
+    return page.locator('[data-sb-panel="data-security"] [data-sb-category="export"]');
+}
+
+test('Data & Security downloads a backup from Export', async ({ page }) => {
+    const backupRequests = [];
+    await page.route('**/api/users/backup', route => {
+        backupRequests.push(route.request().postDataJSON());
+        return route.fulfill({
+            body: 'backup',
+            contentType: 'application/zip',
+            headers: { 'Content-Disposition': 'attachment; filename="qa-backup.zip"' },
+        });
+    });
+    const button = (await openExportCategory(page)).getByRole('button', { name: 'Download Backup', exact: true });
+    const download = page.waitForEvent('download');
+    await button.click();
+    expect((await download).suggestedFilename()).toBe('qa-backup.zip');
+    // The handle value depends on whether the server has user accounts on.
+    expect(backupRequests).toEqual([{ handle: expect.any(String) }]);
+    await expect(button).toBeEnabled();
+});
+
+test('Download Backup is enabled again after a failed backup', async ({ page }) => {
+    let releaseBackup;
+    const backupReleased = new Promise(resolve => { releaseBackup = resolve; });
+    await page.route('**/api/users/backup', async route => {
+        await backupReleased;
+        await route.fulfill({ status: 403, json: { error: 'Full data backup is disabled' } });
+    });
+    const button = (await openExportCategory(page)).getByRole('button', { name: 'Download Backup', exact: true });
+    await button.click();
+    await expect(button).toBeDisabled();
+    releaseBackup();
+    await expect(button).toBeEnabled();
+});
+
+test('Data & Security opens Settings Snapshots from Export', async ({ page }) => {
+    await page.route('**/api/settings/get-snapshots', route => route.fulfill({
+        json: [{ name: 'settings_qa.json', date: Date.UTC(2026, 9, 23), size: 2048 }],
+    }));
+    await (await openExportCategory(page)).getByRole('button', { name: 'Settings Snapshots', exact: true }).click();
+    await expect(page.locator('dialog[open] .snapshotList .snapshotName')).toHaveText(['settings_qa.json']);
+});
+
+test('Account popup opens without Settings Snapshots and Download Backup', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
+    await page.locator('[data-sb-panel="data-security"] #account_button').click();
+    const popup = page.locator('dialog[open]').filter({ has: page.locator('.userHandle') });
+    await expect(popup.locator('.userHandle')).not.toBeEmpty();
+    await expect(popup.locator('.userSettingsSnapshotsButton, .userBackupButton')).toHaveCount(0);
+    // With accounts off, the popup hides Change Password, and the Account Actions heading must hide with it.
+    const changePassword = popup.locator('.userChangePasswordButton');
+    await expect(popup.getByRole('heading', { name: 'Account Actions' })).toBeVisible({ visible: await changePassword.isVisible() });
+});
+
 test('failed cleanup import can be retried by opening the tool again', async ({ page }) => {
     let attempts = 0;
     await page.route(cleanupScript, async route => {

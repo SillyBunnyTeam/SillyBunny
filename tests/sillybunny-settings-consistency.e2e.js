@@ -659,7 +659,8 @@ test.describe('Customize consistency', () => {
         const lastRow = extensions.locator('.sb-subpage-row:visible').last();
         await expect(lastRow).toBeVisible();
         const visibleAtBottom = await scroller.evaluate(element => {
-            const row = element.querySelector('.sb-subpage-row:last-of-type');
+            const rows = element.querySelectorAll('.sb-subpage-row');
+            const row = rows[rows.length - 1];
             const rect = row?.getBoundingClientRect();
             const bounds = element.getBoundingClientRect();
             return {

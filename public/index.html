@@ -5276,6 +5276,19 @@
                             <button type="button" class="margin0 menu_button menu_button_icon user_stats_button" data-i18n="Usage Stats">Usage Stats</button>
                             </div>
                         </div>
+                        <!-- SillyBunny: the Account popup does not show Download Backup and Settings Snapshots, so Data & Security shows them as rows in its Export category. -->
+                        <div id="user_backup_controls" class="ds-row ds-row-actions">
+                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Download Backup">Download Backup</span><small class="ds-row-subtitle" data-i18n="Download a complete backup of your user data.">Download a complete backup of your user data.</small></div>
+                            <div class="ds-row-suffix">
+                            <button id="user_backup_button" type="button" class="margin0 menu_button menu_button_icon" data-i18n="Download Backup">Download Backup</button>
+                            </div>
+                        </div>
+                        <div id="settings_snapshots_controls" class="ds-row ds-row-actions">
+                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Settings Snapshots">Settings Snapshots</span><small class="ds-row-subtitle" data-i18n="Manage your settings snapshots.">Manage your settings snapshots.</small></div>
+                            <div class="ds-row-suffix">
+                            <button id="settings_snapshots_button" type="button" class="margin0 menu_button menu_button_icon" data-i18n="Settings Snapshots">Settings Snapshots</button>
+                            </div>
+                        </div>
                         <textarea id="settingsSearch" class="textarea_compact flex1" rows="1" placeholder="Search Settings" data-i18n="[placeholder]Search Settings"></textarea>
                     </div>
                 </div>

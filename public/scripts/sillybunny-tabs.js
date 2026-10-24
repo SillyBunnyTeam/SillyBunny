@@ -13015,42 +13015,11 @@ function revealSettingsCategoryFor(target) {
     }
 }
 
-function revealSubpageMatch(stack, match) {
-    const row = stack.rows.find(candidate => {
-        const source = candidate.source?.();
-        return source instanceof HTMLElement && source.contains(match.element);
-    });
-
-    if (row) {
-        stack.open(row.id);
-        const slideDelay = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-            ? 0
-            : SB_SUBPAGE_DURATION;
-        window.setTimeout(() => {
-            if (!(match.element instanceof HTMLElement)) return;
-            expandHiddenAccordions(match.element);
-            scrollElementIntoManagedView(match.element, {
-                block: 'center',
-                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-            });
-            pulseSearchTarget(match.element);
-        }, slideDelay + 40);
-        return;
-    }
-
-    if (stack.isOpen()) {
-        stack.close({ instant: true });
-    }
-    if (match.element instanceof HTMLElement) {
-        scrollElementIntoManagedView(match.element, {
-            block: 'center',
-            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-        });
-        pulseSearchTarget(match.element);
-    }
-}
+/** Counts search jumps, so that the delayed steps of a jump stop when a newer jump replaces it. */
+let searchJumpCount = 0;
 
 function revealSearchMatch(shellKey, match) {
+    const jump = ++searchJumpCount;
     closeAllDropdowns({ except: shellKey });
 
     // Entries with a custom action (e.g. persona results) bypass DOM scrolling
@@ -13080,19 +13049,53 @@ function revealSearchMatch(shellKey, match) {
     // The search result already selects a destination, so show it past the mobile sidebar.
     if (isMobileViewport()) setSettingsMobileContentView(true);
 
-    const stack = sbSubpageStacks.get(`${shellKey}:${match.tabId}`);
-    if (stack) {
-        revealSubpageMatch(stack, match);
-        return;
-    }
+    // The jump finishes on timers. A page that the user opens or closes in the meantime must not be
+    // undone, so each delayed step below stops when the stack shows a different page than it expects.
+    const stackKey = `${shellKey}:${match.tabId}`;
+    const openRowAtJump = sbSubpageStacks.get(stackKey)?.openRowId ?? null;
 
     window.setTimeout(() => {
         // SillyBunny: subpage-hosted tabs route through the stack, not the old drawer routing.
         // Matches inside the store would otherwise trigger jQuery slideToggle on inline-drawer
         // toggles, injecting inline display:block and bleeding the old panel into view.
-        const delayedStack = sbSubpageStacks.get(`${shellKey}:${match.tabId}`);
-        if (delayedStack) {
-            revealSubpageMatch(delayedStack, match);
+        const stack = sbSubpageStacks.get(stackKey);
+        if (stack) {
+            if (jump !== searchJumpCount || stack.openRowId !== openRowAtJump) {
+                return;
+            }
+            const row = stack.rows.find(r => {
+                const source = r.source?.();
+                return source instanceof HTMLElement && source.contains(match.element);
+            });
+            if (row) {
+                stack.open(row.id);
+                const slideDelay = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                    ? 0
+                    : SB_SUBPAGE_DURATION;
+                window.setTimeout(() => {
+                    if (jump !== searchJumpCount || stack.openRowId !== row.id) return;
+                    if (!(match.element instanceof HTMLElement)) return;
+                    expandHiddenAccordions(match.element);
+                    scrollElementIntoManagedView(match.element, {
+                        block: 'center',
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                    });
+                    pulseSearchTarget(match.element);
+                }, slideDelay + 40);
+                return;
+            }
+            // The match is in the list page's own chrome, which a detail page covers: put the list
+            // back before scrolling it, or the scroll would move a page nobody can see.
+            if (stack.isOpen()) {
+                stack.close({ instant: true });
+            }
+            if (match.element instanceof HTMLElement) {
+                scrollElementIntoManagedView(match.element, {
+                    block: 'center',
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                });
+                pulseSearchTarget(match.element);
+            }
             return;
         }
 

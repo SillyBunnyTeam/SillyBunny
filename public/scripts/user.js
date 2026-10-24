@@ -717,7 +717,7 @@ async function openUserProfile() {
     template.find('.userCreated').text(new Date(currentUser.created).toLocaleString());
     template.find('.hasPassword').toggle(currentUser.password);
     template.find('.noPassword').toggle(!currentUser.password);
-    template.find('.userSettingsSnapshotsButton').on('click', () => viewSettingsSnapshots());
+    // SillyBunny: Settings Snapshots and Download Backup are rows in the Data & Security Export category, so this popup binds neither.
     template.find('.userChangeNameButton').on('click', async () => changeName(currentUser.handle, currentUser.name, async () => {
         await getCurrentUser();
         template.find('.userName').text(currentUser.name);
@@ -727,12 +727,6 @@ async function openUserProfile() {
         template.find('.hasPassword').toggle(currentUser.password);
         template.find('.noPassword').toggle(!currentUser.password);
     }));
-    template.find('.userBackupButton').on('click', function () {
-        $(this).addClass('disabled');
-        backupUserData(currentUser.handle, () => {
-            $(this).removeClass('disabled');
-        });
-    });
     template.find('.userResetSettingsButton').on('click', () => resetSettings(currentUser.handle, () => location.reload()));
     template.find('.userResetAllButton').on('click', () => resetEverything(() => location.reload()));
     template.find('.userAvatarChange').on('click', () => template.find('.avatarUpload').trigger('click'));
@@ -964,6 +958,17 @@ jQuery(() => {
     });
     $('#account_button').on('click', () => {
         openUserProfile();
+    });
+    // SillyBunny: the Data & Security Export rows hold Download Backup and Settings Snapshots instead of the Account popup.
+    $('#user_backup_button').on('click', async function () {
+        // backupUserData() calls back only on success, and this row stays on screen, so the button
+        // is enabled again after a failure too.
+        $(this).prop('disabled', true);
+        await backupUserData(getCurrentUserHandle(), () => {});
+        $(this).prop('disabled', false);
+    });
+    $('#settings_snapshots_button').on('click', () => {
+        viewSettingsSnapshots();
     });
     setInterval(async () => {
         if (currentUser) {

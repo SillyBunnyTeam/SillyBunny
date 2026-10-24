@@ -543,6 +543,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-23 PR `#870` Data & Security Usage Stats row. |
 | Owner | TODO(copy) |
 
+### `public/index.html`, `public/scripts/user.js`, and `public/scripts/templates/userProfile.html` - Data & Security Export category
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/user.js`, `public/scripts/templates/userProfile.html` |
+| Area | Settings and accounts. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-settings-content.js` (`SB_DATA_SECURITY_SECTIONS` and the Data & Security `export` category). |
+| Adapter shape | Keep two static rows, `#user_backup_controls` and `#settings_snapshots_controls`, after `#user_stats_controls`; the section order moves them into the `export` category after Import & Restore. Their buttons reuse the upstream `Download Backup` and `Settings Snapshots` i18n keys. The `user.js` ready block binds `#user_backup_button` to `backupUserData()` and `#settings_snapshots_button` to `viewSettingsSnapshots()`, and `openUserProfile()` binds neither popup button. `userProfile.html` drops both popup buttons and puts `data-require-accounts` on Account Actions, so the section hides with Change Password when accounts are off. |
+| Protecting tests | `tests/unit/sillybunny-settings-content.test.js`, `tests/startup-on-demand.e2e.js` (`Data & Security downloads a backup from Export`, `Download Backup is enabled again after a failed backup`, `Data & Security opens Settings Snapshots from Export`, `Account popup opens without Settings Snapshots and Download Backup`). |
+| Validation | `npm run test:unit --prefix tests -- unit/sillybunny-settings-content.test.js`, `npm run test:e2e --prefix tests -- startup-on-demand.e2e.js -g "Data & Security\|Download Backup\|Account popup"`, `npm run lint`, `npm run check:frontend-budgets`, browser check at 1440px and 390px. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 PR `#870` Data & Security Export category. |
+| Owner | TODO(copy) |
+
 ### `public/css/backgrounds.css` - background image transparency
 | Field | Value |
 | --- | --- |
