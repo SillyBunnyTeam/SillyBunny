@@ -54,6 +54,8 @@ object SettingsTags {
 
     const val RUNTIME = "settings_runtime"
     const val BATTERY = "settings_battery"
+    const val LOCAL_NETWORK = "settings_local_network"
+    const val DATA_ELSEWHERE = "settings_data_elsewhere"
 
     const val VIEW_LOGS = "settings_view_logs"
     const val SHARE_LOGS = "settings_share_logs"
@@ -97,6 +99,7 @@ object SettingsSemantics {
     /** `NONE`, `UP_TO_DATE`, `AVAILABLE` or `FAILED_<UpdateCheckFailure>`. */
     val UpdateResultShown = SemanticsPropertyKey<String>("SettingsUpdateResult")
     val BatteryExempt = SemanticsPropertyKey<Boolean>("SettingsBatteryExempt")
+    val LocalNetwork = SemanticsPropertyKey<LocalNetworkStatus>("SettingsLocalNetwork")
     val LeftoverCount = SemanticsPropertyKey<Int>("SettingsLeftoverCount")
 
     /** `component=version` pairs in display order. */

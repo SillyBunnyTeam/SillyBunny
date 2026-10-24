@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.settings
 
 import android.content.ActivityNotFoundException
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.server.ServerState
@@ -42,6 +44,7 @@ import io.github.sillybunnyteam.sillybunny.server.SetupState
 import io.github.sillybunnyteam.sillybunny.update.UpdateCheckFailure
 import io.github.sillybunnyteam.sillybunny.update.UpdateCheckResult
 import io.github.sillybunnyteam.sillybunny.update.UpdatePhase
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /** Phases in which the updater is already working, so Check now would only repeat itself. */
@@ -92,6 +95,13 @@ internal fun SettingsMainScreen(
         if (resumes == 0 || callbacks.onLeftoverFolders == null) return@LaunchedEffect
         val counter = dependencies.leftoverFolders
         leftoverCount = withContext(io) { runCatching { counter.count() }.getOrNull() }
+    }
+    // config.yaml can change while the app runs, through the Files app or the server's own settings.
+    var dataElsewhere by remember { mutableStateOf(false) }
+    LaunchedEffect(resumes, dependencies.dataRoot) {
+        val check = dependencies.dataRoot
+        if (resumes == 0) return@LaunchedEffect
+        dataElsewhere = check != null && withContext(io) { runCatching { check.dataElsewhere() }.getOrNull() } == true
     }
     val runtimeVersions by produceState(emptyList<RuntimeVersion>(), dependencies.runtimeVersions) {
         val source = dependencies.runtimeVersions
@@ -178,6 +188,9 @@ internal fun SettingsMainScreen(
                 },
                 modifier = Modifier.semantics { batteryExempt?.let { this[SettingsSemantics.BatteryExempt] = it } },
             )
+            dependencies.localNetwork?.takeIf { it.permission != null }?.let { access ->
+                LocalNetworkEntry(access, resumes, io)
+            }
 
             SettingsSectionHeader(stringResource(R.string.settings_section_logs))
             SettingsEntry(
@@ -191,8 +204,14 @@ internal fun SettingsMainScreen(
                 onClick = onShareLogs,
             )
 
-            if (callbacks.onRepair != null || callbacks.onLeftoverFolders != null) {
+            if (callbacks.onRepair != null || callbacks.onLeftoverFolders != null || dataElsewhere) {
                 SettingsSectionHeader(stringResource(R.string.settings_section_maintenance))
+            }
+            if (dataElsewhere) {
+                SettingsEntry(
+                    headline = stringResource(R.string.settings_data_root_elsewhere),
+                    tag = SettingsTags.DATA_ELSEWHERE,
+                )
             }
             callbacks.onRepair?.let { repair ->
                 SettingsEntry(
@@ -263,6 +282,63 @@ private fun ServerEntry(
                 ) { Text(stringResource(R.string.settings_server_start)) }
             }
         },
+    )
+}
+
+/**
+ * Android 17's optional local-network permission. A tap asks for it while the system dialog can still show; once
+ * the dialog no longer shows, and once access is granted, a tap opens the app's page in system settings instead.
+ */
+@Composable
+private fun LocalNetworkEntry(access: LocalNetworkAccess, resumes: Int, io: CoroutineDispatcher) {
+    val activity = LocalActivity.current
+    val packageName = LocalContext.current.packageName
+    var status by remember(access) { mutableStateOf<LocalNetworkStatus?>(null) }
+    // Bumped by every answer and every return from system settings. A new key also cancels a read still running.
+    var changes by remember { mutableIntStateOf(0) }
+    var settingsUnavailable by remember { mutableStateOf(false) }
+    LaunchedEffect(resumes, changes, access) {
+        if (resumes == 0) return@LaunchedEffect
+        status = withContext(io) { runCatching { access.status() }.getOrNull() }
+    }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val permission = access.permission
+        val canAskAgain = activity != null && permission != null &&
+            ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+        access.onRequestResult(granted, canAskAgain)
+        changes++
+    }
+    val settingsPage = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        changes++
+    }
+    val current = status
+    SettingsEntry(
+        headline = stringResource(R.string.settings_local_network),
+        tag = SettingsTags.LOCAL_NETWORK,
+        supporting = when (current) {
+            LocalNetworkStatus.GRANTED -> stringResource(R.string.settings_local_network_granted)
+            LocalNetworkStatus.NOT_ASKED, LocalNetworkStatus.DENIED ->
+                stringResource(R.string.settings_local_network_not_granted)
+            LocalNetworkStatus.BLOCKED -> stringResource(R.string.settings_local_network_blocked)
+            LocalNetworkStatus.NOT_REQUIRED, null -> null
+        },
+        enabled = when (current) {
+            LocalNetworkStatus.NOT_ASKED, LocalNetworkStatus.DENIED -> true
+            LocalNetworkStatus.BLOCKED, LocalNetworkStatus.GRANTED -> !settingsUnavailable
+            LocalNetworkStatus.NOT_REQUIRED, null -> false
+        },
+        onClick = {
+            when (current) {
+                LocalNetworkStatus.NOT_ASKED, LocalNetworkStatus.DENIED -> access.permission?.let { request.launch(it) }
+                LocalNetworkStatus.BLOCKED, LocalNetworkStatus.GRANTED -> try {
+                    settingsPage.launch(LocalNetworkAccess.settingsIntent(packageName))
+                } catch (_: ActivityNotFoundException) {
+                    settingsUnavailable = true
+                }
+                LocalNetworkStatus.NOT_REQUIRED, null -> Unit
+            }
+        },
+        modifier = Modifier.semantics { current?.let { this[SettingsSemantics.LocalNetwork] = it } },
     )
 }
 

@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.settings
 
 import androidx.activity.ComponentActivity
+import io.github.sillybunnyteam.sillybunny.DataDocumentsProvider
 import io.github.sillybunnyteam.sillybunny.checkout.BrokenCheckouts
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
@@ -43,6 +44,12 @@ fun interface LeftoverFolderCounter {
     fun count(): Int
 }
 
+/** Whether `config.yaml` sends the server's data away from the `data` folder the Files app shows. Blocking. */
+fun interface DataRootCheck {
+    /** True when it does, false when it does not, null when that is unknown. */
+    fun dataElsewhere(): Boolean?
+}
+
 /**
  * Entry points other tracks own: Open in browser (task 5.6) and the Repair and Leftover folders screens
  * (task 5.9). Settings only calls them. A null callback hides its entry.
@@ -63,6 +70,10 @@ class SettingsDependencies(
     val leftoverFolders: LeftoverFolderCounter,
     val notices: NoticesSource,
     val runtimeVersions: RuntimeVersionsSource,
+    /** Null hides the Local network row, as it is hidden below API 37. */
+    val localNetwork: LocalNetworkAccess? = null,
+    /** Null never shows the notice that the data lives outside the folder the Files app shows. */
+    val dataRoot: DataRootCheck? = null,
     /** Where blocking work runs: server stop, log reads, snapshots, notices and counters. */
     val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -73,7 +84,7 @@ class SettingsDependencies(
          *
          * Create it once per host, for example `remember { SettingsDependencies.forActivity(...) }`: Settings
          * keys its loads on these objects, so a new instance on every recomposition re-reads the battery state,
-         * the leftover count, the runtime versions and the notices.
+         * the local-network status, the data folder check, the leftover count, the runtime versions and the notices.
          */
         fun forActivity(
             activity: ComponentActivity,
@@ -91,6 +102,8 @@ class SettingsDependencies(
                     ?: LeftoverFolderCounter { BrokenCheckouts.list(RuntimePaths(context)).size },
                 notices = AssetNoticesSource(context.assets),
                 runtimeVersions = AssetRuntimeVersions(context.assets),
+                localNetwork = AndroidLocalNetworkAccess(context),
+                dataRoot = DataRootCheck { DataDocumentsProvider.dataRootElsewhere(context) },
             )
         }
     }
