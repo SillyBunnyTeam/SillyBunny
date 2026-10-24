@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 const runtimeLock = JSON.parse(readFileSync(new URL('../android/runtime.lock', import.meta.url), 'utf8'));
 const ABIS = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
 const NODE_PATCHES = new URL('../android/runtime/patches/node/', import.meta.url);
+const GHCR_REPOSITORY = /^ghcr\.io(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*){2,}$/;
 
 function isObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -133,6 +134,15 @@ describe('Android runtime lock', () => {
         expect(binary.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
         expect(binary.sha256).toMatch(/^[0-9a-f]{64}$/);
         expect(Number.isInteger(binary.size) && binary.size > 0).toBe(true);
+    });
+
+    test('names the input mirror in the GHCR repository that holds the Node binaries', () => {
+        expect(isObject(runtimeLock.mirror)).toBe(true);
+        expect(Object.keys(runtimeLock.mirror)).toEqual(['repository']);
+        expect(runtimeLock.mirror.repository).toMatch(GHCR_REPOSITORY);
+        for (const abi of ABIS) {
+            expect([abi, runtimeLock.mirror.repository]).toEqual([abi, runtimeLock.node.binaries[abi].repository]);
+        }
     });
 
     test('takes npm 11.10.0 or newer from the Node source', () => {

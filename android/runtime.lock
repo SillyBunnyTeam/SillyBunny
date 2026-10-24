@@ -355,5 +355,8 @@
     "npm": {
         "version": "11.19.1",
         "source": "node"
+    },
+    "mirror": {
+        "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime"
     }
 }

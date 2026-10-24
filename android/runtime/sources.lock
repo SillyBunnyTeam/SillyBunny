@@ -48,7 +48,7 @@
         "source": "node",
         "version": "11.19.1"
     },
-    "runtimeLockSha256": "e701dd878d67e665fdb492031cd0e53d5d01538a5e87a1d074af08b45306a276",
+    "runtimeLockSha256": "891e5b57aee926d937e33451b42108e5ba090c88e75235e2b62b2c0f1d9f1713",
     "schema": 1,
     "termux": {
         "buildSystems": [
