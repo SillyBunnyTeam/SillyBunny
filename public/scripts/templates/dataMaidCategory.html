@@ -1,68 +1,49 @@
-<div class="dataMaidCategory inline-drawer">
+<!-- SillyBunny: keep the upstream drawer hooks while presenting the category as a shared boxed group. -->
+<section class="dataMaidCategory inline-drawer sb-editor-section">
     <div class="inline-drawer-toggle inline-drawer-header">
-        <div class="dataMaidCategoryHeader">
-            <div class="dataMaidCategoryDetails">
-                <div class="dataMaidCategoryName" data-i18n="{{name}}">
-                    {{name}}
-                </div>
-                <small>{{description}}</small>
-                <div class="dataMaidCategoryInfo">
-                    <small>
-                        <i class="fa-solid fa-file-alt fa-sm"></i>
-                        {{totalItems}}
-                    </small>
-                    <span>&VerticalBar;</span>
-                    <small>
-                        <i class="fa-solid fa-hdd fa-sm"></i>
-                        {{totalSize}}
-                    </small>
-                </div>
-            </div>
-            <div class="dataMaidDeleteAll right_menu_button" title="Delete all items in this category" data-i18n="[title]Delete all items in this category">
-                <i class="fa-solid fa-fw fa-broom"></i>
-            </div>
+    <div class="dataMaidCategoryHeader ds-pref-group-header">
+        <div class="dataMaidCategoryDetails">
+            <h3 class="dataMaidCategoryName ds-pref-group-heading" data-i18n="{{name}}">{{name}}</h3>
+            <small class="dataMaidCategoryDescription ds-pref-group-subtitle">{{description}}</small>
+            <small class="dataMaidCategoryInfo ds-row-subtitle"><i class="fa-solid fa-file-alt fa-sm"></i> {{totalItems}} <span aria-hidden="true">·</span> <i class="fa-solid fa-hdd fa-sm"></i> {{totalSize}}</small>
         </div>
-        <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+        <div class="dataMaidCategoryActions ds-row-suffix">
+            <button type="button" class="dataMaidToggleCategory right_menu_button sb-header-icon-button sb-dialog__icon-button" aria-label="TODO(copy)" aria-expanded="true" title="TODO(copy)" data-sb-copy-placeholder="true">
+                <i class="fa-solid fa-fw fa-circle-chevron-up inline-drawer-icon up" aria-hidden="true"></i>
+                <i class="fa-circle-chevron-down down" hidden aria-hidden="true"></i>
+            </button>
+            <button type="button" class="dataMaidDeleteAll right_menu_button sb-header-icon-button sb-dialog__icon-button" aria-label="Delete all items in this category" title="Delete all items in this category" data-i18n="[title]Delete all items in this category">
+                <i class="fa-solid fa-fw fa-broom" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
     </div>
     <div class="dataMaidCategoryContent inline-drawer-content">
-        <div class="flex-container">
+        <div class="dataMaidCategoryRows flex-container ds-pref-group">
             {{#each items}}
             {{#with this}}
             <div class="dataMaidItem" data-hash="{{hash}}">
-                <div class="dataMaidItemHeader">
-                    <div class="dataMaidItemName">
-                        {{#if parent}}
-                        <span class="dataMaidItemParent">({{parent}})</span>
-                        <span>/</span>
-                        {{/if}}
-                        <b>{{name}}</b>
+                <div class="dataMaidItemHeader ds-row">
+                    <div class="dataMaidItemName ds-row-text">
+                        {{#if parent}}<span class="dataMaidItemParent">({{parent}})</span><span>/</span>{{/if}}
+                        <span class="ds-row-label">{{name}}</span>
+                        <div class="dataMaidItemInfo ds-row-subtitle">{{#if parent}}<span class="dataMaidItemParent dataMaidItemParentVisible">{{parent}}</span> · {{/if}}<small><i class="fa-solid fa-file fa-sm"></i>{{size}}</small> <span class="dataMaidItemMetadataSeparator">&VerticalBar;</span> <small><i class="fa-solid fa-calendar fa-sm"></i>{{date}}</small></div>
                     </div>
                     <div class="dataMaidItemActions">
-                        <button class="dataMaidItemView menu_button menu_button_icon margin0" title="View item content" data-i18n="[title]View item content">
+                        <button class="dataMaidItemView menu_button menu_button_icon margin0 sb-header-icon-button sb-dialog__icon-button" aria-label="View item content" title="View item content" data-i18n="[title]View item content">
                             <i class="fa-solid fa-fw fa-eye"></i>
                         </button>
-                        <button class="dataMaidItemDownload menu_button menu_button_icon margin0" title="Download item" data-i18n="[title]Download item">
+                        <button class="dataMaidItemDownload menu_button menu_button_icon margin0 sb-header-icon-button sb-dialog__icon-button" aria-label="Download item" title="Download item" data-i18n="[title]Download item">
                             <i class="fa-solid fa-fw fa-download"></i>
                         </button>
-                        <button class="dataMaidItemDelete menu_button menu_button_icon margin0" title="Delete this item" data-i18n="[title]Delete this item">
+                        <button class="dataMaidItemDelete menu_button menu_button_icon margin0 sb-header-icon-button sb-dialog__icon-button" aria-label="Delete this item" title="Delete this item" data-i18n="[title]Delete this item">
                             <i class="fa-solid fa-fw fa-trash-alt"></i>
                         </button>
                     </div>
-                </div>
-                <div class="dataMaidItemInfo">
-                    <small>
-                        <i class="fa-solid fa-file fa-sm"></i>
-                        {{size}}
-                    </small>
-                    <span>&VerticalBar;</span>
-                    <small>
-                        <i class="fa-solid fa-calendar fa-sm"></i>
-                        {{date}}
-                    </small>
                 </div>
             </div>
             {{/with}}
             {{/each}}
         </div>
     </div>
-</div>
+</section>

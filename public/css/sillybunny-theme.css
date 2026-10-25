@@ -7654,7 +7654,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 /* The shell's large pop-out footprint (Tag Manager). */
 .sb-dialog--window {
     width: min(max(640px, var(--sheldWidth, 64vw)), 100%);
-    min-height: 360px;
+    min-height: min(360px, 100%);
     height: fit-content;
     max-height: 90dvh;
 }

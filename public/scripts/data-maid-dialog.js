@@ -237,6 +237,14 @@ export class DataMaidDialog {
                 }
             });
         });
+        // SillyBunny: synchronize aria-expanded when the upstream drawer handler toggles this category.
+        categoryElement.querySelector('.dataMaidCategory')?.addEventListener('inline-drawer-toggle', () => {
+            const drawer = categoryElement.querySelector('.dataMaidCategory');
+            const icon = drawer?.querySelector('.inline-drawer-icon');
+            const expanded = icon?.classList.contains('up') ?? true;
+            const toggle = drawer?.querySelector('.dataMaidToggleCategory');
+            toggle?.setAttribute('aria-expanded', String(expanded));
+        });
         categoryElement.querySelectorAll('.dataMaidDeleteAll').forEach(button => {
             button.addEventListener('click', async (event) => {
                 event.stopPropagation();
@@ -396,7 +404,17 @@ export class DataMaidDialog {
         await this.setupDialogUI();
         // SillyBunny: present the cleanup report in the shared Window frame.
         const title = document.getElementById('data_maid_button')?.textContent.trim();
-        await callGenericPopup(this.container, POPUP_TYPE.TEXT, '', { wide: true, large: true, tier: 'window', title });
+        await callGenericPopup(this.container, POPUP_TYPE.TEXT, '', {
+            wide: true,
+            large: true,
+            tier: 'window',
+            title,
+            onOpen: popup => {
+                const headerEnd = popup.dlg.querySelector('.sb-dialog__header-end');
+                const scan = this.container.querySelector('.dataMaidStartButton');
+                if (headerEnd && scan) headerEnd.prepend(scan);
+            },
+        });
 
         if (this.token) {
             await this.finalize();

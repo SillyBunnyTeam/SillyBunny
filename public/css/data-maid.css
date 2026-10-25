@@ -12,17 +12,41 @@
     overflow: visible;
 }
 
+/* SillyBunny: keep the warning and Scan action legible when the banner wraps on phones. */
 .dataMaidDialogHeader {
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
     text-align: left;
 }
 
+.dataMaidDialogHeader .dataMaidStartButton {
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    white-space: nowrap;
+}
+
 .dataMaidHeaderInfo {
-    flex: 1;
-    margin: 0;
-    padding: 5px 10px;
+    flex: 1 1 240px;
+    min-height: 44px;
+    min-width: 0;
+}
+
+.dataMaidHeaderInfo > span {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    min-width: 0;
+    overflow: visible;
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+    white-space: normal;
+}
+
+.dataMaidHeaderInfo.sb-banner > span > span {
+    white-space: normal;
 }
 
 .dataMaidTextView {
@@ -48,9 +72,13 @@
 
 .dataMaidPlaceholder {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
+    min-height: 52px;
+    padding: 6px 16px;
     font-size: 1.05em;
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+    text-align: start;
 }
 
 .dataMaidResultsList:empty {
@@ -67,45 +95,66 @@
 }
 
 .dataMaidCategory {
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
-    padding: 0 10px;
+    margin: 0 0 16px;
 }
 
+/* SillyBunny: preserve the drawer header while grouping category actions and files as shared rows. */
 .dataMaidCategoryHeader {
     width: 100%;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    margin-right: 5px;
-    padding: 0 5px;
+    gap: 2px 12px;
+    margin: 0;
+    padding: 0 4px 8px;
 }
 
 .dataMaidCategoryDetails {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 1px;
 }
 
+.dataMaidCategoryDetails > :is(.dataMaidCategoryName, .dataMaidCategoryDescription, .dataMaidCategoryInfo) {
+    margin: 0;
+    padding-inline: 0;
+}
+
+.dataMaidCategoryActions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    grid-column: 2;
+    grid-row: 1;
+}
+
 .dataMaidCategoryName {
-    flex: 3;
-    font-weight: bold;
-    font-size: 1.1em;
+    padding: 0;
 }
 
 .dataMaidCategoryInfo {
-    flex: 1;
-    display: flex;
-    align-items: baseline;
-    gap: 5px;
+    display: block;
 }
 
-.dataMaidCategoryContent {
-    border: 1px solid var(--SmartThemeBorderColor);
-    padding: 5px;
-    border-radius: 10px;
-    background-color: var(--black30a);
-    margin: 10px 0;
+.dataMaidCategory.inline-drawer > .dataMaidCategoryContent {
+    display: block;
+    margin: 0;
+}
+
+.dataMaidCategory.inline-drawer > .inline-drawer-toggle {
+    display: block;
+    cursor: pointer;
+}
+
+.dataMaidCategoryRows {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.dataMaidCategoryRows.ds-pref-group {
+    overflow: hidden;
 }
 
 .dataMaidCategoryContent>.info-block {
@@ -113,11 +162,17 @@
 }
 
 .dataMaidItem {
-    display: flex;
-    flex-direction: column;
-    padding: 5px;
+    display: block;
+    padding: 0;
     width: 100%;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    border-bottom: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+    transition: background-color var(--sb-transition-fast, 120ms ease);
+}
+
+@media (hover: hover) {
+    .dataMaidItem:hover {
+        background: var(--sb-flat-hover-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent));
+    }
 }
 
 .dataMaidItem:last-child {
@@ -125,25 +180,59 @@
 }
 
 .dataMaidItemHeader {
-    display: flex;
-    align-items: center;
-    gap: 5px;
+    min-height: 52px;
 }
 
 .dataMaidItemName {
-    display: flex;
-    flex: 1;
-    align-items: baseline;
-    gap: 2px;
-    word-break: break-all;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.dataMaidItemName > .dataMaidItemParent,
+.dataMaidItemName > span:not(.ds-row-label) {
+    display: none;
+}
+
+.dataMaidItemName > .ds-row-label,
+.dataMaidItemInfo {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dataMaidItemInfo > i,
+.dataMaidItemInfo small > i {
+    display: none;
+}
+
+.dataMaidItemInfo > .dataMaidItemMetadataSeparator {
+    font-size: 0;
+}
+
+.dataMaidItemInfo > .dataMaidItemMetadataSeparator::before {
+    content: '·';
+    font-size: var(--sb-type-meta, 0.8em);
 }
 
 .dataMaidItemActions {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
+    flex: 0 0 auto;
 }
 
 .dataMaidItemActions>button {
-    font-size: 0.9em;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+    .dataMaidDialogHeader {
+        align-items: flex-start;
+    }
+
+    .dataMaidDialogHeader .dataMaidStartButton {
+        margin-inline-start: auto;
+    }
 }

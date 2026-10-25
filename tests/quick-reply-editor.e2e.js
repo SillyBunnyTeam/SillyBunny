@@ -98,6 +98,12 @@ for (const viewport of UTILITY_VIEWPORTS) {
     test(`Quick Reply icon selection, No Icon and nested Escape preserve editor state at ${size}`, async ({ page }) => {
         await bootUtilityDialogs(page, viewport);
         const popup = await openEditor(page);
+        await expect(popup.locator('#qr--modal-title')).toBeVisible();
+        await expect(popup.locator('.qr--modal-messageContainer > .ds-pref-group-heading')).toHaveText('Message / Command');
+        await expect(popup.locator('.qr--modal-messageContainer')).toHaveClass(/sb-editor-section/);
+        await expect(popup.locator('.qr--modal-messageContainer > .ds-pref-group-heading')).not.toHaveText(/[:：]$/);
+        expect(await popup.locator('.ds-row-label').evaluateAll(labels => labels.every(label => !/[：:]$/.test(label.textContent.trim())))).toBe(true);
+        expect(await popup.locator('.ds-row-label').evaluateAll(labels => new Set(labels.map(label => getComputedStyle(label).fontSize)).size)).toBe(1);
         await popup.locator('#qr--modal-icon').click();
         let picker = page.locator('dialog.popup[open]:has(.faPicker-container)');
         await expect(picker).toHaveClass(/sb-dialog--page/);

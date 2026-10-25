@@ -1493,6 +1493,9 @@ async function showExtensionsDetails() {
     const abortController = new AbortController();
     let popupPromise;
     try {
+        // SillyBunny: load manager presentation only when its Window is requested.
+        const { adaptExtensionsManager, loadExtensionsManagerStyles } = await import('./sillybunny-editor/adapters/extensions-manager-dialog.js');
+        await loadExtensionsManagerStyles();
         // If we are updating an extension, the "old" popup is still active. We should close that.
         let initialScrollTop = 0;
         const oldPopup = Popup.util.popups.find(popup => popup.content.querySelector('.extensions_info'));
@@ -1514,6 +1517,8 @@ async function showExtensionsDetails() {
             <i class="fa-solid fa-spinner fa-spin"></i>
             <span>` + t`Loading third-party extensions... Please wait...` + `</span>
         </div>`);
+        // SillyBunny: keep the loading state inside the installed-extension group.
+        htmlLoading.addClass('extensions_loading');
 
         htmlExternal.append(htmlLoading);
 
@@ -1543,18 +1548,17 @@ async function showExtensionsDetails() {
             .append(htmlExternal)
             .append(getModuleInformation());
 
+        // SillyBunny: mark the existing title for the shared Window header adapter.
         const popupHeader = $('<header class="sb-popup-dialog-header"></header>')
-            .append($('<h2></h2>').text(t`Extensions`));
+            .append($('<h2 class="sb-dialog__title"></h2>').text(t`Extensions`));
 
+        let extensionsPresentation;
         {
             const updateAction = async (force) => {
                 requiresReload = true;
                 await autoUpdateExtensions(force);
                 await popup.complete(POPUP_RESULT.AFFIRMATIVE);
             };
-
-            const toolbar = document.createElement('div');
-            toolbar.classList.add('extensions_toolbar');
 
             const updateAllButton = document.createElement('button');
             updateAllButton.classList.add('menu_button', 'menu_button_icon');
@@ -1614,9 +1618,7 @@ async function showExtensionsDetails() {
                 restoreBulkToggledExtensionsButton.classList.add('displayNone');
             });
 
-            const flexExpander = document.createElement('div');
-            flexExpander.classList.add('expander');
-
+            // SillyBunny: preserve sort/update behavior while moving controls to the shared frame header.
             const sortOrderButton = document.createElement('button');
             sortOrderButton.classList.add('menu_button', 'menu_button_icon');
             sortOrderButton.textContent = sortByName ? t`Sort: Display Name` : t`Sort: Loading Order`;
@@ -1626,10 +1628,16 @@ async function showExtensionsDetails() {
                 await showExtensionsDetails();
             });
 
-            toolbar.append(updateAllButton, updateEnabledOnlyButton, flexExpander, sortOrderButton);
             htmlExternal.find('.third_party_toolbar').append(restoreBulkToggledExtensionsButton, toggleAllExtensionsButton);
-            html.prepend(toolbar);
             html.prepend(popupHeader);
+            extensionsPresentation = adaptExtensionsManager(html, {
+                updateAllButton,
+                updateEnabledOnlyButton,
+                sortOrderButton,
+                sortByName,
+                toggleAllExtensionsButton,
+                restoreBulkToggledExtensionsButton,
+            });
         }
 
         let waitingForSave = false;
@@ -1640,6 +1648,8 @@ async function showExtensionsDetails() {
             allowVerticalScrolling: true,
             // SillyBunny: the Extensions manager needs a full-height scrolling surface.
             tier: 'window',
+            size: 'fill',
+            ...extensionsPresentation,
             onClosing: async () => {
                 if (waitingForSave) {
                     return false;

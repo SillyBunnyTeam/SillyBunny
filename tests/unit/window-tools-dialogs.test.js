@@ -38,7 +38,7 @@ test('Token Counter adopts live inputs, translated captions, output IDs and inpu
     expect(input.rows).toBe(1);
     expect(input.closest('.ds-row--stacked')).not.toBeNull();
     expect(ids.closest('.ds-row--stacked')).not.toBeNull();
-    expect(node.querySelector('[data-i18n="Input:"]').textContent).toBe('Input:');
+    expect(node.querySelector('[data-sb-editor-field="token-counter-input"] .ds-row-label').textContent).toBe('Input');
     expect(node.querySelector('h3').dataset.i18n).toBe('Token Counter');
     input.value = 'exact input\n';
     input.dispatchEvent(new Event('input', { bubbles: true }));

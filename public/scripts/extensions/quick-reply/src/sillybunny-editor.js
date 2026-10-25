@@ -3,12 +3,14 @@ import { createEntryRow, createRow, createSpinRow, createSwitchRow, releaseRowId
 import { createSelectRow } from '../../../sillybunny-editor/select-row.js';
 
 function textOf(node) {
-    return node?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+    return node?.textContent.replace(/\s+/g, ' ').trim().replace(/[：:]$/, '').trim() ?? '';
 }
 
 function adoptCaption(row, caption, hint) {
     const target = row.row.querySelector('.ds-row-label');
     if (caption) {
+        caption.textContent = textOf(caption);
+        caption.classList.add('ds-row-label');
         target.replaceChildren(caption);
     }
     const description = row.row.querySelector('.ds-row-subtitle');
@@ -78,6 +80,14 @@ export function adaptQuickReplyEditor(root) {
         source.replaceWith(row.row);
     }
 
+    const messageContainer = requireSource(root, '.qr--modal-messageContainer');
+    messageContainer.classList.add('sb-editor-section');
+    const messageLabel = messageContainer.querySelector(':scope > label');
+    if (messageLabel) {
+        messageLabel.classList.add('ds-pref-group-heading');
+        messageLabel.textContent = textOf(messageLabel);
+    }
+
     const automation = requireSource(root, '#qr--autoExec');
     automation.classList.add('ds-pref-group');
     automation.querySelectorAll('.checkbox_label').forEach(adoptSwitch);
@@ -96,6 +106,7 @@ export function adaptQuickReplyEditor(root) {
     return {
         options: {
             tier: 'window',
+            size: 'fill',
             title: t`Quick Reply`,
             onClose() {
                 for (const row of selects) {

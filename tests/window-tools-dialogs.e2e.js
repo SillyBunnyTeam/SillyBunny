@@ -47,6 +47,16 @@ async function readExtensionSettings(page) {
     });
 }
 
+async function openBranchPage(page, manager, viewport) {
+    const row = manager.locator('.extension_block[data-name="/window-tools-branch"]');
+    if (viewport.width <= 450) {
+        await row.locator('.sb-extension-actions-menu').click();
+        await page.getByRole('menuitem', { name: 'Switch branch', exact: true }).click();
+        return;
+    }
+    await row.locator('.btn_branch').click();
+}
+
 async function observePopupResult(page) {
     return page.evaluateHandle(async () => (await import('/scripts/popup.js')).Popup.util.popups.at(-1));
 }
@@ -65,6 +75,15 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
 
         const body = popup.locator('.popup-content');
         const input = popup.locator('#token_counter_textarea');
+        await expect(popup.locator('[data-sb-editor-field="token-counter-input-group"] .ds-pref-group-subtitle')).toContainText('Type / paste');
+        await expect(popup.locator('.sb-dialog__subtitle')).toHaveCount(0);
+        await expect(popup.locator('.ds-pref-group')).toHaveCount(2);
+        await expect(popup.locator('[data-sb-editor-field="token-counter-tokenizer"]')).toContainText('Selected tokenizer');
+        await expect(popup.locator('[data-sb-editor-field="token-counter-result"]')).toContainText('Tokens');
+        expect(await input.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(144);
+        await expect(popup.locator('#token_counter_ids')).toHaveAttribute('readonly', '');
+        await expect(popup.locator('[data-sb-editor-field="token-counter-ids"] textarea')).toHaveCSS('font-family', /monospace|mono/i);
+        expect(await popup.locator('.ds-row-label').evaluateAll(labels => labels.every(label => !/[：:]$/.test(label.textContent.trim())))).toBe(true);
         const text = 'The exact token-counter fixture.\n'.repeat(45);
         await input.fill(text);
         await expect.poll(() => popup.locator('#token_counter_result').textContent()).not.toBe('0');
@@ -85,18 +104,60 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         await popupInstance.dispose();
     });
 
-    test(`Extensions manager keeps one scroller, an opaque fitting toolbar, and pushes nested flows at ${size}`, async ({ page }) => {
+    test(`Extensions manager uses header menus, one scroller, and pushes nested flows at ${size}`, async ({ page }) => {
         const state = await bootWindowToolsDialogs(page, viewport, { admin: true });
-        const manager = await openExtensionsManager(page);
+        let manager = await openExtensionsManager(page);
         const initialExtensionSettings = await readExtensionSettings(page);
         await expectToolWindow(manager, viewport);
         await expectPopupSingleScroller(manager);
+        if (viewport.width === 390) {
+            await expect(manager.locator('.sb-dialog__title')).toHaveText('Extensions');
+            expect(await manager.locator('.sb-dialog__title').evaluate(title => title.scrollWidth <= title.clientWidth)).toBe(true);
+        }
 
-        const content = manager.locator('.popup-content');
-        const toolbar = manager.locator('.extensions_toolbar');
-        await expect(toolbar).toBeVisible();
-        await expect.poll(() => toolbar.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
-        expect(await toolbar.evaluate(node => getComputedStyle(node).backgroundColor)).not.toContain('rgba');
+        let content = manager.locator('.popup-content');
+        const headerMenus = manager.locator('.extensions-header-menus');
+        await expect(manager.locator('.extensions_toolbar')).toHaveCount(0);
+        await expect(headerMenus.locator('button')).toHaveCount(2);
+        await expect(headerMenus.locator('button[aria-haspopup="menu"]')).toHaveCount(2);
+        const sortTrigger = headerMenus.getByRole('button', { name: 'Sort', exact: true });
+        await expect(sortTrigger).toHaveClass(/sb-dialog__icon-button.*sb-header-icon-button/);
+        await expect(sortTrigger).toBeVisible();
+        await expect(headerMenus.getByRole('button', { name: 'Menu', exact: true })).toBeVisible();
+        expect(await manager.evaluate(node => {
+            const title = node.querySelector('.sb-dialog__title').getBoundingClientRect();
+            const sort = node.querySelector('.extensions-header-menus [aria-label="Sort"]').getBoundingClientRect();
+            const menu = node.querySelector('.extensions-header-menus [aria-label="Menu"]').getBoundingClientRect();
+            const close = node.querySelector('.extensions-header-menus .sb-dialog__close').getBoundingClientRect();
+            return sort.left >= title.right && menu.left >= sort.right && close.left >= menu.right;
+        })).toBe(true);
+        await expect(manager.locator('.sb-extensions-section .ds-pref-group')).toHaveCount(3);
+        expect(await manager.locator('.sb-extensions-section .ds-pref-group-heading').evaluateAll(headings => headings.every(heading => !/[：:]$/.test(heading.textContent.trim())))).toBe(true);
+        await expect(manager.locator('.sb-extensions-section .extension_block.ds-row')).not.toHaveCount(0);
+        await expect(manager.locator('.sb-extensions-api-status .ds-row')).toHaveCount(1);
+        await sortTrigger.click();
+        const sortMenu = page.getByRole('menu', { name: 'Sort' });
+        const sortByName = sortMenu.getByRole('menuitemradio', { name: 'Sort: Display Name' });
+        const sortByLoadingOrder = sortMenu.getByRole('menuitemradio', { name: 'Sort: Loading Order' });
+        await expect(sortByName).toBeVisible();
+        await expect(sortByLoadingOrder).toBeVisible();
+        const currentlySortedByName = await sortByName.getAttribute('aria-checked') === 'true';
+        await (currentlySortedByName ? sortByLoadingOrder : sortByName).click();
+        await expect(manager).toHaveCount(0);
+        manager = await currentToolPopup(page, '.extensions_info');
+        await expect(manager.locator('.extensions-header-menus')).toBeVisible();
+        expect(await manager.locator('.sb-dialog__title').evaluate(title => title.scrollWidth <= title.clientWidth)).toBe(true);
+        await manager.locator('.extensions-header-menus').getByRole('button', { name: 'Sort', exact: true }).click();
+        const refreshedSortMenu = page.getByRole('menu', { name: 'Sort' });
+        await expect(refreshedSortMenu.getByRole('menuitemradio', { name: 'Sort: Display Name' })).toHaveAttribute('aria-checked', String(!currentlySortedByName));
+        await expect(refreshedSortMenu.getByRole('menuitemradio', { name: 'Sort: Loading Order' })).toHaveAttribute('aria-checked', String(currentlySortedByName));
+        await page.keyboard.press('Escape');
+        await manager.locator('.extensions-header-menus').getByRole('button', { name: 'Menu', exact: true }).click();
+        const updateMenu = page.getByRole('menu', { name: 'Extensions' });
+        await expect(updateMenu.getByRole('menuitem', { name: 'Update all' })).toBeVisible();
+        await expect(updateMenu.getByRole('menuitem', { name: 'Update enabled' })).toBeVisible();
+        await page.keyboard.press('Escape');
+        content = manager.locator('.popup-content');
         const rows = manager.locator('.extension_block');
         await expect.poll(() => rows.count()).toBeGreaterThan(0);
         await content.evaluate(node => { node.scrollTop = node.scrollHeight; });
@@ -132,8 +193,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         await expectToolParentRestored(page, warning, manager);
         expect(state.installs).toEqual([]);
 
-        const branchButton = manager.locator('.btn_branch[data-name="/window-tools-branch"]');
-        await branchButton.click();
+        await openBranchPage(page, manager, viewport);
         let branch = await currentToolPopup(page, '.ds-select-row');
         await expectToolPage(branch, manager);
         await expect(branch.locator('.ds-select-row__value')).toContainText('main');
@@ -141,7 +201,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         await expectToolParentRestored(page, branch, manager);
         expect(state.extensionRequests.filter(request => request.endpoint === 'switch')).toEqual([]);
 
-        await branchButton.click();
+        await openBranchPage(page, manager, viewport);
         branch = await currentToolPopup(page, '.ds-select-row');
         await branch.locator('.ds-select-row__trigger').click();
         await page.locator('.sb-picker, .sb-picker-sheet').last().getByRole('option', { name: /dev \(def456\)/ }).click();
@@ -229,7 +289,40 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         const items = manager.locator('.dataMaidItem');
         await expect(items).toHaveCount(24);
         const category = manager.locator('.dataMaidCategory').first();
-        await category.locator('.inline-drawer-toggle').click();
+        await expect(category.locator('.dataMaidCategoryContent')).toBeVisible();
+        await expect(category.locator('.dataMaidToggleCategory')).toHaveAttribute('aria-expanded', 'true');
+        await category.locator('.dataMaidToggleCategory').click();
+        await expect(category.locator('.dataMaidCategoryContent')).toBeHidden();
+        await expect(category.locator('.dataMaidToggleCategory')).toHaveAttribute('aria-expanded', 'false');
+        await category.locator('.dataMaidToggleCategory').click();
+        await expect(category.locator('.dataMaidCategoryContent')).toBeVisible();
+        await expect(category.locator('.dataMaidDeleteAll')).toHaveClass(/sb-header-icon-button/);
+        await expect(category.locator('.dataMaidCategoryName')).toHaveClass(/ds-pref-group-heading/);
+        await expect(category.locator('.dataMaidCategoryInfo')).toContainText('·');
+        const rowChecks = await category.locator('.dataMaidItem').evaluateAll(rows => rows.map(row => {
+            const title = row.querySelector('.dataMaidItemName > .ds-row-label');
+            const info = row.querySelector('.dataMaidItemInfo');
+            const titleStyle = getComputedStyle(title);
+            const infoStyle = getComputedStyle(info);
+            const titleBox = title.getBoundingClientRect();
+            const titleLineHeight = parseFloat(titleStyle.lineHeight) || titleBox.height;
+            return {
+                titleIsSingleLine: titleBox.height <= titleLineHeight * 1.5,
+                titleEllipsizes: titleStyle.whiteSpace === 'nowrap' && titleStyle.overflow === 'hidden',
+                parentVisibleOnce: [...row.querySelectorAll('.dataMaidItemParent')].filter(node => getComputedStyle(node).display !== 'none').length === 1,
+                parentTextOnce: (info.textContent.match(/window-tools-fixture/g) ?? []).length === 1,
+                upstreamParentNode: Boolean(row.querySelector('.dataMaidItemParent')),
+                upstreamFileIcon: Boolean(info.querySelector('.fa-file')),
+                upstreamCalendarIcon: Boolean(info.querySelector('.fa-calendar')),
+                infoEllipsizes: infoStyle.whiteSpace === 'nowrap' && infoStyle.overflow === 'hidden',
+            };
+        }));
+        expect(rowChecks).toHaveLength(24);
+        expect(rowChecks.every(check => Object.values(check).every(Boolean))).toBe(true);
+        await expect(category.locator('.dataMaidItemName .ds-row-label').first()).toHaveText('orphan-file-24.txt');
+        await expect(category.locator('.dataMaidItemName .ds-row-subtitle').first()).toContainText('window-tools-fixture');
+        await expect(category.locator('.dataMaidItem').first().locator('.dataMaidItemActions button')).toHaveCount(3);
+        expect(await category.locator('.dataMaidItem').first().locator('.dataMaidItemActions button').evaluateAll(buttons => buttons.every(button => button.classList.contains('sb-header-icon-button')))).toBe(true);
         const body = manager.locator('.popup-content');
         await body.evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(items.last()).toBeInViewport();

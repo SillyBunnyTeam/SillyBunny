@@ -109,20 +109,7 @@ label[for="extensions_notify_updates"] input[type="checkbox"] {
     font-weight: normal;
 }
 
-/* SillyBunny: preserve enough title space while extension controls stay in the row suffix. */
-.extensions_info .extension_block {
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 76%, transparent);
-    border-radius: 18px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-}
-
-@media (hover: hover) {
-    .extensions_info .extension_block:hover {
-        background: var(--sb-flat-hover-bg);
-        border-color: color-mix(in srgb, var(--sb-shell-border) 94%, transparent);
-    }
-}
-
+/* SillyBunny: extension cards now use the manager's shared boxed list. */
 .extensions_info .extension_name {
     font-size: 1.05em;
 }
@@ -166,6 +153,7 @@ input.extension_missing[type="checkbox"] {
     display: inline-flex;
 }
 
+/* SillyBunny: the shared Window header owns extension manager actions instead of a sticky toolbar. */
 /* Fixes order of settings for extensions */
 #extensions_settings,
 #extensions_settings2 {
@@ -259,23 +247,6 @@ input.extension_missing[type="checkbox"] {
 
 .extensions_info .extension_actions:empty {
     display: none;
-}
-
-.extensions_toolbar {
-    top: 0;
-    position: -webkit-sticky;
-    position: sticky;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent);
-    gap: 8px;
-    z-index: 1;
-    margin-bottom: 10px;
-    padding: 10px 12px;
-    border-radius: 18px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
 }
 
 /* SillyBunny: keep the Regex creation actions in one compact, wrapping toolbar on detail pages. */
@@ -439,7 +410,6 @@ input.extension_missing[type="checkbox"] {
     .sb-subpage-back,
     .extensions_info .extension_block,
     .extensions_info .extension_actions .menu_button,
-    .extensions_toolbar,
     .regex_settings #scoped_scripts_block,
     .regex_settings #preset_scripts_block,
     .regex_settings .regex-toggle-off {

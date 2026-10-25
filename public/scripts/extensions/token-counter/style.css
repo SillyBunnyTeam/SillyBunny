@@ -5,7 +5,31 @@
     display: inline-block;
 }
 
+/* SillyBunny: keep the live editor usable and render generated token IDs as selectable output. */
 #token_counter_textarea,
 #token_counter_ids {
     field-sizing: content;
+}
+
+.ds-row[data-sb-editor-field='token-counter-input'] textarea {
+    box-sizing: border-box;
+    min-height: clamp(9rem, 35vh, 24rem);
+    resize: vertical;
+}
+
+.ds-row[data-sb-editor-field='token-counter-ids'] textarea {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--SmartThemeBodyColor);
+    cursor: text;
+    font-family: var(--monoFontFamily);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+@media (max-width: 600px) {
+    .ds-row[data-sb-editor-field='token-counter-input'] textarea {
+        min-height: 9rem;
+    }
 }

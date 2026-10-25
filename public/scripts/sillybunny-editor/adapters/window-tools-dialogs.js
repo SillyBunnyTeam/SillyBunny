@@ -10,7 +10,17 @@ function asElement(source) {
 function moveCaption(target, source) {
     if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
     target.replaceChildren(...source.childNodes);
+    target.textContent = target.textContent.trim().replace(/[：:]$/, '').trim();
     source.remove();
+}
+
+function displayLabel(node) {
+    return node?.textContent.trim().replace(/[：:]$/, '').trim() ?? '';
+}
+
+function splitProperty(node) {
+    const [label, ...value] = (node?.textContent.trim() ?? '').split(/[:：]/);
+    return { label: label.trim(), value: value.join(':').trim() };
 }
 
 /** Preserve the live tokenizer inputs and output spans while grouping their source captions. */
@@ -23,29 +33,41 @@ export function tokenCounterOptions(source) {
     if (!input || !ids || !count || !chunks) throw new TypeError('The token counter needs its source inputs and outputs.');
 
     const content = input.parentElement;
-    const instructions = [...content.querySelectorAll(':scope > h4, :scope > p')];
+    const intro = content.querySelector(':scope > h4');
+    const tokenizerProperty = splitProperty(content.querySelector(':scope > p'));
     const inputCaption = input.previousElementSibling;
     const idsCaption = ids.previousElementSibling;
     const countCaption = count.previousElementSibling;
     const chunksCaption = chunks.previousElementSibling;
-    const inputRow = createEntryRow({ label: inputCaption.textContent.trim(), field: 'token-counter-input', input });
-    const idsRow = createEntryRow({ label: idsCaption.textContent.trim(), field: 'token-counter-ids', input: ids });
+    const inputLabel = displayLabel(inputCaption);
+    const chunksLabel = displayLabel(chunksCaption);
+    const inputRow = createEntryRow({ label: displayLabel(inputCaption), field: 'token-counter-input', input });
+    const idsRow = createEntryRow({ label: displayLabel(idsCaption), field: 'token-counter-ids', input: ids });
     inputRow.row.classList.add('ds-row--stacked');
     idsRow.row.classList.add('ds-row--stacked');
-    const countRow = createPropertyRow({ label: countCaption.textContent.trim(), value: count.textContent, field: 'token-counter-result' });
+    const countRow = createPropertyRow({ label: displayLabel(countCaption), value: count.textContent, field: 'token-counter-result' });
+    const tokenizerRow = createPropertyRow({ label: tokenizerProperty.label, value: tokenizerProperty.value, field: 'token-counter-tokenizer' });
     moveCaption(countRow.row.querySelector('.ds-row-subtitle'), countCaption);
     count.classList.add('ds-row-label', 'ds-row-property__value');
     countRow.row.querySelector('.ds-row-property__value').replaceWith(count);
-    const chunksRow = createRow({ label: chunksCaption.textContent.trim(), field: 'token-counter-chunks', suffix: chunks, stacked: true });
+    const chunksRow = createRow({ label: '', field: 'token-counter-chunks', suffix: chunks, stacked: true });
     moveCaption(inputRow.row.querySelector('.ds-row-label'), inputCaption);
     moveCaption(idsRow.row.querySelector('.ds-row-label'), idsCaption);
     moveCaption(chunksRow.row.querySelector('.ds-row-label'), chunksCaption);
 
     content.classList.add('sb-dialog-rows');
-    content.replaceChildren(...instructions, createPrefGroup({
-        field: 'token-counter', rows: [inputRow, countRow, chunksRow, idsRow],
-    }).section);
-    return { tier: 'window', onClose() { releaseRowIds(root); } };
+    const inputGroup = createPrefGroup({
+        title: inputLabel,
+        subtitle: intro?.textContent.trim(),
+        field: 'token-counter-input-group',
+        rows: [tokenizerRow, inputRow, countRow],
+    });
+    const tokenGroup = createPrefGroup({ title: chunksLabel, field: 'token-counter-output-group', rows: [chunksRow, idsRow] });
+    content.replaceChildren(inputGroup.section, tokenGroup.section);
+    return {
+        tier: 'window',
+        onClose() { releaseRowIds(root); },
+    };
 }
 
 /** Adopt sampler inputs into trailing check rows without changing their names or checked state. */

@@ -6,6 +6,7 @@ const NARROW_VIEWPORT = 450;
 
 let rowObserver;
 let resizeObserver;
+let managerLifecycleBound = false;
 
 function visibleActions(row) {
     const actionContainer = row.querySelector('.extension_actions');
@@ -22,6 +23,12 @@ function actionMenuItems(row) {
         icon: button.querySelector('i, svg') || undefined,
         onSelect: () => button.click(),
     }));
+}
+
+function measureActionWidth(action) {
+    const width = action.getBoundingClientRect().width;
+    if (width > 0) action.dataset.sbExtensionActionWidth = String(width);
+    return width || Number(action.dataset.sbExtensionActionWidth) || parseFloat(getComputedStyle(action).width) || 0;
 }
 
 function createMenuTrigger(row) {
@@ -56,7 +63,7 @@ function rowNeedsCollapsedActions(row, actions) {
     if (!rowWidth || !actions.length) return false;
     const icon = row.querySelector('.extension_icon')?.getBoundingClientRect();
     const toggle = row.querySelector('.extension_toggle')?.getBoundingClientRect();
-    const actionWidths = actions.reduce((total, action) => total + (action.getBoundingClientRect().width || parseFloat(getComputedStyle(action).width) || 0), 0);
+    const actionWidths = actions.reduce((total, action) => total + measureActionWidth(action), 0);
     const actionGap = Math.max(0, actions.length - 1) * 8;
     const titleWidth = rowWidth - (icon?.width ?? 0) - (toggle?.width ?? 0) - actionWidths - actionGap - 32;
     return titleWidth < rowWidth * 0.4;
@@ -67,7 +74,7 @@ function updateRow(row) {
     if (!actionContainer) return;
     const actions = visibleActions(row);
     if (!actions.length) {
-        row.classList.remove('sb-extension-actions-collapsed');
+        if (row.classList.contains('sb-extension-actions-collapsed')) row.classList.remove('sb-extension-actions-collapsed');
         actionContainer.querySelector('.sb-extension-actions-menu')?.remove();
         return;
     }
@@ -77,9 +84,15 @@ function updateRow(row) {
         actionContainer.append(trigger);
     }
     const collapsed = rowNeedsCollapsedActions(row, actions);
-    row.classList.toggle('sb-extension-actions-collapsed', collapsed);
-    actions.forEach(action => { action.style.display = collapsed ? 'none' : ''; });
-    trigger.style.display = collapsed ? 'inline-flex' : 'none';
+    if (row.classList.contains('sb-extension-actions-collapsed') !== collapsed) {
+        row.classList.toggle('sb-extension-actions-collapsed', collapsed);
+    }
+    const actionDisplay = collapsed ? 'none' : '';
+    actions.forEach(action => {
+        if (action.style.display !== actionDisplay) action.style.display = actionDisplay;
+    });
+    const triggerDisplay = collapsed ? 'inline-flex' : 'none';
+    if (trigger.style.display !== triggerDisplay) trigger.style.display = triggerDisplay;
 }
 
 function updateRows(root = document) {
@@ -91,11 +104,26 @@ function updateRows(root = document) {
     });
 }
 
+export function unobserveRemovedRows(node, observer = resizeObserver) {
+    if (!(node instanceof Element)) return;
+    if (node.matches(EXTENSION_ROW_SELECTOR)) observer?.unobserve(node);
+    node.querySelectorAll(EXTENSION_ROW_SELECTOR).forEach(row => observer?.unobserve(row));
+}
+
+function disposeExtensionRowActions() {
+    rowObserver?.disconnect();
+    resizeObserver?.disconnect();
+    rowObserver = null;
+    resizeObserver = null;
+}
+
 function initializeExtensionRowActions() {
     if (rowObserver) return;
+    resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => entries.forEach(entry => updateRow(entry.target))) : null;
     updateRows();
     rowObserver = new MutationObserver(records => {
         for (const record of records) {
+            record.removedNodes.forEach(unobserveRemovedRows);
             record.addedNodes.forEach(node => {
                 if (node.nodeType === Node.ELEMENT_NODE) updateRows(node);
             });
@@ -105,8 +133,11 @@ function initializeExtensionRowActions() {
         }
     });
     rowObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-    resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => entries.forEach(entry => updateRow(entry.target))) : null;
-    document.querySelectorAll(EXTENSION_ROW_SELECTOR).forEach(row => resizeObserver?.observe(row));
+    if (!managerLifecycleBound) {
+        document.addEventListener('sillybunny:extensions-manager-open', initializeExtensionRowActions);
+        document.addEventListener('sillybunny:extensions-manager-close', disposeExtensionRowActions);
+        managerLifecycleBound = true;
+    }
 }
 
 if (document.readyState === 'loading') {

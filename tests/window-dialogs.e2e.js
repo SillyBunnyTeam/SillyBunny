@@ -17,6 +17,32 @@ async function readExtensions(page) {
     });
 }
 
+test('Regex debugger keeps its two-column rows coherent at 1024×768', async ({ page }) => {
+    const viewport = { width: 1024, height: 768, presentation: 'floating' };
+    await bootWindowDialogs(page, viewport);
+    const debuggerPopup = await openRegex(page, 'debugger');
+    await expectWindow(debuggerPopup, viewport);
+    const checks = await debuggerPopup.locator('.regex-debugger-rule').evaluateAll(rules => rules.map(rule => {
+        const list = rule.closest('.sortable-list').getBoundingClientRect();
+        const row = rule.getBoundingClientRect();
+        const regex = rule.querySelector('.rule-regex');
+        const scope = rule.querySelector('.rule-scope');
+        const handle = rule.querySelector('.handle').getBoundingClientRect();
+        const editStyle = getComputedStyle(rule.querySelector('.edit_rule'));
+        const lineHeight = node => parseFloat(getComputedStyle(node).lineHeight) || node.getBoundingClientRect().height;
+        return regex.getClientRects().length === 1
+            && regex.getBoundingClientRect().height <= lineHeight(regex) * 1.5
+            && scope.getClientRects().length === 1
+            && scope.getBoundingClientRect().height <= lineHeight(scope) * 1.5
+            && row.right <= list.right + 1
+            && handle.left - list.left <= 16
+            && (editStyle.backgroundColor === 'transparent' || editStyle.backgroundColor === 'rgba(0, 0, 0, 0)');
+    }));
+    expect(checks.every(Boolean)).toBe(true);
+    await debuggerPopup.locator('.popup-content').evaluate(node => { node.scrollTop = 0; });
+    await captureWindowSurface(page, viewport, 'regex-debugger');
+});
+
 test.describe('coarse-pointer Data Bank close target', () => {
     test.use({ hasTouch: true });
     for (const viewport of WINDOW_VIEWPORTS) {
@@ -462,6 +488,48 @@ for (const viewport of WINDOW_VIEWPORTS) {
         const state = await bootWindowDialogs(page, viewport);
         const debuggerPopup = await openRegex(page, 'debugger');
         await expectWindow(debuggerPopup, viewport);
+        await expect(debuggerPopup.locator('.regex-debugger-rules-list')).toBeVisible();
+        await expect(debuggerPopup.locator('.regex-debugger-rule')).not.toHaveCount(0);
+        await expect(debuggerPopup.locator('.ds-toggle-row')).toBeVisible();
+        await expect(debuggerPopup.locator('.ds-select-row')).toBeVisible();
+        await expect(debuggerPopup.locator('.regex-debugger-run-button')).toBeVisible();
+        await expect(debuggerPopup.locator('.regex-debugger-controls .ds-pref-group')).toHaveCount(1);
+        await expect(debuggerPopup.locator('#regex_debugger_run_test')).toHaveCSS('white-space', 'nowrap');
+        await expect(debuggerPopup.locator('.regex-debugger-tester .ds-pref-group-heading')).toHaveCount(3);
+        const ruleLayout = await debuggerPopup.locator('.regex-debugger-rule').evaluateAll(rules => rules.map(rule => {
+            const list = rule.closest('.sortable-list');
+            const row = rule.getBoundingClientRect();
+            const details = rule.querySelector('.rule-details').getBoundingClientRect();
+            const name = rule.querySelector('.rule-name');
+            const regex = rule.querySelector('.rule-regex');
+            const scope = rule.querySelector('.rule-scope');
+            const handle = rule.querySelector('.handle').getBoundingClientRect();
+            const edit = rule.querySelector('.edit_rule');
+            const editStyle = getComputedStyle(edit);
+            const lineHeight = node => parseFloat(getComputedStyle(node).lineHeight) || node.getBoundingClientRect().height;
+            return {
+                nameStartsAtDetails: name.getBoundingClientRect().left <= details.left + 1,
+                regexOneLine: regex.getClientRects().length === 1 && regex.getBoundingClientRect().height <= lineHeight(regex) * 1.5,
+                scopeOneLine: scope.getClientRects().length === 1 && scope.getBoundingClientRect().height <= lineHeight(scope) * 1.5,
+                rowFitsList: row.right <= list.getBoundingClientRect().right + 1,
+                handleNearListStart: handle.left - list.getBoundingClientRect().left <= 16,
+                editIsFlat: editStyle.backgroundColor === 'transparent' || editStyle.backgroundColor === 'rgba(0, 0, 0, 0)',
+            };
+        }));
+        expect(ruleLayout.every(layout => Object.values(layout).every(Boolean))).toBe(true);
+        const scopeLayout = await debuggerPopup.locator('#regex_debugger_rules').evaluate(container => ({
+            headingsOutsideLists: [...container.querySelectorAll(':scope > .regex-debugger-list-header')].every(header => header.parentElement === container),
+            scopeListsAreBoxed: [...container.querySelectorAll(':scope > .sortable-list')].every(list => parseFloat(getComputedStyle(list).borderTopWidth) > 0),
+        }));
+        expect(scopeLayout).toEqual({ headingsOutsideLists: true, scopeListsAreBoxed: true });
+        if (viewport.width <= 450) {
+            expect(await debuggerPopup.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+            expect(await debuggerPopup.locator('.regex-debugger-rule').first().evaluate(rule => {
+                const name = rule.querySelector('.rule-name').getBoundingClientRect();
+                const meta = rule.querySelector('.rule-regex').getBoundingClientRect();
+                return name.width > 0 && meta.width > 0 && meta.top >= name.bottom - 1;
+            })).toBe(true);
+        }
         const input = 'alpha beta\n'.repeat(40);
         const expectedOutput = 'gamma gamma\n'.repeat(40);
         await debuggerPopup.locator('#regex_debugger_raw_input').fill(input);
@@ -473,6 +541,7 @@ for (const viewport of WINDOW_VIEWPORTS) {
         for (const selector of ['#regex_debugger_steps_output', '#regex_debugger_final_output']) {
             expect(await debuggerPopup.locator(selector).evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
         }
+        await debuggerPopup.locator('.popup-content').evaluate(node => { node.scrollTop = 0; });
         await captureWindowSurface(page, viewport, 'regex-debugger');
         for (const view of ['steps', 'final']) {
             for (const exit of ['back', 'escape']) {

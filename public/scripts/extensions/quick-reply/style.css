@@ -233,6 +233,22 @@
   align-items: baseline;
   gap: 0.5em;
 }
+
+/* SillyBunny: retain the compact row label scale inside the Quick Reply editor. */
+.popup:has(#qr--modalEditor) .ds-pref-group .ds-row .ds-row-text > .ds-row-label {
+  font-size: var(--sb-type-control, var(--mainFontSize));
+  font-weight: 400;
+}
+
+.popup:has(#qr--modalEditor) .ds-pref-group-heading {
+  font-size: var(--sb-type-title, var(--mainFontSize));
+}
+
+.popup:has(#qr--modalEditor) .qr--modal-messageContainer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 #qr--settings .qr--setList > .qr--item {
   display: flex;
   flex-direction: row;
@@ -336,6 +352,64 @@
   gap: 0.5em;
   justify-content: center;
   padding-bottom: 0.5em;
+}
+
+/* SillyBunny: make Quick Reply set links use shared row and action patterns on every width. */
+#qr--settings .qr--setList > .qr--item {
+  align-items: center;
+  min-width: 0;
+  min-height: 52px;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--sb-shell-border);
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item {
+  margin-block: 0;
+}
+
+#qr--settings .qr--setList > .qr--item:last-child {
+  border-bottom: 0;
+}
+
+#qr--settings .qr--setList > .qr--item > .drag-handle {
+  flex: 0 0 32px;
+  padding: 0;
+  color: var(--sb-muted-fg);
+  text-align: center;
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--set {
+  flex: 1 1 190px;
+  min-width: 0;
+  min-height: 40px;
+  margin: 0;
+  padding-inline: 10px;
+  border: 1px solid var(--sb-shell-border);
+  border-radius: var(--sb-radius-control, 9px);
+  background: var(--sb-layer-window);
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--visible {
+  flex: 0 0 auto;
+  min-height: 40px;
+  margin: 0;
+  gap: 8px;
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--action {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+@media (pointer: coarse) {
+  #qr--settings .qr--setList > .qr--item > .qr--action,
+  #qr--settings .qr--setList > .qr--item > .qr--visible {
+    min-height: 44px;
+  }
 }
 
 @media screen and (max-width: 600px) {

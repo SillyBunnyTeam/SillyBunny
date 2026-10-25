@@ -14,6 +14,10 @@ import { accountStorage } from '../../util/AccountStorage.js';
 import { getPresetManager } from '../../preset-manager.js';
 // SillyBunny: adopt the import target radios into a shared segmented row.
 import { regexImportOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
+// SillyBunny: present debugger controls with shared rows while retaining the live source elements.
+import { createToggleRow } from '../../sillybunny-editor/toggle-row.js';
+import { createSelectRow } from '../../sillybunny-editor/select-row.js';
+import { createEntryRow } from '../../sillybunny-editor/rows.js';
 
 // Re-exports for legacy extensions
 export { getRegexScripts };
@@ -1148,22 +1152,23 @@ function populateDebuggerRuleList(container) {
         return ruleElementContent;
     };
 
+    // SillyBunny: keep scope headings outside each boxed list so the shared group rhythm remains visible.
     if (globalScripts.length > 0) {
-        rulesContainer.append('<div class="list-header regex-debugger-list-header">' + t`Global Rules` + '</div>');
+        rulesContainer.append('<div class="list-header regex-debugger-list-header ds-pref-group-heading">' + t`Global Rules` + '</div>');
         const globalList = $('<ul id="regex_debugger_rules_global" class="sortable-list"></ul>');
         globalScripts.forEach(script => globalList.append(renderRule(script)));
         rulesContainer.append(globalList);
     }
 
     if (presetScripts.length > 0) {
-        rulesContainer.append('<div class="list-header regex-debugger-list-header">' + t`Preset Rules` + '</div>');
+        rulesContainer.append('<div class="list-header regex-debugger-list-header ds-pref-group-heading">' + t`Preset Rules` + '</div>');
         const presetList = $('<ul id="regex_debugger_rules_preset" class="sortable-list"></ul>');
         presetScripts.forEach(script => presetList.append(renderRule(script)));
         rulesContainer.append(presetList);
     }
 
     if (scopedScripts.length > 0) {
-        rulesContainer.append('<div class="list-header regex-debugger-list-header">' + t`Scoped Rules` + '</div>');
+        rulesContainer.append('<div class="list-header regex-debugger-list-header ds-pref-group-heading">' + t`Scoped Rules` + '</div>');
         const scopedList = $('<ul id="regex_debugger_rules_scoped" class="sortable-list"></ul>');
         scopedScripts.forEach(script => scopedList.append(renderRule(script)));
         rulesContainer.append(scopedList);
@@ -1181,6 +1186,38 @@ async function onRegexDebuggerOpenClick() {
     const stepTemplate = debuggerHtml.find('#regex_debugger_step_template');
 
     populateDebuggerRuleList(debuggerHtml);
+
+    // SillyBunny: adopt the live debugger controls into shared rows without replacing their source inputs.
+    const rawInput = debuggerHtml.find('#regex_debugger_raw_input').get(0);
+    const rawInputContainer = rawInput.parentElement;
+    const rawInputRow = createEntryRow({ label: t`Raw Input`, field: 'regex-debugger-raw-input', input: rawInput });
+    rawInputRow.row.classList.add('ds-row--stacked');
+    rawInputContainer.replaceWith(rawInputRow.row);
+
+    const displayModeInputs = [...debuggerHtml.find('input[name="display_mode"]').get()];
+    const displayModeRow = createToggleRow({
+        label: t`Display`,
+        field: 'regex-debugger-display-mode',
+        value: displayModeInputs.find(input => input.checked)?.value ?? 'replace',
+        choices: [['replace', t`Replace`], ['highlight', t`Highlight`]],
+        inputs: displayModeInputs,
+    });
+    const controlOptions = debuggerHtml.find('.regex-debugger-control-options').get(0);
+    const renderSelect = debuggerHtml.find('#regex_debugger_render_mode').get(0);
+    renderSelect.remove();
+    const renderRow = createSelectRow({
+        select: renderSelect,
+        label: t`Render`,
+        field: 'regex-debugger-render-mode',
+        title: t`Render`,
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
+    });
+    controlOptions.replaceWith(displayModeRow.row, renderRow.row);
+
+    const runButton = debuggerHtml.find('#regex_debugger_run_test').get(0);
+    runButton.classList.add('ds-row', 'ds-button-row');
+    debuggerHtml.find('#regex_debugger_run_test_header').replaceWith(runButton);
 
     // @ts-ignore
     debuggerHtml.find('#regex_debugger_rules_global').sortable({ delay: getSortableDelay() }).disableSelection();
@@ -1324,7 +1361,11 @@ async function onRegexDebuggerOpenClick() {
                     const scrollTo = frameBody
                         ? frameBody.scrollTop + targetElement[0].getBoundingClientRect().top - frameBody.getBoundingClientRect().top
                         : 0;
-                    frameBody?.scrollTo({ top: scrollTo, behavior: 'smooth' });
+                    // SillyBunny: respect reduced motion when focusing a transformed rule.
+                    frameBody?.scrollTo({
+                        top: scrollTo,
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                    });
 
                     targetElement.css('transition', 'background-color 0.5s').css('background-color', 'var(--highlight_color)');
                     setTimeout(() => targetElement.css('background-color', ''), 1000);
@@ -1348,7 +1389,13 @@ async function onRegexDebuggerOpenClick() {
     });
 
     // SillyBunny: keep the debugger in the Window tier so expanded views can be pushed pages.
-    await callGenericPopup(debuggerHtml.children(), POPUP_TYPE.TEXT, '', { tier: 'window', title: t`Advanced Regex Debugger`, wide: true, allowVerticalScrolling: true });
+    await callGenericPopup(debuggerHtml.children(), POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`Advanced Regex Debugger`,
+        wide: true,
+        allowVerticalScrolling: true,
+        onClose: () => renderRow.destroy(),
+    });
 }
 
 /**

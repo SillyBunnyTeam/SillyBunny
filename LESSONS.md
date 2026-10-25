@@ -164,6 +164,7 @@ This is the largest class by a wide margin.
 - **Adopted rows:** moving an upstream list into shared dialog chrome must preserve the original action nodes as the handler boundary. Add adapter unit coverage for every forwarded action and keyboard route, plus an e2e that reaches the overflow actions through the production menu.
 - **Touch close controls:** nested Popup close nodes can bypass direct-child coarse-pointer rules. Keep Close in the shared header layout and assert its 44×44 box on coarse-pointer Data Bank and Tag Manager surfaces.
 - **Window filtering:** content-sized Windows can shrink when a live search removes rows. Keep Window surfaces fill-sized by default, opt only deliberately short Windows into content sizing, and lock a content-sized frame at its largest laid-out height. Tests: `tests/tag-manager.e2e.js`; `tests/sillybunny-overlays.e2e.js`; the Window and media dialog suites.
+- **Observed extension rows:** hiding crowded extension actions changes their measured width to zero. Repeatedly writing the same hidden styles from the row observer can then loop on its own mutations and block the main thread. Cache measured widths and write row classes and inline display only when the value changes. Tests: `tests/extensions-row-actions.e2e.js`; `tests/window-tools-dialogs.e2e.js`.
 
 ### Upstream compatibility and sync
 

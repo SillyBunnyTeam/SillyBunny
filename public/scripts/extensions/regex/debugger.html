@@ -1,17 +1,20 @@
+<!-- SillyBunny: retain upstream control hooks while the adapter supplies shared boxed rows. -->
 <div class="regex-debugger-container">
     <!-- Rules List Column -->
     <div class="regex-debugger-rules-list">
-        <h3>
+        <div class="ds-pref-group-header regex-debugger-rules-header">
+        <h3 class="ds-pref-group-heading">
             <i class="fa-solid fa-list-ol"></i>
             <span data-i18n="ext_regex_debugger_active_rules"
                 >Active Rules</span
             >
         </h3>
-        <div class="flex-container">
+        <div class="flex-container regex-debugger-save-order-suffix">
             <button
                 id="regex_debugger_save_order"
-                class="menu_button menu_button_icon interactable"
-                data-i18n="[title]ext_regex_debugger_save_order_help"
+                class="menu_button menu_button_icon interactable sb-dialog__icon-button"
+                data-i18n="[title]ext_regex_debugger_save_order_help;[aria-label]ext_regex_debugger_save_order"
+                aria-label="Save Order"
                 title="Save current rule order"
                 tabindex="0"
             >
@@ -21,6 +24,7 @@
                 >
             </button>
         </div>
+        </div>
         <ul id="regex_debugger_rules" class="sortable-list">
             <!-- Rules will be populated here by JavaScript -->
         </ul>
@@ -28,13 +32,14 @@
 
     <!-- Testing Area Column -->
     <div class="regex-debugger-tester">
-        <h3>
+        <h3 class="ds-pref-group-heading">
             <i class="fa-solid fa-vial"></i>
             <span data-i18n="ext_regex_debugger_testing_area"
                 >Testing Area</span
             >
         </h3>
-        <div class="regex-debugger-io">
+        <div class="regex-debugger-io regex-debugger-controls sb-editor-section">
+            <div class="ds-pref-group">
             <div class="regex-debugger-input">
                 <label
                     for="regex_debugger_raw_input"
@@ -47,13 +52,20 @@
                     rows="4"
                 ></textarea>
             </div>
-            <div
-                id="regex_debugger_run_test_header"
-                class="flex-container"
-            >
+            <div class="regex-debugger-control-options flex-container gap10px">
+                <div class="radio_group">
+                    <label><input type="radio" name="display_mode" value="replace" checked /> <span data-i18n="ext_regex_debugger_display_replace">Replace</span></label>
+                    <label><input type="radio" name="display_mode" value="highlight" /> <span data-i18n="ext_regex_debugger_display_highlight">Highlight</span></label>
+                </div>
+                <select id="regex_debugger_render_mode">
+                    <option value="text" data-i18n="ext_regex_debugger_render_text">Render as Text</option>
+                    <option value="message" data-i18n="ext_regex_debugger_render_message">Render as Message</option>
+                </select>
+            </div>
+            <div id="regex_debugger_run_test_header" class="flex-container">
                 <button
                     id="regex_debugger_run_test"
-                    class="menu_button menu_button_icon interactable"
+                    class="menu_button menu_button_icon interactable regex-debugger-run-button"
                     data-i18n="[title]ext_regex_debugger_run_test_help"
                     title="Run the test pipeline"
                     tabindex="0"
@@ -63,52 +75,11 @@
                         >Run Test</span
                     >
                 </button>
-                <div class="flex-container gap10px">
-                    <div class="radio_group">
-                        <label
-                            ><input
-                                type="radio"
-                                name="display_mode"
-                                value="replace"
-                                checked
-                            />
-                            <span data-i18n="ext_regex_debugger_display_replace"
-                                >Replace</span
-                            ></label
-                        >
-                        <label
-                            ><input
-                                type="radio"
-                                name="display_mode"
-                                value="highlight"
-                            />
-                            <span
-                                data-i18n="ext_regex_debugger_display_highlight"
-                                >Highlight</span
-                            ></label
-                        >
-                    </div>
-                    <select
-                        id="regex_debugger_render_mode"
-                    >
-                        <option
-                            value="text"
-                            data-i18n="ext_regex_debugger_render_text"
-                        >
-                            Render as Text
-                        </option>
-                        <option
-                            value="message"
-                            data-i18n="ext_regex_debugger_render_message"
-                        >
-                            Render as Message
-                        </option>
-                    </select>
-                </div>
+            </div>
             </div>
             <div class="regex-debugger-results">
                 <div class="results-header">
-                    <h4>
+                    <h4 class="ds-pref-group-heading">
                         <i class="fa-solid fa-shoe-prints"></i>
                         <span data-i18n="ext_regex_debugger_step_by_step"
                             >Step-by-step Transformation</span
@@ -126,7 +97,7 @@
                 <div id="regex_debugger_steps_output" class="results-box"></div>
 
                 <div class="results-header">
-                    <h4>
+                    <h4 class="ds-pref-group-heading">
                         <i class="fa-solid fa-flag-checkered"></i>
                         <span data-i18n="ext_regex_debugger_final_output"
                             >Final Output</span
@@ -159,10 +130,12 @@
         </label>
         <div class="rule-details">
             <span class="rule-name"></span>
-            <code class="rule-regex"></code>
-            <small class="rule-scope"></small>
+            <span class="rule-meta">
+                <code class="rule-regex"></code>
+                <small class="rule-scope"></small>
+            </span>
         </div>
-        <div class="menu_button menu_button_icon edit_rule" data-i18n="[title]Edit Rule" title="Edit Rule">
+        <div class="menu_button menu_button_icon edit_rule sb-dialog__icon-button" data-i18n="[title]Edit Rule" title="Edit Rule">
             <i class="fa-solid fa-pencil"></i>
         </div>
     </li>
