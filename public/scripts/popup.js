@@ -682,6 +682,7 @@ export class Popup {
         this.sbFrame = framePopup(this, {
             tier,
             title,
+            // SillyBunny: pass Window sizing to the shared frame without changing Popup behavior.
             size,
             allowEscapeClose,
             cancelButtonProvided: Object.prototype.hasOwnProperty.call(arguments[3] ?? {}, 'cancelButton'),

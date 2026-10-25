@@ -632,6 +632,7 @@ async function viewSettingsSnapshots() {
                 e.stopPropagation();
                 restoreSnapshot(snapshot.name, () => location.reload());
             });
+            // SillyBunny: keep the expanded state available to assistive technology after the row moves.
             snapshotBlock.on('inline-drawer-toggle', async () => {
                 const expandButton = snapshotBlock.find('.snapshotExpandButton');
                 expandButton.attr('aria-expanded', snapshotBlock.find('.inline-drawer-icon').hasClass('up') ? 'true' : 'false');
@@ -713,6 +714,7 @@ async function resetEverything(callback) {
 async function openUserProfile() {
     await getCurrentUser();
     const template = $(await renderTemplateAsync('userProfile'));
+    // SillyBunny: bind the account role to its adopted property row.
     template.find('.sb-account-properties .userRole').text(currentUser.admin ? 'Admin' : 'User');
     template.find('.userName').text(currentUser.name);
     template.find('.userHandle').text(currentUser.handle);
@@ -860,6 +862,7 @@ async function openAdminPanel() {
     }
 
     const template = $(await renderTemplateAsync('admin'));
+    // SillyBunny: frame the source form before its nodes move into the Window.
     const adminOptions = adminPanelOptions(template);
 
     template.find('.adminNav > button').on('click', function () {
@@ -872,6 +875,7 @@ async function openAdminPanel() {
         });
     });
 
+    // SillyBunny: keep the generated handle inside the active form after the form is adopted.
     template.find('.createUserDisplayName').on('input', async function () {
         const form = $(this).closest('.userCreateForm');
         const slug = await slugify(String($(this).val()));

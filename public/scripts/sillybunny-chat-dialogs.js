@@ -368,7 +368,13 @@ export function openChatHistoryDialog() {
         for (const node of actionNodes) {
             node.setAttribute('role', 'button');
             node.tabIndex = 0;
-            node.setAttribute('aria-label', node.getAttribute('title') || node.getAttribute('aria-label') || t`TODO(copy)`);
+            const actionLabel = node.getAttribute('title') || node.getAttribute('aria-label');
+            if (actionLabel) {
+                node.setAttribute('aria-label', actionLabel);
+            } else {
+                node.setAttribute('aria-label', t`TODO(copy)`);
+                node.setAttribute('data-sb-copy-placeholder', 'true');
+            }
             node.addEventListener('keydown', event => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();

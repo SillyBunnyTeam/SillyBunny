@@ -71,6 +71,7 @@
 }
 
 .dataMaidPlaceholder {
+    /* SillyBunny: keep the empty-state message readable in the shared Window body. */
     display: flex;
     justify-content: flex-start;
     align-items: center;
@@ -162,6 +163,7 @@
 }
 
 .dataMaidItem {
+    /* SillyBunny: keep Data Maid items in compact shared rows. */
     display: block;
     padding: 0;
     width: 100%;

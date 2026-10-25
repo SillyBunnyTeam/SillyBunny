@@ -7021,7 +7021,6 @@ dialog.popup.sb-dialog--dialog {
     max-height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px)));
 }
 
-/* The shell's large pop-out footprint (Tag Manager). */
 dialog.popup.sb-dialog--window {
     width: min(max(640px, var(--sheldWidth, 64vw)), calc(100dvw - 32px)) !important;
     min-width: 0 !important;

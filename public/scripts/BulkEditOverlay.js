@@ -233,6 +233,7 @@ class BulkTagPopupHandler {
                     <br>
                     <div id="bulk_tags_div" class="marginBot5" data-characters='${characterData}'>
                         <div class="tag_controls">
+                            <!-- SillyBunny: use the shared entry metrics without changing the upstream input. -->
                             <input id="bulkTagInput" class="text_pole sb-dialog__entry tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" maxlength="25" />
                             <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
                         </div>

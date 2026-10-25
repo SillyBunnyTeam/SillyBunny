@@ -54,6 +54,7 @@ export class QuickReplySetLink {
                 item.append(set);
             }
             const visible = document.createElement('label'); {
+                // SillyBunny: keep the visibility control at the row end with the shared row layout.
                 visible.classList.add('qr--visible', 'ds-row-suffix');
                 visible.title = 'Show buttons';
                 const cb = document.createElement('input'); {
@@ -69,6 +70,7 @@ export class QuickReplySetLink {
                 item.append(visible);
             }
             const edit = document.createElement('div'); {
+                // SillyBunny: use shared flat controls without changing the existing click handlers.
                 edit.classList.add('menu_button');
                 edit.classList.add('menu_button_icon', 'sb-header-icon-button');
                 edit.classList.add('fa-solid');

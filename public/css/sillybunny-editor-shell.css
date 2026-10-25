@@ -460,15 +460,11 @@ body.reduced-motion .sb-list-editor__divider::before {
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-.sb-header-icon-button:is(:hover) {
-    color: var(--sb-shell-text);
-}
-
 @media (hover: hover) {
     .sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
     .sb-header-icon-button:hover {
         background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
     }
 
     .sb-header-icon-button.sb-header-icon-button[aria-pressed='true']:hover,
@@ -511,7 +507,7 @@ body.reduced-motion .sb-list-editor__divider::before {
 .sb-header-icon-button.world_set,
 .sb-header-icon-button.fav_on {
     background: var(--sb-flat-selected-bg);
-    /* Keep upstream public/style.css .fav_on/.world_set status rules intact; their !important declarations must remain upstream-compatible. */
+    /* SillyBunny: preserve the accent used for semantic favorite and World Info states. */
     color: var(--sb-accent) !important;
 }
 

@@ -1630,6 +1630,7 @@ async function showExtensionsDetails() {
 
             htmlExternal.find('.third_party_toolbar').append(restoreBulkToggledExtensionsButton, toggleAllExtensionsButton);
             html.prepend(popupHeader);
+            // SillyBunny: move extension controls into shared Window chrome without replacing their handlers.
             extensionsPresentation = adaptExtensionsManager(html, {
                 updateAllButton,
                 updateEnabledOnlyButton,

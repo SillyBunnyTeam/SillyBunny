@@ -32,7 +32,9 @@
     content-visibility: visible;
 }
 
-.sb-tag-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+@media (hover: hover) {
+    .sb-tag-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+}
 .sb-tag-manager .ds-entity-row--activatable:active { background: var(--sb-flat-active-bg); }
 
 .sb-tag-manager .ds-entity-row__avatar {

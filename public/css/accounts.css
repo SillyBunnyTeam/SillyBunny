@@ -14,8 +14,10 @@
     box-shadow: none;
 }
 
-.sb-account-profile :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover,
-.sb-admin-window :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover,
-.sb-window-snapshots :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover {
-    background: var(--sb-flat-hover-bg);
+@media (hover: hover) {
+    .sb-account-profile :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover,
+    .sb-admin-window :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover,
+    .sb-window-snapshots :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
 }

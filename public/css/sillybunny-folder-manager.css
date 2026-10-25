@@ -18,7 +18,9 @@
 
 .sb-folder-manager__folder-row { margin: 0; flex-wrap: wrap; content-visibility: visible; }
 .sb-folder-manager__folder-row { padding-inline: 8px; }
-.sb-folder-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+@media (hover: hover) {
+    .sb-folder-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+}
 .sb-folder-manager .ds-entity-row--activatable:active { background: var(--sb-flat-active-bg); }
 .sb-folder-manager__folder-row .ds-entity-row__title,
 .sb-folder-manager__folder-row .sb-folder-manager__name { font-size: calc(var(--sb-type-body) * 0.9); font-weight: 600; line-height: 1.3; }

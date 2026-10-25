@@ -35,7 +35,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/extensions-row-actions.e2e.js`; `tests/extensions-discover.test.js`; `tests/extensions-disable.test.js`; `tests/extensions-bundled-third-party.test.js`. |
 | Validation | 2026-10-24: root/tests lint, extension unit specs, `git diff --check`, and Chromium E2E at 1440×900 and 390×844. |
 | Rollback path | TODO(copy) |
-| Last reviewed | 2026-10-24 reviewer-fix pass. |
+| Last reviewed | 2026-10-24. |
 | Owner | TODO(copy) |
 
 ### Extensions manager Window adapter
@@ -63,7 +63,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/header-icon-button-parity.e2e.js`; `tests/character-list.e2e.js`; `tests/world-info-editor.e2e.js`. |
 | Validation | 2026-10-24: root/tests lint, header parity E2E in both bundled themes, and `git diff --check`. |
 | Rollback path | TODO(copy) |
-| Last reviewed | 2026-10-24 reviewer-fix pass. |
+| Last reviewed | 2026-10-24. |
 | Owner | TODO(copy) |
 
 ### Dialog frame surface and layer adjustments
@@ -356,7 +356,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | TODO(copy) |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; tier CSS in `public/css/sillybunny-theme.css`. |
 | Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`/`size`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. All response buttons remain descendants of `buttonControls`; custom responses use a measured footer wrapper inside it and do not grow to fill it. Cascade overrides correct upstream sizing and hidden overflow, including Safari. Window framing locks content-sized height after first layout and uses one fill opt-in for list-heavy and editor surfaces. |
-| Protecting tests | `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/unit/sillybunny-dialog.test.js`, `tests/popup-scroll.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, and the popup-touching suites in the dialogs plan §2.10. |
+| Protecting tests | `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/unit/sillybunny-dialog.test.js`, `tests/popup-scroll.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, and the popup-touching dialog suites. |
 | Validation | `npm run lint`; focused Jest suites for Popup contract/frame/dialog/rows and Tag/Folder Managers; `popup-scroll`, dialog-frame, Tag Manager and Folder Manager Chromium E2E; frontend budget check. WebKit unavailable on this host because Playwright's system dependencies are missing; track in Phase 9. |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-24 compliance pass; Phase 2 audit validation recorded 2026-10-22. |
