@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +46,7 @@ import io.github.sillybunnyteam.sillybunny.update.UpdateCheckFailure
 import io.github.sillybunnyteam.sillybunny.update.UpdateCheckResult
 import io.github.sillybunnyteam.sillybunny.update.UpdatePhase
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Phases in which the updater is already working, so Check now would only repeat itself. */
@@ -301,12 +303,15 @@ private fun LocalNetworkEntry(access: LocalNetworkAccess, resumes: Int, io: Coro
         if (resumes == 0) return@LaunchedEffect
         status = withContext(io) { runCatching { access.status() }.getOrNull() }
     }
+    val scope = rememberCoroutineScope()
     val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val permission = access.permission
         val canAskAgain = activity != null && permission != null &&
             ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
-        access.onRequestResult(granted, canAskAgain)
-        changes++
+        scope.launch {
+            withContext(io) { access.onRequestResult(granted, canAskAgain) }
+            changes++
+        }
     }
     val settingsPage = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         changes++

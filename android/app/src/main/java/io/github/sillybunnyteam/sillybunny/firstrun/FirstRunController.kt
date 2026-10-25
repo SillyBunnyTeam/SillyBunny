@@ -5,6 +5,8 @@ import io.github.sillybunnyteam.sillybunny.checkout.BrokenCheckouts
 import io.github.sillybunnyteam.sillybunny.server.ServerState
 import io.github.sillybunnyteam.sillybunny.server.SetupJob
 import io.github.sillybunnyteam.sillybunny.server.SetupState
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkAccess
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -16,6 +18,8 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -54,6 +58,7 @@ class FirstRunController(
     private var startedJob: SetupJob? = null
     private var cancelRequested = restored?.cancelRequested ?: false
     private var sawRunning = false
+    private val localNetworkLock = Mutex()
 
     init {
         pipeline = scope.launch { restore() }
@@ -79,9 +84,9 @@ class FirstRunController(
             it.copy(
                 notifications = currentNotifications(it.notifications),
                 battery = currentBattery(it.battery),
-                localNetwork = dependencies.localNetwork.status(),
             )
         }
+        updateLocalNetwork { status() }
     }
 
     /** The local-network permission to request, or null where none exists. */
@@ -93,8 +98,20 @@ class FirstRunController(
      * read right after the result. Nothing else depends on it, so the stage never changes here.
      */
     fun onLocalNetworkPermissionResult(granted: Boolean, canAskAgain: Boolean) {
-        val next = dependencies.localNetwork.onRequestResult(granted, canAskAgain)
-        mutableState.update { it.copy(localNetwork = next) }
+        updateLocalNetwork { onRequestResult(granted, canAskAgain) }
+    }
+
+    /**
+     * Reads or records the local-network status on the IO dispatcher, one call at a time in call order, so that a
+     * slower read cannot overwrite a newer answer.
+     */
+    private fun updateLocalNetwork(call: LocalNetworkAccess.() -> LocalNetworkStatus) {
+        scope.launch {
+            localNetworkLock.withLock {
+                val next = withContext(io) { dependencies.localNetwork.call() }
+                mutableState.update { it.copy(localNetwork = next) }
+            }
+        }
     }
 
     /**
@@ -261,9 +278,11 @@ class FirstRunController(
             it.copy(
                 notifications = currentNotifications(saved?.notifications ?: NotificationStatus.NOT_ASKED),
                 battery = currentBattery(saved?.battery ?: BatteryStatus.NOT_EXEMPT),
-                localNetwork = dependencies.localNetwork.status(),
             )
         }
+        // Read before any stage shows, so that Welcome never appears without its local-network item.
+        val localNetwork = localNetworkLock.withLock { withContext(io) { dependencies.localNetwork.status() } }
+        mutableState.update { it.copy(localNetwork = localNetwork) }
         val setup = host.setup.value
         val running = setup as? SetupState.Running
         when {

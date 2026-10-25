@@ -4,7 +4,9 @@ import android.app.Application
 import android.os.Bundle
 import androidx.test.core.app.ApplicationProvider
 import io.github.sillybunnyteam.sillybunny.server.SetupState
+import io.github.sillybunnyteam.sillybunny.settings.FakeLocalNetwork
 import io.github.sillybunnyteam.sillybunny.settings.LOCAL_NETWORK_PERMISSION
+import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkAccess
 import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus.BLOCKED
 import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus.DENIED
 import io.github.sillybunnyteam.sillybunny.settings.LocalNetworkStatus.GRANTED
@@ -43,15 +45,23 @@ class FirstRunLocalNetworkTest {
         fixture = FirstRunFixture(temporary.root)
     }
 
-    private fun TestScope.controller(restored: Bundle? = null): FirstRunController {
+    private fun TestScope.controller(
+        restored: Bundle? = null,
+        localNetwork: LocalNetworkAccess? = null,
+    ): FirstRunController {
         val controller = FirstRunController(
-            fixture.dependencies(StandardTestDispatcher(testScheduler)),
+            fixture.dependencies(StandardTestDispatcher(testScheduler), localNetwork = localNetwork),
             backgroundScope,
             restored,
         )
         controller.setVisible(true)
         runCurrent()
         return controller
+    }
+
+    private fun TestScope.answer(controller: FirstRunController, granted: Boolean, canAskAgain: Boolean) {
+        controller.onLocalNetworkPermissionResult(granted, canAskAgain)
+        runCurrent()
     }
 
     private fun TestScope.install(controller: FirstRunController) {
@@ -85,9 +95,9 @@ class FirstRunLocalNetworkTest {
     @Test
     fun theFirstRunFinishesAfterTheSystemStopsAsking() = runTest {
         val controller = controller()
-        controller.onLocalNetworkPermissionResult(granted = false, canAskAgain = true)
+        answer(controller, granted = false, canAskAgain = true)
         assertEquals(DENIED, controller.state.value.localNetwork)
-        controller.onLocalNetworkPermissionResult(granted = false, canAskAgain = false)
+        answer(controller, granted = false, canAskAgain = false)
         assertEquals(BLOCKED, controller.state.value.localNetwork)
         assertEquals(FirstRunStage.Welcome, controller.state.value.stage)
         install(controller)
@@ -97,14 +107,14 @@ class FirstRunLocalNetworkTest {
     @Test
     fun anAnswerThatArrivesAfterProcessDeathIsKept() = runTest {
         val first = controller()
-        first.onLocalNetworkPermissionResult(granted = false, canAskAgain = true)
+        answer(first, granted = false, canAskAgain = true)
         val saved = first.saveState()
 
         // The process died while the second dialog showed: a new controller restores the screen, and the
         // re-registered launcher hands it the answer.
         val restored = controller(saved)
         assertEquals(DENIED, restored.state.value.localNetwork)
-        restored.onLocalNetworkPermissionResult(granted = false, canAskAgain = false)
+        answer(restored, granted = false, canAskAgain = false)
         assertEquals(BLOCKED, restored.state.value.localNetwork)
 
         // A later cold start, without saved state, reads the stored answer.
@@ -114,12 +124,25 @@ class FirstRunLocalNetworkTest {
     @Test
     fun accessGrantedInSystemSettingsShowsWhenTheScreenReturns() = runTest {
         val controller = controller()
-        controller.onLocalNetworkPermissionResult(granted = false, canAskAgain = true)
-        controller.onLocalNetworkPermissionResult(granted = false, canAskAgain = false)
+        answer(controller, granted = false, canAskAgain = true)
+        answer(controller, granted = false, canAskAgain = false)
         controller.setVisible(false)
         shadowOf(app).grantPermissions(LOCAL_NETWORK_PERMISSION)
         controller.setVisible(true)
         runCurrent()
         assertEquals(GRANTED, controller.state.value.localNetwork)
+    }
+
+    @Test
+    fun answersAreRecordedOnTheIoDispatcherInTheOrderTheyArrive() = runTest {
+        val access = FakeLocalNetwork()
+        val controller = controller(localNetwork = access)
+        controller.onLocalNetworkPermissionResult(granted = false, canAskAgain = true)
+        controller.refreshPermissions()
+        controller.onLocalNetworkPermissionResult(granted = false, canAskAgain = false)
+        assertTrue("nothing is read or written by the caller", access.answers.isEmpty())
+        runCurrent()
+        assertEquals(listOf(false to true, false to false), access.answers)
+        assertEquals(BLOCKED, controller.state.value.localNetwork)
     }
 }
