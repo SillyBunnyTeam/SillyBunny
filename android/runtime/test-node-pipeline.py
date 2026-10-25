@@ -43,7 +43,11 @@ REAL_PATCHES = ROOT / 'patches' / 'node'
 REAL_RUNTIME_LOCK = ROOT.parent / 'runtime.lock'
 REAL_SOURCES_LOCK = ROOT / 'sources.lock'
 REPOSITORY = 'ghcr.io/sillybunnyteam/sillybunny-android-runtime'
-PATCH_SET = '1494da0071c0b069a58a3d546376ce7d751c3b2a2ebfb59685c573e34626aa4a'
+# Expectations about the committed pins read runtime.lock, so a Node or npm bump needs no edit here.
+COMMITTED = json.loads(REAL_RUNTIME_LOCK.read_text(encoding='utf-8'))
+NODE_VERSION = COMMITTED['node']['version']
+NPM_VERSION = COMMITTED['npm']['version']
+PATCH_SET = COMMITTED['node']['patchSet']['sha256']
 
 
 def sha256(contents):
@@ -142,11 +146,11 @@ def tar_member(name, kind='file', contents=b'', mode=0o644, mtime=0, uid=0):
     return member, contents
 
 
-def npm_tree(version='11.19.1', prefix='node-v24.22.0/deps/npm/'):
+def npm_tree(version=NPM_VERSION, prefix=f'node-v{NODE_VERSION}/deps/npm/'):
     package = json.dumps({'name': 'npm', 'version': version}).encode('utf-8')
     return [
-        ('node-v24.22.0/', 'directory', b'', 0o755),
-        ('node-v24.22.0/README.md', 'file', b'node\n', 0o644),
+        (f'node-v{NODE_VERSION}/', 'directory', b'', 0o755),
+        (f'node-v{NODE_VERSION}/README.md', 'file', b'node\n', 0o644),
         (prefix, 'directory', b'', 0o755),
         (prefix + 'package.json', 'file', package, 0o644),
         (prefix + 'bin/', 'directory', b'', 0o755),
@@ -229,17 +233,16 @@ class LockFixture(PipelineTestCase):
 class PatchSetTests(LockFixture):
     def test_committed_locks_and_patches_load(self):
         pins = node.load_pins(REAL_RUNTIME_LOCK, REAL_SOURCES_LOCK)
-        self.assertEqual(pins.version, '24.22.0')
-        self.assertEqual(pins.npm_version, '11.19.1')
+        self.assertEqual(pins.version, NODE_VERSION)
+        self.assertEqual(pins.npm_version, NPM_VERSION)
         self.assertEqual(pins.abis, ['arm64-v8a', 'armeabi-v7a', 'x86_64'])
-        self.assertEqual(pins.tag('x86_64'), 'node-24.22.0-1494da0071c0-x86_64')
+        self.assertEqual(pins.tag('x86_64'), f'node-{NODE_VERSION}-{PATCH_SET[:12]}-x86_64')
 
     def test_patch_set_hash_is_sha256_of_gnu_sha256sum_text_lines_in_series_order(self):
         series = node.parse_series((REAL_PATCHES / 'series').read_text(encoding='utf-8'))
         lines = ''.join(f'{sha256((REAL_PATCHES / name).read_bytes())}  {name}\n' for name in series)
         self.assertEqual(node.patch_set_sha256(REAL_PATCHES, series), sha256(lines.encode('ascii')))
-        self.assertEqual(node.patch_set_sha256(REAL_PATCHES, series),
-                         '1494da0071c0b069a58a3d546376ce7d751c3b2a2ebfb59685c573e34626aa4a')
+        self.assertEqual(node.patch_set_sha256(REAL_PATCHES, series), PATCH_SET)
 
     @unittest.skipUnless(shutil.which('sha256sum'), 'GNU sha256sum is not installed')
     def test_patch_set_hash_matches_the_documented_shell_command(self):
@@ -295,8 +298,8 @@ class PatchSetTests(LockFixture):
         self.assert_code('node-patch-set-sha256', self.pins)
         self.refresh_patch_pins()
         pins = self.pins()
-        self.assertNotEqual(pins.patch_set, '1494da0071c0b069a58a3d546376ce7d751c3b2a2ebfb59685c573e34626aa4a')
-        self.assertEqual(pins.tag('arm64-v8a'), f'node-24.22.0-{pins.patch_set[:12]}-arm64-v8a')
+        self.assertNotEqual(pins.patch_set, PATCH_SET)
+        self.assertEqual(pins.tag('arm64-v8a'), f'node-{NODE_VERSION}-{pins.patch_set[:12]}-arm64-v8a')
 
 
 class SeriesTests(unittest.TestCase):
@@ -326,7 +329,7 @@ class SeriesTests(unittest.TestCase):
 
 class NodeLockTests(LockFixture):
     def test_binary_tags_follow_version_and_patch_set_prefix(self):
-        self.edit_runtime(lambda runtime: runtime['node']['binaries']['x86_64'].update(tag='node-24.22.0-x86_64'))
+        self.edit_runtime(lambda runtime: runtime['node']['binaries']['x86_64'].update(tag=f'node-{NODE_VERSION}-x86_64'))
         self.assert_code('node-binary-tag', self.pins)
 
     def test_published_fields_are_all_null_or_all_pinned(self):
@@ -379,7 +382,8 @@ class NodeLockTests(LockFixture):
                 self.assert_code('npm-pin', self.pins)
 
     def test_versions_must_agree_between_the_two_locks(self):
-        self.edit_runtime(lambda runtime: runtime['npm'].update(version='11.20.0'))
+        major, minor, patch = node.version_tuple(NPM_VERSION)
+        self.edit_runtime(lambda runtime: runtime['npm'].update(version=f'{major}.{minor}.{patch + 1}'))
         self.assert_code('runtime-section-mismatch', self.pins)
 
     def test_runtime_lock_bytes_must_match_the_sources_lock_hash(self):
@@ -447,7 +451,7 @@ class ConfigCheckTests(PipelineTestCase):
             'OS': 'android', 'target_arch': node.ABIS[abi]['cpu'], 'host_arch': node.ABIS[abi]['hostArch'],
             'want_separate_host_toolset': 1, 'icu_small': 'false', 'v8_enable_i18n_support': 1,
             'node_use_node_snapshot': 'false', 'node_use_node_code_cache': 'false', 'v8_enable_webassembly': 1,
-            'icu_ver_major': '78',
+            'v8_enable_temporal_support': 0, 'icu_ver_major': '78',
         }
         if abi == 'armeabi-v7a':
             variables.update({'arm_version': '7', 'arm_fpu': 'vfpv3', 'arm_float_abi': 'default', 'arm_thumb': 0})
@@ -470,7 +474,8 @@ class ConfigCheckTests(PipelineTestCase):
     def test_wrong_target_host_icu_or_snapshot_settings_fail(self):
         cases = [('x86_64', {'host_arch': 'ia32'}), ('armeabi-v7a', {'host_arch': 'x64'}), ('x86_64', {'icu_small': 'true'}),
                  ('arm64-v8a', {'node_use_node_snapshot': 'true'}), ('x86_64', {'OS': 'linux'}),
-                 ('armeabi-v7a', {'arm_fpu': 'neon'}), ('armeabi-v7a', {'arm_float_abi': 'hard'})]
+                 ('armeabi-v7a', {'arm_fpu': 'neon'}), ('armeabi-v7a', {'arm_float_abi': 'hard'}),
+                 ('arm64-v8a', {'v8_enable_temporal_support': 1})]
         for abi, change in cases:
             with self.subTest(abi=abi, change=change):
                 self.assert_code('node-config', node.check_config, abi, self.configured(abi, **change),
@@ -487,7 +492,7 @@ class NpmArchiveTests(LockFixture):
     def entries(self, members):
         pairs = [tar_member(name, kind, contents, mode) for name, kind, contents, mode in members]
         return npm.npm_entries(((member, lambda item, data=contents: data) for member, contents in pairs),
-                               'node-v24.22.0/deps/npm/')
+                               f'node-v{NODE_VERSION}/deps/npm/')
 
     def test_archive_is_sorted_by_path_segments_with_fixed_times_and_normalised_modes(self):
         data = npm.zip_bytes(self.entries(npm_tree()))
@@ -510,13 +515,13 @@ class NpmArchiveTests(LockFixture):
     def test_same_files_give_the_same_bytes_whatever_the_tar_order_times_and_owners(self):
         first = write_tarball(self.directory / 'first.tar.xz', npm_tree(), mtime=0, uid=0)
         second = write_tarball(self.directory / 'second.tar.xz', list(reversed(npm_tree())), mtime=1_700_000_000, uid=1000)
-        one = npm.zip_bytes(npm.tarball_entries(first, '24.22.0'))
-        two = npm.zip_bytes(npm.tarball_entries(second, '24.22.0'))
+        one = npm.zip_bytes(npm.tarball_entries(first, NODE_VERSION))
+        two = npm.zip_bytes(npm.tarball_entries(second, NODE_VERSION))
         self.assertEqual(one, two)
-        self.assertEqual(one, npm.zip_bytes(npm.tarball_entries(first, '24.22.0')))
+        self.assertEqual(one, npm.zip_bytes(npm.tarball_entries(first, NODE_VERSION)))
 
     def test_links_special_files_and_unsafe_paths_are_rejected(self):
-        prefix = 'node-v24.22.0/deps/npm/'
+        prefix = f'node-v{NODE_VERSION}/deps/npm/'
         cases = [
             ('npm-entry-type', (prefix + 'bin/npm', 'symlink', b'npm-cli.js', 0o777)),
             ('npm-entry-type', (prefix + 'bin/npm2', 'hardlink', prefix.encode() + b'bin/npm-cli.js', 0o644)),
@@ -536,11 +541,11 @@ class NpmArchiveTests(LockFixture):
     def test_deps_npm_must_be_present_with_matching_version_and_both_clis(self):
         self.assert_code('npm-missing', self.entries, npm_tree()[:2])
         entries = self.entries(npm_tree(version='11.19.0'))
-        self.assert_code('npm-version-mismatch', npm.check_metadata, entries, '11.19.1')
+        self.assert_code('npm-version-mismatch', npm.check_metadata, entries, NPM_VERSION)
         entries = self.entries([member for member in npm_tree() if not member[0].endswith('npx-cli.js')])
-        self.assert_code('npm-cli-missing', npm.check_metadata, entries, '11.19.1')
+        self.assert_code('npm-cli-missing', npm.check_metadata, entries, NPM_VERSION)
         entries = self.entries([member for member in npm_tree() if not member[0].endswith('package.json')])
-        self.assert_code('npm-metadata', npm.check_metadata, entries, '11.19.1')
+        self.assert_code('npm-metadata', npm.check_metadata, entries, NPM_VERSION)
 
     def test_archive_check_compares_every_entry_with_its_source(self):
         entries = self.entries(npm_tree())
@@ -591,10 +596,10 @@ class NpmArchiveTests(LockFixture):
         record = json.loads((output / 'npm.json').read_text(encoding='utf-8'))
         source = self.lock['node']['source']
         self.assertEqual(record, {
-            'schema': 1, 'version': '11.19.1', 'sha256': sha256(archive), 'size': len(archive), 'files': 8,
+            'schema': 1, 'version': NPM_VERSION, 'sha256': sha256(archive), 'size': len(archive), 'files': 8,
             'contentBytes': sum(len(contents) for name, kind, contents, mode in npm_tree()
                                 if kind == 'file' and '/deps/npm/' in name),
-            'source': {'kind': 'node-source-tarball', 'node': '24.22.0', 'path': 'deps/npm',
+            'source': {'kind': 'node-source-tarball', 'node': NODE_VERSION, 'path': 'deps/npm',
                        'tarball': {'filename': source['filename'], 'sha256': source['sha256'], 'url': source['url']}},
         })
         self.assertEqual((output / 'npm.json').read_bytes(), node.json_bytes(record))
@@ -675,7 +680,7 @@ for name in os.listdir(blob):
     def build_record(self, abi, data, record=()):
         """The node-build.json build-node.sh writes beside `data`, updated with `record`."""
         source = self.lock['node']['source']
-        build = {'schema': 1, 'abi': abi, 'version': '24.22.0', 'tag': f'node-24.22.0-1494da0071c0-{abi}',
+        build = {'schema': 1, 'abi': abi, 'version': NODE_VERSION, 'tag': f'node-{NODE_VERSION}-{PATCH_SET[:12]}-{abi}',
                  'patchSet': {'sha256': PATCH_SET},
                  'libnode': {'sha256': sha256(data), 'size': len(data)},
                  'source': {'tarball': source['filename'], 'sha256': source['sha256'], 'signature': 'verified',
@@ -735,17 +740,17 @@ class FetchTests(FakeOras):
         self.assertEqual(references, sorted(f'{REPOSITORY}@{digest}' for digest in self.digests.values()))
         self.assertTrue(all(call[:2] == ['pull', '--output'] for call in self.calls()))
         self.assertEqual(self.node_json(), {
-            'schema': 1, 'version': '24.22.0',
+            'schema': 1, 'version': NODE_VERSION,
             'abis': {abi: {'sha256': sha256(data), 'size': len(data)} for abi, data in self.elves.items()},
             'source': {'kind': 'ghcr', 'repository': REPOSITORY, 'patchSetSha256': PATCH_SET,
-                       'artifacts': {abi: {'tag': f'node-24.22.0-1494da0071c0-{abi}', 'digest': self.digests[abi]}
+                       'artifacts': {abi: {'tag': f'node-{NODE_VERSION}-{PATCH_SET[:12]}-{abi}', 'digest': self.digests[abi]}
                                      for abi in node.ABIS},
                        'tarball': self.tarball()},
         })
         # npm.json names the same tarball object, so one comparison with runtime.lock serves both files.
-        self.assertEqual(self.tarball(), {'filename': 'node-v24.22.0.tar.xz',
+        self.assertEqual(self.tarball(), {'filename': f'node-v{NODE_VERSION}.tar.xz',
                                           'sha256': self.runtime['node']['source']['tarballSha256'],
-                                          'url': 'https://nodejs.org/dist/v24.22.0/node-v24.22.0.tar.xz'})
+                                          'url': f'https://nodejs.org/dist/v{NODE_VERSION}/node-v{NODE_VERSION}.tar.xz'})
         for abi, data in self.elves.items():
             self.assertEqual((self.output / abi / 'libnode.so').read_bytes(), data)
         self.assertEqual(sorted(path.name for path in self.output.iterdir()), sorted([*node.ABIS, 'node.json']))
@@ -821,7 +826,7 @@ class FetchTests(FakeOras):
         local.write_bytes(self.elves['x86_64'])
         result = self.run_cli('--local', f'x86_64={local}')
         self.assertEqual(result['source'], 'local')
-        self.assertEqual(self.node_json(), {'schema': 1, 'version': '24.22.0', 'source': {'kind': 'local'},
+        self.assertEqual(self.node_json(), {'schema': 1, 'version': NODE_VERSION, 'source': {'kind': 'local'},
                                             'abis': {'x86_64': {'sha256': sha256(self.elves['x86_64']), 'size': len(self.elves['x86_64'])}}})
         self.assertEqual((self.output / 'x86_64' / 'libnode.so').read_bytes(), self.elves['x86_64'])
         self.assertEqual(self.calls(), [])
@@ -979,7 +984,7 @@ class DigestUpdateTests(FakeOras):
         result = {}
         for abi in node.ABIS:
             data = self.elves[abi]
-            result[abi] = {'repository': REPOSITORY, 'tag': f'node-24.22.0-1494da0071c0-{abi}',
+            result[abi] = {'repository': REPOSITORY, 'tag': self.tags()[abi],
                            'digest': self.digests[abi], 'sha256': sha256(data), 'size': len(data)}
         return result
 
@@ -992,9 +997,8 @@ class DigestUpdateTests(FakeOras):
     def test_plan_reports_a_build_while_any_digest_is_null(self):
         plan = self.run_updater('--plan')
         self.assertEqual(plan, {
-            'version': '24.22.0', 'npm': '11.19.1',
-            'patchSet': '1494da0071c0b069a58a3d546376ce7d751c3b2a2ebfb59685c573e34626aa4a',
-            'abis': {abi: {'repository': REPOSITORY, 'tag': f'node-24.22.0-1494da0071c0-{abi}', 'digest': None,
+            'version': NODE_VERSION, 'npm': NPM_VERSION, 'patchSet': PATCH_SET,
+            'abis': {abi: {'repository': REPOSITORY, 'tag': self.tags()[abi], 'digest': None,
                            'pinned': False} for abi in node.ABIS},
             'needsBuild': True,
         })
@@ -1035,7 +1039,7 @@ class DigestUpdateTests(FakeOras):
         self.run_updater('--published', str(published))
         self.assertEqual(sorted(self.run_cli()['abis']), sorted(node.ABIS))
 
-    def tags(self, version='24.22.0', patch_set=PATCH_SET):
+    def tags(self, version=NODE_VERSION, patch_set=PATCH_SET):
         return {abi: f'node-{version}-{patch_set[:12]}-{abi}' for abi in sorted(node.ABIS)}
 
     def test_pins_whose_tag_no_longer_matches_are_stale(self):
@@ -1043,7 +1047,7 @@ class DigestUpdateTests(FakeOras):
             self.publish(abi)
         self.edit_runtime(lambda runtime: runtime['node']['binaries']['x86_64'].update(tag='node-24.21.0-1494da0071c0-x86_64'))
         error = self.assert_code('node-binary-stale', self.pins)
-        self.assertEqual(error.details, {'abi': 'x86_64', 'expected': 'node-24.22.0-1494da0071c0-x86_64'})
+        self.assertEqual(error.details, {'abi': 'x86_64', 'expected': self.tags()['x86_64']})
 
     def test_reset_drops_the_published_pins_and_restores_the_unpublished_locks(self):
         original = (self.runtime_path.read_bytes(), self.sources_path.read_bytes())
@@ -1166,7 +1170,7 @@ class BuildInputTests(LockFixture):
                                 '"$NODE_SIGNATURE" "$NODE_SIGNERS" "$NODE_API" "$NODE_ICU" "$NDK_REVISION" "[$NDK_ZIP]" '
                                 '"${NODE_PATCHES[@]}"', 'inputs', str(script)],
                                check=True, stdout=subprocess.PIPE, text=True).stdout.splitlines()
-        self.assertEqual(shown, [str(tarball), 'node-v24.22.0.tar.xz', 'node-24.22.0-1494da0071c0-armeabi-v7a', 'verified',
+        self.assertEqual(shown, [str(tarball), f'node-v{NODE_VERSION}.tar.xz', f'node-{NODE_VERSION}-{PATCH_SET[:12]}-armeabi-v7a', 'verified',
                                  'C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C', '29', 'full-icu', '30.0.16248370', '[]',
                                  '0001-v8-x64-posix-trap-sources.patch', '0002-zlib-android-getauxval.patch',
                                  '0003-v8-arm64-host-trap-sources.patch'])

@@ -1,6 +1,6 @@
 --- a/tools/v8_gypfiles/v8.gyp
 +++ b/tools/v8_gypfiles/v8.gyp
-@@ -1156,7 +1156,8 @@
+@@ -1240,7 +1240,8 @@
              }],
              ['v8_enable_webassembly==1', {
                'conditions': [

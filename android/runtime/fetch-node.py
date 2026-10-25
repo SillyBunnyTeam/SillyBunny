@@ -376,6 +376,8 @@ def check_config(abi, source, ndk, api):
         'OS': 'android', 'target_arch': expected_abi['cpu'], 'host_arch': expected_abi['hostArch'],
         'want_separate_host_toolset': 1, 'icu_small': 'false', 'v8_enable_i18n_support': 1,
         'node_use_node_snapshot': 'false', 'node_use_node_code_cache': 'false', 'v8_enable_webassembly': 1,
+        # Temporal needs Node's cargo build, which targets the build host and not Android (see build-node.sh).
+        'v8_enable_temporal_support': 0,
     }
     if abi == 'armeabi-v7a':
         # S2.1 §4: ARMv7 builds as arm_version 7, VFPv3, default float ABI, no Thumb.

@@ -147,6 +147,9 @@ fi
 export LDFLAGS='-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -static-libstdc++'
 export GYP_CROSSCOMPILE=1
 export GYP_DEFINES="target_arch=$cpu v8_target_arch=$cpu android_target_arch=$cpu host_os=linux OS=android android_ndk_path=$ndk"
+# Node 26's configure enables Temporal when it finds cargo and rustc, and GitHub's Ubuntu runners have both. Its cargo
+# build then targets the build host instead of Android, so both point at a path that cannot exist on any host.
+export CARGO=/dev/null/cargo RUSTC=/dev/null/rustc
 cd -- "$source"
 rm -f config.gypi config.mk config.status icu_config.gypi
 ./android-configure "$ndk" "$NODE_API" "$arch" 2>&1 | tee "$work/configure.log"

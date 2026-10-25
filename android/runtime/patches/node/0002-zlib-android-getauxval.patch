@@ -12,7 +12,7 @@
  #include <asm/hwcap.h>
  #include <sys/auxv.h>
  #elif defined(ARMV8_OS_FUCHSIA)
-@@ -109,13 +108,15 @@
+@@ -106,13 +105,15 @@
  static void _cpu_check_features(void)
  {
  #if defined(ARMV8_OS_ANDROID) && defined(__aarch64__)

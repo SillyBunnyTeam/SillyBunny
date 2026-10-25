@@ -6,9 +6,9 @@
 // - android/runtime/out/assets/runtime/{certs/cert.pem,git-core-links.txt,git-templates/}: shared assets.
 // - android/runtime/out/licenses/<package>/: the Termux license files (fetch-termux.sh), for the notices.
 // - <sillybunny.nodeDir, default android/runtime/node-out>/<abi>/libnode.so plus node.json:
-//   {"schema":1,"version":"24.22.0","abis":{"<abi>":{"sha256":"<hex>","size":<bytes>}},"source":{...}}
+//   {"schema":1,"version":"<node.version>","abis":{"<abi>":{"sha256":"<hex>","size":<bytes>}},"source":{...}}
 // - <sillybunny.npmDir, default android/runtime/npm-out>/npm.zip plus npm.json:
-//   {"schema":1,"version":"11.19.1","sha256":"<hex>","size":<bytes>,"files":<n>,"contentBytes":<bytes>,
+//   {"schema":1,"version":"<npm.version>","sha256":"<hex>","size":<bytes>,"files":<n>,"contentBytes":<bytes>,
 //    "source":{...}}
 // - <sillybunny.nodeTarball, default android/runtime/cache/sources/objects/<sources.lock node.source.sha256>>:
 //   the pinned Node source tarball, for the notices (android/runtime/build-sources.sh downloads, authenticates

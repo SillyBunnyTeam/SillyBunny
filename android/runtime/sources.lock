@@ -8,15 +8,15 @@
         "patches": [
             {
                 "path": "android/runtime/patches/node/0001-v8-x64-posix-trap-sources.patch",
-                "sha256": "39b3b68ff959c2a6420359487917d1269fcf6122dac5d6e4ceb629fbbaa57fd0"
+                "sha256": "12c7270ac118aaa14b85f0d8e68fb6295f0c32cdfeb316c2ec5fc5dfb3326864"
             },
             {
                 "path": "android/runtime/patches/node/0002-zlib-android-getauxval.patch",
-                "sha256": "f67f824c02822d7e2efdfe7233cd39389d2a23eb284140bec234b75cb7cd5dc9"
+                "sha256": "33b2497d53f60ef4a9e417adaaf253ce63ab9a594e80ddc9f390486610b3e6a2"
             },
             {
                 "path": "android/runtime/patches/node/0003-v8-arm64-host-trap-sources.patch",
-                "sha256": "c5224a6a2b7f30615476ce8f6b80e8b35c12dc8552e8adde8451172b7549e0be"
+                "sha256": "0332263aad90324a8d5f2ce27bb3246e43803f471a0f43a376db7efb13c3da2b"
             },
             {
                 "path": "android/runtime/patches/node/LICENSE.ST-android",
@@ -29,26 +29,26 @@
         ],
         "shasums": {
             "filename": "SHASUMS256.txt",
-            "sha256": "8912ada1431af8390bb3e30328d30bca701b59c7a6d5396b491293515c092c46",
-            "url": "https://nodejs.org/dist/v24.22.0/SHASUMS256.txt"
+            "sha256": "5f4c83027c433198a63e1f15eddc5dab519e843c4e67566fe7dd33832dee67f4",
+            "url": "https://nodejs.org/dist/v26.12.1/SHASUMS256.txt"
         },
         "signature": {
             "filename": "SHASUMS256.txt.sig",
-            "sha256": "e59640b2e5b7cbcb5951ba2d6fee5921a349070c2a6163dc15dff4bd3404ad42",
-            "url": "https://nodejs.org/dist/v24.22.0/SHASUMS256.txt.sig"
+            "sha256": "47abc2972682db0d1872fc8e643c6cedd78fbf7149d2224aa919a072fb882451",
+            "url": "https://nodejs.org/dist/v26.12.1/SHASUMS256.txt.sig"
         },
         "source": {
-            "filename": "node-v24.22.0.tar.xz",
-            "sha256": "41f97cff2c666f1f8293dc5f85c65e8dd605c16b43fd9febd49ede32ee1e0329",
-            "url": "https://nodejs.org/dist/v24.22.0/node-v24.22.0.tar.xz"
+            "filename": "node-v26.12.1.tar.xz",
+            "sha256": "053e3b296859b6d8d93f99ef97fa9cec1c4ee171c72968100c649978c1dbd38c",
+            "url": "https://nodejs.org/dist/v26.12.1/node-v26.12.1.tar.xz"
         },
-        "version": "24.22.0"
+        "version": "26.12.1"
     },
     "npm": {
         "source": "node",
-        "version": "11.19.1"
+        "version": "11.20.0"
     },
-    "runtimeLockSha256": "891e5b57aee926d937e33451b42108e5ba090c88e75235e2b62b2c0f1d9f1713",
+    "runtimeLockSha256": "6c1993dd4d048876feb51050bad24e107883e3b6421a5688bfb8119d58a13682",
     "schema": 1,
     "termux": {
         "buildSystems": [
