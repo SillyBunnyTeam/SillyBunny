@@ -59,8 +59,13 @@ class FirstRunControllerTest {
         return controller to fixture.host.jobs.last()
     }
 
-    private fun TestScope.finish(job: SetupJob, exitCode: Int, lines: List<String> = listOf("last")) {
-        fixture.host.setup.value = SetupState.Finished(job, exitCode, lines)
+    private fun TestScope.finish(
+        job: SetupJob,
+        exitCode: Int,
+        lines: List<String> = listOf("last"),
+        cancelled: Boolean = false,
+    ) {
+        fixture.host.setup.value = SetupState.Finished(job, exitCode, lines, cancelled)
         runCurrent()
     }
 
@@ -365,6 +370,14 @@ class FirstRunControllerTest {
 
         finish(job, 143)
         assertEquals(FirstRunFailure.Cancelled, (controller.state.value.stage as FirstRunStage.Failed).failure)
+    }
+
+    @Test
+    fun theNotificationsCancelAlsoEndsOnTheCancelledScreen() = runTest {
+        val (controller, job) = installing()
+        finish(job, 143, cancelled = true)
+        assertEquals(FirstRunFailure.Cancelled, (controller.state.value.stage as FirstRunStage.Failed).failure)
+        assertEquals(0, fixture.host.cancelCount)
     }
 
     @Test

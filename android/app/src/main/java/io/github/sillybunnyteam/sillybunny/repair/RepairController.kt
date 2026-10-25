@@ -420,7 +420,7 @@ class RepairController internal constructor(
         val lines = last.lines
         return when {
             last.exitCode == 0 && CheckoutChecks.isGitCheckout(paths.checkoutDir) -> Outcome.Success(record, lines)
-            cancelRequested -> Outcome.Failure(record, RepairFailure.CANCELLED, lines, last.exitCode)
+            cancelRequested || last.cancelled -> Outcome.Failure(record, RepairFailure.CANCELLED, lines, last.exitCode)
             last.exitCode == 0 -> Outcome.Failure(record, RepairFailure.NOT_A_CHECKOUT, lines, last.exitCode)
             else -> Outcome.Failure(record, RepairFailure.INSTALL_FAILED, lines, last.exitCode)
         }

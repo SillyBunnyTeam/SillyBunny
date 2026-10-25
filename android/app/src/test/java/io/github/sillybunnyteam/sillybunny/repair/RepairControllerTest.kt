@@ -357,6 +357,20 @@ class RepairControllerTest {
     }
 
     @Test
+    fun theNotificationsCancelAlsoEndsTheReinstallAsCancelled() {
+        checkout()
+        val repair = controller()
+        assertTrue(repair.start())
+        host.finish(143, "Terminated", cancelled = true)
+
+        val failed = repair.state.value as RepairState.Failed
+        assertEquals(RepairFailure.CANCELLED, failed.reason)
+        assertTrue(failed.canRetry)
+        assertEquals(0, host.cancelCount)
+        assertEquals(RepairFailure.CANCELLED, store.load()!!.failure)
+    }
+
+    @Test
     fun aRetryMovesThePartialCheckoutAsideAndMigratesFromTheOriginal() {
         checkout(tracking = "release")
         val repair = controller()

@@ -48,9 +48,9 @@ internal class FakeRepairServerHost(private val events: MutableList<String> = mu
     }
 
     /** Finishes the running job with [exitCode], keeping its lines. */
-    fun finish(exitCode: Int, vararg lines: String) {
+    fun finish(exitCode: Int, vararg lines: String, cancelled: Boolean = false) {
         val running = setup.value as SetupState.Running
-        setup.value = SetupState.Finished(running.job, exitCode, running.lines + lines)
+        setup.value = SetupState.Finished(running.job, exitCode, running.lines + lines, cancelled)
     }
 
     override fun cancelSetup() {

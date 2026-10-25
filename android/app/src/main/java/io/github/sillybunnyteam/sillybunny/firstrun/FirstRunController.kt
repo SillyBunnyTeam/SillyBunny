@@ -494,7 +494,7 @@ class FirstRunController(
         val checkout = inspect()
         when {
             finished.exitCode == 0 && checkout == CheckoutStatus.INSTALLED -> enter(FirstRunStage.Installed)
-            cancelRequested -> fail(FirstRunFailure.Cancelled, finished.lines, checkout)
+            cancelRequested || finished.cancelled -> fail(FirstRunFailure.Cancelled, finished.lines, checkout)
             finished.exitCode != 0 -> fail(FirstRunFailure.Install(finished.exitCode), finished.lines, checkout)
             else -> fail(FirstRunFailure.NoCheckout, finished.lines, checkout)
         }
