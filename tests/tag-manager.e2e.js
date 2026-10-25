@@ -123,7 +123,6 @@ for (const width of [1440, 390]) {
             const search = manager(page).getByRole('searchbox', { name: 'Search', exact: true });
             await expectSharedDialogEntryStyles(search);
             await page.evaluate(() => Promise.all(Array.from(document.querySelectorAll('.sb-dialog__search'), field => field.getAnimations()).flat().map(animation => animation.finished.catch(() => {}))));
-            await page.screenshot({ path: `/tmp/opencode/round4-shots/tag-manager-search-${width}.png` });
             await search.fill('no-tag-matches-this');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
             await expect(row(page, 'qa-tag-beta')).toBeHidden();
