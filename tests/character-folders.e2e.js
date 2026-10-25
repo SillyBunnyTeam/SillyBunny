@@ -321,3 +321,34 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
         });
     });
 }
+
+test('desktop Folder Manager New Folder trigger closes its open popover on repeat activation', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 844 });
+    const characters = makeCharacters(1);
+    await routeSettings(page, settings => {
+        clearListFilters(settings);
+        settings.power_user.sb_folders = {
+            version: 1,
+            migratedFromTags: true,
+            characters: { folders: [], members: {} },
+            groups: { folders: [], members: {} },
+        };
+    });
+    await routeCharacters(page, characters);
+    await page.route('**/api/characters/edit', route => route.fulfill({ body: 'ok' }));
+    await page.goto('/');
+    await waitForApp(page);
+    const list = await openCharacters(page);
+    await list.locator('[data-action-id="more"]').click();
+    await page.getByRole('menuitem', { name: 'Manage Folders', exact: true }).click();
+    const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');
+    await expect(manager).toBeVisible();
+    const addFolder = manager.getByRole('button', { name: 'New Folder', exact: true });
+    await addFolder.click();
+    const popover = page.locator('.sb-custom-popover:visible');
+    await expect(popover).toBeVisible();
+    await expect(addFolder).toHaveAttribute('aria-expanded', 'true');
+    await addFolder.click();
+    await expect(popover).toHaveCount(0);
+    await expect(addFolder).toHaveAttribute('aria-expanded', 'false');
+});

@@ -452,6 +452,7 @@ body.reduced-motion .sb-list-editor__divider::before {
 .sb-header-icon-button,
 .sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     border: 0;
+    border-radius: var(--sb-radius-pill, 999px);
     background: transparent;
     color: var(--sb-shell-text);
     opacity: 1;

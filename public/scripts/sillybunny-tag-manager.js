@@ -568,6 +568,9 @@ export function createTagManager(adapter) {
             frame.surface.id = 'tag_view_list';
             const add = button(t`Create a new tag`, 'plus', openCreatePopover, 'sb-tag-manager__add');
             add.classList.add('sb-dialog__icon-button');
+            add.addEventListener('keydown', event => {
+                if (event.key === 'Enter') event.stopPropagation();
+            });
             frame.header.querySelector('.sb-dialog__header-end').prepend(add);
             frame.closed.then(dispose);
             refresh();

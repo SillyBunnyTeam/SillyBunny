@@ -398,6 +398,19 @@ for (const width of [1440, 390]) {
     });
 }
 
+test('desktop Create a new tag trigger closes its open popover on repeat activation', async ({ page }) => {
+    await prepare(page, 1440);
+    await openFromList(page);
+    const addTag = manager(page).getByRole('button', { name: 'Create a new tag', exact: true });
+    await addTag.click();
+    const popover = page.locator('.sb-custom-popover:visible');
+    await expect(popover).toBeVisible();
+    await expect(addTag).toHaveAttribute('aria-expanded', 'true');
+    await addTag.click();
+    await expect(popover).toHaveCount(0);
+    await expect(addTag).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('tag import custom responses stay visible and return their mapped command results', async ({ page }) => {
     await prepare(page, 390);
     await page.evaluate(async () => {

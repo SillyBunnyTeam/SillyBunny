@@ -49,6 +49,20 @@ describe('action menu optional sections', () => {
         expect(input.getAttribute('aria-labelledby')).toBe(label.id);
     });
 
+    test('the same trigger closes an open custom popover', () => {
+        const button = trigger();
+        const firstContent = document.createElement('div');
+        openPopover({ trigger: button, content: firstContent });
+
+        const secondContent = document.createElement('div');
+        const second = openPopover({ trigger: button, content: secondContent });
+
+        expect(second.isOpen).toBe(false);
+        expect(isActionMenuOpen(button)).toBe(false);
+        expect(button.getAttribute('aria-expanded')).toBe('false');
+        expect(document.querySelector('.sb-custom-popover')).toBeNull();
+    });
+
     test('custom popovers cycle Tab and Shift+Tab through enabled controls', () => {
         const button = trigger();
         const content = document.createElement('div');

@@ -83,6 +83,8 @@ test.describe('character list and editor header icon parity', () => {
                 expect(editor.button.border, `${theme} ${state} editor border`).toMatch(/^0px none/);
                 expect(list.button.outline, `${theme} ${state} list outline`).toContain('none');
                 expect(editor.button.outline, `${theme} ${state} editor outline`).toContain('none');
+                expect(list.button.borderRadius, `${theme} ${state} list icon corners`).toBe('999px');
+                expect(editor.button.borderRadius, `${theme} ${state} editor icon corners`).toBe('999px');
             };
 
             await compare('rest', async () => {}, async () => {});

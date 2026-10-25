@@ -438,6 +438,10 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
         throw new TypeError('openPopover requires a trigger and content element');
     }
     initialize();
+    if (open?.trigger === trigger) {
+        closeActionMenu({ restoreFocus: true });
+        return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return isActionMenuOpen(trigger); } };
+    }
     closeActionMenu({ animate: false, restoreFocus: false });
     if (isMobileLayout()) {
         const frame = ensureSheet();

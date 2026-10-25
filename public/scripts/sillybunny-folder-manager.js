@@ -511,6 +511,9 @@ export function createFolderManager(scope, adapter) {
             });
             const add = button(t`New Folder`, 'plus', openCreatePopover, 'sb-folder-manager__add');
             add.classList.add('sb-dialog__icon-button');
+            add.addEventListener('keydown', event => {
+                if (event.key === 'Enter') event.stopPropagation();
+            });
             frame.header.querySelector('.sb-dialog__header-end').prepend(add);
             frame.closed.then(dispose);
         },
