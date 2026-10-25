@@ -2006,13 +2006,17 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-character-editor-empty {
-    min-height: min(360px, 54vh);
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 18px;
-    padding: 36px 18px;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    gap: 0;
+    padding: 32px 24px;
+    box-sizing: border-box;
     text-align: center;
 }
 
@@ -2021,24 +2025,19 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-character-editor-empty-icon {
-    width: 64px;
-    height: 64px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--sb-radius-lg, 22px);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    background: color-mix(in srgb, var(--sb-shell-surface) 78%, transparent);
     color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 1.7);
+    font-size: 96px;
+    line-height: 1.1;
+    opacity: 0.5;
+    margin-block-end: 24px;
 }
 
 .sb-character-editor-empty-copy {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    max-width: 42ch;
+    width: min(100%, 36ch);
+    min-width: 0;
 }
 
 .sb-character-editor-empty-copy h3,
@@ -2047,29 +2046,43 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-character-editor-empty-copy h3 {
-    font-size: var(--sb-type-title);
-    line-height: var(--sb-line-title);
+    width: min(100%, 36ch);
+    min-height: 0;
+    margin: 0 0 12px;
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
 }
 
 .sb-character-editor-empty-copy p {
-    opacity: 0.74;
-    line-height: var(--sb-line-body);
+    width: min(100%, 36ch);
+    min-height: 0;
+    margin: 0 0 24px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-body);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
 }
 
 .sb-character-editor-empty-actions {
     display: flex;
-    flex-flow: row wrap;
+    flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
-    gap: 10px;
-    max-width: min(100%, 440px);
+    gap: 12px;
+    max-width: 100%;
+    margin: 0;
 }
 
-.sb-character-editor-empty-actions .menu_button {
-    min-height: 42px;
-    margin: 0;
-    gap: 8px;
-    white-space: normal;
-    text-align: center;
+.sb-character-editor-empty-actions .sb-status-page__action > i {
+    display: none;
+}
+
+#right-nav-panel.openDrawer[data-menu-type='editor_empty'] > .scrollableInner {
+    display: flex;
+    flex-direction: column;
 }
 
 .sb-character-persona-panel[hidden] {

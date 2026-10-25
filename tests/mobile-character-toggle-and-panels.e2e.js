@@ -9,6 +9,12 @@ async function boot(page, viewport) {
     await page.waitForFunction(() => !document.getElementById('preloader'));
 }
 
+async function waitForCharacterPanelAnimations(page) {
+    await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('#sb-settings-page, #right-nav-panel')]
+        .flatMap(element => element.getAnimations({ subtree: true }))
+        .filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().endTime !== Infinity).length), { timeout: 10000 }).toBe(0);
+}
+
 test.describe('round 1 character opening measurements', () => {
     test.use({ hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
     for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 740 }, { width: 412, height: 915 }]) {
@@ -114,6 +120,87 @@ test.describe('round 1 character opening measurements', () => {
             expect(await page.locator('#sb-mobile-chat-search').evaluate(element => element.getClientRects().length > 0)).toBe(false);
         });
     }
+
+    test('reopening Characters with an active editor avoids viewport jitter', async ({ page }) => {
+        const viewport = { width: 390, height: 844 };
+        await boot(page, viewport);
+        await page.locator('#sb-character-toggle').tap();
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            app.setCharacterId(0);
+            app.select_selected_character(0);
+        });
+        const panel = page.locator('#right-nav-panel');
+        await expect(panel).toHaveAttribute('data-menu-type', 'character_edit');
+        await expect(page.locator('#sb_character_editor_header')).toBeVisible();
+        await page.locator('#sb-character-toggle').tap();
+        await expect(page.locator('#sb-settings-page')).toBeHidden();
+        await waitForCharacterPanelAnimations(page);
+
+        await page.evaluate(() => {
+            window.__activeEditorOpeningFrames = [];
+            window.__activeEditorOpeningDone = new Promise(resolve => {
+                const start = performance.now();
+                const selectors = ['#sb-settings-page', '#right-nav-panel', '.scrollableInner', '#form_create', '#sb_character_editor_header', '#sb_character_editor_toolbar'];
+                const sample = () => {
+                    const boxes = Object.fromEntries(selectors.map(selector => {
+                        const element = document.querySelector(selector);
+                        if (!element) return [selector, null];
+                        const rect = element.getBoundingClientRect();
+                        const style = getComputedStyle(element);
+                        return [selector, { x: rect.x, y: rect.y, width: rect.width, height: rect.height, display: style.display, visibility: style.visibility, transform: style.transform }];
+                    }));
+                    window.__activeEditorOpeningFrames.push({
+                        time: performance.now() - start,
+                        boxes,
+                        scrollTop: document.scrollingElement?.scrollTop ?? null,
+                        visualViewport: window.visualViewport && {
+                            offsetTop: visualViewport.offsetTop,
+                            offsetLeft: visualViewport.offsetLeft,
+                            width: visualViewport.width,
+                            height: visualViewport.height,
+                        },
+                    });
+                    if (performance.now() - start < 1700) requestAnimationFrame(sample);
+                    else resolve();
+                };
+                requestAnimationFrame(sample);
+            });
+        });
+        await page.locator('#sb-character-toggle').tap();
+        await page.evaluate(() => window.__activeEditorOpeningDone);
+        const frames = await page.evaluate(() => window.__activeEditorOpeningFrames);
+        await test.info().attach('active-editor-character-opening', { body: JSON.stringify(frames), contentType: 'application/json' });
+
+        const visible = frames.filter(frame => frame.boxes['#right-nav-panel']?.width > 0 && frame.boxes['#sb-settings-page']?.visibility === 'visible');
+        expect(visible.length).toBeGreaterThan(10);
+        expect(new Set(visible.map(frame => frame.scrollTop)).size).toBe(1);
+        expect(new Set(visible.map(frame => frame.visualViewport?.offsetTop)).size).toBe(1);
+
+        const opening = visible.filter(frame => frame.time <= visible[0].time + 600);
+        expect(opening.length).toBeGreaterThan(8);
+        for (const selector of ['#right-nav-panel', '.scrollableInner', '#form_create', '#sb_character_editor_header', '#sb_character_editor_toolbar']) {
+            for (const property of ['x', 'y', 'width', 'height']) {
+                const values = opening.map(frame => frame.boxes[selector]?.[property]).filter(Number.isFinite);
+                const changes = values.slice(1).map((value, index) => value - values[index]).filter(change => Math.abs(change) > 0.75);
+                const directions = changes.map(Math.sign);
+                const reversals = directions.slice(1).filter((direction, index) => direction !== directions[index]).length;
+                expect(reversals, `${selector} ${property} has no opening oscillation`).toBeLessThanOrEqual(1);
+            }
+        }
+
+        const settled = visible.filter(frame => frame.time >= visible[0].time + 700);
+        expect(settled.length).toBeGreaterThan(10);
+        for (const selector of ['#right-nav-panel', '.scrollableInner', '#form_create', '#sb_character_editor_header', '#sb_character_editor_toolbar']) {
+            const geometry = settled.map(frame => frame.boxes[selector]).filter(Boolean);
+            for (const property of ['x', 'y', 'width', 'height']) {
+                const changes = geometry.slice(1).map((box, index) => box[property] - geometry[index][property]);
+                expect(Math.max(...changes.map(Math.abs)), `${selector} ${property} stays settled`).toBeLessThanOrEqual(1);
+            }
+        }
+        expect(new Set(settled.map(frame => frame.scrollTop)).size).toBe(1);
+        expect(new Set(settled.map(frame => frame.visualViewport?.offsetTop)).size).toBe(1);
+    });
 });
 
 test.describe('mobile chat tools lifecycle', () => {
@@ -144,6 +231,65 @@ test.describe('mobile chat tools lifecycle', () => {
         await expectClosed();
     });
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test.describe(`${viewport.width}px editor empty state`, () => {
+        test.use({ viewport, hasTouch: viewport.width === 390, isMobile: viewport.width === 390 });
+
+        test('fills and wraps within the panel', async ({ page }) => {
+            await boot(page, viewport);
+            await page.evaluate(async () => {
+                const app = await import('/script.js');
+                app.setCharacterId(undefined);
+            });
+            await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'editor'));
+            const panel = page.locator('#right-nav-panel');
+            const empty = page.locator('#sb_character_editor_empty');
+            await expect(panel).toHaveAttribute('data-menu-type', 'editor_empty');
+            await expect(empty).toBeVisible();
+            await waitForCharacterPanelAnimations(page);
+
+            const geometry = await page.evaluate(() => {
+                const selectors = ['#right-nav-panel > .scrollableInner', '#sb_character_editor_empty', '.sb-character-editor-empty-copy', '.sb-character-editor-empty-actions'];
+                const boxes = Object.fromEntries(selectors.map(selector => {
+                    const element = document.querySelector(selector);
+                    const rect = element.getBoundingClientRect();
+                    const style = getComputedStyle(element);
+                    return [selector, {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height,
+                        scrollWidth: element.scrollWidth,
+                        clientWidth: element.clientWidth,
+                        paddingBlock: parseFloat(style.paddingBlockStart) + parseFloat(style.paddingBlockEnd),
+                    }];
+                }));
+                return { boxes, buttons: [...document.querySelectorAll('.sb-character-editor-empty-actions button')].map(button => {
+                    const rect = button.getBoundingClientRect();
+                    return { x: rect.x, right: rect.right, width: rect.width };
+                }) };
+            });
+            const content = geometry.boxes['#right-nav-panel > .scrollableInner'];
+            const status = geometry.boxes['#sb_character_editor_empty'];
+            expect(status.height).toBeGreaterThanOrEqual(content.height - content.paddingBlock - 1);
+            expect(content.scrollWidth).toBeLessThanOrEqual(content.clientWidth);
+            expect(status.scrollWidth).toBeLessThanOrEqual(status.clientWidth);
+            expect(geometry.boxes['.sb-character-editor-empty-copy'].width).toBeLessThanOrEqual(status.width);
+            expect(geometry.boxes['.sb-character-editor-empty-actions'].scrollWidth).toBeLessThanOrEqual(geometry.boxes['.sb-character-editor-empty-actions'].clientWidth);
+            expect(geometry.buttons.every(button => button.x >= status.x && button.right <= status.x + status.width + 1)).toBe(true);
+
+            const browse = empty.locator('#sb_character_empty_browse');
+            const create = empty.locator('#sb_character_empty_create');
+            await expect(browse).toHaveClass(/is-suggested/);
+            await expect(browse).toHaveCSS('border-radius', '999px');
+            await expect(browse).toHaveCSS('min-height', viewport.width === 390 ? '44px' : '38px');
+            await expect(create).not.toHaveClass(/is-suggested/);
+            await expect(create).toHaveCSS('border-radius', '9px');
+            await expect(create).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        });
+    });
+}
 
 test('round 1 Toggle Panels measurement', async ({ page }) => {
     await boot(page, { width: 1440, height: 900 });

@@ -131,7 +131,7 @@
     font-family: inherit;
 }
 
-#WorldInfo .sb-wi-editor .menu_button {
+#WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button):not(.sb-status-page__action) {
     display: inline-flex;
     justify-content: center;
     align-items: center;
@@ -397,7 +397,7 @@
 }
 
 @media (hover: hover) {
-    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):not(.sb-header-icon-button):hover {
+    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):not(.sb-header-icon-button):not(.sb-status-page__action):hover {
         background: var(--sb-flat-hover-bg);
     }
 

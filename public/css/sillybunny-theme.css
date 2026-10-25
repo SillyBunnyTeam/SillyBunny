@@ -666,8 +666,8 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
     flex: 0 0 auto;
 }
 
-.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
-.menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+.menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+.menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     background: var(--sb-button-bg);
     border-radius: var(--sb-radius-button);
 }
@@ -1089,8 +1089,8 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 
 /* libadwaita button hover: a deeper neutral fill only, no accent ring or lift. */
 @media (hover: hover) {
-    .menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-    .menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
     .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
     .drawer-icon.closedIcon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
         transform: none;
@@ -1099,10 +1099,10 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     }
 }
 
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button,
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button_icon,
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button,
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button_icon {
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button:not(.sb-status-page__action),
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button_icon:not(.sb-status-page__action),
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button:not(.sb-status-page__action),
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button_icon:not(.sb-status-page__action) {
     min-height: 32px;
     padding: 6px 10px;
     border-radius: 10px;
@@ -1110,8 +1110,8 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     line-height: 1.2;
 }
 
-.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
-.menu_button_icon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
 .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
     transform: scale(0.97);
     transition: transform var(--sb-transition-fast);
@@ -6368,10 +6368,10 @@ body.reduced-motion *::after {
         font-size: var(--sb-type-control);
     }
 
-    .sb-shell-panel-scroller .menu_button,
-    .sb-shell-panel-scroller .menu_button_icon,
-    .sb-shell-panel-scroller button.menu_button,
-    .sb-shell-panel-scroller button.menu_button_icon {
+    .sb-shell-panel-scroller .menu_button:not(.sb-status-page__action),
+    .sb-shell-panel-scroller .menu_button_icon:not(.sb-status-page__action),
+    .sb-shell-panel-scroller button.menu_button:not(.sb-status-page__action),
+    .sb-shell-panel-scroller button.menu_button_icon:not(.sb-status-page__action) {
         min-height: 38px;
         padding: 8px 12px;
         border-radius: 12px;

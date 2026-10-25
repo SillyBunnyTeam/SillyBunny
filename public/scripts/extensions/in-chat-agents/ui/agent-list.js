@@ -602,14 +602,13 @@ export function mountAgentsPanel(column) {
         else if (!empty) {
             empty = createStatusPage({
                 icon: model.savedCount ? 'magnifying-glass' : 'puzzle-piece',
-                title: model.savedCount ? t`No Results` : t`No Agents`, description: t`lorum ipsum`, compact: true,
+                title: model.savedCount ? t`No Results` : t`No Agents`, compact: true,
                 actions: model.savedCount ? [] : [
                     { label: t`New Agent`, primary: true, onActivate: () => run(() => adapter.openEditor()) },
                     { label: t`New Agent from Template…`, onActivate: () => openTemplates(false) },
                 ],
             }).element;
             empty.dataset.emptyState = emptyState;
-            empty.querySelector('.sb-status-page__description').dataset.sbCopyPlaceholder = 'true';
             body.append(empty);
         }
         search.report(model.visibleKeys.length, model.savedCount);

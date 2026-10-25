@@ -360,7 +360,11 @@ for (const width of [1440, 390]) {
         await expect(root.locator('.ica-agent-row, .ica-agents-group')).toHaveCount(0);
         const status = root.locator('.sb-status-page');
         await expect(status.getByRole('heading')).toHaveText('No Agents');
-        await expect(status.locator('.sb-status-page__description')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await expect(status.locator('.sb-status-page__description')).toHaveCount(0);
+        const secondary = status.getByRole('button', { name: 'New Agent from Template…', exact: true });
+        await expect(secondary).toHaveCSS('border-radius', '9px');
+        await expect(secondary).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        expect(await secondary.evaluate(button => getComputedStyle(button).border)).toMatch(/^0px none/);
         await status.getByRole('button', { name: 'New Agent', exact: true }).click();
         await expect(root.locator('.ica-agent-detail')).toBeVisible();
         await back(root);

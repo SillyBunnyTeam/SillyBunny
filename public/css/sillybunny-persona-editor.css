@@ -96,7 +96,7 @@
     font-family: inherit;
 }
 
-#PersonaManagement .sb-persona-editor .menu_button {
+#PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):not(.sb-status-page__action) {
     display: inline-flex;
     justify-content: center;
     align-items: center;
@@ -246,7 +246,7 @@
 }
 
 @media (hover: hover) {
-    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):not(:disabled):hover {
+    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):not(.sb-status-page__action):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }

@@ -1465,38 +1465,6 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     padding: 0 12px 16px;
 }
 
-/* Status pages sit and act like World Info's (`.sb-wi-list-body` inset, flat `#WorldInfo .sb-wi-editor .menu_button`). */
-.ica-agents-body > .sb-status-page {
-    margin-block-start: 8px;
-}
-
-#sb-settings-page .ica-agents-editor .sb-status-page__action {
-    padding: 6px 12px;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    box-shadow: none;
-}
-
-#sb-settings-page .ica-agents-editor .sb-status-page__action:not(.is-suggested) {
-    background: transparent;
-    color: inherit;
-}
-
-@media (hover: hover) {
-    #sb-settings-page .ica-agents-editor .sb-status-page__action:not(.is-suggested):not(:disabled):hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-#sb-settings-page .ica-agents-editor .sb-status-page__action:not(.is-suggested):not(:disabled):active {
-    background: var(--sb-flat-active-bg);
-}
-
-#sb-settings-page .ica-agents-editor .sb-status-page__action:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 .ica-agents-group {
     margin-bottom: 16px;
 }

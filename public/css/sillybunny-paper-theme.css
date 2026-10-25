@@ -78,15 +78,15 @@ body::after {
 
 /*
  * Soft, rounded app surfaces. Controls inside the libadwaita-styled bottom chat bar, Conversation
- * chrome, the top bar, message edit rows, and shell close buttons are excluded so their own pill/circle radii survive on phones.
+ * chrome, the top bar, message edit rows, shell close buttons, and status-page actions are excluded so their own corner contracts survive on phones.
  */
 .drawer-content,
 .popup,
-.menu_button:not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
+.menu_button:not(.sb-status-page__action):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
 input:not(.sb-dialog__entry),
 textarea:not(.sb-dialog__entry),
 select:not(.sb-dialog__entry),
-button:not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
+button:not(.sb-status-page__action):not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
     border-radius: 14px !important;
 }
 
