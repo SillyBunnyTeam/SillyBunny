@@ -1242,6 +1242,7 @@ class BuildScriptTests(unittest.TestCase):
         text = self.SCRIPT.read_text(encoding='utf-8')
         for fragment in ("LDFLAGS='-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -static-libstdc++'",
                          'CC_host="$toolchain/clang -m32" CXX_host="$toolchain/clang++ -m32" LINK_host=\'g++ -m32\'',
+                         'export LDFLAGS_host=-latomic',
                          './android-configure "$ndk" "$NODE_API" "$arch"', "grep -q 'INFO: configure completed successfully'",
                          '--check-config', '--strip-all', '--audit', 'patch --batch --forward --fuzz=0',
                          'make -j"$jobs"', 'GYP_CROSSCOMPILE=1'):

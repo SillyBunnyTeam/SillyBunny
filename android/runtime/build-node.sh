@@ -133,8 +133,8 @@ for name in "${NODE_PATCHES[@]}"; do
 done
 
 step=configure
-# S2.1 §4, exactly: API-level NDK drivers, explicit 16 KB pages and a static C++ runtime for every ABI, and for
-# ARMv7 NDK Clang -m32 host compilers with the g++ -m32 host linker.
+# S2.1 §4: API-level NDK drivers, explicit 16 KB pages and a static C++ runtime for every ABI, and for ARMv7 NDK
+# Clang -m32 host compilers with the g++ -m32 host linker.
 export PATH="$toolchain:$PATH"
 export CC="$toolchain/$triple$NODE_API-clang"
 export CXX="$toolchain/$triple$NODE_API-clang++"
@@ -143,6 +143,9 @@ export RANLIB="$toolchain/llvm-ranlib"
 export CC_host=gcc CXX_host=g++ AR_host=ar LINK_host=g++ LDFLAGS_host=
 if [[ $abi == armeabi-v7a ]]; then
     export CC_host="$toolchain/clang -m32" CXX_host="$toolchain/clang++ -m32" LINK_host='g++ -m32'
+    # Node 26's simdutf in V8 makes 8-byte atomic accesses. i386 aligns 64-bit types to 4 bytes, so Clang calls
+    # libatomic's generic __atomic_load and __atomic_store instead of inlining them; g++-multilib has its i386 copy.
+    export LDFLAGS_host=-latomic
 fi
 export LDFLAGS='-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 -static-libstdc++'
 export GYP_CROSSCOMPILE=1
