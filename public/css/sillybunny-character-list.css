@@ -251,7 +251,7 @@
     flex: 0 0 auto;
     align-items: center;
     min-width: 0;
-    padding: 2px 8px;
+    padding: 0 8px;
     border-bottom: 1px solid var(--sb-shell-border);
 }
 
@@ -259,7 +259,8 @@
     display: flex;
     flex-wrap: nowrap;
     gap: 2px;
-    min-height: 44px;
+    min-height: 40px;
+    margin: 0;
     overflow: auto hidden;
     scrollbar-width: none;
 }
@@ -753,6 +754,12 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
 }
 
 @media (pointer: coarse), (max-width: 768px) {
+    /* SillyBunny: the mobile drawer adds top margin to legacy tag controls; this row already owns its spacing. */
+    #right-nav-panel.openDrawer #rm_characters_block > .sb-character-list .rm_tag_controls {
+        min-height: 44px;
+        margin-top: 0 !important;
+    }
+
     #rm_characters_block .sb-character-list #rm_buttons_container > :is(button, .menu_button) {
         width: 44px;
         min-width: 44px;

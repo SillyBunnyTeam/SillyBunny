@@ -20,7 +20,7 @@ import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261026c', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261020b', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261026b', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();

@@ -111,6 +111,24 @@ async function showView(page, view) {
     await expect.poll(() => page.evaluate(async () => (await import('/script.js')).menu_type)).toBe('characters');
 }
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`Groups filter toolbar avoids extra vertical padding at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await page.goto('/');
+        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+        await page.waitForFunction(() => !document.getElementById('preloader'));
+        await showView(page, 'groups');
+
+        const filterRow = page.locator('.sb-character-list__filters');
+        await expect(filterRow).toBeVisible();
+        const height = await filterRow.evaluate(node => node.getBoundingClientRect().height);
+        const stylesheetLinks = await page.evaluate(() => [...document.querySelectorAll('link[href*="sillybunny-character-list.css"]')].map(link => link.href));
+
+        expect(height).toBeLessThanOrEqual(viewport.width <= 768 ? 45 : 41);
+        expect(stylesheetLinks).toHaveLength(1);
+    });
+}
+
 for (const { label, width, reducedMotion, appReducedMotion = false } of [
     { label: 'mobile', width: 390, reducedMotion: 'no-preference' },
     { label: 'desktop', width: 1440, reducedMotion: 'no-preference' },
@@ -389,10 +407,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const statusBox = await status.boundingBox();
         const statusPageBox = await status.locator('.sb-status-page').boundingBox();
         const paneBox = await list(page).boundingBox();
+        const controlBottoms = await Promise.all(['.sb-character-list__header', '.sb-character-list__search', '.sb-character-list__filters'].map(selector => list(page).locator(selector).boundingBox()));
         expect(statusBox).not.toBeNull();
         expect(statusPageBox).not.toBeNull();
         expect(paneBox).not.toBeNull();
-        expect(Math.abs(statusPageBox.y - paneBox.y - 172)).toBeLessThanOrEqual(4);
+        expect(controlBottoms.every(Boolean)).toBe(true);
+        expect(Math.abs(statusPageBox.y - Math.max(...controlBottoms.map(box => box.y + box.height)))).toBeLessThanOrEqual(1);
         const typography = await status.locator('.sb-status-page').evaluate(element => {
             const title = getComputedStyle(element.querySelector('.sb-status-page__title'));
             const description = getComputedStyle(element.querySelector('.sb-status-page__description'));

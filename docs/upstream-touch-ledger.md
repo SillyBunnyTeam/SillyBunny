@@ -573,6 +573,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-26. |
 | Owner | Refactor integrator. |
 
+### `public/index.html` - Characters/Groups deferred stylesheet cache key
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Characters and Groups list stylesheet boot. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/dynamic-styles.js`, `public/scripts/sillybunny-character-list.js`, and `public/scripts/sillybunny-tabs.js`. |
+| Adapter shape | Keep the preload and both deferred loader URLs on the same cache version because `loadStylesheetAsync` adopts the preloaded link by ID. |
+| Protecting tests | `tests/character-list.e2e.js` (`Groups filter toolbar avoids extra vertical padding` at desktop and mobile widths). |
+| Validation | Focused Characters/Groups E2E and `npm run check:frontend-budgets`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-26. |
+| Owner | TODO(copy) |
+
 ### `public/index.html` - mobile stylesheet media gates
 | Field | Value |
 | --- | --- |

@@ -1118,7 +1118,7 @@ body:not(.movingUI) .drawer-content.maximized {
         background: var(--sb-flat-hover-bg);
     }
 
-    .sb-proxy-button:is(.is-open, .is-active, .is-current):hover {
+    .sb-proxy-button:is(.is-open, .is-active, .is-current, .sb-settings-active):hover {
         background: var(--sb-flat-selected-hover-bg);
     }
 }
@@ -1137,13 +1137,15 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-proxy-button.is-open,
 .sb-proxy-button.is-pinned,
 .sb-proxy-button.is-active,
-.sb-proxy-button.is-current {
+.sb-proxy-button.is-current,
+.sb-proxy-button.sb-settings-active {
     opacity: 1;
 }
 
 .sb-proxy-button.is-open,
 .sb-proxy-button.is-active,
-.sb-proxy-button.is-current {
+.sb-proxy-button.is-current,
+.sb-proxy-button.sb-settings-active {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -2016,8 +2018,8 @@ body:not(.movingUI) .drawer-content.maximized {
     min-height: 0;
     gap: 0;
     padding: 32px 24px;
-    box-sizing: border-box;
     text-align: center;
+    box-sizing: border-box;
 }
 
 .sb-character-editor-empty[hidden] {

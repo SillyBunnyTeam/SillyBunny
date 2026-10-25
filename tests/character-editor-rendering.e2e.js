@@ -26,6 +26,18 @@ async function openEditor(page) {
     await expect(page.locator('#sb_character_editor_header')).toBeVisible();
 }
 
+async function expectDuplicateAligned(page) {
+    await expect.poll(() => page.evaluate(() => {
+        const duplicate = document.getElementById('dupe_button').getBoundingClientRect();
+        const exportButton = document.getElementById('export_button').getBoundingClientRect();
+        return {
+            horizontalOffset: Math.round(Math.abs(duplicate.x - exportButton.right - 2)),
+            verticalOffset: Math.round(Math.abs(duplicate.y - exportButton.y)),
+            heightOffset: Math.round(Math.abs(duplicate.height - exportButton.height)),
+        };
+    })).toEqual({ horizontalOffset: 0, verticalOffset: 0, heightOffset: 0 });
+}
+
 async function stubCharacterMutations(page) {
     await page.route('**/api/characters/edit*', route => route.fulfill({ body: 'ok' }));
     await page.route('**/api/characters/save*', route => route.fulfill({ body: 'ok' }));
@@ -149,6 +161,30 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.keyboard.press('Escape');
     });
 }
+
+test.describe('character toolbar resize', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    test('duplicate action returns aligned after switching from mobile to desktop', async ({ page }) => {
+        await openEditor(page);
+        const duplicate = page.locator('#dupe_button');
+        await expect(duplicate).toHaveClass(/sb-editor-toolbar-collapsed/);
+
+        await page.setViewportSize({ width: 769, height: 844 });
+        await expect.poll(() => duplicate.evaluate(node => node.classList.contains('sb-editor-toolbar-collapsed'))).toBe(false);
+        await expectDuplicateAligned(page);
+
+        await page.setViewportSize({ width: 1440, height: 844 });
+        await expectDuplicateAligned(page);
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(duplicate).toHaveClass(/sb-editor-toolbar-collapsed/);
+
+        await page.setViewportSize({ width: 1440, height: 844 });
+        await expect.poll(() => duplicate.evaluate(node => node.classList.contains('sb-editor-toolbar-collapsed'))).toBe(false);
+        await expectDuplicateAligned(page);
+    });
+});
 
 for (const theme of ['Libadwaita', 'Libadwaita Light']) test(`editor headings match Customize typography in ${theme}`, async ({ page }) => {
     await openEditor(page);

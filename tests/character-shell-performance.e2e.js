@@ -26,6 +26,21 @@ async function settleNavigation(page) {
 }
 
 for (const width of [1440, 390]) {
+    test(`Characters uses the Home selected-pill fill at ${width}`, async ({ page }) => {
+        await prepare(page, width);
+        const home = page.locator('#sb-home-toggle');
+        await expect(home).toHaveClass(/is-current/);
+        const homeBackground = await home.evaluate(button => getComputedStyle(button).backgroundColor);
+
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
+        await expect(page.locator('#sb-settings-page')).toBeVisible();
+        await expect(page.locator('#sb-character-toggle')).toHaveClass(/sb-settings-active/);
+        await page.mouse.move(0, 0);
+        const charactersBackground = await page.locator('#sb-character-toggle').evaluate(button => getComputedStyle(button).backgroundColor);
+
+        expect(charactersBackground).toBe(homeBackground);
+    });
+
     test(`Characters highlights synchronously and tab switches are motionless at ${width}`, async ({ page }) => {
         await prepare(page, width);
         const colours = await page.evaluate(() => {

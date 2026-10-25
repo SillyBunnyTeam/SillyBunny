@@ -297,6 +297,7 @@ function _mountFolderField() {
     folderSelectRow = createComboRow({
         label: t`Folder`,
         field: 'folder',
+        wide: true,
         options: folderOptions(),
         value: callbacks.getFolderValue?.() ?? '',
         onChange: value => {

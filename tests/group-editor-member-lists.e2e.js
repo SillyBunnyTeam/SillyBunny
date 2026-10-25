@@ -203,6 +203,19 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
     });
 }
 
+test('group folder label stays on one line on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openCreateGroup(page, true);
+    const label = page.locator('#group_folder_row .ds-row-label');
+    const lineCount = await label.evaluate(node => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return range.getClientRects().length;
+    });
+
+    expect(lineCount).toBe(1);
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 }]) {
     test(`member boxed lists support row actions at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);
