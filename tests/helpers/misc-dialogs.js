@@ -95,8 +95,9 @@ export async function openMiscDialog(page, surface) {
         await page.locator(`dialog[open] ${selector}`).dispatchEvent('click');
     } else if (surface === 'delete') {
         await page.evaluate(() => $('#admin_button').trigger('click'));
-        await page.locator('dialog[open] .usersList .userDelete').first().waitFor();
-        await page.locator('dialog[open] .usersList .userDelete').first().dispatchEvent('click');
+        const userRow = page.locator('dialog[open] .usersList .userAccount').first();
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Delete user account.', exact: true }).click();
     } else {
         await page.evaluate(async surface => {
             if (surface === 'styles') $('#creators_note_styles_button').trigger('click');

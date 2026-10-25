@@ -33,9 +33,10 @@ async function prepareChat(page) {
         return {
             currentChatId: String(app.getCurrentChatId?.() ?? app.chatId ?? '').replace(/\.jsonl$/i, ''),
             characterId: app.characterId,
+            characterName: app.characters[app.characterId]?.name,
         };
     });
-    if (!context.currentChatId || context.characterId === undefined) throw new Error('Chat overlay tests need an active character chat.');
+    if (!context.currentChatId || context.characterId === undefined || !context.characterName) throw new Error('Chat overlay tests need an active character chat.');
 
     const fixtures = chatFixtures(context.currentChatId);
     const deleteRequests = [];
@@ -172,14 +173,14 @@ for (const width of [1440, 390]) {
         });
 
         test('Chat History moves its live controls into a searchable Window and keeps file handlers', async ({ page }) => {
-            const { renameRequests, deleteRequests, exportRequests } = await prepareChat(page);
+            const { context, renameRequests, deleteRequests, exportRequests } = await prepareChat(page);
             const actions = await openChatActions(page, width);
             await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
 
             const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
             await expect(frame).toBeVisible();
             await expect(frame.locator('.sb-dialog__title')).toContainText('Chat History');
-            await expect(frame.locator('.sb-dialog__subtitle')).toContainText('Seraphina');
+            await expect(frame.locator('.sb-dialog__subtitle')).toHaveText(context.characterName);
             const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
             await expect(search).toBeVisible();
             await expectSharedDialogEntryStyles(search);

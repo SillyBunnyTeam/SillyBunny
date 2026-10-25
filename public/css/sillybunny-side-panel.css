@@ -16,6 +16,7 @@
 .sb-side-panel:not(.sb-side-panel--sheet) {
     --sb-side-panel-shadow: 0 0 10px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent),
         0 0 4px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 35%, transparent);
+    max-height: none;
     box-shadow: var(--sb-side-panel-shadow), var(--sb-shadow-dialog-highlight);
 }
 
