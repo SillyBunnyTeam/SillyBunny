@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.IntentCompat
 import androidx.test.core.app.ApplicationProvider
+import io.github.sillybunnyteam.sillybunny.server.CrashRecords
+import io.github.sillybunnyteam.sillybunny.server.LaunchTokens
+import io.github.sillybunnyteam.sillybunny.server.RedactingLineSplitter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
@@ -26,6 +29,7 @@ import java.time.Instant
 class LogSharingTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
     private val now = Instant.parse("2026-10-21T06:30:15Z")
+    private val token = LaunchTokens.generate()
     private lateinit var logs: File
 
     @Before
@@ -35,12 +39,79 @@ class LogSharingTest {
             mkdirs()
         }
         LogSharing.snapshotDirectory(context).deleteRecursively()
+        CrashRecords.directory(context).deleteRecursively()
         resetFileProviderRoots()
     }
 
     private fun log(name: String, text: String) = File(logs, name).apply { writeText(text) }
 
     private fun snapshots() = LogSharing.snapshotDirectory(context).listFiles().orEmpty().map { it.name }.sorted()
+
+    private fun crashRecord(at: Instant, line: String): File = CrashRecords(CrashRecords.directory(context)).write(
+        CrashRecords.Crash(
+            epochMillis = at.toEpochMilli(),
+            exitCode = 139,
+            uptimeMillis = 5_000,
+            launchedEpochMillis = at.toEpochMilli() - 5_000,
+            token = token,
+            serverLog = listOf(line),
+            nativeLog = listOf("F/nodejs: fatal $token"),
+        ),
+    )!!
+
+    @Test
+    fun theSnapshotStartsWithTheCrashRecordsNewestFirst() {
+        val older = crashRecord(now.minusSeconds(120), "older crash cookie=$token")
+        val newer = crashRecord(now.minusSeconds(60), "newer crash")
+
+        val snapshot = LogSharing.createSnapshot(context, listOf(log("server.log", "one\n")), now)!!
+
+        val text = snapshot.readText()
+        assertEquals(newer.readText() + older.readText() + "one\n", text)
+        assertTrue(text.contains("older crash cookie=${RedactingLineSplitter.REDACTED}"))
+        assertTrue(text.contains("exit=139 signal=11 SIGSEGV"))
+        assertFalse(text.contains(token))
+    }
+
+    @Test
+    fun crashRecordsAloneAreShared() = runBlocking {
+        val record = crashRecord(now.minusSeconds(60), "crashed")
+
+        assertEquals(record.readText(), LogSharing.createSnapshot(context, emptyList(), now)!!.readText())
+        assertEquals(LogShareResult.SHARED, LogSharing.share(context, { emptyList() }, Dispatchers.IO))
+        assertEquals(1, snapshots().size)
+    }
+
+    @Test
+    fun recordsGoInWholeWithinHalfTheCapAndTheLogsGetTheRest() {
+        val directory = File(context.filesDir, "record-input").apply { mkdirs() }
+        val newest = File(directory, "crash-000002-20261021T063000.000Z.txt").apply { writeText("r".repeat(29) + "\n") }
+        val older = File(directory, "crash-000001-20261021T062000.000Z.txt").apply { writeText("s".repeat(29) + "\n") }
+        val server = log("server.log", "aaaa\n".repeat(20))
+
+        val snapshot = LogSharing.createSnapshot(
+            context,
+            listOf(server),
+            now,
+            maxBytes = 100,
+            records = listOf(newest, older),
+        )!!
+
+        // The newest record's 30 bytes fit in half the cap; the older one's do not, so the logs get the other 70.
+        assertEquals(newest.readText() + "aaaa\n".repeat(14), snapshot.readText())
+        // A link is skipped; a record too big for half the cap ends the records, so none older jumps the queue.
+        val link = File(directory, "crash-000004-20261021T063200.000Z.txt").toPath()
+        Files.createSymbolicLink(link, newest.toPath())
+        val big = File(directory, "crash-000003-20261021T063100.000Z.txt").apply { writeText("b".repeat(60) + "\n") }
+        val logsOnly = LogSharing.createSnapshot(
+            context,
+            listOf(server),
+            now,
+            maxBytes = 100,
+            records = listOf(link.toFile(), big, newest),
+        )!!
+        assertEquals("aaaa\n".repeat(20), logsOnly.readText())
+    }
 
     @Test
     fun snapshotConcatenatesTheListedFilesOldestFirst() {

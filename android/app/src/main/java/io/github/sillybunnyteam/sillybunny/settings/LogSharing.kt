@@ -8,6 +8,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import androidx.annotation.WorkerThread
 import androidx.core.content.FileProvider
+import io.github.sillybunnyteam.sillybunny.server.CrashRecords
 import io.github.sillybunnyteam.sillybunny.server.ServerHost
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -35,8 +36,9 @@ enum class LogShareResult { SHARED, NO_LOGS, FAILED }
  * the server error screen all use it; [LogShareDialog] adds the required confirmation in front of it.
  *
  * A snapshot is one point-in-time file in `cacheDir/shared/logs/` named
- * `SillyBunny-logs-<yyyyMMdd'T'HHmmss'Z'>[-n].txt` (UTC): the files `ServerHost.logFiles()` returns,
- * oldest first, concatenated and capped at [MAX_SNAPSHOT_BYTES]. When the logs are larger the newest
+ * `SillyBunny-logs-<yyyyMMdd'T'HHmmss'Z'>[-n].txt` (UTC), capped at [MAX_SNAPSHOT_BYTES]: the crash records
+ * ([CrashRecords]), newest first, then the files `ServerHost.logFiles()` returns, oldest first, concatenated.
+ * Records go in whole while they fit in half the cap; the logs get the rest. When the logs are larger the newest
  * bytes win, and the cut moves forward to the next line start. Only the listed regular files are read,
  * never through a symlink, and every new snapshot first deletes the earlier ones.
  */
@@ -74,8 +76,8 @@ object LogSharing {
         }
 
     /**
-     * Deletes earlier snapshots, then writes a new one from [logFiles] (oldest first). Returns null when
-     * the logs are empty.
+     * Deletes earlier snapshots, then writes a new one from [records] (newest first) and [logFiles] (oldest
+     * first). Returns null when both are empty.
      */
     @WorkerThread
     @Throws(IOException::class)
@@ -84,10 +86,12 @@ object LogSharing {
         logFiles: List<File>,
         now: Instant = Instant.now(),
         maxBytes: Long = MAX_SNAPSHOT_BYTES,
+        records: List<File> = crashRecords(context),
     ): File? {
         require(maxBytes > 0) { "maxBytes" }
         deleteSnapshots(context)
-        val slices = plan(logFiles, maxBytes)
+        val recordSlices = planRecords(records, maxBytes / 2)
+        val slices = recordSlices + plan(logFiles, maxBytes - recordSlices.sumOf { it.end - it.start })
         if (slices.isEmpty()) return null
         val directory = snapshotDirectory(context)
         if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Cannot create $directory")
@@ -106,6 +110,10 @@ object LogSharing {
         }
         return target
     }
+
+    /** The server's crash records, newest first. */
+    @WorkerThread
+    fun crashRecords(context: Context): List<File> = CrashRecords(CrashRecords.directory(context)).records()
 
     /** `ACTION_SEND` of [snapshot] as `text/plain` through the FileProvider with a read grant, in a chooser. */
     fun shareIntent(context: Context, snapshot: File, chooserTitle: CharSequence? = null): Intent {
@@ -187,16 +195,25 @@ object LogSharing {
         }
     }
 
+    /** Whole records, newest first, until the next one does not fit in [budget]. */
+    private fun planRecords(records: List<File>, budget: Long): List<Slice> {
+        val slices = ArrayList<Slice>()
+        var remaining = budget
+        for (file in records) {
+            val path = file.toPath()
+            val size = regularSize(path) ?: continue
+            if (size > remaining) break
+            slices += Slice(path, 0, size)
+            remaining -= size
+        }
+        return slices
+    }
+
     // Sizes are taken once up front, so a file that keeps growing cannot stretch the snapshot.
     private fun plan(logFiles: List<File>, maxBytes: Long): List<Slice> {
         val sized = logFiles.mapNotNull { file ->
             val path = file.toPath()
-            val attributes = try {
-                Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
-            } catch (_: IOException) {
-                null
-            }
-            if (attributes != null && attributes.isRegularFile && attributes.size() > 0) path to attributes.size() else null
+            regularSize(path)?.let { path to it }
         }
         val slices = ArrayDeque<Slice>()
         var remaining = maxBytes
@@ -217,6 +234,16 @@ object LogSharing {
             }
         }
         return slices
+    }
+
+    /** The size of a non-empty regular file, without following a link; null otherwise. */
+    private fun regularSize(path: Path): Long? {
+        val attributes = try {
+            Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        } catch (_: IOException) {
+            return null
+        }
+        return attributes.size().takeIf { attributes.isRegularFile && it > 0 }
     }
 
     /** Where a cut slice may start: [line] at a line start, [character] at a UTF-8 character start. */

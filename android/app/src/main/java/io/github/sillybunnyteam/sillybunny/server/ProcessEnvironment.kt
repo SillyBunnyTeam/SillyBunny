@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.server
 
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
+import java.io.File
 
 /**
  * The complete environment for `start.sh` and the setup scripts (plan §2.5).
@@ -20,6 +21,7 @@ internal class ProcessEnvironment(
 
     companion object {
         const val LAUNCH_TOKEN = "SILLYBUNNY_LAUNCH_TOKEN"
+        const val NODE_OPTIONS = "NODE_OPTIONS"
         const val GIT_IDENTITY_NAME = "SillyBunny"
         const val GIT_IDENTITY_EMAIL = "sillybunny@localhost.invalid"
 
@@ -39,7 +41,8 @@ internal class ProcessEnvironment(
          * Builds the environment as a pure function of its inputs. [launchToken] is set only for the
          * server; setup scripts run without one. [autoUpdate] maps to `SILLYBUNNY_AUTO_UPDATE`, which
          * `start.sh` reads with `is_truthy` (`1`, `true`, `yes`, `on`, any case) and treats as on when
-         * unset, so "off" must be an explicit `0`.
+         * unset, so "off" must be an explicit `0`. [reportDirectory] adds [reportOptions] to `NODE_OPTIONS`; only
+         * the server gets it.
          */
         fun build(
             paths: RuntimePaths,
@@ -47,6 +50,7 @@ internal class ProcessEnvironment(
             versionCode: Long,
             autoUpdate: Boolean,
             launchToken: String?,
+            reportDirectory: File? = null,
         ): ProcessEnvironment {
             val environment = LinkedHashMap<String, String>()
             for (key in FRAMEWORK_ROOTS) {
@@ -85,7 +89,32 @@ internal class ProcessEnvironment(
                 require(LaunchTokens.isValid(launchToken)) { "token" }
                 environment[LAUNCH_TOKEN] = launchToken
             }
+            if (reportDirectory != null) {
+                environment[NODE_OPTIONS] = mergeNodeOptions(environment[NODE_OPTIONS], reportOptions(reportDirectory))
+            }
             return ProcessEnvironment(environment)
         }
+
+        /**
+         * Node's diagnostic report on a fatal error, written into [directory]. `--report-exclude-env` keeps the launch
+         * token out of the report, and `--report-exclude-network` the device's interfaces and host names.
+         */
+        fun reportOptions(directory: File): List<String> = listOf(
+            "--report-on-fatalerror",
+            "--report-compact",
+            "--report-exclude-env",
+            "--report-exclude-network",
+            "--report-directory=${quoteNodeOption(directory.absolutePath)}",
+        )
+
+        /** [existing] first, so for an option given twice the appended one wins, as Node takes the last. */
+        fun mergeNodeOptions(existing: String?, options: List<String>): String =
+            (listOfNotNull(existing?.trim()?.takeIf { it.isNotEmpty() }) + options).joinToString(" ")
+
+        /**
+         * Node splits `NODE_OPTIONS` at spaces outside double quotes; inside them a backslash escapes the next
+         * character (`ParseNodeOptionsEnvVar` in Node's `src/node_options.cc`).
+         */
+        fun quoteNodeOption(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     }
 }

@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
+import io.github.sillybunnyteam.sillybunny.server.CrashRecords
 import io.github.sillybunnyteam.sillybunny.server.ServerHost
 import io.github.sillybunnyteam.sillybunny.server.ServerState
 import io.github.sillybunnyteam.sillybunny.settings.SettingsUi.device
@@ -40,6 +41,7 @@ class SettingsInstrumentedTest {
     fun prepare() {
         logs.deleteRecursively()
         LogSharing.snapshotDirectory(app).deleteRecursively()
+        CrashRecords.directory(app).deleteRecursively()
     }
 
     @After
@@ -47,6 +49,7 @@ class SettingsInstrumentedTest {
         host?.close()
         logs.deleteRecursively()
         LogSharing.snapshotDirectory(app).deleteRecursively()
+        CrashRecords.directory(app).deleteRecursively()
     }
 
     private fun dependencies(

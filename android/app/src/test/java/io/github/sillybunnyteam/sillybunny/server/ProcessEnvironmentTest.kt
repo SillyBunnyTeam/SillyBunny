@@ -154,6 +154,47 @@ class ProcessEnvironmentTest {
     }
 
     @Test
+    fun onlyTheServerGetsNodesFatalErrorReportAndNeverTheInheritedNodeOptions() {
+        val reports = File("$files/crash/reports")
+        val server = ProcessEnvironment.build(
+            paths,
+            frameworkRoots + hostile,
+            4021,
+            autoUpdate = true,
+            launchToken = token,
+            reportDirectory = reports,
+        )
+        val setup = ProcessEnvironment.build(paths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = null)
+
+        val options = server.getValue(ProcessEnvironment.NODE_OPTIONS)
+        assertEquals(
+            "--report-on-fatalerror --report-compact --report-exclude-env --report-exclude-network " +
+                "--report-directory=\"$files/crash/reports\"",
+            options,
+        )
+        assertEquals(expected("1", token) + (ProcessEnvironment.NODE_OPTIONS to options), server.toMap())
+        assertFalse(options.contains("evil"))
+        assertFalse(setup.containsKey(ProcessEnvironment.NODE_OPTIONS))
+    }
+
+    @Test
+    fun theReportOptionsFollowAValueThatIsAlreadySet() {
+        val options = ProcessEnvironment.reportOptions(File("/data/files/crash/reports"))
+        val joined = options.joinToString(" ")
+
+        assertEquals("--max-old-space-size=512 $joined", ProcessEnvironment.mergeNodeOptions(" --max-old-space-size=512 ", options))
+        assertEquals(joined, ProcessEnvironment.mergeNodeOptions(null, options))
+        assertEquals(joined, ProcessEnvironment.mergeNodeOptions("  ", options))
+    }
+
+    @Test
+    fun theReportDirectoryIsQuotedTheWayNodeSplitsNodeOptions() {
+        assertEquals("\"$files/crash/reports\"", ProcessEnvironment.quoteNodeOption("$files/crash/reports"))
+        // A space stays inside the quotes; a quote and a backslash get a backslash.
+        assertEquals("\"/tmp/a b/c\\\"d\\\\e\"", ProcessEnvironment.quoteNodeOption("/tmp/a b/c\"d\\e"))
+    }
+
+    @Test
     fun anInvalidTokenIsRejectedWithoutEchoingIt() {
         val bad = "ABCDEF".repeat(11)
         val error = assertThrows(IllegalArgumentException::class.java) {
