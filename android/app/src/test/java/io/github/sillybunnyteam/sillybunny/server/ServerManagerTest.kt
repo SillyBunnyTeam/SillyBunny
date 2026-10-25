@@ -16,6 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -187,6 +188,12 @@ class ServerManagerTest {
 
     private fun policy(): PolicyState = ServerStateStore(context).loadPolicy()
 
+    private fun crashDir(): File = File(paths.filesDir, CrashRecords.DIRECTORY)
+
+    private fun reportsDir(): File = File(crashDir(), "reports")
+
+    private fun records(): List<File> = CrashRecords(crashDir()).records()
+
     @Test
     fun startPromotesAndReportsRunningOnlyOnceTheTokenHealthCheckPasses() {
         healthy = false
@@ -335,6 +342,7 @@ class ServerManagerTest {
         assertEquals(PolicyState(RunIntent.USER_STOPPED, emptyList()), policy())
         Thread.sleep(100)
         assertEquals(1, servers.size)
+        assertEquals(emptyList<File>(), records())
     }
 
     @Test
@@ -468,6 +476,8 @@ class ServerManagerTest {
         assertTrue(timings.groupTermPhaseMillis >= 300)
         assertEquals(ServerState.Stopped(userStopped = true), manager.state.value)
         assertTrue(manager.recentLogLines().any { it.startsWith("${ServerManager.MARKER} stop step=group_kill") })
+        // The group died of the stop's own SIGKILL: still no crash.
+        assertEquals(emptyList<File>(), records())
     }
 
     @Test
@@ -520,6 +530,8 @@ class ServerManagerTest {
         val finished = manager.setup.value as SetupState.Finished
         assertEquals(128 + Signals.SIGTERM, finished.exitCode)
         assertEquals(listOf("group:15"), scripts.single().signals)
+        // The host's own stop, not the user's cancel.
+        assertFalse(finished.cancelled)
     }
 
     @Test
@@ -723,6 +735,7 @@ class ServerManagerTest {
         assertTrue(failed.canRestart)
         assertTrue(process.isGone())
         assertEquals(RunIntent.FAILED, policy().intent)
+        assertEquals(emptyList<File>(), records())
     }
 
     @Test
@@ -747,7 +760,9 @@ class ServerManagerTest {
         val script = await("script") { scripts.firstOrNull() }
         val running = manager.setup.value as SetupState.Running
         assertEquals(job, running.job)
-        assertTrue(foregroundNotification().actions.isNullOrEmpty())
+        // The setup notification offers Cancel, never Stop.
+        val action = foregroundNotification().actions.single()
+        assertEquals(ServerService.ACTION_CANCEL_SETUP, shadowOf(action.actionIntent).savedIntent.action)
 
         val finished = await("finished") { manager.setup.value as? SetupState.Finished }
 
@@ -782,6 +797,7 @@ class ServerManagerTest {
 
         val finished = await("finished") { manager.setup.value as? SetupState.Finished }
         assertEquals(128 + Signals.SIGTERM, finished.exitCode)
+        assertTrue(finished.cancelled)
         assertEquals(listOf("group:15"), scripts.single().signals)
         assertTrue(manager.runSetup(context, job()))
     }
@@ -797,6 +813,7 @@ class ServerManagerTest {
 
         val finished = await("finished") { manager.setup.value as? SetupState.Finished }
         assertNotEquals(0, finished.exitCode)
+        assertFalse(finished.cancelled)
     }
 
     @Test
@@ -955,6 +972,187 @@ class ServerManagerTest {
 
         assertTrue(Files.isSymbolicLink(link.toPath()))
         assertTrue(target.exists())
+    }
+
+    @Test
+    fun anUnexpectedExitLeavesOneRedactedRecordWithTheLogsAndTheNewestReport() {
+        build().start(context)
+        val running = awaitRunning(1)
+        val token = running.session.token
+        servers[0].print("server says $token")
+        await("line") { manager.recentLogLines().takeIf { lines -> lines.any { it.startsWith("server says") } } }
+        nativeLines = listOf("E/nodejs ( 4207): FATAL ERROR: Reached heap limit", "E/nodejs ( 4207): token=$token")
+        val report = """{"header":{"event":"Allocation failed","note":"$token"}}"""
+        File(reportsDir(), "report.20261024.120040.4207.0.001.json").writeText(report)
+
+        servers[0].exit(1)
+        awaitRunning(2)
+
+        val record = records().single()
+        val lines = record.readLines()
+        assertTrue(lines.first().startsWith("${CrashRecords.HEADER} time="))
+        assertTrue(lines.first().contains(" exit=1 uptimeMs="))
+        assertTrue(lines.contains("server says ${RedactingLineSplitter.REDACTED}"))
+        assertTrue(lines.contains("${ServerManager.MARKER} exit code=1"))
+        assertTrue(lines.contains("${CrashRecords.HEADER} native-log tag=nodejs lines=2"))
+        assertTrue(lines.contains("E/nodejs ( 4207): token=${RedactingLineSplitter.REDACTED}"))
+        // Once: the log tail was read before the native lines joined the server log.
+        assertEquals(1, lines.count { it == "E/nodejs ( 4207): FATAL ERROR: Reached heap limit" })
+        val reportHeader = "${CrashRecords.HEADER} node-report file=report.20261024.120040.4207.0.001.json"
+        assertTrue(lines.contains("$reportHeader bytes=${report.length}"))
+        assertTrue(lines.contains("""{"header":{"event":"Allocation failed","note":"[REDACTED]"}}"""))
+        assertEquals("${CrashRecords.HEADER} end", lines.last())
+        assertTrue(manager.recentLogLines().contains("${ServerManager.MARKER} crash-record name=${record.name}"))
+        assertEquals(emptyList<String>(), reportsDir().list()!!.toList())
+        assertFalse(crashDir().walkTopDown().filter { it.isFile }.any { it.readText().contains(token) })
+    }
+
+    @Test
+    fun anExitStatusFromASignalIsRecordedWithTheSignal() {
+        build().start(context)
+        awaitRunning(1)
+
+        servers[0].exit(128 + 11)
+        awaitRunning(2)
+        servers[1].exit(128 + 6)
+        awaitRunning(3)
+
+        val headers = records().map { it.readLines().first() }
+        assertEquals(2, headers.size)
+        assertTrue(headers[0].contains(" exit=134 signal=6 SIGABRT uptimeMs="))
+        assertTrue(headers[1].contains(" exit=139 signal=11 SIGSEGV uptimeMs="))
+    }
+
+    @Test
+    fun aRequestedStopAndACleanExitLeaveNoRecord() {
+        build().start(context)
+        awaitRunning(1)
+        assertTrue(manager.stop(10_000))
+        manager.start(context)
+        awaitRunning(2)
+
+        servers[1].exit(0)
+
+        awaitState("stopped") { it == ServerState.Stopped(userStopped = false) }
+        assertEquals(emptyList<File>(), records())
+        assertFalse(manager.recentLogLines().any { it.contains("crash-record") })
+    }
+
+    @Test
+    fun atMostFiveRecordsStayAndNoReportOutlivesItsRecord() {
+        build().start(context)
+        awaitRunning(1)
+
+        for (count in 1..7) {
+            File(reportsDir(), "report.20261024.120000.${4000 + count}.0.001.json").writeText("""{"n":$count}""")
+            servers[count - 1].exit(1)
+            awaitRunning(count + 1)
+            // Two minutes apart, so the restart policy keeps restarting.
+            clock.addAndGet(2 * 60_000L)
+        }
+
+        val kept = records()
+        assertEquals(CrashRecords.KEEP, kept.size)
+        assertTrue(kept.first().readLines().contains("""{"n":7}"""))
+        assertTrue(kept.last().readLines().contains("""{"n":3}"""))
+        assertEquals(CrashRecords.KEEP, File(crashDir(), "records").list()!!.size)
+        assertEquals(emptyList<String>(), reportsDir().list()!!.toList())
+    }
+
+    @Test
+    fun onlyTheServerGetsNodesReportOptionsWithAPrivateReportDirectory() {
+        build().start(context)
+        awaitRunning(1)
+        assertTrue(manager.stop(10_000))
+        configureScript = { it.exit(0) }
+        assertTrue(manager.runSetup(context, job()))
+        await("finished") { manager.setup.value as? SetupState.Finished }
+
+        assertEquals(
+            ProcessEnvironment.reportOptions(reportsDir()).joinToString(" "),
+            servers.single().spec.environment[ProcessEnvironment.NODE_OPTIONS],
+        )
+        assertTrue(reportsDir().isDirectory)
+        assertFalse(scripts.single().spec.environment.containsKey(ProcessEnvironment.NODE_OPTIONS))
+        // Outside the checkout, whose data/ and config.yaml the DocumentsProvider exposes.
+        assertFalse(crashDir().canonicalPath.startsWith(paths.checkoutDir.canonicalPath + File.separator))
+    }
+
+    @Test
+    fun theSetupNotificationsCancelStopsTheJobAsTheInAppCancelDoes() {
+        build()
+        configureScript = { process -> Thread { process.print("cloning into SillyBunny") }.start() }
+        assertTrue(manager.runSetup(context, job()))
+        await("first line") { (manager.setup.value as? SetupState.Running)?.lines?.takeIf { it.isNotEmpty() } }
+
+        val action = foregroundNotification().actions.single()
+        val cancel = shadowOf(action.actionIntent)
+        assertTrue(cancel.isService)
+        assertTrue(cancel.isImmutable)
+        assertEquals(ServerService.ACTION_CANCEL_SETUP, cancel.savedIntent.action)
+        assertEquals(ServerService::class.java.name, cancel.savedIntent.component!!.className)
+        assertNull(cancel.savedIntent.extras)
+
+        assertEquals(Service.START_NOT_STICKY, deliver(cancel.savedIntent))
+
+        val finished = await("finished") { manager.setup.value as? SetupState.Finished }
+        assertEquals(128 + Signals.SIGTERM, finished.exitCode)
+        assertTrue(finished.cancelled)
+        assertEquals(listOf("group:15"), scripts.single().signals)
+        await("released") { (!inForeground()).takeIf { it } }
+        assertTrue(servers.isEmpty())
+    }
+
+    @Test
+    fun aRepeatedOrLateCancelChangesNothing() {
+        build()
+        configureScript = { process -> Thread { process.print("cloning into SillyBunny") }.start() }
+        assertTrue(manager.runSetup(context, job()))
+        await("first line") { (manager.setup.value as? SetupState.Running)?.lines?.takeIf { it.isNotEmpty() } }
+        val cancel = ServerService.intent(context, ServerService.ACTION_CANCEL_SETUP)
+
+        deliver(cancel)
+        deliver(cancel)
+
+        val finished = await("finished") { manager.setup.value as? SetupState.Finished }
+        assertTrue(finished.cancelled)
+        assertEquals(listOf("group:15"), scripts.single().signals)
+
+        // After the job: the result stays and nothing starts.
+        assertEquals(Service.START_NOT_STICKY, deliver(cancel))
+        settle()
+        assertSame(finished, manager.setup.value)
+        assertEquals(1, scripts.size)
+        assertTrue(servers.isEmpty())
+        assertEquals(listOf(ServerService.ACTION_SETUP), starts)
+
+        // While the server runs: it keeps running, and the service stays sticky and in the foreground.
+        manager.start(context)
+        val running = awaitRunning(1)
+        assertEquals(Service.START_STICKY, deliver(cancel))
+        settle()
+        assertEquals(running, manager.state.value)
+        assertTrue(servers.single().signals.isEmpty())
+        assertTrue(inForeground())
+        assertEquals(RunIntent.RUN, policy().intent)
+    }
+
+    @Test
+    fun aCancelThatReachesANewProcessStartsAndStopsNothing() {
+        // A new process: no job, and a persisted wish to run the server that only a sticky restart may act on.
+        ServerStateStore(context).savePolicy(PolicyState(RunIntent.RUN, emptyList()))
+        build()
+        val cancel = ServerService.intent(context, ServerService.ACTION_CANCEL_SETUP)
+
+        assertEquals(Service.START_NOT_STICKY, deliver(cancel))
+
+        settle()
+        assertEquals(startId, shadowService().stopSelfResultId)
+        assertTrue(starts.isEmpty())
+        assertTrue(servers.isEmpty())
+        assertTrue(scripts.isEmpty())
+        assertEquals(SetupState.Idle, manager.setup.value)
+        assertEquals(PolicyState(RunIntent.RUN, emptyList()), policy())
     }
 
     /** Runs [block] on its own thread, as the APK updater's worker does, and waits for it. */

@@ -63,6 +63,7 @@ internal data class ServerDependencies(
     val portBusyDelayMillis: Long = 400,
     val serviceStarter: ServiceStarter = PLATFORM_STARTER,
     val nativeLog: NativeLog = LogcatNativeLog(),
+    val crashDir: File = File(logsDir.parentFile ?: logsDir, CrashRecords.DIRECTORY),
 ) {
     companion object {
         val PLATFORM_STARTER = ServiceStarter { context, action ->
@@ -89,6 +90,7 @@ internal data class ServerDependencies(
                 versionCode = { installedVersionCode(app) },
                 autoUpdate = { AppSettings(app).autoUpdateGit },
                 lastExitUserRequested = { ExitHistory.lastExitUserRequested(app) },
+                crashDir = CrashRecords.directory(app),
             )
         }
 
@@ -137,6 +139,7 @@ class ServerManager internal constructor(
     private val setupLog = RotatingLogFile(dependencies.logsDir, SETUP_LOG, SETUP_LOG_FILE_BYTES, SETUP_LOG_FILES)
     private val tail = LineTail(TAIL_LINES)
     private val setupTail = LineTail(SETUP_TAIL_LINES)
+    private val crashRecords = CrashRecords(dependencies.crashDir)
     private val main = Handler(Looper.getMainLooper())
     private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "server-host").apply { isDaemon = true }
@@ -160,7 +163,7 @@ class ServerManager internal constructor(
     private val liveScripts = AtomicInteger()
 
     @Volatile
-    private var setupCancel: CancellationSignal? = null
+    private var setupCancel: SetupCancel? = null
 
     // Written on the worker thread only; [run] is also read for diagnostics and after a test shutdown.
     private var policyState: PolicyState = store.loadPolicy()
@@ -256,7 +259,7 @@ class ServerManager internal constructor(
     }
 
     override fun runSetup(context: Context, job: SetupJob): Boolean {
-        val cancel = CancellationSignal()
+        val cancel = SetupCancel()
         val previous: SetupState
         synchronized(lock) {
             if (mode != null) return false
@@ -290,7 +293,7 @@ class ServerManager internal constructor(
     }
 
     override fun cancelSetup() {
-        setupCancel?.cancel()
+        setupCancel?.cancel(byUser = true)
     }
 
     override fun recentLogLines(): List<String> = tail.snapshot()
@@ -305,7 +308,7 @@ class ServerManager internal constructor(
     fun stopForUpdate() {
         try {
             val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(UPDATE_STOP_MILLIS)
-            setupCancel?.cancel()
+            setupCancel?.cancel(byUser = false)
             while (mutableSetup.value is SetupState.Running && System.nanoTime() - deadline < 0) Thread.sleep(50)
             val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
             if (remaining > 0) {
@@ -397,7 +400,7 @@ class ServerManager internal constructor(
         }
         ServerService.ACTION_SETUP -> {
             // A setup job must not run without the service that keeps it alive.
-            if (!service.promote(currentMode() ?: ServiceMode.SETUP)) setupCancel?.cancel()
+            if (!service.promote(currentMode() ?: ServiceMode.SETUP)) setupCancel?.cancel(byUser = false)
             requestRelease()
             Service.START_NOT_STICKY
         }
@@ -405,8 +408,26 @@ class ServerManager internal constructor(
             execute { handleStop() }
             Service.START_NOT_STICKY
         }
+        ServerService.ACTION_CANCEL_SETUP -> onCancelSetupCommand()
         null -> onStickyRecreate()
         else -> {
+            requestRelease()
+            Service.START_NOT_STICKY
+        }
+    }
+
+    /**
+     * The setup notification's Cancel: the in-app cancel path for a running setup job, and nothing else. A late or
+     * repeated tap, or one that reaches a new process, finds no job: it never stops a server or starts anything, and
+     * keeps a running server's sticky start.
+     */
+    private fun onCancelSetupCommand(): Int = when (currentMode()) {
+        ServiceMode.SETUP -> {
+            cancelSetup()
+            Service.START_NOT_STICKY
+        }
+        ServiceMode.SERVER -> Service.START_STICKY
+        null -> {
             requestRelease()
             Service.START_NOT_STICKY
         }
@@ -524,6 +545,9 @@ class ServerManager internal constructor(
         try {
             paths = dependencies.paths()
             prepareDirectories(paths)
+            // Without the directory the server still starts, only without Node's fatal-error report.
+            val reports = crashRecords.prepareReports()
+            if (reports == null) marker("crash-reports unavailable")
             val choice = ports.choose()
             session = LaunchSession(choice.port, LaunchTokens.generate())
             originChanged = choice.originChanged
@@ -533,6 +557,7 @@ class ServerManager internal constructor(
                 dependencies.versionCode(),
                 dependencies.autoUpdate(),
                 session.token,
+                reportDirectory = reports,
             )
             spec = dependencies.launchSpecs.create(paths, session, environment)
         } catch (error: LaunchUnavailableException) {
@@ -601,10 +626,36 @@ class ServerManager internal constructor(
         }
         finishRun(target)
         if (code != 0) {
-            appendNativeLog(target.startedEpochMillis, target.session.token, ::appendServerLine)
+            // Read before the native lines join the log, so the record holds them once.
+            val logTail = CrashRecords.lastLines(
+                serverLog.files(),
+                CrashRecords.MAX_LOG_LINES,
+                CrashRecords.MAX_LOG_BYTES,
+            )
+            val native = nativeLines(target.startedEpochMillis)
+            appendNativeLog(native, target.session.token, ::appendServerLine)
             serverLog.flush()
+            recordCrash(target, code, logTail, native)
+        } else {
+            crashRecords.clearReports()
         }
         applyExit(if (code == 0) ExitKind.Clean else ExitKind.Unexpected(code))
+    }
+
+    /** On the worker, before the exit policy can schedule a restart, so that the next launch cannot race the record. */
+    private fun recordCrash(target: ServerRun, code: Int?, logTail: List<String>, native: List<String>) {
+        val record = crashRecords.write(
+            CrashRecords.Crash(
+                epochMillis = System.currentTimeMillis(),
+                exitCode = code,
+                uptimeMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - target.startedNanos),
+                launchedEpochMillis = target.startedEpochMillis,
+                token = target.session.token,
+                serverLog = logTail,
+                nativeLog = native,
+            ),
+        )
+        marker(if (record != null) "crash-record name=${record.name}" else "crash-record failed")
     }
 
     private fun applyExit(kind: ExitKind) {
@@ -718,7 +769,8 @@ class ServerManager internal constructor(
         val startedEpochMillis = System.currentTimeMillis()
         setupMarker("setup start script=${job.script.name}")
         val code = try {
-            scriptRunner.run(job.script, job.args, job.workingDir, { line -> setupLine(job, line) }, pending.cancel)
+            val onLine = { line: String -> setupLine(job, line) }
+            scriptRunner.run(job.script, job.args, job.workingDir, onLine, pending.cancel.signal)
         } catch (_: IOException) {
             SETUP_START_FAILED
         } catch (_: RuntimeException) {
@@ -726,9 +778,9 @@ class ServerManager internal constructor(
         }
         setupMarker("setup exit code=$code")
         // npm runs on the bundled Node, whose fatal reports go to logcat too.
-        if (code != 0) appendNativeLog(startedEpochMillis, null) { line -> setupLine(job, line) }
+        if (code != 0) appendNativeLog(nativeLines(startedEpochMillis), null) { line -> setupLine(job, line) }
         setupLog.flush()
-        execute { finishSetup(job, code) }
+        execute { finishSetup(job, code, pending.cancel.byUser) }
     }
 
     private fun setupLine(job: SetupJob, line: String) {
@@ -748,10 +800,10 @@ class ServerManager internal constructor(
         tail.add(line)
     }
 
-    private fun finishSetup(job: SetupJob, code: Int) {
+    private fun finishSetup(job: SetupJob, code: Int, cancelled: Boolean) {
         synchronized(lock) {
             setupCancel = null
-            mutableSetup.value = SetupState.Finished(job, code, setupTail.snapshot())
+            mutableSetup.value = SetupState.Finished(job, code, setupTail.snapshot(), cancelled)
             if (mode == ServiceMode.SETUP) mode = null
         }
         requestRelease()
@@ -815,13 +867,15 @@ class ServerManager internal constructor(
         tail.add(line)
     }
 
-    /** Adds Node's logcat-only error reports since [sinceEpochMillis] to a log, redacting [token]. */
-    private fun appendNativeLog(sinceEpochMillis: Long, token: String?, sink: (String) -> Unit) {
-        val lines = try {
-            dependencies.nativeLog.linesSince(sinceEpochMillis)
-        } catch (_: RuntimeException) {
-            emptyList()
-        }
+    /** Node's logcat-only error reports since [sinceEpochMillis]; empty when unavailable. */
+    private fun nativeLines(sinceEpochMillis: Long): List<String> = try {
+        dependencies.nativeLog.linesSince(sinceEpochMillis)
+    } catch (_: RuntimeException) {
+        emptyList()
+    }
+
+    /** Adds [lines], Node's logcat-only error reports, to a log, redacting [token]. */
+    private fun appendNativeLog(lines: List<String>, token: String?, sink: (String) -> Unit) {
         if (lines.isEmpty()) return
         sink("$MARKER native-log tag=${LogcatNativeLog.TAG} lines=${lines.size}")
         val splitter = RedactingLineSplitter(token, onLine = sink)
@@ -860,7 +914,7 @@ class ServerManager internal constructor(
 
     @VisibleForTesting
     internal fun shutdownForTest() {
-        setupCancel?.cancel()
+        setupCancel?.cancel(byUser = false)
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         while (mutableSetup.value is SetupState.Running && System.nanoTime() - deadline < 0) Thread.sleep(50)
         stop(20_000)
@@ -899,7 +953,21 @@ class ServerManager internal constructor(
         }
     }
 
-    private class PendingSetup(val job: SetupJob, val cancel: CancellationSignal)
+    private class PendingSetup(val job: SetupJob, val cancel: SetupCancel)
+
+    /** One setup job's cancel; [byUser] tells a [cancelSetup] from the host's own stops. */
+    private class SetupCancel {
+        val signal = CancellationSignal()
+
+        @Volatile
+        var byUser = false
+            private set
+
+        fun cancel(byUser: Boolean) {
+            if (byUser) this.byUser = true
+            signal.cancel()
+        }
+    }
 
     private enum class UpdateRestore {
         NONE,

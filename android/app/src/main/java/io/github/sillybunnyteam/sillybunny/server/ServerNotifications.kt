@@ -24,6 +24,7 @@ internal object ServerNotifications {
     const val NOTIFICATION_ID = 5401
     private const val REQUEST_STOP = 5402
     private const val REQUEST_OPEN = 5403
+    private const val REQUEST_CANCEL_SETUP = 5404
 
     fun ensureChannel(context: Context) {
         try {
@@ -54,15 +55,17 @@ internal object ServerNotifications {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
-        if (mode == ServiceMode.SERVER) {
-            builder.addAction(
-                Notification.Action.Builder(
-                    Icon.createWithResource(context, R.drawable.ic_server_notification),
-                    context.getString(R.string.server_notification_stop),
-                    stopIntent(context),
-                ).build(),
-            )
+        val (label, action) = when (mode) {
+            ServiceMode.SERVER -> R.string.server_notification_stop to stopIntent(context)
+            ServiceMode.SETUP -> R.string.server_notification_cancel_setup to cancelSetupIntent(context)
         }
+        builder.addAction(
+            Notification.Action.Builder(
+                Icon.createWithResource(context, R.drawable.ic_server_notification),
+                context.getString(label),
+                action,
+            ).build(),
+        )
         return builder.build()
     }
 
@@ -70,6 +73,14 @@ internal object ServerNotifications {
         context,
         REQUEST_STOP,
         ServerService.intent(context, ServerService.ACTION_STOP),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /** Only ever cancels a running setup job ([ServerManager.onStartCommand]); it starts nothing. */
+    fun cancelSetupIntent(context: Context): PendingIntent = PendingIntent.getService(
+        context,
+        REQUEST_CANCEL_SETUP,
+        ServerService.intent(context, ServerService.ACTION_CANCEL_SETUP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 

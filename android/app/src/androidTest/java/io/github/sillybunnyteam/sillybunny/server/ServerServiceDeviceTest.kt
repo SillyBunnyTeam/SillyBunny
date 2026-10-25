@@ -105,9 +105,16 @@ class ServerServiceDeviceTest {
             Procfs.argv(ids.command),
         )
 
-        // Exactly the plan 2.5 environment: nothing inherited beyond the framework roots.
+        // Exactly the plan 2.5 environment with Node's report options: nothing inherited beyond the framework roots.
         val environment = fixture.environmentOf(ids.command)
-        val expected = ProcessEnvironment.build(fixture.paths, System.getenv(), VERSION_CODE, false, running.session.token)
+        val expected = ProcessEnvironment.build(
+            fixture.paths,
+            System.getenv(),
+            VERSION_CODE,
+            false,
+            running.session.token,
+            reportDirectory = CrashRecords(fixture.crashDir).reportsDir,
+        )
         val tokenKey = ProcessEnvironment.LAUNCH_TOKEN
         assertTrue("the session's launch token", environment[tokenKey] == running.session.token)
         assertEquals(

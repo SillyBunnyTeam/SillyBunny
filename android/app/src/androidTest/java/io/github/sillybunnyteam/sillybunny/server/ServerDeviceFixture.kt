@@ -39,6 +39,7 @@ internal class ServerDeviceFixture : Closeable {
         File(context.applicationInfo.nativeLibraryDir),
     )
     val checkout: File = paths.checkoutDir
+    val crashDir = File(paths.filesDir, CrashRecords.DIRECTORY)
     val specs = ShellLaunchSpecs(checkout)
 
     /** Launch-token gates by port; a session on a new port gets one when its spec is created. */
@@ -80,6 +81,7 @@ internal class ServerDeviceFixture : Closeable {
             startupTimeoutMillis = 60_000,
             // A responder already holds its port, which stands in for the server's own listener there.
             portFree = { port -> responders.containsKey(port) || PortPolicy.loopbackPortFree(port) },
+            crashDir = crashDir,
         )
         return ServerManager(context, dependencies).also { ServerManager.replaceForTest(it) }
     }

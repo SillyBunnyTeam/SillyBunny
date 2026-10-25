@@ -16,7 +16,7 @@ import io.github.sillybunnyteam.sillybunny.server.ServiceMode
  *
  * All state lives in [ServerManager]; this class only promotes, leaves the foreground and forwards start
  * commands. It is not exported: only this app's explicit intents, including its own notification's
- * Stop action, reach it. Start it through [ServerManager.start], [ServerManager.restart] or
+ * Stop and Cancel actions, reach it. Start it through [ServerManager.start], [ServerManager.restart] or
  * [ServerManager.runSetup], never directly.
  */
 class ServerService : Service() {
@@ -72,6 +72,7 @@ class ServerService : Service() {
         internal const val ACTION_RESTART = "io.github.sillybunnyteam.sillybunny.action.SERVER_RESTART"
         internal const val ACTION_SETUP = "io.github.sillybunnyteam.sillybunny.action.SERVER_SETUP"
         internal const val ACTION_STOP = "io.github.sillybunnyteam.sillybunny.action.SERVER_STOP"
+        internal const val ACTION_CANCEL_SETUP = "io.github.sillybunnyteam.sillybunny.action.SETUP_CANCEL"
 
         /** An explicit intent carrying only [action]: no extras, so nothing about a session leaves the app. */
         internal fun intent(context: Context, action: String): Intent =

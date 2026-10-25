@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The setup notification's Cancel action (plan Appendix A, Round 5, Q21). Placeholder copy until humans write it. -->
+    <string name="server_notification_cancel_setup">TODO(copy)</string>
+</resources>

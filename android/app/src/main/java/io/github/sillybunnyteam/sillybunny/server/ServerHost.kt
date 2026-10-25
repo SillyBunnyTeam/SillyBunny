@@ -35,7 +35,16 @@ sealed interface SetupState {
     /** [lines] is a bounded tail of merged stdout/stderr for streamed progress. */
     data class Running(val job: SetupJob, val lines: List<String>) : SetupState
 
-    data class Finished(val job: SetupJob, val exitCode: Int, val lines: List<String>) : SetupState
+    /**
+     * [cancelled] is true when [ServerHost.cancelSetup] was called for this job, from the app or from the setup
+     * notification's Cancel action, so a caller tells a cancel from a failure even when it did not ask for it.
+     */
+    data class Finished(
+        val job: SetupJob,
+        val exitCode: Int,
+        val lines: List<String>,
+        val cancelled: Boolean = false,
+    ) : SetupState
 }
 
 /** The single process-wide owner of the server process group (task 5.4). */
@@ -51,7 +60,10 @@ interface ServerHost {
      */
     fun runSetup(context: Context, job: SetupJob): Boolean
 
-    /** Stops the running setup job's whole process group; [setup] then reports it finished. */
+    /**
+     * Stops the running setup job's whole process group; [setup] then reports it finished. The setup notification's
+     * Cancel action calls it too. Without a running job it does nothing.
+     */
     fun cancelSetup()
 
     /** Starts the foreground service. Call only from a visible activity or a user action. */
