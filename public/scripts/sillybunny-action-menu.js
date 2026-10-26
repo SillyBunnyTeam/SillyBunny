@@ -257,6 +257,7 @@ function ensureSheet() {
     element.setAttribute('role', 'dialog');
     element.setAttribute('aria-modal', 'true');
     element.setAttribute('aria-labelledby', SHEET_TITLE_ID);
+    element.tabIndex = -1;
 
     const header = document.createElement('div');
     header.className = 'sb-action-sheet-header';
@@ -265,7 +266,6 @@ function ensureSheet() {
     const title = document.createElement('h2');
     title.id = SHEET_TITLE_ID;
     title.className = 'sb-action-sheet-title';
-    title.tabIndex = -1;
     const subtitle = document.createElement('div');
     subtitle.className = 'sb-action-sheet-subtitle';
     heading.append(title, subtitle);
@@ -279,20 +279,24 @@ function ensureSheet() {
     close.addEventListener('click', () => closeActionMenu({ restoreFocus: true }));
     header.append(heading, close);
 
+    const handle = document.createElement('div');
+    handle.className = 'sb-dialog__handle';
+    handle.setAttribute('aria-hidden', 'true');
     const body = document.createElement('div');
     body.className = 'sb-action-sheet-body';
-    element.append(header, body);
+    element.append(handle, header, body);
     document.body.append(backdrop, element);
 
     const controller = createSheetController({
         sheet: element,
         backdrop,
-        getInitialFocus: () => open?.initialFocus?.() ?? (open?.keyboard ? getItems()[0] : null) ?? title,
+        getInitialFocus: () => open?.initialFocus?.() ?? (open?.keyboard ? getItems()[0] : null) ?? element,
         getReturnFocus: () => (open?.trigger?.isConnected ? open.trigger : null),
         canAnimateClose: () => isMobileLayout(),
         onClose: () => finishClose(),
     });
     sheet = { element, backdrop, title, subtitle, body, controller };
+    bindPopoverSheetSwipe(element, body, () => closeActionMenu({ restoreFocus: true }));
     return sheet;
 }
 
@@ -487,6 +491,24 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
         if (open?.popover === popover) (initialFocus?.() ?? popover)?.focus({ preventScroll: true });
     });
     return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
+}
+
+function bindPopoverSheetSwipe(surface, scrollable, dismiss) {
+    let start = null;
+    surface.addEventListener('pointerdown', event => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (event.button > 0 || !target?.closest('.sb-action-sheet-header, .sb-dialog__handle')) return;
+        start = { id: event.pointerId, y: event.clientY, scrollTop: scrollable.scrollTop };
+    });
+    surface.addEventListener('pointerup', event => {
+        if (!start || start.id !== event.pointerId) return;
+        const distance = event.clientY - start.y;
+        const canDismiss = start.scrollTop <= 0 && distance > Math.min(80, surface.clientHeight * 0.2);
+        start = null;
+        if (canDismiss && !matchMedia('(prefers-reduced-motion: reduce)').matches && !document.body.classList.contains('reduced-motion')) dismiss();
+        else if (canDismiss) dismiss();
+    });
+    surface.addEventListener('pointercancel', () => { start = null; });
 }
 
 export function closeActionMenu({ animate = true, restoreFocus = false } = {}) {

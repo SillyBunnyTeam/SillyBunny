@@ -1062,6 +1062,23 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     padding: 8px 12px;
 }
 
+@media (max-width: 450px), (max-height: 360px) {
+    .sb-selection-action-bar--icon-only-narrow {
+        flex-wrap: nowrap;
+        justify-content: space-evenly;
+    }
+
+    .sb-selection-action-bar--icon-only-narrow .sb-selection-action {
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 44px;
+    }
+
+    .sb-selection-action-bar--icon-only-narrow .sb-selection-action > span {
+        display: none;
+    }
+}
+
 .sb-selection-action.is-danger,
 [data-selection-mode='true'] .sb-selection-action-bar button.menu_button.sb-selection-action.is-danger:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     color: var(--sb-color-danger);

@@ -7,8 +7,21 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
     animateIn: jest.fn(), animateOut: (_node, _frames, hide) => hide(), stopMotion: jest.fn(),
     MOTION_FAST: 0, MOTION_POPOVER_CLOSE: 0, MOTION_EASE_OUT_CUBIC: 'linear',
 }));
+const createSheetController = jest.fn(options => ({
+    open() {
+        options.sheet.hidden = false;
+        options.backdrop.hidden = false;
+        options.getInitialFocus()?.focus();
+    },
+    close({ restoreFocus = true } = {}) {
+        options.sheet.hidden = true;
+        options.backdrop.hidden = true;
+        if (restoreFocus) options.getReturnFocus()?.focus();
+        options.onClose();
+    },
+}));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () => ({
-    blockUpstreamDrawerClose: jest.fn(), createSheetController: jest.fn(),
+    blockUpstreamDrawerClose: jest.fn(), createSheetController,
 }));
 const { openActionMenu, openPopover, closeActionMenu, isActionMenuOpen, positionPopover } = await import('../../public/scripts/sillybunny-action-menu.js');
 let mobileMatches = false;
@@ -78,6 +91,32 @@ describe('action menu optional sections', () => {
         expect(document.activeElement).toBe(input);
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
         expect(document.activeElement).toBe(create);
+    });
+
+    test('popover sheets focus the surface, expose the shared grab handle, and allow a handle swipe', () => {
+        mobileMatches = true;
+        const button = trigger();
+        const content = document.createElement('form');
+        const input = document.createElement('input');
+        content.append(input);
+        openPopover({ trigger: button, content, title: 'Create' });
+
+        const sheet = document.querySelector('.sb-action-sheet');
+        const title = sheet.querySelector('.sb-action-sheet-title');
+        const handle = sheet.querySelector('.sb-dialog__handle');
+        expect(sheet).not.toBeNull();
+        expect(document.activeElement).toBe(sheet);
+        expect(document.activeElement).not.toBe(title);
+        expect(handle).not.toBeNull();
+        const down = new Event('pointerdown', { bubbles: true });
+        const up = new Event('pointerup', { bubbles: true });
+        for (const [event, clientY] of [[down, 0], [up, 120]]) {
+            Object.defineProperties(event, { pointerId: { value: 1 }, clientY: { value: clientY }, button: { value: 0 } });
+        }
+        handle.dispatchEvent(down);
+        handle.dispatchEvent(up);
+        expect(sheet.hidden).toBe(true);
+        expect(document.activeElement).toBe(button);
     });
 
     test('can keep a nested action menu as a popover on mobile', () => {

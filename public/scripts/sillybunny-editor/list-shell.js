@@ -50,6 +50,7 @@ function cssEscape(value) {
  * @param {(key: unknown) => HTMLElement|null} [config.findRow] Row to refocus after closing.
  * @param {(detail: HTMLElement) => HTMLElement|null} [config.focusTarget] Element focused after opening.
  * @param {(detail: HTMLElement) => HTMLElement|null} [config.fadeTarget]  Element faded when switching items.
+ * @param {boolean} [config.transitionItemSwitch=true] Cross-fades the detail when switching between open items.
  * @param {(info: LayoutInfo) => unknown} [config.measureLayout] Layout reads, run before shell writes.
  * @param {(measurement: unknown, info: LayoutInfo) => void} [config.applyLayout] Layout writes.
  * @param {(collapsed: boolean) => void} [config.onCollapseChange]
@@ -81,6 +82,7 @@ export function createListEditor(config) {
         findRow = null,
         focusTarget = null,
         fadeTarget = null,
+        transitionItemSwitch = true,
         measureLayout = null,
         applyLayout = null,
         onCollapseChange = null,
@@ -293,11 +295,11 @@ export function createListEditor(config) {
 
     /**
      * @param {unknown} item
-     * @param {{ guard?: boolean, force?: boolean, isCurrent?: () => boolean }} [options] `guard: false` skips the leave guard
+     * @param {{ guard?: boolean, force?: boolean, isCurrent?: () => boolean, transition?: boolean }} [options] `guard: false` skips the leave guard
      *   (the caller already ran it); `force` re-renders when the same key is already open.
      * @returns {Promise<boolean>} Whether this selection is now displayed.
      */
-    async function selectItem(item, { guard = true, force = false, isCurrent: requestIsCurrent = () => true } = {}) {
+    async function selectItem(item, { guard = true, force = false, isCurrent: requestIsCurrent = () => true, transition = transitionItemSwitch } = {}) {
         if (!requestIsCurrent()) return false;
         const key = getKey(item);
         if (isOpen && Object.is(key, selectedKey) && !force) return true;
@@ -326,7 +328,7 @@ export function createListEditor(config) {
         if (!wasOpen) navigate(true, startWidth);
         else {
             const target = fadeTarget?.(detail) ?? detail;
-            if (target) play(target, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
+            if (transition && target) play(target, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
         }
         onSelect?.(item);
         const focus = focusTarget ? focusTarget(detail) : detail.querySelector('[autofocus], input, button');

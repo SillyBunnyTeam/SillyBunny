@@ -100,6 +100,7 @@ This is the largest class by a wide margin.
 - **Breaks:** moving Chat History controls into a shared Window can lose the original cleanup tree, leave dynamically created backup nodes behind, or return focus to a detached mobile sheet action.
 - **Guard:** record source parents, sibling positions, child order and hidden state before adoption; restore the source before removing the page and use a connected mobile chat-chip fallback when the sheet opener is disposed. Keep backup visibility driven by the list-page parent state.
 - **Tests:** `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/mobile-character-toggle-and-panels.e2e.js`.
+- **Adopted search inputs:** restore a caller's input to its original parent and sibling on page teardown, remove only frame-added classes and attributes, and unbind frame listeners. Reuse must retain one input callback and the shared Ctrl/Cmd+F and type-to-search behavior; Escape clears before closing only when `escapeClearsFirst` is opted in. Destroying active header-slot selection must restore the real title and controls without stealing focus from a closing dialog. Tests: `tests/unit/sillybunny-dialog.test.js`; `tests/sillybunny-overlays.e2e.js`.
 
 ### Cache, boot and reload
 

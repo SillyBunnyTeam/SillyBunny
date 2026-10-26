@@ -167,3 +167,180 @@ test('a dialog opened from a dialog is pushed as a page with Back and Close', as
     await thirdChild.locator('.sb-dialog__close').click();
     await expect(page.locator('.sb-dialog-host[open]')).toHaveCount(0);
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`header-slot selection mode has no overlap at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+        await prepare(page, viewport);
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            const { createSelectionMode } = await import('/scripts/sillybunny-editor/selection-mode.js');
+            const content = document.createElement('div');
+            const opener = document.createElement('button');
+            opener.id = 'qa-selection-opener';
+            opener.textContent = 'Open';
+            content.append(opener);
+            const list = document.createElement('div');
+            const row = document.createElement('div');
+            row.dataset.sbListKey = 'one';
+            row.textContent = 'One';
+            list.append(row);
+            const inertHeader = document.createElement('div');
+            const actionBar = document.createElement('div');
+            content.append(inertHeader, list, actionBar);
+            window.qaDialog = openDialog({ title: 'Archive', content, menu: () => [], search: { collapsed: true, onChange() {} } });
+            const slots = {
+                header: window.qaDialog.header,
+                headerStart: window.qaDialog.headerStart,
+                headerEnd: window.qaDialog.headerEnd,
+                titleNode: window.qaDialog.titleNode,
+                search: window.qaDialog.search,
+                menuButton: window.qaDialog.menuButton,
+                closeButton: window.qaDialog.closeButton,
+            };
+            window.qaSelection = createSelectionMode({ root: content, list, header: inertHeader, actionBar, actions: [], headerSlots: slots });
+            opener.focus();
+            window.qaSelection.enter(null, opener);
+        });
+        const header = page.locator('.sb-dialog-host[open] .sb-dialog__header');
+        const cancel = header.getByRole('button', { name: 'Cancel', exact: true });
+        const selectAll = header.getByRole('button', { name: 'Select all', exact: true });
+        const close = header.getByRole('button', { name: 'Close', exact: true });
+        const title = header.locator('.sb-dialog__selection-title');
+        await expect(cancel).toBeVisible();
+        await expect(title).toHaveText('0 selected');
+        await expect(selectAll).toBeVisible();
+        await expect(close).toBeVisible();
+        await expect(header.locator('.sb-dialog__search-toggle')).toBeHidden();
+        await expect(header.locator('.sb-dialog__menu')).toBeHidden();
+        await expect.poll(() => title.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+        const boxes = await Promise.all([cancel, title, selectAll, close].map(locator => locator.boundingBox()));
+        for (let left = 0; left < boxes.length; left++) {
+            for (let right = left + 1; right < boxes.length; right++) {
+                const a = boxes[left];
+                const b = boxes[right];
+                expect(a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1 || a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1).toBe(true);
+            }
+        }
+        await page.screenshot({ path: `/tmp/opencode/4b7a-shots-2/selection-${viewport.width}.png` });
+        await cancel.click();
+        await expect(header.locator('.sb-dialog__search-toggle')).toBeVisible();
+        await expect(header.locator('.sb-dialog__menu')).toBeVisible();
+        await expect(close).toBeVisible();
+        await expect(page.locator('#qa-selection-opener')).toBeFocused();
+        await page.evaluate(() => { window.qaSelection.destroy(); window.qaDialog.forceClose(); });
+    });
+}
+
+test('narrow selection actions stay on one row with accessible names', async ({ page }) => {
+    await prepare(page, { width: 390, height: 844 });
+    await page.evaluate(async () => {
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        const { createSelectionMode } = await import('/scripts/sillybunny-editor/selection-mode.js');
+        const content = document.createElement('div');
+        const list = document.createElement('div');
+        const row = document.createElement('div');
+        row.dataset.sbListKey = 'one';
+        row.textContent = 'One';
+        list.append(row);
+        const header = document.createElement('div');
+        const actionBar = document.createElement('div');
+        content.append(header, list, actionBar);
+        window.qaDialog = openDialog({ title: 'Archive', content });
+        window.qaSelection = createSelectionMode({ root: content, list, header, actionBar, iconOnlyAtNarrow: true, actions: [
+            { id: 'one', label: 'Restore', icon: 'fa-solid fa-rotate-left', onActivate() {} },
+            { id: 'two', label: 'Export', icon: 'fa-solid fa-download', onActivate() {} },
+            { id: 'three', label: 'Delete', icon: 'fa-solid fa-trash', onActivate() {} },
+        ] });
+        window.qaSelection.enter();
+    });
+    const actionBar = page.getByRole('toolbar', { name: 'Selection actions' });
+    await expect(actionBar).toBeVisible();
+    const buttons = actionBar.getByRole('button');
+    await expect(buttons).toHaveCount(3);
+    const positions = await buttons.evaluateAll(nodes => nodes.map(node => ({ top: node.getBoundingClientRect().top, name: node.getAttribute('aria-label') })));
+    expect(positions.every(position => position.name && Math.abs(position.top - positions[0].top) <= 1)).toBe(true);
+    const distribution = await actionBar.evaluate(node => getComputedStyle(node).justifyContent);
+    expect(distribution).toBe('space-evenly');
+    const sizes = await buttons.evaluateAll(nodes => nodes.map(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })));
+    expect(sizes.every(size => size.width >= 44 && size.height >= 44)).toBe(true);
+    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/icon-action-bar-390.png' });
+    await page.evaluate(() => { window.qaSelection.destroy(); window.qaDialog.forceClose(); });
+});
+
+test('popover sheet swipe closes and content scrolling does not', async ({ page }) => {
+    await prepare(page, { width: 390, height: 844 });
+    await page.evaluate(async () => {
+        const { openPopover } = await import('/scripts/sillybunny-action-menu.js');
+        const trigger = document.createElement('button');
+        trigger.id = 'qa-popover-trigger';
+        trigger.textContent = 'Open menu';
+        document.body.append(trigger);
+        const content = document.createElement('div');
+        content.style.cssText = 'height: 1000px; overflow: auto';
+        content.innerHTML = '<div style="height: 1800px">Scrollable content</div>';
+        window.qaPopover = openPopover({ trigger, content, title: 'Actions' });
+    });
+    const sheet = page.locator('.sb-action-sheet');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.locator('.sb-action-sheet-title')).not.toBeFocused();
+    expect(await sheet.evaluate(node => getComputedStyle(node.querySelector('.sb-action-sheet-title')).boxShadow)).toBe('none');
+    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/popover-sheet-390.png' });
+    await sheet.locator('.sb-action-sheet-body').evaluate(node => { node.scrollTop = 0; });
+    await sheet.locator('.sb-action-sheet-body').hover();
+    await page.mouse.wheel(0, 150);
+    await expect(sheet).toBeVisible();
+    await sheet.locator('.sb-dialog__handle').evaluate(node => {
+        const y = node.getBoundingClientRect().top + 5;
+        node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7, pointerType: 'touch', clientY: y, button: 0 }));
+        node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, pointerType: 'touch', clientY: y + 120, button: 0 }));
+    });
+    await expect(sheet).toBeHidden();
+    await expect(page.locator('#qa-popover-trigger')).toBeFocused();
+    await page.evaluate(() => document.getElementById('qa-popover-trigger').remove());
+});
+
+test('adopted search entry shares styling with a built-in entry', async ({ page }) => {
+    await prepare(page, { width: 1440, height: 900 });
+    await page.evaluate(async () => {
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        const adopted = document.createElement('input');
+        adopted.type = 'text';
+        adopted.setAttribute('aria-label', 'Adopted search');
+        const content = document.createElement('div');
+        content.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:16px';
+        const builtInLabel = document.createElement('label');
+        builtInLabel.textContent = 'Built-in entry';
+        builtInLabel.style.cssText = 'display:grid;gap:6px;max-width:480px';
+        const builtIn = document.createElement('input');
+        builtIn.type = 'search';
+        builtIn.className = 'text_pole sb-dialog__entry sb-dialog__search-input';
+        builtIn.setAttribute('aria-label', 'Built-in search');
+        builtInLabel.append(builtIn);
+        content.append(builtInLabel);
+        window.qaDialog = openDialog({ title: 'Search comparison', content, search: { input: adopted, label: 'Adopted search', onChange() {} } });
+        const adoptedLabel = document.createElement('span');
+        adoptedLabel.textContent = 'Adopted entry';
+        adoptedLabel.style.cssText = 'padding:6px 10px;font-weight:700';
+        window.qaDialog.searchInput.closest('.sb-dialog__search').prepend(adoptedLabel);
+        document.activeElement.blur();
+    });
+    const adopted = page.getByRole('searchbox', { name: 'Adopted search' });
+    const builtin = page.getByRole('searchbox', { name: 'Built-in search' });
+    await expect(adopted).toBeVisible();
+    await expect(builtin).toBeVisible();
+    const metrics = async locator => locator.evaluate(node => {
+        const style = getComputedStyle(node);
+        return { height: style.height, padding: style.padding, borderRadius: style.borderRadius, fontSize: style.fontSize, background: style.backgroundColor, border: style.borderColor };
+    });
+    const adoptedRest = await metrics(adopted);
+    const builtinRest = await metrics(builtin);
+    expect(adoptedRest).toEqual(builtinRest);
+    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/adopted-search-1440.png' });
+    await adopted.focus();
+    const adoptedFocused = await metrics(adopted);
+    await builtin.focus();
+    const builtinFocused = await metrics(builtin);
+    expect(adoptedFocused).toEqual(builtinFocused);
+    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/adopted-search-focused-1440.png' });
+    await page.evaluate(() => window.qaDialog.forceClose());
+});

@@ -66,6 +66,8 @@ export function createSelectionMode({
     canEnter = () => true,
     onChange = null,
     onExit = null,
+    headerSlots = null,
+    iconOnlyAtNarrow = false,
 }) {
     if (!(root instanceof HTMLElement) || !(list instanceof HTMLElement) || !(header instanceof HTMLElement) || !(actionBar instanceof HTMLElement)) {
         throw new TypeError('createSelectionMode requires root, list, header, and actionBar elements');
@@ -78,10 +80,12 @@ export function createSelectionMode({
     let longPressTimer = 0;
     let longPressState = null;
     let suppressNextClick = false;
+    let headerState = null;
     root.dataset.selectionMode = 'false';
     header.hidden = true;
     actionBar.hidden = true;
     actionBar.classList.add('sb-selection-action-bar');
+    actionBar.classList.toggle('sb-selection-action-bar--icon-only-narrow', iconOnlyAtNarrow);
     actionBar.setAttribute('role', 'toolbar');
     actionBar.setAttribute('aria-label', t`Selection actions`);
 
@@ -135,6 +139,47 @@ export function createSelectionMode({
     }
 
     function renderHeader() {
+        if (headerSlots?.header && headerSlots.headerStart && headerSlots.headerEnd && headerSlots.titleNode) {
+            const { headerStart, headerEnd, titleNode, search, header } = headerSlots;
+            const originalFocus = document.activeElement;
+            const managed = [...headerStart.children, ...headerEnd.children].filter(node => node !== headerSlots.closeButton);
+            headerState = {
+                title: titleNode.textContent,
+                titleHidden: titleNode.hidden,
+                headerHidden: header.hidden,
+                searchOpen: Boolean(search?.isOpen),
+                searchQuery: search?.query ?? '',
+                focus: originalFocus instanceof HTMLElement ? originalFocus : null,
+                managed: managed.map(node => ({ node, hidden: node.hidden })),
+            };
+            search?.close();
+            for (const node of managed) node.hidden = true;
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'menu_button sb-selection-cancel sb-dialog__selection-cancel';
+            cancel.textContent = t`Cancel`;
+            cancel.addEventListener('click', exit);
+            const selectAllButton = document.createElement('button');
+            selectAllButton.type = 'button';
+            selectAllButton.className = 'menu_button sb-selection-select-all sb-dialog__selection-select-all';
+            selectAllButton.textContent = selectAllLabel;
+            selectAllButton.addEventListener('click', () => {
+                const keys = allKeys();
+                if (areAllSelected(keys)) {
+                    const pageKeys = new Set(keys);
+                    updateSelection(new Set([...selected].filter(key => !pageKeys.has(key))));
+                } else selectAll();
+            });
+            headerSlots.cancelButton = cancel;
+            headerSlots.selectAllButton = selectAllButton;
+            headerStart.append(cancel);
+            headerEnd.prepend(selectAllButton);
+            headerSlots.selectionTitle = titleNode;
+            titleNode.classList.add('sb-dialog__selection-title');
+            titleNode.textContent = title(selected.size);
+            headerSlots.header?.classList.add('is-selection-mode');
+            return;
+        }
         const row = document.createElement('div');
         row.className = 'sb-selection-header';
 
@@ -164,7 +209,7 @@ export function createSelectionMode({
         });
         row.append(cancel, heading, selectAllButton);
         header.replaceChildren(row);
-        header.hidden = false;
+        if (!headerSlots) header.hidden = false;
     }
 
     function renderActionBar() {
@@ -177,6 +222,8 @@ export function createSelectionMode({
             button.classList.toggle('is-danger', Boolean(action.danger));
             button.disabled = selected.size === 0;
             button.append(createIcon(action.icon));
+            button.setAttribute('aria-label', action.label);
+            button.title = action.label;
             const label = document.createElement('span');
             label.textContent = action.label;
             button.append(label);
@@ -197,7 +244,8 @@ export function createSelectionMode({
         if (heading) {
             heading.textContent = title(selected.size);
         }
-        const selectAllButton = header.querySelector('.sb-selection-select-all');
+        if (headerSlots?.selectionTitle) headerSlots.selectionTitle.textContent = title(selected.size);
+        const selectAllButton = headerSlots?.selectAllButton ?? header.querySelector('.sb-selection-select-all');
         selectAllButton?.setAttribute('aria-pressed', String(areAllSelected(allKeys())));
         for (const button of actionBar.querySelectorAll('.sb-selection-action')) {
             button.disabled = selected.size === 0;
@@ -233,10 +281,10 @@ export function createSelectionMode({
         renderActionBar();
         render();
         emitChange();
-        header.querySelector('.sb-selection-cancel')?.focus({ preventScroll: true });
+        (headerSlots?.cancelButton ?? header.querySelector('.sb-selection-cancel'))?.focus({ preventScroll: true });
     }
 
-    function exit() {
+    function exit({ restoreFocus = true, notify = true } = {}) {
         if (!active) {
             return;
         }
@@ -249,21 +297,37 @@ export function createSelectionMode({
             row.classList.remove('is-selection-selected');
             removeCheck(row);
         }
-        header.hidden = true;
+        if (!headerSlots) header.hidden = true;
         actionBar.hidden = true;
-        header.replaceChildren();
+        if (headerState && headerSlots) {
+            headerSlots.cancelButton?.remove();
+            headerSlots.selectAllButton?.remove();
+            for (const { node, hidden } of headerState.managed) node.hidden = hidden;
+            if (headerSlots.selectionTitle) headerSlots.selectionTitle.textContent = headerState.title;
+            headerSlots.selectionTitle?.classList.remove('sb-dialog__selection-title');
+            headerSlots.selectionTitle.hidden = headerState.titleHidden;
+            headerSlots.header.hidden = headerState.headerHidden;
+            headerSlots.header?.classList.remove('is-selection-mode');
+            if (headerState.searchOpen) {
+                headerSlots.search?.open();
+                headerSlots.search?.setQuery(headerState.searchQuery);
+            }
+            const focusTarget = headerState.focus?.isConnected ? headerState.focus : focusReturn;
+            headerState = null;
+            if (restoreFocus && focusTarget instanceof HTMLElement && focusTarget.isConnected) focusTarget.focus({ preventScroll: true });
+        } else header.replaceChildren();
         actionBar.replaceChildren();
         selected = new Set();
         anchorKey = null;
         if (hadSelection) {
             emitChange();
         }
-        onExit?.();
+        if (notify) onExit?.();
         const target = focusReturn?.isConnected ? focusReturn : list;
         if (target === list && !list.hasAttribute('tabindex')) {
             list.tabIndex = -1;
         }
-        target?.focus?.({ preventScroll: true });
+        if (!headerSlots) target?.focus?.({ preventScroll: true });
         focusReturn = null;
     }
 
@@ -483,19 +547,13 @@ export function createSelectionMode({
             list.removeEventListener('keydown', handleKeydown, true);
             list.removeEventListener('contextmenu', handleContextMenu);
             root.removeEventListener('keydown', handleRootKeydown, true);
-            if (active) {
-                active = false;
-                root.dataset.selectionMode = 'false';
-                for (const row of rows()) {
-                    row.classList.remove('is-selection-selected');
-                    removeCheck(row);
-                }
-            }
-            header.hidden = true;
+            if (active) exit({ restoreFocus: false, notify: false });
+            if (!headerSlots) header.hidden = true;
             actionBar.hidden = true;
-            header.replaceChildren();
+            if (!headerSlots) header.replaceChildren();
             actionBar.replaceChildren();
             actionBar.classList.remove('sb-selection-action-bar');
+            actionBar.classList.remove('sb-selection-action-bar--icon-only-narrow');
             actionBar.removeAttribute('role');
             actionBar.removeAttribute('aria-label');
             selected = new Set();

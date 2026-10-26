@@ -229,6 +229,26 @@ describe('createListEditor', () => {
             expect(config.renderList).toHaveBeenCalledWith(expect.any(FakeElement));
         });
 
+        test('selectItem can skip its detail cross-fade per call or editor', async () => {
+            const config = makeConfig({ fadeTarget: detail => detail });
+            const editor = createListEditor(config);
+            await editor.selectItem('first');
+            mockPlay.mockClear();
+            await editor.selectItem('default-transition', { guard: false });
+            expect(mockPlay).toHaveBeenCalledWith(editor.detail, expect.anything(), expect.objectContaining({ duration: 200 }));
+            mockPlay.mockClear();
+            await editor.selectItem('second', { guard: false, transition: false });
+            expect(mockPlay).not.toHaveBeenCalledWith(editor.detail, expect.anything(), expect.objectContaining({ duration: 200 }));
+            editor.destroy();
+
+            const noTransition = createListEditor(makeConfig({ fadeTarget: detail => detail, transitionItemSwitch: false }));
+            await noTransition.selectItem('first');
+            mockPlay.mockClear();
+            await noTransition.selectItem('second', { guard: false });
+            expect(mockPlay).not.toHaveBeenCalledWith(noTransition.detail, expect.anything(), expect.objectContaining({ duration: 200 }));
+            noTransition.destroy();
+        });
+
         test('exposes expected public API', () => {
             const config = makeConfig();
             const editor = createListEditor(config);

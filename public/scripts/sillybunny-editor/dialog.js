@@ -54,7 +54,7 @@ function icon(glyph) {
     return node;
 }
 
-function iconButton(label, glyph, className) {
+export function createIconButton(label, glyph, className = '') {
     const node = element('button', `sb-dialog__icon-button ${className}`);
     node.type = 'button';
     node.title = label;
@@ -456,18 +456,18 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
             buttons.set(id, node);
         }
     } else if (nested) {
-        const back = iconButton(t`Back`, 'arrow-left', 'sb-dialog__back');
+        const back = createIconButton(t`Back`, 'arrow-left', 'sb-dialog__back');
         back.addEventListener('click', () => onBack());
         start.append(back);
     }
     if (menu) {
-        menuButton = iconButton(menuLabel, 'ellipsis-vertical', 'sb-dialog__menu');
+        menuButton = createIconButton(menuLabel, 'ellipsis-vertical', 'sb-dialog__menu');
         menuButton.setAttribute('aria-haspopup', 'menu');
         menuButton.setAttribute('aria-expanded', 'false');
         end.prepend(menuButton);
     }
     if (!responses) {
-        closeButton = iconButton(t`Close`, 'xmark', 'sb-dialog__close');
+        closeButton = createIconButton(t`Close`, 'xmark', 'sb-dialog__close');
         closeButton.addEventListener('click', () => onResponse('close', 'close'));
         end.append(closeButton);
     }
@@ -475,40 +475,72 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
     let searchControl = null;
     let searchInput = null;
     let searchToggle = null;
+    let restoreAdoptedInput = null;
+    let searchKeydownHandler = null;
     const status = element('div', 'sb-dialog__status');
     status.setAttribute('aria-live', 'polite');
     const body = element('div', 'sb-dialog__body');
     const syncHeaderShade = () => header.toggleAttribute('data-scrolled', body.scrollTop > 0);
     body.addEventListener('scroll', syncHeaderShade, { passive: true });
     if (search) {
-        searchToggle = iconButton(t`Search`, 'magnifying-glass', 'sb-dialog__search-toggle');
+        searchToggle = createIconButton(t`Search`, 'magnifying-glass', 'sb-dialog__search-toggle');
         const field = element('label', 'sb-dialog__search');
         field.hidden = Boolean(search.collapsed);
         const entry = element('span', 'sb-dialog__search-entry');
-        searchInput = /** @type {HTMLInputElement} */ (element('input', 'text_pole sb-dialog__entry sb-dialog__search-input'));
-        searchInput.type = 'search';
-        searchInput.setAttribute('role', 'searchbox');
-        searchInput.placeholder = search.placeholder ?? t`Search`;
-        searchInput.setAttribute('aria-label', search.label ?? t`Search`);
+        const adoptedInput = search.input instanceof HTMLInputElement;
+        if (adoptedInput) {
+            const originalParent = search.input.parentNode;
+            const originalNextSibling = search.input.nextSibling;
+            const originalAttributes = new Set([...search.input.attributes].map(attribute => attribute.name));
+            const addedClasses = ['text_pole', 'sb-dialog__entry', 'sb-dialog__search-input']
+                .filter(className => !search.input.classList.contains(className));
+            restoreAdoptedInput = () => {
+                search.input.classList.remove(...addedClasses);
+                for (const attribute of [...search.input.attributes]) {
+                    if (!originalAttributes.has(attribute.name)) search.input.removeAttribute(attribute.name);
+                }
+                if (originalParent) {
+                    originalParent.insertBefore(
+                        search.input,
+                        originalNextSibling?.parentNode === originalParent ? originalNextSibling : null,
+                    );
+                } else search.input.remove();
+            };
+        }
+        searchInput = adoptedInput
+            ? search.input
+            : /** @type {HTMLInputElement} */ (element('input', 'text_pole sb-dialog__entry sb-dialog__search-input'));
+        searchInput.classList.add('text_pole', 'sb-dialog__entry', 'sb-dialog__search-input');
+        if (!searchInput.hasAttribute('type')) searchInput.type = 'search';
+        if (!searchInput.hasAttribute('role')) searchInput.setAttribute('role', 'searchbox');
+        if (!searchInput.hasAttribute('placeholder')) searchInput.placeholder = search.placeholder ?? t`Search`;
+        if (!searchInput.hasAttribute('aria-label') && !searchInput.hasAttribute('aria-labelledby')) {
+            searchInput.setAttribute('aria-label', search.label ?? t`Search`);
+        }
+        if (!searchInput.hasAttribute('aria-autocomplete') && search.ariaAutocomplete) searchInput.setAttribute('aria-autocomplete', search.ariaAutocomplete);
+        if (!searchInput.hasAttribute('aria-controls') && search.ariaControls) searchInput.setAttribute('aria-controls', search.ariaControls);
+        if (!searchInput.hasAttribute('enterkeyhint') && search.enterKeyHint) searchInput.enterKeyHint = search.enterKeyHint;
         field.id = uid('sb-dialog-search');
         entry.append(icon('magnifying-glass'), searchInput);
         field.append(entry);
         page.append(field);
         (start.childElementCount ? end : start).append(searchToggle);
-        searchInput.addEventListener('keydown', event => {
+        searchKeydownHandler = event => {
             if (event.key !== 'Escape' || event.isComposing) return;
             event.preventDefault();
             event.stopImmediatePropagation();
+            if (search.onEscape?.(event)) return;
             if (search.escapeClearsFirst && searchInput.value) searchControl.clear();
             else {
                 searchControl.close();
                 if (nested) onBack?.('escape');
             }
-        }, true);
+        };
+        searchInput.addEventListener('keydown', searchKeydownHandler, true);
         searchControl = createListSearch({
             field, input: searchInput, trigger: searchToggle, scope: page, scroller: body, status,
             typeToSearchSelector: search.typeToSearchSelector,
-            escapeClearsFirst: true,
+            escapeClearsFirst: Boolean(search.escapeClearsFirst),
             debounce: search.debounce ?? 0, onChange: query => search.onChange?.(query),
         });
         searchToggle.addEventListener('click', () => searchControl.toggle());
@@ -546,6 +578,8 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
             body.removeEventListener('scroll', syncHeaderShade);
             unbindHeaderLayout();
             searchControl?.destroy();
+            if (searchKeydownHandler) searchInput?.removeEventListener('keydown', searchKeydownHandler, true);
+            restoreAdoptedInput?.();
         },
     };
 }
@@ -558,7 +592,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * @param {string} o.title
  * @param {string} [o.subtitle]
  * @param {HTMLElement|((body: HTMLElement) => void)} [o.content]
- * @param {{ placeholder?: string, label?: string, debounce?: number, onChange: (query: string) => void }|null} [o.search]
+ * @param {{ placeholder?: string, label?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, onEscape?: (event: KeyboardEvent) => boolean, onChange: (query: string) => void }|null} [o.search]
  * @param {((trigger: HTMLElement) => object[])|null} [o.menu] Sections for openActionMenu.
  * @param {string} [o.menuLabel]
  * @param {null|{ cancel?: { label?: string }, affirmative?: { id?: string, label: string, appearance?: 'suggested'|'destructive', enabled?: boolean }, extra?: { id: string, label: string }[] }} [o.responses]
@@ -722,6 +756,12 @@ export function openDialog({
     function handleFor(view) {
         return {
             header: view.header,
+            headerStart: view.header.querySelector(':scope > .sb-dialog__header-start'),
+            headerEnd: view.header.querySelector(':scope > .sb-dialog__header-end'),
+            titles: view.header.querySelector(':scope > .sb-dialog__titles'),
+            titleNode: view.titleNode,
+            menuButton: view.menuButton,
+            closeButton: view.closeButton,
             body: view.body,
             search: view.search,
             searchInput: view.searchInput,

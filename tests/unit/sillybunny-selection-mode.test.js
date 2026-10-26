@@ -83,6 +83,40 @@ function pointer(target, type, options = {}) {
 }
 
 describe('selection mode', () => {
+    test('header slots hide and restore header controls and search state, then return focus', () => {
+        const dialogHeader = document.createElement('header');
+        const start = document.createElement('div');
+        const end = document.createElement('div');
+        const titleNode = document.createElement('h2');
+        titleNode.textContent = 'Chats';
+        const searchToggle = document.createElement('button');
+        const menuButton = document.createElement('button');
+        const closeButton = document.createElement('button');
+        start.append(searchToggle);
+        end.append(menuButton, closeButton);
+        dialogHeader.append(start, titleNode, end);
+        document.body.append(dialogHeader);
+        const search = { isOpen: true, query: 'term', close: jest.fn(() => { search.isOpen = false; }), open: jest.fn(() => { search.isOpen = true; }), setQuery: jest.fn() };
+        const { selection, list } = makeSelection({ headerSlots: { header: dialogHeader, headerStart: start, headerEnd: end, titleNode, search, menuButton, closeButton } });
+        const originalFocus = document.createElement('button');
+        document.body.append(originalFocus);
+        originalFocus.focus();
+
+        selection.enter();
+        expect(search.close).toHaveBeenCalled();
+        expect([searchToggle.hidden, menuButton.hidden, closeButton.hidden]).toEqual([true, true, false]);
+        expect(dialogHeader.classList.contains('is-selection-mode')).toBe(true);
+        expect(start.querySelector('.sb-selection-cancel')).not.toBeNull();
+        expect(end.querySelector('.sb-selection-select-all')).not.toBeNull();
+        selection.exit();
+        expect([searchToggle.hidden, menuButton.hidden, closeButton.hidden]).toEqual([false, false, false]);
+        expect(search.open).toHaveBeenCalled();
+        expect(search.setQuery).toHaveBeenCalledWith('term');
+        expect(dialogHeader.classList.contains('is-selection-mode')).toBe(false);
+        expect(document.activeElement).toBe(originalFocus);
+        expect(list).toBeTruthy();
+    });
+
     test('starts inactive without filling the header or action bar', () => {
         const { selection, root, header, actionBar } = makeSelection();
 
@@ -156,6 +190,8 @@ describe('selection mode', () => {
         expect(button.disabled).toBe(true);
         expect(button.classList.contains('is-danger')).toBe(true);
         expect(button.dataset.actionId).toBe('remove');
+        expect(button.getAttribute('aria-label')).toBe('Remove');
+        expect(button.title).toBe('Remove');
         expect(button.querySelector('i').getAttribute('aria-hidden')).toBe('true');
         button.click();
         expect(onActivate).not.toHaveBeenCalled();

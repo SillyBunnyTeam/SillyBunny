@@ -330,6 +330,13 @@ for (const width of [1440, 390]) {
             await expect(search).toHaveValue('');
             await expect(filteredRows).toHaveCount(17);
 
+            await search.fill('QA History Chat 01');
+            await expect(filteredRows).toHaveCount(1);
+            await search.press('Escape');
+            await expect(search).toBeHidden();
+            await expect(frame.locator('.sb-dialog__search-input')).toHaveValue('');
+            await expect(filteredRows).toHaveCount(17);
+
             const deleteRow = frame.locator('#select_chat_div .select_chat_block_wrapper').filter({ hasText: 'QA History Renamed' });
             await deleteRow.locator('.PastChat_cross').click();
             const confirm = page.locator('dialog[role="alertdialog"]');

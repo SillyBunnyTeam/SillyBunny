@@ -7742,6 +7742,34 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     min-width: 0;
 }
 
+.sb-dialog__header.is-selection-mode .sb-dialog__titles {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.sb-dialog__header.is-selection-mode .sb-dialog__header-start,
+.sb-dialog__header.is-selection-mode .sb-dialog__header-end {
+    grid-row: 1;
+}
+
+.sb-dialog__header.is-selection-mode .sb-dialog__selection-cancel,
+.sb-dialog__header.is-selection-mode .sb-dialog__selection-select-all {
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
+}
+
+.sb-dialog__header.is-selection-mode .sb-dialog__selection-title {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sb-dialog__header-start {
     justify-content: flex-start;
     justify-self: start;
@@ -8100,7 +8128,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     height: 100%;
 }
 
-.sb-dialog-host[data-presentation='sheet'] .sb-dialog__handle {
+:is(.sb-dialog-host[data-presentation='sheet'] .sb-dialog, .sb-action-sheet) > .sb-dialog__handle {
     display: block;
     position: absolute;
     z-index: 2;
@@ -8111,7 +8139,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     touch-action: none;
 }
 
-.sb-dialog-host[data-presentation='sheet'] .sb-dialog__handle::before {
+:is(.sb-dialog-host[data-presentation='sheet'] .sb-dialog, .sb-action-sheet) > .sb-dialog__handle::before {
     content: '';
     position: absolute;
     inset: 8px 19px auto;
