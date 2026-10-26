@@ -98,7 +98,7 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await page.keyboard.press('Escape');
             await openMenu(page);
             await shot(page, 'menu');
-            await expectScrollsIntoView(page.getByRole('menuitem', { name: 'Manage organization' }), 'Manage organization in the menu');
+            await expectScrollsIntoView(page.getByRole('menuitem', { name: 'Manage Organization' }), 'Manage Organization in the menu');
             await page.keyboard.press('Escape');
 
             await openRow(page, 'Alice - Long saga');
@@ -107,7 +107,7 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await expectCleanLayout(page, 'detail', '.sbca-detail-page');
             await page.locator('.sbca-msg').nth(2).scrollIntoViewIfNeeded();
             await shot(page, 'detail-messages');
-            await page.getByRole('button', { name: 'Latest messages' }).click();
+            await page.getByRole('button', { name: 'Latest Messages' }).click();
             await expectReachable(page, page.locator('.sbca-msg').last(), 'the last message');
             const metadata = page.locator('.sbca-messages-group > .ds-row-expander');
             await expectReachable(page, metadata.locator('summary'), 'Metadata');
@@ -115,7 +115,7 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await expectReachable(page, metadata.locator('.sbca-json'), 'the metadata JSON');
             await goBack(page);
 
-            await openMenuItem(page, 'Select chats');
+            await openMenuItem(page, 'Select Chats');
             for (const index of [0, 1, 2]) await rows(page).nth(index).click();
             await shot(page, 'selection');
             await expectCleanLayout(page, 'selection');
@@ -134,17 +134,17 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             }
             await page.keyboard.press('Escape');
 
-            await openMenuItem(page, 'Manage organization');
+            await openMenuItem(page, 'Manage Organization');
             await shot(page, 'organization');
             await expectCleanLayout(page, 'organization', '.sbca-organization-page');
             await goBack(page);
 
-            await openMenuItem(page, 'Find orphaned files');
+            await openMenuItem(page, 'Find Orphaned Files');
             await scan.started;
             await expect(page.locator('.sbca-banner')).toBeVisible();
             await shot(page, 'banner');
             await expectCleanLayout(page, 'scan banner');
-            await page.locator('.sbca-banner').getByRole('button', { name: 'Stop scan' }).click();
+            await page.locator('.sbca-banner').getByRole('button', { name: 'Stop Scan' }).click();
             scan.release();
             await expect(page.locator('.sbca-banner')).toContainText('Scan stopped.');
             await expect(page.locator('.sbca-banner').getByRole('button')).toBeHidden();
@@ -155,7 +155,7 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await openArchive(page);
             await showList(page);
             await expect(rows(page)).toHaveCount(100);
-            const more = page.getByRole('button', { name: 'Show 42 more' });
+            const more = page.getByRole('button', { name: 'Show 42 More' });
             await expectReachable(page, rows(page).nth(99), 'the hundredth row');
             await expectReachable(page, more, 'Show more');
             await more.click();
@@ -184,7 +184,7 @@ for (const viewport of WIDE_VIEWPORTS) {
         expect(Math.abs(sidebar.y - list.y)).toBeLessThanOrEqual(1);
         expect(sidebar.width).toBeGreaterThanOrEqual(220);
         await expect(page.locator('.sbca-location[aria-pressed="true"]')).toHaveCount(1);
-        await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('TODO(copy)');
+        await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('All Chats');
     });
 }
 
@@ -224,7 +224,7 @@ test.describe('the selection title on a phone', () => {
         await bootArchive(page, PHONE, { fixture: bigFixture() });
         await openArchive(page);
         await showList(page);
-        await openMenuItem(page, 'Select chats');
+        await openMenuItem(page, 'Select Chats');
         const title = page.locator('.sbca-dialog .sb-dialog__header.is-selection-mode .sb-dialog__title');
         const fits = () => title.evaluate(node => node.scrollWidth <= node.clientWidth);
         await expect(title).toHaveText('0 selected');

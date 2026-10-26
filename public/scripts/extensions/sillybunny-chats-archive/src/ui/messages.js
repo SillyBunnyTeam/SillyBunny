@@ -64,10 +64,10 @@ function buildMessage(ctx, message) {
     }
     card.append(head, el('div', 'sbca-msg-text', message.mes));
     if (message.alternatives.length > 0) {
-        card.append(jsonExpander(ctx, 'Response alternatives', message.alternatives, 'alternatives'));
+        card.append(jsonExpander(ctx, 'Response Alternatives', message.alternatives, 'alternatives'));
     }
     if (message.extra && Object.keys(message.extra).length > 0) {
-        card.append(jsonExpander(ctx, 'Extension data', message.extra, 'extension-data'));
+        card.append(jsonExpander(ctx, 'Extension Data', message.extra, 'extension-data'));
     }
     return card;
 }
@@ -82,7 +82,7 @@ function buildRawView(ctx, raw, messages) {
     const view = el('pre', 'sbca-raw');
     view.id = `sbca_raw_${nextRenderId()}`;
     view.hidden = true;
-    const toggle = flatButton(tr(ctx, 'Show raw file'));
+    const toggle = flatButton(tr(ctx, 'Show Raw File'));
     toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-controls', view.id);
     toggle.addEventListener('click', () => {
@@ -98,7 +98,7 @@ function buildRawView(ctx, raw, messages) {
             messages.hidden = showRaw;
         }
         toggle.setAttribute('aria-expanded', String(showRaw));
-        toggle.querySelector('.sbca-button-copy').textContent = tr(ctx, showRaw && messages ? 'Show messages' : showRaw ? 'Hide raw file' : 'Show raw file');
+        toggle.querySelector('.sbca-button-copy').textContent = tr(ctx, showRaw && messages ? 'Show Messages' : showRaw ? 'Hide Raw File' : 'Show Raw File');
     });
     return { view, toggle };
 }
@@ -120,14 +120,14 @@ export function buildMessagesGroup(ctx, state, { raw, shaped }) {
     const messages = el('div', 'sbca-messages');
     const messageList = el('div', 'sbca-message-list');
     messageList.setAttribute('role', 'list');
-    messageList.setAttribute('aria-label', tr(ctx, 'Chat messages'));
+    messageList.setAttribute('aria-label', tr(ctx, 'Chat Messages'));
 
     const showPage = pageStart => {
         messages.replaceChildren();
         messageList.replaceChildren();
         if (pageStart > 0) {
             const count = Math.min(MESSAGE_PAGE_SIZE, pageStart);
-            messages.append(pagerRow(tr(ctx, 'Show {count} earlier messages', { count }), 'angles-up',
+            messages.append(pagerRow(tr(ctx, 'Show {count} Earlier Messages', { count }), 'angles-up',
                 () => showPage(Math.max(0, pageStart - MESSAGE_PAGE_SIZE))?.focus({ preventScroll: true })));
         }
         messages.append(messageList);
@@ -145,7 +145,7 @@ export function buildMessagesGroup(ctx, state, { raw, shaped }) {
         }
         if (end < total) {
             const count = Math.min(MESSAGE_PAGE_SIZE, total - end);
-            messages.append(pagerRow(tr(ctx, 'Show {count} more messages', { count }), 'angles-down',
+            messages.append(pagerRow(tr(ctx, 'Show {count} More Messages', { count }), 'angles-down',
                 () => showPage(end)?.focus({ preventScroll: true })));
         }
         return firstCard;
@@ -160,7 +160,7 @@ export function buildMessagesGroup(ctx, state, { raw, shaped }) {
     const { view, toggle } = buildRawView(ctx, raw, messages);
     const headerActions = [];
     if (total > MESSAGE_PAGE_SIZE) {
-        const latest = flatButton(tr(ctx, 'Latest messages'), 'angles-down');
+        const latest = flatButton(tr(ctx, 'Latest Messages'), 'angles-down');
         latest.addEventListener('click', () => {
             const card = showPage(total - MESSAGE_PAGE_SIZE);
             card?.focus({ preventScroll: true });
@@ -173,7 +173,7 @@ export function buildMessagesGroup(ctx, state, { raw, shaped }) {
     group.append(messages, view);
     const metadata = shaped.header?.chat_metadata;
     if (metadata && Object.keys(metadata).length > 0) {
-        group.append(jsonExpander(ctx, 'Chat metadata', metadata, 'metadata'));
+        group.append(jsonExpander(ctx, 'Chat Metadata', metadata, 'metadata'));
     }
     return {
         section: group.section,

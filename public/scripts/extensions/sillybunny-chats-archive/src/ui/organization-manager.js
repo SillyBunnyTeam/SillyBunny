@@ -12,9 +12,9 @@ import { commitOrganizationChange, loadOrganization, refreshOrganizationUI } fro
 import { applySavedView, currentSavedView } from './saved-views.js';
 
 const NAMED_GROUPS = [
-    ['folders', 'Folders', 'Folder name'],
-    ['collections', 'Collections', 'Collection name'],
-    ['views', 'Saved views', 'View name'],
+    ['folders', 'Folders', 'Folder Name'],
+    ['collections', 'Collections', 'Collection Name'],
+    ['views', 'Saved Views', 'View Name'],
 ];
 
 function createOrganizationId() {
@@ -70,8 +70,8 @@ function buildNamedManager(ctx, state, ui, type, title, inputLabel) {
 }
 
 function buildBackupGroup(ctx) {
-    const exportRow = createButtonRow({ label: tr(ctx, 'Export organization'), icon: 'file-export', field: 'backup-export' });
-    const importRow = createButtonRow({ label: tr(ctx, 'Import organization'), icon: 'file-import', field: 'backup-import' });
+    const exportRow = createButtonRow({ label: tr(ctx, 'Export Organization'), icon: 'file-export', field: 'backup-export' });
+    const importRow = createButtonRow({ label: tr(ctx, 'Import Organization'), icon: 'file-import', field: 'backup-import' });
     const retryRow = createButtonRow({ label: tr(ctx, 'Retry'), icon: 'rotate-right', field: 'backup-retry' });
     retryRow.row.hidden = true;
     markOrganizationControl(exportRow.row);
@@ -80,7 +80,7 @@ function buildBackupGroup(ctx) {
     fileInput.accept = '.json,application/json';
     fileInput.hidden = true;
     const status = formStatus();
-    const group = createPrefGroup({ title: tr(ctx, 'Organization backup'), field: 'backup', rows: [exportRow, importRow, retryRow] });
+    const group = createPrefGroup({ title: tr(ctx, 'Organization Backup'), field: 'backup', rows: [exportRow, importRow, retryRow] });
     group.section.append(fileInput, status);
     return {
         section: group.section,

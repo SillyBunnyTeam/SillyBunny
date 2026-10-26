@@ -4,7 +4,7 @@ import { createButtonRow, createCheckRow, createEntryRow, createRow, releaseRowI
 import { createSelectRow } from '../../../../sillybunny-editor/select-row.js';
 import { t } from '../../../../i18n.js';
 import { KINDS, ORPHAN_REASONS, SEARCH_DEBOUNCE_MS } from './constants.js';
-import { appendOption, el, markPlaceholder, placeholderCopy, tr } from './dom.js';
+import { appendOption, el, tr } from './dom.js';
 import {
     countFromText,
     countText,
@@ -17,10 +17,10 @@ import { commitModel } from './saved-views.js';
 import { filtersActive, resetFilters } from './view-model.js';
 
 const NUMBER_FIELDS = [
-    { field: 'minSize', parse: sizeFromMebibytes, format: mebibytesText, step: 'any' },
-    { field: 'maxSize', parse: sizeFromMebibytes, format: mebibytesText, step: 'any' },
-    { field: 'minMessages', parse: countFromText, format: countText, step: '1' },
-    { field: 'maxMessages', parse: countFromText, format: countText, step: '1' },
+    { field: 'minSize', label: 'Minimum Size (MiB)', parse: sizeFromMebibytes, format: mebibytesText, step: 'any' },
+    { field: 'maxSize', label: 'Maximum Size (MiB)', parse: sizeFromMebibytes, format: mebibytesText, step: 'any' },
+    { field: 'minMessages', label: 'Minimum Messages', parse: countFromText, format: countText, step: '1' },
+    { field: 'maxMessages', label: 'Maximum Messages', parse: countFromText, format: countText, step: '1' },
 ];
 
 function suffixInput(type, label) {
@@ -56,7 +56,7 @@ function buildFilters(ctx, state, ui) {
     reasonSelect.value = state.model.orphan;
     const reasonRow = createSelectRow({
         select: reasonSelect,
-        label: tr(ctx, 'Orphan reason'),
+        label: tr(ctx, 'Orphan Reason'),
         field: 'filter-orphan-reason',
         noneLabel: tr(ctx, 'Any reason'),
         bounds: ui.dialog.surface,
@@ -93,22 +93,21 @@ function buildFilters(ctx, state, ui) {
         onInput: value => commitSoon('tag', () => commit({ tag: value.trim() })),
     });
 
-    const dateInputs = [['minDate', 'From date', false], ['maxDate', 'To date', true]].map(([field, label, endOfDay]) => {
+    const dateInputs = [['minDate', 'From Date', false], ['maxDate', 'To Date', true]].map(([field, label, endOfDay]) => {
         const input = suffixInput('date', tr(ctx, label));
         input.value = dateInputText(state.model[field]);
         input.addEventListener('change', () => commit({ [field]: dateFromInput(input.value, endOfDay) }));
         return { field, input, row: createRow({ label: tr(ctx, label), field: `filter-${field}`, suffix: input }) };
     });
 
-    const numberInputs = NUMBER_FIELDS.map(({ field, parse, format, step }) => {
-        const input = suffixInput('number', placeholderCopy());
+    const numberInputs = NUMBER_FIELDS.map(({ field, label, parse, format, step }) => {
+        const input = suffixInput('number', tr(ctx, label));
         input.min = '0';
         input.step = step;
         input.inputMode = step === '1' ? 'numeric' : 'decimal';
         input.value = format(state.model[field]);
         input.addEventListener('input', () => commitSoon(field, () => commit({ [field]: parse(input.value) })));
-        const { row } = createRow({ label: placeholderCopy(), field: `filter-${field}`, suffix: input });
-        markPlaceholder(row.querySelector('.ds-row-label'));
+        const { row } = createRow({ label: tr(ctx, label), field: `filter-${field}`, suffix: input });
         return { field, input, format, row };
     });
 

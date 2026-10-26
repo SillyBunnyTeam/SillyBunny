@@ -17,14 +17,14 @@ export function createSearchField(ctx) {
     input.id = `sbca_search_${nextRenderId()}`;
     input.type = 'search';
     input.setAttribute('role', 'combobox');
-    input.setAttribute('aria-label', tr(ctx, 'Search indexed chats'));
+    input.setAttribute('aria-label', tr(ctx, 'Search Indexed Chats'));
     input.placeholder = tr(ctx, 'Type to search chats. Mention character names with @.');
     input.autocomplete = 'off';
     input.enterKeyHint = 'search';
     const menu = el('div', 'sbca-mention-menu');
     menu.id = `sbca_mentions_${nextRenderId()}`;
     menu.setAttribute('role', 'listbox');
-    menu.setAttribute('aria-label', tr(ctx, 'Character mentions'));
+    menu.setAttribute('aria-label', tr(ctx, 'Character Mentions'));
     menu.hidden = true;
     input.setAttribute('aria-controls', menu.id);
     input.setAttribute('aria-expanded', 'false');

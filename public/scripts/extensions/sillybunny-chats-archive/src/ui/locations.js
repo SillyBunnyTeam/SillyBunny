@@ -1,5 +1,5 @@
 import { filterRows, ownerFilterKey, parseOwnerFilter, physicalChatKey } from '../core.js';
-import { placeholderCopy, tr } from './dom.js';
+import { tr } from './dom.js';
 import { ownerLabel } from './rows.js';
 import {
     currentLocation,
@@ -122,7 +122,7 @@ export function buildLocations(ctx, { base, catalog, model, organization, search
             organizational: true,
         }));
 
-    const all = make('all', '', placeholderCopy(), totals.all, { icon: 'fa-inbox', placeholder: true });
+    const all = make('all', '', tr(ctx, 'All Chats'), totals.all, { icon: 'fa-inbox' });
     const favorites = make('favorites', '', tr(ctx, 'Favorites'), totals.favorites, { icon: 'fa-star' });
     const orphans = make('orphan', '', tr(ctx, 'Orphaned'), totals.orphan, { icon: 'fa-triangle-exclamation', organizational: true });
     const unavailable = [];
@@ -132,7 +132,7 @@ export function buildLocations(ctx, { base, catalog, model, organization, search
         const count = filterRows(base, { owner: selected.value }, organization).length;
         unavailable.push(make('owner', selected.value, label, { ...emptyStats(), count }, {
             icon: identity?.kind === 'group' ? 'fa-users' : 'fa-user-slash',
-            hint: tr(ctx, !identity ? 'Saved filter' : identity.kind === 'character' ? 'Character unavailable' : 'Group unavailable'),
+            hint: tr(ctx, !identity ? 'Saved Filter' : identity.kind === 'character' ? 'Character Unavailable' : 'Group Unavailable'),
         }));
     }
 
@@ -150,7 +150,7 @@ export function buildLocations(ctx, { base, catalog, model, organization, search
         { id: 'folders', heading: tr(ctx, 'Folders'), entries: sorted(folderEntries, [unfiled]) },
         { id: 'collections', heading: tr(ctx, 'Collections'), entries: sorted(collectionEntries) },
         { id: 'orphans', heading: '', entries: [orphans].filter(visible) },
-        { id: 'unavailable', heading: placeholderCopy(), placeholder: true, entries: unavailable.filter(visible) },
+        { id: 'unavailable', heading: tr(ctx, 'Unavailable'), entries: unavailable.filter(visible) },
     ].filter(section => section.entries.length > 0);
 
     const shown = sections.flatMap(section => section.entries);

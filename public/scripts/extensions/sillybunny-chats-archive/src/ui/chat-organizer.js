@@ -93,7 +93,7 @@ export function buildOrganizeGroup(ctx, state, row, ui) {
         label: collection.name,
         field: `collection-${collection.id}`,
         icon: 'layer-group',
-        removeLabel: tr(ctx, 'Remove collection {name}', { name: collection.name }),
+        removeLabel: tr(ctx, 'Remove Collection {name}', { name: collection.name }),
         focusKey: focusKey('collection', collection.id),
         fallbackKey: focusKey('collection'),
         onRemove: () => mutate(next => {
@@ -102,7 +102,7 @@ export function buildOrganizeGroup(ctx, state, row, ui) {
     }));
 
     const tagInput = document.createElement('input');
-    const tagAdd = button('menu_button', tr(ctx, 'Add tags'));
+    const tagAdd = button('menu_button', tr(ctx, 'Add Tags'));
     markOrganizationControl(tagInput, tagInputKey);
     markOrganizationControl(tagAdd, focusKey('tag-add'), tagInputKey);
     const addTags = () => {
@@ -132,7 +132,7 @@ export function buildOrganizeGroup(ctx, state, row, ui) {
         label: tag,
         field: `tag-${tag}`,
         icon: 'tag',
-        removeLabel: tr(ctx, 'Remove tag {name}', { name: tag }),
+        removeLabel: tr(ctx, 'Remove Tag {name}', { name: tag }),
         focusKey: focusKey('tag', tag),
         fallbackKey: tagInputKey,
         onRemove: () => mutate(next => {
@@ -141,7 +141,7 @@ export function buildOrganizeGroup(ctx, state, row, ui) {
     }));
 
     const group = createPrefGroup({
-        title: tr(ctx, 'Organize chat'),
+        title: tr(ctx, 'Organize Chat'),
         field: 'organize',
         rows: [folderRow, collectionRow, ...collectionRows, tagEntry, ...tagRows],
     });

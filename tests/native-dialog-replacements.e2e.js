@@ -234,8 +234,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.evaluate(async () => await window.SillyBunnyShell.openTab('characters', 'characters'));
             await page.locator('#sbca_drawer_button').click();
             await expect(page.locator('.sbca-dialog')).toBeVisible();
-            await openMenuItem(page, 'Manage organization');
-            const savedViews = page.locator('.sbca-organization-content section').filter({ has: page.getByRole('heading', { name: 'Saved views' }) });
+            await openMenuItem(page, 'Manage Organization');
+            const savedViews = page.locator('.sbca-organization-content section').filter({ has: page.getByRole('heading', { name: 'Saved Views' }) });
             const deleteView = savedViews.getByRole('button', { name: 'Delete Fixture view' });
             await deleteView.click();
 

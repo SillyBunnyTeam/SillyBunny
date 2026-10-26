@@ -315,16 +315,18 @@ describe('sidebar locations', () => {
         const model = createViewModel({ owner: ghost });
         const result = locations(model);
         const unavailable = result.sections.find(section => section.id === 'unavailable');
+        expect(unavailable.heading).toBe('Unavailable');
+        expect(result.sections[0].entries[0].label).toBe('All Chats');
         expect(unavailable.entries).toHaveLength(1);
-        expect(unavailable.entries[0]).toMatchObject({ type: 'owner', value: ghost, label: 'Ghost', count: 0, selected: true, hint: 'Character unavailable' });
+        expect(unavailable.entries[0]).toMatchObject({ type: 'owner', value: ghost, label: 'Ghost', count: 0, selected: true, hint: 'Character Unavailable' });
         expect(result.fallback).toBe(false);
         expect(modelToView(model, '', organization).owner).toBe(ghost);
 
         const missingGroup = createViewModel({ owner: '@sbca:["group","gone"]' });
         const group = locations(missingGroup).sections.find(section => section.id === 'unavailable');
-        expect(group.entries[0].hint).toBe('Group unavailable');
+        expect(group.entries[0].hint).toBe('Group Unavailable');
         const foreign = locations(createViewModel({ owner: 'Somebody' })).sections.find(section => section.id === 'unavailable');
-        expect(foreign.entries[0].hint).toBe('Saved filter');
+        expect(foreign.entries[0].hint).toBe('Saved Filter');
     });
 
     test('a selected owner whose chats the Filters empty is not reported unavailable, only hidden', () => {

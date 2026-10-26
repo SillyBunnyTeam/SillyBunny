@@ -210,29 +210,29 @@ describe('Messages group', () => {
         expect(MESSAGE_PAGE_SIZE).toBe(100);
         const list = document.querySelector('.sbca-message-list');
         expect(list.getAttribute('role')).toBe('list');
-        expect(list.getAttribute('aria-label')).toBe('Chat messages');
+        expect(list.getAttribute('aria-label')).toBe('Chat Messages');
         expect(cards()).toHaveLength(100);
         expect(cards()[0].textContent).toContain('Message 1');
-        expect(button('Show 100 more messages')).toBeDefined();
-        expect(button('Show 100 earlier messages')).toBeUndefined();
+        expect(button('Show 100 More Messages')).toBeDefined();
+        expect(button('Show 100 Earlier Messages')).toBeUndefined();
 
-        button('Show 100 more messages').click();
+        button('Show 100 More Messages').click();
         expect(cards()).toHaveLength(100);
         expect(cards()[0].textContent).toContain('Message 101');
-        expect(button('Show 100 earlier messages')).toBeDefined();
+        expect(button('Show 100 Earlier Messages')).toBeDefined();
         expect(document.activeElement).toBe(cards()[0]);
 
-        button('Latest messages').click();
+        button('Latest Messages').click();
         expect(cards()).toHaveLength(100);
         expect(cards().at(-1).textContent).toContain('Message 250');
-        expect(button('Show 100 more messages')).toBeUndefined();
+        expect(button('Show 100 More Messages')).toBeUndefined();
         expect(document.activeElement).toBe(cards()[0]);
     });
 
-    test('a short chat has no paging and no Latest messages button', async () => {
+    test('a short chat has no paging and no Latest Messages button', async () => {
         await messagesGroup(chat(5));
         expect(cards()).toHaveLength(5);
-        expect(button('Latest messages')).toBeUndefined();
+        expect(button('Latest Messages')).toBeUndefined();
         expect(document.querySelector('.sbca-pager')).toBeNull();
     });
 
@@ -248,7 +248,7 @@ describe('Messages group', () => {
         expect(cards()[3].querySelector('.sbca-role').textContent).toBe('System');
         expect(cards()[2].textContent).toContain('2 response alternatives');
         const details = cards()[2].querySelectorAll('details');
-        expect([...details].map(node => node.querySelector('summary').textContent)).toEqual(['Response alternatives', 'Extension data']);
+        expect([...details].map(node => node.querySelector('summary').textContent)).toEqual(['Response Alternatives', 'Extension Data']);
         expect(cards()[2].querySelector('.sbca-json')).toBeNull();
         details[1].open = true;
         await settle();
@@ -279,10 +279,10 @@ describe('Messages group', () => {
         expect(document.querySelector('.sbca-pager')).toBeNull();
     });
 
-    test('Show raw file swaps the messages for the raw text and back', async () => {
+    test('Show Raw File swaps the messages for the raw text and back', async () => {
         const raw = chat(3);
         await messagesGroup(raw);
-        const toggle = button('Show raw file');
+        const toggle = button('Show Raw File');
         const view = document.querySelector('.sbca-raw');
         expect(view.hidden).toBe(true);
         expect(toggle.getAttribute('aria-controls')).toBe(view.id);
@@ -291,7 +291,7 @@ describe('Messages group', () => {
         expect(view.textContent).toBe(raw);
         expect(document.querySelector('.sbca-messages').hidden).toBe(true);
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
-        expect(toggle.textContent).toBe('Show messages');
+        expect(toggle.textContent).toBe('Show Messages');
         toggle.click();
         expect(view.hidden).toBe(true);
         expect(document.querySelector('.sbca-messages').hidden).toBe(false);
@@ -300,7 +300,7 @@ describe('Messages group', () => {
     test('a raw file past the preview limit is cut and says how to get the rest', async () => {
         const raw = chat(2, { mutate: (record, index) => ({ ...record, mes: index === 0 ? 'x'.repeat(RAW_PREVIEW_CHARS) : record.mes }) });
         await messagesGroup(raw);
-        button('Show raw file').click();
+        button('Show Raw File').click();
         const text = document.querySelector('.sbca-raw').textContent;
         expect(text.startsWith(raw.slice(0, RAW_PREVIEW_CHARS))).toBe(true);
         expect(text.length).toBeLessThan(raw.length);
@@ -309,7 +309,7 @@ describe('Messages group', () => {
 
     test('chat metadata is an expander that renders its JSON on first open only', async () => {
         await messagesGroup(chat(2));
-        const metadata = [...document.querySelectorAll('.sbca-messages-group > details')].find(node => node.textContent.includes('Chat metadata'));
+        const metadata = [...document.querySelectorAll('.sbca-messages-group > details')].find(node => node.textContent.includes('Chat Metadata'));
         expect(metadata.querySelector('.sbca-json')).toBeNull();
         metadata.open = true;
         await settle();
@@ -331,12 +331,12 @@ describe('Messages group', () => {
         document.body.append(section);
         const warning = section.querySelector('[role="alert"]');
         expect(warning.textContent).toContain('This file contains invalid JSONL. You can still download or inspect the original file.');
-        const toggle = button('Show raw file');
+        const toggle = button('Show Raw File');
         const view = section.querySelector('.sbca-raw');
         expect(view.hidden).toBe(true);
         toggle.click();
         expect(view.textContent).toBe(raw);
-        expect(toggle.textContent).toBe('Hide raw file');
+        expect(toggle.textContent).toBe('Hide Raw File');
         expect(section.querySelector('.sbca-message-list')).toBeNull();
     });
 });

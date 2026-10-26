@@ -10,7 +10,7 @@ export function syncBusyControls(ctx, state, ui) {
     if ((bannerAction.dataset.task ?? '') !== task) {
         bannerAction.dataset.task = task;
         bannerAction.disabled = false;
-        bannerAction.textContent = tr(ctx, task === 'scan' ? 'Stop scan' : 'Cancel');
+        bannerAction.textContent = tr(ctx, task === 'scan' ? 'Stop Scan' : 'Cancel');
     }
     bannerAction.hidden = task !== 'load' && task !== 'scan';
     if (task) {

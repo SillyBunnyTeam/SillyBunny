@@ -71,7 +71,7 @@ function openFolderMenu(ctx, state, ui, trigger) {
             },
             {
                 items: [{
-                    label: tr(ctx, 'Clear folder'),
+                    label: tr(ctx, 'Clear Folder'),
                     icon: 'fa-solid fa-folder-minus',
                     onSelect: () => mutate(metadata => {
                         delete metadata.folder;
@@ -89,7 +89,7 @@ function openCollectionsMenu(ctx, state, ui, trigger) {
         ? [{ items: [{ label: tr(ctx, 'None yet.'), disabled: true, onSelect: () => {} }] }]
         : [
             {
-                title: tr(ctx, 'Add collection'),
+                title: tr(ctx, 'Add Collection'),
                 items: collections.map(collection => ({
                     label: collection.name,
                     onSelect: () => mutate(metadata => {
@@ -98,7 +98,7 @@ function openCollectionsMenu(ctx, state, ui, trigger) {
                 })),
             },
             {
-                title: tr(ctx, 'Remove collection'),
+                title: tr(ctx, 'Remove Collection'),
                 items: collections.map(collection => ({
                     label: collection.name,
                     onSelect: () => mutate(metadata => {
@@ -115,11 +115,11 @@ function openTagsPopover(ctx, state, ui, trigger) {
     const content = el('div', 'sbca-batch-tags');
     const input = document.createElement('input');
     input.className = 'text_pole';
-    input.setAttribute('aria-label', tr(ctx, 'Tags (comma-separated)'));
+    input.setAttribute('aria-label', tr(ctx, 'Tags (Comma-Separated)'));
     input.placeholder = tr(ctx, 'Tags (comma-separated)');
     const actions = el('div', 'sbca-popover-actions');
-    const add = button('menu_button menu_button_primary', tr(ctx, 'Add tags'));
-    const remove = button('menu_button', tr(ctx, 'Remove tags'));
+    const add = button('menu_button menu_button_primary', tr(ctx, 'Add Tags'));
+    const remove = button('menu_button', tr(ctx, 'Remove Tags'));
     const apply = mutation => {
         if (commaValues(input.value).length === 0) {
             return;

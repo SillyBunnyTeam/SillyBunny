@@ -248,7 +248,7 @@ export const drawerButton = page => page.locator('#sbca_drawer_button');
 export const dialog = page => page.locator('.sbca-dialog');
 export const rows = page => page.locator('.sbca-row');
 export const filenames = page => page.locator('.sbca-filename');
-export const search = page => page.getByRole('combobox', { name: 'Search indexed chats' });
+export const search = page => page.getByRole('combobox', { name: 'Search Indexed Chats' });
 
 /** The header search starts collapsed behind its toggle; open it the way a user does. */
 export async function openSearch(page) {

@@ -1,5 +1,3 @@
-import { t } from '../../../../i18n.js';
-
 export function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) {
@@ -80,14 +78,4 @@ export function showCount(ui) {
     const text = ui.selection?.isActive ? '' : ui.countText ?? '';
     ui.dialog.setSubtitle(text);
     ui.listPage?.setSubtitle(text);
-}
-
-/** Copy the maintainers have not supplied yet; markup that shows it also calls `markPlaceholder`. */
-export function placeholderCopy() {
-    return t`TODO(copy)`;
-}
-
-export function markPlaceholder(node) {
-    node.dataset.sbCopyPlaceholder = 'true';
-    return node;
 }

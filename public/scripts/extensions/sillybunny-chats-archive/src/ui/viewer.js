@@ -7,7 +7,7 @@ import { exportChat, fetchArchiveFile } from '../api.js';
 import { jumpToChat } from '../ui-navigation.js';
 import { cancelViewer } from './cancellation.js';
 import { buildOrganizeGroup, mutateChatMetadata } from './chat-organizer.js';
-import { button, el, markPlaceholder, placeholderCopy, setStatus, tr } from './dom.js';
+import { button, el, setStatus, tr } from './dom.js';
 import { downloadChat } from './downloads.js';
 import { markOrganizationControl, organizationFocusKey } from './focus.js';
 import { buildMessagesGroup, buildRawOnlyGroup } from './messages.js';
@@ -49,12 +49,8 @@ function showViewerPage(ctx, state, ui, row) {
     });
 }
 
-function propertyRow(label, value, field, { placeholder = false } = {}) {
-    const property = createPropertyRow({ label, value, field });
-    if (placeholder) {
-        markPlaceholder(property.row.querySelector('.ds-row-subtitle'));
-    }
-    return property.row;
+function propertyRow(label, value, field) {
+    return createPropertyRow({ label, value, field }).row;
 }
 
 function buildSummaryGroup(ctx, row) {
@@ -63,15 +59,13 @@ function buildSummaryGroup(ctx, row) {
         rows.push(propertyRow(tr(ctx, 'Messages'), String(row.count), 'messages'));
     }
     if (row.sizeText) {
-        rows.push(propertyRow(placeholderCopy(), row.sizeText, 'size', { placeholder: true }));
+        rows.push(propertyRow(tr(ctx, 'Size'), row.sizeText, 'size'));
     }
     if (row.mtime) {
-        const label = row.source === 'archive-orphan' ? tr(ctx, 'Modified') : tr(ctx, 'Last message');
+        const label = row.source === 'archive-orphan' ? tr(ctx, 'Modified') : tr(ctx, 'Last Message');
         rows.push(propertyRow(label, new Date(row.mtime).toLocaleString(), 'last-message'));
     }
-    const group = createPrefGroup({ title: placeholderCopy(), field: 'summary', rows });
-    markPlaceholder(group.section.querySelector('.ds-pref-group-heading'));
-    return group.section;
+    return createPrefGroup({ title: tr(ctx, 'Summary'), field: 'summary', rows }).section;
 }
 
 function buildFavoriteToggle(ctx, state, ui, row) {
@@ -94,7 +88,7 @@ function buildFavoriteToggle(ctx, state, ui, row) {
 
 function buildOpenChatButton(ctx, state, row) {
     const control = button('menu_button menu_button_primary is-suggested sbca-open-chat');
-    control.append(el('span', 'sbca-button-copy', tr(ctx, 'Open chat')));
+    control.append(el('span', 'sbca-button-copy', tr(ctx, 'Open Chat')));
     if (state.navigationPending) {
         control.setAttribute('aria-disabled', 'true');
         state.navigationControl = control;
@@ -123,12 +117,12 @@ function buildActions(ctx, state, ui, row) {
                 sections: [{
                     items: [
                         {
-                            label: tr(ctx, 'Download original (.jsonl)'),
+                            label: tr(ctx, 'Download Original (.jsonl)'),
                             icon: 'fa-solid fa-file-export',
                             onSelect: () => downloadChat(ctx, ui, row, raw, 'jsonl'),
                         },
                         ...(allowText ? [{
-                            label: tr(ctx, 'Download readable text'),
+                            label: tr(ctx, 'Download Readable Text'),
                             icon: 'fa-solid fa-file-lines',
                             onSelect: () => downloadChat(ctx, ui, row, raw, 'txt'),
                         }] : []),
@@ -202,7 +196,7 @@ export async function openViewer(ctx, state, row, ui) {
                 icon: 'triangle-exclamation',
                 title: tr(ctx, 'Could not read this chat. Refresh the archive or scan for orphaned files again.'),
                 compact: true,
-                actions: [{ label: tr(ctx, 'Try again'), primary: true, onActivate: () => void openViewer(ctx, state, row, ui) }],
+                actions: [{ label: tr(ctx, 'Try Again'), primary: true, onActivate: () => void openViewer(ctx, state, row, ui) }],
             });
             failure.element.setAttribute('role', 'alert');
             slot.replaceChildren(failure.element);

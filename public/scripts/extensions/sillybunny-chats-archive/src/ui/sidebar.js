@@ -1,4 +1,4 @@
-import { el, markPlaceholder } from './dom.js';
+import { el } from './dom.js';
 import { nextRenderId } from './render-id.js';
 
 function locationVisual(ctx, entry) {
@@ -24,9 +24,6 @@ function locationButton(ctx, entry, current, choose) {
     control.setAttribute('aria-pressed', String(entry.key === current.key));
     control.tabIndex = entry.key === current.key ? 0 : -1;
     const label = el('span', 'sbca-location-label', entry.label);
-    if (entry.placeholder) {
-        markPlaceholder(label);
-    }
     control.append(locationVisual(ctx, entry), label, el('small', 'sbca-location-count', String(entry.count)));
     if (entry.hint) {
         control.title = entry.hint;
@@ -45,9 +42,6 @@ export function renderSidebar(ctx, ui, sidebar, choose) {
         if (section.heading) {
             const heading = el('h3', 'sbca-location-heading', section.heading);
             heading.id = `sbca_location_heading_${nextRenderId()}`;
-            if (section.placeholder) {
-                markPlaceholder(heading);
-            }
             group.setAttribute('role', 'group');
             group.setAttribute('aria-labelledby', heading.id);
             group.append(heading);

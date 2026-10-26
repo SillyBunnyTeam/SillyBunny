@@ -3,7 +3,7 @@ import { createIconButton } from '../../../../sillybunny-editor/dialog.js';
 import { t } from '../../../../i18n.js';
 import { stopBusyTask } from './busy.js';
 import { SORT_KEYS } from './constants.js';
-import { button, el, placeholderCopy, tr } from './dom.js';
+import { button, el, tr } from './dom.js';
 import { createFilterButton, syncFilterButtons } from './filters.js';
 import { loadRows, scanOrphans } from './inventory.js';
 import { addNamedItem } from './organization-manager.js';
@@ -15,11 +15,13 @@ function sortLabel(ctx, key) {
         case 'recent': return tr(ctx, 'Recent');
         case 'oldest': return tr(ctx, 'Oldest');
         case 'size': return tr(ctx, 'Largest');
-        case 'count': return tr(ctx, 'Most messages');
+        case 'smallest': return tr(ctx, 'Smallest');
+        case 'count': return tr(ctx, 'Most Messages');
+        case 'fewest': return tr(ctx, 'Fewest Messages');
         case 'name': return tr(ctx, 'A-Z');
         case 'name-reverse': return t`Z-A`;
         case 'owner': return tr(ctx, 'Owner');
-        default: return placeholderCopy();
+        default: throw new Error(`Unknown sort: ${key}`);
     }
 }
 
@@ -52,7 +54,7 @@ function openSaveView(ctx, state, ui, trigger) {
     const content = el('div', 'sbca-save-view');
     const input = document.createElement('input');
     input.className = 'text_pole';
-    input.setAttribute('aria-label', tr(ctx, 'View name'));
+    input.setAttribute('aria-label', tr(ctx, 'View Name'));
     input.placeholder = tr(ctx, 'View name');
     const status = el('div', 'sbca-form-status');
     status.setAttribute('role', 'alert');
@@ -74,7 +76,7 @@ function openSaveView(ctx, state, ui, trigger) {
     content.append(input, status, create);
     openPopover({
         trigger,
-        title: placeholderCopy(),
+        title: tr(ctx, 'Save Current View'),
         content,
         bounds: ui.dialog.surface,
         initialFocus: () => input,
@@ -86,7 +88,7 @@ function openOrganizationPage(ctx, state, ui) {
         return;
     }
     const page = pushPage(ui, {
-        title: tr(ctx, 'Manage organization'),
+        title: tr(ctx, 'Manage Organization'),
         content: ui.organizationContent,
         className: 'sbca-organization-page',
     });
@@ -101,14 +103,14 @@ export function archiveMenuSections(ctx, state, ui, trigger) {
     const loading = Boolean(state.listAbort);
     const scanning = Boolean(state.scanAbort);
     const scanLabel = scanning
-        ? 'Stop scan'
-        : state.orphanScanComplete ? 'Rescan orphaned files' : 'Find orphaned files';
+        ? 'Stop Scan'
+        : state.orphanScanComplete ? 'Rescan Orphaned Files' : 'Find Orphaned Files';
     return [
         {
-            title: tr(ctx, 'Saved views'),
+            title: tr(ctx, 'Saved Views'),
             items: [
                 {
-                    label: tr(ctx, 'Current view'),
+                    label: tr(ctx, 'Current View'),
                     kind: 'radio',
                     checked: !state.selectedViewId,
                     onSelect: () => {
@@ -125,7 +127,7 @@ export function archiveMenuSections(ctx, state, ui, trigger) {
         },
         {
             items: [{
-                label: placeholderCopy(),
+                label: `${tr(ctx, 'Save Current View')}…`,
                 icon: 'fa-solid fa-bookmark',
                 disabled: !state.organizationWritable,
                 onSelect: () => openSaveView(ctx, state, ui, trigger),
@@ -133,7 +135,7 @@ export function archiveMenuSections(ctx, state, ui, trigger) {
         },
         {
             items: [{
-                label: tr(ctx, 'Select chats'),
+                label: tr(ctx, 'Select Chats'),
                 icon: 'fa-solid fa-check-double',
                 onSelect: () => ui.selection.enter(null, trigger),
             }],
@@ -157,7 +159,7 @@ export function archiveMenuSections(ctx, state, ui, trigger) {
         },
         {
             items: [{
-                label: tr(ctx, 'Manage organization'),
+                label: tr(ctx, 'Manage Organization'),
                 icon: 'fa-solid fa-folder-tree',
                 onSelect: () => openOrganizationPage(ctx, state, ui),
             }],

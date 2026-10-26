@@ -207,7 +207,7 @@ export async function jumpToChat(ctx, state, row, control) {
             for (const target of new Set([control, currentControl])) {
                 if (target?.isConnected) {
                     target.removeAttribute('aria-disabled');
-                    target.querySelector('.sbca-button-copy').textContent = target === control ? original : tr(ctx, 'Open chat');
+                    target.querySelector('.sbca-button-copy').textContent = target === control ? original : tr(ctx, 'Open Chat');
                 }
             }
         }

@@ -1,7 +1,7 @@
 import { createListEditor } from '../../../../sillybunny-editor/list-shell.js';
 import { stopBusyTask, syncBusyControls } from './busy.js';
 import { COLLAPSE_WIDTH } from './constants.js';
-import { button, el, markPlaceholder, placeholderCopy } from './dom.js';
+import { button, el, tr } from './dom.js';
 import { addViewControls, archiveMenuSections } from './menus.js';
 import { bindListKeys, deriveView, renderList } from './list.js';
 import { buildOrganizationContent } from './organization-manager.js';
@@ -11,7 +11,7 @@ import { commitModel } from './saved-views.js';
 import { bindSearchField } from './search.js';
 import { createArchiveSelection, updateSelectionControls } from './selection.js';
 import { bindLocationKeys, renderSidebar } from './sidebar.js';
-import { syncLocationPane, pushPage } from './panes.js';
+import { focusSelection, pushPage, syncLocationPane } from './panes.js';
 import { withLocation } from './view-model.js';
 
 function buildListPane(ctx, ui) {
@@ -54,10 +54,9 @@ export function mountArchive(ctx, state, ui, dialog) {
     ui.searchControl = dialog.search;
     ui.tagOptions = document.createElement('datalist');
     ui.tagOptions.id = `sbca_tag_options_${nextRenderId()}`;
-    ui.filtersDescription = el('span', 'sbca-filters-description', placeholderCopy());
+    ui.filtersDescription = el('span', 'sbca-filters-description', tr(ctx, 'Filters are active'));
     ui.filtersDescription.id = `sbca_filters_description_${nextRenderId()}`;
     ui.filtersDescription.hidden = true;
-    markPlaceholder(ui.filtersDescription);
     dialog.surface.append(ui.filtersDescription);
 
     buildListPane(ctx, ui);
@@ -88,12 +87,29 @@ export function mountArchive(ctx, state, ui, dialog) {
             openListPage();
         }
     };
-    // A wide root shows the list beside the sidebar, so a list page left on top is closed and the sidebar takes over.
+    // A covered root has no width, so the list editor cannot notice a resize; watch the page area and the phone query here.
+    const pagesNode = dialog.page.parentElement;
+    const phone = matchMedia('(max-width: 768px)');
+    const isWide = () => !phone.matches && pagesNode.clientWidth >= COLLAPSE_WIDTH;
+    ui.splitFocusPending = false;
     const reconcileLayout = () => {
-        if (!ui.listEditor.collapsed && ui.listPage && ui.pages.at(-1) === ui.listPage) {
-            ui.listPage.forceClose();
+        if (!isWide() || !ui.listPage || ui.pages.at(-1) !== ui.listPage) {
+            return;
         }
+        const active = document.activeElement;
+        ui.splitFocusPending ||= active === document.body || ui.listPage.page.contains(active);
+        ui.listPage.forceClose();
     };
+    const settleSplitFocus = () => {
+        if (!ui.splitFocusPending || state.closed) {
+            return;
+        }
+        ui.splitFocusPending = false;
+        focusSelection(ui, state.selectedKey);
+    };
+    const layoutWatcher = new ResizeObserver(reconcileLayout);
+    layoutWatcher.observe(pagesNode);
+    phone.addEventListener('change', reconcileLayout);
     ui.onPageClosed = page => {
         if (dialog.isOpen === false) {
             return;
@@ -117,7 +133,7 @@ export function mountArchive(ctx, state, ui, dialog) {
         collapseAt: COLLAPSE_WIDTH,
         escapeCloses: false,
         transitionItemSwitch: false,
-        label: placeholderCopy(),
+        label: tr(ctx, 'Locations'),
         classNames: { root: 'sbca-shell', sidebar: 'sbca-sidebar', detail: 'sbca-detail' },
         renderList: sidebar => renderSidebar(ctx, ui, sidebar, chooseLocation),
         renderDetail: detail => detail.append(ui.listPane),
@@ -137,7 +153,7 @@ export function mountArchive(ctx, state, ui, dialog) {
                 ui.listEditor.deselectNow();
             } else {
                 reconcileLayout();
-                syncLocationPane(ui);
+                void Promise.resolve(syncLocationPane(ui)).then(settleSplitFocus);
             }
         }),
     });
@@ -155,6 +171,8 @@ export function mountArchive(ctx, state, ui, dialog) {
     setOrganizationControlsEnabled(ui, false);
 
     return () => {
+        layoutWatcher.disconnect();
+        phone.removeEventListener('change', reconcileLayout);
         unbindSearch();
         ui.selection.destroy();
         ui.listEditor.destroy();

@@ -16,6 +16,7 @@ import {
     drawerButton,
     emptyOrganization,
     expectCleanLayout,
+    isCollapsed,
     filenames,
     filterCheck,
     fulfillJson,
@@ -34,6 +35,7 @@ import {
     search,
     searchedScopes,
     selectionTitle,
+    shot,
     showCharacterList,
     showList,
     waitForDetail,
@@ -155,7 +157,7 @@ test('Filters keep favourites listed when their chat type is off, and the sideba
         await expect(filtersButton).toHaveAttribute('aria-haspopup', 'dialog');
         await expect(filtersButton).not.toHaveAttribute('aria-pressed');
         await expect(filtersButton).toHaveAttribute('aria-describedby', /^sbca_filters_description_/);
-        await expect(filtersButton).toHaveAccessibleDescription(/TODO\(copy\)/);
+        await expect(filtersButton).toHaveAccessibleDescription('Filters are active');
     };
     const expectFiltersNotDescribed = async () => {
         await expect(filtersButton).toHaveAttribute('aria-haspopup', 'dialog');
@@ -243,8 +245,8 @@ test('date, size and message bounds narrow the list', async ({ page }) => {
     await openArchive(page);
     await showList(page);
     await openFilters(page);
-    const from = page.getByLabel('From date');
-    const to = page.getByLabel('To date');
+    const from = page.getByLabel('From Date');
+    const to = page.getByLabel('To Date');
     await from.fill('2026-03-01');
     await expect(filenames(page)).toHaveText(['june-chat']);
     await from.fill('');
@@ -255,6 +257,11 @@ test('date, size and message bounds narrow the list', async ({ page }) => {
 
     const numbers = page.locator('.sbca-filters .sbca-filter-input[type="number"]');
     await expect(numbers).toHaveCount(4);
+    const numberLabels = ['Minimum Size (MiB)', 'Maximum Size (MiB)', 'Minimum Messages', 'Maximum Messages'];
+    for (const [index, label] of numberLabels.entries()) {
+        await expect(numbers.nth(index)).toHaveAccessibleName(label);
+        await expect(page.locator('.sbca-filters .ds-row-label').filter({ hasText: label })).toHaveCount(1);
+    }
     await numbers.nth(2).fill('10');
     await expect(filenames(page)).toHaveText(['june-chat']);
     await numbers.nth(2).fill('');
@@ -293,6 +300,7 @@ test('the View menu offers nine sorts and each one reorders the list', async ({ 
     await view.click();
     const radios = page.getByRole('menuitemradio');
     await expect(radios).toHaveCount(9);
+    await expect(radios).toHaveText(['Recent', 'Oldest', 'Largest', 'Smallest', 'Most Messages', 'Fewest Messages', 'A-Z', 'Z-A', 'Owner']);
     await expect(radios.nth(0)).toHaveAttribute('aria-checked', 'true');
     await page.keyboard.press('Escape');
     let index = 0;
@@ -306,20 +314,20 @@ test('the View menu offers nine sorts and each one reorders the list', async ({ 
     await expect(page.getByRole('menuitemradio').nth(8)).toHaveAttribute('aria-checked', 'true');
 });
 
-test('a failed organization load is explained in Manage organization only, and Retry recovers', async ({ page }) => {
+test('a failed organization load is explained in Manage Organization only, and Retry recovers', async ({ page }) => {
     let healthy = false;
     await bootArchive(page, WIDE, { fixture: small(['organization-error-chat']) });
     await page.route('**/user/files/_sbca_organization.json', route => (healthy ? route.fallback() : route.fulfill({ status: 503 })));
     await openArchive(page);
     const message = page.getByText('Organization could not be loaded. Retry or import a backup.');
     await expect(message).toHaveCount(0);
-    await openMenuItem(page, 'Manage organization');
+    await openMenuItem(page, 'Manage Organization');
     await expect(message).toBeVisible();
     await expect(message).toHaveCount(1);
-    const retry = sectionNamed(page, 'Organization backup').getByRole('button', { name: 'Retry' });
+    const retry = sectionNamed(page, 'Organization Backup').getByRole('button', { name: 'Retry' });
     await expect(retry).toBeVisible();
     await expect(sectionNamed(page, 'Folders').getByRole('button', { name: 'Create' })).toBeDisabled();
-    await expect(sectionNamed(page, 'Organization backup').getByRole('button', { name: 'Export organization' })).toBeDisabled();
+    await expect(sectionNamed(page, 'Organization Backup').getByRole('button', { name: 'Export Organization' })).toBeDisabled();
 
     healthy = true;
     await retry.click();
@@ -380,12 +388,12 @@ test('organization changes are saved, a failed save is explained, and Retry keep
     const archive = await bootArchive(page, WIDE, { fixture: small(['save-chat'], { organization: emptyOrganization() }) });
     await page.route('**/api/files/upload', route => (failing ? route.fulfill({ status: 500, body: 'disk full' }) : route.fallback()));
     await openArchive(page);
-    await openMenuItem(page, 'Manage organization');
+    await openMenuItem(page, 'Manage Organization');
     const folders = sectionNamed(page, 'Folders');
-    await folders.getByRole('textbox', { name: 'Folder name' }).fill('Kept');
+    await folders.getByRole('textbox', { name: 'Folder Name' }).fill('Kept');
     await folders.getByRole('button', { name: 'Create' }).click();
     await expect(folders.getByText('Kept', { exact: true })).toBeVisible();
-    const backup = sectionNamed(page, 'Organization backup');
+    const backup = sectionNamed(page, 'Organization Backup');
     await expect(backup).toContainText('Organization changes could not be saved. Retry to keep these changes.');
     expect(archive.uploads).toHaveLength(0);
 
@@ -396,7 +404,7 @@ test('organization changes are saved, a failed save is explained, and Retry keep
     await expect(backup.getByRole('button', { name: 'Retry' })).toBeHidden();
 });
 
-test('Manage organization validates names, edits one row at a time, and confirms destructive deletes', async ({ page }) => {
+test('Manage Organization validates names, edits one row at a time, and confirms destructive deletes', async ({ page }) => {
     const archive = await bootArchive(page, WIDE, {
         fixture: small(['managed-chat'], {
             organization: emptyOrganization({
@@ -408,9 +416,9 @@ test('Manage organization validates names, edits one row at a time, and confirms
         }),
     });
     await openArchive(page);
-    await openMenuItem(page, 'Manage organization');
+    await openMenuItem(page, 'Manage Organization');
     const folders = sectionNamed(page, 'Folders');
-    const createName = folders.getByRole('textbox', { name: 'Folder name' });
+    const createName = folders.getByRole('textbox', { name: 'Folder Name' });
     await createName.fill('   ');
     await folders.getByRole('button', { name: 'Create' }).click();
     await expect(alert(page, 'Enter a name.')).toBeVisible();
@@ -462,11 +470,11 @@ test('Manage organization validates names, edits one row at a time, and confirms
     // An unused folder is deleted without asking; a saved view always asks.
     await folders.getByRole('button', { name: 'Delete Brand new' }).click();
     await expect.poll(() => archive.uploads.at(-1)?.folders?.map(folder => folder.name)).toEqual(['Archive']);
-    await sectionNamed(page, 'Saved views').getByRole('button', { name: 'Delete Saved view' }).click();
+    await sectionNamed(page, 'Saved Views').getByRole('button', { name: 'Delete Saved view' }).click();
     await expect(page.getByRole('alertdialog')).toContainText('Delete saved view Saved view?');
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
     await expect.poll(() => archive.uploads.at(-1)?.views).toEqual([]);
-    await expect(sectionNamed(page, 'Saved views').getByText('None yet.')).toBeVisible();
+    await expect(sectionNamed(page, 'Saved Views').getByText('None yet.')).toBeVisible();
 });
 
 test('organization backups export, reject bad files, and replace only after a confirmation', async ({ page }) => {
@@ -474,12 +482,12 @@ test('organization backups export, reject bad files, and replace only after a co
     const archive = await bootArchive(page, WIDE, { fixture: small(['backup-chat'], { organization }) });
     await showToasts(page);
     await openArchive(page);
-    await openMenuItem(page, 'Manage organization');
-    const backup = sectionNamed(page, 'Organization backup');
+    await openMenuItem(page, 'Manage Organization');
+    const backup = sectionNamed(page, 'Organization Backup');
 
     const [download] = await Promise.all([
         page.waitForEvent('download'),
-        backup.getByRole('button', { name: 'Export organization' }).click(),
+        backup.getByRole('button', { name: 'Export Organization' }).click(),
     ]);
     expect(download.suggestedFilename()).toBe('_sbca_organization.json');
     const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await download.path(), 'utf8'));
@@ -546,7 +554,11 @@ test('a chat opens as a page with its actions, summary, organizer and messages, 
     await waitForDetail(page);
     await expect(content).toContainText('desktop message');
     await expect(page.locator('.sbca-status')).toHaveText('Opened desktop-chat');
-    await expect(content.locator('.sbca-open-chat')).toBeVisible();
+    await expect(content.locator('.sbca-open-chat')).toHaveText('Open Chat');
+    await expect(content.getByRole('heading', { name: 'Summary' })).toBeVisible();
+    await expect(content.getByRole('heading', { name: 'Organize Chat' })).toBeVisible();
+    await expect(content.getByRole('heading', { name: 'Messages' })).toBeVisible();
+    await expect(content.locator('[data-sb-editor-field="size"] .ds-row-subtitle')).toHaveText('Size');
     await expectCleanLayout(page, 'detail', '.sbca-detail-page');
 
     const key = chatKey('Alice', 'desktop-chat');
@@ -566,20 +578,20 @@ test('a chat opens as a page with its actions, summary, organizer and messages, 
     await page.locator('.sb-picker__option', { hasText: 'Folder one' }).click();
     await expect.poll(() => saved()?.folder).toBe('folder-one');
 
-    await expect(organize.getByRole('button', { name: /^Remove collection/ })).toHaveCount(2);
+    await expect(organize.getByRole('button', { name: /^Remove Collection/ })).toHaveCount(2);
     await organize.getByRole('button', { name: /^Collections/ }).click();
     await expect(page.locator('.sb-picker__option')).toHaveCount(1);
     await page.locator('.sb-picker__option', { hasText: 'Collection three' }).click();
     await expect.poll(() => saved()?.collections).toEqual(['collection-one', 'collection-two', 'collection-three']);
-    await organize.getByRole('button', { name: 'Remove collection Collection one' }).click();
+    await organize.getByRole('button', { name: 'Remove Collection Collection one' }).click();
     await expect.poll(() => saved()?.collections).toEqual(['collection-two', 'collection-three']);
 
     const tags = organize.getByRole('textbox', { name: 'Tags' });
     await tags.fill('alpha, beta');
-    await organize.getByRole('button', { name: 'Add tags' }).click();
+    await organize.getByRole('button', { name: 'Add Tags' }).click();
     await expect.poll(() => saved()?.tags).toEqual(['alpha', 'beta']);
     await expect(tags).toHaveValue('');
-    await organize.getByRole('button', { name: 'Remove tag alpha' }).click();
+    await organize.getByRole('button', { name: 'Remove Tag alpha' }).click();
     await expect.poll(() => saved()?.tags).toEqual(['beta']);
     await tags.fill('gamma');
     await tags.press('Enter');
@@ -626,13 +638,13 @@ test('a chat that cannot be parsed shows its raw file, and downloads offer the o
     await downloadButton.click();
     const [original] = await Promise.all([
         page.waitForEvent('download'),
-        page.getByRole('menuitem', { name: 'Download original (.jsonl)' }).click(),
+        page.getByRole('menuitem', { name: 'Download Original (.jsonl)' }).click(),
     ]);
     expect(original.suggestedFilename()).toBe('valid-chat.jsonl');
     await downloadButton.click();
     const [readable] = await Promise.all([
         page.waitForEvent('download'),
-        page.getByRole('menuitem', { name: 'Download readable text' }).click(),
+        page.getByRole('menuitem', { name: 'Download Readable Text' }).click(),
     ]);
     expect(readable.suggestedFilename()).toBe('valid-chat.txt');
     await goBack(page);
@@ -643,13 +655,13 @@ test('a chat that cannot be parsed shows its raw file, and downloads offer the o
     await expect(page.locator('.sbca-status')).toHaveText('Opened raw file for Malformed notes; message parsing failed.');
     await expect(page.locator('.sbca-message-list')).toHaveCount(0);
     await expect(page.locator('.sbca-raw')).toBeHidden();
-    await page.getByRole('button', { name: 'Show raw file' }).click();
+    await page.getByRole('button', { name: 'Show Raw File' }).click();
     await expect(page.locator('.sbca-raw')).toContainText('{this is not json');
-    await page.getByRole('button', { name: 'Hide raw file' }).click();
+    await page.getByRole('button', { name: 'Hide Raw File' }).click();
     await expect(page.locator('.sbca-raw')).toBeHidden();
     await downloadButton.click();
-    await expect(page.getByRole('menuitem', { name: 'Download original (.jsonl)' })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Download readable text' })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Download Original (.jsonl)' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Download Readable Text' })).toHaveCount(0);
 });
 
 test('a long chat pages forward and back, jumps to the latest messages and reveals its metadata', async ({ page }) => {
@@ -660,10 +672,10 @@ test('a long chat pages forward and back, jumps to the latest messages and revea
     await waitForDetail(page);
     const messages = page.locator('.sbca-msg');
     await expect(messages).toHaveCount(100);
-    await page.getByRole('button', { name: 'Show 100 more messages' }).click();
+    await page.getByRole('button', { name: 'Show 100 More Messages' }).click();
     await expect(messages.first()).toContainText('Message 101');
-    await expect(page.getByRole('button', { name: 'Show 100 earlier messages' })).toBeVisible();
-    await page.getByRole('button', { name: 'Latest messages' }).click();
+    await expect(page.getByRole('button', { name: 'Show 100 Earlier Messages' })).toBeVisible();
+    await page.getByRole('button', { name: 'Latest Messages' }).click();
     await expect(messages.last()).toContainText('Message 250');
     await messages.last().scrollIntoViewIfNeeded();
     await expect(messages.last()).toBeInViewport();
@@ -832,7 +844,7 @@ test('metadata and message-content matches combine, a stale search is ignored, a
     await expect.poll(() => searchedScopes(archive, 'needle').length).toBeGreaterThan(beforeRefresh);
     await expect.poll(async () => sorted(await filenames(page).allTextContents())).toEqual(['content-match', 'needle-metadata']);
 
-    await openMenuItem(page, 'Select chats');
+    await openMenuItem(page, 'Select Chats');
     await page.locator('.sb-dialog__selection-select-all').click();
     await expect(selectionTitle(page)).toHaveText('2 selected');
 });
@@ -860,7 +872,7 @@ test('the @mention combobox completes fuzzily, scopes the content search, and ke
     await showList(page);
     const field = await openSearch(page);
     await expect(field).toHaveAttribute('placeholder', 'Type to search chats. Mention character names with @.');
-    const menu = page.getByRole('listbox', { name: 'Character mentions' });
+    const menu = page.getByRole('listbox', { name: 'Character Mentions' });
 
     await field.fill('@Alce');
     await expect(menu).toBeVisible();
@@ -936,7 +948,7 @@ test('Cancel stops an incremental load, releases its cursor, and ignores the lat
     await expect(page.getByRole('menuitem', { name: 'Refresh' })).toBeEnabled();
 });
 
-test('Stop scan releases the scan token and cursor and rolls back the partial orphans', async ({ page }) => {
+test('Stop Scan releases the scan token and cursor and rolls back the partial orphans', async ({ page }) => {
     let release;
     let markStarted;
     const started = new Promise(resolve => { markStarted = resolve; });
@@ -955,15 +967,15 @@ test('Stop scan releases the scan token and cursor and rolls back the partial or
     });
     await openArchive(page);
     await (await openSearch(page)).fill('orphan');
-    await openMenuItem(page, 'Find orphaned files');
+    await openMenuItem(page, 'Find Orphaned Files');
     await started;
     await settleSearchDebounce(page);
     expect(searchedScopes(archive, 'orphan')).toEqual([]);
     await expect(page.getByText('partial-orphan', { exact: true })).toBeVisible();
     await expect(page.locator('.sbca-status')).toContainText('1 of 2 indexed chat files');
-    await expect(banner(page).getByRole('button', { name: 'Stop scan' })).toBeVisible();
+    await expect(banner(page).getByRole('button', { name: 'Stop Scan' })).toBeVisible();
 
-    await banner(page).getByRole('button', { name: 'Stop scan' }).click();
+    await banner(page).getByRole('button', { name: 'Stop Scan' }).click();
     await expect.poll(() => archive.releases).toContainEqual({ token: FIRST_READ_TOKEN, cursor: ORPHAN_CURSOR });
     release();
     await expect(page.getByText('partial-orphan', { exact: true })).toHaveCount(0);
@@ -985,25 +997,25 @@ test('after a rescan, a location the complete data hides falls back to All Chats
         ], null, rescan ? SECOND_READ_TOKEN : FIRST_READ_TOKEN, 1));
     });
     await openArchive(page);
-    await openMenuItem(page, 'Find orphaned files');
+    await openMenuItem(page, 'Find Orphaned Files');
     await showList(page, 'Orphaned');
     await expect(filenames(page)).toHaveText(['missing-orphan']);
     await openFilters(page);
-    await page.locator('.sbca-filters').getByRole('button', { name: /Orphan reason/ }).click();
+    await page.locator('.sbca-filters').getByRole('button', { name: /Orphan Reason/ }).click();
     await page.getByRole('option', { name: 'Missing character' }).click();
     await expect(filenames(page)).toHaveText(['missing-orphan']);
     await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Orphaned');
 
-    await openMenuItem(page, 'Rescan orphaned files');
+    await openMenuItem(page, 'Rescan Orphaned Files');
     await expect.poll(() => scans).toBe(2);
-    await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('TODO(copy)');
+    await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('All Chats');
     await expect(page.getByText('No chats match these filters.')).toBeVisible();
     await expect.poll(() => archive.uploads.at(-1)?.lastView?.kinds).not.toEqual(['orphan']);
 
     await openMenu(page);
-    await page.getByRole('menuitem', { name: 'TODO(copy)' }).click();
-    await page.getByRole('textbox', { name: 'View name' }).fill('After scan');
-    await page.getByRole('textbox', { name: 'View name' }).press('Enter');
+    await page.getByRole('menuitem', { name: 'Save Current View…' }).click();
+    await page.getByRole('textbox', { name: 'View Name' }).fill('After scan');
+    await page.getByRole('textbox', { name: 'View Name' }).press('Enter');
     await expect.poll(() => archive.uploads.at(-1)?.views?.map(view => view.name)).toEqual(['After scan']);
     expect(archive.uploads.at(-1).views[0].view.kinds).not.toEqual(['orphan']);
 });
@@ -1020,9 +1032,9 @@ test('a rescan replaces the scan token, and an orphan opens through the archive 
         ], null, replacement ? SECOND_READ_TOKEN : FIRST_READ_TOKEN, 1));
     });
     await openArchive(page);
-    await openMenuItem(page, 'Find orphaned files');
+    await openMenuItem(page, 'Find Orphaned Files');
     await expect(page.locator('.sbca-location', { hasText: 'Orphaned' }).locator('.sbca-location-count')).toHaveText('1');
-    await openMenuItem(page, 'Rescan orphaned files');
+    await openMenuItem(page, 'Rescan Orphaned Files');
     await expect.poll(() => archive.releases).toContainEqual({ token: FIRST_READ_TOKEN });
     await showList(page);
     await expect(filenames(page).filter({ hasText: 'current-orphan' })).toBeVisible();
@@ -1061,8 +1073,8 @@ test('saved views appear in the menu, restore their query, keep density and grou
     await openArchive(page);
     await showList(page);
     await openMenu(page);
-    const savedViews = page.getByRole('group', { name: 'Saved views' }).getByRole('menuitemradio');
-    await expect(savedViews).toHaveText(['Current view', 'Compact by owner', 'Favorite', 'Not favorite']);
+    const savedViews = page.getByRole('group', { name: 'Saved Views' }).getByRole('menuitemradio');
+    await expect(savedViews).toHaveText(['Current View', 'Compact by owner', 'Favorite', 'Not favorite']);
     await expect(savedViews.first()).toHaveAttribute('aria-checked', 'true');
     await savedViews.nth(1).click();
 
@@ -1093,7 +1105,7 @@ test('saved views appear in the menu, restore their query, keep density and grou
     await page.keyboard.press('Escape');
 
     await openMenu(page);
-    await expect(page.getByRole('menuitemradio', { name: 'Current view' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('menuitemradio', { name: 'Current View' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('a view can be saved from the menu under a new name and is offered afterwards', async ({ page }) => {
@@ -1101,9 +1113,9 @@ test('a view can be saved from the menu under a new name and is offered afterwar
     await openArchive(page);
     await showList(page);
     await openMenu(page);
-    await expect(page.getByRole('group', { name: 'Saved views' }).getByRole('menuitemradio')).toHaveText(['Current view']);
-    await page.getByRole('menuitem', { name: 'TODO(copy)' }).click();
-    const name = page.getByRole('textbox', { name: 'View name' });
+    await expect(page.getByRole('group', { name: 'Saved Views' }).getByRole('menuitemradio')).toHaveText(['Current View']);
+    await page.getByRole('menuitem', { name: 'Save Current View…' }).click();
+    const name = page.getByRole('textbox', { name: 'View Name' });
     await name.fill('   ');
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(alert(page, 'Enter a name.')).toBeVisible();
@@ -1111,7 +1123,7 @@ test('a view can be saved from the menu under a new name and is offered afterwar
     await name.press('Enter');
     await expect.poll(() => archive.uploads.at(-1)?.views?.map(view => view.name)).toEqual(['Mine']);
     await openMenu(page);
-    await expect(page.getByRole('group', { name: 'Saved views' }).getByRole('menuitemradio')).toHaveText(['Current view', 'Mine']);
+    await expect(page.getByRole('group', { name: 'Saved Views' }).getByRole('menuitemradio')).toHaveText(['Current View', 'Mine']);
 });
 
 test('the sidebar and the list follow the arrow, Home, End and Enter keys', async ({ page }) => {
@@ -1161,7 +1173,7 @@ test('Show more extends the list a page at a time and tells how many remain', as
     await openArchive(page);
     await showList(page);
     await expect(rows(page)).toHaveCount(100);
-    const more = page.getByRole('button', { name: 'Show 42 more' });
+    const more = page.getByRole('button', { name: 'Show 42 More' });
     await expect(more).toBeVisible();
     await more.click();
     await expect(rows(page)).toHaveCount(142);
@@ -1176,7 +1188,7 @@ const aliceKeys = () => bigFixture().rows
 
 async function selectAllIn(page, location) {
     await showList(page, location);
-    await openMenuItem(page, 'Select chats');
+    await openMenuItem(page, 'Select Chats');
     await page.locator('.sb-dialog__selection-select-all').click();
 }
 
@@ -1184,7 +1196,7 @@ test('Select All counts every chat beyond the first hundred, and selections outs
     await bootArchive(page, WIDE, { fixture: bigFixture() });
     await openArchive(page);
     await showList(page);
-    await openMenuItem(page, 'Select chats');
+    await openMenuItem(page, 'Select Chats');
     await expect(selectionTitle(page)).toHaveText('0 selected');
     await expect(rows(page)).toHaveCount(100);
     await page.locator('.sb-dialog__selection-select-all').click();
@@ -1222,24 +1234,24 @@ test('the selection bar applies each batch change and every one reaches the save
     await page.getByRole('menuitemradio', { name: 'Archive' }).click();
     await expect.poll(() => every(metadata => metadata.folder === 'f-arch')).toBe(true);
     await action('Folder…').click();
-    await page.getByRole('menuitem', { name: 'Clear folder' }).click();
+    await page.getByRole('menuitem', { name: 'Clear Folder' }).click();
     await expect.poll(() => every(metadata => metadata.folder === undefined)).toBe(true);
 
     await action('Collections…').click();
-    await page.getByRole('group', { name: 'Add collection' }).getByRole('menuitem', { name: 'One-shots' }).click();
+    await page.getByRole('group', { name: 'Add Collection' }).getByRole('menuitem', { name: 'One-shots' }).click();
     await expect.poll(() => every(metadata => metadata.collections?.includes('c-one'))).toBe(true);
     await action('Collections…').click();
-    await page.getByRole('group', { name: 'Remove collection' }).getByRole('menuitem', { name: 'One-shots' }).click();
+    await page.getByRole('group', { name: 'Remove Collection' }).getByRole('menuitem', { name: 'One-shots' }).click();
     await expect.poll(() => every(metadata => !metadata.collections?.includes('c-one'))).toBe(true);
 
     await action('Tags…').click();
-    const tags = page.getByRole('textbox', { name: 'Tags (comma-separated)' });
+    const tags = page.getByRole('textbox', { name: 'Tags (Comma-Separated)' });
     await tags.fill('alpha, Beta');
-    await page.locator('.sbca-batch-tags').getByRole('button', { name: 'Add tags' }).click();
+    await page.locator('.sbca-batch-tags').getByRole('button', { name: 'Add Tags' }).click();
     await expect.poll(() => every(metadata => ['alpha', 'Beta'].every(tag => metadata.tags?.includes(tag)))).toBe(true);
     await action('Tags…').click();
-    await page.getByRole('textbox', { name: 'Tags (comma-separated)' }).fill('beta');
-    await page.locator('.sbca-batch-tags').getByRole('button', { name: 'Remove tags' }).click();
+    await page.getByRole('textbox', { name: 'Tags (Comma-Separated)' }).fill('beta');
+    await page.locator('.sbca-batch-tags').getByRole('button', { name: 'Remove Tags' }).click();
     await expect.poll(() => every(metadata => metadata.tags?.includes('alpha') && !metadata.tags?.includes('Beta'))).toBe(true);
 
     // Chats outside the selection never change.
@@ -1252,7 +1264,7 @@ test('the selection bar stays disabled until a chat is selected, and while the o
     await page.route('**/user/files/_sbca_organization.json', route => route.fulfill({ status: 503 }));
     await openArchive(page);
     await showList(page);
-    await openMenuItem(page, 'Select chats');
+    await openMenuItem(page, 'Select Chats');
     await rows(page).first().click();
     await expect(selectionTitle(page)).toHaveText('1 selected');
     for (const name of ['Favorite', 'Folder…', 'Collections…', 'Tags…']) {
@@ -1264,7 +1276,7 @@ test('Escape leaves selection mode first, and the rows follow with their checks'
     await bootArchive(page, WIDE, { fixture: bigFixture() });
     await openArchive(page);
     await showList(page);
-    await openMenuItem(page, 'Select chats');
+    await openMenuItem(page, 'Select Chats');
     await rows(page).nth(0).click();
     await rows(page).nth(2).click({ modifiers: ['Shift'] });
     await expect(selectionTitle(page)).toHaveText('3 selected');
@@ -1292,16 +1304,73 @@ test('resizing across the breakpoint keeps the open chat and its focus, and a se
     await expect(rows(page).first()).toBeHidden();
     await showList(page, 'Alice');
 
-    // A pushed page hides the sidebar, so the wide layout returns when the list page is left.
     await page.setViewportSize(WIDE);
-    await expect(rows(page).first()).toBeVisible();
-    await goBack(page);
+    await expect(page.locator('.sbca-list-page')).toHaveCount(0);
     await expect(page.locator('.sbca-location').first()).toBeVisible();
     await expect(rows(page).first()).toBeVisible();
-    await openMenuItem(page, 'Select chats');
+    await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
+    await openMenuItem(page, 'Select Chats');
     await rows(page).first().click();
     await expect(selectionTitle(page)).toHaveText('1 selected');
     await page.setViewportSize(PHONE);
     await expect(selectionTitle(page)).toHaveCount(0);
     await expect(dialog(page)).toBeVisible();
+});
+
+test.describe('the layout follows the window while a list page covers the sidebar', () => {
+    test('widening leaves the list page for the split view with the location kept and focused', async ({ page }) => {
+        await bootArchive(page, PHONE, { fixture: bigFixture() });
+        await openArchive(page);
+        await page.locator('.sbca-location', { hasText: 'Alice' }).first().click();
+        await expect(page.locator('.sbca-list-page')).toBeVisible();
+        await expect(rows(page).first()).toBeVisible();
+        await expect(page.locator('.sbca-location').first()).toBeHidden();
+        await shot(page, 'resize-list-page');
+
+        await page.setViewportSize(WIDE);
+        await expect(page.locator('.sbca-list-page')).toHaveCount(0);
+        expect(await isCollapsed(page)).toBe(false);
+        await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
+        await expect(rows(page).first()).toBeVisible();
+        await expect(page.locator('.sbca-location[aria-pressed="true"]')).toBeFocused();
+        await expectCleanLayout(page, 'split view after widening');
+        await shot(page, 'resize-split');
+    });
+
+    test('a chat page stays through widening, and Back lands on the split view with the row focused', async ({ page }) => {
+        await bootArchive(page, PHONE, { fixture: bigFixture(), chatBody: () => longChat() });
+        await openArchive(page);
+        await page.locator('.sbca-location', { hasText: 'Alice' }).first().click();
+        await openRow(page, 'Alice - Long saga');
+        await waitForDetail(page);
+
+        await page.setViewportSize(WIDE);
+        await expect(page.locator('.sbca-viewer-content')).toBeVisible();
+        await expect(page.locator('.sbca-list-page')).toHaveCount(1);
+
+        await goBack(page);
+        await expect(page.locator('.sbca-detail-page')).toHaveCount(0);
+        await expect(page.locator('.sbca-list-page')).toHaveCount(0);
+        expect(await isCollapsed(page)).toBe(false);
+        await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
+        await expect(rows(page).first()).toBeVisible();
+        await expect(rows(page).filter({ hasText: 'Alice - Long saga' })).toBeFocused();
+        await expectCleanLayout(page, 'split view after Back');
+    });
+
+    test('narrowing again gives a working phone flow for the chosen location', async ({ page }) => {
+        await bootArchive(page, WIDE, { fixture: bigFixture() });
+        await openArchive(page);
+        await showList(page, 'Bob');
+        await page.setViewportSize(PHONE);
+        await expect(page.locator('.sbca-location').first()).toBeVisible();
+        await expect(rows(page).first()).toBeHidden();
+        await page.locator('.sbca-location', { hasText: 'Alice' }).first().click();
+        await expect(page.locator('.sbca-list-page')).toBeVisible();
+        await expect(rows(page).first()).toBeVisible();
+        await expect(page.locator('.sbca-dialog .sb-dialog__title').last()).toHaveText('Alice');
+        await goBack(page);
+        await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
+        await expect(page.locator('.sbca-location').first()).toBeVisible();
+    });
 });

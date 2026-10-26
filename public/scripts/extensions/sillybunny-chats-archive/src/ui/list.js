@@ -3,7 +3,7 @@ import { createEntityRow } from '../../../../sillybunny-editor/entity-row.js';
 import { createStatusPage } from '../../../../sillybunny-editor/status-page.js';
 import { cancelNavigation } from './cancellation.js';
 import { LIST_PAGE_SIZE } from './constants.js';
-import { button, el, markPlaceholder, setCount, setStatus, tr } from './dom.js';
+import { button, el, setCount, setStatus, tr } from './dom.js';
 import { syncFilterButtons } from './filters.js';
 import { loadRows } from './inventory.js';
 import { buildLocations } from './locations.js';
@@ -80,11 +80,7 @@ export function updateResultStatus(ctx, state, ui) {
 }
 
 function syncListHeading(ui, location) {
-    const label = el('span', '', location.label);
-    if (location.placeholder) {
-        markPlaceholder(label);
-    }
-    ui.listHeading.replaceChildren(label);
+    ui.listHeading.textContent = location.label;
 }
 
 function showStatusPage(ui, options) {
@@ -132,7 +128,7 @@ function paintList(ctx, state, ui) {
         showStatusPage(ui, {
             icon: 'triangle-exclamation',
             title: tr(ctx, 'The chat list could not be loaded.'),
-            actions: [{ label: tr(ctx, 'Try again'), primary: true, onActivate: () => void loadRows(ctx, state, ui) }],
+            actions: [{ label: tr(ctx, 'Try Again'), primary: true, onActivate: () => void loadRows(ctx, state, ui) }],
         });
         return;
     }
@@ -156,7 +152,7 @@ function appendListMore(ctx, state, ui, rows) {
     const remaining = rows.length - state.visibleLimit;
     const item = el('div', 'sbca-list-more');
     item.setAttribute('role', 'listitem');
-    const more = button('menu_button', tr(ctx, 'Show {count} more', { count: Math.min(LIST_PAGE_SIZE, remaining) }));
+    const more = button('menu_button', tr(ctx, 'Show {count} More', { count: Math.min(LIST_PAGE_SIZE, remaining) }));
     more.addEventListener('click', () => {
         const firstNewRow = state.visibleLimit;
         state.visibleLimit += LIST_PAGE_SIZE;
