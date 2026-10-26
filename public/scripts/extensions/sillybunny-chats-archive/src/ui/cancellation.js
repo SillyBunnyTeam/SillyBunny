@@ -1,3 +1,4 @@
+import { syncBusyControls } from './busy.js';
 import { setStatus } from './dom.js';
 
 export function clearViewerMatch(ui) {
@@ -22,6 +23,7 @@ export function cancelSearch(ctx, state, ui) {
     controller?.abort();
     if (controller) {
         setStatus(ui, '');
+        syncBusyControls(ctx, state, ui);
     }
     ui.status.removeAttribute('aria-busy');
 }

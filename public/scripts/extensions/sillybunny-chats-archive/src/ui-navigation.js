@@ -1,4 +1,4 @@
-import { popup } from './ui/archive.js';
+import { dialog } from './ui/archive.js';
 import { NAVIGATION_TIMEOUT_MS } from './ui/constants.js';
 import { tr } from './ui/dom.js';
 
@@ -179,9 +179,10 @@ export async function jumpToChat(ctx, state, row, control) {
         }
         navigationConfirmed = true;
         ctx.saveSettingsDebounced();
-        if (!state.closed && popup === state.popup) {
+        if (!state.closed && dialog === state.dialog) {
             state.restoreFocus = false;
-            await state.popup.completeCancelled();
+            state.dialog.forceClose();
+            await state.dialog.closed;
             document.getElementById('send_textarea')?.focus();
         }
     } catch (error) {

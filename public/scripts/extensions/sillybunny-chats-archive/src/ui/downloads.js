@@ -1,25 +1,18 @@
 import { parseJsonl, recordsToText } from '../core.js';
-import { tr } from './dom.js';
+import { setStatus, tr } from './dom.js';
 
-export function downloadChat(ctx, row, raw, format, control) {
-    if (control.getAttribute('aria-disabled') === 'true') {
-        return;
-    }
-    const copy = control.querySelector('.sbca-button-copy');
-    const original = copy.textContent;
-    control.setAttribute('aria-disabled', 'true');
-    copy.textContent = tr(ctx, 'Preparing...');
+export function downloadChat(ctx, ui, row, raw, format) {
+    setStatus(ui, tr(ctx, 'Preparing...'));
     try {
         const content = format === 'txt' ? recordsToText(parseJsonl(raw)) : raw;
         const mime = format === 'txt' ? 'text/plain;charset=utf-8' : 'application/x-ndjson;charset=utf-8';
         downloadBlob(content, mime, `${row.file_id}.${format}`);
+        setStatus(ui, tr(ctx, 'Download started.'));
         globalThis.toastr?.success(tr(ctx, 'Download started.'));
     } catch (error) {
         console.error('[Chat Archive] export failed:', error);
+        setStatus(ui, tr(ctx, 'Could not prepare this download.'));
         globalThis.toastr?.error(tr(ctx, 'Could not prepare this download.'));
-    } finally {
-        control.removeAttribute('aria-disabled');
-        copy.textContent = original;
     }
 }
 

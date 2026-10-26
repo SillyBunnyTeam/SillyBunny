@@ -1,7 +1,7 @@
 const warnedSuffixKeys = new Set();
 const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'agent', 'agent-template']);
 const rowSlotOrder = ['grip', 'avatar', 'text', 'badge', 'suffix', 'chevron'];
-const textSlotOrder = ['title', 'subtitle', 'tags'];
+const textSlotOrder = ['title', 'subtitle', 'preview', 'tags'];
 const tagStrips = new WeakMap();
 let tagStripObserver = null;
 const slotClasses = {
@@ -11,19 +11,21 @@ const slotClasses = {
     text: ['ds-entity-row__text'],
     title: ['ds-entity-row__title'],
     subtitle: ['ds-entity-row__subtitle'],
+    preview: ['ds-entity-row__preview'],
     tags: ['ds-entity-row__tags', 'ds-tag-chips'],
     badge: ['ds-entity-row__badge'],
     suffix: ['ds-entity-row__suffix'],
     chevron: ['ds-entity-row__chevron', 'fa-solid', 'fa-chevron-right'],
 };
 
-/** @typedef {'row'|'avatar'|'text'|'title'|'subtitle'|'tags'|'badge'|'suffix'} CompatSlot */
+/** @typedef {'row'|'avatar'|'text'|'title'|'subtitle'|'preview'|'tags'|'badge'|'suffix'} CompatSlot */
 /**
  * @typedef {object} EntityRowOptions
  * @property {string} key Stable namespaced entity key.
  * @property {string} label Accessible name and default title.
  * @property {string|Node|null} [title] Defaults to label when omitted.
  * @property {string|Node|Node[]|null} [subtitle]
+ * @property {string|Node|Node[]|null} [preview] Body excerpt under the subtitle; callers clamp its height in CSS.
  * @property {{ src: string, alt?: string }|Node|null} [avatar]
  * @property {boolean} [grip=false]
  * @property {boolean} [tags=false]
@@ -37,7 +39,7 @@ const slotClasses = {
  * @typedef {object} EntityRow
  * @property {HTMLDivElement} row
  * @property {{ grip: HTMLElement|null, avatar: HTMLElement|null, img: HTMLImageElement|null,
- *   text: HTMLElement, title: HTMLElement, subtitle: HTMLElement|null, tags: HTMLElement|null,
+ *   text: HTMLElement, title: HTMLElement, subtitle: HTMLElement|null, preview: HTMLElement|null, tags: HTMLElement|null,
  *   badge: HTMLElement|null, suffix: HTMLElement|null, chevron: HTMLElement|null }} slots
  * @property {(partial: Partial<Omit<EntityRowOptions, 'key'|'activation'>>) => void} update
  */
@@ -222,6 +224,7 @@ export function createEntityRow(options) {
         text: createSlot('text'),
         title: createSlot('title'),
         subtitle: null,
+        preview: null,
         tags: null,
         badge: null,
         suffix: null,
@@ -304,6 +307,10 @@ export function createEntityRow(options) {
         if ('subtitle' in partial) {
             const subtitle = setSlot('subtitle', partial.subtitle != null);
             if (subtitle) setContent(subtitle, partial.subtitle);
+        }
+        if ('preview' in partial) {
+            const preview = setSlot('preview', partial.preview != null);
+            if (preview) setContent(preview, partial.preview);
         }
         if ('tags' in partial) setSlot('tags', partial.tags);
         if ('badges' in partial) {

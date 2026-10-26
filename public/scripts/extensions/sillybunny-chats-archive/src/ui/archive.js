@@ -1,19 +1,48 @@
+import { openDialog } from '../../../../sillybunny-editor/dialog.js';
+import { loadListEditorStyles } from '../../../../sillybunny-editor/list-shell.js';
 import { LIST_PAGE_SIZE } from './constants.js';
 import { tr } from './dom.js';
 import { loadRows, releaseArchiveReadSession } from './inventory.js';
+import { archiveMenuSections } from './menus.js';
 import { flushOrganization } from './organization-save.js';
 import { loadOrganization } from './organization.js';
-import { buildRoot } from './root.js';
+import { mountArchive } from './root.js';
+import { closeMentionsOnEscape, createSearchField, handleQueryChange } from './search.js';
+import { createViewModel } from './view-model.js';
 
-export let popup = null;
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' };
+
+export let dialog = null;
+
+// Closing bumps this, so an open that is still loading its styles finds out it was cancelled.
+let openToken = 0;
 
 export async function closeArchive() {
-    await popup?.completeCancelled();
+    openToken++;
+    const current = dialog;
+    if (!current) {
+        return;
+    }
+    current.forceClose();
+    await current.closed;
+}
+
+function loadArchiveStyles() {
+    const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
+    return Promise.all([
+        loadListEditorStyles(),
+        loader ? loader(ENTITY_LIST_STYLESHEET.href, { id: ENTITY_LIST_STYLESHEET.id }) : undefined,
+    ]);
 }
 
 export async function openArchive(ctx, opener = null) {
-    if (popup) {
-        popup.dlg?.focus();
+    if (dialog) {
+        dialog.root.focus({ preventScroll: true });
+        return;
+    }
+    const token = openToken;
+    await loadArchiveStyles();
+    if (dialog || token !== openToken) {
         return;
     }
 
@@ -37,12 +66,10 @@ export async function openArchive(ctx, opener = null) {
         restoreFocus: true,
         selectedKey: null,
         selectedRow: null,
-        selectedButton: null,
-        selectedBatchKeys: new Set(),
-        selectionMode: false,
-        collapsedGroups: new Set(),
+        viewerPage: null,
         visibleLimit: LIST_PAGE_SIZE,
         matchingRows: [],
+        model: createViewModel(),
         charactersByAvatar: new Map((ctx.characters ?? []).filter(character => character?.avatar).map(character => [character.avatar, character])),
         groupsById: new Map((ctx.groups ?? []).filter(group => group?.id !== undefined && group?.id !== null).map(group => [String(group.id), group])),
         organization: null,
@@ -61,32 +88,42 @@ export async function openArchive(ctx, opener = null) {
         selectedViewId: null,
         closed: false,
     };
-    const ui = buildRoot(ctx, state);
-    const instance = new ctx.Popup(ui.root, ctx.POPUP_TYPE.TEXT, '', {
-        wide: true,
-        large: true,
+    const searchField = createSearchField(ctx);
+    const ui = {
+        pages: [],
+        filterButtons: new Set(),
+        listPage: null,
+        organizationPage: null,
+        queryTimer: null,
+        mentionIndex: -1,
+        search: searchField.input,
+        mentionMenu: searchField.menu,
+        characterMentions: searchField.mentions,
+    };
+    const instance = openDialog({
         tier: 'window',
-        allowVerticalScrolling: false,
-        okButton: tr(ctx, 'Close'),
+        size: 'fill',
+        className: 'sbca-dialog',
+        title: tr(ctx, 'Chat Archive'),
+        search: {
+            input: ui.search,
+            collapsed: true,
+            escapeClearsFirst: true,
+            onEscape: () => closeMentionsOnEscape(ui),
+            onChange: () => handleQueryChange(ctx, state, ui),
+        },
+        menu: trigger => archiveMenuSections(ctx, state, ui, trigger),
     });
-    popup = instance;
-    state.popup = instance;
-    instance.dlg?.classList.add('sbca-dialog');
-    instance.dlg?.setAttribute('aria-labelledby', 'sbca_heading');
-    instance.okButton?.addEventListener('keydown', event => {
-        if (event.key === ' ') {
-            event.preventDefault();
-            instance.okButton.click();
-        }
-    });
+    dialog = instance;
+    state.dialog = instance;
 
     try {
-        const shown = instance.show();
-        ui.observeLayout();
+        state.cleanup = mountArchive(ctx, state, ui, instance);
         void loadRows(ctx, state, ui);
         void loadOrganization(ctx, state, ui);
-        await shown;
+        await instance.closed;
     } finally {
+        instance.forceClose();
         state.closed = true;
         state.listAbort?.abort();
         state.viewerAbort?.abort();
@@ -97,8 +134,8 @@ export async function openArchive(ctx, opener = null) {
         state.cleanup?.();
         await flushOrganization(ctx, state, ui);
         const releasing = releaseArchiveReadSession(ctx, state);
-        if (popup === instance) {
-            popup = null;
+        if (dialog === instance) {
+            dialog = null;
         }
         if (state.restoreFocus) {
             const returnTarget = opener?.isConnected ? opener : document.getElementById('sbca_drawer_button');

@@ -4,7 +4,7 @@ export function allRows(state) {
     return [...state.rows, ...state.orphanRows];
 }
 
-export function orphanLabel(ctx, type) {
+function orphanLabel(ctx, type) {
     const labels = {
         'missing-character': 'Missing character',
         'missing-group': 'Missing group',
@@ -19,6 +19,10 @@ export function ownerLabel(ctx, row) {
         return row.ownerName;
     }
     return row.orphanType === 'unlinked-group' ? tr(ctx, 'Unlinked group') : tr(ctx, 'Unknown owner');
+}
+
+export function ownerOrReason(ctx, row) {
+    return row.kind === 'orphan' ? orphanLabel(ctx, row.orphanType) : ownerLabel(ctx, row);
 }
 
 export function messageCount(ctx, count) {

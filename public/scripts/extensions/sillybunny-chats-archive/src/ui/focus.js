@@ -13,6 +13,12 @@ export function markOrganizationControl(node, focusKey = '', fallbackKey = '') {
     return node;
 }
 
+export function focusByKey(ui, key) {
+    [...ui.root.querySelectorAll('[data-sbca-focus-key]')]
+        .find(control => control.dataset.sbcaFocusKey === key)
+        ?.focus({ preventScroll: true });
+}
+
 export function preserveArchiveFocus(ui, update) {
     const active = document.activeElement;
     const snapshot = active && ui.root.contains(active) ? {
@@ -28,6 +34,6 @@ export function preserveArchiveFocus(ui, update) {
     const controls = [...ui.root.querySelectorAll('[data-sbca-focus-key]')];
     const target = controls.find(control => control.dataset.sbcaFocusKey === snapshot.key)
         ?? controls.find(control => control.dataset.sbcaFocusKey === snapshot.fallback)
-        ?? (snapshot.viewer ? ui.viewerTitle : snapshot.list ? ui.listHeading : null);
+        ?? (snapshot.viewer ? ui.viewerContent : snapshot.list ? ui.listHeading : null);
     target?.focus({ preventScroll: true });
 }

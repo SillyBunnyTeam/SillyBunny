@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { showList } from './helpers/chats-archive.js';
 import { bootMiscDialogs } from './helpers/misc-dialogs.js';
 
 const VIEWPORTS = [
@@ -136,13 +137,15 @@ async function openPromptInspector(page, input) {
     return openPopup(page, '#inspectPrompt');
 }
 
+/** Opens the archive the way a user does, through its button in the Characters list header. */
 async function openArchive(page) {
-    await page.addStyleTag({ url: '/scripts/extensions/sillybunny-chats-archive/style.css' });
-    await page.evaluate(async () => {
-        const archive = await import('/scripts/extensions/sillybunny-chats-archive/src/ui.js');
-        void archive.openArchive(window.SillyTavern.getContext(), document.body);
-    });
-    return openPopup(page, '.sbca-root');
+    await page.evaluate(async () => { await window.SillyBunnyShell.openTab('characters', 'characters'); });
+    await page.locator('#sbca_drawer_button').click();
+    const surface = page.locator('.sbca-dialog');
+    await expect(surface).toBeVisible();
+    await expect(page.locator('dialog.sb-dialog-host[open]')).not.toHaveAttribute('opening');
+    await expect(page.locator('.sbca-location').or(page.locator('.sbca-row')).first()).toBeVisible();
+    return surface;
 }
 
 for (const viewport of VIEWPORTS) {
@@ -279,26 +282,30 @@ for (const viewport of VIEWPORTS) {
         await expect.poll(() => page.evaluate(() => window.__windowMediaPromptResult)).toBe(cancelledPrompt);
 
         const archive = await openArchive(page);
-        await expectWindowPresentation(archive, viewport);
-        const archiveCloseTarget = await archive.locator('.sb-dialog__close').evaluate(node => ({
+        // The archive is a dialog-library window: its host carries the presentation and its surface the tier.
+        await expect(archive).toHaveClass(/sb-dialog--window/);
+        await expect(page.locator('dialog.sb-dialog-host[open]')).toHaveAttribute('data-presentation', viewport.presentation);
+        const archiveCloseTarget = await archive.locator('.sb-dialog__close:visible').last().evaluate(node => ({
             width: node.getBoundingClientRect().width,
             height: node.getBoundingClientRect().height,
         }));
         expect(archiveCloseTarget.width).toBeGreaterThanOrEqual(44);
         expect(archiveCloseTarget.height).toBeGreaterThanOrEqual(44);
+        await showList(page);
+        await expect(archive.locator('.sbca-row')).toHaveCount(36);
         const archiveScroll = await archive.evaluate(node => ({
-            body: getComputedStyle(node.querySelector('.popup-body')).overflowY,
-            content: getComputedStyle(node.querySelector('.popup-content')).overflowY,
-            root: getComputedStyle(node.querySelector('.sbca-root')).overflowY,
+            surface: getComputedStyle(node).overflowY,
+            body: getComputedStyle(node.querySelector('.sb-dialog__body')).overflowY,
+            list: getComputedStyle(node.querySelector('.sbca-list-scroll')).overflowY,
         }));
+        expect(archiveScroll.surface).not.toMatch(/^(auto|scroll)$/);
         expect(archiveScroll.body).not.toMatch(/^(auto|scroll)$/);
-        expect(archiveScroll.content).not.toMatch(/^(auto|scroll)$/);
-        expect(archiveScroll.root).toMatch(/^(auto|scroll)$/);
-        const archiveRoot = archive.locator('.sbca-root');
-        await archiveRoot.evaluate(node => { node.scrollTop = node.scrollHeight; });
-        expect(await archiveRoot.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
-        await expect(archive.locator('.sbca-row-button').last()).toBeInViewport();
-        await expect(archive.locator('.sb-dialog__close')).toBeInViewport();
-        await archive.locator('.sb-dialog__close').click();
+        expect(archiveScroll.list).toMatch(/^(auto|scroll)$/);
+        const archiveList = archive.locator('.sbca-list-scroll');
+        await archiveList.evaluate(node => { node.scrollTop = node.scrollHeight; });
+        expect(await archiveList.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        await expect(archive.locator('.sbca-row').last()).toBeInViewport();
+        await expect(archive.locator('.sb-dialog__close:visible').last()).toBeInViewport();
+        await archive.locator('.sb-dialog__close:visible').last().click();
     });
 }

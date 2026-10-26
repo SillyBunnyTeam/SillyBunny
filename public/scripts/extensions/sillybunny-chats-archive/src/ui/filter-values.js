@@ -1,17 +1,30 @@
+const MIB = 1024 ** 2;
+
 export function commaValues(value) {
     return String(value ?? '').split(',').map(item => item.trim()).filter(Boolean);
 }
 
-export function inputNumber(input, multiplier = 1, integer = false) {
-    if (!input.value.trim()) {
+function numberValue(text, multiplier, integer = false) {
+    if (!String(text ?? '').trim()) {
         return undefined;
     }
-    const value = Number(input.value) * multiplier;
+    const value = Number(text) * multiplier;
     return Number.isFinite(value) && value >= 0 && (!integer || Number.isSafeInteger(value)) ? value : undefined;
 }
 
-export function inputDate(input, endOfDay = false) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.value);
+export const sizeFromMebibytes = text => numberValue(text, MIB);
+export const countFromText = text => numberValue(text, 1, true);
+
+export function mebibytesText(bytes) {
+    return bytes === undefined ? '' : String(bytes / MIB);
+}
+
+export function countText(count) {
+    return count === undefined ? '' : String(count);
+}
+
+export function dateFromInput(text, endOfDay = false) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
     if (!match) {
         return undefined;
     }
@@ -25,4 +38,17 @@ export function inputDate(input, endOfDay = false) {
         endOfDay ? 999 : 0,
     ).valueOf();
     return Number.isFinite(value) ? value : undefined;
+}
+
+export function dateInputText(value) {
+    if (value === undefined) {
+        return '';
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) {
+        return '';
+    }
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
 }

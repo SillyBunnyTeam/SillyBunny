@@ -54,8 +54,15 @@ jest.unstable_mockModule('../src/util.js', () => ({
     recoverFileWriteSync: () => {},
     tryParse: value => JSON.parse(value),
 }));
-jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ openAlert: jest.fn() }));
-
+jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+    translate: text => text,
+}));
+jest.unstable_mockModule('../public/scripts/popup.js', () => ({
+    Popup: class {},
+    POPUP_TYPE: {},
+    POPUP_RESULT: {},
+}));
 const [{ DataMaidService }, { navigateAndConfirm }] = await Promise.all([
     import('../src/endpoints/data-maid.js'),
     import('../public/scripts/extensions/sillybunny-chats-archive/src/ui.js'),
@@ -1083,131 +1090,6 @@ describe('SillyBunny Chats Archive integration', () => {
         expect(entry).not.toMatch(/role', 'tab'/);
         expect(entry).not.toMatch(/data-sb-character-tab/);
         expect(entry).toMatch(/button\.className = 'menu_button sbca-drawer-button'/);
-    });
-
-    test('archive exposes labels, live state, selection, and cancellable work', () => {
-        expect(ui).toMatch(/setAttribute\('role', 'status'\)/);
-        expect(ui).toMatch(/aria-labelledby/);
-        expect(ui).toMatch(/aria-current/);
-        expect(ui).toMatch(/new AbortController\(\)/);
-        expect(ui).toMatch(/eventTypes\.CHAT_CHANGED/);
-        expect(ui).toMatch(/setActive(?:Character|Group)/);
-        expect(ui).toMatch(/aria-expanded/);
-        expect(ui).toMatch(/aria-pressed/);
-        expect(ui).toMatch(/const search = mentionSearchState\(ui\.search\.value, ui\.characterMentions\);[\s\S]*state\.deepRows === null \? search\.text : ''/);
-        expect(ui).toMatch(/favoritesSelected: ui\.favorite\.checked/);
-        expect(ui).toMatch(/ORGANIZATION_FILE_NAME/);
-        expect(ui).not.toMatch(/Do not delete \{name\} through host Data Maid/);
-        expect(ui).toMatch(/sbca-selection-toggle/);
-        expect(ui).toMatch(/sbca-organizer/);
-        expect(ui).toMatch(/physicalChatKey/);
-        expect(ui).toMatch(/summary\.setAttribute\('aria-label', `\$\{tr\(ctx, 'Character or group'\)\}: \$\{choice\.label\}`\)/);
-        expect(ui).not.toMatch(/el\('span', 'sbca-label', tr\(ctx, 'Character or group'\)\)/);
-        expect(ui).toMatch(/'All characters and groups'/);
-        expect(ui).toMatch(/sbca-owner-selector/);
-        expect(ui).toMatch(/const ownerField = ownerControl\(ctx\)/);
-        expect(ui).toMatch(/ownerFilterKey\(row\)/);
-        expect(ui).toMatch(/getThumbnailUrl\('avatar', choice\.avatar\)/);
-        expect(ui).toMatch(/Search characters and groups/);
-        expect(ui).toMatch(/Character: \{name\}/);
-        expect(ui).toMatch(/const listTools = el\('div', 'sbca-list-tools'\)/);
-        expect(ui).toMatch(/listTools\.append\(ownerField\.wrap, sortPills, selectionBar\)/);
-        expect(ui).toMatch(/listTop\.append\(listHeading, listTools\)/);
-        expect(ui).toMatch(/listPanel\.append\(listTop, list\)/);
-        expect(ui).toMatch(/sbca-list-tools/);
-        expect(ui).not.toMatch(/listTools\.open/);
-        expect(ui).toMatch(/option\.addEventListener\('pointerdown', event => \{\s*if \(event\.button !== 0 \|\| event\.pointerType === 'touch'\)/);
-        expect(ui).toMatch(/option\.addEventListener\('click', select\)/);
-        expect(ui).toMatch(/sbca-sortpill/);
-        expect(ui).not.toMatch(/characterChips|sbca-charstrip|sbca-charchip|charSort/);
-        expect(ui).toMatch(/enterKeyHint = 'search'/);
-        expect(ui).toMatch(/Type to search chats\. Mention character names with @\./);
-        expect(ui).toMatch(/role', 'listbox'/);
-        expect(ui).toMatch(/function fuzzyMentionChoices/);
-        expect(ui).toMatch(/function mentionedRows/);
-        expect(ui).toMatch(/SEARCH_CONTENT_DEBOUNCE_MS = 600/);
-        expect(ui).toMatch(/state\.listState !== 'ready' \|\| state\.scanAbort \|\| state\.searchAbort/);
-        expect(ui).toMatch(/search\.addEventListener\('input',[\s\S]*?applyQuery\(\);[\s\S]*?runDeepSearch/);
-        expect(ui).toMatch(/buildSearchScopes\(ctx\.characters, ctx\.groups, ui\.owner\.value\)/);
-        expect(ui).toMatch(/findMatchingMessageIndex/);
-        expect(ui).toMatch(/First search match/);
-        expect(ui).toMatch(/Latest messages/);
-        expect(ui).toMatch(/event\.key !== 'ArrowDown'/);
-        expect(ui).toMatch(/event\.isComposing/);
-        expect(ui).toMatch(/more\.click\(\)/);
-        expect(ui).toMatch(/showPage\(shaped\.messages\.length - MESSAGE_PAGE_SIZE\)/);
-        expect(ui).toMatch(/state\.deepRows !== null && state\.deepQuery === matchQuery/);
-        expect(ui).not.toMatch(/search result verification failed/);
-        expect(ui).toMatch(/const found = new Map\(filterRows\(mentionedRows\(allRows\(state\), search\.mentions\), \{ text: query \}/);
-        expect(ui).toMatch(/search items had errors/);
-        expect(ui).toMatch(/mentionedRows\(allRows\(state\), search\.mentions\)\.filter\(row => row\.kind === 'orphan'\)/);
-        expect(ui).not.toMatch(/row\.kind === 'orphan' \|\| row\.source === 'inventory'/);
-        expect(ui).toMatch(/findMatchingSnippetInJsonlAsync\(raw, query, \{ signal \}\)/);
-        expect(ui).not.toMatch(/findExistingGroupFiles/);
-        expect(ui).toMatch(/savedViewField\.wrap\.hidden = true/);
-        expect(ui).toMatch(/ui\.savedViewWrap\.hidden = organization\.views\.length === 0/);
-        expect(ui).toMatch(/filterToggle\.setAttribute\('aria-controls', optionsPanel\.id\)/);
-        expect(ui).toMatch(/filterToggle\.setAttribute\('aria-expanded'/);
-        expect(ui).toMatch(/organizationToggle\.setAttribute\('aria-controls', organizationPanel\.id\)/);
-        expect(ui).toMatch(/Manage organization/);
-        expect(ui).not.toMatch(/SORT_OPTIONS/);
-        expect(ui).not.toMatch(/sortField/);
-        expect(ui).not.toMatch(/Clear filters/);
-        expect(ui).not.toMatch(/Search message content/);
-        expect(ui).not.toMatch(/sbca-row-selection-label/);
-        expect(ui).not.toMatch(/\browKey\(/);
-        expect(ui).not.toMatch(/menu_button/);
-        expect(ui).not.toMatch(/el\('div', 'sbca-action/);
-    });
-
-    test('archive preserves focus and exposes item-specific actions', () => {
-        expect(ui).toMatch(/function preserveArchiveFocus\(ui, update\)/);
-        expect(ui).toMatch(/organizationFocusKey\('manager', type, item\.id, 'rename'\)/);
-        expect(ui).toMatch(/organizationFocusKey\('viewer-action', key, 'favorite'\)/);
-        expect(ui).toMatch(/control\.dataset\.sbcaFocusKey === snapshot\.fallback/);
-        expect(ui).toMatch(/snapshot\.viewer \? ui\.viewerTitle : snapshot\.list \? ui\.listHeading/);
-        expect(ui).toMatch(/preserveArchiveFocus\(ui, \(\) => \{\s*refreshOrganizationUI/s);
-        expect(ui).toMatch(/Rename \{name\}/);
-        expect(ui).toMatch(/Delete \{name\}/);
-        expect(ui).toMatch(/Select \{name\} for \{owner\}/);
-        expect(ui).toMatch(/Delete saved view \{name\}\?/);
-        expect(ui).toMatch(/const focusInFilters = optionsPanel\.contains\(active\);\s*const organizationExpanded = organizationToggle\.getAttribute\('aria-expanded'\) === 'true';\s*const showDesktopFilters = !event\.matches && !organizationExpanded;\s*optionsPanel\.hidden = !showDesktopFilters/s);
-        expect(ui).toMatch(/focusInFilters\) \{[\s\S]*?restoreFilterFocusOnDesktop = true;[\s\S]*?filterToggle\.focus/s);
-        expect(ui).toMatch(/focusInBrowse\) \{\s*groupField\.select\.focus/s);
-        expect(ui).toMatch(/const folder = el\('div', 'sbca-organizer-folder'\)/);
-        expect(ui).toMatch(/folder\.setAttribute\('aria-labelledby', folderLabel\.id\)/);
-        expect(ui).toMatch(/folderLabel\.classList\.add\('sbca-organizer-section-title'\)/);
-        expect(ui).toMatch(/const collectionsField = selectControl\(ctx, 'Collections'/);
-        expect(ui).toMatch(/Remove collection \{name\}/);
-        const cancelViewer = ui.slice(ui.indexOf('function cancelViewer'), ui.indexOf('function cancelNavigation'));
-        expect(cancelViewer).toMatch(/state\.viewerAbort\?\.abort\(\)/);
-        expect(cancelViewer).not.toMatch(/state\.viewerAbort = null/);
-    });
-
-    test('message lists, grouping, scans, and search retain their safety contracts', () => {
-        const searchStart = ui.indexOf('search.addEventListener(\'keydown\'', ui.indexOf('const flushQuery'));
-        const searchHandler = ui.slice(searchStart, ui.indexOf('\n    });', searchStart));
-        expect(searchHandler).toMatch(/event\.key !== 'Enter' \|\| event\.isComposing/);
-        expect(searchHandler).toMatch(/flushQuery\(\)/);
-        expect(ui).not.toMatch(/deepButton/);
-        expect(ui).toMatch(/control === ui\.owner && mentionSearchState\(ui\.search\.value, ui\.characterMentions\)\.text[\s\S]*state\.listState === 'ready' && !state\.scanAbort/);
-        expect(ui).toMatch(/function applySavedView[\s\S]*mentionSearchState\(ui\.search\.value, ui\.characterMentions\)\.text && state\.listState === 'ready' && !state\.scanAbort[\s\S]*runDeepSearch/);
-        expect(ui).toMatch(/ui\.scanButton\.textContent = tr[\s\S]*if \(mentionSearchState\(ui\.search\.value, ui\.characterMentions\)\.text\) \{[\s\S]*runDeepSearch/);
-        expect(ui).toMatch(/const messageList = el\('div', 'sbca-message-list'\);/);
-        expect(ui).toMatch(/messageList\.setAttribute\('role', 'list'\)/);
-        expect(ui).toMatch(/messages\.append\(messageList, el\('p', 'sbca-placeholder'/);
-        expect(ui).toMatch(/appendMessagePage\(ctx, shaped\.messages, messageList, messages/);
-        expect(ui).toMatch(/list\.append\(card\)/);
-        expect(ui).toMatch(/controls\.append\(more\)/);
-        expect(ui).toMatch(/showPage\(end\)\?\.focus/);
-        expect(ui).toMatch(/Raw preview truncated\. Download the original file/);
-        expect(ui).toMatch(/const shownRows = new Set\(rows\.slice\(0, state\.visibleLimit\)\)/);
-        expect(ui).toMatch(/groupRows\(rows, ui\.group\.value, state\.organization\)/);
-        expect(ui).toMatch(/group\.rows\.filter\(row => shownRows\.has\(row\)\)/);
-        expect(ui).toMatch(/group\.rows\.length/);
-        expect(ui).toMatch(/for \(const row of shownGroupRows\)/);
-        expect(ui).toMatch(/ui\.status\.setAttribute\('aria-busy', 'true'\)/);
-        expect(ui).toMatch(/ui\.status\.removeAttribute\('aria-busy'\)/);
     });
 
     test('manifest hooks resolve to exported lifecycle functions', () => {

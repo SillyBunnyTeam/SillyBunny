@@ -7,6 +7,7 @@ import {
     physicalChatKey,
 } from '../core.js';
 import { searchScope } from '../api.js';
+import { syncBusyControls } from './busy.js';
 import { cancelSearch, clearViewerMatch } from './cancellation.js';
 import { LIST_PAGE_SIZE } from './constants.js';
 import { setStatus, tr } from './dom.js';
@@ -30,15 +31,16 @@ export async function runDeepSearch(ctx, state, ui) {
     clearViewerMatch(ui);
     const { signal } = controller;
     ui.status.setAttribute('aria-busy', 'true');
+    syncBusyControls(ctx, state, ui);
     renderList(ctx, state, ui);
 
     const mentionedAvatars = new Set(search.mentions.filter(mention => !mention.missing).flatMap(mention => mention.avatars));
     const hasMentions = search.mentions.length > 0;
-    const scopes = buildSearchScopes(ctx.characters, ctx.groups, ui.owner.value)
+    const scopes = buildSearchScopes(ctx.characters, ctx.groups, state.model.owner)
         .filter(scope => !hasMentions || (scope.avatar_url && mentionedAvatars.has(scope.avatar_url)));
     const localFiles = filterRows(
         mentionedRows(allRows(state), search.mentions).filter(row => row.kind === 'orphan'),
-        { owner: ui.owner.value },
+        { owner: state.model.owner },
     );
     const total = scopes.length + localFiles.length;
     const found = new Map(filterRows(mentionedRows(allRows(state), search.mentions), { text: query }, state.organization)
@@ -119,9 +121,9 @@ export async function runDeepSearch(ctx, state, ui) {
                 completed,
                 total,
                 count: found.size,
-            }));
+            }), { alert: true });
         } else if (errors > 0) {
-            setStatus(ui, tr(ctx, '{count} matching chats. {errors} search items had errors.', { count: found.size, errors }));
+            setStatus(ui, tr(ctx, '{count} matching chats. {errors} search items had errors.', { count: found.size, errors }), { alert: true });
         } else {
             setStatus(ui, tr(ctx, '{count} matching chats for "{query}".', { count: found.size, query }));
         }
@@ -129,6 +131,7 @@ export async function runDeepSearch(ctx, state, ui) {
         if (state.searchAbort === controller) {
             state.searchAbort = null;
             ui.status.removeAttribute('aria-busy');
+            syncBusyControls(ctx, state, ui);
         }
     }
 }

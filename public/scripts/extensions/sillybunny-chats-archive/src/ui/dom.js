@@ -1,3 +1,5 @@
+import { t } from '../../../../i18n.js';
+
 export function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) {
@@ -23,33 +25,26 @@ export function appendOption(select, value, text) {
     return option;
 }
 
-export function selectControl(ctx, label, options, className = 'sbca-filter') {
-    const wrap = el('label', className);
-    wrap.append(el('span', 'sbca-label', tr(ctx, label)));
-    const select = document.createElement('select');
-    select.className = 'text_pole';
-    for (const [value, text] of options) {
-        appendOption(select, value, tr(ctx, text));
+export function glyph(name) {
+    const node = el('i', `fa-solid fa-${name}`);
+    node.setAttribute('aria-hidden', 'true');
+    return node;
+}
+
+export function rowActionButton(label, name, className = '') {
+    const node = button(`sbca-row-action ${className}`.trim());
+    node.title = label;
+    node.setAttribute('aria-label', label);
+    node.append(glyph(name));
+    return node;
+}
+
+export function flatButton(text, name = '', className = '') {
+    const node = button(`sbca-flat-button ${className}`.trim());
+    if (name) {
+        node.append(glyph(name));
     }
-    wrap.append(select);
-    return { wrap, select };
-}
-
-export function inputControl(ctx, label, type = 'text', className = 'sbca-filter') {
-    const wrap = el('label', className);
-    wrap.append(el('span', 'sbca-label', tr(ctx, label)));
-    const input = document.createElement('input');
-    input.type = type;
-    input.className = 'text_pole';
-    wrap.append(input);
-    return { wrap, input };
-}
-
-export function actionButton(ctx, label, icon) {
-    const node = button('sbca-control sbca-action');
-    const glyph = el('i', `fa-solid ${icon}`);
-    glyph.setAttribute('aria-hidden', 'true');
-    node.append(glyph, el('span', 'sbca-button-copy', tr(ctx, label)));
+    node.append(el('span', 'sbca-button-copy', text));
     return node;
 }
 
@@ -61,6 +56,38 @@ export function tr(ctx, text, replacements = {}) {
     return translated;
 }
 
-export function setStatus(ui, text) {
+/**
+ * Announces `text` in the live region. The banner repeats it only while a load or scan runs, or when `alert`
+ * marks a warning or error; every other message stays announce-only.
+ */
+export function setStatus(ui, text, { alert = false } = {}) {
     ui.status.textContent = text;
+    ui.bannerText.textContent = text;
+    ui.banner.toggleAttribute('data-alert', alert && text !== '');
+    syncBanner(ui);
+}
+
+export function syncBanner(ui) {
+    ui.banner.hidden = ui.banner.dataset.busy !== 'true' && !ui.banner.hasAttribute('data-alert');
+}
+
+export function setCount(ui, text) {
+    ui.countText = text;
+    showCount(ui);
+}
+
+export function showCount(ui) {
+    const text = ui.selection?.isActive ? '' : ui.countText ?? '';
+    ui.dialog.setSubtitle(text);
+    ui.listPage?.setSubtitle(text);
+}
+
+/** Copy the maintainers have not supplied yet; markup that shows it also calls `markPlaceholder`. */
+export function placeholderCopy() {
+    return t`TODO(copy)`;
+}
+
+export function markPlaceholder(node) {
+    node.dataset.sbCopyPlaceholder = 'true';
+    return node;
 }

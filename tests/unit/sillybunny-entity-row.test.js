@@ -345,6 +345,31 @@ describe('createEntityRow', () => {
         }
     });
 
+    test('places the optional preview between the subtitle and tags and patches it in place', () => {
+        const { slots, update } = makeRow({ subtitle: 'Version 1', preview: '<b>Hello</b>' });
+
+        expect([...slots.text.children]).toEqual([slots.title, slots.subtitle, slots.preview]);
+        expect(slots.preview.classList.contains('ds-entity-row__preview')).toBe(true);
+        expect(slots.preview.textContent).toBe('<b>Hello</b>');
+        expect(slots.preview.children).toHaveLength(0);
+
+        const preview = slots.preview;
+        update({ tags: true, preview: 'Goodbye' });
+        expect([...slots.text.children]).toEqual([slots.title, slots.subtitle, preview, slots.tags]);
+        expect(slots.preview).toBe(preview);
+        expect(preview.textContent).toBe('Goodbye');
+
+        update({ preview: null });
+        expect(slots.preview).toBeNull();
+        expect(preview.parentElement).toBeNull();
+        expect([...slots.text.children]).toEqual([slots.title, slots.subtitle, slots.tags]);
+    });
+
+    test('omits the preview slot unless content is supplied', () => {
+        expect(makeRow().slots.preview).toBeNull();
+        expect(makeRow({ preview: null }).slots.preview).toBeNull();
+    });
+
     test('updates avatar content between image objects, Nodes and omission', () => {
         const { slots, update } = makeRow({ avatar: { src: 'Alice.png' } });
         const avatarSlot = slots.avatar;

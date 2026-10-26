@@ -1,24 +1,48 @@
-import { filterRows, groupRows, physicalChatKey, sortRows } from '../core.js';
+import { physicalChatKey, sortRows } from '../core.js';
+import { createEntityRow } from '../../../../sillybunny-editor/entity-row.js';
+import { createStatusPage } from '../../../../sillybunny-editor/status-page.js';
 import { cancelNavigation } from './cancellation.js';
-import { KINDS, LIST_PAGE_SIZE } from './constants.js';
-import { button, el, setStatus, tr } from './dom.js';
+import { LIST_PAGE_SIZE } from './constants.js';
+import { button, el, markPlaceholder, setCount, setStatus, tr } from './dom.js';
+import { syncFilterButtons } from './filters.js';
 import { loadRows } from './inventory.js';
+import { buildLocations } from './locations.js';
 import { mentionedRows, mentionSearchState } from './mentions.js';
-import { allRows, messageCount, orphanLabel, ownerLabel } from './rows.js';
-import { currentSavedView } from './saved-views.js';
+import { syncLocationPane } from './panes.js';
+import { allRows, messageCount, ownerOrReason } from './rows.js';
+import { rememberCurrentView } from './saved-views.js';
 import { updateSelectionControls } from './selection.js';
+import { ALL_LOCATION, filterBase, filterByLocation, withLocation } from './view-model.js';
 import { openViewer, selectRow } from './viewer.js';
 
-function visibleRows(state, ui) {
+const SNIPPET_LIMIT = 180;
+
+function computeView(ctx, state, ui, model) {
     const search = mentionSearchState(ui.search.value, ui.characterMentions);
     const source = mentionedRows(state.deepRows ?? allRows(state), search.mentions);
     const text = state.deepRows === null ? search.text : '';
-    const options = { ...currentSavedView(state, ui), text, favoritesSelected: ui.favorite.checked };
-    delete options.query;
-    delete options.sort;
-    delete options.group;
-    delete options.density;
-    return sortRows(filterRows(source, options, state.organization), ui.sort.value);
+    const base = filterBase(source, model, text, state.organization);
+    const searching = Boolean(search.text) || search.mentions.length > 0;
+    const locations = buildLocations(ctx, { base, catalog: allRows(state), model, organization: state.organization, searching });
+    return { base, locations, searching };
+}
+
+/**
+ * Rows and sidebar locations for the current search, Filters and location. When Filters hide the chosen
+ * location, `fallbackModel` is the model with All Chats chosen instead, and the rows already follow it; the
+ * caller commits it. Rows still loading or a scan still running can leave a location empty for now, so only
+ * complete data may drop it.
+ */
+export function deriveView(ctx, state, ui) {
+    let view = computeView(ctx, state, ui, state.model);
+    let model = state.model;
+    let fallbackModel = null;
+    if (view.locations.fallback && state.listState === 'ready' && !state.scanAbort) {
+        fallbackModel = withLocation(state.model, ALL_LOCATION);
+        model = fallbackModel;
+        view = computeView(ctx, state, ui, model);
+    }
+    return { ...view, fallbackModel, rows: sortRows(filterByLocation(view.base, model, state.organization), model.sort) };
 }
 
 export function updateBrowseStatus(ctx, state, ui) {
@@ -28,82 +52,101 @@ export function updateBrowseStatus(ctx, state, ui) {
     const total = allRows(state).length;
     const matching = state.matchingRows.length;
     const filtered = matching !== total || ui.search.value.trim();
-    let text = filtered
+    const text = filtered
         ? tr(ctx, '{matching} of {total} indexed chat files', { matching, total })
         : tr(ctx, '{total} indexed chat files', { total });
+    setCount(ui, total === 0 ? '' : text);
     if (state.inventoryFailures > 0) {
-        text += ` ${tr(ctx, 'Some indexed chats could not be loaded.')}`;
+        setStatus(ui, `${text} ${tr(ctx, 'Some indexed chats could not be loaded.')}`, { alert: true });
+    } else {
+        setStatus(ui, text);
     }
+}
+
+export function updateResultStatus(ctx, state, ui) {
+    if (state.searchAbort) {
+        return;
+    }
+    if (state.deepRows === null) {
+        updateBrowseStatus(ctx, state, ui);
+        return;
+    }
+    const text = tr(ctx, '{matching} of {total} matching chats', {
+        matching: state.matchingRows.length,
+        total: state.deepRows.length,
+    });
+    setCount(ui, text);
     setStatus(ui, text);
 }
 
-export function renderList(ctx, state, ui) {
+function syncListHeading(ui, location) {
+    const label = el('span', '', location.label);
+    if (location.placeholder) {
+        markPlaceholder(label);
+    }
+    ui.listHeading.replaceChildren(label);
+}
+
+function showStatusPage(ui, options) {
     ui.list.replaceChildren();
-    state.selectedButton = null;
+    ui.listScroll.replaceChildren(createStatusPage({ compact: true, ...options }).element);
+}
+
+function emptyMessage(ctx, state) {
+    if (state.deepRows !== null) {
+        return tr(ctx, 'No chats contain that message content.');
+    }
+    return allRows(state).length === 0
+        ? tr(ctx, 'No chat files were found.')
+        : tr(ctx, 'No chats match these filters.');
+}
+
+export function renderList(ctx, state, ui) {
+    paintList(ctx, state, ui);
+    updateSelectionControls(ctx, state, ui);
+}
+
+function paintList(ctx, state, ui) {
+    ui.data = deriveView(ctx, state, ui);
+    if (ui.data.fallbackModel) {
+        state.model = ui.data.fallbackModel;
+        rememberCurrentView(ctx, state, ui);
+    }
+    ui.listEditor?.refresh();
+    syncListHeading(ui, ui.data.locations.current);
+    syncFilterButtons(state, ui);
+    syncLocationPane(ui);
+
     if (state.listState === 'loading') {
         ui.list.setAttribute('aria-busy', 'true');
         if (state.rows.length === 0) {
             state.matchingRows = [];
-            ui.list.append(listMessage(tr(ctx, 'Loading chats...')));
+            setCount(ui, '');
+            showStatusPage(ui, { icon: 'spinner', title: tr(ctx, 'Loading chats...') });
             return;
         }
     }
     if (state.listState === 'error') {
         state.matchingRows = [];
-        const item = listMessage(tr(ctx, 'The chat list could not be loaded.'));
-        const retry = button('sbca-control', tr(ctx, 'Try again'));
-        retry.addEventListener('click', () => void loadRows(ctx, state, ui));
-        item.append(retry);
-        ui.list.append(item);
+        setCount(ui, '');
+        showStatusPage(ui, {
+            icon: 'triangle-exclamation',
+            title: tr(ctx, 'The chat list could not be loaded.'),
+            actions: [{ label: tr(ctx, 'Try again'), primary: true, onActivate: () => void loadRows(ctx, state, ui) }],
+        });
         return;
     }
 
-    const rows = visibleRows(state, ui);
+    const { rows } = ui.data;
     state.matchingRows = rows;
     if (rows.length === 0) {
-        const message = state.deepRows !== null
-            ? tr(ctx, 'No chats contain that message content.')
-            : allRows(state).length === 0
-                ? tr(ctx, 'No chat files were found.')
-                : tr(ctx, 'No chats match these filters.');
-        ui.list.append(listMessage(message));
+        showStatusPage(ui, { icon: 'comments', title: emptyMessage(ctx, state) });
         return;
     }
 
-    const shownRows = new Set(rows.slice(0, state.visibleLimit));
-    for (const group of groupRows(rows, ui.group.value, state.organization)) {
-        const shownGroupRows = group.rows.filter(row => shownRows.has(row));
-        if (shownGroupRows.length === 0) {
-            continue;
-        }
-        const collapseKey = JSON.stringify([ui.group.value, group.key]);
-        const collapsed = state.collapsedGroups.has(collapseKey);
-        if (ui.group.value !== 'flat') {
-            const item = el('li', 'sbca-group-header');
-            const heading = button('sbca-group-button', `${groupDisplayLabel(ctx, ui.group.value, group.label)} (${group.rows.length})`);
-            heading.dataset.sbcaGroupKey = collapseKey;
-            heading.setAttribute('aria-expanded', String(!collapsed));
-            heading.addEventListener('click', () => {
-                if (state.collapsedGroups.has(collapseKey)) {
-                    state.collapsedGroups.delete(collapseKey);
-                } else {
-                    state.collapsedGroups.add(collapseKey);
-                }
-                renderList(ctx, state, ui);
-                [...ui.list.querySelectorAll('.sbca-group-button')]
-                    .find(control => control.dataset.sbcaGroupKey === collapseKey)
-                    ?.focus({ preventScroll: true });
-            });
-            item.append(heading);
-            ui.list.append(item);
-        }
-        if (!collapsed) {
-            for (const row of shownGroupRows) {
-                ui.list.append(buildRow(ctx, state, ui, row));
-            }
-        }
-    }
+    ui.list.replaceChildren(...rows.slice(0, state.visibleLimit).map(row => buildRow(ctx, state, ui, row)));
     appendListMore(ctx, state, ui, rows);
+    ui.listScroll.replaceChildren(ui.list);
 }
 
 function appendListMore(ctx, state, ui, rows) {
@@ -111,156 +154,104 @@ function appendListMore(ctx, state, ui, rows) {
         return;
     }
     const remaining = rows.length - state.visibleLimit;
-    const item = el('li', 'sbca-list-more');
-    const more = button('sbca-control', tr(ctx, 'Show {count} more', { count: Math.min(LIST_PAGE_SIZE, remaining) }));
+    const item = el('div', 'sbca-list-more');
+    item.setAttribute('role', 'listitem');
+    const more = button('menu_button', tr(ctx, 'Show {count} more', { count: Math.min(LIST_PAGE_SIZE, remaining) }));
     more.addEventListener('click', () => {
         const firstNewRow = state.visibleLimit;
         state.visibleLimit += LIST_PAGE_SIZE;
-        if (ui.group.value !== 'flat') {
-            const newKeys = new Set(rows.slice(firstNewRow, state.visibleLimit).map(physicalChatKey));
-            renderList(ctx, state, ui);
-            ([...ui.list.querySelectorAll('.sbca-row-button')]
-                .find(control => newKeys.has(control.dataset.sbcaKey)) ?? ui.list.querySelector('.sbca-list-more .sbca-control'))
-                ?.focus({ preventScroll: true });
-            return;
-        }
         item.remove();
-        const fragment = document.createDocumentFragment();
-        let firstButton = null;
-        for (const row of rows.slice(firstNewRow, state.visibleLimit)) {
-            const rowItem = buildRow(ctx, state, ui, row);
-            firstButton ??= rowItem.querySelector('.sbca-row-button');
-            fragment.append(rowItem);
-        }
-        ui.list.append(fragment);
+        const added = rows.slice(firstNewRow, state.visibleLimit).map(row => buildRow(ctx, state, ui, row));
+        ui.list.append(...added);
         appendListMore(ctx, state, ui, rows);
-        (firstButton ?? ui.list.querySelector('.sbca-list-more .sbca-control'))?.focus({ preventScroll: true });
+        updateSelectionControls(ctx, state, ui);
+        (added[0] ?? ui.list.querySelector('.sbca-list-more button'))?.focus({ preventScroll: true });
     });
     item.append(more);
     ui.list.append(item);
 }
 
-function groupDisplayLabel(ctx, mode, label) {
-    if (mode === 'type') {
-        return tr(ctx, Object.fromEntries(KINDS)[label] ?? label);
-    }
-    if (mode === 'folder' && label === 'Unfiled') {
-        return tr(ctx, 'Unfiled');
-    }
-    return label || tr(ctx, 'Unknown owner');
+function symbolicAvatar(kind) {
+    const icon = el('i', `sbca-avatar-icon fa-solid ${kind === 'group' ? 'fa-users' : 'fa-triangle-exclamation'}`);
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
 }
 
-function listMessage(text) {
-    const item = el('li', 'sbca-list-message');
-    item.append(el('p', 'sbca-placeholder', text));
-    return item;
+function favoriteStar(ctx) {
+    const star = el('i', 'sbca-row-star fa-solid fa-star');
+    star.setAttribute('role', 'img');
+    star.setAttribute('aria-label', tr(ctx, 'Favorite'));
+    star.title = tr(ctx, 'Favorite');
+    return star;
 }
 
-function buildRow(ctx, state, ui, row) {
-    const item = el('li', 'sbca-row');
-    const block = button('sbca-row-button');
-    const key = physicalChatKey(row);
-    block.dataset.sbcaKind = row.kind;
-    block.dataset.sbcaKey = key;
-    if (state.selectedKey === key) {
-        block.setAttribute('aria-current', 'true');
-        state.selectedButton = block;
-    }
-
-    const head = el('span', 'sbca-row-head');
-    if (row.kind === 'solo') {
-        const img = document.createElement('img');
-        img.className = 'sbca-avatar';
-        img.src = ctx.getThumbnailUrl('avatar', row.avatar);
-        img.alt = '';
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        head.append(img);
-    } else {
-        const icon = el('i', `sbca-avatar-icon fa-solid ${row.kind === 'group' ? 'fa-users' : 'fa-triangle-exclamation'}`);
-        icon.setAttribute('aria-hidden', 'true');
-        head.append(icon);
-    }
-
-    const title = el('span', 'sbca-row-title');
-    title.append(el('span', 'sbca-filename', row.file_id));
-    const owner = el('span', 'sbca-owner', ownerLabel(ctx, row));
-    if (row.kind === 'orphan') {
-        owner.append(el('span', 'sbca-badge', orphanLabel(ctx, row.orphanType)));
-    }
-    title.append(owner);
-    head.append(title);
-
-    const info = el('span', 'sbca-row-info');
+function rowCaption(ctx, row) {
+    const parts = [ownerOrReason(ctx, row)];
     if (row.mtime) {
         const date = new Date(row.mtime);
         if (!Number.isNaN(date.valueOf())) {
-            const time = el('time', undefined, date.toLocaleDateString());
-            time.dateTime = date.toISOString();
-            info.append(time);
+            parts.push(date.toLocaleDateString());
         }
-    }
-    if (row.sizeText) {
-        info.append(el('span', undefined, row.sizeText));
     }
     if (row.count !== null) {
-        info.append(el('span', undefined, messageCount(ctx, row.count)));
+        parts.push(messageCount(ctx, row.count));
     }
-    head.append(info);
-    block.append(head);
-    const metadata = state.organization?.chats?.[key];
-    if (metadata) {
-        const indicators = el('span', 'sbca-curation-indicators');
-        if (metadata.favorite) {
-            indicators.append(el('span', 'sbca-curation-favorite', tr(ctx, 'Favorite')));
-        }
-        const folder = state.organization.folders.find(item => item.id === metadata.folder);
-        if (folder) {
-            indicators.append(el('span', 'sbca-curation-folder', tr(ctx, 'Folder: {name}', { name: folder.name })));
-        }
-        for (const id of metadata.collections ?? []) {
-            const collection = state.organization.collections.find(item => item.id === id);
-            if (collection) {
-                indicators.append(el('span', 'sbca-curation-collection', tr(ctx, 'Collection: {name}', { name: collection.name })));
-            }
-        }
-        for (const tag of metadata.tags ?? []) {
-            indicators.append(el('span', 'sbca-curation-tag', tr(ctx, 'Tag: {name}', { name: tag })));
-        }
-        if (indicators.childElementCount > 0) {
-            block.append(indicators);
-        }
+    return parts.join(' · ');
+}
+
+function buildRow(ctx, state, ui, row) {
+    const key = physicalChatKey(row);
+    const caption = rowCaption(ctx, row);
+    const favorite = Boolean(state.organization?.chats?.[key]?.favorite);
+    const { row: item } = createEntityRow({
+        key: `chat:${key}`,
+        label: [row.file_id, caption, favorite && tr(ctx, 'Favorite')].filter(Boolean).join(', '),
+        title: row.file_id,
+        subtitle: caption,
+        preview: row.snippet.length > SNIPPET_LIMIT ? `${row.snippet.slice(0, SNIPPET_LIMIT - 1)}…` : row.snippet || null,
+        avatar: row.kind === 'solo' ? { src: ctx.getThumbnailUrl('avatar', row.avatar), alt: '' } : symbolicAvatar(row.kind),
+        suffix: favorite ? [favoriteStar(ctx)] : [],
+        activation: 'activate',
+        compatClasses: { row: ['sbca-row'], title: ['sbca-filename'], preview: ['sbca-row-preview'] },
+        attributes: { 'data-sbca-key': key, 'data-sbca-kind': row.kind },
+    });
+    if (state.selectedKey === key) {
+        item.setAttribute('aria-current', 'true');
     }
-    if (row.snippet) {
-        const snippet = row.snippet.length > 180 ? `${row.snippet.slice(0, 177)}...` : row.snippet;
-        block.append(el('span', 'sbca-row-preview', snippet));
-    }
-    block.addEventListener('click', () => {
+    const open = () => {
         cancelNavigation(state);
-        selectRow(state, ui, block, key);
+        selectRow(state, ui, item, key);
         state.selectedRow = row;
         void openViewer(ctx, state, row, ui);
+    };
+    item.addEventListener('click', open);
+    item.addEventListener('keydown', event => {
+        if (event.target === item && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            open();
+        }
     });
-    if (state.selectionMode) {
-        const selectLabel = el('label', 'sbca-row-selection');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = state.selectedBatchKeys.has(key);
-        checkbox.setAttribute('aria-label', tr(ctx, 'Select {name} for {owner}', {
-            name: row.file_id,
-            owner: ownerLabel(ctx, row),
-        }));
-        checkbox.addEventListener('change', () => {
-            if (checkbox.checked) {
-                state.selectedBatchKeys.add(key);
-            } else {
-                state.selectedBatchKeys.delete(key);
-            }
-            updateSelectionControls(ctx, state, ui);
-        });
-        selectLabel.append(checkbox);
-        item.append(selectLabel);
-    }
-    item.append(block);
     return item;
+}
+
+export function bindListKeys(ui) {
+    ui.list.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+            return;
+        }
+        const rows = [...ui.list.querySelectorAll('[data-sbca-key]')];
+        const current = rows.indexOf(event.target.closest('[data-sbca-key]'));
+        if (rows.length === 0 || current < 0) {
+            return;
+        }
+        event.preventDefault();
+        if (event.key === 'ArrowDown' && current === rows.length - 1) {
+            const more = ui.list.querySelector('.sbca-list-more button');
+            if (more) {
+                more.click();
+                return;
+            }
+        }
+        rows[Math.max(0, Math.min(rows.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
+    });
 }

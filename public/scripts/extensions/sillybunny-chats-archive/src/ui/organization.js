@@ -1,11 +1,10 @@
 import { createDefaultOrganization, normalizeOrganization } from '../core.js';
 import { fetchOrganization } from '../api.js';
 import { refreshOpenOrganizer } from './chat-organizer.js';
-import { UNFILED_VALUE } from './constants.js';
 import { runDeepSearch } from './deep-search.js';
-import { appendOption, setStatus, tr } from './dom.js';
+import { tr } from './dom.js';
 import { preserveArchiveFocus } from './focus.js';
-import { renderList, updateBrowseStatus } from './list.js';
+import { renderList, updateBrowseStatus, updateResultStatus } from './list.js';
 import { mentionSearchState } from './mentions.js';
 import { renderNamedManager } from './organization-manager.js';
 import { markOrganizationDirty, setOrganizationControlsEnabled, updateOrganizationStatus } from './organization-save.js';
@@ -39,16 +38,7 @@ export async function loadOrganization(ctx, state, ui) {
                 state.organization = { ...state.organization, lastView: currentSavedView(state, ui) };
                 markOrganizationDirty(ctx, state, ui, true);
                 renderList(ctx, state, ui);
-                if (!state.searchAbort) {
-                    if (state.deepRows === null) {
-                        updateBrowseStatus(ctx, state, ui);
-                    } else {
-                        setStatus(ui, tr(ctx, '{matching} of {total} matching chats', {
-                            matching: state.matchingRows.length,
-                            total: state.deepRows.length,
-                        }));
-                    }
-                }
+                updateResultStatus(ctx, state, ui);
                 updateSelectionControls(ctx, state, ui);
             } else {
                 applySavedView(ctx, state, ui, state.organization.lastView, null, false);
@@ -82,41 +72,14 @@ export async function loadOrganization(ctx, state, ui) {
     }
 }
 
-function replaceSelectOptions(select, options, selected = select.value) {
-    select.replaceChildren();
-    for (const [value, label] of options) {
-        appendOption(select, value, label);
-    }
-    select.value = options.some(([value]) => value === selected) ? selected : '';
-}
-
 export function refreshOrganizationUI(ctx, state, ui) {
     const organization = state.organization;
     if (!organization) {
         return;
     }
-    const folders = organization.folders.map(item => [item.id, item.name]);
-    const collections = organization.collections.map(item => [item.id, item.name]);
-    ui.savedViewWrap.hidden = organization.views.length === 0;
-    replaceSelectOptions(ui.savedView, [
-        ['', tr(ctx, 'Current view')],
-        ...organization.views.map(view => [view.id, view.name]),
-    ], state.selectedViewId ?? '');
     if (state.selectedViewId && !organization.views.some(view => view.id === state.selectedViewId)) {
         state.selectedViewId = null;
     }
-    replaceSelectOptions(ui.folder, [
-        ['', tr(ctx, 'Any folder')],
-        [UNFILED_VALUE, tr(ctx, 'Unfiled')],
-        ...folders,
-    ]);
-    replaceSelectOptions(ui.collection, [['', tr(ctx, 'Any collection')], ...collections]);
-    replaceSelectOptions(ui.batch.folder, [
-        ['', tr(ctx, 'Choose folder')],
-        [UNFILED_VALUE, tr(ctx, 'Clear folder')],
-        ...folders,
-    ]);
-    replaceSelectOptions(ui.batch.collection, [['', tr(ctx, 'Choose collection')], ...collections]);
     refreshTagOptions(state, ui);
     for (const [type, manager] of Object.entries(ui.managers)) {
         renderNamedManager(ctx, state, ui, type, manager);

@@ -4,8 +4,11 @@ import { tr } from './dom.js';
 import { updateSelectionControls } from './selection.js';
 
 export function setOrganizationControlsEnabled(ui, enabled) {
-    for (const control of ui.root.querySelectorAll('[data-sbca-organization-control]')) {
-        control.disabled = !enabled;
+    // The managers and batch controls are detached while their page is closed.
+    for (const host of ui.organizationHosts) {
+        for (const control of host.querySelectorAll('[data-sbca-organization-control]')) {
+            control.disabled = !enabled;
+        }
     }
 }
 
