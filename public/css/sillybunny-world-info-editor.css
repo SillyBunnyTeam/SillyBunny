@@ -92,12 +92,12 @@
     font-size: calc(var(--mainFontSize) * 0.75);
 }
 
-.sb-wi-editor[data-selection-mode='true'] .sb-selection-check {
-    margin-inline: 2px 6px;
-}
-
 #WorldInfo .sb-wi-editor .sb-wi-row.is-selection-selected {
     background: var(--sb-flat-selected-bg);
+}
+
+.sb-wi-editor[data-selection-mode='true'] .sb-selection-check {
+    margin-inline: 2px -2px;
 }
 
 .sb-wi-list-header,

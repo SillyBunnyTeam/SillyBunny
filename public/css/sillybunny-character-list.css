@@ -476,13 +476,13 @@
     text-align: center;
 }
 
-.sb-character-list[data-selection-mode='true'] .sb-selection-check {
-    margin-inline: 2px 6px;
-}
-
 .sb-character-list[data-selection-mode='true'] .bogus_folder_select {
     opacity: 0.45;
     cursor: default;
+}
+
+.sb-character-list[data-selection-mode='true'] .sb-selection-check {
+    margin-inline: 2px -2px;
 }
 
 .sb-character-list .ds-entity-row.is-selection-selected {

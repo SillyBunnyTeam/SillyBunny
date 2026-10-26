@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
+import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -12,6 +13,10 @@ const READS = new Set([
     '/api/users/me', '/api/extensions/discover', '/api/worldinfo/get', '/api/worldinfo/list', '/api/themes/all',
     '/api/presets/list', '/api/in-chat-agents/groups/list', '/api/chats/search',
 ]);
+const selectionLayout = {
+    1440: { titleX: 84.90625, descriptionRight: 1102, truncated: false },
+    390: { titleX: 72, descriptionRight: 314, truncated: true },
+};
 
 async function openAgents(page, baseURL, width = 1440) {
     const origin = new URL(baseURL).origin;
@@ -482,6 +487,44 @@ for (const width of [1440, 390]) {
     test(`${width}px selection deduplicates Pinned; filtered Select All includes saved rows only and Delete is guarded`, async ({ page, baseURL }) => {
         const { root, writes, saves } = await openAgents(page, baseURL, width);
         await selectMode(page, root);
+        const selectionCheck = root.locator('.ica-agent-row[data-agent-id="qa-bravo"] .sb-selection-check');
+        await selectionCheck.locator('xpath=..').click();
+        await expect(selectionCheck).toBeChecked();
+        const checkMetrics = await selectionCheck.evaluate(element => {
+            const bounds = element.getBoundingClientRect();
+            const radius = getComputedStyle(element).borderRadius;
+            const row = element.parentElement;
+            const rowBounds = row.getBoundingClientRect();
+            const title = row.querySelector('.ds-entity-row__title');
+            const description = row.querySelector('.ds-entity-row__subtitle');
+            return {
+                width: bounds.width, height: bounds.height, radius: parseFloat(radius) * (radius.endsWith('%') ? bounds.width / 100 : 1),
+                titleX: title.getBoundingClientRect().x - rowBounds.x,
+                description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
+            };
+        });
+        expect(checkMetrics.width).toBe(24);
+        expect(checkMetrics.height).toBe(24);
+        expect(checkMetrics.radius).toBeGreaterThanOrEqual(checkMetrics.width / 2);
+        expect(checkMetrics.titleX).toBeGreaterThanOrEqual(selectionLayout[width].titleX - 1);
+        expect(checkMetrics.titleX).toBeLessThanOrEqual(selectionLayout[width].titleX + 1);
+        expect(checkMetrics.description.right).toBeCloseTo(selectionLayout[width].descriptionRight, 0);
+        expect(checkMetrics.description.truncated).toBe(selectionLayout[width].truncated);
+        const appearance = await selectionCheckAppearance(selectionCheck);
+        expect(appearance.content).toBe('""');
+        expect(appearance.backgroundImage).toBe('none');
+        expect(appearance.display).toBe('grid');
+        expect(appearance.placeContent).toBe('center');
+        expect(appearance.glyphWidth).toBeCloseTo(13.44, 1);
+        expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
+        expect(appearance.glyphFitsInnerCircle).toBe(true);
+        expect(appearance.centeredByGrid).toBe(true);
+        if (process.env.CAPTURE_SELECTION_SHOTS) {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.screenshot({ path: `/tmp/opencode/4b7c-shots-4/agents-${width}.png` });
+        }
+        await selectionCheck.locator('xpath=..').click();
+        await expect(selectionCheck).not.toBeChecked();
         await root.locator('[data-sb-list-key="pinned:agent:qa-alpha"]').click();
         await expect(root.locator('.sb-selection-title')).toHaveText('1 selected');
         await expect(root.locator('[data-sb-list-key="agent:qa-alpha"] .sb-selection-check')).toBeChecked();

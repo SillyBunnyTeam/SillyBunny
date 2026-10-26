@@ -2,10 +2,15 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { q56Screenshot } from './helpers/q56-review.js';
+import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
 const pageSize = page => list(page).getByRole('combobox', { name: 'Items per page' });
+const selectionLayout = {
+    1440: { titleX: 92.90625, descriptionRight: 1118, truncated: false },
+    390: { titleX: 92, descriptionRight: 306, truncated: false },
+};
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
@@ -673,6 +678,57 @@ async function chatState(page) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`selection checks are round and share a fixed size at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const row = listRows(page, 'characters').first();
+        await enterSelection(page);
+        const check = row.locator('.sb-selection-check');
+        await check.check();
+        const metrics = await check.evaluate(element => {
+            const bounds = element.getBoundingClientRect();
+            const radius = getComputedStyle(element).borderRadius;
+            const rowBounds = element.parentElement.getBoundingClientRect();
+            const title = element.parentElement.querySelector('.ds-entity-row__title');
+            const description = element.parentElement.querySelector('.ds-entity-row__subtitle');
+            return {
+                width: bounds.width, height: bounds.height, radius: parseFloat(radius) * (radius.endsWith('%') ? bounds.width / 100 : 1),
+                titleX: title.getBoundingClientRect().x - rowBounds.x,
+                description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
+            };
+        });
+        expect(metrics.width).toBe(24);
+        expect(metrics.height).toBe(24);
+        expect(metrics.radius).toBeGreaterThanOrEqual(metrics.width / 2);
+        expect(metrics.titleX).toBeGreaterThanOrEqual(selectionLayout[viewport.width].titleX - 1);
+        expect(metrics.titleX).toBeLessThanOrEqual(selectionLayout[viewport.width].titleX + 1);
+        expect(metrics.description.right).toBeCloseTo(selectionLayout[viewport.width].descriptionRight, 0);
+        expect(metrics.description.truncated).toBe(selectionLayout[viewport.width].truncated);
+        const appearance = await selectionCheckAppearance(check);
+        expect(appearance.content).toBe('""');
+        expect(appearance.backgroundImage).toBe('none');
+        expect(appearance.display).toBe('grid');
+        expect(appearance.placeContent).toBe('center');
+        expect(appearance.glyphWidth).toBeCloseTo(13.44, 1);
+        expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
+        expect(appearance.glyphFitsInnerCircle).toBe(true);
+        expect(appearance.centeredByGrid).toBe(true);
+        if (process.env.CAPTURE_SELECTION_SHOTS) {
+            await page.screenshot({ path: `/tmp/opencode/4b7c-shots-4/characters-${viewport.width}.png` });
+            if (viewport.width === 1440) {
+                const bounds = await check.boundingBox();
+                await page.screenshot({ path: '/tmp/opencode/4b7c-shots-4/check-crop-1440.png', clip: { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 } });
+                await page.keyboard.press('Tab');
+                await check.evaluate(element => element.focus());
+                await expect(check).toBeFocused();
+                await expect.poll(() => check.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+                await page.screenshot({ path: '/tmp/opencode/4b7c-shots-4/check-focus-1440.png' });
+                await page.evaluate(() => window.$('#themes').val('Libadwaita Light').trigger('change'));
+                await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'light');
+                await page.screenshot({ path: '/tmp/opencode/4b7c-shots-4/characters-1440-light.png' });
+            }
+        }
+    });
+
     for (const view of ['characters', 'groups']) {
         test(`${view} activation closes the shell and reopening reveals the current row at ${viewport.width}px`, async ({ page }) => {
             await prepareList(page, viewport);

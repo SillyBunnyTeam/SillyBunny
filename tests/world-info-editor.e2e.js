@@ -3,9 +3,14 @@ import { acceptPopup } from './helpers/popup.js';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
+import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
+const selectionLayout = {
+    1440: { titleX: 42.90625, descriptionRight: 1126, truncated: false },
+    390: { titleX: 34, descriptionRight: 310, truncated: false },
+};
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
@@ -409,6 +414,45 @@ test.describe('World Info editor on mobile', () => {
 
 test.describe('World Info selection mode', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        test(`selection checks are round and share a fixed size at ${viewport.width}px`, async ({ page }) => {
+            await page.setViewportSize(viewport);
+            const editor = await openBook(page);
+            await enterSelection(page, editor);
+            const check = row(editor, 'Alpha').locator('.sb-selection-check');
+            await check.check();
+            const metrics = await check.evaluate(element => {
+                const bounds = element.getBoundingClientRect();
+                const radius = getComputedStyle(element).borderRadius;
+                const rowBounds = element.parentElement.getBoundingClientRect();
+                const title = element.parentElement.querySelector('.ds-row-label');
+                const description = element.parentElement.querySelector('.ds-row-subtitle');
+                return {
+                    width: bounds.width, height: bounds.height, radius: parseFloat(radius) * (radius.endsWith('%') ? bounds.width / 100 : 1),
+                    titleX: title.getBoundingClientRect().x - rowBounds.x,
+                    description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
+                };
+            });
+            expect(metrics.width).toBe(24);
+            expect(metrics.height).toBe(24);
+            expect(metrics.radius).toBeGreaterThanOrEqual(metrics.width / 2);
+            expect(metrics.titleX).toBeGreaterThanOrEqual(selectionLayout[viewport.width].titleX - 1);
+            expect(metrics.titleX).toBeLessThanOrEqual(selectionLayout[viewport.width].titleX + 1);
+            expect(metrics.description.right).toBeCloseTo(selectionLayout[viewport.width].descriptionRight, 0);
+            expect(metrics.description.truncated).toBe(selectionLayout[viewport.width].truncated);
+            const appearance = await selectionCheckAppearance(check);
+            expect(appearance.content).toBe('""');
+            expect(appearance.backgroundImage).toBe('none');
+            expect(appearance.display).toBe('grid');
+            expect(appearance.placeContent).toBe('center');
+            expect(appearance.glyphWidth).toBeCloseTo(13.44, 1);
+            expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
+            expect(appearance.glyphFitsInnerCircle).toBe(true);
+            expect(appearance.centeredByGrid).toBe(true);
+            if (process.env.CAPTURE_SELECTION_SHOTS) await page.screenshot({ path: `/tmp/opencode/4b7c-shots-4/world-info-${viewport.width}.png` });
+        });
+    }
 
     test('menu selection supports row clicks, Space, Ctrl/Cmd+A and Escape focus return', async ({ page }) => {
         const editor = await openBook(page);
