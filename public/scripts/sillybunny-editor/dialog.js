@@ -466,7 +466,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
         menuButton.setAttribute('aria-expanded', 'false');
         end.prepend(menuButton);
     }
-    if (!responses && !nested) {
+    if (!responses) {
         closeButton = iconButton(t`Close`, 'xmark', 'sb-dialog__close');
         closeButton.addEventListener('click', () => onResponse('close', 'close'));
         end.append(closeButton);
@@ -637,7 +637,10 @@ export function openDialog({
         unbindGestures();
         unbindKeyboard();
         heightLock?.destroy();
-        for (const entry of stack) entry.view.destroy();
+        for (const entry of stack.splice(0)) {
+            entry.view.destroy();
+            entry.resolve({ response });
+        }
         frames.delete(host);
         releaseOverlayLayers(host);
         if (host.open) host.close();
@@ -680,6 +683,7 @@ export function openDialog({
             ...spec,
             nested,
             onResponse: (kind, id) => {
+                if (nested && kind === 'close') return attempt('close', closeResponse);
                 if (nested) return popPage(id, kind === 'affirmative' ? 'affirmative' : id);
                 return attempt(kind === 'affirmative' ? 'affirmative' : id, id);
             },

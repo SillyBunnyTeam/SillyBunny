@@ -265,6 +265,7 @@ for (const width of [1440, 390]) {
             await tagRow.locator('.ds-entity-row__avatar').click();
             const managerWindow = page.locator('.sb-dialog-host:has(> #tag_view_list)');
             await expect(managerWindow.locator('.sb-dialog__back').last()).toBeVisible();
+            await expect(managerWindow.locator('.sb-dialog__page:not([hidden]) .sb-dialog__close')).toBeVisible();
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(1);
             await managerWindow.locator('.sb-tag-manager__members .sb-tag-manager__member-remove').click();
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(0);
@@ -276,6 +277,8 @@ for (const width of [1440, 390]) {
             await tagRow.focus();
             await page.keyboard.press('Space');
             await expect(managerWindow.locator('.sb-dialog__back').last()).toBeVisible();
+            await managerWindow.locator('.sb-dialog__page:not([hidden]) .sb-dialog__close').click();
+            await expect(managerWindow).toHaveCount(0);
         });
 
         test('colour picker updates a list chip immediately, and slash-command writers refresh the open dialog', async ({ page }) => {

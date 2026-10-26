@@ -57,7 +57,7 @@ function popupDom({ type = POPUP_TYPE.CONFIRM, contentHtml = '', customInputs = 
     cancelButton.className = 'popup-button-cancel menu_button';
     cancelButton.dataset.result = String(POPUP_RESULT.NEGATIVE);
     cancelButton.textContent = 'Cancel';
-    const closeButton = document.createElement('button');
+    const closeButton = document.createElement('div');
     closeButton.className = 'popup-button-close fa-circle-xmark';
     closeButton.dataset.result = String(POPUP_RESULT.NEGATIVE);
     buttonControls.append(okButton, cancelButton);
@@ -270,6 +270,7 @@ describe('Popup frame adapter', () => {
             value.closeButton.click();
             expect(close).toHaveBeenCalledTimes(1);
             frame.dispose();
+            value.dlg.remove();
         }
     });
 

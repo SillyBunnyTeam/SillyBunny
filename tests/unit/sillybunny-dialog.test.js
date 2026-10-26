@@ -445,14 +445,14 @@ describe('bottom sheets', () => {
 });
 
 describe('pages', () => {
-    test('an immediate-apply page shows Back and no Close; Back pops it and returns focus', async () => {
+    test('an immediate-apply page shows Back and Close; Back pops it and returns focus', async () => {
         const dialog = openDialog({ title: 'Root', content: document.createElement('button') });
         const trigger = dialog.body.querySelector('button');
         trigger.focus();
         const page = dialog.push({ title: 'Child', content: document.createElement('input') });
         expect(dialog.root.getAttribute('aria-labelledby')).toBe(page.header.querySelector('.sb-dialog__title').id);
         expect(page.header.querySelector('.sb-dialog__back')).not.toBeNull();
-        expect(page.header.querySelector('.sb-dialog__close')).toBeNull();
+        expect(page.header.querySelector('.sb-dialog__close')).not.toBeNull();
         expect(dialog.page.inert).toBe(true);
         expect(dialog.page.hidden).toBe(true);
         page.header.querySelector('.sb-dialog__back').click();
@@ -464,10 +464,36 @@ describe('pages', () => {
         expect(dialog.isOpen).toBe(true);
     });
 
+    test('Close on an immediate-apply page closes the frame through the root close path', async () => {
+        const canClose = jest.fn(() => true);
+        const dialog = openDialog({ title: 'Root', canClose });
+        const page = dialog.push({ title: 'Child' });
+        page.header.querySelector('.sb-dialog__close').click();
+        await expect(dialog.closed).resolves.toEqual({ response: 'close' });
+        await expect(page.closed).resolves.toEqual({ response: 'close' });
+        expect(canClose).toHaveBeenCalledWith('close');
+        expect(dialog.isOpen).toBe(false);
+    });
+
+    test('Close on an immediate-apply page keeps the page and frame when root canClose vetoes', async () => {
+        const canClose = jest.fn(() => false);
+        const dialog = openDialog({ title: 'Root', canClose });
+        const page = dialog.push({ title: 'Child' });
+        page.header.querySelector('.sb-dialog__close').click();
+        await settle();
+        expect(canClose).toHaveBeenCalledWith('close');
+        expect(page.page.isConnected).toBe(true);
+        expect(dialog.isOpen).toBe(true);
+        dialog.forceClose();
+        await dialog.closed;
+        await expect(page.closed).resolves.toEqual({ response: 'close' });
+    });
+
     test('a page with responses shows Cancel as Back and its affirmative; Escape pops before closing', async () => {
         const dialog = openDialog({ title: 'Root' });
         const page = dialog.push({ title: 'Child', responses: { affirmative: { id: 'apply', label: 'Apply' } } });
         expect(page.header.querySelector('.sb-dialog__back')).toBeNull();
+        expect(page.header.querySelector('.sb-dialog__close')).toBeNull();
         expect(page.header.querySelector('.sb-dialog__header-start [data-response="cancel"]')).not.toBeNull();
         escape(dialog.root);
         await expect(page.closed).resolves.toEqual({ response: 'cancel' });
@@ -475,6 +501,15 @@ describe('pages', () => {
         const second = dialog.push({ title: 'Child', responses: { affirmative: { id: 'apply', label: 'Apply' } } });
         second.header.querySelector('[data-response="apply"]').click();
         await expect(second.closed).resolves.toEqual({ response: 'apply' });
+    });
+
+    test('Escape pops an immediate-apply page before closing its frame', async () => {
+        const dialog = openDialog({ title: 'Root' });
+        const page = dialog.push({ title: 'Child' });
+        escape(dialog.root);
+        await expect(page.closed).resolves.toEqual({ response: 'back' });
+        expect(dialog.isOpen).toBe(true);
+        expect(dialog.page.hidden).toBe(false);
     });
 
     test('a page canClose can veto popping', async () => {

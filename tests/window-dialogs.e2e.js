@@ -554,6 +554,13 @@ for (const viewport of WINDOW_VIEWPORTS) {
         await nestedEditor.locator('.popup-button-cancel').click();
         await expectParentRestored(page, nestedEditor, debuggerPopup);
         await expect(debuggerPopup.locator('#regex_debugger_final_output')).toHaveText(expectedOutput);
+        await debuggerPopup.locator('#regex_debugger_expand_steps').click();
+        const closeChild = await currentPopup(page, '.expanded-regex-container');
+        await expectPushedPage(closeChild, debuggerPopup);
+        await expect(closeChild.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+        await expect(closeChild.locator('.sb-dialog__close:not(.sb-dialog__back):visible')).toHaveCount(0);
+        await closeChild.getByRole('button', { name: 'Back', exact: true }).click();
+        await expectParentRestored(page, closeChild, debuggerPopup);
         expect(state.pageErrors).toEqual([]);
     });
 

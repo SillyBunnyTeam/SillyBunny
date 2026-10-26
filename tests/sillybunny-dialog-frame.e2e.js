@@ -135,7 +135,7 @@ test('menus opened from inside a dialog are hosted in its top layer and usable',
     await expect(host).toHaveCount(0);
 });
 
-test('a dialog opened from a dialog is pushed as a page with Back', async ({ page }) => {
+test('a dialog opened from a dialog is pushed as a page with Back and Close', async ({ page }) => {
     await prepare(page, { width: 1440, height: 900 });
     await page.evaluate(async () => {
         const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
@@ -145,8 +145,25 @@ test('a dialog opened from a dialog is pushed as a page with Back', async ({ pag
     await expect(page.locator('.sb-dialog-host[open]')).toHaveCount(1);
     const visibleTitle = page.locator('.sb-dialog__page:not([hidden]) .sb-dialog__title');
     await expect(visibleTitle).toHaveText('Child');
-    await page.locator('.sb-dialog__back').click();
+    const childPage = page.locator('.sb-dialog__page:not([hidden])');
+    await expect(childPage.locator('.sb-dialog__back')).toBeVisible();
+    await expect(childPage.locator('.sb-dialog__close')).toBeVisible();
+    await childPage.locator('.sb-dialog__back').click();
     await expect(visibleTitle).toHaveText('Parent');
+    await page.evaluate(async () => {
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        window.qaChild = openDialog({ title: 'Child' });
+    });
+    const secondChild = page.locator('.sb-dialog__page:not([hidden])');
+    await expect(secondChild.locator('.sb-dialog__close')).toBeVisible();
     await page.keyboard.press('Escape');
+    await expect(visibleTitle).toHaveText('Parent');
+    await page.evaluate(async () => {
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        window.qaChild = openDialog({ title: 'Child' });
+    });
+    const thirdChild = page.locator('.sb-dialog__page:not([hidden])');
+    await expect(thirdChild.locator('.sb-dialog__close')).toBeVisible();
+    await thirdChild.locator('.sb-dialog__close').click();
     await expect(page.locator('.sb-dialog-host[open]')).toHaveCount(0);
 });
