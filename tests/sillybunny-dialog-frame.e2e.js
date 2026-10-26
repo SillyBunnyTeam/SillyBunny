@@ -168,6 +168,87 @@ test('a dialog opened from a dialog is pushed as a page with Back and Close', as
     await expect(page.locator('.sb-dialog-host[open]')).toHaveCount(0);
 });
 
+test.describe('while pages slide', () => {
+    async function openWithStackedDivider(page) {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await page.evaluate(async () => {
+            // The slide only runs when motion is allowed, and the host may start with its own reduced-motion setting on.
+            document.body.classList.remove('reduced-motion');
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            const content = document.createElement('div');
+            content.style.cssText = 'display:flex;block-size:320px';
+            const divider = document.createElement('div');
+            divider.className = 'qa-divider';
+            divider.style.cssText = 'position:relative;z-index:4;inline-size:6px;margin-inline-start:85%;background:#c00';
+            content.append(divider);
+            window.qaDialog = openDialog({ tier: 'window', size: 'fill', title: 'Parent', content });
+        });
+        await expect(page.locator('.sb-dialog-host[open]')).not.toHaveAttribute('opening');
+        await page.waitForFunction(() => !document.getAnimations().some(animation => animation.effect?.target?.closest?.('.sb-dialog-host')));
+    }
+
+    /**
+     * Starts a push or a pop, freezes the page slide with the moving page across half of the surface and reports what paints at the parent's divider.
+     * Both steps run in one page task so the slide cannot finish in between.
+     */
+    const slideHalfway = (page, direction) => page.evaluate(async direction => {
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        const child = openDialog({ title: 'Child', content: document.createElement('p') });
+        if (direction === 'pop') {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            child.close();
+        }
+        const slides = document.getAnimations().filter(animation => animation.effect?.target?.classList.contains('sb-dialog__page'));
+        const surface = document.querySelector('.sb-dialog-host[open] .sb-dialog').getBoundingClientRect();
+        // The spring is front-loaded, so find the moment the moving page has covered half of the surface.
+        let best = Infinity;
+        let halfway = 0;
+        for (let step = 0; step <= 40; step++) {
+            for (const animation of slides) {
+                animation.pause();
+                animation.currentTime = (animation.effect.getTiming().duration * step) / 40;
+            }
+            const gap = Math.abs(slides[0].effect.target.getBoundingClientRect().left - (surface.left + surface.width / 2));
+            if (gap < best) {
+                best = gap;
+                halfway = step;
+            }
+        }
+        for (const animation of slides) {
+            animation.currentTime = (animation.effect.getTiming().duration * halfway) / 40;
+        }
+        // The covered and the leaving page are inert, and hit testing skips inert content, so make them testable without changing how they paint.
+        for (const covered of document.querySelectorAll('.sb-dialog__page')) covered.inert = false;
+        const divider = document.querySelector('.qa-divider').getBoundingClientRect();
+        const moving = slides[0]?.effect.target.getBoundingClientRect();
+        const x = divider.left + divider.width / 2;
+        const topNode = document.elementFromPoint(x, divider.top + divider.height / 2);
+        return {
+            animations: slides.length,
+            dividerInsideMovingPage: Boolean(moving) && x > moving.left && x < moving.right,
+            paintedByMovingPage: Boolean(slides[0]) && slides[0].effect.target.contains(topNode),
+            painted: topNode?.className ?? null,
+        };
+    }, direction);
+
+    test('a page pushed over a z-indexed element paints above it until the slide ends', async ({ page }) => {
+        await openWithStackedDivider(page);
+        const probe = await slideHalfway(page, 'push');
+        expect(probe.animations).toBe(1);
+        expect(probe.dividerInsideMovingPage).toBe(true);
+        expect(probe.paintedByMovingPage, `painted: ${probe.painted}`).toBe(true);
+    });
+
+    test('a page popped back paints above the revealed page until the slide ends', async ({ page }) => {
+        await openWithStackedDivider(page);
+        const probe = await slideHalfway(page, 'pop');
+        expect(probe.animations).toBe(1);
+        expect(probe.dividerInsideMovingPage).toBe(true);
+        expect(probe.paintedByMovingPage, `painted: ${probe.painted}`).toBe(true);
+    });
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     test(`header-slot selection mode has no overlap at ${viewport.width}×${viewport.height}`, async ({ page }) => {
         await prepare(page, viewport);

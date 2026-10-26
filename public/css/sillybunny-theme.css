@@ -7680,6 +7680,8 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     flex-direction: column;
     flex: 0 1 auto;
     min-height: 0;
+    /* During a push or pop two pages overlap, so a z-index inside one page must not paint above the other. */
+    isolation: isolate;
     background: var(--sb-layer-window);
 }
 
