@@ -1,7 +1,7 @@
 /* eslint-disable playwright/no-conditional-in-test */
 /* global globalThis */
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -62,9 +62,21 @@ const [{ DataMaidService }, { navigateAndConfirm }] = await Promise.all([
 ]);
 
 const extensionRoot = new URL('../public/scripts/extensions/sillybunny-chats-archive/', import.meta.url);
+
+async function readArchiveUiSource() {
+    const moduleDirectory = new URL('src/ui/', extensionRoot);
+    const moduleFiles = (await readdir(moduleDirectory)).filter(file => file.endsWith('.js')).sort();
+    const sources = await Promise.all([
+        readFile(new URL('src/ui.js', extensionRoot), 'utf8'),
+        readFile(new URL('src/ui-navigation.js', extensionRoot), 'utf8'),
+        ...moduleFiles.map(file => readFile(new URL(file, moduleDirectory), 'utf8')),
+    ]);
+    return sources.join('\n');
+}
+
 const [entry, ui, manifestText, extensionsEndpoint] = await Promise.all([
     readFile(new URL('index.js', extensionRoot), 'utf8'),
-    readFile(new URL('src/ui.js', extensionRoot), 'utf8'),
+    readArchiveUiSource(),
     readFile(new URL('manifest.json', extensionRoot), 'utf8'),
     readFile(new URL('../src/endpoints/extensions.js', import.meta.url), 'utf8'),
 ]);

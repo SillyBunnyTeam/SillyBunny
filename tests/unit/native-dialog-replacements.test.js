@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { expect, jest, test } from '@jest/globals';
 
@@ -33,7 +33,15 @@ function translate(_ctx, text, replacements = {}) {
 const openaiSource = readPublic('scripts/openai.js');
 const serverToolsSource = readPublic('scripts/sillybunny-server-tools.js');
 const tabsSource = readPublic('scripts/sillybunny-tabs.js');
-const archiveSource = readPublic('scripts/extensions/sillybunny-chats-archive/src/ui.js');
+const archiveUiDirectory = 'scripts/extensions/sillybunny-chats-archive/src/ui';
+const archiveSource = [
+    readPublic(`${archiveUiDirectory}.js`),
+    readPublic(`${archiveUiDirectory}-navigation.js`),
+    ...readdirSync(new URL(`../../public/${archiveUiDirectory}/`, import.meta.url))
+        .filter(file => file.endsWith('.js'))
+        .sort()
+        .map(file => readPublic(`${archiveUiDirectory}/${file}`)),
+].join('\n').replace(/^import [^;]*;$/gm, '').replace(/^export /gm, '');
 const vectorSource = readPublic('scripts/extensions/vectors/index.js');
 
 test('OpenAI server config reload awaits the destructive Alert response before loading', async () => {
