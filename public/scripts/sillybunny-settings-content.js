@@ -1,10 +1,11 @@
 /**
- * SillyBunny settings content split (feat/v1.9.0-ui-overhaul, Phases 6A, 6B and 6C).
+ * SillyBunny settings content split.
  *
- * The Customize section hosts three sidebar tabs — Appearance, Interface, and Messages — that
- * previously shared the single `#user-settings-block` markup, moved between panels on every tab
- * switch. Each phase extracts one tab's content into its own permanent container; 6C moves the
- * last share, so after the split the legacy block holds no settings and is left unpainted.
+ * The Customize section hosts three sidebar tabs: Appearance, Interface, and Messages. The
+ * settings for all three are authored in the single `#user-settings-block` markup. This module
+ * extracts each tab's content into its own permanent container, so nothing moves between panels
+ * on a tab switch. The split takes every section, so the legacy block holds no settings and is
+ * left unpainted.
  *
  * Sections are relocated with `appendChild`, which preserves node identity, so event handlers,
  * jQuery data, and SillyTavern's own settings bindings survive the move. Nothing is cloned and no
@@ -46,18 +47,18 @@ const SB_STREAMING_CONTROL_IDS = Object.freeze([
 /**
  * Sections owned by each tab, applied in the order listed.
  *
- * 6A populated Appearance: the first column is taken whole, which carries `#AppearanceSection`
- * with it, and the two code editors are pulled out of the power-user column separately because
- * they are authored far from the rest of the appearance stack. `#SillyTavernImportSection` is
- * authored in that same first column and is moved out to Data & Security first, so it is not
- * carried into Appearance by the column move.
+ * Appearance: the first column is taken whole, which carries `#AppearanceSection` with it. The
+ * two code editors are pulled out of the power-user column separately because they are authored
+ * far from the rest of the appearance stack. `#SillyTavernImportSection` is authored in that
+ * same first column and is moved out to Data & Security first, so it is not carried into
+ * Appearance by the column move.
  *
- * 6B populates Messages. `[name="CharacterHandlingToggles"]` and `#ChatMessageHandlingSection` move
- * whole, but `[name="MiscellaneousToggles"]` cannot: it interleaves message and stream controls
- * with Interface-only toggles in one group, so it is dismantled and only the message-related
- * children are taken. What is left behind stays for 6C to claim.
+ * Messages: `[name="CharacterHandlingToggles"]` and `#ChatMessageHandlingSection` move whole,
+ * but `[name="MiscellaneousToggles"]` cannot. It interleaves message and stream controls with
+ * Interface-only toggles in one group, so it is dismantled and only the message-related children
+ * are taken. What is left behind goes to Interface.
  *
- * 6C populates Interface with everything remaining, so the order of the keys matters: Appearance and
+ * Interface takes everything remaining, so the order of the keys matters: Appearance and
  * Messages both reach inside subtrees that Interface takes whole (`#CustomCSS-block` and
  * `#GoogleFont-block` live under `#power-user-options-block`), so they have to run first.
  */
@@ -178,13 +179,15 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
  * Two modes, both keeping the header element so search still resolves a name for the controls
  * inside:
  *
- * - `nested` (default) flattens only a drawer that sits inside another drawer. Layer 4 allows a
- *   sub-category at most one collapsible section, so a drawer inside a
- *   drawer is the concrete violation this removes. The outermost drawer of each nest keeps its
- *   toggle, which is why the work is driven by ancestry rather than by depth from the root.
- * - `all` also flattens the outermost drawer. 6F uses this for Backend and Customize, where no
- *   setting may hide behind a click; Extensions opts out because each of its drawers is an
- *   independently-authored block that is a purposeful selection rather than a stray accordion.
+ * - `nested` (default) flattens only a drawer that sits inside another drawer. A sub-category
+ *   may hold at most one collapsible section, so a drawer inside a drawer breaks that rule and is
+ *   what this removes. The outermost drawer of each nest keeps its toggle, which is why the work
+ *   is driven by ancestry rather than by depth from the root.
+ * - `all` also flattens the outermost drawer. The panels built from the settings content use
+ *   this, because no setting there may hide behind a click. Connections and Extensions are
+ *   exempt: Extensions drawers are independently authored
+ *   blocks rather than stray accordions, and Connections drawer descendants carry provider
+ *   visibility gates that flattening would break.
  *
  * The transform moves nodes with `insertBefore`/`appendChild` -- never `cloneNode` and never
  * `innerHTML` -- so input bindings, jQuery data, and SillyTavern's own listeners stay attached.
@@ -271,7 +274,7 @@ function flattenSettingsDrawer(drawer, isTopLevel) {
 }
 
 /**
- * A named sub-category built by the 6F section order: a heading with a description line, then
+ * A named sub-category built by the section order: a heading with a description line, then
  * one boxed list holding its rows.
  *
  * It carries the flat-section class so search labels and reveal targeting resolve the category
@@ -280,7 +283,7 @@ function flattenSettingsDrawer(drawer, isTopLevel) {
 export const SB_SETTINGS_CATEGORY_CLASS = 'sb-settings-category';
 
 /**
- * Reading order for each Backend and Customize tab (6F.3).
+ * Reading order for each Backend and Customize tab.
  *
  * Upstream, SillyBunny, and extension-authored settings arrived in the order their authors
  * appended them, so related controls sat apart: Messages ran streaming, sending, swipes, prompt
@@ -546,8 +549,8 @@ function placeSettingsNode(parent, node, before, sources) {
 /**
  * Builds the heading for a category, or returns the one it already has.
  *
- * Built headings use the same two-line markup as the drawer headers the 6F accordion removal
- * kept: a title, then a description on the meta scale.
+ * Built headings use the same two-line markup as the flattened drawer headers: a title, then a
+ * description on the meta scale.
  *
  * @param {HTMLElement} category
  * @returns {HTMLElement} the column that holds the title and description
@@ -890,16 +893,16 @@ export function splitUserSettingsContent(originalContent) {
         }
     }
 
-    // 6E allowed one collapsible section per sub-category, so any drawer that ended up inside
-    // another drawer is unwrapped here. 6F goes further and removes the remaining accordions, so
-    // the outermost drawers go too -- all four containers are Backend or Customize content, and
-    // Extensions, the one tab that keeps its drawers, is built from `#rm_extensions_block` and is
-    // not among them. Flattening happens after placement because the nesting is a property of the
-    // finished container, not of the columns the sections came from.
+    // A sub-category may hold at most one collapsible section, so any drawer that ended up inside
+    // another drawer is unwrapped. The outermost drawers go too, because no setting in these four
+    // containers may hide behind a click. Connections and Extensions keep their drawers and are
+    // not among the containers: Extensions is built from `#rm_extensions_block`, and Connections
+    // is built by hand. Flattening happens after placement because the nesting is a property of
+    // the finished container, not of the columns the sections came from.
     const flattenOptions = { includeTopLevel: true };
     for (const [tabId, container] of Object.entries(containers)) {
         flattenNestedSettingsDrawers(container, flattenOptions);
-        // 6F.3: order runs after the flatten, since it decides what a section reads as and where
+        // Order runs after the flatten, since it decides what a section reads as and where
         // it sits. Advanced Formatting and the Appearance theme card are still being assembled at
         // this point, so their own tabs are reordered again once their panels exist.
         applySettingsSectionOrder(container, tabId);

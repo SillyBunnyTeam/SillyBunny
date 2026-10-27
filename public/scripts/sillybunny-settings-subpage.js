@@ -1,5 +1,5 @@
 /**
- * SillyBunny sliding subpage stack (feat/v1.9.0-ui-overhaul, Phase 6H).
+ * SillyBunny sliding subpage stack.
  *
  * GNOME Settings presents a section as a list of rows; picking one slides a detail page in from the
  * right edge over the list, and the back button slides it out again. This module is that stack, and

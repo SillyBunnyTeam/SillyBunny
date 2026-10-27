@@ -2570,9 +2570,9 @@ body:not(.movingUI) .drawer-content.maximized {
     gap: var(--sb-shell-section-gap);
 }
 
-/* Customize tab content. The Phase 6 split gives each Customize tab its own container, so the
-   layout that used to hang off `#user-settings-block-content` follows the content into
-   `.sb-settings-tab-content`. The legacy block is no longer painted. */
+/* Customize tab content. Each Customize tab has its own container, so the layout of the tab
+   hangs off `.sb-settings-tab-content`. The legacy `#user-settings-block-content` is not
+   painted. */
 .sb-shell-root-right .sb-settings-tab-content {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -4821,7 +4821,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     }
 }
 
-/* ── Mode dropdown (GNOME-style, feat/v1.9.0-ui-overhaul) ── */
+/* ── Mode dropdown (GNOME-style) ── */
 #sb-mode-menu {
     position: fixed;
     left: var(--sb-mode-menu-left, 8px);
@@ -5810,7 +5810,7 @@ body.reduced-motion .sb-shell-main {
     animation: none !important;
 }
 
-/* ── Phase 1: settings page (feat/v1.9.0-ui-overhaul) ──────────────────── */
+/* ── Settings page ──────────────────────────────────────────────────────── */
 
 #sb-settings-page {
     position: fixed;
@@ -6303,14 +6303,14 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     padding: 0 8px;
 }
 
-/* ── Phase 1: topbar search and mode buttons ────────────────────────────── */
+/* ── Topbar search and mode buttons ─────────────────────────────────────── */
 
 #sb-topbar-search-toggle,
 #sb-mode-toggle {
     flex-shrink: 0;
 }
 
-/* ── Phase 1: accent fill on active section button ──────────────────────── */
+/* ── Accent fill on active section button ───────────────────────────────── */
 /* Approved exception to Signal Scarcity Rule: section button doubles as a
    persistent state indicator, not just an action trigger. */
 
@@ -6319,7 +6319,7 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     color: var(--color-primary, var(--sb-accent));
 }
 
-/* ── Phase 2: preference group primitives (feat/v1.9.0-ui-overhaul) ─────── */
+/* ── Preference group primitives ────────────────────────────────────────── */
 
 /* libadwaita boxed list: the preference pill.
    This is the one pill primitive: every preference group on the settings page resolves to it,
@@ -7801,12 +7801,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
-/* ── Phase 2: settings page contextual overrides (feat/v1.9.0-ui-overhaul) ─ */
+/* ── Settings page contextual overrides ─────────────────────────────────── */
 
-/* The legacy settings column holds no settings after the Phase 6 split — it is left in the
-   document so ids like #user-settings-block-content stay resolvable, but nothing paints it. Hosted
-   shells drop their own header, and top-level subdrawers their toggle header, because the sidebar
-   tab already names the section. */
+/* The legacy settings column holds no settings because the content is split into per-tab
+   containers. It is left in the document so ids like #user-settings-block-content stay
+   resolvable, but nothing paints it. Hosted shells drop their own header, and top-level
+   subdrawers their toggle header, because the sidebar tab already names the section. */
 .sb-settings-mounted-shell .sb-legacy-settings-remainder,
 #sb-settings-shell-host > .sb-settings-mounted-shell .sb-shell-header,
 .sb-settings-mounted-shell .sb-settings-subdrawer > .inline-drawer-toggle.settings-section-header,
@@ -8608,10 +8608,10 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     }
 }
 
-/* 6F.3 named sub-categories, as libadwaita preference groups: a title and a description line above
-   one boxed list, groups separated by space rather than a rule. The
-   category reuses the flat-section class for search labels, so the section rule and the ID-weighted
-   two-line header rule above are both overridden here. */
+/* Named sub-categories, as libadwaita preference groups: a title and a description line above
+   one boxed list, groups separated by space rather than a rule. The category reuses the
+   flat-section class for search labels, so the section rule and the ID-weighted two-line header
+   rule above are both overridden here. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category {
     display: flex;
     flex-direction: column;
@@ -9492,7 +9492,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     font-size: var(--sb-type-meta);
 }
 
-/* ── Phase 3: mobile settings layout (feat/v1.9.0-ui-overhaul) ─────────── */
+/* ── Mobile settings layout ─────────────────────────────────────────────── */
 
 .sb-settings-back-button {
     display: none;
@@ -9630,7 +9630,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* ==========================================================================================
-   Sliding subpage stack (Phase 6H)
+   Sliding subpage stack
    ------------------------------------------------------------------------------------------
    GNOME Settings presents a section as a list of rows; picking one slides a detail page in from
    the right over the list. This is that stack, used by the four panels that were still made of
@@ -10106,7 +10106,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* ==========================================================================================
-   Connections panel (feat/v1.9.0-ui-overhaul)
+   Connections panel
    ------------------------------------------------------------------------------------------
    The page answers one configuration question at a time: profile, backend, provider status,
    provider settings, and general connection behaviour. Upstream controls are adopted in place;

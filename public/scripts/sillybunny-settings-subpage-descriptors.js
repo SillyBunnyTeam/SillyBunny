@@ -1,5 +1,5 @@
 /**
- * SillyBunny subpage descriptors (feat/v1.9.0-ui-overhaul, Phase 6H).
+ * SillyBunny subpage descriptors.
  *
  * `sillybunny-settings-subpage.js` is the stack; this is the part that knows what each panel's rows
  * are. The panels it covers -- Extensions and Prompting -- were the last ones still built out of

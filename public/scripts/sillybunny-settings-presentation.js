@@ -1,5 +1,5 @@
 /**
- * SillyBunny settings presentation normalizer (feat/v1.9.0-ui-overhaul, Phase 6G).
+ * SillyBunny settings presentation normalizer.
  *
  * Backend and Customize mix two kinds of markup:
  *

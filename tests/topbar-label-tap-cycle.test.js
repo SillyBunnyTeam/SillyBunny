@@ -156,9 +156,9 @@ describe('icons only top bar', () => {
         return match[0];
     }
 
-    test('expands each layer 2 anchor into its own cluster', () => {
-        // The bar is not a flat strip: every anchor keeps its prescribed slot and grows a cluster
-        // of that section's own pages beside it, in the PRODUCT.md left-to-right order.
+    test('expands each top bar anchor into its own cluster', () => {
+        // The bar is not a flat strip: every anchor keeps its fixed slot and grows a cluster
+        // of that section's own pages beside it, in the fixed left-to-right order of the top bar.
         const clustersSource = getClustersSource();
         const leadIds = [...clustersSource.matchAll(/leadId: '([^']+)'/g)].map(match => match[1]);
 
@@ -269,7 +269,7 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).not.toContain('syncTopbarRightClusterOrder');
         expect(normalizedTabsSource).not.toContain('syncTopbarRailSplit');
 
-        // Right half follows PRODUCT.md Layer 2: quick access, then Home, then Characters.
+        // The right half of the top bar runs quick access, then Home, then Characters.
         const homeIndex = orderSource.indexOf('\'sb-home-toggle\'');
         expect(orderSource.indexOf('quickAccessIds')).toBeLessThan(homeIndex);
         expect(homeIndex).toBeLessThan(orderSource.indexOf('characters.leadId'));

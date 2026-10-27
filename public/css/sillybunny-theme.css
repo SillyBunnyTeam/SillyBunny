@@ -4724,8 +4724,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     align-items: center;
 }
 
-/* Phase 6F: the presets block opens with one row instead of a title card plus a select row. The
-   label takes the leading column, so the grid needs a third track for it. */
+/* The presets block is one row: label, select, then all seven actions. The label takes the
+   leading column, so the grid needs a third track for it. */
 #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -4819,7 +4819,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     max-height: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
 }
 
-/* Phase 6F: the merged row's label and its seven preset actions take a fixed 542px, so between
+/* The merged row's label and its seven preset actions take a fixed 542px, so between
    roughly 1024px and the mobile breakpoint the select would be squeezed to a couple of characters.
    In that band the row keeps two lines instead -- label and select on the first, action group
    spanning the second. Below 768px the media query below stacks all three; above 1024px the select
@@ -4858,7 +4858,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         grid-template-columns: 1fr;
     }
 
-    /* Phase 6F: seven 44px actions no longer fit beside the select, so the merged row stacks and
+    /* Seven 44px actions no longer fit beside the select, so the merged row stacks and
        lets the action group wrap, which it already does at this width. */
     #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
         grid-template-columns: minmax(0, 1fr);
