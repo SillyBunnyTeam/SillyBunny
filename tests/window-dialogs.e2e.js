@@ -384,6 +384,15 @@ for (const viewport of WINDOW_VIEWPORTS) {
         expect(saved).toHaveLength(ATTACHMENT_COUNT);
         expect(saved.some(item => item.url === '/fixtures/window-0.txt')).toBe(false);
         expect(saved).toContainEqual(expect.objectContaining({ name: 'saved-window-attachment.txt', url: state.uploads[0].path }));
+
+        await manager.locator('.globalAttachmentsList [data-attachment-url="/fixtures/window-1.txt"] .viewAttachmentButton').click();
+        const chainViewer = await currentPopup(page, '.file_modal');
+        await expectPushedPage(chainViewer, manager);
+        await expect(chainViewer.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+        await chainViewer.getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        expect(state.uploads).toHaveLength(1);
+        expect(state.deletes).toEqual([{ path: '/fixtures/window-0.txt' }]);
     });
 
     test(`scrapers.js Notepad pushes a page and returns a File only on Save at ${size}`, async ({ page }) => {
@@ -558,9 +567,18 @@ for (const viewport of WINDOW_VIEWPORTS) {
         const closeChild = await currentPopup(page, '.expanded-regex-container');
         await expectPushedPage(closeChild, debuggerPopup);
         await expect(closeChild.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
-        await expect(closeChild.locator('.sb-dialog__close:not(.sb-dialog__back):visible')).toHaveCount(0);
+        await expect(closeChild.locator('.sb-dialog__close:not(.sb-dialog__back):visible')).toHaveCount(1);
+        await expect(closeChild.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
         await closeChild.getByRole('button', { name: 'Back', exact: true }).click();
         await expectParentRestored(page, closeChild, debuggerPopup);
+        expect(await readDebuggerResults(debuggerPopup)).toEqual(results);
+
+        await debuggerPopup.locator('#regex_debugger_expand_steps').click();
+        const chainChild = await currentPopup(page, '.expanded-regex-container');
+        await expectPushedPage(chainChild, debuggerPopup);
+        await captureWindowSurface(page, viewport, 'regex-expanded-back-close');
+        await chainChild.getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
         expect(state.pageErrors).toEqual([]);
     });
 

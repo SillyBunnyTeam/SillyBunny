@@ -16,6 +16,7 @@ import { closePicker } from './picker.js';
 import { createListSearch } from './list-search.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, getTopmostDialog, hostOverlayLayer, releaseOverlayLayers } from './overlay-host.js';
+import { FOCUSABLE_SELECTOR, closeChain, coverSurface, findCoveredSurface, registerChainLevel, unregisterChainLevel } from './page-chain.js';
 
 /*
  * Shared dialog frame.
@@ -31,7 +32,6 @@ const SWIPE_DISTANCE_RATIO = 0.3;
 const SWIPE_VELOCITY = 0.5;
 const DRAG_SLOP = 4;
 const INTERACTIVE_SELECTOR = 'button, input, select, textarea, a[href], [contenteditable], [role="button"], [role="switch"], [role="menuitem"]';
-const FOCUSABLE_SELECTOR = 'button:not(:disabled), select:not(:disabled), input:not(:disabled):not([type="hidden"]), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 /** @type {WeakMap<HTMLDialogElement, { pushPage: (spec: object) => object }>} */
 const frames = new WeakMap();
@@ -352,14 +352,21 @@ export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
  * @param {'alert'|'dialog'|'window'} options.tier
  * @param {string} [options.className]
  * @param {'content'|'fill'} [options.size='fill']
+ * @param {boolean} [options.page=false] Presents the surface as a page over a framed Popup: it never
+ *     becomes a sheet, and the host backdrop carries the dim instead of the scrim.
  */
-export function createDialogFrame({ tier, className = '', size = 'fill' }) {
+export function createDialogFrame({ tier, className = '', size = 'fill', page = false }) {
     const host = /** @type {HTMLDialogElement} */ (element('dialog', 'sb-dialog-host'));
     host.setAttribute(MODAL_ATTRIBUTE, '');
     host.dataset.tier = tier;
     const scrim = element('div', 'sb-dialog-scrim');
     scrim.setAttribute('aria-hidden', 'true');
+    scrim.hidden = page;
     const surface = element('section', `sb-dialog sb-dialog--${tier}`);
+    if (page) {
+        host.classList.add('sb-dialog-host--page');
+        surface.classList.add('sb-dialog--page');
+    }
     if (className) surface.classList.add(...className.split(/\s+/).filter(Boolean));
     if (tier === 'window' && size === 'fill') surface.classList.add('sb-dialog--fill');
     const handle = element('div', 'sb-dialog__handle');
@@ -368,16 +375,20 @@ export function createDialogFrame({ tier, className = '', size = 'fill' }) {
     host.append(scrim, surface);
     blockUpstreamDrawerClose(host);
     const query = window.matchMedia?.(OVERLAY_SHEET_QUERY) ?? { matches: false, addEventListener() {}, removeEventListener() {} };
-    const isSheet = () => query.matches;
+    const isSheet = () => query.matches && !page;
     const syncPresentation = () => {
         host.dataset.presentation = isSheet() ? 'sheet' : 'floating';
     };
     syncPresentation();
-    return { host, scrim, surface, handle, query, isSheet, syncPresentation };
+    return { host, scrim, surface, handle, query, isSheet, syncPresentation, page };
 }
 
 function openMotion(frame) {
-    const { surface, scrim, isSheet, host } = frame;
+    const { surface, scrim, isSheet, host, page } = frame;
+    if (page) {
+        animateIn(surface, [{ transform: 'translateX(100%)' }, { transform: 'none' }], SPRING_NAVIGATION);
+        return;
+    }
     animateIn(scrim, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     if (isSheet()) {
         animateIn(surface, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
@@ -389,14 +400,17 @@ function openMotion(frame) {
 }
 
 function closeMotion(frame, offset, done) {
-    const { surface, scrim, isSheet, host } = frame;
+    const { surface, scrim, isSheet, host, page } = frame;
     const from = surface.style.transform || (offset > 0 ? `translateY(${offset}px)` : 'none');
     surface.style.removeProperty('transform');
     scrim.style.removeProperty('opacity');
     const options = { duration: MOTION_FAST, easing: MOTION_EASE_OUT_CUBIC, fill: 'forwards' };
-    play(scrim, [{ opacity: 1 }, { opacity: 0 }], options);
+    if (!page) play(scrim, [{ opacity: 1 }, { opacity: 0 }], options);
     let keyframes;
-    if (isSheet()) keyframes = [{ transform: from }, { transform: 'translateY(100%)' }];
+    // A page over a sheet leaves downward after a swipe, and sideways after Back.
+    if (page && surface.hasAttribute('data-covers-sheet') && offset > 0) keyframes = [{ transform: from }, { transform: 'translateY(100%)' }];
+    else if (page) keyframes = [{ transform: 'none' }, { transform: 'translateX(100%)' }];
+    else if (isSheet()) keyframes = [{ transform: from }, { transform: 'translateY(100%)' }];
     else if (host.dataset.tier === 'window') keyframes = [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.98)' }];
     else keyframes = [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.9)' }];
     play(surface, keyframes, { ...options, inert: true, onEnd: done });
@@ -586,6 +600,8 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
 
 /**
  * Opens a Dialog- or Window-tier frame. When another frame is active, this frame becomes a page in it.
+ * Over a framed Popup Dialog or Window it is a page over that Popup, with Back, and with Close when it
+ * has no responses. Close closes the whole chain, one level at a time, and stops at a level that refuses.
  *
  * @param {object} o
  * @param {'dialog'|'window'} [o.tier='dialog']
@@ -598,7 +614,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * @param {null|{ cancel?: { label?: string }, affirmative?: { id?: string, label: string, appearance?: 'suggested'|'destructive', enabled?: boolean }, extra?: { id: string, label: string }[] }} [o.responses]
  *     null means immediate apply: the header shows Close.
  * @param {(reason: string) => boolean|Promise<boolean>} [o.canClose] Reasons: 'close', 'cancel', 'affirmative',
- *     'escape', 'scrim', 'swipe', 'programmatic', or an extra response id.
+ *     'escape', 'scrim', 'swipe', 'back', 'programmatic', or an extra response id.
  * @param {() => HTMLElement|null} [o.initialFocus]
  * @param {string} [o.className] Added to the surface or, when pushed, to the page.
  * @param {'content'|'fill'} [o.size='fill'] Whether the Window body fills the frame.
@@ -611,18 +627,29 @@ export function openDialog({
     const parent = parentHost ? frames.get(/** @type {HTMLDialogElement} */ (parentHost)) : null;
     if (parent) return parent.pushPage({ title, subtitle, content, search, menu, menuLabel, responses, canClose, initialFocus, className, size });
 
-    const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className, size });
+    // A framed Popup is not an openDialog host, so it is covered here instead of through `frames`.
+    const coveredSurface = findCoveredSurface();
+    const isPage = Boolean(coveredSurface);
+    const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className, size, page: isPage });
     const { host, scrim, surface, query, isSheet, syncPresentation } = frame;
     const pagesNode = element('div', 'sb-dialog__pages');
     surface.append(pagesNode);
     const returnFocus = document.activeElement;
     const closeResponse = responses ? 'cancel' : 'close';
+    // Back, Escape and programmatic closes of a page return to the covered surface, as a pushed page does.
+    const dismissResponse = isPage ? (responses ? 'cancel' : 'back') : closeResponse;
     /** @type {'open'|'closing'|'closed'} */
     let state = 'open';
     let pending = false;
+    /** The async canClose check that runs now, so that a chain Close does not start a second one. */
+    let attemptRun = null;
     let heightLock = null;
     let finish;
     const closed = new Promise(resolve => finish = resolve);
+    /** @type {ReturnType<typeof coverSurface>|null} */
+    let cover = null;
+    /** @type {import('./page-chain.js').ChainLevel} */
+    const level = registerChainLevel({ surface, close: closeLevel, covered: coveredSurface, pending: pendingClose });
     /** @type {{ view: ReturnType<typeof createPage>, spec: object, resolve: Function }[]} */
     const stack = [];
 
@@ -639,7 +666,7 @@ export function openDialog({
         const approved = canClose ? canClose(reason) : true;
         if (typeof approved?.then === 'function') {
             pending = true;
-            return Promise.resolve(approved).then(ok => {
+            const run = Promise.resolve(approved).then(ok => {
                 pending = false;
                 if (ok === false || state !== 'open') return false;
                 complete(response, offset);
@@ -648,6 +675,10 @@ export function openDialog({
                 pending = false;
                 throw error;
             });
+            attemptRun = run;
+            const clear = () => { if (attemptRun === run) attemptRun = null; };
+            run.then(clear, clear);
+            return run;
         }
         if (approved === false) return false;
         complete(response, offset);
@@ -662,6 +693,29 @@ export function openDialog({
         releaseOverlayLayers(host);
         host.setAttribute('closing', '');
         closeMotion(frame, offset, () => dispose(response));
+    }
+
+    /** The close that this host runs now, as a close outcome, or null. */
+    function pendingClose() {
+        if (!attemptRun) return null;
+        return attemptRun.then(async () => {
+            if (state === 'open') return false;
+            await closed;
+            return true;
+        });
+    }
+
+    /** Closes this level only, for a chain walk. Resolves once the level is gone. */
+    async function closeLevel() {
+        const running = pendingClose();
+        if (running) return running;
+        if (state !== 'open') {
+            await closed;
+            return true;
+        }
+        if (!(await attempt('close', closeResponse))) return false;
+        await closed;
+        return true;
     }
 
     function dispose(response) {
@@ -679,6 +733,10 @@ export function openDialog({
         releaseOverlayLayers(host);
         if (host.open) host.close();
         host.remove();
+        // Pages over this frame that stay open must find it removed when they take over its dim.
+        unregisterChainLevel(level);
+        // The covered surface must be interactive again before focus returns into it.
+        cover?.release();
         if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus({ preventScroll: true });
         finish({ response });
     }
@@ -715,14 +773,16 @@ export function openDialog({
     function mountPage(spec, nested) {
         const view = createPage({
             ...spec,
-            nested,
+            // The root page of a page host also has Back, because it returns to the covered surface.
+            nested: nested || isPage,
             onResponse: (kind, id) => {
-                if (nested && kind === 'close') return attempt('close', closeResponse);
+                if (kind === 'close') return closeChain(level);
                 if (nested) return popPage(id, kind === 'affirmative' ? 'affirmative' : id);
                 return attempt(kind === 'affirmative' ? 'affirmative' : id, id);
             },
             onBack: reason => {
                 if (nested) return popPage(spec.responses ? 'cancel' : 'back', reason ?? 'back');
+                if (isPage) return attempt(reason ?? 'back', dismissResponse);
                 if (reason === 'escape') return attempt('escape', closeResponse);
                 return false;
             },
@@ -799,11 +859,11 @@ export function openDialog({
 
     function requestDismiss(reason, offset = 0) {
         if (stack.length > 1) return popPage(topPage().spec.responses ? 'cancel' : 'back', reason);
-        return attempt(reason, closeResponse, offset);
+        return attempt(reason, dismissResponse, offset);
     }
 
     scrim.addEventListener('click', () => {
-        if (!isSheet()) void requestDismiss('scrim');
+        if (!isSheet() && !isPage) void requestDismiss('scrim');
     });
     host.addEventListener('cancel', event => {
         event.preventDefault();
@@ -823,7 +883,9 @@ export function openDialog({
     host.addEventListener('keydown', event => wrapTab(host, event));
 
     const unbindGestures = bindSheetGestures({
-        surface, scrim, targets: [surface], startSelector: '.sb-dialog__handle, .sb-dialog__header', isActive: isSheet,
+        surface, scrim, targets: [surface], startSelector: '.sb-dialog__handle, .sb-dialog__header',
+        // A page over a sheet keeps the sheet's grab handle, and a swipe goes back one level like Escape.
+        isActive: () => isSheet() || surface.hasAttribute('data-covers-sheet'),
         requestClose: offset => requestDismiss('swipe', offset),
     });
     const unbindKeyboard = bindKeyboardInset(host, { onInsetChange: () => heightLock?.refresh() });
@@ -839,9 +901,14 @@ export function openDialog({
     }
     query.addEventListener('change', layoutChanged);
 
+    if (isPage) {
+        cover = coverSurface(coveredSurface, surface);
+        level.onOrphan = cover.standalone;
+    }
     document.body.append(host);
     host.showModal();
-    if (host.dataset.tier === 'window') {
+    // A page takes its rectangle from the covered surface, so a measured height lock would fight it.
+    if (host.dataset.tier === 'window' && !isPage) {
         heightLock = bindWindowHeightLock(surface, { isFill: () => surface.classList.contains('sb-dialog--fill') });
     }
     openMotion(frame);
@@ -853,8 +920,8 @@ export function openDialog({
         page: root.page,
         ...handleFor(root),
         closed,
-        close: (response = closeResponse, reason = 'programmatic') => attempt(reason, response),
-        forceClose: () => complete(closeResponse),
+        close: (response = dismissResponse, reason = 'programmatic') => attempt(reason, response),
+        forceClose: () => complete(dismissResponse),
         push: pushPage,
         get isOpen() { return state === 'open'; },
     };

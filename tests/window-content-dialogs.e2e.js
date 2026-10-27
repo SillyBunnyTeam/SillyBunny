@@ -286,7 +286,9 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
             handle: 'window-qa-user',
             password: 'qa-password',
         });
-        await admin.locator('.sb-dialog__close').click();
+        // The form page can still be open here. Then its Back button also has the close class, so pick Close only.
+        await admin.locator('.sb-dialog__close:not(.sb-dialog__back)').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
         expect(state.users.filter(user => user.endpoint === 'delete')).toEqual([]);
     });
 

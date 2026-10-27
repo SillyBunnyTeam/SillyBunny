@@ -468,3 +468,426 @@ test('adopted search entry shares styling with a built-in entry', async ({ page 
     await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/adopted-search-focused-1440.png' });
     await page.evaluate(() => window.qaDialog.forceClose());
 });
+
+test.describe('page chains', () => {
+    const openPopups = (page, levels) => page.evaluate(async levels => {
+        const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+        window.qaLog = [];
+        window.qaResults = {};
+        window.qaGates = {};
+        window.qaPopups = {};
+        for (const level of levels) {
+            const popup = new Popup(`<p>${level.name}</p>`, POPUP_TYPE[level.type ?? 'DISPLAY'], '', {
+                tier: level.tier ?? 'dialog',
+                title: level.name,
+                allowEscapeClose: level.allowEscapeClose ?? true,
+                onClosing: async () => {
+                    window.qaLog.push(`closing:${level.name}`);
+                    return window.qaGates[level.name] ?? true;
+                },
+            });
+            window.qaPopups[level.name] = popup;
+            void popup.show().then(value => {
+                window.qaResults[level.name] = value;
+                window.qaLog.push(`closed:${level.name}`);
+            });
+        }
+    }, levels);
+    const popupNamed = (page, name) => page.locator('dialog.popup[open]').filter({ has: page.locator('.sb-dialog__title', { hasText: new RegExp(`^${name}$`) }) });
+    const chainClose = (page, name) => popupNamed(page, name).locator('.sb-dialog__chain-close');
+    const gate = (page, name, value) => page.evaluate(([name, value]) => {
+        window.qaGates[name] = value === 'pending' ? new Promise(resolve => { window.qaRelease = resolve; }) : value;
+    }, [name, value]);
+
+    test('a Popup page shows Back and Close, and Back keeps the child result', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', tier: 'window' }, { name: 'child' }]);
+        const child = popupNamed(page, 'child');
+        await expect(child).toHaveClass(/sb-dialog--page/);
+        await expect(child.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+        await expect(chainClose(page, 'child')).toBeVisible();
+        await expect(chainClose(page, 'child')).toHaveAttribute('aria-label', 'Close');
+        const [back, close] = await Promise.all([
+            child.getByRole('button', { name: 'Back', exact: true }).boundingBox(),
+            chainClose(page, 'child').boundingBox(),
+        ]);
+        expect(back.x).toBeLessThan(close.x);
+        expect(Math.abs(back.y - close.y)).toBeLessThanOrEqual(1);
+        await child.getByRole('button', { name: 'Back', exact: true }).click();
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(1);
+        expect(await page.evaluate(() => window.qaResults)).toEqual({ child: 0 });
+        await page.evaluate(() => window.qaPopups.root.completeCancelled());
+    });
+
+    test('Close on a Popup grandchild closes all three levels, top first, with cancel results', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(3);
+        await chainClose(page, 'top').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        expect(await page.evaluate(() => window.qaResults)).toEqual({ root: null, middle: null, top: null });
+        expect(await page.evaluate(() => window.qaLog)).toEqual([
+            'closing:top', 'closed:top', 'closing:middle', 'closed:middle', 'closing:root', 'closed:root',
+        ]);
+    });
+
+    test('a root without a Close button and one with allowEscapeClose false still close with their own cancel result', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window', allowEscapeClose: false }, { name: 'top' }]);
+        await expect(popupNamed(page, 'root').locator('.popup-button-close')).toBeHidden();
+        await chainClose(page, 'top').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        expect(await page.evaluate(() => window.qaResults)).toEqual({ root: null, top: null });
+        expect(await page.evaluate(() => window.qaLog.filter(entry => entry.startsWith('closing')))).toEqual(['closing:top', 'closing:root']);
+    });
+
+    test('a pending child onClosing keeps the parent open, and a refusal closes nothing', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', tier: 'window' }, { name: 'top' }]);
+        await gate(page, 'top', 'pending');
+        await chainClose(page, 'top').click();
+        await expect.poll(() => page.evaluate(() => window.qaLog)).toEqual(['closing:top']);
+        // A parent close would start within a few frames, so a short quiet period proves it waits.
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)));
+        expect(await page.evaluate(() => window.qaLog)).toEqual(['closing:top']);
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(2);
+        await page.evaluate(() => window.qaRelease(false));
+        await expect(popupNamed(page, 'top')).toBeVisible();
+        expect(await page.evaluate(() => ({ results: window.qaResults, log: window.qaLog, result: window.qaPopups.top.result }))).toEqual({
+            results: {}, log: ['closing:top'], result: undefined,
+        });
+        await gate(page, 'top', true);
+        await popupNamed(page, 'top').getByRole('button', { name: 'Back', exact: true }).click();
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(1);
+        await page.evaluate(() => window.qaPopups.root.completeCancelled());
+    });
+
+    test('a refusing middle level stays open with its levels below, and later closes with its handler intact', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        await gate(page, 'middle', false);
+        const opener = popupNamed(page, 'middle').getByRole('button', { name: 'Back', exact: true });
+        await chainClose(page, 'top').click();
+        await expect(popupNamed(page, 'top')).toHaveCount(0);
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(2);
+        expect(await page.evaluate(() => ({
+            results: window.qaResults,
+            middle: window.qaPopups.middle.result,
+            value: window.qaPopups.middle.value,
+            hasHandler: typeof window.qaPopups.middle.onClosing === 'function',
+            lastResult: window.qaPopups.middle.constructor.util.lastResult?.result,
+        }))).toEqual({ results: { top: null }, middle: undefined, value: undefined, hasHandler: true, lastResult: null });
+        await expect(popupNamed(page, 'middle')).toHaveJSProperty('inert', false);
+        await expect(popupNamed(page, 'root')).toHaveJSProperty('inert', true);
+        await expect(opener).toBeEnabled();
+        expect(await page.evaluate(() => document.activeElement?.closest('dialog.popup') === window.qaPopups.middle.dlg)).toBe(true);
+        await gate(page, 'middle', true);
+        await chainClose(page, 'middle').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        expect(await page.evaluate(() => window.qaLog.filter(entry => entry.startsWith('closing')))).toEqual(['closing:top', 'closing:middle', 'closing:middle', 'closing:root']);
+    });
+
+    test('focus returns to the opener of the chain root after Close', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.evaluate(() => {
+            const opener = document.createElement('button');
+            opener.id = 'qa-chain-opener';
+            opener.textContent = 'Open';
+            document.body.append(opener);
+            opener.focus();
+        });
+        await openPopups(page, [{ name: 'root', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        await chainClose(page, 'top').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        await expect(page.locator('#qa-chain-opener')).toBeFocused();
+    });
+
+    test('openDialog over a Popup Window is a page with Back and Close, and Back returns focus into the Popup', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }]);
+        const root = popupNamed(page, 'root');
+        await root.locator('.popup-button-ok').focus();
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.qaPage = openDialog({ title: 'Page', content: document.createElement('p') });
+        });
+        const host = page.locator('.sb-dialog-host[open]');
+        const surface = host.locator('.sb-dialog');
+        await expect(page.locator('.sb-dialog-host')).toHaveCount(1);
+        await expect(surface).toHaveClass(/sb-dialog--page/);
+        await expect(page.locator('.sb-dialog:visible')).toHaveCount(1);
+        await expect(root).toHaveAttribute('data-sb-covered', '');
+        await expect(root).toHaveJSProperty('inert', true);
+        await expect(host.locator('.sb-dialog__back')).toBeVisible();
+        await expect(host.locator('.sb-dialog__close')).toBeVisible();
+        const [parentBox, pageBox] = await Promise.all([root.boundingBox(), surface.boundingBox()]);
+        for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(parentBox[key] - pageBox[key])).toBeLessThanOrEqual(1);
+        await host.locator('.sb-dialog__back').click();
+        await expect(host).toHaveCount(0);
+        expect(await page.evaluate(() => window.qaPage.closed.then(result => result.response))).toBe('back');
+        await expect(root.locator('.popup-button-ok')).toBeFocused();
+        await expect(root).toHaveJSProperty('inert', false);
+        await root.locator('.popup-button-cancel').click();
+    });
+
+    test('openDialog, Popup and openDialog close from the top, each through its own path', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.qaCanClose = [];
+            window.qaRoot = openDialog({ tier: 'window', title: 'Root', canClose: reason => (window.qaCanClose.push(reason), true) });
+        });
+        await openPopups(page, [{ name: 'middle', tier: 'window' }]);
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.qaTop = openDialog({ title: 'Top', canClose: reason => (window.qaCanClose.push(`top:${reason}`), true) });
+        });
+        await expect(page.locator('.sb-dialog:visible')).toHaveCount(1);
+        await page.locator('.sb-dialog-host[open]').last().locator('.sb-dialog__close').click();
+        await expect(page.locator('.sb-dialog-host, dialog.popup')).toHaveCount(0);
+        expect(await page.evaluate(async () => ({
+            top: (await window.qaTop.closed).response,
+            root: (await window.qaRoot.closed).response,
+            popup: window.qaResults.middle,
+            canClose: window.qaCanClose,
+        }))).toEqual({ top: 'close', root: 'close', popup: null, canClose: ['top:close', 'close'] });
+    });
+
+    test('a refusing openDialog root stops the walk after the Popup above it closed', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.qaRoot = openDialog({ tier: 'window', title: 'Root', canClose: () => false });
+        });
+        await openPopups(page, [{ name: 'top' }]);
+        await chainClose(page, 'top').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        const root = page.locator('.sb-dialog-host[open]');
+        await expect(root).toHaveCount(1);
+        await expect(root.locator('.sb-dialog')).toHaveJSProperty('inert', false);
+        await expect(root.locator('.sb-dialog')).toBeVisible();
+        await expect(root.locator('.sb-dialog__close')).toBeVisible();
+        await page.evaluate(() => window.qaRoot.forceClose());
+    });
+
+    test('with motion allowed each level finishes closing before the next one starts', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await page.evaluate(() => document.body.classList.remove('reduced-motion'));
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        await expect(popupNamed(page, 'top')).not.toHaveAttribute('opening');
+        await chainClose(page, 'top').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+        expect(await page.evaluate(() => window.qaLog)).toEqual([
+            'closing:top', 'closed:top', 'closing:middle', 'closed:middle', 'closing:root', 'closed:root',
+        ]);
+    });
+
+    test('with reduced motion the chain closes without any animation running', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        const mostAnimations = await page.evaluate(async () => {
+            let most = document.getAnimations().length;
+            document.querySelector('dialog.popup[open]:last-of-type .sb-dialog__chain-close').click();
+            while (document.querySelector('dialog.popup')) {
+                most = Math.max(most, document.getAnimations().length);
+                await new Promise(resolve => requestAnimationFrame(resolve));
+            }
+            return most;
+        });
+        expect(mostAnimations).toBe(0);
+        expect(await page.evaluate(() => window.qaLog)).toEqual([
+            'closing:top', 'closed:top', 'closing:middle', 'closed:middle', 'closing:root', 'closed:root',
+        ]);
+    });
+
+    test('a page opened in the same tick as its Popup parent takes the settled Popup rectangle', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await page.evaluate(async () => {
+            document.body.classList.remove('reduced-motion');
+            const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.qaPopup = new Popup('<p>Parent</p>', POPUP_TYPE.CONFIRM, '', { tier: 'window', title: 'Parent' });
+            void window.qaPopup.show();
+            window.qaPage = openDialog({ title: 'Page', content: document.createElement('p') });
+        });
+        // Page-wide animations never stop in this app, so only the dialogs' own motion is awaited.
+        await page.waitForFunction(() => !document.getAnimations().some(animation => animation.effect?.target?.closest?.('dialog')));
+        const parent = page.locator('dialog.popup[open]');
+        await expect(parent).not.toHaveAttribute('opening');
+        const [parentBox, pageBox] = await Promise.all([parent.boundingBox(), page.locator('.sb-dialog-host .sb-dialog').boundingBox()]);
+        for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(parentBox[key] - pageBox[key])).toBeLessThanOrEqual(1);
+        await page.evaluate(() => window.qaPage.forceClose());
+        await page.evaluate(() => window.qaPopup.completeCancelled());
+    });
+
+    const sheetShape = node => {
+        const style = getComputedStyle(node);
+        return {
+            topRadius: parseFloat(style.borderTopLeftRadius) > 0 && parseFloat(style.borderTopRightRadius) > 0,
+            bottomRadius: style.borderBottomLeftRadius === '0px' && style.borderBottomRightRadius === '0px',
+            borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+        };
+    };
+    const backdropAlpha = node => {
+        const color = getComputedStyle(node, '::backdrop').backgroundColor;
+        return color.startsWith('rgba(') ? Number(color.slice(5, -1).split(',')[3] ?? 1) : Number(color.match(/\/\s*([\d.]+)\)/)?.[1] ?? 1);
+    };
+
+    /** Counts the dims that are painted: visible backdrops and scrims with some opacity. */
+    const countDims = page => page.evaluate(() => {
+        const alphaOf = color => {
+            const slash = color.match(/\/\s*([\d.]+)\)/);
+            if (slash) return Number(slash[1]);
+            return color.startsWith('rgba(') ? Number(color.slice(5, -1).split(',')[3]) : 1;
+        };
+        let count = 0;
+        for (const dialog of document.querySelectorAll('dialog[open]')) {
+            const style = getComputedStyle(dialog, '::backdrop');
+            if (style.visibility === 'visible' && alphaOf(style.backgroundColor) > 0) count++;
+        }
+        for (const scrim of document.querySelectorAll('.sb-dialog-scrim')) {
+            const style = getComputedStyle(scrim);
+            if (style.display !== 'none' && style.visibility === 'visible' && alphaOf(style.backgroundColor) > 0) count++;
+        }
+        return count;
+    });
+    const openLevel = (page, kind) => page.evaluate(async kind => {
+        const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        window.qaLevels ??= [];
+        if (kind === 'host') {
+            window.qaLevels.push(openDialog({ tier: 'window', title: 'Host', content: document.createElement('p') }));
+        } else {
+            const popup = new Popup('<p>Popup</p>', POPUP_TYPE.DISPLAY, '', { tier: window.qaLevels.length ? 'dialog' : 'window', title: 'Popup' });
+            window.qaLevels.push(popup);
+            void popup.show();
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }, kind);
+
+    for (const chain of [
+        ['popup'], ['popup', 'popup'], ['popup', 'host'], ['popup', 'popup', 'host'], ['popup', 'popup', 'popup'], ['popup', 'host', 'popup'],
+        ['host'], ['host', 'popup'], ['host', 'popup', 'host'], ['host', 'popup', 'popup'],
+    ]) {
+        test(`one dim is painted over the chain ${chain.join(' > ')}`, async ({ page }) => {
+            await prepare(page, { width: 1440, height: 900 });
+            for (const kind of chain) await openLevel(page, kind);
+            expect(await countDims(page)).toBe(1);
+        });
+    }
+
+    /** The page keeps the sheet's grab handle, and its title stays where the parent's title was. */
+    async function expectSheetChrome(parent, pageSurface, handle) {
+        await expect(handle).toBeVisible();
+        const [parentTitle, pageTitle] = await Promise.all([
+            parent.locator('.sb-dialog__title').boundingBox(),
+            pageSurface.locator('.sb-dialog__title').first().boundingBox(),
+        ]);
+        expect(Math.abs((parentTitle.y + parentTitle.height / 2) - (pageTitle.y + pageTitle.height / 2))).toBeLessThanOrEqual(1);
+    }
+
+    test('at 390 an openDialog page over a Popup sheet is one visible frame in the sheet shape, with the dim kept', async ({ page }) => {
+        await prepare(page, { width: 390, height: 844 });
+        await openPopups(page, [{ name: 'parent', type: 'CONFIRM', tier: 'window' }]);
+        const parent = popupNamed(page, 'parent');
+        await expect(parent).toHaveAttribute('data-presentation', 'sheet');
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            const content = document.createElement('div');
+            for (let index = 0; index < 60; index++) {
+                const row = document.createElement('p');
+                row.className = 'qa-row';
+                row.textContent = `Row ${index}`;
+                content.append(row);
+            }
+            window.qaPage = openDialog({ title: 'Page', content });
+        });
+        const host = page.locator('.sb-dialog-host[open]');
+        const surface = host.locator('.sb-dialog');
+        await expect(surface).toHaveAttribute('data-covers-sheet', '');
+        await expect(page.locator('.sb-dialog:visible')).toHaveCount(1);
+        await expect(host.locator('.sb-dialog-scrim')).toBeHidden();
+        await expect(host.locator('.sb-dialog__back')).toBeVisible();
+        await expect(host.locator('.sb-dialog__close')).toBeVisible();
+        expect(await surface.evaluate(sheetShape)).toEqual({ topRadius: true, bottomRadius: true, borders: ['1px', '0px', '0px', '0px'] });
+        const [parentBox, pageBox] = await Promise.all([parent.boundingBox(), surface.boundingBox()]);
+        for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(parentBox[key] - pageBox[key])).toBeLessThanOrEqual(1);
+        expect(Math.round(pageBox.y + pageBox.height)).toBe(844);
+        expect(await host.evaluate(backdropAlpha)).toBeGreaterThan(0);
+        expect(await parent.evaluate(backdropAlpha)).toBe(0);
+        expect(await countDims(page)).toBe(1);
+        await expectSheetChrome(parent, surface, host.locator('.sb-dialog__handle'));
+        const body = surface.locator('.sb-dialog__body');
+        await body.hover();
+        for (let step = 0; step < 12; step++) await page.mouse.wheel(0, 800);
+        await expect.poll(async () => {
+            const [last, box] = await Promise.all([surface.locator('.qa-row').last().boundingBox(), body.boundingBox()]);
+            return last.y + last.height <= box.y + box.height + 1 && last.y >= box.y - 1;
+        }).toBe(true);
+        await host.locator('.sb-dialog__close').click();
+        await expect(page.locator('dialog.popup, .sb-dialog-host')).toHaveCount(0);
+    });
+
+    test('at 390 a Popup page over a Popup sheet has the sheet shape and keeps the dim', async ({ page }) => {
+        await prepare(page, { width: 390, height: 844 });
+        await openPopups(page, [{ name: 'parent', type: 'CONFIRM', tier: 'window' }, { name: 'child' }]);
+        const parent = popupNamed(page, 'parent');
+        const child = popupNamed(page, 'child');
+        await expect(child).toHaveAttribute('data-covers-sheet', '');
+        await expect(page.locator('.sb-dialog:visible')).toHaveCount(1);
+        await expect(child.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+        await expect(chainClose(page, 'child')).toBeVisible();
+        expect(await child.evaluate(sheetShape)).toEqual({ topRadius: true, bottomRadius: true, borders: ['1px', '0px', '0px', '0px'] });
+        const [parentBox, childBox] = await Promise.all([parent.boundingBox(), child.boundingBox()]);
+        for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(parentBox[key] - childBox[key])).toBeLessThanOrEqual(1);
+        expect(await child.evaluate(backdropAlpha)).toBeGreaterThan(0);
+        expect(await parent.evaluate(backdropAlpha)).toBe(0);
+        expect(await countDims(page)).toBe(1);
+        await expectSheetChrome(parent, child, child.locator('> .sb-dialog__handle'));
+        await chainClose(page, 'child').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+    });
+
+    const swipeDown = handle => handle.evaluate(node => {
+        const y = node.getBoundingClientRect().top + 5;
+        node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', clientY: y, button: 0 }));
+        node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', clientY: y + 400, button: 0 }));
+    });
+
+    test('at 390 a swipe down on the handle of a Popup page goes back one level only', async ({ page }) => {
+        await prepare(page, { width: 390, height: 844 });
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        const top = popupNamed(page, 'top');
+        await expect(top).toHaveAttribute('data-covers-sheet', '');
+        await swipeDown(top.locator('> .sb-dialog__handle'));
+        await expect(page.locator('dialog.popup')).toHaveCount(2);
+        await expect(popupNamed(page, 'middle')).toBeVisible();
+        await expect(popupNamed(page, 'middle')).not.toHaveAttribute('inert');
+        expect(await page.evaluate(() => window.qaLog)).toEqual(['closing:top', 'closed:top']);
+        await chainClose(page, 'middle').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+    });
+
+    test('at 390 a swipe down on the handle of an openDialog page goes back one level only', async ({ page }) => {
+        await prepare(page, { width: 390, height: 844 });
+        await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }, { name: 'middle' }]);
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.qaPage = openDialog({ title: 'Page', content: document.createElement('p') });
+            window.qaPageResult = undefined;
+            void window.qaPage.closed.then(result => { window.qaPageResult = result; });
+        });
+        const host = page.locator('.sb-dialog-host[open]');
+        await expect(host.locator('.sb-dialog')).toHaveAttribute('data-covers-sheet', '');
+        await swipeDown(host.locator('.sb-dialog__handle'));
+        await expect(page.locator('.sb-dialog-host')).toHaveCount(0);
+        expect(await page.evaluate(() => window.qaPageResult)).toEqual({ response: 'back' });
+        await expect(page.locator('dialog.popup')).toHaveCount(2);
+        await expect(popupNamed(page, 'middle')).toBeVisible();
+        await expect(popupNamed(page, 'middle')).not.toHaveAttribute('inert');
+        await chainClose(page, 'middle').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+    });
+});

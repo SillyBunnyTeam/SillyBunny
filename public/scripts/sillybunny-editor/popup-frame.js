@@ -4,7 +4,8 @@ import { closePicker } from './picker.js';
 import { createSwitchRow, releaseRowIds } from './rows.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, releaseOverlayLayers } from './overlay-host.js';
-import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock } from './dialog.js';
+import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock, createIconButton } from './dialog.js';
+import { closeChain, coverSurface, findCoveredSurface, registerChainLevel, restoreChainFocus, unregisterChainLevel } from './page-chain.js';
 
 // POPUP_TYPE values (popup.js), duplicated to avoid an import cycle.
 const TYPE_TEXT = 1;
@@ -157,15 +158,6 @@ function replaceDefaultNegativeLabel(popup, cancelButtonProvided) {
     popup.cancelButton.dataset.i18n = 'Cancel';
 }
 
-/** The Dialog or Window surface under `dlg`, if it is one (for page presentation). */
-function findParentSurface(dlg) {
-    const below = [...document.querySelectorAll('dialog[open]:not([closing])')].filter(node => node !== dlg).at(-1);
-    if (!below) return null;
-    if (below.matches('.sb-dialog-host:not([data-tier="alert"])')) return below.querySelector(':scope > .sb-dialog');
-    if (below.matches('dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window)')) return below;
-    return null;
-}
-
 /**
  * @param {object} popup A Popup instance (popup.js).
  * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean }} [options]
@@ -175,8 +167,14 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     const { dlg } = popup;
     const cleanups = [];
     let parentSurface = null;
+    let level = null;
     let framed = false;
     let heightLock = null;
+    let disposed = false;
+    /** The completion that Popup is running now, so that a chain Close does not start a second one. */
+    let completion = null;
+    let resolveGone;
+    const gone = new Promise(resolve => { resolveGone = resolve; });
 
     function buildAlert() {
         const { body, content, buttonControls, closeButton } = popup;
@@ -271,34 +269,80 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         }
     }
 
-    function presentAsPage() {
-        parentSurface = findParentSurface(dlg);
+    /**
+     * Popup gives no hook before its own completion starts, so complete() is wrapped on this instance.
+     * A veto handler that is still running must not run again when a page opened by that handler closes
+     * the chain. The wrapper returns Popup's own promise and changes no result or timing.
+     */
+    function trackCompletion() {
+        const complete = popup.complete;
+        if (typeof complete !== 'function') return;
+        // Not enumerable, so code that copies or logs a popup does not see a new own property.
+        Object.defineProperty(popup, 'complete', {
+            enumerable: false,
+            configurable: true,
+            writable: true,
+            value: function trackedComplete(...args) {
+                const run = Promise.resolve(complete.apply(this, args));
+                completion = run;
+                const clear = () => { if (completion === run) completion = null; };
+                run.then(clear, clear);
+                return run;
+            },
+        });
+    }
+
+    /** The completion that Popup runs now, as a close outcome, or null. */
+    function pendingClose() {
+        return completion ? completion.then(value => value !== undefined) : null;
+    }
+
+    /** Closes this level only, through Popup's own completion so its veto and result rules apply. */
+    async function closeLevel() {
+        if (disposed) return true;
+        if (completion) return pendingClose();
+        if (dlg.hasAttribute('closing')) {
+            // Completing a leaving popup again would run its onClosing handler a second time.
+            await gone;
+            return true;
+        }
+        // complete() resolves undefined only when onClosing vetoed. Otherwise it resolves after disposal.
+        return (await popup.complete(RESULT_CANCELLED)) !== undefined;
+    }
+
+    function addChainClose() {
+        const close = createIconButton(t`Close`, 'xmark', 'sb-dialog__close sb-dialog__chain-close');
+        close.addEventListener('click', () => void closeChain(level));
+        dlg.querySelector(':scope > .sb-dialog__header').append(close);
+    }
+
+    function joinChain() {
+        parentSurface = findCoveredSurface(dlg);
+        level = registerChainLevel({ surface: dlg, close: closeLevel, covered: parentSurface, pending: pendingClose });
+        cleanups.push(() => {
+            // Pages that are still open over this popup close with their own cancel results. Each one
+            // replaces the last result, so this popup's own result is put back when they are done.
+            const util = popup.constructor?.util;
+            const ownResult = util?.lastResult;
+            const cascade = unregisterChainLevel(level);
+            if (cascade && util) void cascade.then(() => { util.lastResult = ownResult; }, () => {});
+        });
+        trackCompletion();
         if (!parentSurface) return;
         dlg.classList.add('sb-dialog--page');
-        const wasInert = parentSurface.inert;
-        parentSurface.inert = true;
-        const place = () => {
-            const rect = parentSurface.getBoundingClientRect();
-            for (const [name, value] of Object.entries({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })) {
-                dlg.style.setProperty(`--sb-page-${name}`, `${Math.round(value)}px`);
-            }
-        };
-        place();
-        parentSurface.setAttribute('data-sb-covered', '');
-        window.addEventListener('resize', place, { passive: true });
-        cleanups.push(() => {
-            window.removeEventListener('resize', place);
-            parentSurface?.removeAttribute('data-sb-covered');
-            if (parentSurface) parentSurface.inert = wasInert;
-        });
-        const close = popup.closeButton;
-        if (close.style.display !== 'none') {
-            // Immediate-apply pages return to their parent instead of closing the dialog.
-            close.classList.replace('fa-xmark', 'fa-arrow-left');
-            close.title = t`Back`;
-            close.setAttribute('aria-label', close.title);
-            close.classList.add('sb-dialog__back');
-        }
+        const cover = coverSurface(parentSurface, dlg);
+        level.onOrphan = cover.standalone;
+        cleanups.push(cover.release);
+        cleanups.push(() => restoreChainFocus(parentSurface));
+        const back = popup.closeButton;
+        if (back.style.display === 'none') return;
+        // Immediate-apply pages have no responses. Their own button goes back to the parent, and a
+        // second button closes the whole chain.
+        back.classList.replace('fa-xmark', 'fa-arrow-left');
+        back.title = t`Back`;
+        back.setAttribute('aria-label', back.title);
+        back.classList.add('sb-dialog__back');
+        addChainClose();
     }
 
     function opened() {
@@ -331,7 +375,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
             if (resolved === 'alert') layoutAlertResponses(popup.buttonControls, isSheet());
             heightLock?.refresh();
         };
-        if (resolved !== 'alert') presentAsPage();
+        if (resolved !== 'alert') joinChain();
         sync();
         let backdropPress = null;
         const isBackdropEvent = event => {
@@ -382,13 +426,17 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
             surface: dlg,
             targets: [dlg],
             startSelector: '.sb-dialog__handle, .sb-dialog__header, .sb-dialog__heading',
-            isActive: isSheet,
+            // A page over a sheet keeps the sheet's grab handle, and a swipe goes back one level like Escape.
+            isActive: () => isSheet() || dlg.hasAttribute('data-covers-sheet'),
             requestClose: offset => {
                 if (!allowEscapeClose) return false;
                 dlg.style.setProperty('--sb-dialog-drag-offset', `${offset}px`);
+                // The page leaves downward after a swipe, but sideways after Back.
+                dlg.toggleAttribute('data-sheet-dismiss', dlg.classList.contains('sb-dialog--page'));
                 return Promise.resolve(popup.complete(RESULT_CANCELLED)).then(value => {
                     if (value !== undefined) return true;
                     dlg.style.removeProperty('--sb-dialog-drag-offset');
+                    dlg.removeAttribute('data-sheet-dismiss');
                     return false;
                 });
             },
@@ -413,8 +461,9 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     }
 
     function dispose() {
-        parentSurface?.removeAttribute('data-sb-covered');
         for (const cleanup of cleanups.splice(0)) cleanup();
+        disposed = true;
+        resolveGone();
     }
 
     return { opened, closing, dispose };
