@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
+import { visiblePageClose } from './helpers/dialog-pages.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The viewport matrix adds mobile-only sheet gesture assertions. */
 
 const manager = page => page.locator('#tag_view_list');
@@ -266,7 +267,7 @@ for (const width of [1440, 390]) {
             await tagRow.locator('.ds-entity-row__avatar').click();
             const managerWindow = page.locator('.sb-dialog-host:has(> #tag_view_list)');
             await expect(managerWindow.locator('.sb-dialog__back').last()).toBeVisible();
-            await expect(managerWindow.locator('.sb-dialog__page:not([hidden]) .sb-dialog__close')).toBeVisible();
+            await expect(await visiblePageClose(managerWindow)).toBeVisible();
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(1);
             await managerWindow.locator('.sb-tag-manager__members .sb-tag-manager__member-remove').click();
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(0);
@@ -278,7 +279,7 @@ for (const width of [1440, 390]) {
             await tagRow.focus();
             await page.keyboard.press('Space');
             await expect(managerWindow.locator('.sb-dialog__back').last()).toBeVisible();
-            await managerWindow.locator('.sb-dialog__page:not([hidden]) .sb-dialog__close').click();
+            await (await visiblePageClose(managerWindow)).click();
             await expect(managerWindow).toHaveCount(0);
         });
 

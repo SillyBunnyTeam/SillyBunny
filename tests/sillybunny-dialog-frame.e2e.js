@@ -283,6 +283,24 @@ test.describe('while pages slide', () => {
         expect(probe.paintedByMovingPage, `painted: ${probe.painted}`).toBe(true);
     });
 
+    test('the covered page is hidden and inert once the push settles, even when the slide is cancelled', async ({ page }) => {
+        await openWithStackedDivider(page);
+        const cancelled = await page.evaluate(() => {
+            window.qaDialog.push({ title: 'Child', content: document.createElement('p') });
+            // Code outside the motion helper can cancel the slide directly, which skips the helper's own cancel path.
+            const slides = document.getAnimations()
+                .filter(animation => animation.effect?.target?.classList?.contains('sb-dialog__page'));
+            slides.forEach(animation => animation.cancel());
+            return slides.length;
+        });
+        expect(cancelled).toBeGreaterThan(0);
+        const covered = page.locator('.sb-dialog-host[open] .sb-dialog__page').first();
+        await expect(covered).toHaveAttribute('hidden', '');
+        await expect(covered).not.toHaveClass(/is-underlay/);
+        await expect(page.locator('.sb-dialog-host[open] .sb-dialog__page:not([hidden])')).toHaveCount(1);
+        await page.evaluate(() => window.qaDialog.forceClose());
+    });
+
     test('a page popped back paints above the revealed page until the slide ends', async ({ page }) => {
         await openWithStackedDivider(page);
         const probe = await slideHalfway(page, 'pop');
@@ -685,11 +703,13 @@ test.describe('page chains', () => {
     test('with reduced motion the chain closes without any animation running', async ({ page }) => {
         await prepare(page, { width: 1440, height: 900 });
         await openPopups(page, [{ name: 'root', type: 'CONFIRM', tier: 'window' }, { name: 'middle' }, { name: 'top' }]);
+        // Unrelated looping animations outside the dialogs, such as the hidden #connection_profile_spinner, must not count, so only animations inside a dialog are checked.
         const mostAnimations = await page.evaluate(async () => {
-            let most = document.getAnimations().length;
+            const dialogAnimations = () => document.getAnimations().filter(animation => animation.effect?.target?.closest?.('dialog')).length;
+            let most = dialogAnimations();
             document.querySelector('dialog.popup[open]:last-of-type .sb-dialog__chain-close').click();
             while (document.querySelector('dialog.popup')) {
-                most = Math.max(most, document.getAnimations().length);
+                most = Math.max(most, dialogAnimations());
                 await new Promise(resolve => requestAnimationFrame(resolve));
             }
             return most;

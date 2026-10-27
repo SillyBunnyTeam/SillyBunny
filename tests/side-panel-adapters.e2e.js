@@ -409,6 +409,8 @@ async function expectControlAtRowEnd(panel, controlSelector) {
 }
 
 async function readGeometry(page, panel) {
+    // A sheet springs in from below and passes over the composer, so only the settled position is the layout.
+    await expect.poll(() => panel.evaluate(element => element.getAnimations().length)).toBe(0);
     return panel.evaluate(element => {
         const panelRect = element.getBoundingClientRect();
         const chatRect = document.getElementById('sheld').getBoundingClientRect();

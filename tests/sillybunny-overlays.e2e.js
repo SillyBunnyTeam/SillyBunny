@@ -3,6 +3,7 @@ import { gunzipSync } from 'node:zlib';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
+import { visiblePageClose } from './helpers/dialog-pages.js';
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
@@ -368,7 +369,7 @@ for (const width of [1440, 390]) {
                 const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
                 await cleanup.locator('#chat_cleanup_preview').click();
                 await cleanup.getByRole('button', { name: 'Back', exact: true }).click();
-                await frame.locator('.sb-dialog__close').click();
+                await (await visiblePageClose(frame)).click();
                 await expect(frame).toHaveCount(0);
                 await expect(focusTarget).toBeFocused();
             };

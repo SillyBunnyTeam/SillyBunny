@@ -79,7 +79,8 @@ export function stopMotion(element) {
 
 /**
  * Plays keyframes on the element. `styles` are applied inline (!important) for the duration,
- * `onFinish` runs only when the animation completes, `onEnd` runs on finish and on cancel.
+ * `onFinish` runs only when the animation completes, `onEnd` runs on finish and on cancel. `onEnd` also
+ * runs when other code cancels the animation directly, for example through `getAnimations()`.
  * Without motion, `onFinish` and `onEnd` run synchronously.
  */
 export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null } = {}) {
@@ -112,6 +113,16 @@ export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTI
         },
     };
     activeMotions.set(element, motion);
+
+    // Code that cancels the animation directly, for example through `getAnimations()`, skips `motion.cancel()`.
+    // Without this handler `onEnd` would never run, and a caller that commits its end state there, such as
+    // hiding a covered page, would keep the old state for good.
+    animation.oncancel = () => {
+        if (activeMotions.get(element) !== motion) {
+            return;
+        }
+        cleanup();
+    };
 
     // onFinish commits the end state before the fill is dropped, all in one task, so nothing flashes.
     animation.finished.then(() => {

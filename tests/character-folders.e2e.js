@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { visiblePageClose } from './helpers/dialog-pages.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -169,7 +170,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-2.png'))).toBeNull();
             await manager.locator('.sb-dialog__back').last().click();
 
-            await manager.locator('.sb-dialog__close').click();
+            await (await visiblePageClose(manager)).click();
 
             let firstRow = list.locator('[data-sb-list-key="character:folder-qa-0.png"]');
             await firstRow.getByRole('button', { name: 'Edit', exact: true }).click();

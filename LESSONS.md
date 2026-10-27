@@ -201,6 +201,14 @@ This is the largest class by a wide margin.
 - **Focus return:** after a dialog or side panel closes, the opener can be disabled, hidden or removed, and focus then fell to the document.
   - **Guard:** `returnFocusTo()` in `public/scripts/sillybunny-editor/page-chain.js`. It retries a disabled opener for a few frames, falls back to a recorded container or a fallback control, and never focuses behind another open modal.
   - **Tests:** `tests/unit/sillybunny-return-focus.test.js`, `tests/dialogs-accessibility.e2e.js` (Escape returns focus).
+- **Motion end state on a direct cancel:** `play()` in `public/scripts/sillybunny-motion.js` ran `onEnd` only on finish or through `motion.cancel()`.
+  - **Breaks:** code that cancelled the animation directly, for example through `getAnimations()`, skipped `onEnd`. A pushed dialog page then never hid the page it covered, which stayed visible with its own Close.
+  - **Guard:** `animation.oncancel` runs the cleanup and `onEnd` while the motion is still the active one, so no path runs them twice.
+  - **Tests:** `tests/unit/sillybunny-motion.test.js`, `tests/sillybunny-dialog-frame.e2e.js` (the covered page is hidden and inert once the push settles, even when the slide is cancelled).
+- **E2E during page slides:** a push or pop keeps both pages in the DOM for the slide, and each page has its own Close. A strict locator counts every match at once and fails rather than waiting.
+  - **Guard:** for an `openDialog` host, get the Close through `visiblePageClose(host)` in `tests/helpers/dialog-pages.js`, which first waits for exactly one unhidden page. A Popup page is its own `dialog.popup` with no `.sb-dialog__page` wrapper, and its Back button keeps the close class, so match `.sb-dialog__close:not(.sb-dialog__back)` there.
+  - **Pitfall:** looping animations outside the surface under test, such as the hidden `#connection_profile_spinner`, run for the whole session. Count only the surface's own animations, and read geometry only after its own animations finish.
+  - **Tests:** `tests/tag-manager.e2e.js`, `tests/character-folders.e2e.js`, `tests/sillybunny-overlays.e2e.js`, `tests/side-panel-engine.e2e.js`, `tests/side-panel-adapters.e2e.js`.
 
 ### Upstream compatibility and sync
 
