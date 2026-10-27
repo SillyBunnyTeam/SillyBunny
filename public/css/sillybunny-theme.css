@@ -892,6 +892,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     inset: 0;
     width: 100%;
     height: 100%;
+    margin: 0;
     opacity: 0;
     cursor: pointer;
 }
@@ -1005,13 +1006,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 }
 
 .floating_prompt_radio_group label > span,
-.floating_prompt_radio_group label > small {
-    line-height: var(--sb-line-body);
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-}
-
+.floating_prompt_radio_group label > small,
 .checkbox_label small,
 .checkbox_label span {
     line-height: var(--sb-line-body);
@@ -1097,6 +1092,15 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
         background: var(--sb-button-hover);
         box-shadow: none;
     }
+
+    /* A generated :focus-visible copy of the hover rule would reset the ring. A rule with the same
+       selectors replaces that copy, so the ring stays. */
+    .menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
+    .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
+    .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+        background: var(--sb-button-hover);
+        box-shadow: var(--sb-focus-ring-inset);
+    }
 }
 
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button:not(.sb-status-page__action),
@@ -1174,6 +1178,15 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 :is(.menu_button, .menu_button_icon, .right_menu_button):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Quick Image Gen draws its own outline on these buttons. The ring above would be a second one. */
+#qig-settings .menu_button:focus-visible {
+    box-shadow: none;
+}
+
+:is(.qig-popup, .qig-native-review) .menu_button:focus-visible {
+    outline: none;
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.disabled, .is-disabled, [disabled]):not(.is-busy):not([aria-busy='true'])::after {
@@ -1274,6 +1287,19 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
         background: color-mix(in srgb, var(--sb-color-danger) 90%, var(--sb-shell-text));
         border-color: transparent;
         box-shadow: none;
+    }
+
+    .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
+    .menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
+        border-color: transparent;
+        box-shadow: var(--sb-focus-ring-inset);
+    }
+
+    .menu_button.popup-button-ok.is-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+        background: color-mix(in srgb, var(--sb-color-danger) 90%, var(--sb-shell-text));
+        border-color: transparent;
+        box-shadow: var(--sb-focus-ring-inset);
     }
 }
 
@@ -1682,7 +1708,9 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     height: 22px;
 }
 
-#send_but {
+#send_but,
+#send_form .mes_stop,
+#send_form.sb-generating-controls #mes_stop {
     width: var(--sb-composer-send-width) !important;
     min-width: var(--sb-composer-send-width) !important;
     max-width: var(--sb-composer-send-width) !important;
@@ -1707,26 +1735,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: var(--sb-muted-fg) !important;
     cursor: not-allowed;
     pointer-events: none;
-}
-
-#send_form .mes_stop,
-#send_form.sb-generating-controls #mes_stop {
-    width: var(--sb-composer-send-width) !important;
-    min-width: var(--sb-composer-send-width) !important;
-    max-width: var(--sb-composer-send-width) !important;
-    height: var(--sb-composer-action-size) !important;
-    min-height: var(--sb-composer-action-size) !important;
-    max-height: var(--sb-composer-action-size) !important;
-    flex: 0 0 var(--sb-composer-send-width) !important;
-    /* libadwaita .circular.suggested-action, shared with the Conversation send button. */
-    border-radius: 50% !important;
-    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) !important;
-    border: 1px solid transparent !important;
-    /* libadwaita suggested-action: solid accent fill, no drop shadow. */
-    box-shadow: none;
-    color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
-    font-size: var(--sb-composer-action-icon-size) !important;
-    opacity: 1;
 }
 
 /*
@@ -1776,18 +1784,11 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
         flex-wrap: nowrap !important;
     }
 
+    /* The wildcard selectors in the second half also size any other child that a theme or an extension
+       adds, so that no action button keeps a size of its own. */
     #leftSendForm > div,
     #rightSendForm > div:not(.mes_stop),
-    #options_button {
-        width: var(--sb-composer-action-size) !important;
-        min-width: var(--sb-composer-action-size) !important;
-        height: var(--sb-composer-action-size) !important;
-        min-height: var(--sb-composer-action-size) !important;
-        max-width: var(--sb-composer-action-size) !important;
-        max-height: var(--sb-composer-action-size) !important;
-    }
-
-    /* Override any optional theme-specific sizing. */
+    #options_button,
     #leftSendForm > *,
     #rightSendForm > *:not(.mes_stop),
     #form_sheld #options_button {
@@ -4323,7 +4324,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-width: 0;
 }
 
-#model_openai_favorite_toggle {
+#model_openai_favorite_toggle,
+.sb-model-id-favorite-toggle {
     flex: 0 0 46px;
     width: 46px;
     min-width: 46px;
@@ -4336,7 +4338,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     line-height: 1;
 }
 
-#model_openai_favorite_toggle.is-favorite {
+#model_openai_favorite_toggle.is-favorite,
+.sb-model-id-favorite-toggle.is-favorite {
     color: var(--sb-state-favorite);
     border-color: var(--sb-state-favorite-border);
     background: var(--sb-state-favorite-bg);
@@ -4358,25 +4361,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 .sb-model-id-search-row > datalist {
     display: none;
-}
-
-.sb-model-id-favorite-toggle {
-    flex: 0 0 46px;
-    width: 46px;
-    min-width: 46px;
-    min-height: 46px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    align-self: center;
-    line-height: 1;
-}
-
-.sb-model-id-favorite-toggle.is-favorite {
-    color: var(--sb-state-favorite);
-    border-color: var(--sb-state-favorite-border);
-    background: var(--sb-state-favorite-bg);
 }
 
 #openai_model_picker_hint {
@@ -6259,7 +6243,8 @@ body.reduced-motion *::after {
         gap: 8px;
     }
 
-    #model_openai_favorite_toggle {
+    #model_openai_favorite_toggle,
+    .sb-model-id-favorite-toggle {
         flex-basis: 44px;
         width: 44px;
         min-width: 44px;
@@ -6268,13 +6253,6 @@ body.reduced-motion *::after {
 
     .sb-model-id-search-row {
         gap: 8px;
-    }
-
-    .sb-model-id-favorite-toggle {
-        flex-basis: 44px;
-        width: 44px;
-        min-width: 44px;
-        min-height: 44px;
     }
 
     #AdvancedFormatting .sb-reasoning-toggle-grid,
@@ -6625,8 +6603,9 @@ body.reduced-motion *::after {
    Overlay Overrides (libadwaita shell pass - Agent B)
    ======================================================================== */
 
-/* Options Menu (#options) - popover surface */
-#options {
+/* Options Menu (#options) and Extensions Menu (#extensionsMenu) - popover surfaces */
+#options,
+#extensionsMenu {
     background: var(--sb-layer-popover) !important;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
     border-radius: var(--sb-radius-overlay) !important;
@@ -6641,54 +6620,7 @@ body.reduced-motion *::after {
     padding: 0;
 }
 
-#options .options-content a {
-    height: 34px;
-    padding: 0 12px;
-    border-radius: var(--sb-radius-control) !important;
-    opacity: 1;
-    color: var(--SmartThemeBodyColor);
-    background: transparent !important;
-    border: none !important;
-    display: flex !important;
-    align-items: center;
-    gap: 8px;
-}
-
-#options .options-content a i,
-#options .options-content a .fa-fw {
-    opacity: 0.7;
-}
-
-#options .options-content a:hover {
-    background: var(--sb-flat-hover-bg) !important;
-}
-
-#options .options-content a:active {
-    background: var(--sb-flat-active-bg) !important;
-}
-
-#options .options-content a:focus-visible {
-    outline: none !important;
-    box-shadow: var(--sb-focus-ring-inset) !important;
-}
-
-@media (pointer: coarse) {
-    #options .options-content a {
-        height: 44px !important;
-    }
-}
-
-/* Extensions Menu (#extensionsMenu) - popover surface */
-#extensionsMenu {
-    background: var(--sb-layer-popover) !important;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
-    border-radius: var(--sb-radius-overlay) !important;
-    padding: 6px;
-    box-shadow: var(--sb-shadow-popover);
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
+#options .options-content a,
 #extensionsMenu > .extension_container > div {
     height: 34px;
     padding: 0 12px;
@@ -6702,25 +6634,32 @@ body.reduced-motion *::after {
     gap: 8px;
 }
 
+#options .options-content a i,
+#options .options-content a .fa-fw,
 #extensionsMenu i,
 #extensionsMenu .fa-fw {
     opacity: 0.7;
 }
 
+#options .options-content a:hover,
 #extensionsMenu > .extension_container > div:hover {
     background: var(--sb-flat-hover-bg) !important;
 }
 
+#options .options-content a:active,
 #extensionsMenu > .extension_container > div:active {
     background: var(--sb-flat-active-bg) !important;
 }
 
+/* A transparent outline is repainted by forced colours, so these rows keep a focus indicator there. */
+#options .options-content a:focus-visible,
 #extensionsMenu > .extension_container > div:focus-visible {
-    outline: none !important;
+    outline: 2px solid transparent !important;
     box-shadow: var(--sb-focus-ring-inset) !important;
 }
 
 @media (pointer: coarse) {
+    #options .options-content a,
     #extensionsMenu > .extension_container > div {
         height: 44px !important;
     }
@@ -8272,9 +8211,46 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         border: 1px solid ButtonText;
     }
 
-    .sb-dialog :is(button, input, select, textarea, [tabindex]):focus-visible {
+    /* Forced colours remove the fill that is a flat control's only edge. */
+    :is(.menu_button, .sb-dialog__icon-button, .sb-dialog__close, .sb-dialog__back, .sb-action-menu-item, .sb-action-sheet-close, .sb-boolean-radio-option > span) {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+
+    /* Many focus rings are a box-shadow, which forced colours remove. An important outline keeps one. */
+    :focus-visible {
+        outline: 2px solid Highlight !important;
+        outline-offset: -2px !important;
+    }
+
+    .sb-boolean-radio-group .sb-boolean-radio-option > input:focus-visible + span {
         outline: 2px solid Highlight;
         outline-offset: -2px;
+    }
+
+    /* The checked segment is filled with Highlight, so its ring must use the text colour to show on it. */
+    .sb-boolean-radio-group .sb-boolean-radio-option > input:checked:focus-visible + span {
+        outline-color: HighlightText;
+    }
+
+    .sb-boolean-radio-group .sb-boolean-radio-option > input:checked + span {
+        forced-color-adjust: none;
+        background: Highlight;
+        color: HighlightText;
+    }
+
+    /* A switch thumb is a pseudo-element, which forced colours paint like the track. */
+    :is(.checkbox_label > input[type='checkbox'], input[type='checkbox'].sb-switch)::after {
+        background: ButtonText;
+    }
+
+    :is(.checkbox_label > input[type='checkbox'], input[type='checkbox'].sb-switch):checked {
+        border-color: Highlight;
+        background: Highlight;
+    }
+
+    :is(.checkbox_label > input[type='checkbox'], input[type='checkbox'].sb-switch):checked::after {
+        background: HighlightText;
     }
 }
 
@@ -8548,7 +8524,7 @@ body.no-blur #send_form {
 #send_form .menu_button:not(#send_but):focus-visible,
 #leftSendForm > div:not(.stscript_btn):focus-visible,
 #rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):focus-visible {
-    outline: none !important;
+    outline: 2px solid transparent !important;
     box-shadow: var(--sb-focus-ring-inset) !important;
 }
 

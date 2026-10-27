@@ -189,6 +189,18 @@ This is the largest class by a wide margin.
   - When the walk starts, take a snapshot of the closes already in flight. Otherwise a veto handler that resolves the same promise runs `onClosing` twice.
   - A page dims only when nothing beneath it dims already, so each chain shows one dim.
   - `4ef8c438b`, `public/scripts/sillybunny-editor/page-chain.js`. Tests: `tests/unit/sillybunny-page-chain.test.js`, `tests/sillybunny-dialog-frame.e2e.js` (`page chains`, `one dim is painted over the chain …`).
+- **Generated hover mirror:** `public/scripts/dynamic-styles.js` copies each `:hover` rule onto `:focus-visible`, unless a focus rule with the same base selector already exists.
+  - **Breaks:** the `.menu_button` hover rule sets `box-shadow: none`, so its copy erased the inset focus ring on every enabled `.menu_button`. Keyboard focus showed no ring on dialog responses, extension actions and header icon buttons.
+  - **Guard:** give such a hover rule a same-base `:focus-visible` counterpart inside the same `@media (hover: hover)` block (`public/css/sillybunny-theme.css`, the `.menu_button` hover block). A `.menu_button` rule that draws its own outline then sets `box-shadow: none`, or it shows two rings.
+  - **Tests:** `tests/dialogs-accessibility.e2e.js` (every Tab stop shows one focus indicator; the Presets action button shows one ring), `tests/sillybunny-chats-archive.e2e.js` (the drawer button shows one ring).
+- **Focus under forced colours:** forced colours remove `box-shadow`, so a ring drawn only as a shadow disappears.
+  - **Guard:** the theme's forced-colours block draws a `Highlight` outline on every `:focus-visible` element.
+  - **Pitfall:** a rule with `outline: none !important` defeats that outline. Use `outline: 2px solid transparent !important` instead: forced colours repaint it, and it draws nothing in normal mode.
+  - **Pitfall:** a selected control filled with `Highlight` needs a `HighlightText` focus outline, or the ring is invisible.
+  - **Tests:** `tests/dialogs-accessibility.e2e.js` (forced colours).
+- **Focus return:** after a dialog or side panel closes, the opener can be disabled, hidden or removed, and focus then fell to the document.
+  - **Guard:** `returnFocusTo()` in `public/scripts/sillybunny-editor/page-chain.js`. It retries a disabled opener for a few frames, falls back to a recorded container or a fallback control, and never focuses behind another open modal.
+  - **Tests:** `tests/unit/sillybunny-return-focus.test.js`, `tests/dialogs-accessibility.e2e.js` (Escape returns focus).
 
 ### Upstream compatibility and sync
 
@@ -196,6 +208,7 @@ This is the largest class by a wide margin.
 - **Files:** `docs/upstream-sync.md`, `public/scripts/sillybunny-version-map.js`, `public/scripts/openai.js`, `src/endpoints/backends/`.
 - **Guards:** the version map clamps a SillyBunny version with no mapping to the highest synced SillyTavern version for its major.
 - **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`.
+- **Native controls and upstream keyboard handling:** upstream `public/scripts/keyboard.js` turns Enter on any `.interactable` into a synthetic `click()`, because upstream's `.menu_button` controls are `<div>` elements. A native `<button>` with that class clicks on Enter by itself, so one press ran its handler twice: Change Password opened two popups, and the Clear cookies alert opened and cancelled at once. A marked early return now skips native buttons, links, `summary` and button-like inputs. When you turn an upstream `<div>` control into a native element, check upstream handlers that synthesise its activation. Tests: `tests/unit/sillybunny-keyboard-enter.test.js`, `tests/dialogs-accessibility.e2e.js`.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
 

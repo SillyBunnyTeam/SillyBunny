@@ -103,6 +103,88 @@ export function unregisterChainLevel(level) {
     return Promise.all(orphans.map(page => closeChain(topmostPage(page))));
 }
 
+// A caller that disables the opener while its dialog is open re-enables it in a `finally` that runs
+// right after the dialog settles. A few frames is enough for that, and short enough that focus does
+// not sit on the document for long when the opener stays disabled.
+const OPENER_RETRY_FRAMES = 8;
+
+/** Whether a modal dialog is open and `node` sits outside every one of them. `:modal` is unknown to older engines and to jsdom. */
+function isBehindModal(node) {
+    const isModal = dialog => {
+        try {
+            return dialog.matches(':modal');
+        } catch {
+            return false;
+        }
+    };
+    const modals = [...document.querySelectorAll('dialog[open]')].filter(isModal);
+    return modals.length > 0 && !modals.some(modal => modal.contains(node));
+}
+
+/** Focuses `node` only when the browser accepts it, and never behind an open modal dialog. */
+function tryFocus(node) {
+    if (!(node instanceof HTMLElement) || !node.isConnected || node.closest('[inert], [hidden]') || isBehindModal(node)) return false;
+    node.focus({ preventScroll: true });
+    return document.activeElement === node;
+}
+
+/** A focused element that was hidden keeps `activeElement` until the next render, so it counts as lost. */
+function isFocusLost() {
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement || !active.isConnected) return true;
+    return active.closest('[hidden], [inert]') !== null || (typeof active.checkVisibility === 'function' && !active.checkVisibility());
+}
+
+/** Focuses the first control in `origin`, or in the nearest ancestor that has one, other than `skip`. */
+function focusNearby(origin, skip) {
+    for (let container = origin; container && container !== document.body; container = container.parentElement) {
+        for (const node of container.querySelectorAll(FOCUSABLE_SELECTOR)) {
+            if (node !== skip && tryFocus(node)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Returns focus to the control that opened a dialog or panel, once that dialog has closed.
+ *
+ * A disabled opener is a temporary state, so focus waits a few frames for it to be enabled again. An
+ * opener that is hidden, inert or gone will not come back, so focus goes at once to `fallback` and then
+ * to the nearest control around the opener. A removed or missing opener has no neighbours of its own,
+ * so the recorded `container` stands in for it. Focus that has already moved to another control is never
+ * taken back, and focus never goes behind an open modal dialog.
+ *
+ * @param {Element|null} opener The control that had focus when the dialog opened.
+ * @param {object} [options]
+ * @param {Element|null} [options.fallback] A visible control to use when the opener cannot take focus,
+ *     for example the trigger of the menu that held the opener.
+ * @param {Element|null} [options.container] The element that held the opener when the dialog opened.
+ */
+export function returnFocusTo(opener, { fallback = null, container = null } = {}) {
+    const target = opener instanceof HTMLElement ? opener : null;
+    if (target && tryFocus(target)) return;
+    const fallBack = () => {
+        if (!isFocusLost()) return;
+        if (target?.isConnected) {
+            if (!tryFocus(fallback)) focusNearby(target.parentElement, target);
+            return;
+        }
+        if (!(container?.isConnected && focusNearby(container, null))) tryFocus(fallback);
+    };
+    const waitsForEnable = Boolean(target?.isConnected) && (target.matches(':disabled') || target.getAttribute('aria-disabled') === 'true');
+    if (!waitsForEnable) {
+        fallBack();
+        return;
+    }
+    let framesLeft = OPENER_RETRY_FRAMES;
+    const retry = () => {
+        if (!isFocusLost() || tryFocus(target)) return;
+        if (--framesLeft > 0) requestAnimationFrame(retry);
+        else fallBack();
+    };
+    requestAnimationFrame(retry);
+}
+
 /**
  * Returns focus into `surface` after a page that covered it has gone. A level that never had focus
  * (for example a read-only view) falls back to its first control, and then to the surface itself.

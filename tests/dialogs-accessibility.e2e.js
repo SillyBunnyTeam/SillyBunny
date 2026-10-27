@@ -1,7 +1,7 @@
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- A modal and a non-modal surface, and a floating and a sheet layout, take different checks. */
 import { expect, test } from '@playwright/test';
 import { dialog as archiveDialog, isCollapsed, rows, waitForDetail } from './helpers/chats-archive.js';
-import { a11yShot, settleTransitions, tabUntil, walkTabOrder } from './helpers/dialog-accessibility.js';
+import { a11yShot, expectSingleFocusRing, settleTransitions, tabUntil, walkTabOrder } from './helpers/dialog-accessibility.js';
 import { DESKTOP, SURFACES, TEXT_SCALE, bootMisc, openArchiveList, pressKey } from './helpers/dialog-accessibility-surfaces.js';
 
 /**
@@ -17,48 +17,23 @@ import { DESKTOP, SURFACES, TEXT_SCALE, bootMisc, openArchiveList, pressKey } fr
  * 200% checks set it to 2 in the intercepted settings. A root `font-size: 200%` changes nothing in the
  * dialogs, because their text does not use rem.
  *
- * Opening: where a step before the trigger is programmatic, the surface says why. Real `<button>`
- * triggers are pressed with Space, because Enter activates them twice (see the `Enter` test below).
+ * Opening: where a step before the trigger is programmatic, the surface says why. Triggers are pressed
+ * with Enter, the way a keyboard user does; the `Enter` tests below cover the double click that once
+ * made that unsafe for a real `<button>`.
  */
 
 // Elements that shorten their text with an ellipsis on purpose (a title, or the value shown in a select row).
 // Everything else must show its full label.
 const ELLIPSIZING = ['.sb-dialog__title', '.sb-dialog__subtitle', '.ds-select-row__trigger'];
 
-const NO_FOCUS_RING = 'Defect: a focused .menu_button (including the Popup OK and Cancel buttons) has outline-style none and box-shadow none. A rule matching .menu_button:not(.sb-status-page__action):not(.disabled)...:focus-visible sets box-shadow: none, so the only cue is a 1px accent border at 40% alpha and a 4% fill step.';
-const FLAT_CONTROLS = 'Defect: under forced colours, flat controls (header icon buttons, .menu_button actions, menu items, sidebar rows) have no border and no fill, so their boundary disappears.';
-const NO_FORCED_RING = 'Defect: under forced colours, rows and menu items show focus only through a box-shadow ring, which forced colours removes, and there is no outline fallback.';
-
-/**
- * Cases that fail today because of a product defect, keyed `surface|width|check`. Each runs under
- * `test.fail()`, so the suite stays green and a fix shows up as an unexpected pass.
- */
-const KNOWN_DEFECTS = new Map([
-    ...[1440, 390].flatMap(width => [
-        [`popup-alert|${width}|focus`, NO_FOCUS_RING],
-        [`open-alert|${width}|focus`, NO_FOCUS_RING],
-        [`popup-dialog|${width}|focus`, NO_FOCUS_RING],
-        [`tag-manager|${width}|focus`, NO_FOCUS_RING],
-        [`open-alert|${width}|escape`, 'Defect: after Cancel or Escape on the Clear cookies & cache alert, the focus is on the document, not the trigger. The trigger button is disabled while the alert is open, and the browser cannot restore focus to a disabled element.'],
-        [`tag-manager|${width}|tab`, 'Defect: pushing a page in the Tag Manager (Enter on a tag row) leaves the focus on the document. The row that held it is hidden, and nothing moves the focus into the new page.'],
-        [`tag-manager|${width}|forced-controls`, FLAT_CONTROLS],
-        [`side-panel|${width}|escape`, 'Defect: closing Author\'s Note with Escape leaves the focus on the document. The panel returns it to the Options menu item that opened it, and that menu is already closed.'],
-        [`side-panel|${width}|forced-controls`, `${FLAT_CONTROLS} The Position segmented control also shows no segment boundary or selected state, and a switch shows an empty pill.`],
-        [`side-panel|${width}|scale-labels`, 'Defect: at 200% text the Position segmented control and the Insertion Frequency row label break words mid-word ("Bef/ore", "Dep/th", "Frequ/ency"), because the segments and the label column get a fixed narrow share of the panel.'],
-        [`chat-archive|${width}|forced-controls`, `${FLAT_CONTROLS} ${NO_FORCED_RING}`],
-    ]),
-    ['menu-sheet|390|forced-controls', `${FLAT_CONTROLS} ${NO_FORCED_RING}`],
-    ['chat-archive|390|scale-layout', 'Defect: at 200% text the selection header (Cancel, count title, Select All, Close) does not fit 390px. The count title collapses to nothing and the Close button sits partly past the right edge of the viewport.'],
-]);
-
-// Reads that the boot makes, so the guard lets them through to the isolated test server.
 // --- Checks ---------------------------------------------------------------------------------------------
 
-const defectFor = (surface, viewport, check) => KNOWN_DEFECTS.get(`${surface.id}|${viewport.width}|${check}`);
-
-function markKnownDefect(surface, viewport, check) {
-    const reason = defectFor(surface, viewport, check);
-    test.fail(Boolean(reason), reason);
+/** The alpha of a computed colour string such as `rgb(0, 0, 0)` or `color(srgb 0 0 0 / 0.5)`. */
+function alphaOf(colour) {
+    const slash = colour.match(/\/\s*([\d.]+%?)\s*\)$/);
+    if (slash) return slash[1].endsWith('%') ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
+    const legacy = colour.match(/^rgba\(([^)]+)\)$/);
+    return legacy && legacy[1].split(',').length > 3 ? parseFloat(legacy[1].split(',')[3]) : 1;
 }
 
 const insideOnly = stops => stops.filter(stop => stop.kind === 'element' && stop.inside);
@@ -66,9 +41,19 @@ const outsideLabels = stops => stops.filter(stop => stop.kind === 'element' && !
 const focusStateOf = (page, surface) => page.evaluate(selector => window.sbA11y.focusState(selector), surface.rootSelector);
 
 function focusProblems(stops, { forcedColours = false } = {}) {
-    return insideOnly(stops)
+    const shown = insideOnly(stops);
+    const missing = shown
         .filter(stop => !(forcedColours ? stop.outline : stop.outline || stop.shadow))
         .map(stop => `${stop.label} outline ${stop.outlineDetail}, shadow ${stop.shadowDetail}`);
+    // Forced colours paint no shadow, so two rings only exist in the normal rendering.
+    const doubled = forcedColours ? [] : shown
+        .filter(stop => stop.outline && stop.insetRing)
+        .map(stop => `${stop.label} draws an outline (${stop.outlineDetail}) and a shadow ring (${stop.shadowDetail})`);
+    // A ring in the colour of the control's own fill is invisible, as on a checked segment filled with Highlight.
+    const hidden = shown
+        .filter(stop => stop.outlineOnFill)
+        .map(stop => `${stop.label} outline ${stop.outlineDetail} has the colour of its fill ${stop.fillDetail}`);
+    return [...missing, ...doubled, ...hidden];
 }
 
 /** Tab through a modal until the focus wraps; through a panel until it leaves. */
@@ -106,7 +91,6 @@ for (const surface of SURFACES) {
 
             test.describe(size, () => {
                 test('keyboard: opens with focus inside, and Tab and Shift+Tab stay inside a modal', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'tab');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false });
                     await surface.open(page, context);
                     const initial = await focusStateOf(page, surface);
@@ -128,7 +112,6 @@ for (const surface of SURFACES) {
                 });
 
                 test('keyboard: every Tab stop shows a focus indicator', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'focus');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false });
                     await surface.open(page, context);
                     const { stops } = await walkSurface(page, surface);
@@ -137,7 +120,6 @@ for (const surface of SURFACES) {
                 });
 
                 test('keyboard: Escape closes or pops one level and focus returns to the opener', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'escape');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false });
                     const opener = await surface.open(page, context);
                     await pressEscapeSteps(page, surface, context, opener);
@@ -145,7 +127,6 @@ for (const surface of SURFACES) {
                 });
 
                 test('keyboard with motion: Escape closes through the closing animation and focus returns', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'escape');
                     const context = await surface.boot(page, baseURL, viewport, { motion: true });
                     const opener = await surface.open(page, context);
                     await pressEscapeSteps(page, surface, context, opener);
@@ -154,7 +135,6 @@ for (const surface of SURFACES) {
 
                 if (surface.destructive) {
                     test('keyboard: Return with Cancel focused does not confirm', async ({ page, baseURL }) => {
-                        markKnownDefect(surface, viewport, 'return');
                         const context = await surface.boot(page, baseURL, viewport, { motion: false });
                         await surface.open(page, context);
                         await expect(surface.cancel(page), 'Cancel has the focus on open').toBeFocused();
@@ -165,7 +145,6 @@ for (const surface of SURFACES) {
                 }
 
                 test('forced colours: frame boundary, text and selection checks stay visible', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'forced');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false });
                     await page.emulateMedia({ forcedColors: 'active' });
                     await surface.open(page, context);
@@ -191,7 +170,6 @@ for (const surface of SURFACES) {
                 });
 
                 test('forced colours: buttons, switches and the focus ring stay visible', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'forced-controls');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false });
                     await page.emulateMedia({ forcedColors: 'active' });
                     await surface.open(page, context);
@@ -200,13 +178,13 @@ for (const surface of SURFACES) {
                         await settleTransitions(page);
                         const report = await page.evaluate(([root, frame]) => window.sbA11y.forcedColours(root, frame), [surface.rootSelector, surface.frameSelector]);
                         expect.soft(report.controls, `${state.name}: control boundaries or fills`).toEqual([]);
+                        expect.soft(report.selected, `${state.name}: selected segment`).toEqual([]);
                         const { stops } = await walkSurface(page, surface);
                         expect.soft(focusProblems(stops, { forcedColours: true }), `${state.name}: focus indicator`).toEqual([]);
                     }
                 });
 
                 test('200% text: no label is clipped', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'scale-labels');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false, fontScale: TEXT_SCALE });
                     expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fontScale').trim()), 'the app applied the text scale').toBe(String(TEXT_SCALE));
                     await surface.open(page, context);
@@ -220,7 +198,6 @@ for (const surface of SURFACES) {
                 });
 
                 test('200% text: header controls, responses and the last content stay usable', async ({ page, baseURL }) => {
-                    markKnownDefect(surface, viewport, 'scale-layout');
                     const context = await surface.boot(page, baseURL, viewport, { motion: false, fontScale: TEXT_SCALE });
                     await surface.open(page, context);
                     for (const state of surface.states) {
@@ -241,11 +218,51 @@ for (const surface of SURFACES) {
     });
 }
 
+test.describe('One focus ring on a .menu_button', () => {
+    test('a Presets action button shows one ring, not an outline beside the shared ring', async ({ page, baseURL }) => {
+        await bootMisc(page, baseURL, DESKTOP, { motion: false });
+        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'prompting'));
+        const action = page.locator('#sb-settings-page .sb-action-btn:visible').first();
+        await expect(action).toBeVisible();
+        await expect(action).toHaveClass(/menu_button/);
+        await expectSingleFocusRing(page, action);
+    });
+});
+
+test.describe('Forced colours keep a focus indicator on controls that hide their outline', () => {
+    test('the composer buttons and the Options and Extensions menu rows', async ({ page, baseURL }) => {
+        await bootMisc(page, baseURL, DESKTOP, { motion: false });
+        await page.emulateMedia({ forcedColors: 'active' });
+        const indicatorOf = control => control.evaluate(element => {
+            const style = getComputedStyle(element);
+            return { style: style.outlineStyle, width: parseFloat(style.outlineWidth), colour: style.outlineColor };
+        });
+        const expectIndicator = async (control, name) => {
+            await page.keyboard.press('Shift');
+            await control.focus();
+            await expect(control, `${name} has the focus`).toBeFocused();
+            const indicator = await indicatorOf(control);
+            expect(indicator.style, `${name} outline style`).not.toBe('none');
+            expect(indicator.width, `${name} outline width`).toBeGreaterThan(0);
+            expect(alphaOf(indicator.colour), `${name} outline colour ${indicator.colour}`).toBeGreaterThan(0);
+        };
+        await expectIndicator(page.locator('#send_form .menu_button:not(#send_but):visible').first(), '#send_form .menu_button');
+        await page.locator('#options_button').click();
+        await expectIndicator(page.locator('#options .options-content a:visible').first(), '#options row');
+        await page.keyboard.press('Escape');
+        await page.locator('#extensionsMenuButton').click();
+        await expectIndicator(page.locator('#extensionsMenu > .extension_container > div:visible').first(), '#extensionsMenu row');
+    });
+});
+
 test.describe('Enter on a real button', () => {
-    test('activates it once', async ({ page, baseURL }) => {
-        test.fail(true, 'Defect: keyboard.js turns Enter on any .interactable into a click(), and a real <button> also clicks natively, so one press clicks twice. The second click lands on whatever took focus in between, such as the Cancel button of the dialog the first click opened.');
+    const openDataSecurity = async (page, baseURL) => {
         await bootMisc(page, baseURL, DESKTOP, { motion: false });
         await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
+    };
+
+    test('activates it once', async ({ page, baseURL }) => {
+        await openDataSecurity(page, baseURL);
         const trigger = page.locator('#clear_cookies_cache_button');
         await expect(trigger).toBeVisible();
         await page.waitForFunction(() => document.getElementById('clear_cookies_cache_button')?.dataset.sbCookiesCacheBound === 'true');
@@ -255,6 +272,51 @@ test.describe('Enter on a real button', () => {
         });
         await trigger.focus();
         await page.keyboard.press('Enter');
+        await expect.poll(() => page.evaluate(() => window.sbA11yClicks)).toBe(1);
+    });
+
+    test('Change Password opens exactly one popup', async ({ page, baseURL }) => {
+        await openDataSecurity(page, baseURL);
+        const accountButton = page.locator('#account_button');
+        await expect(accountButton).toBeVisible();
+        await accountButton.focus();
+        await page.keyboard.press('Enter');
+        const changePassword = page.locator('dialog[open] .userChangePasswordButton');
+        await expect(changePassword).toBeVisible();
+        await changePassword.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('dialog[open] input[name="confirm"]')).toHaveCount(1);
+        // A second click would land on the new popup or open another one, so give it time to arrive.
+        await settleTransitions(page);
+        await expect(page.locator('dialog[open] input[name="confirm"]')).toHaveCount(1);
+        await expect(page.locator('dialog[open]:not([closing])')).toHaveCount(2);
+    });
+
+    test('Clear cookies and cache opens its alert and leaves it open', async ({ page, baseURL }) => {
+        await openDataSecurity(page, baseURL);
+        const trigger = page.locator('#clear_cookies_cache_button');
+        await expect(trigger).toBeVisible();
+        await page.waitForFunction(() => document.getElementById('clear_cookies_cache_button')?.dataset.sbCookiesCacheBound === 'true');
+        await trigger.focus();
+        await page.keyboard.press('Enter');
+        const alert = page.getByRole('alertdialog');
+        await expect(alert).toBeVisible();
+        await settleTransitions(page);
+        await expect(alert).toBeVisible();
+        await expect(page.locator('dialog[open]:not([closing])')).toHaveCount(1);
+    });
+
+    test('an element that is only an .interactable still activates once', async ({ page, baseURL }) => {
+        await bootMisc(page, baseURL, DESKTOP, { motion: false });
+        const trigger = page.locator('#options_button');
+        await expect(trigger).toHaveJSProperty('tagName', 'DIV');
+        await page.evaluate(() => {
+            window.sbA11yClicks = 0;
+            document.addEventListener('click', event => { if (event.target.id === 'options_button') window.sbA11yClicks++; }, true);
+        });
+        await trigger.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('#options')).toBeVisible();
         await expect.poll(() => page.evaluate(() => window.sbA11yClicks)).toBe(1);
     });
 });

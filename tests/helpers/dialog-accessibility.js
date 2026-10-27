@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs';
+import { expect } from '@playwright/test';
 
 /** Set to a directory to keep the screenshots the accessibility spec takes; unset, none are written. */
 const SHOT_DIRECTORY = process.env.SILLYBUNNY_A11Y_SHOTS;
@@ -84,8 +85,10 @@ export async function installProbes(page) {
             focusState(rootSelector) {
                 const element = document.activeElement;
                 if (!element || element === document.body || element === document.documentElement) return { kind: 'document', id: -1 };
-                const style = getComputedStyle(element);
                 if (!seenStops.includes(element)) seenStops.push(element);
+                // A segmented control hides its radio at opacity 0 and draws the ring on the next sibling.
+                const segment = element.matches('.sb-boolean-radio-option > input') ? element.nextElementSibling : null;
+                const style = getComputedStyle(segment ?? element);
                 return {
                     kind: 'element',
                     id: seenStops.indexOf(element),
@@ -93,26 +96,41 @@ export async function installProbes(page) {
                     inside: Boolean(element.closest(rootSelector)),
                     outline: outlineShown(style),
                     shadow: style.boxShadow !== 'none',
+                    // A shadow ring is a zero-blur inset shadow. An outline beside it makes two rings.
+                    insetRing: /0px 0px 0px [\d.]+px inset/.test(style.boxShadow),
+                    outlineOnFill: outlineShown(style) && style.outlineColor === style.backgroundColor,
                     outlineDetail: `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`,
                     shadowDetail: style.boxShadow.slice(0, 60),
+                    fillDetail: style.backgroundColor,
                 };
             },
             /** Frame boundary, control boundaries and fills, transparent text: what forced colours can lose. */
             forcedColours(rootSelector, frameSelector) {
                 const root = topVisible(rootSelector);
                 const frame = frameSelector ? topVisible(frameSelector) : root;
-                const report = { frame: [], controls: [], text: [] };
+                const report = { frame: [], controls: [], selected: [], text: [] };
                 const frameStyle = getComputedStyle(frame);
                 if (!outlineShown(frameStyle) && !borderShown(frameStyle)) {
                     report.frame.push(`${nameOf(frame)} border ${frameStyle.borderTopStyle} ${frameStyle.borderTopWidth} ${frameStyle.borderTopColor}`);
                 }
-                for (const control of root.querySelectorAll(CONTROLS)) {
-                    if (!isVisible(control) || control.closest('[inert]')) continue;
+                for (const input of root.querySelectorAll(CONTROLS)) {
+                    if (!isVisible(input) || input.closest('[inert]')) continue;
+                    // A segmented control hides its radio at opacity 0 and draws the segment in the next sibling.
+                    const control = getComputedStyle(input).opacity === '0' ? input.nextElementSibling : input;
+                    if (!control) continue;
                     const style = getComputedStyle(control);
                     const filled = alphaOf(style.backgroundColor) > 0 && style.backgroundColor !== backdropOf(control);
                     if (!outlineShown(style) && !borderShown(style) && !filled) {
                         report.controls.push(`${nameOf(control)} bg ${style.backgroundColor} border ${style.borderTopStyle} ${style.borderTopWidth}`);
                     }
+                }
+                for (const group of root.querySelectorAll('.sb-boolean-radio-group')) {
+                    const segments = [...group.querySelectorAll('.sb-boolean-radio-option > input + span')].filter(isVisible);
+                    const selected = segments.find(segment => segment.previousElementSibling.checked);
+                    const other = segments.find(segment => !segment.previousElementSibling.checked);
+                    if (!selected || !other) continue;
+                    const look = segment => `${getComputedStyle(segment).backgroundColor} ${getComputedStyle(segment).color}`;
+                    if (look(selected) === look(other)) report.selected.push(`${nameOf(selected)} looks the same as ${nameOf(other)}: ${look(selected)}`);
                 }
                 for (const element of root.querySelectorAll('*')) {
                     if (!isVisible(element)) continue;
@@ -249,4 +267,27 @@ export async function tabUntil(page, selector, { backwards = false, limit = 40 }
         if (await page.evaluate(match => document.activeElement?.matches(match) ?? false, selector)) return;
     }
     throw new Error(`Tab did not reach ${selector} within ${limit} presses`);
+}
+
+/**
+ * Moves the focus onto `control` with the keyboard and checks that it shows one focus ring: an outline or the
+ * shared inset shadow ring, never both. Two rings mean a rule drew its own outline on a control that the
+ * shared ring also covers.
+ */
+export async function expectSingleFocusRing(page, control) {
+    await control.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(control).toBeFocused();
+    await settleTransitions(page);
+    const ring = await control.evaluate(element => {
+        const style = getComputedStyle(element);
+        return {
+            outline: style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0,
+            shadow: /0px 0px 0px [\d.]+px inset/.test(style.boxShadow),
+            detail: `outline ${style.outlineStyle} ${style.outlineWidth}, shadow ${style.boxShadow.slice(0, 70)}`,
+        };
+    });
+    expect(ring.outline || ring.shadow, `a focus ring (${ring.detail})`).toBe(true);
+    expect(ring.outline && ring.shadow, `one ring, not two (${ring.detail})`).toBe(false);
 }

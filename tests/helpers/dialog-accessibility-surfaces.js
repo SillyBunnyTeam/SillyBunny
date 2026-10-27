@@ -231,7 +231,7 @@ export const SURFACES = [
         frameSelector: 'dialog[open] .sb-dialog',
         isOpen: page => page.locator('dialog[open]:not([closing])'),
         boot: bootMisc,
-        // The Data & Security tab opens through the shell. The trigger is a real button, so Space presses it.
+        // The Data & Security tab opens through the shell, which has no keyboard path to a tab from here.
         async open(page) {
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
             const opener = page.locator('#clear_cookies_cache_button');
@@ -239,7 +239,7 @@ export const SURFACES = [
             // The button listens only after the tab binds it.
             await page.waitForFunction(() => document.getElementById('clear_cookies_cache_button')?.dataset.sbCookiesCacheBound === 'true');
             await opener.focus();
-            await page.keyboard.press('Space');
+            await pressKey(page, 'Enter');
             await waitForSurface(page, page.getByRole('alertdialog'));
             return opener;
         },
@@ -262,7 +262,7 @@ export const SURFACES = [
         isOpen: page => page.locator('dialog[open]:not([closing])'),
         boot: bootMisc,
         // Account Info is a Popup Dialog and Change Password is a form Popup shown over it. The settings tab
-        // opens through the shell, and Change Password is a real button, so Space presses it.
+        // opens through the shell, which has no keyboard path to a tab from here.
         async open(page) {
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
             const accountButton = page.locator('#account_button');
@@ -272,7 +272,7 @@ export const SURFACES = [
             const changePassword = page.locator('dialog[open] .userChangePasswordButton');
             await waitForSurface(page, changePassword);
             await changePassword.focus();
-            await page.keyboard.press('Space');
+            await pressKey(page, 'Enter');
             await waitForSurface(page, page.locator('dialog[open] input[name="confirm"]'));
             return accountButton;
         },
@@ -361,7 +361,8 @@ export const SURFACES = [
             await pressKey(page, 'Enter');
             await expect(sidePanel(page)).toBeVisible();
             await settleTransitions(page);
-            return opener;
+            // The menu item is hidden once its menu closes, so focus returns to the menu button that opened it.
+            return menuButton;
         },
         escapes: [{ closes: true, async check() {} }],
         states: [{ name: 'panel', async enter() {} }],

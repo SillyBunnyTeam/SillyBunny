@@ -5,7 +5,7 @@ import { LAYOUT_MOBILE_QUERY } from './breakpoints.js';
 
 const DEFAULT_COLLAPSE_AT = 720;
 
-export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261027b', id: 'deferred-editor-shell-css' };
+export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261028a', id: 'deferred-editor-shell-css' };
 
 /**
  * Loads the deferred shell stylesheet. Consumers await it before revealing the shell.

@@ -40,6 +40,7 @@ import {
     showList,
     waitForDetail,
 } from './helpers/chats-archive.js';
+import { expectSingleFocusRing } from './helpers/dialog-accessibility.js';
 import { showToasts } from './helpers/maintainer-server.js';
 
 const WIDE = { width: 1440, height: 900 };
@@ -139,6 +140,13 @@ test('closing returns the focus to the drawer button and releases the read sessi
     await expect(dialog(page)).toHaveCount(0);
     await expect(drawerButton(page)).toBeFocused();
     expect(archive.dataMaid).toEqual([]);
+});
+
+test('the drawer button shows one focus ring, not an outline beside the shared ring', async ({ page }) => {
+    await bootArchive(page, WIDE, { fixture: small([]) });
+    await showCharacterList(page);
+    await expect(drawerButton(page)).toBeVisible();
+    await expectSingleFocusRing(page, drawerButton(page));
 });
 
 test('Filters keep favourites listed when their chat type is off, and the sidebar Favorites location agrees', async ({ page }) => {

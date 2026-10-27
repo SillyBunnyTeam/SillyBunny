@@ -1,6 +1,8 @@
 #sbca_drawer_button:focus-visible {
     outline: 2px solid var(--sb-focus-ring, var(--color-focus-ring, var(--SmartThemeQuoteColor, currentColor)));
     outline-offset: 2px;
+    /* The drawer button is a .menu_button, whose inset ring would sit inside this outline as a second ring. */
+    box-shadow: none;
 }
 
 #right-nav-panel .sb-character-create-bar #sbca_drawer_button {
@@ -157,6 +159,20 @@
 .sbca-location:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (forced-colors: active) {
+    .sbca-location,
+    .sbca-flat-button,
+    .sbca-row-action {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+
+    .sbca-location[aria-pressed='true'] {
+        background: Highlight;
+        color: HighlightText;
+    }
 }
 
 .sbca-location-avatar,

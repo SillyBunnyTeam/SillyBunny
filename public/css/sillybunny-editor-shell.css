@@ -1160,6 +1160,11 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     }
 }
 
+.sb-dialog__header.is-selection-mode[data-header-stacked] .sb-dialog__titles {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+
 @media (hover: hover) {
     .sb-picker__option:hover,
     [data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {

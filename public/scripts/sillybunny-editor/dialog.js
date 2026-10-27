@@ -17,7 +17,7 @@ import { createListSearch } from './list-search.js';
 import { bindSheetGestures } from './sheet-gestures.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, getTopmostDialog, hostOverlayLayer, releaseOverlayLayers } from './overlay-host.js';
-import { FOCUSABLE_SELECTOR, closeChain, coverSurface, findCoveredSurface, registerChainLevel, unregisterChainLevel } from './page-chain.js';
+import { FOCUSABLE_SELECTOR, closeChain, coverSurface, findCoveredSurface, registerChainLevel, returnFocusTo, unregisterChainLevel } from './page-chain.js';
 
 /*
  * Shared dialog frame.
@@ -109,7 +109,12 @@ export function bindHeaderLayout(header) {
         const centeredCapacity = Math.max(0, available - (width * 2));
         const looseCapacity = Math.max(0, available - start - trailing);
         const needsLooseCentering = titleWidth > centeredCapacity + 1 && titleWidth <= looseCapacity + 1;
-        header.toggleAttribute('data-header-centering-loose', needsLooseCentering);
+        // The selection count is the one title that must stay readable. When it cannot share the row
+        // with Cancel, Select All and Close, the CSS moves it to a second row, and the side columns
+        // then only need their own width.
+        const needsStacking = header.classList.contains('is-selection-mode') && titleWidth > looseCapacity + 1;
+        header.toggleAttribute('data-header-centering-loose', needsLooseCentering || needsStacking);
+        header.toggleAttribute('data-header-stacked', needsStacking);
     };
     sync();
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync);
@@ -529,6 +534,7 @@ export function openDialog({
     const pagesNode = element('div', 'sb-dialog__pages');
     surface.append(pagesNode);
     const returnFocus = document.activeElement;
+    const returnContainer = returnFocus instanceof HTMLElement ? returnFocus.parentElement : null;
     const closeResponse = responses ? 'cancel' : 'close';
     // Back, Escape and programmatic closes of a page return to the covered surface, as a pushed page does.
     const dismissResponse = isPage ? (responses ? 'cancel' : 'back') : closeResponse;
@@ -631,7 +637,7 @@ export function openDialog({
         unregisterChainLevel(level);
         // The covered surface must be interactive again before focus returns into it.
         cover?.release();
-        if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus({ preventScroll: true });
+        returnFocusTo(returnFocus, { container: returnContainer });
         finish({ response });
     }
 
@@ -702,7 +708,14 @@ export function openDialog({
             };
             if (prefersReducedMotion()) hidePrevious();
             else play(view.page, [{ transform: 'translateX(100%)' }, { transform: 'none' }], { ...SPRING_NAVIGATION, onEnd: hidePrevious });
-            (spec.initialFocus?.() ?? (view.search?.isOpen ? view.searchInput : view.searchToggle) ?? firstFocusable(view.body) ?? firstFocusable(view.header))?.focus({ preventScroll: true });
+            // Callers add header actions and body content after push() returns, so the target is resolved
+            // once that synchronous code has run. Resolving it now would see a page that is still empty.
+            queueMicrotask(() => {
+                if (topPage() !== entry || view.page.contains(document.activeElement)) return;
+                const requested = spec.initialFocus?.();
+                const target = requested?.isConnected ? requested : null;
+                (target ?? (view.search?.isOpen ? view.searchInput : view.searchToggle) ?? firstFocusable(view.body) ?? firstFocusable(view.header))?.focus({ preventScroll: true });
+            });
         }
         return { entry, pageClosed };
     }
@@ -869,6 +882,7 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
     }
     surface.append(content, responsesNode);
     const returnFocus = document.activeElement;
+    const returnContainer = returnFocus instanceof HTMLElement ? returnFocus.parentElement : null;
     let state = 'open';
     let finish;
     const result = new Promise(resolve => finish = resolve);
@@ -904,7 +918,7 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
             unbindKeyboard();
             if (host.open) host.close();
             host.remove();
-            if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus({ preventScroll: true });
+            returnFocusTo(returnFocus, { container: returnContainer });
             finish(response);
         });
     }

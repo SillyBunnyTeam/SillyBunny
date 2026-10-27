@@ -398,3 +398,19 @@ body.reduced-motion.sb-has-docked-panel #sheld {
     animation: none !important;
     transition: none !important;
 }
+
+/* Under large text a row label column gets too narrow for its longest word. The row wraps, so the control
+   moves below the label, and the label breaks only between words. A subtitle may still break a string that
+   has no break point, such as a URL, so it cannot widen the row. */
+.sb-side-panel .ds-row {
+    flex-wrap: wrap;
+}
+
+.sb-side-panel .ds-row-text {
+    min-width: min-content;
+    overflow-wrap: normal;
+}
+
+.sb-side-panel .ds-row-subtitle {
+    overflow-wrap: anywhere;
+}

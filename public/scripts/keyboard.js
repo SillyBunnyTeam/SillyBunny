@@ -231,6 +231,12 @@ function handleGlobalKeyDown(event) {
         if (!(event.target instanceof HTMLElement))
             return;
 
+        // SillyBunny: a native button, link, summary or button-like input already clicks on Enter, so the
+        // synthetic click below would run its handler twice, and the second click lands on whatever took focus
+        // after the first. Checkbox and radio stay out of this list because Enter does not toggle them.
+        if (event.target.matches('button, summary, a[href], input:is([type="button"], [type="submit"], [type="reset"], [type="image"])'))
+            return;
+
         // Only count enter on this interactable if no modifier key is pressed
         if (event.altKey || event.ctrlKey || event.shiftKey)
             return;

@@ -6717,12 +6717,14 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
 /* Toggle row (AdwToggleGroup): fill gives equal segments whose labels wrap rather than change wording. */
 .ds-toggle-row__group.ds-toggle-row__group--fill {
     display: flex;
+    flex-wrap: wrap;
     width: 100%;
 }
 
+/* Segments keep their longest word whole, so the group wraps. */
 .ds-toggle-row__group--fill .sb-boolean-radio-option {
     flex: 1 1 0;
-    min-width: 0;
+    min-width: min-content;
 }
 
 .ds-toggle-row__group--fill .sb-boolean-radio-option > span {
@@ -6733,7 +6735,7 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
     min-height: 34px;
     text-align: center;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
     box-sizing: border-box;
 }
 
@@ -6901,6 +6903,11 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 }
 
 @media (forced-colors: active) {
+    .ds-select-row__trigger {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+
     .ds-row-entry--floating .ds-row-entry__field > input {
         border-color: CanvasText;
     }
@@ -7523,6 +7530,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-action-btn:focus-visible {
     outline: 2px solid var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
     outline-offset: 2px;
+    box-shadow: none;
 }
 
 #sb-settings-page .sb-action-btn--danger {

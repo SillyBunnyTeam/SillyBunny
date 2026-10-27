@@ -1100,6 +1100,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
 | Owner | UI overhaul integrator. |
 
+### `public/scripts/keyboard.js` - Enter on native controls
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/keyboard.js` |
+| Area | Keyboard activation of `.interactable` controls. |
+| Divergence reason | Upstream turns Enter on any `.interactable` into a synthetic `click()`. Upstream's `.menu_button` controls are `<div>` elements, so that is their only activation. SillyBunny renders many of them as real `<button>` elements, which already click on Enter, so one press ran the handler twice and the second click landed on whatever took focus after the first. |
+| Target seam | `handleGlobalKeyDown()` in `public/scripts/keyboard.js`. |
+| Adapter shape | One early return, under one `// SillyBunny:` marker, skips the synthetic click when the focused element is a native `button`, `summary`, `a[href]`, or a button, submit, reset or image `input`. Every other `.interactable` element, including checkboxes and radios, keeps the upstream synthetic click. |
+| Protecting tests | `tests/unit/sillybunny-keyboard-enter.test.js`; `tests/dialogs-accessibility.e2e.js` (Enter on a real button activates once, Change Password opens one popup, the Clear cookies alert stays open, and `#options_button` still activates once); `tests/native-dialog-replacements.e2e.js`. |
+| Validation | 2026-10-28: full Jest suite 454 suites, 6,902 tests passed, 2 skipped; `dialogs-accessibility` 112/112 on Chromium; root and tests lint pass. |
+| Rollback path | Delete the marked early return in `handleGlobalKeyDown()`. Then a native button that also carries `.interactable` activates twice on Enter again, so first remove `.interactable` from the SillyBunny `<button>` controls that have it, or keep the return. Drop `tests/unit/sillybunny-keyboard-enter.test.js` and the Enter tests in `tests/dialogs-accessibility.e2e.js`. |
+| Last reviewed | 2026-10-28, PR #870 (marker and unit tests checked). |
+| Owner | UI overhaul integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

@@ -1,10 +1,11 @@
 import { t } from '../i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
 import { bindHeaderLayout } from './dialog.js';
+import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261027b',
+    href: 'css/sillybunny-side-panel.css?v=20261028a',
     id: 'deferred-side-panel-css',
 };
 
@@ -27,6 +28,38 @@ let pendingLayoutRevealTimer = 0;
 let layoutSettled = Promise.resolve();
 let getMovingUIState = () => ({});
 let setMovingUIState = () => {};
+let activatedControl = null;
+let previouslyActivatedControl = null;
+let activationHistoryBound = false;
+
+// Menus that close when an item is chosen. #options is the composer Options menu, which has no ARIA role.
+const MENU_SELECTOR = '[role="menu"], .sb-action-menu, #options';
+const ACTIVATABLE_SELECTOR = 'button, a, [role="button"], [role="menuitem"], [tabindex]:not([tabindex="-1"])';
+
+// A menu item that opens a panel closes its menu, so the item is hidden when the panel closes. The
+// control activated just before the item is the trigger that opened that menu, and it is where focus
+// can go back to. Capture phase, so the history is current before the item's own click handler runs.
+export function bindActivationHistory() {
+    if (activationHistoryBound) return;
+    activationHistoryBound = true;
+    document.addEventListener('click', event => {
+        const control = event.target instanceof Element ? event.target.closest(ACTIVATABLE_SELECTOR) : null;
+        if (!control || control === activatedControl) return;
+        previouslyActivatedControl = activatedControl;
+        activatedControl = control;
+    }, true);
+}
+
+/**
+ * The control that opened the menu holding `opener`, or null when `opener` is not a menu item that was
+ * just activated.
+ * @param {Element|null} opener
+ * @returns {HTMLElement|null}
+ */
+export function getMenuTriggerFor(opener) {
+    if (!opener || opener !== activatedControl || !opener.closest(MENU_SELECTOR)) return null;
+    return previouslyActivatedControl instanceof HTMLElement ? previouslyActivatedControl : null;
+}
 
 function requireFiniteNumber(value, name, { allowZero = true } = {}) {
     if (!Number.isFinite(value) || value < 0 || (!allowZero && value === 0)) {
@@ -320,9 +353,7 @@ function closeEntry(entry, { restoreFocus = false, notify = true } = {}) {
         }
     }
 
-    if (restoreFocus && entry.opener?.isConnected) {
-        entry.opener.focus({ preventScroll: true });
-    }
+    if (restoreFocus) returnFocusTo(entry.opener, { fallback: entry.menuTrigger, container: entry.openerContainer });
 }
 
 function movePanelToDockRoot(entry) {
@@ -669,6 +700,7 @@ export function configureMovingUIState({ getState, setState }) {
 }
 
 export function registerSidePanel({ id, element, title, defaultSide, onClose }) {
+    bindActivationHistory();
     if (typeof id !== 'string' || id.trim() === '') throw new TypeError('Side panel id must be a non-empty string');
     if (!(element instanceof HTMLElement)) throw new TypeError('Side panel element must be an HTMLElement');
     if (typeof title !== 'string' || title.trim() === '') throw new TypeError('Side panel title must be a non-empty string');
@@ -704,6 +736,8 @@ export function registerSidePanel({ id, element, title, defaultSide, onClose }) 
         isClosing: false,
         openedAt: 0,
         opener: null,
+        menuTrigger: null,
+        openerContainer: null,
         styleError: null,
         unbindSheetGestures: () => {},
     };
@@ -740,6 +774,8 @@ export async function openSidePanel(id, { opener = document.activeElement } = {}
     if (entry.styleError) throw entry.styleError;
 
     entry.opener = opener instanceof HTMLElement ? opener : null;
+    entry.menuTrigger = getMenuTriggerFor(entry.opener);
+    entry.openerContainer = entry.opener?.parentElement ?? null;
     entry.openedAt = ++nextOpenOrder;
     entry.isOpen = true;
     entry.element.style.display = 'flex';

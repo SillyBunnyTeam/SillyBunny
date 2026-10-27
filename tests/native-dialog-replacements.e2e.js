@@ -81,11 +81,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(alert.locator('[data-response="cancel"]')).toBeFocused();
             await expect(alert.locator('[data-response="import"]')).toHaveClass(/is-destructive/);
             await page.keyboard.press('Enter');
-            await expect(alert).toBeVisible();
-            expect(importRequests).toBe(0);
-            await alert.locator('[data-response="cancel"]').click();
             await expect(alert).toHaveCount(0);
             expect(importRequests).toBe(0);
+            await expect(panel.getByRole('button', { name: 'Import Folder', exact: true })).toBeFocused();
 
             await panel.getByRole('button', { name: 'Import Folder', exact: true }).click();
             await page.getByRole('alertdialog').locator('[data-response="import"]').click();

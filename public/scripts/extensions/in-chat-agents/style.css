@@ -1648,6 +1648,8 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
 #sb-settings-page .ica-agents-page-header > .menu_button:focus-visible {
     outline: 2px solid var(--sb-focus-ring);
     outline-offset: -2px;
+    /* The shared inset ring would sit under this outline as a second ring. */
+    box-shadow: none;
 }
 
 @media (hover: hover) {
