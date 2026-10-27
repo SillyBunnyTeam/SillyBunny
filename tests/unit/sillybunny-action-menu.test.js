@@ -4,8 +4,8 @@ import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globa
 
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ translate: value => value }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateIn: jest.fn(), animateOut: (_node, _frames, hide) => hide(), stopMotion: jest.fn(),
-    MOTION_FAST: 0, MOTION_POPOVER_CLOSE: 0, MOTION_EASE_OUT_CUBIC: 'linear',
+    animateIn: jest.fn(), animateOut: (_node, _frames, hide) => hide(), play: jest.fn(), stopMotion: jest.fn(),
+    MOTION_FAST: 0, MOTION_POPOVER_CLOSE: 0, MOTION_EASE_OUT_CUBIC: 'linear', SPRING_SHEET: {},
 }));
 const createSheetController = jest.fn(options => ({
     open() {

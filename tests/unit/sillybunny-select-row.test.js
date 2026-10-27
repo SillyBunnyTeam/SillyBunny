@@ -16,6 +16,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
     MOTION_FAST: 200,
     MOTION_POPOVER_CLOSE: 150,
     MOTION_EASE_OUT_CUBIC: 'cubic-bezier(0.33, 1, 0.68, 1)',
+    SPRING_SHEET: {},
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     MOBILE_QUERY: '(max-width: 768px)',

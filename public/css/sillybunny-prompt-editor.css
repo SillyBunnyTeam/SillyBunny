@@ -734,7 +734,7 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     overflow: auto;
     display: flex;
     flex-direction: column;
-    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 20px 12px calc(12px + env(safe-area-inset-bottom, 0px));
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
     background: var(--sb-layer-dialog);
@@ -743,20 +743,34 @@ body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
     box-shadow: var(--sb-shadow-dialog);
 }
 
-.sb-prompt-sheet::before {
+.sb-prompt-sheet > .sb-dialog__handle {
+    display: block;
+    position: absolute;
+    z-index: 2;
+    inset: 0 50% auto auto;
+    width: 80px;
+    height: 20px;
+    translate: 50% 0;
+    touch-action: none;
+}
+
+.sb-prompt-sheet > .sb-dialog__handle::before {
     content: '';
-    align-self: center;
-    width: 32px;
+    position: absolute;
+    inset: 8px 19px auto;
     height: 4px;
-    margin-bottom: 8px;
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-muted-fg);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
 }
 
 .sb-prompt-sheet-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    /* The header starts the swipe-down close, so the browser must not scroll or select under the finger. */
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
 }
 
 .sb-prompt-sheet-header h2 {

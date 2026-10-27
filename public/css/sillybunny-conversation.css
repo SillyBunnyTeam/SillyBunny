@@ -1001,12 +1001,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     }
 }
 
-@keyframes sb-conversation-sheet-in {
-    from {
-        transform: translateY(100%);
-    }
-}
-
 .sb-conversation-participant-avatar {
     position: relative;
     inline-size: 44px;
@@ -3273,24 +3267,33 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         z-index: calc(var(--sb-z-dropdown) + 1);
         inline-size: 100%;
         max-block-size: min(80%, 560px);
-        padding: 12px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+        padding: 24px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
         border-inline: 0;
         border-block-end: 0;
         border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
         background: var(--sb-layer-drawer);
         box-shadow: var(--sb-shadow-dialog);
-        animation: sb-conversation-sheet-in var(--sb-spring-sheet-duration, 472ms) var(--sb-spring-sheet);
+        animation: none;
     }
 
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden])::before {
-        content: '';
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden]) > .sb-dialog__handle {
         display: block;
-        inline-size: 32px;
-        block-size: 4px;
-        margin: 0 auto 10px;
+        position: absolute;
+        z-index: 2;
+        inset: 0 50% auto auto;
+        width: 80px;
+        height: 20px;
+        translate: 50% 0;
+        touch-action: none;
+    }
+
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden]) > .sb-dialog__handle::before {
+        content: '';
+        position: absolute;
+        inset: 8px 19px auto;
+        height: 4px;
         border-radius: 999px;
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
-        flex: 0 0 auto;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
     }
 }
 

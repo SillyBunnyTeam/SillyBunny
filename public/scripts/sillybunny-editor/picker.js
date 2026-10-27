@@ -4,6 +4,7 @@ import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { animateIn, animateOut, stopMotion, MOTION_FAST, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from '../sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from '../sillybunny-sheet.js';
 import { hostOverlayLayer } from './overlay-host.js';
+import { bindSheetSwipeClose, createSheetHandle } from './sheet-gestures.js';
 
 let activePicker = null;
 let pickerId = 0;
@@ -81,7 +82,7 @@ function createSheetFrame() {
 
     const body = document.createElement('div');
     body.className = 'sb-action-sheet-body';
-    element.append(header, body);
+    element.append(createSheetHandle(), header, body);
     document.body.append(backdrop, element);
     blockUpstreamDrawerClose(backdrop);
     blockUpstreamDrawerClose(element);
@@ -94,6 +95,7 @@ function createSheetFrame() {
         canAnimateClose: isMobileLayout,
         onClose: () => finishClose(),
     });
+    bindSheetSwipeClose({ sheet: element, backdrop, headerSelector: '.sb-action-sheet-header', close: () => closePicker({ restoreFocus: true }) });
     mobileFrame = { backdrop, element, body, title, controller };
     return mobileFrame;
 }

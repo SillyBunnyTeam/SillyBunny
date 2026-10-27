@@ -136,7 +136,7 @@ for (const viewport of VIEWPORTS) {
         expect(geometry.sendFormVisible).toBe(true);
         expect(geometry.sendTextareaVisible).toBe(true);
         if (geometry.mode === 'sheet') {
-            await expect(panel.locator('.sb-side-panel__grab-handle')).toBeVisible();
+            await expect(panel.locator(':scope > .sb-dialog__handle')).toBeVisible();
             expect(geometry.panelIntersectsChat, JSON.stringify(geometry)).toBe(false);
             expect(geometry.panelIntersectsComposer, JSON.stringify(geometry)).toBe(false);
             expect(geometry.panel.bottom).toBeLessThanOrEqual(geometry.composer.top + 1);
@@ -296,4 +296,94 @@ test('Escape follows dialog, menu, text-input and panel priority with multiple p
     await leftPanel.locator('.sb-side-panel__close').focus();
     await page.keyboard.press('Escape');
     await expect(leftPanel).toBeHidden();
+});
+
+async function registerQaPanel(page, id, label) {
+    await page.evaluate(async ({ panelId, panelLabel }) => {
+        const sidePanels = await import('/scripts/sillybunny-editor/side-panel.js');
+        const source = document.createElement('section');
+        source.textContent = panelLabel;
+        document.getElementById('movingDivs').append(source);
+        window.qaClosed = { ...window.qaClosed, [panelLabel]: 0 };
+        sidePanels.registerSidePanel({
+            id: panelId,
+            element: source,
+            title: panelLabel,
+            defaultSide: 'left',
+            onClose: () => { window.qaClosed[panelLabel] += 1; },
+        });
+    }, { panelId: id, panelLabel: label });
+}
+
+test('a pointer drag on a docked panel header does not move the panel or cancel pointerdown', async ({ page }) => {
+    await boot(page, { width: 1440, height: 900 });
+    await registerQaPanel(page, 'qa-docked-drag', 'Docked drag');
+    await page.evaluate(() => {
+        window.qaPointerDownPrevented = [];
+        // The bubble phase runs after the panel's own listener, so a cancelled event shows here.
+        document.addEventListener('pointerdown', event => window.qaPointerDownPrevented.push(event.defaultPrevented));
+        return window.SillyBunnySidePanels.openSidePanel('qa-docked-drag');
+    });
+    const panel = page.locator('.sb-side-panel[data-sb-side-panel-id="qa-docked-drag"]');
+    await expect(panel).toBeVisible();
+    await expect(panel).not.toHaveClass(/sb-side-panel--sheet/);
+
+    const before = await panel.boundingBox();
+    const title = await panel.locator('.sb-side-panel__title').boundingBox();
+    const x = title.x + title.width / 2;
+    const y = title.y + title.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 240, { steps: 8 });
+    await page.mouse.move(x + 120, y + 240, { steps: 4 });
+    await page.mouse.up();
+
+    expect(await panel.boundingBox()).toEqual(before);
+    expect(await panel.evaluate(element => element.style.transform)).toBe('');
+    await expect(panel).toBeVisible();
+    expect(await page.evaluate(() => window.qaPointerDownPrevented)).toEqual([false]);
+});
+
+test('a re-registered panel takes its own sheet swipe and the old listeners are gone', async ({ page }) => {
+    await boot(page, { width: 390, height: 844 });
+    await registerQaPanel(page, 'qa-reregistered', 'First');
+    const oldPanel = await page.evaluate(async () => {
+        const sidePanels = await import('/scripts/sillybunny-editor/side-panel.js');
+        await sidePanels.openSidePanel('qa-reregistered');
+        const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="qa-reregistered"]');
+        window.qaOldPanel = panel;
+        sidePanels.unregisterSidePanel('qa-reregistered');
+        return { detached: !panel.isConnected, stillASheet: panel.classList.contains('sb-side-panel--sheet') };
+    });
+    // The old panel still reads as an active sheet, so only unbound listeners keep its swipe inert.
+    expect(oldPanel).toEqual({ detached: true, stillASheet: true });
+
+    await registerQaPanel(page, 'qa-reregistered', 'Second');
+    await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('qa-reregistered'));
+    const panel = page.locator('.sb-side-panel[data-sb-side-panel-id="qa-reregistered"]');
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveClass(/sb-side-panel--sheet/);
+    await expect.poll(() => panel.evaluate(element => element.getAnimations().length)).toBe(0);
+
+    // A swipe on the detached old panel would close the new registration if its listeners were still bound.
+    await page.evaluate(() => {
+        const handle = window.qaOldPanel.querySelector('.sb-dialog__handle');
+        const fire = (type, clientY) => handle.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientY }));
+        fire('pointerdown', 100);
+        fire('pointermove', 400);
+        fire('pointerup', 400);
+    });
+    await expect(panel).toBeVisible();
+    expect(await page.evaluate(() => window.qaClosed)).toEqual({ First: 0, Second: 0 });
+
+    const handle = await panel.locator(':scope > .sb-dialog__handle').boundingBox();
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 220, { steps: 8 });
+    await page.mouse.up();
+
+    await expect(panel).toBeHidden();
+    expect(await page.evaluate(() => window.qaClosed)).toEqual({ First: 0, Second: 1 });
 });

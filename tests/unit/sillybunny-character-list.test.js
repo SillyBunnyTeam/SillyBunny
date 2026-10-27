@@ -238,7 +238,7 @@ describe('shared Characters/Groups list', () => {
     test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
         await mount();
         const row = rows()[0];
-        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261026c', { id: 'deferred-editor-shell-css' });
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261027a', { id: 'deferred-editor-shell-css' });
         expect(attachTagFilterMenu).toHaveBeenCalledWith(document.querySelector('.rm_tag_controls'));
         expect(row.id).toBe('CharID0');
         expect(row.getAttribute('data-chid')).toBe('0');

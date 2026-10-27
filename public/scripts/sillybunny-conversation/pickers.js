@@ -8,6 +8,8 @@ import {
 import { user_avatar } from '../personas.js';
 import { selectConversationThread } from './chrome.js';
 import { OVERLAY_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
+import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
+import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
 import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
 import {
     createConversationBranch,
@@ -131,6 +133,8 @@ const PICKER_GAP = 6;
 const PICKER_MARGIN = 8;
 let activePicker = null;
 let pickerDismissBound = false;
+const swipeBoundPickers = new WeakSet();
+const exitingPickers = new WeakSet();
 
 function isPickerSheetLayout() {
     return window.matchMedia(PICKER_MOBILE_QUERY).matches;
@@ -188,6 +192,58 @@ function positionConversationPicker(picker, anchor, { preferBelow = false } = {}
     picker.style.top = `${Math.round(Math.max(top, viewTop + PICKER_MARGIN) - originY)}px`;
 }
 
+// Renderers replace the picker's children, so the handle is put back after each render.
+function ensureSheetHandle(picker) {
+    if (!picker.querySelector(':scope > .sb-dialog__handle')) picker.prepend(createSheetHandle());
+}
+
+function bindPickerSwipe(picker) {
+    if (swipeBoundPickers.has(picker)) return;
+    swipeBoundPickers.add(picker);
+    bindSheetGestures({
+        surface: picker,
+        scrim: document.getElementById(CHROME_IDS.pickerBackdrop),
+        targets: [picker],
+        startSelector: '.sb-dialog__handle',
+        isActive: () => isPickerSheetLayout() && activePicker?.picker === picker,
+        requestClose: () => {
+            hideConversationPickers({ restoreFocus: true, animate: true });
+            return true;
+        },
+    });
+}
+
+function clearSheetDrag(picker) {
+    stopMotion(picker);
+    picker.style.removeProperty('transform');
+}
+
+/**
+ * Slides a picker down from where a swipe left it. The picker stays unhidden until the slide ends,
+ * because its sheet layout only applies while it is not hidden.
+ */
+function slideOutPicker(picker, backdrop, pickerFrom, backdropFrom) {
+    const options = { duration: MOTION_FAST, easing: MOTION_EASE_OUT_CUBIC, fill: 'forwards' };
+    picker.style.removeProperty('transform');
+    exitingPickers.add(picker);
+    if (backdrop) play(backdrop, [{ opacity: backdropFrom }, { opacity: 0 }], options);
+    play(picker, [{ transform: pickerFrom }, { transform: 'translateY(100%)' }], {
+        ...options,
+        inert: true,
+        styles: { 'pointer-events': 'none' },
+        onEnd: () => {
+            exitingPickers.delete(picker);
+            picker.setAttribute('hidden', '');
+            clearPickerPosition(picker);
+            if (backdrop) {
+                stopMotion(backdrop);
+                backdrop.style.removeProperty('opacity');
+            }
+            syncPickerBackdrop();
+        },
+    });
+}
+
 function syncPickerBackdrop() {
     const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
     if (backdrop instanceof HTMLElement) {
@@ -221,6 +277,7 @@ function handlePickerKeydown(event) {
 
 function handlePickerLayoutChange() {
     if (activePicker) {
+        clearSheetDrag(activePicker.picker);
         positionConversationPicker(activePicker.picker, activePicker.anchor, { preferBelow: activePicker.preferBelow });
     }
 }
@@ -246,6 +303,8 @@ export function showConversationPicker(picker, anchor = null, { preferBelow = fa
         return;
     }
     bindPickerDismissal();
+    // Showing a picker that is still sliding out ends the slide, which hides it first.
+    if (exitingPickers.has(picker)) stopMotion(picker);
     if (activePicker && activePicker.picker !== picker) {
         activePicker.picker.hidden = true;
         setPickerExpanded(activePicker.anchor, false);
@@ -257,24 +316,44 @@ export function showConversationPicker(picker, anchor = null, { preferBelow = fa
         anchor: anchor instanceof HTMLElement ? anchor : fallbackAnchor,
         preferBelow: Boolean(preferBelow || fallbackPreferBelow),
     };
+    const wasHidden = picker.hidden;
     picker.hidden = false;
+    ensureSheetHandle(picker);
+    bindPickerSwipe(picker);
     setPickerExpanded(activePicker.anchor, true);
     positionConversationPicker(picker, activePicker.anchor, { preferBelow: activePicker.preferBelow });
     syncPickerBackdrop();
+    // Played through the motion helper, not CSS, so a drag during the entry cancels it and follows the finger.
+    if (wasHidden && isPickerSheetLayout()) play(picker, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
 }
 
-export function hideConversationPickers({ restoreFocus = false } = {}) {
+/**
+ * Hides the open picker. With `animate`, a bottom sheet slides out from its dragged position instead
+ * of vanishing; every other close path hides at once.
+ */
+export function hideConversationPickers({ restoreFocus = false, animate = false } = {}) {
     const state = activePicker;
     activePicker = null;
+    const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
+    const exiting = animate && state && isPickerSheetLayout() ? state.picker : null;
+    // The slide starts where the swipe left the sheet, so read the drag state before it is cleared.
+    const pickerFrom = exiting?.style.transform || 'none';
+    const backdropFrom = backdrop?.style.opacity || '1';
     for (const id of [CHROME_IDS.addDmPicker, CHROME_IDS.personaPicker, CHROME_IDS.userStatusPicker]) {
         const picker = document.getElementById(id);
-        if (picker instanceof HTMLElement) {
+        if (picker instanceof HTMLElement && picker !== exiting) {
             picker.setAttribute('hidden', '');
             clearPickerPosition(picker);
+            clearSheetDrag(picker);
         }
     }
+    if (backdrop instanceof HTMLElement) {
+        stopMotion(backdrop);
+        backdrop.style.removeProperty('opacity');
+    }
     setPickerExpanded(state?.anchor, false);
-    syncPickerBackdrop();
+    if (exiting) slideOutPicker(exiting, backdrop, pickerFrom, backdropFrom);
+    else syncPickerBackdrop();
     if (restoreFocus && state?.anchor?.isConnected) {
         state.anchor.focus({ preventScroll: true });
     }
@@ -341,6 +420,11 @@ export function toggleUserStatusPicker(anchor = getPickerAnchor('[data-sb-conver
 }
 
 export function renderConversationPersonaPicker(picker) {
+    renderPersonaOptions(picker);
+    ensureSheetHandle(picker);
+}
+
+function renderPersonaOptions(picker) {
     picker.innerHTML = '';
     const personas = getPersonaOptions();
     const threadAvatar = getCurrentCharAvatar();

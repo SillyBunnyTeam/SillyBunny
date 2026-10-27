@@ -66,6 +66,34 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
+describe('sheet exit after a swipe', () => {
+    test('starts the exit from the dragged position and clears the inline drag state', () => {
+        const { controller, sheet, backdrop } = makeSheet();
+        controller.open();
+        sheet.style.transform = 'translateY(180px)';
+        backdrop.style.opacity = '0.4';
+
+        controller.close({ restoreFocus: false });
+
+        const [sheetFrames] = animateOut.mock.calls.find(([element]) => element === sheet).slice(1);
+        const [backdropFrames] = animateOut.mock.calls.find(([element]) => element === backdrop).slice(1);
+        expect(sheetFrames).toEqual([{ transform: 'translateY(180px)' }, { transform: 'translateY(100%)' }]);
+        expect(backdropFrames).toEqual([{ opacity: '0.4' }, { opacity: 0 }]);
+        expect(sheet.style.transform).toBe('');
+        expect(backdrop.style.opacity).toBe('');
+    });
+
+    test('starts the exit from the rest position when nothing was dragged', () => {
+        const { controller, sheet } = makeSheet();
+        controller.open();
+
+        controller.close({ restoreFocus: false });
+
+        const [sheetFrames] = animateOut.mock.calls.find(([element]) => element === sheet).slice(1);
+        expect(sheetFrames).toEqual([{ transform: 'none' }, { transform: 'translateY(100%)' }]);
+    });
+});
+
 describe('sheet close guards', () => {
     test('close without canClose stays synchronous, hides both layers, restores focus and notifies once', () => {
         const { controller, sheet, backdrop, initialFocus, returnFocus, onClose } = makeSheet();

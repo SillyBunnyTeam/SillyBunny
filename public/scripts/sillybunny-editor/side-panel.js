@@ -1,8 +1,10 @@
 import { t } from '../i18n.js';
-import { bindHeaderLayout, bindSheetGestures } from './dialog.js';
+import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
+import { bindHeaderLayout } from './dialog.js';
+import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261027a',
+    href: 'css/sillybunny-side-panel.css?v=20261027b',
     id: 'deferred-side-panel-css',
 };
 
@@ -247,13 +249,12 @@ function createPanelShell({ id, element, title }) {
     controls.append(menuButton, closeButton);
     header.append(start, titles, controls, menu);
 
-    const grabHandle = createElement('div', 'sb-side-panel__grab-handle');
-    grabHandle.setAttribute('aria-hidden', 'true');
+    const grabHandle = createSheetHandle();
     const body = createElement('div', 'sb-dialog__body sb-side-panel__body');
     const content = createElement('div', 'sb-side-panel__content');
     content.append(element);
     body.append(content);
-    panel.append(header, grabHandle, body);
+    panel.append(grabHandle, header, body);
 
     return { panel, header, unbindHeaderLayout: bindHeaderLayout(header), menuButton, menu, moveSideButton, closeButton, body, content };
 }
@@ -305,6 +306,8 @@ function openEntries() {
 function closeEntry(entry, { restoreFocus = false, notify = true } = {}) {
     if (!entry.isOpen) return;
     entry.isOpen = false;
+    stopMotion(entry.panel);
+    entry.panel.style.removeProperty('transform');
     entry.shell.panel.hidden = true;
     entry.shell.menu.hidden = true;
     entry.shell.menuButton.setAttribute('aria-expanded', 'false');
@@ -353,6 +356,27 @@ function applySheetGeometry(entry) {
     entry.panel.style.setProperty('--sb-side-panel-sheet-height', `${sheetHeight}px`);
     entry.panel.style.setProperty('--sb-side-panel-sheet-top', `${panelTop}px`);
     chat.style.setProperty('--sb-side-panel-chat-height', `${chatHeight}px`);
+}
+
+// This is not a CSS animation because a CSS animation overrides the inline transform that a drag sets. The motion helper lets a drag cancel the entry, so the sheet follows the finger at once.
+function playSheetEntry(panel) {
+    play(panel, [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], SPRING_SHEET);
+}
+
+/** Slides the sheet down from where the finger left it, then closes through the normal path. */
+function slideSheetOut(entry) {
+    return new Promise(resolve => {
+        const from = entry.panel.style.transform || 'none';
+        entry.panel.style.removeProperty('transform');
+        // Without motion, play() ends at once and the panel closes without a slide.
+        play(entry.panel, [{ transform: from }, { transform: 'translateY(100%)' }], {
+            duration: MOTION_FAST,
+            easing: MOTION_EASE_OUT_CUBIC,
+            fill: 'forwards',
+            inert: true,
+            onEnd: () => resolve(closeSidePanel(entry.id)),
+        });
+    });
 }
 
 function applyPanelRect(entry, rect) {
@@ -441,6 +465,7 @@ function updateLayout() {
 
     if (layout.mode === 'sheet') {
         const activeEntry = sidePanels.get(layout.sheetPanelId);
+        const isEntering = Boolean(activeEntry) && !activeEntry.panel.classList.contains('sb-side-panel--sheet');
         body.classList.remove('sb-has-docked-panel');
         body.classList.add('sb-has-side-panel-sheet');
         for (const property of ROOT_LAYOUT_PROPERTIES) root.style.removeProperty(property);
@@ -456,6 +481,7 @@ function updateLayout() {
             entry.panel.hidden = false;
         }
         if (activeEntry) applySheetGeometry(activeEntry);
+        if (isEntering) playSheetEntry(activeEntry.panel);
         notifySidePanelLayoutChanged();
         return;
     }
@@ -488,7 +514,11 @@ function updateLayout() {
     for (const entry of sidePanels.values()) {
         entry.panel.dataset.sbSidePanelSide = entry.side;
         const rect = layout.panelRects[entry.id];
-        entry.panel.classList.remove('sb-side-panel--sheet');
+        if (entry.panel.classList.contains('sb-side-panel--sheet')) {
+            stopMotion(entry.panel);
+            entry.panel.style.removeProperty('transform');
+            entry.panel.classList.remove('sb-side-panel--sheet');
+        }
         entry.panel.style.removeProperty('--sb-side-panel-sheet-height');
         entry.panel.style.removeProperty('--sb-side-panel-sheet-top');
         entry.panel.classList.toggle('sb-side-panel--left', entry.side === 'left');
@@ -577,13 +607,9 @@ function bindPanelControls(entry) {
     entry.unbindSheetGestures = bindSheetGestures({
         surface: entry.panel,
         targets: [entry.panel],
-        startSelector: '.sb-side-panel__grab-handle, .sb-side-panel__header',
+        startSelector: '.sb-side-panel > .sb-dialog__handle, .sb-side-panel > .sb-side-panel__header',
         isActive: () => entry.panel.classList.contains('sb-side-panel--sheet'),
-        requestClose: () => {
-            // The hidden panel must not keep the drag offset, or it would reopen displaced.
-            entry.panel.style.removeProperty('transform');
-            return closeSidePanel(entry.id);
-        },
+        requestClose: () => slideSheetOut(entry),
     });
     entry.outsidePointerListener = event => {
         if (!entry.shell.menu.hidden && !entry.panel.contains(event.target)) {

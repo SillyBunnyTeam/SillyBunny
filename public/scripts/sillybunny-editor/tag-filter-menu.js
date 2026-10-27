@@ -3,7 +3,7 @@ import { openPicker } from './picker.js';
 
 const attachments = new WeakMap();
 const TAG_SELECTOR = '.rm_tag_filter .tag:not(.actionable)';
-const STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261026c', id: 'deferred-editor-shell-css' };
+const STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261027a', id: 'deferred-editor-shell-css' };
 
 async function loadPickerStyles() {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;

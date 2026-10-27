@@ -567,6 +567,10 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     align-items: center;
     gap: 8px;
     padding-inline-start: 8px;
+    /* The header starts the swipe-down close, so the browser must not scroll or select under the finger. */
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
 }
 
 .sb-action-sheet-heading {

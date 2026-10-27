@@ -10,6 +10,7 @@ import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, animateIn, an
 import { blockUpstreamDrawerClose, createSheetController } from './sillybunny-sheet.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 import { OVERLAY_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
+import { bindSheetSwipeClose, createSheetHandle } from './sillybunny-editor/sheet-gestures.js';
 
 /** @deprecated Use OVERLAY_SHEET_QUERY or LAYOUT_MOBILE_QUERY from sillybunny-editor/breakpoints.js. */
 export const MOBILE_QUERY = OVERLAY_SHEET_QUERY;
@@ -279,12 +280,9 @@ function ensureSheet() {
     close.addEventListener('click', () => closeActionMenu({ restoreFocus: true }));
     header.append(heading, close);
 
-    const handle = document.createElement('div');
-    handle.className = 'sb-dialog__handle';
-    handle.setAttribute('aria-hidden', 'true');
     const body = document.createElement('div');
     body.className = 'sb-action-sheet-body';
-    element.append(handle, header, body);
+    element.append(createSheetHandle(), header, body);
     document.body.append(backdrop, element);
 
     const controller = createSheetController({
@@ -296,7 +294,7 @@ function ensureSheet() {
         onClose: () => finishClose(),
     });
     sheet = { element, backdrop, title, subtitle, body, controller };
-    bindPopoverSheetSwipe(element, body, () => closeActionMenu({ restoreFocus: true }));
+    bindSheetSwipeClose({ sheet: element, backdrop, headerSelector: '.sb-action-sheet-header', close: () => closeActionMenu({ restoreFocus: true }) });
     return sheet;
 }
 
@@ -491,24 +489,6 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
         if (open?.popover === popover) (initialFocus?.() ?? popover)?.focus({ preventScroll: true });
     });
     return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
-}
-
-function bindPopoverSheetSwipe(surface, scrollable, dismiss) {
-    let start = null;
-    surface.addEventListener('pointerdown', event => {
-        const target = event.target instanceof Element ? event.target : null;
-        if (event.button > 0 || !target?.closest('.sb-action-sheet-header, .sb-dialog__handle')) return;
-        start = { id: event.pointerId, y: event.clientY, scrollTop: scrollable.scrollTop };
-    });
-    surface.addEventListener('pointerup', event => {
-        if (!start || start.id !== event.pointerId) return;
-        const distance = event.clientY - start.y;
-        const canDismiss = start.scrollTop <= 0 && distance > Math.min(80, surface.clientHeight * 0.2);
-        start = null;
-        if (canDismiss && !matchMedia('(prefers-reduced-motion: reduce)').matches && !document.body.classList.contains('reduced-motion')) dismiss();
-        else if (canDismiss) dismiss();
-    });
-    surface.addEventListener('pointercancel', () => { start = null; });
 }
 
 export function closeActionMenu({ animate = true, restoreFocus = false } = {}) {

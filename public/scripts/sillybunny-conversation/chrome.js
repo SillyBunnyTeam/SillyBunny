@@ -99,7 +99,7 @@ import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261003o';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261027a';
 
 /**
  * Sizes the composer entry to its content. Border-box height must include the border that

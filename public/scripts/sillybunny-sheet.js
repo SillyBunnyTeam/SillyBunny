@@ -101,10 +101,15 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
         const activeElement = document.activeElement;
         const hadFocus = sheet.contains(activeElement) || activeElement === backdrop;
         const enabled = animate && canAnimateClose();
-        animateOut(sheet, [{ transform: 'none' }, { transform: 'translateY(100%)' }], () => {
+        // A swipe leaves its drag offset inline. The exit starts from there so the sheet does not jump back.
+        const sheetFrom = sheet.style.transform || 'none';
+        const backdropFrom = backdrop.style.opacity || '1';
+        sheet.style.removeProperty('transform');
+        backdrop.style.removeProperty('opacity');
+        animateOut(sheet, [{ transform: sheetFrom }, { transform: 'translateY(100%)' }], () => {
             sheet.hidden = true;
         }, { enabled });
-        animateOut(backdrop, [{ opacity: 1 }, { opacity: 0 }], () => {
+        animateOut(backdrop, [{ opacity: backdropFrom }, { opacity: 0 }], () => {
             backdrop.hidden = true;
         }, { enabled });
         // WebKit blurs the sheet to body on pointer down, before the click that closes it arrives,

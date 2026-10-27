@@ -2,6 +2,7 @@ import { t } from '../../../i18n.js';
 import { createSegmentedControl, setSegmentedControlValue } from '../../../sillybunny-segmented-control.js';
 import { blockUpstreamDrawerClose, createSheetController } from '../../../sillybunny-sheet.js';
 import { closeActionMenu } from '../../../sillybunny-action-menu.js';
+import { bindSheetSwipeClose, createSheetHandle } from '../../../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, play, stopMotion } from '../../../sillybunny-motion.js';
 
 let nextId = 0;
@@ -190,7 +191,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
     glyph.setAttribute('aria-hidden', 'true');
     close.append(glyph);
     sheetHeader.append(heading, close);
-    sheet.append(sheetHeader);
+    sheet.append(createSheetHandle(), sheetHeader);
     const scrim = element('button', 'sb-prompt-sheet-backdrop');
     scrim.type = 'button';
     scrim.hidden = true;
@@ -208,6 +209,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
         },
     });
     close.addEventListener('click', () => sheetController.close());
+    bindSheetSwipeClose({ sheet, backdrop: scrim, headerSelector: '.sb-prompt-sheet-header', close: () => sheetController.close() });
     summary.addEventListener('click', () => {
         sheet.append(bar);
         document.body.append(scrim, sheet);
