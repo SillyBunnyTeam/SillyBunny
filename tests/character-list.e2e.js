@@ -617,7 +617,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         await listRows(page, 'groups').first().locator('.ch_name').click();
         await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
         await expect(listRows(page, 'groups').first()).toHaveClass(/is-selection-selected/);
-        await list(page).getByRole('button', { name: 'Select all', exact: true }).click();
+        await list(page).getByRole('button', { name: 'Select All', exact: true }).click();
         await expect(list(page).locator('.sb-selection-title')).toHaveText('28 selected');
         await expect(list(page).locator('.sb-selection-action[data-action-id="delete"]')).toBeVisible();
         await list(page).getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -1002,7 +1002,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(listRows(page, 'characters')).toHaveCount(visibleCharacterCount);
         }
         expect(await chatState(page)).toEqual(before);
-        await list(page).getByRole('button', { name: 'Select all', exact: true }).click();
+        await list(page).getByRole('button', { name: 'Select All', exact: true }).click();
         await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
         await list(page).getByRole('button', { name: 'Next page', exact: true }).click();
         await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(2);

@@ -1,8 +1,8 @@
 import { t } from '../i18n.js';
-import { bindHeaderLayout } from './dialog.js';
+import { bindHeaderLayout, bindSheetGestures } from './dialog.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261024f',
+    href: 'css/sillybunny-side-panel.css?v=20261027a',
     id: 'deferred-side-panel-css',
 };
 
@@ -574,6 +574,17 @@ function bindPanelControls(entry) {
         movePanelToOtherSide(entry);
     });
     entry.shell.closeButton.addEventListener('click', () => closeSidePanel(entry.id));
+    entry.unbindSheetGestures = bindSheetGestures({
+        surface: entry.panel,
+        targets: [entry.panel],
+        startSelector: '.sb-side-panel__grab-handle, .sb-side-panel__header',
+        isActive: () => entry.panel.classList.contains('sb-side-panel--sheet'),
+        requestClose: () => {
+            // The hidden panel must not keep the drag offset, or it would reopen displaced.
+            entry.panel.style.removeProperty('transform');
+            return closeSidePanel(entry.id);
+        },
+    });
     entry.outsidePointerListener = event => {
         if (!entry.shell.menu.hidden && !entry.panel.contains(event.target)) {
             entry.shell.menu.hidden = true;
@@ -669,6 +680,7 @@ export function registerSidePanel({ id, element, title, defaultSide, onClose }) 
         openedAt: 0,
         opener: null,
         styleError: null,
+        unbindSheetGestures: () => {},
     };
     entry.panel.dataset.sbSidePanelSide = entry.side;
 
@@ -728,6 +740,7 @@ export function unregisterSidePanel(id) {
     if (!entry) return false;
     closeEntry(entry, { restoreFocus: false, notify: false });
     document.removeEventListener('pointerdown', entry.outsidePointerListener, true);
+    entry.unbindSheetGestures();
     entry.shell.unbindHeaderLayout();
     entry.element.classList.toggle('sb-side-panel__source', entry.originalClass);
     if (entry.originalPanelId === undefined) delete entry.element.dataset.sbSidePanelId;

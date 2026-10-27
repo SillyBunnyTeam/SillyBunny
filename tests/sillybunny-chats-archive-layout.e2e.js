@@ -220,7 +220,7 @@ test.describe('the phone flow', () => {
 test.describe('the selection title on a phone', () => {
     test.use({ hasTouch: true, isMobile: true });
 
-    test('the count shows in full beside Cancel, Select all and Close', async ({ page }) => {
+    test('the count shows in full beside Cancel, Select All and Close', async ({ page }) => {
         await bootArchive(page, PHONE, { fixture: bigFixture() });
         await openArchive(page);
         await showList(page);

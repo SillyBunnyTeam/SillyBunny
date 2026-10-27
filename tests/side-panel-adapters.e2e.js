@@ -68,7 +68,7 @@ test('side panels share dialog headers, boxed groups, and theme-derived surfaces
         const panelButtons = [...panelHeader.querySelectorAll('.sb-dialog__icon-button')];
         const popupButton = popupHeader.querySelector('.sb-dialog__close');
         const body = panel.querySelector('.sb-side-panel__body');
-        const edge = getComputedStyle(panel).boxShadow;
+        const panelStyle = getComputedStyle(panel);
         return {
             panelHeaderHeight: panelHeader.getBoundingClientRect().height,
             popupHeaderHeight: popupHeader.getBoundingClientRect().height,
@@ -76,17 +76,27 @@ test('side panels share dialog headers, boxed groups, and theme-derived surfaces
             popupButton: [getComputedStyle(popupButton).width, getComputedStyle(popupButton).height],
             headerBackground: getComputedStyle(panelHeader).backgroundColor,
             bodyBackground: getComputedStyle(body).backgroundColor,
-            shadow: edge,
-            side: panel.dataset.sbSidePanelSide,
+            shadow: panelStyle.boxShadow,
+            borderWidths: [panelStyle.borderTopWidth, panelStyle.borderRightWidth, panelStyle.borderBottomWidth, panelStyle.borderLeftWidth],
+            borderRadius: panelStyle.borderRadius,
+            background: panelStyle.backgroundColor,
         };
     });
     expect(headerMetrics.panelHeaderHeight).toBe(headerMetrics.popupHeaderHeight);
     expect(headerMetrics.panelButtons).toEqual([['40px', '40px'], ['40px', '40px']]);
     expect(headerMetrics.popupButton).toEqual(['40px', '40px']);
     expect(headerMetrics.headerBackground).not.toBe(headerMetrics.bodyBackground);
-    expect(headerMetrics.shadow).not.toBe('none');
-    expect(headerMetrics.shadow).toContain('inset');
-    expect(headerMetrics.shadow).toContain(headerMetrics.side === 'left' ? '-1px 0px 0px 0px inset' : '1px 0px 0px 0px inset');
+    expect(headerMetrics.shadow).toBe('none');
+    expect(headerMetrics.borderWidths).toEqual(['1px', '1px', '1px', '1px']);
+    expect(headerMetrics.borderRadius).toBe('0px');
+    expect(headerMetrics.background).toBe(await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.style.background = 'var(--sb-layer-window)';
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+    }));
     await popup.locator('.sb-dialog__close').click();
     await expect(popup).toHaveCount(0);
 
@@ -103,19 +113,16 @@ test('side panels share dialog headers, boxed groups, and theme-derived surfaces
             header: getComputedStyle(element.querySelector('.sb-side-panel__header')).backgroundColor,
             body: getComputedStyle(element.querySelector('.sb-side-panel__body')).backgroundColor,
             shadow: getComputedStyle(element).boxShadow,
-            edge: getComputedStyle(element).boxShadow,
         })));
     }
     expect(themeStyles[0].tone).toBe('dark');
     expect(themeStyles[1].tone).toBe('light');
     for (const style of themeStyles) {
         expect(style.header).not.toBe(style.body);
-        expect(style.shadow).not.toBe('none');
-        expect(style.edge).toContain('inset');
+        expect(style.shadow).toBe('none');
     }
     expect(themeStyles[0].header).not.toBe(themeStyles[1].header);
     expect(themeStyles[2].header).not.toBe(themeStyles[0].header);
-    expect(themeStyles[2].shadow).not.toBe(themeStyles[0].shadow);
     await page.evaluate(() => {
         const select = document.getElementById('themes');
         select.value = 'Libadwaita';
@@ -155,6 +162,92 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 740 }
         expect(overflow.bodyScroll[0]).toBeLessThanOrEqual(overflow.bodyScroll[1]);
     });
 }
+
+test.describe('the side-panel sheet swipe at 390×844', () => {
+    const SHEET_VIEWPORT = { width: 390, height: 844 };
+
+    async function openSheet(page) {
+        await boot(page, SHEET_VIEWPORT);
+        const panel = await openPanel(page, PANELS[0]);
+        await closePanel(page, PANELS[0].id);
+        // The Author's Note trigger does not pass the composer as the opener, so the test names it.
+        await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('floatingPrompt', { opener: document.getElementById('send_textarea') }));
+        await expect(panel).toBeVisible();
+        await expect(panel).toHaveClass(/sb-side-panel--sheet/);
+        await expect.poll(() => panel.evaluate(element => element.getAnimations().length)).toBe(0);
+        return panel;
+    }
+
+    const topOf = panel => panel.evaluate(element => element.getBoundingClientRect().top);
+
+    async function centreOf(locator) {
+        const box = await locator.boundingBox();
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+
+    // The pointer stays still before release, so the release velocity is 0 and only the distance decides.
+    async function dragDown(page, from, distance) {
+        await page.mouse.move(from.x, from.y);
+        await page.mouse.down();
+        await page.mouse.move(from.x, from.y + distance, { steps: 8 });
+    }
+
+    test('a long swipe from the handle follows the finger, then closes through the normal close path', async ({ page }) => {
+        const panel = await openSheet(page);
+        const restTop = await topOf(panel);
+        await dragDown(page, await centreOf(panel.locator('.sb-side-panel__grab-handle')), 220);
+        await expect.poll(() => topOf(panel)).toBeCloseTo(restTop + 220, 0);
+        await page.mouse.up();
+
+        await expect(panel).toBeHidden();
+        await expect(page.locator('body')).not.toHaveClass(/sb-has-side-panel-sheet/);
+        await expect(page.locator('#send_textarea')).toBeFocused();
+        expect(await panel.evaluate(element => element.style.transform)).toBe('');
+
+        await openPanel(page, PANELS[0]);
+        await expect.poll(() => topOf(panel)).toBeCloseTo(restTop, 0);
+    });
+
+    test('a long swipe from the header title closes the panel', async ({ page }) => {
+        const panel = await openSheet(page);
+        await dragDown(page, await centreOf(panel.locator('.sb-side-panel__title')), 220);
+        await page.mouse.up();
+        await expect(panel).toBeHidden();
+    });
+
+    test('a swipe that starts on a header control does not drag the panel', async ({ page }) => {
+        const panel = await openSheet(page);
+        const restTop = await topOf(panel);
+        await dragDown(page, await centreOf(panel.locator('.sb-side-panel__close')), 220);
+        expect(await topOf(panel)).toBe(restTop);
+        await page.mouse.up();
+        await expect(panel).toBeVisible();
+        expect(await topOf(panel)).toBe(restTop);
+    });
+
+    test('a short swipe springs back and keeps the panel open', async ({ page }) => {
+        const panel = await openSheet(page);
+        const restTop = await topOf(panel);
+        await dragDown(page, await centreOf(panel.locator('.sb-side-panel__grab-handle')), 40);
+        await expect.poll(() => topOf(panel)).toBeCloseTo(restTop + 40, 0);
+        await page.mouse.up();
+
+        await expect.poll(() => topOf(panel)).toBeCloseTo(restTop, 0);
+        await expect(panel).toBeVisible();
+        await expect(panel).toHaveClass(/sb-side-panel--sheet/);
+    });
+
+    test('reduced motion springs back at once, without an animation', async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        const panel = await openSheet(page);
+        const restTop = await topOf(panel);
+        await dragDown(page, await centreOf(panel.locator('.sb-side-panel__grab-handle')), 40);
+        await expect.poll(() => topOf(panel)).toBeCloseTo(restTop + 40, 0);
+        await page.mouse.up();
+
+        expect(await panel.evaluate(element => ({ animations: element.getAnimations().length, top: element.getBoundingClientRect().top }))).toEqual({ animations: 0, top: restTop });
+    });
+});
 
 async function boot(page, viewport) {
     await protectMaintainerServer(page);

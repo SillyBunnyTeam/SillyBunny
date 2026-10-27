@@ -106,7 +106,6 @@ for (const viewport of VIEWPORTS) {
                 panelIntersectsShell: intersects(panelRect, document.getElementById('sheld').getBoundingClientRect()),
                 panelIntersectsComposer: intersects(panelRect, composerRect),
                 panelShadow: getComputedStyle(panel).boxShadow,
-                panelChatEdge: getComputedStyle(panel).boxShadow,
                 panelUsesDialogFrame: panel.classList.contains('sb-dialog')
                     && panel.querySelector('.sb-dialog__header')
                     && panel.querySelector('.sb-dialog__body'),
@@ -157,8 +156,7 @@ for (const viewport of VIEWPORTS) {
             expect(geometry.panelIntersectsChat, JSON.stringify(geometry)).toBe(false);
             expect(geometry.panelIntersectsComposer).toBe(false);
             if (viewport.width === 1440 && viewport.height === 900) expect(geometry.panelIntersectsShell).toBe(false);
-            expect(geometry.panelShadow).not.toBe('none');
-            expect(geometry.panelChatEdge).toContain('inset');
+            expect(geometry.panelShadow).toBe('none');
             expect(geometry.panelIsAboveZoomedAvatar).toBe(true);
             expect(Number(geometry.panelZIndex)).toBeGreaterThan(Number(geometry.avatarZIndex));
             if (viewport.width >= 1200) {

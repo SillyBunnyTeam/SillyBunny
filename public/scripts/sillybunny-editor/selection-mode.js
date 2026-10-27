@@ -40,7 +40,7 @@ function normalizeKeys(keys) {
  * @param {HTMLElement} options.actionBar
  * @param {{ id: string, label: string, icon?: string|Element, danger?: boolean, onActivate: (keys: string[]) => void }[]} [options.actions=[]]
  * @param {(count: number) => string} [options.title]
- * @param {string} [options.selectAllLabel] Defaults to the existing Select all label.
+ * @param {string} [options.selectAllLabel] Defaults to the existing Select All label.
  * @param {() => boolean} [options.canEnter] Whether gestures or enter() may start selection.
  * @param {(keys: string[]) => void|null} [options.onChange=null]
  * @param {() => void|null} [options.onExit=null]
@@ -62,7 +62,7 @@ export function createSelectionMode({
     actionBar,
     actions = [],
     title = count => t`${count} selected`,
-    selectAllLabel = t`Select all`,
+    selectAllLabel = t`Select All`,
     canEnter = () => true,
     onChange = null,
     onExit = null,

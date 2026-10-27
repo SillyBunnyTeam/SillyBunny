@@ -13,11 +13,10 @@
     border-radius: 0;
 }
 
+/* A docked panel is a pane beside the chat, not an overlay, so its border separates it and it casts no shadow. */
 .sb-side-panel:not(.sb-side-panel--sheet) {
-    --sb-side-panel-shadow: 0 0 10px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent),
-        0 0 4px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 35%, transparent);
     max-height: none;
-    box-shadow: var(--sb-side-panel-shadow), var(--sb-shadow-dialog-highlight);
+    box-shadow: none;
 }
 
 .sb-side-panel[hidden] {
@@ -33,7 +32,6 @@
     top: var(--sb-side-panel-y, var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
     width: var(--sb-side-panel-width, 280px);
     height: var(--sb-side-panel-height, calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize))));
-    box-shadow: var(--sb-side-panel-shadow), var(--sb-shadow-dialog-highlight), inset -1px 0 0 var(--SmartThemeBorderColor);
 }
 
 .sb-side-panel.sb-side-panel--right {
@@ -42,7 +40,6 @@
     top: var(--sb-side-panel-y, var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
     width: var(--sb-side-panel-width, 280px);
     height: var(--sb-side-panel-height, calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize))));
-    box-shadow: var(--sb-side-panel-shadow), var(--sb-shadow-dialog-highlight), inset 1px 0 0 var(--SmartThemeBorderColor);
 }
 
 .sb-side-panel--right[style*="--sb-side-panel-x"] {
@@ -338,38 +335,34 @@ body.sb-has-side-panel-sheet #form_sheld {
     border-bottom: 0;
     border-radius: var(--sb-radius-overlay, 15px) var(--sb-radius-overlay, 15px) 0 0;
     box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight), inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBorderColor) 85%, transparent);
-    animation: sb-side-panel-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    /* The enter animation must not fill forwards: a forwards fill overrides the inline transform that the swipe sets. */
+    animation: sb-side-panel-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
 }
 
-:root[data-sb-surface-tone='light'] .sb-side-panel:not(.sb-side-panel--sheet) {
-    box-shadow: 0 2px 12px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBorderColor) 85%, transparent);
-}
-
-:root[data-sb-surface-tone='light'] .sb-side-panel--left {
-    box-shadow: 0 2px 12px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBorderColor) 85%, transparent),
-        inset -1px 0 0 var(--SmartThemeBorderColor);
-}
-
-:root[data-sb-surface-tone='light'] .sb-side-panel--right {
-    box-shadow: 0 2px 12px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBorderColor) 85%, transparent),
-        inset 1px 0 0 var(--SmartThemeBorderColor);
-}
-
+/* The handle is wider than its 36px pill so a thumb can catch it. */
 .sb-side-panel--sheet .sb-side-panel__grab-handle {
+    position: relative;
     display: block;
-    flex: 0 0 4px;
+    flex: 0 0 16px;
     align-self: center;
-    width: 36px;
-    margin: 8px 0 4px;
+    width: 80px;
+    touch-action: none;
+}
+
+.sb-side-panel--sheet .sb-side-panel__grab-handle::before {
+    content: '';
+    position: absolute;
+    inset: 8px 22px auto;
+    height: 4px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 32%, transparent);
 }
 
 .sb-side-panel--sheet .sb-dialog__header {
     padding-top: 16px;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
 }
 
 .sb-side-panel--sheet .sb-side-panel__body {

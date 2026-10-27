@@ -114,6 +114,49 @@ for (const viewport of VIEWPORTS) {
     });
 }
 
+test('an openAlert surface paints the same Alert layer as a Popup alert, not the Window layer', async ({ page }) => {
+    await prepare(page, { width: 1440, height: 900 });
+    const backgroundOf = selector => page.locator(selector).last().evaluate(node => getComputedStyle(node).backgroundColor);
+
+    await page.evaluate(async () => {
+        const { openAlert } = await import('/scripts/sillybunny-editor/dialog.js');
+        window.qaAlert = openAlert({ heading: 'Delete Folder?', body: 'Body.', responses: [{ id: 'cancel', label: 'Cancel' }] });
+    });
+    await expect(page.locator('.sb-dialog-host[role="alertdialog"][open]')).toBeVisible();
+    const framedAlert = await backgroundOf('.sb-dialog-host[open] .sb-dialog--alert');
+    const framedAlertBody = await backgroundOf('.sb-dialog-host[open] .sb-dialog--alert .sb-dialog__body');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sb-dialog-host')).toHaveCount(0);
+
+    await page.evaluate(async () => {
+        const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+        void new Popup('<h3>Delete Folder?</h3><p>Body.</p>', POPUP_TYPE.CONFIRM, '', { okButton: 'Delete', cancelButton: 'Cancel' }).show();
+    });
+    const popup = page.locator('dialog.popup[open]').last();
+    await expect(popup).toHaveClass(/sb-dialog--alert/);
+    const popupAlert = await backgroundOf('dialog.popup[open]');
+    const popupAlertBody = await backgroundOf('dialog.popup[open] > .popup-body');
+    await page.keyboard.press('Escape');
+    await expect(popup).toBeHidden();
+
+    const layers = await page.evaluate(() => {
+        const paint = token => {
+            const probe = document.createElement('div');
+            probe.style.background = `var(${token})`;
+            document.body.append(probe);
+            const color = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            return color;
+        };
+        return { alert: paint('--sb-layer-alert'), window: paint('--sb-layer-window') };
+    });
+    expect(layers.alert).not.toBe(layers.window);
+    expect(popupAlert).toBe(layers.alert);
+    expect(framedAlert).toBe(popupAlert);
+    expect(popupAlertBody).toBe(layers.alert);
+    expect(framedAlertBody).toBe(popupAlertBody);
+});
+
 test('menus opened from inside a dialog are hosted in its top layer and usable', async ({ page }) => {
     await prepare(page, { width: 1440, height: 900 });
     await page.evaluate(async () => {
@@ -284,7 +327,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
         const header = page.locator('.sb-dialog-host[open] .sb-dialog__header');
         const cancel = header.getByRole('button', { name: 'Cancel', exact: true });
-        const selectAll = header.getByRole('button', { name: 'Select all', exact: true });
+        const selectAll = header.getByRole('button', { name: 'Select All', exact: true });
         const close = header.getByRole('button', { name: 'Close', exact: true });
         const title = header.locator('.sb-dialog__selection-title');
         await expect(cancel).toBeVisible();

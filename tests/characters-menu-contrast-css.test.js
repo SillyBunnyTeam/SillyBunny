@@ -97,6 +97,24 @@ describe('Characters menu contrast and token contracts', () => {
         expect(rule(theme, '.select2-container--default .select2-results__options')).toContain('background-color: var(--sb-layer-popover);');
     });
 
+    test('Select2 and Quick Reply menu rows are 32px on fine pointers and 44px on coarse pointers', () => {
+        const heights = selector => {
+            const found = { fine: [], coarse: [] };
+            const visit = (rules, coarse = false) => {
+                for (const entry of rules) {
+                    const height = entry.declarations?.find(declaration => declaration.property === 'height')?.value;
+                    if (entry.selectors?.includes(selector) && height) found[coarse ? 'coarse' : 'fine'].push(height);
+                    if (entry.rules) visit(entry.rules, coarse || (entry.type === 'media' && /pointer:\s*coarse/.test(entry.media)));
+                }
+            };
+            visit(parse(theme).stylesheet.rules);
+            return found;
+        };
+        for (const selector of ['.select2-container--default .select2-results__option', '.list-group.ctx-menu .list-group-item']) {
+            expect(heights(selector)).toEqual({ fine: ['32px'], coarse: ['44px'] });
+        }
+    });
+
     test('migrated cards and overlays use their own radius roles without decorative accent', () => {
         expect(rule(editor, '.sb-editor-sheet .ds-pref-group')).toContain('border-radius: var(--sb-radius-card);');
         expect(rule(sheet('editor-shell'), '.sb-list-editor .ds-pref-group')).toContain('border-radius: var(--sb-radius-card);');

@@ -7632,6 +7632,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     min-width: min(300px, 100%);
     max-width: min(372px, 100%);
     border-radius: var(--sb-radius-alert);
+    background: var(--sb-layer-alert);
 }
 
 .sb-dialog--dialog,
@@ -8060,6 +8061,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
 .sb-dialog--alert .sb-dialog__body {
     padding: 24px 24px 12px;
     text-align: center;
+    background: var(--sb-layer-alert);
 }
 
 .sb-dialog__heading {
@@ -8238,7 +8240,7 @@ body.reduced-motion .sb-dialog-host * {
 
 .select2-container--default .select2-results__option {
     padding: 0 12px;
-    height: 34px;
+    height: 32px;
     display: flex;
     align-items: center;
     border-radius: var(--sb-radius-control);
@@ -8276,7 +8278,7 @@ body.reduced-motion .sb-dialog-host * {
 }
 
 .list-group.ctx-menu .list-group-item {
-    height: 34px;
+    height: 32px;
     padding: 0 12px;
     border-radius: var(--sb-radius-control);
     opacity: 1;
