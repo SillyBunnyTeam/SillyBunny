@@ -1,6 +1,6 @@
 /*
- * Message deletion confirmation (DESIGN.md "Message Actions" > Delete): an alert dialog with
- * Cancel first and focused, the destructive responses in Destructive Red, so Return cancels.
+ * Message deletion confirmation: an alert dialog with Cancel first and focused, and the
+ * destructive responses in the destructive colour, so Return cancels.
  */
 
 import { t } from './i18n.js';

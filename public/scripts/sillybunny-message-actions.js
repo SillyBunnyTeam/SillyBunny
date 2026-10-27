@@ -1,5 +1,5 @@
 /*
- * SillyBunny message actions (DESIGN.md "Message Actions").
+ * SillyBunny message actions.
  * Row: mobile shows Edit + menu button; desktop shows Copy + Edit + menu button. The menu button
  * (upstream's .extraMesButtonsHint) opens a labelled menu built from the message's own buttons,
  * which stay in the DOM so upstream and extension handlers keep working; menu rows forward to them.

@@ -369,8 +369,8 @@
 
    The same class paints .menu_button as a chip (1px border, 5% fill), and
    sillybunny-theme.css:677 re-applies a fill and a 14px radius with four :not()
-   guards — specificity 0,5,0, which outranks a plain class selector. DESIGN.md
-   specifies flat buttons for a toolbar of icon actions, so the chip chrome is
+   guards, giving specificity 0,5,0, which outranks a plain class selector. A
+   toolbar of icon actions reads better as flat buttons, so the chip chrome is
    stripped here. The #right-nav-panel prefix is what makes these declarations
    win without !important, matching how the rest of the shell scopes its
    overrides. Without it the toolbar renders as a mix of bordered chips and flat
@@ -1077,7 +1077,7 @@ body.reduced-motion :is(
     }
 }
 
-/* Touch targets. DESIGN.md requires 44px for coarse pointers; the toolbar and
+/* Touch targets are 44px on coarse pointers; the toolbar and
    header are the primary hit areas in this editor. */
 @media (pointer: coarse), (max-width: 768px) {
     #right-nav-panel {

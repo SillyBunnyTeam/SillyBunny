@@ -115,7 +115,7 @@
     --sb-shell-header-glow: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
     --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--SmartThemeBlurTintColor) 93%);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 96%, transparent);
-    /* Shell text scale (DESIGN.md "Foreground" and "Dim Foreground"). Every `--sb-shell-text*`
+    /* Shell text scale (primary and dim foreground). Every `--sb-shell-text*`
        consumer resolves here; without these the declarations were dropped and the text inherited
        whatever colour its ancestor happened to carry. */
     --sb-shell-text: var(--SmartThemeBodyColor);
@@ -185,7 +185,7 @@
     --sb-raised-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-raised-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
-    /* Shell layer ladder (DESIGN.md "Layer Ladder"); forced opaque below where rgb(from) is supported. */
+    /* Shell layer ladder; forced opaque below where rgb(from) is supported. */
     --sb-layer-view-source: var(--SmartThemeChatTintColor);
     --sb-layer-window-source: var(--SmartThemeBlurTintColor);
     --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);

@@ -6321,7 +6321,7 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
 
 /* ── Phase 2: preference group primitives (feat/v1.9.0-ui-overhaul) ─────── */
 
-/* libadwaita boxed list — the preference pill (DESIGN.md, Cards / Containers).
+/* libadwaita boxed list: the preference pill.
    This is the one pill primitive: every preference group on the settings page resolves to it,
    whether the order pass boxed the rows or a normalizer wrapped a loose flex container. It was
    spelled twice, at 4%/14px/no-border here and 5%/16px/bordered on the category body only, so
@@ -8288,8 +8288,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* One heading treatment for the settings page, modelled on the Logs card titles: bold sentence
-   case on the control scale, no box, no tracked uppercase kicker, no accent ink (DESIGN.md Sentence
-   Case and Signal Scarcity rules). Upstream `#user-settings-block h4` / `#left-nav-panel h4` paint
+   case on the control scale, no box, no tracked uppercase kicker, no accent ink, so the accent colour
+   stays reserved for signals. Upstream `#user-settings-block h4` / `#left-nav-panel h4` paint
    accent uppercase kickers and `.standoutHeader` / `h3` paint tinted chips, so one view mixed three
    heading styles. Collapsible headers keep their own row treatment. `h3` keeps its colour so the
    user's custom CSS (`h1, h2, h3 { color }`) still applies. */
@@ -8326,8 +8326,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 /* A group is one boxed list, so the rows inside it are not boxes of their own. `#ThemeTogglesSection
    [name="themeToggles"]` grid tiles each carried their own 4% tint, 1px border, and 14px radius
-   inside the group's identical tint, which read as a card grid inside a card (DESIGN.md Cards:
-   preference groups are borderless boxed lists, and no repeated card grids). The tiles stay as a
+   inside the group's identical tint, which read as a card grid inside a card (preference groups
+   are borderless boxed lists, with no repeated card grids). The tiles stay as a
    multi-column inline section, minus their chrome, and the group's row separators stay out of a
    grid, where a per-tile hairline would read as a floating line above every checkbox. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group .checkbox_label:not(.ds-row-switch) {
@@ -8335,7 +8335,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     border-radius: 0;
 }
 
-/* Sentence case, like every other group label on the page (DESIGN.md Sentence Case Rule). The
+/* Sentence case, like every other group label on the page. The
    tracked uppercase kicker here was the last one left in settings. */
 #sb-settings-page .sb-settings-mounted-shell .sb-theme-presets-label {
     font-size: var(--sb-type-control);
@@ -8609,7 +8609,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 /* 6F.3 named sub-categories, as libadwaita preference groups: a title and a description line above
-   one boxed list, groups separated by space rather than a rule (DESIGN.md Cards / Containers). The
+   one boxed list, groups separated by space rather than a rule. The
    category reuses the flat-section class for search labels, so the section rule and the ID-weighted
    two-line header rule above are both overridden here. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category {
@@ -8669,8 +8669,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
    one column of rows whatever the markup under it. A group is one boxed list, so the rows inside
    it are not boxes of their own: `#ThemeTogglesSection [name="themeToggles"]` grid tiles each
    carried their own 4% tint, 1px border, and 14px radius inside the group's identical tint, which
-   read as a card grid inside a card (DESIGN.md Cards: preference groups are borderless boxed
-   lists, and no repeated card grids). The tiles stay as a multi-column inline section, minus their
+   read as a card grid inside a card (preference groups are borderless boxed lists, with no
+   repeated card grids). The tiles stay as a multi-column inline section, minus their
    chrome, and the group's row separators stay out of a grid, where a per-tile hairline would read
    as a floating line above every checkbox. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(.checkbox_label, .flex-container, .sb-settings-flat-section):not(.ds-row-switch) {

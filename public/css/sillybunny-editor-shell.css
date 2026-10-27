@@ -930,7 +930,7 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     margin-block-start: 6px;
 }
 
-/* Dimmed heading; capitalisation comes from the label (DESIGN.md Capitalisation Rule). */
+/* Dimmed heading; capitalisation comes from the label, so no text-transform here. */
 .sb-picker__group-heading {
     padding: 6px 12px 4px;
     color: var(--sb-muted-fg);

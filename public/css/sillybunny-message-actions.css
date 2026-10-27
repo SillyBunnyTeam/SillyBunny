@@ -1,5 +1,5 @@
 /*
- * SillyBunny message actions (DESIGN.md "Message Actions"): name-row layout, the expanded row,
+ * SillyBunny message actions: name-row layout, the expanded row,
  * the labelled message menu (popover and bottom sheet), and press-and-hold labels.
  * Loaded after the other SillyBunny sheets so it wins the cascade; user.css still loads last.
  * Behaviour lives in scripts/sillybunny-message-actions.js and scripts/sillybunny-action-menu.js.

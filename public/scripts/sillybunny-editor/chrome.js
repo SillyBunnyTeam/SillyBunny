@@ -140,7 +140,6 @@ export function mountEditorChrome(config) {
 
         controls.dirty.hidden = false;
         if (wasHidden) {
-            // DESIGN.md: state reveals are a fade with a small scale, no movement.
             if (prefersReducedMotion()) return;
             animateIn(controls.dirty,
                 [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }],

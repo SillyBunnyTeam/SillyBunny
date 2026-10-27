@@ -422,7 +422,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     const origin = positionPopover(popover, trigger, point, bounds);
     open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds };
     setTriggerExpanded(trigger, true);
-    // DESIGN.md: Popovers 200ms fade + scale 0.96 -> 1 from trigger.
+    // Popovers open with a 200ms fade and a scale from 0.96 to 1, so they grow out of the trigger.
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
         duration: MOTION_FAST,
         easing: MOTION_EASE_OUT_CUBIC,
@@ -504,7 +504,6 @@ export function closeActionMenu({ animate = true, restoreFocus = false } = {}) {
     const hadFocus = popover.contains(document.activeElement);
     finishClose();
     stopMotion(popover);
-    // DESIGN.md: Popover close 150ms fade (no scale or movement).
     const motion = animateOut(popover, [{ opacity: 1 }, { opacity: 0 }], () => {
         popover.hidden = true;
     }, { enabled: animate, duration: MOTION_POPOVER_CLOSE, onEnd: () => popover.remove() });

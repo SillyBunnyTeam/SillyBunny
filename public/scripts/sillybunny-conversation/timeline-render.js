@@ -528,7 +528,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         meta.append(pin);
     }
 
-    // SillyBunny message actions (DESIGN.md "Message Actions"): reactions | Reply, Edit, Copy, menu
+    // SillyBunny message actions: reactions | Reply, Edit, Copy, menu
     // at rest; data-sb-secondary items join in section order when the pill is expanded.
     const actionBar = document.createElement('span');
     actionBar.className = 'sb-conversation-message-actions';

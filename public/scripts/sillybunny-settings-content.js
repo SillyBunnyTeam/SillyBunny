@@ -179,7 +179,7 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
  * inside:
  *
  * - `nested` (default) flattens only a drawer that sits inside another drawer. Layer 4 allows a
- *   sub-category at most one collapsible section (PRODUCT.md, DESIGN.md), so a drawer inside a
+ *   sub-category at most one collapsible section, so a drawer inside a
  *   drawer is the concrete violation this removes. The outermost drawer of each nest keeps its
  *   toggle, which is why the work is driven by ancestry rather than by depth from the root.
  * - `all` also flattens the outermost drawer. 6F uses this for Backend and Customize, where no

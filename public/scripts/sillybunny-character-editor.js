@@ -547,7 +547,7 @@ function _bindToolbarButtons() {
 
     // The favourite button is a div toggled by the fav_on/fav_off classes, which
     // the toolbar cannot use to express state. Mirror it into aria-pressed so the
-    // button can render a selected fill the way DESIGN.md expects.
+    // button can render a selected fill.
     const favButton = document.getElementById('favorite_button');
     if (favButton) {
         new MutationObserver(_syncFavoritePressed)

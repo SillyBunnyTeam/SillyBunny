@@ -92,7 +92,7 @@ describe('audited UI motion CSS', () => {
         expect(inChatAgentsSource).toContain('transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition);');
         expect(inChatAgentsSource).toContain('-webkit-clip-path: inset(0 0 0 100%);');
         expect(inChatAgentsSource).toContain('clip-path: inset(0 0 0 100%);');
-        // DESIGN.md Opaque Shell Rule: mobile shell layers no longer blur what sits behind them.
+        // Mobile shell layers are opaque, so they must not blur what sits behind them.
         expect(mobileShellSource).not.toMatch(/backdrop-filter:\s*blur\(/);
     });
 });

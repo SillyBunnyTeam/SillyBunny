@@ -1,5 +1,5 @@
 /*
- * SillyBunny toast motion (AdwToast, DESIGN.md Motion > Per Surface).
+ * SillyBunny toast motion (AdwToast).
  * Upstream toastr animates with jQuery fadeIn/fadeOut (script.js toastr.options). Instead of editing
  * that file, this registers jQuery methods that use the shared WAAPI helpers and points toastr at
  * them, re-applying the names whenever upstream reassigns toastr.options.

@@ -1554,7 +1554,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: none;
 }
 
-/* DESIGN.md "Message Actions": reactions | Reply, Edit, Copy, menu at rest; Shift (data-sb-actions-expanded)
+/* Message actions: reactions | Reply, Edit, Copy, menu at rest; Shift (data-sb-actions-expanded)
    or Expand Message Actions shows every action in section order. */
 .sb-conversation-message-divider {
     flex: none;

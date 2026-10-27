@@ -1,5 +1,5 @@
 /*
- * Conversation message menu (DESIGN.md "Message Actions" > Conversation mode).
+ * Conversation message menu.
  * The pill's menu button (desktop) and the mobile trigger open the shared action menu, built from
  * the pill's own buttons; rows forward clicks to them so chrome.js keeps handling every action.
  */
