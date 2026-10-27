@@ -472,7 +472,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Chat message actions. |
-| Divergence reason | DESIGN.md "Message Actions": a labelled message menu replaces upstream's inline `.extraMesButtons` expansion, and deleting a message always confirms with Cancel focused. |
+| Divergence reason | DESIGN.md "Chat Transcript": a labelled message menu replaces upstream's inline `.extraMesButtons` expansion, and deleting a message always confirms with Cancel focused. |
 | Target seam | `public/scripts/sillybunny-message-actions.js`, `public/scripts/sillybunny-action-menu.js`, `public/scripts/sillybunny-delete-confirm.js`. |
 | Adapter shape | `#message_template`: `.extraMesButtons` reordered into menu sections with Checkpoint and Delete + Add Swipe moved in; Delete, Copy, Edit, and `.extraMesButtonsHint` (`fa-ellipsis-vertical`) follow in the row; edit row starts Cancel, Confirm. `script.js`: `deleteMessage()` calls `confirmMessageDeletion()`; `.mes_edit_delete` confirms unless `fromSlashCommand`. Upstream's `.extraMesButtonsHint` click handler is left in place and pre-empted in the capture phase. |
 | Protecting tests | `tests/foundation/message-actions.e2e.js`. |

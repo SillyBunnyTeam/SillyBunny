@@ -172,7 +172,7 @@ export function renameOptions() {
 ```
 
 Pick rows by the hierarchy in [Selection Controls](../DESIGN.md#selection-controls) and
-[Settings Rows](../DESIGN.md#settings-rows):
+[Boxed Lists and Rows](../DESIGN.md#boxed-lists-and-rows):
 
 | Need | Factory |
 |---|---|
