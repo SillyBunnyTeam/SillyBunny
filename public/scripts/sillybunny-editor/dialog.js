@@ -99,10 +99,13 @@ export function bindHeaderLayout(header) {
         const end = measuredWidth(header.querySelector(':scope > .sb-dialog__header-end'));
         const controls = measuredWidth(header.querySelector(':scope > .popup-controls'));
         const trailing = Math.max(end, controls);
-        const style = getComputedStyle(header);
-        const padding = (parseFloat(style.paddingInlineStart) || 0) + (parseFloat(style.paddingInlineEnd) || 0);
-        const available = Math.max(0, header.clientWidth - padding - 12);
-        const titleWidth = title.scrollWidth;
+        const inlinePadding = node => {
+            const style = getComputedStyle(node);
+            return (parseFloat(style.paddingInlineStart) || 0) + (parseFloat(style.paddingInlineEnd) || 0);
+        };
+        const available = Math.max(0, header.clientWidth - inlinePadding(header) - 12);
+        // The title wrapper pads its inline edges, which the text cannot use.
+        const titleWidth = title.scrollWidth + inlinePadding(titles);
         const centeredCapacity = Math.max(0, available - (width * 2));
         const looseCapacity = Math.max(0, available - start - trailing);
         const needsLooseCentering = titleWidth > centeredCapacity + 1 && titleWidth <= looseCapacity + 1;
@@ -741,6 +744,7 @@ export function openDialog({
                 entry.spec.canClose = original;
             },
             push: pushPage,
+            get isOpen() { return state === 'open' && stack.includes(entry); },
         };
     }
 

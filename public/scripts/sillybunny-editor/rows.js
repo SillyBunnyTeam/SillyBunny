@@ -117,6 +117,25 @@ function suffixRow(label, subtitle, field, control) {
     return row;
 }
 
+/**
+ * Moves the content of an upstream caption into a row's label, subtitle or group heading, so its
+ * text and `data-i18n` survive. A missing caption leaves the target as it is.
+ * @param {Element} target
+ * @param {Element|null|undefined} source
+ * @param {object} [options]
+ * @param {boolean} [options.copyId=false]  Also move the caption's `id`, for references that name it.
+ * @param {boolean} [options.keepSource=false]  Leave the emptied caption in the document.
+ * @param {boolean} [options.stripColon=false]  Flatten to trimmed plain text without a trailing colon.
+ */
+export function moveCaption(target, source, { copyId = false, keepSource = false, stripColon = false } = {}) {
+    if (!source) return;
+    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
+    if (copyId && source.id) target.id = source.id;
+    target.replaceChildren(...source.childNodes);
+    if (stripColon) target.textContent = target.textContent.trim().replace(/[：:]$/, '').trim();
+    if (!keepSource) source.remove();
+}
+
 function appendRows(container, rows) {
     container.append(...rows.map(row => row.row ?? row));
 }

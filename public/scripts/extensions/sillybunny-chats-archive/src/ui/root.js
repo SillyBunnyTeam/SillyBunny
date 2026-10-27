@@ -1,4 +1,5 @@
-import { createListEditor } from '../../../../sillybunny-editor/list-shell.js';
+import { LAYOUT_MOBILE_QUERY } from '../../../../sillybunny-editor/breakpoints.js';
+import { createListEditor, isListEditorCollapsed } from '../../../../sillybunny-editor/list-shell.js';
 import { stopBusyTask, syncBusyControls } from './busy.js';
 import { COLLAPSE_WIDTH } from './constants.js';
 import { button, el, tr } from './dom.js';
@@ -71,6 +72,7 @@ export function mountArchive(ctx, state, ui, dialog) {
         if (ui.listPage) {
             return;
         }
+        ui.splitFocusPending = false;
         const page = pushPage(ui, {
             title: ui.data.locations.current.label,
             content: ui.listPane,
@@ -89,15 +91,18 @@ export function mountArchive(ctx, state, ui, dialog) {
     };
     // A covered root has no width, so the list editor cannot notice a resize; watch the page area and the phone query here.
     const pagesNode = dialog.page.parentElement;
-    const phone = matchMedia('(max-width: 768px)');
-    const isWide = () => !phone.matches && pagesNode.clientWidth >= COLLAPSE_WIDTH;
+    const phone = matchMedia(LAYOUT_MOBILE_QUERY);
+    const isWide = () => !isListEditorCollapsed({ viewportMobile: phone.matches, width: pagesNode.clientWidth, collapseAt: COLLAPSE_WIDTH });
     ui.splitFocusPending = false;
+    // The flag belongs to the list page that reconcileLayout closes. A list page closed any other way must not leave it set.
+    let forcedListPage = null;
     const reconcileLayout = () => {
         if (!isWide() || !ui.listPage || ui.pages.at(-1) !== ui.listPage) {
             return;
         }
         const active = document.activeElement;
         ui.splitFocusPending ||= active === document.body || ui.listPage.page.contains(active);
+        forcedListPage = ui.listPage;
         ui.listPage.forceClose();
     };
     const settleSplitFocus = () => {
@@ -107,74 +112,85 @@ export function mountArchive(ctx, state, ui, dialog) {
         ui.splitFocusPending = false;
         focusSelection(ui, state.selectedKey);
     };
-    const layoutWatcher = new ResizeObserver(reconcileLayout);
-    layoutWatcher.observe(pagesNode);
-    phone.addEventListener('change', reconcileLayout);
     ui.onPageClosed = page => {
         if (dialog.isOpen === false) {
             return;
         }
         if (page === ui.listPage) {
             ui.listPage = null;
+            if (page !== forcedListPage) {
+                ui.splitFocusPending = false;
+            }
+            forcedListPage = null;
             syncLocationPane(ui);
         } else {
             reconcileLayout();
         }
     };
 
-    dialog.body.classList.add('sbca-body');
-    ui.data = deriveView(ctx, state, ui);
-    ui.listEditor = createListEditor({
-        container: dialog.body,
-        storageKey: 'sbca-locations-width',
-        defaultWidth: 0.29,
-        minWidth: 220,
-        maxWidth: 360,
-        collapseAt: COLLAPSE_WIDTH,
-        escapeCloses: false,
-        transitionItemSwitch: false,
-        label: tr(ctx, 'Locations'),
-        classNames: { root: 'sbca-shell', sidebar: 'sbca-sidebar', detail: 'sbca-detail' },
-        renderList: sidebar => renderSidebar(ctx, ui, sidebar, chooseLocation),
-        renderDetail: detail => detail.append(ui.listPane),
-        getKey: location => location.key,
-        focusTarget: () => null,
-        isDirty: () => false,
-        onSave: () => true,
-        onDiscard: () => {},
-        // layout() runs this before it records the change, so deselecting here would re-enter it.
-        onCollapseChange: collapsed => queueMicrotask(() => {
-            if (state.closed) {
-                return;
-            }
-            // The selection header belongs to the page that showed the list, and a layout change moves the list to another page.
-            ui.selection.exit();
-            if (collapsed) {
-                ui.listEditor.deselectNow();
-            } else {
-                reconcileLayout();
-                void Promise.resolve(syncLocationPane(ui)).then(settleSplitFocus);
-            }
-        }),
-    });
-    ui.sidebar = ui.listEditor.sidebar;
-    bindLocationKeys(ui.sidebar);
-    bindListKeys(ui);
-    ui.selection = createArchiveSelection(ctx, state, ui);
-    addViewControls(ctx, state, ui, dialog);
-
-    ui.listEditor.layout();
-    renderList(ctx, state, ui);
-    syncBusyControls(ctx, state, ui);
-    updateOrganizationStatus(ctx, state, ui);
-    updateSelectionControls(ctx, state, ui);
-    setOrganizationControlsEnabled(ui, false);
-
-    return () => {
+    const layoutWatcher = new ResizeObserver(reconcileLayout);
+    layoutWatcher.observe(pagesNode);
+    phone.addEventListener('change', reconcileLayout);
+    const cleanup = () => {
         layoutWatcher.disconnect();
         phone.removeEventListener('change', reconcileLayout);
         unbindSearch();
-        ui.selection.destroy();
-        ui.listEditor.destroy();
+        ui.selection?.destroy();
+        ui.listEditor?.destroy();
     };
+
+    try {
+        dialog.body.classList.add('sbca-body');
+        ui.data = deriveView(ctx, state, ui);
+        ui.listEditor = createListEditor({
+            container: dialog.body,
+            storageKey: 'sbca-locations-width',
+            defaultWidth: 0.29,
+            minWidth: 220,
+            maxWidth: 360,
+            collapseAt: COLLAPSE_WIDTH,
+            escapeCloses: false,
+            transitionItemSwitch: false,
+            label: tr(ctx, 'Locations'),
+            classNames: { root: 'sbca-shell', sidebar: 'sbca-sidebar', detail: 'sbca-detail' },
+            renderList: sidebar => renderSidebar(ctx, ui, sidebar, chooseLocation),
+            renderDetail: detail => detail.append(ui.listPane),
+            getKey: location => location.key,
+            focusTarget: () => null,
+            isDirty: () => false,
+            onSave: () => true,
+            onDiscard: () => {},
+            // layout() runs this before it records the change, so deselecting here would re-enter it.
+            onCollapseChange: collapsed => queueMicrotask(() => {
+                if (state.closed) {
+                    return;
+                }
+                // The selection header belongs to the page that showed the list, and a layout change moves the list to another page.
+                ui.selection.exit();
+                if (collapsed) {
+                    ui.listEditor.deselectNow();
+                } else {
+                    reconcileLayout();
+                    void Promise.resolve(syncLocationPane(ui)).then(settleSplitFocus);
+                }
+            }),
+        });
+        ui.sidebar = ui.listEditor.sidebar;
+        bindLocationKeys(ui.sidebar);
+        bindListKeys(ui);
+        ui.selection = createArchiveSelection(ctx, state, ui);
+        addViewControls(ctx, state, ui, dialog);
+
+        ui.listEditor.layout();
+        renderList(ctx, state, ui);
+        syncBusyControls(ctx, state, ui);
+        updateOrganizationStatus(ctx, state, ui);
+        updateSelectionControls(ctx, state, ui);
+        setOrganizationControlsEnabled(ui, false);
+    } catch (error) {
+        // The caller gets the cleanup only on success, so a failed mount must release the watchers itself.
+        cleanup();
+        throw error;
+    }
+    return cleanup;
 }

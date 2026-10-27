@@ -194,9 +194,6 @@ function syncActionBar(state, ui) {
 
 export function createArchiveSelection(ctx, state, ui) {
     const slots = {};
-    // The shared mode hides its `header` element at creation. The real frame headers are passed through
-    // `headerSlots`, so this detached element absorbs that hiding.
-    const scratchHeader = document.createElement('div');
     return createSelectionMode({
         root: ui.dialog.surface,
         list: ui.list,
@@ -204,7 +201,6 @@ export function createArchiveSelection(ctx, state, ui) {
         getKey: row => row.dataset.sbcaKey,
         range: true,
         getAllKeys: () => state.matchingRows.map(physicalChatKey),
-        header: scratchHeader,
         headerSlots: slots,
         actionBar: ui.selectionBar,
         actions: buildActions(ctx, state, ui),

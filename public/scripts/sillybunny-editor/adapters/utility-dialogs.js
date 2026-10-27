@@ -1,5 +1,5 @@
 import { t } from '../../i18n.js';
-import { createEntryRow, createPrefGroup, createSpinRow, releaseRowIds } from '../rows.js';
+import { createEntryRow, createPrefGroup, createSpinRow, moveCaption, releaseRowIds } from '../rows.js';
 import { createToggleRow } from '../toggle-row.js';
 import { createSelectRow } from '../select-row.js';
 
@@ -11,13 +11,6 @@ function asElement(source) {
 
 function textOf(node) {
     return node?.textContent.replace(/\s+/g, ' ').trim() ?? '';
-}
-
-function moveCaption(target, source) {
-    if (!source) return;
-    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
-    target.replaceChildren(...source.childNodes);
-    source.remove();
 }
 
 function entryRow(input, caption, subtitle) {
@@ -118,8 +111,7 @@ export function quickReplyTransferOptions(source) {
         tier: 'dialog',
         onOpen() { row.trigger.focus({ preventScroll: true }); },
         onClose() {
-            // The transfer handler reads sel.value after show() resolves.
-            row.row.replaceWith(select);
+            // Destroying the row returns the select to its old parent, which the caller reads after the dialog resolves.
             row.destroy();
             releaseRowIds(root);
         },

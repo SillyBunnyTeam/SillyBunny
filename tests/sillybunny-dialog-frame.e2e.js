@@ -308,9 +308,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             row.dataset.sbListKey = 'one';
             row.textContent = 'One';
             list.append(row);
-            const inertHeader = document.createElement('div');
             const actionBar = document.createElement('div');
-            content.append(inertHeader, list, actionBar);
+            content.append(list, actionBar);
             window.qaDialog = openDialog({ title: 'Archive', content, menu: () => [], search: { collapsed: true, onChange() {} } });
             const slots = {
                 header: window.qaDialog.header,
@@ -321,7 +320,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 menuButton: window.qaDialog.menuButton,
                 closeButton: window.qaDialog.closeButton,
             };
-            window.qaSelection = createSelectionMode({ root: content, list, header: inertHeader, actionBar, actions: [], headerSlots: slots });
+            window.qaSelection = createSelectionMode({ root: content, list, actionBar, actions: [], headerSlots: slots });
             opener.focus();
             window.qaSelection.enter(null, opener);
         });

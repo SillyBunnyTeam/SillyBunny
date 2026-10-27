@@ -97,21 +97,30 @@ describe('Characters menu contrast and token contracts', () => {
         expect(rule(theme, '.select2-container--default .select2-results__options')).toContain('background-color: var(--sb-layer-popover);');
     });
 
-    test('Select2 and Quick Reply menu rows are 32px on fine pointers and 44px on coarse pointers', () => {
+    test('Select2 and Quick Reply menu rows are 32px on fine pointers and 44px on coarse pointers, the coarse rule last', () => {
         const heights = selector => {
             const found = { fine: [], coarse: [] };
+            const positions = { fine: [], coarse: [] };
+            let position = 0;
             const visit = (rules, coarse = false) => {
                 for (const entry of rules) {
+                    position++;
                     const height = entry.declarations?.find(declaration => declaration.property === 'height')?.value;
-                    if (entry.selectors?.includes(selector) && height) found[coarse ? 'coarse' : 'fine'].push(height);
+                    if (entry.selectors?.includes(selector) && height) {
+                        found[coarse ? 'coarse' : 'fine'].push(height);
+                        positions[coarse ? 'coarse' : 'fine'].push(position);
+                    }
                     if (entry.rules) visit(entry.rules, coarse || (entry.type === 'media' && /pointer:\s*coarse/.test(entry.media)));
                 }
             };
             visit(parse(theme).stylesheet.rules);
-            return found;
+            return { found, positions };
         };
         for (const selector of ['.select2-container--default .select2-results__option', '.list-group.ctx-menu .list-group-item']) {
-            expect(heights(selector)).toEqual({ fine: ['32px'], coarse: ['44px'] });
+            const { found, positions } = heights(selector);
+            expect(found).toEqual({ fine: ['32px'], coarse: ['44px'] });
+            // Equal specificity, so only source order lets the coarse height win.
+            expect(positions.coarse[0]).toBeGreaterThan(positions.fine[0]);
         }
     });
 

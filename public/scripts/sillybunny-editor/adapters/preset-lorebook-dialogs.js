@@ -1,13 +1,6 @@
 import { t } from '../../i18n.js';
-import { createCheckRow, createPrefGroup, createSpinRow, createSwitchRow, releaseRowIds } from '../rows.js';
+import { createCheckRow, createPrefGroup, createSpinRow, createSwitchRow, moveCaption, releaseRowIds } from '../rows.js';
 import { createSelectRow } from '../select-row.js';
-
-function moveText(target, source) {
-    if (!source) return;
-    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
-    target.replaceChildren(...source.childNodes);
-    source.remove();
-}
 
 function checkChoice(label) {
     const input = label.querySelector('input[type="checkbox"]');
@@ -15,8 +8,8 @@ function checkChoice(label) {
     const caption = label.querySelector('span');
     const detail = label.querySelector('small');
     const row = createCheckRow({ label: '', subtitle: detail?.textContent.trim(), field: input.dataset.chid ?? input.value, input });
-    moveText(row.row.querySelector('.ds-row-label'), caption);
-    moveText(row.row.querySelector('.ds-row-subtitle'), detail);
+    moveCaption(row.row.querySelector('.ds-row-label'), caption);
+    moveCaption(row.row.querySelector('.ds-row-subtitle'), detail);
     return row;
 }
 
@@ -117,9 +110,9 @@ export function lorebookSelectOptions(root, { character = false } = {}) {
         }
         const noneLabel = auxiliary ? t`No auxiliary Lorebooks set. Click here to select.` : select.options[0].textContent;
         const row = createSelectRow({ select, label, subtitle: description.textContent.trim(), field: select.classList[0], searchLabel: t`Search`, emptyText: t`No results`, noneLabel });
-        if (caption) moveText(row.row.querySelector('.ds-row-label'), caption);
+        if (caption) moveCaption(row.row.querySelector('.ds-row-label'), caption);
         else row.row.querySelector('.ds-row-label').dataset.i18n = 'Lorebook';
-        moveText(row.row.querySelector('.ds-row-subtitle'), description);
+        moveCaption(row.row.querySelector('.ds-row-subtitle'), description);
         return row;
     });
     root.className = 'sb-dialog-rows';

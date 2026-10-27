@@ -73,8 +73,32 @@ function onSelectChanges(select, handler) {
 }
 
 /**
+ * Remembers where the adopted nodes sit. The returned function puts back the ones that are still
+ * inside `row`, so it is safe to call twice or after a caller moved the select itself. Neighbours
+ * that were adopted too have moved away by then, so the nodes follow the old next sibling, else the
+ * old previous one, else go to the end of the old parent. Selects that sat side by side therefore
+ * regain their order whichever is destroyed first.
+ * @param {HTMLElement[]} nodes  The select and its select2 container, in document order.
+ * @returns {(row: HTMLElement) => void}
+ */
+function rememberPosition(nodes) {
+    const parent = nodes[0].parentNode;
+    const next = nodes.at(-1).nextSibling;
+    const previous = nodes[0].previousSibling;
+    return row => {
+        const adopted = nodes.filter(node => row.contains(node));
+        if (!parent || !adopted.length) return;
+        const anchor = next?.parentNode === parent
+            ? next
+            : previous?.parentNode === parent ? previous.nextSibling : null;
+        for (const node of adopted) parent.insertBefore(node, anchor);
+    };
+}
+
+/**
  * Mirrors a native select in a boxed-list row. The select is adopted (moved, never cloned) and stays
- * the source of truth; it is hidden from layout and focus while the row owns it.
+ * the source of truth; it is hidden from layout and focus while the row owns it. `destroy()` puts the
+ * select back where it was adopted from.
  * @param {object} options
  * @param {HTMLSelectElement} options.select
  * @param {string} options.label
@@ -96,6 +120,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
     const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
+    const restorePosition = rememberPosition([select, ...(container ? [container] : [])]);
     select.classList.add('ds-select-row__native');
     select.tabIndex = -1;
     select.setAttribute('aria-hidden', 'true');
@@ -209,6 +234,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
             observer.disconnect();
             unbindChange();
             if (isPickerOpen(trigger)) closePicker({ animate: false, restoreFocus: false });
+            restorePosition(row);
             select.classList.remove('ds-select-row__native');
             if (previous.tabIndex === null) select.removeAttribute('tabindex');
             else select.setAttribute('tabindex', previous.tabIndex);

@@ -44,12 +44,13 @@ for (const viewport of VIEWPORTS) {
 
         await page.evaluate(async () => {
             const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
-            window.qaInput = new Popup('<h3>Rename a connection profile with a long descriptive title</h3><p>Enter a long name.</p>', POPUP_TYPE.INPUT, 'Old', { rows: 4 });
+            window.qaInput = new Popup('<h3>Rename a connection profile with a long descriptive title that cannot fit beside the response buttons</h3><p>Enter a long name.</p>', POPUP_TYPE.INPUT, 'Old', { rows: 4 });
             void window.qaInput.show();
         });
         popup = page.locator('dialog.popup[open]').last();
         await expect(popup).toHaveClass(/sb-dialog--dialog/);
-        await expect(popup.locator('.sb-dialog__title')).toHaveText('Rename a connection profile with a long descriptive title');
+        // The title is wider than any header layout, so it ellipsizes and must stay centred.
+        await expect(popup.locator('.sb-dialog__title')).toHaveText('Rename a connection profile with a long descriptive title that cannot fit beside the response buttons');
         const headerFit = await popup.evaluate(node => {
             const title = node.querySelector('.sb-dialog__title').getBoundingClientRect();
             const surface = node.getBoundingClientRect();
@@ -76,6 +77,34 @@ for (const viewport of VIEWPORTS) {
         await popup.locator('.sb-dialog__close').click();
         await expect(popup).toBeHidden();
     });
+
+    // On a sheet the same title is wider than any header layout, so only floating dialogs can show it whole.
+    if (viewport.presentation === 'floating') {
+        test(`Popup title just past the centring limit stays whole at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+            await boot(page, viewport);
+            const text = 'Rename a connection profile with a long descriptive title';
+            await page.evaluate(async text => {
+                const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+                window.qaInput = new Popup(`<h3>${text}</h3><p>Enter a long name.</p>`, POPUP_TYPE.INPUT, 'Old', { rows: 4 });
+                void window.qaInput.show();
+            }, text);
+            const popup = page.locator('dialog.popup[open]').last();
+            await expect(popup.locator('.sb-dialog__title')).toHaveText(text);
+            await expect(popup.locator('.sb-dialog__header')).toHaveAttribute('data-header-centering-loose', '');
+            const headerFit = await popup.evaluate(node => {
+                const titleNode = node.querySelector('.sb-dialog__title');
+                const title = titleNode.getBoundingClientRect();
+                const responses = [...node.querySelectorAll('.popup-button-ok, .popup-button-cancel')].map(button => button.getBoundingClientRect());
+                return {
+                    overlaps: responses.some(button => title.left < button.right && title.right > button.left),
+                    clipped: titleNode.scrollWidth > titleNode.clientWidth,
+                };
+            });
+            expect(headerFit).toEqual({ overlaps: false, clipped: false });
+            await popup.locator('.popup-button-cancel').click();
+            await expect(popup).toBeHidden();
+        });
+    }
 
     test(`Popup veto, inputs, scrim and focus contract at ${viewport.width}×${viewport.height}`, async ({ page }) => {
         await boot(page, viewport);

@@ -109,10 +109,7 @@ export function adaptQuickReplyEditor(root) {
             size: 'fill',
             title: t`Quick Reply`,
             onClose() {
-                for (const row of selects) {
-                    row.row.replaceWith(row.control);
-                    row.destroy();
-                }
+                for (const row of selects) row.destroy();
                 releaseRowIds(root);
             },
         },

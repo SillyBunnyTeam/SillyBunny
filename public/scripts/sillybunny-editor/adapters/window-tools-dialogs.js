@@ -1,17 +1,10 @@
 import { t } from '../../i18n.js';
-import { createCheckRow, createEntryRow, createPrefGroup, createPropertyRow, createRow, releaseRowIds } from '../rows.js';
+import { createCheckRow, createEntryRow, createPrefGroup, createPropertyRow, createRow, moveCaption, releaseRowIds } from '../rows.js';
 
 function asElement(source) {
     const root = source?.jquery ? source.get(0) : source;
     if (root instanceof HTMLElement) return root;
     throw new TypeError('A window tools adapter needs an HTML element.');
-}
-
-function moveCaption(target, source) {
-    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
-    target.replaceChildren(...source.childNodes);
-    target.textContent = target.textContent.trim().replace(/[：:]$/, '').trim();
-    source.remove();
 }
 
 function displayLabel(node) {
@@ -47,13 +40,13 @@ export function tokenCounterOptions(source) {
     idsRow.row.classList.add('ds-row--stacked');
     const countRow = createPropertyRow({ label: displayLabel(countCaption), value: count.textContent, field: 'token-counter-result' });
     const tokenizerRow = createPropertyRow({ label: tokenizerProperty.label, value: tokenizerProperty.value, field: 'token-counter-tokenizer' });
-    moveCaption(countRow.row.querySelector('.ds-row-subtitle'), countCaption);
+    moveCaption(countRow.row.querySelector('.ds-row-subtitle'), countCaption, { stripColon: true });
     count.classList.add('ds-row-label', 'ds-row-property__value');
     countRow.row.querySelector('.ds-row-property__value').replaceWith(count);
     const chunksRow = createRow({ label: '', field: 'token-counter-chunks', suffix: chunks, stacked: true });
-    moveCaption(inputRow.row.querySelector('.ds-row-label'), inputCaption);
-    moveCaption(idsRow.row.querySelector('.ds-row-label'), idsCaption);
-    moveCaption(chunksRow.row.querySelector('.ds-row-label'), chunksCaption);
+    moveCaption(inputRow.row.querySelector('.ds-row-label'), inputCaption, { stripColon: true });
+    moveCaption(idsRow.row.querySelector('.ds-row-label'), idsCaption, { stripColon: true });
+    moveCaption(chunksRow.row.querySelector('.ds-row-label'), chunksCaption, { stripColon: true });
 
     content.classList.add('sb-dialog-rows');
     const inputGroup = createPrefGroup({

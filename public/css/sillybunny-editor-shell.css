@@ -1017,7 +1017,7 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     overflow-wrap: anywhere;
 }
 
-[data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+[data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     min-block-size: 40px;
     margin: 0;
     padding: 8px 12px;
@@ -1030,9 +1030,19 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-[data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+[data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
+.sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Header bars raise their text buttons. The generic button fill is more specific than the header rule, so these selectors match its chain.
+   Select All stays raised and body-coloured when everything is selected, so the theme pressed accent and ring are cleared. */
+.sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    color: inherit;
 }
 
 .sb-selection-action-bar {
@@ -1152,20 +1162,30 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
 
 @media (hover: hover) {
     .sb-picker__option:hover,
-    [data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+    [data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
         background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        background: var(--sb-raised-hover-bg);
     }
 }
 
+.sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
+    background: var(--sb-raised-active-bg);
+    transform: none;
+}
+
 .sb-picker__option:active,
-[data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
+[data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
     background: var(--sb-flat-active-bg);
     transform: none;
 }
 
 @media (pointer: coarse), (any-pointer: coarse) {
     .sb-selection-header .sb-editor-action,
-    [data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+    .sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all),
+    [data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
     [data-selection-mode='true'] button.menu_button.sb-selection-action:disabled {
         min-block-size: 44px;
     }
@@ -1175,14 +1195,14 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     .sb-picker__search,
     .sb-picker__option,
     .sb-picker__footer-item,
-    [data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
+    [data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
     .sb-selection-check {
         transition: none;
     }
 }
 
 body.reduced-motion :is(.sb-picker__search, .sb-picker__option, .sb-picker__footer-item, .sb-selection-check),
-body.reduced-motion [data-selection-mode='true'] button.menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+body.reduced-motion [data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     transition: none;
 }
 

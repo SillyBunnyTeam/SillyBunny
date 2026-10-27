@@ -1,8 +1,11 @@
 import { play, stopMotion, prefersReducedMotion, SPRING_NAVIGATION, MOTION_FAST } from '../sillybunny-motion.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../popup.js';
 import { t } from '../i18n.js';
+import { LAYOUT_MOBILE_QUERY } from './breakpoints.js';
 
-export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261027a', id: 'deferred-editor-shell-css' };
+const DEFAULT_COLLAPSE_AT = 720;
+
+export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261027b', id: 'deferred-editor-shell-css' };
 
 /**
  * Loads the deferred shell stylesheet. Consumers await it before revealing the shell.
@@ -11,6 +14,17 @@ export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v
 export function loadListEditorStyles() {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
     return loader ? loader(LIST_EDITOR_STYLESHEET.href, { id: LIST_EDITOR_STYLESHEET.id }) : Promise.resolve();
+}
+
+/**
+ * Whether the list and detail panes stack instead of sitting side by side. Callers that must agree
+ * with a list editor, for example when watching an ancestor of its root, use this same rule.
+ * @param {{ viewportMobile: boolean, width: number, collapseAt?: number }} layout
+ *   `width` is the root width; `viewportMobile` is whether `LAYOUT_MOBILE_QUERY` matches.
+ * @returns {boolean}
+ */
+export function isListEditorCollapsed({ viewportMobile, width, collapseAt = DEFAULT_COLLAPSE_AT }) {
+    return viewportMobile || width < collapseAt;
 }
 
 function classes(base, extra) {
@@ -38,7 +52,7 @@ function cssEscape(value) {
  * @param {number}      [config.defaultWidth=0.30]      Default sidebar width as a fraction of the root.
  * @param {number}      [config.minWidth=240]
  * @param {number}      [config.maxWidth=420]
- * @param {number}      [config.collapseAt=720]         Root width below which the panes stack.
+ * @param {number}      [config.collapseAt=720]         Root width below which the panes stack (see `isListEditorCollapsed`).
  * @param {(sidebar: HTMLElement) => unknown} config.renderList
  * @param {(detail: HTMLElement, item: unknown, context: { isCurrent: () => boolean }) => unknown} config.renderDetail
  * @param {() => boolean|Promise<boolean>} config.onSave  Save the open item; false keeps the user in place.
@@ -70,7 +84,7 @@ export function createListEditor(config) {
         defaultWidth = 0.30,
         minWidth = 240,
         maxWidth = 420,
-        collapseAt = 720,
+        collapseAt = DEFAULT_COLLAPSE_AT,
         renderList,
         renderDetail,
         onSave,
@@ -140,7 +154,7 @@ export function createListEditor(config) {
     let refreshPending = false;
     let pointerActive = false;
     let busy = false;
-    const mobile = matchMedia('(max-width: 768px)');
+    const mobile = matchMedia(LAYOUT_MOBILE_QUERY);
     const clampWidth = value => Math.max(minWidth, Math.min(maxWidth, value));
     const listWidth = () => clampWidth(sidebarWidth || root.clientWidth * defaultWidth);
 
@@ -150,7 +164,7 @@ export function createListEditor(config) {
         if (transition) return;
         const width = root.clientWidth;
         if (!width) return;
-        const nextCollapsed = mobile.matches || width < collapseAt;
+        const nextCollapsed = isListEditorCollapsed({ viewportMobile: mobile.matches, width, collapseAt });
         const nextListWidth = listWidth();
         const info = { width, collapsed: nextCollapsed, open: isOpen, listWidth: nextListWidth, collapseChanged: nextCollapsed !== collapsed };
         const measurement = measureLayout?.(info);

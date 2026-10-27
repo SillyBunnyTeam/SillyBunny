@@ -1,5 +1,5 @@
 import { t } from '../../i18n.js';
-import { createEntryRow, createPrefGroup, createSpinRow, releaseRowIds } from '../rows.js';
+import { createEntryRow, createPrefGroup, createSpinRow, moveCaption, releaseRowIds } from '../rows.js';
 import { createSelectRow } from '../select-row.js';
 import { createToggleRow } from '../toggle-row.js';
 
@@ -11,14 +11,6 @@ function asElement(root) {
 
 function textOf(node) {
     return node?.textContent.replace(/\s+/g, ' ').trim() ?? '';
-}
-
-function moveCaption(target, source) {
-    if (!source) return;
-    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
-    if (source.id) target.id = source.id;
-    target.replaceChildren(...source.childNodes);
-    source.remove();
 }
 
 function segmentedRow(labels, field, label) {
@@ -66,7 +58,7 @@ export function creatorStylesPreferenceOptions(source) {
     const warning = root.querySelector('h4');
     const labels = [...root.querySelectorAll('.sb-boolean-radio-group > label')];
     const row = segmentedRow(labels, 'creator-styles-preference', textOf(heading));
-    moveCaption(row.row.querySelector('.ds-row-label'), heading);
+    moveCaption(row.row.querySelector('.ds-row-label'), heading, { copyId: true });
     row.group.setAttribute('aria-labelledby', row.row.querySelector('.ds-row-label').id);
     root.className = 'sb-dialog-rows';
     root.replaceChildren(...[warning, createPrefGroup({ field: 'creator-styles', rows: [row] }).section].filter(Boolean));
@@ -80,7 +72,7 @@ export function externalMediaOptions(source) {
     const subtitle = root.querySelector('small');
     const labels = [...root.querySelectorAll(':scope > label.checkbox_label')];
     const row = segmentedRow(labels, 'external-media-override', textOf(heading));
-    moveCaption(row.row.querySelector('.ds-row-label'), heading);
+    moveCaption(row.row.querySelector('.ds-row-label'), heading, { copyId: true });
     const group = createPrefGroup({ field: 'external-media', rows: [row] });
     root.className = 'forbid_media_override sb-dialog-rows';
     root.replaceChildren(...[subtitle, group.section].filter(Boolean));
@@ -121,8 +113,8 @@ export function customCssAiOptions(source) {
     });
     const applyRow = segmentedRow(applyLabels, 'custom-css-ai-apply-mode', t`Apply`);
     const notes = [...root.querySelectorAll(':scope > small')];
-    moveCaption(instructionRow.row.querySelector('.ds-row-label'), instructionCaption);
-    moveCaption(profileRow.row.querySelector('.ds-row-label'), profileCaption);
+    moveCaption(instructionRow.row.querySelector('.ds-row-label'), instructionCaption, { copyId: true });
+    moveCaption(profileRow.row.querySelector('.ds-row-label'), profileCaption, { copyId: true });
     root.className = 'sb-dialog-rows';
     root.replaceChildren(
         ...[heading, createPrefGroup({ field: 'custom-css-ai-fields', rows: [instructionRow, profileRow, applyRow] }).section, ...notes].filter(Boolean),
@@ -143,7 +135,7 @@ export function messageScreenshotOptions({ startId, endId }) {
                 const input = label.querySelector('input');
                 if (!input || ![startId, endId].includes(input.id)) return null;
                 const row = createSpinRow({ label: textOf(label.querySelector('span')), subtitle: input.title, field: input.id, input, normalize: false });
-                moveCaption(row.row.querySelector('.ds-row-label'), label.querySelector('span'));
+                moveCaption(row.row.querySelector('.ds-row-label'), label.querySelector('span'), { copyId: true });
                 return row;
             }).filter(Boolean);
             popup.content.append(createPrefGroup({ field: 'message-screenshot-range', rows }).section);
@@ -176,7 +168,7 @@ export function installExtensionOptions(source) {
                     field: branchInput.id,
                     input: branchInput,
                 }));
-                moveCaption(rows[1].row.querySelector('.ds-row-label'), branchLabel.querySelector('span'));
+                moveCaption(rows[1].row.querySelector('.ds-row-label'), branchLabel.querySelector('span'), { copyId: true });
             }
             popup.inputControls.replaceChildren();
             popup.inputControls.style.display = 'none';
@@ -217,7 +209,7 @@ export function accountFormOptions(source, { title = null, destructive = false }
         const anchor = document.createComment('account entry row');
         input.before(anchor);
         const row = createEntryRow({ label: textOf(caption), field: input.name, input });
-        moveCaption(row.row.querySelector('.ds-row-label'), caption);
+        moveCaption(row.row.querySelector('.ds-row-label'), caption, { copyId: true });
         const group = createPrefGroup({ field: `${input.name}-field`, rows: [row] });
         if (container) container.replaceChildren(group.section);
         else anchor.replaceWith(group.section);

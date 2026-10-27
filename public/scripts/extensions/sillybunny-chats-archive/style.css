@@ -575,38 +575,6 @@
     cursor: not-allowed;
 }
 
-/* The selection root is the dialog surface, so the shared `[data-selection-mode='true']` rule that flattens the
-   bar's buttons also matches the header's. Header bars raise text buttons, so restore the header-bar look. */
-.sbca-dialog .sb-dialog__header.is-selection-mode button.menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
-    min-block-size: 38px;
-    padding: 0 12px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
-    background: var(--sb-raised-bg);
-}
-
-@media (hover: hover) {
-    .sbca-dialog .sb-dialog__header.is-selection-mode button.menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
-        background: var(--sb-raised-hover-bg);
-    }
-}
-
-.sbca-dialog .sb-dialog__header.is-selection-mode button.menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
-    background: var(--sb-raised-active-bg);
-}
-
-@media (pointer: coarse), (any-pointer: coarse) {
-    .sbca-dialog .sb-dialog__header.is-selection-mode button.menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
-        min-block-size: 44px;
-    }
-}
-
-/* The header's centring check assumes the title column is as wide as its free space, but the shared 6px inline
-   padding on the title wrapper takes 12px from it. A count that the check treats as fitting would then still be
-   ellipsized beside Cancel, Select all and Close. */
-.sbca-dialog .sb-dialog__header.is-selection-mode .sb-dialog__titles {
-    padding-inline: 0;
-}
-
 /* A row's trailing Add or Create button keeps its text on one line beside the entry. */
 .sbca-dialog .ds-row-suffix > .menu_button {
     flex: none;

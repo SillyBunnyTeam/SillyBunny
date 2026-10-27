@@ -331,6 +331,139 @@ describe('createSelectRow', () => {
     });
 });
 
+describe('createSelectRow destroy', () => {
+    function surround(select) {
+        const parent = select.parentElement;
+        const before = document.createElement('span');
+        const after = document.createElement('span');
+        parent.prepend(before);
+        parent.append(after);
+        return { parent, before, after };
+    }
+
+    test('puts the adopted select back between its old neighbours and removes the row', () => {
+        const select = makeSelect();
+        const { parent, before, after } = surround(select);
+        const result = mount({ select });
+        expect(select.parentElement).not.toBe(parent);
+
+        result.destroy();
+
+        expect(result.row.isConnected).toBe(false);
+        expect([...parent.children]).toEqual([before, select, after]);
+        expect(select.classList.contains('ds-select-row__native')).toBe(false);
+    });
+
+    test('is idempotent', () => {
+        const select = makeSelect();
+        const { parent, before, after } = surround(select);
+        const result = mount({ select });
+
+        result.destroy();
+        result.destroy();
+
+        expect([...parent.children]).toEqual([before, select, after]);
+    });
+
+    test('leaves a select that the caller already moved back or elsewhere where it is', () => {
+        const select = makeSelect();
+        const { parent } = surround(select);
+        const result = mount({ select });
+        result.row.replaceWith(select);
+        result.destroy();
+        expect(select.parentElement).toBe(document.body);
+        expect(parent.contains(select)).toBe(false);
+
+        const second = makeSelect();
+        const secondParent = second.parentElement;
+        const other = document.createElement('div');
+        document.body.append(other);
+        const secondResult = mount({ select: second });
+        other.append(second);
+        secondResult.destroy();
+        expect(second.parentElement).toBe(other);
+        expect(secondParent.contains(second)).toBe(false);
+    });
+
+    test('goes to the end of the old parent when the node that followed it has moved away', () => {
+        const select = makeSelect();
+        const { parent, before, after } = surround(select);
+        const result = mount({ select });
+        document.body.append(after);
+
+        result.destroy();
+
+        expect([...parent.children]).toEqual([before, select]);
+    });
+
+    test.each([
+        ['in order', [0, 1, 2]],
+        ['in reverse', [2, 1, 0]],
+        ['middle first', [1, 0, 2]],
+        ['the ends first', [0, 2, 1]],
+    ])('adjacent adopted selects regain their order when destroyed %s', (_name, order) => {
+        const parent = document.createElement('div');
+        const before = document.createElement('span');
+        const after = document.createElement('span');
+        const selects = ['a', 'b', 'c'].map(id => {
+            const select = document.createElement('select');
+            select.id = id;
+            return select;
+        });
+        parent.append(before, ...selects, after);
+        document.body.append(parent);
+        const results = selects.map(select => mount({ select }));
+        expect([...parent.children]).toEqual([before, after]);
+
+        for (const index of order) results[index].destroy();
+
+        expect([...parent.children]).toEqual([before, ...selects, after]);
+    });
+
+    test('a select that had no parent has nowhere to return to and leaves with the row', () => {
+        const select = document.createElement('select');
+        const result = mount({ select });
+
+        result.destroy();
+
+        expect(select.isConnected).toBe(false);
+        expect(select.parentElement).toBe(result.row.querySelector('.ds-row-suffix'));
+    });
+
+    test('returns the select2 container with the select, in order', () => {
+        loadJQuery();
+        const source = readFileSync(new URL('../../public/lib/select2.min.js', import.meta.url), 'utf8');
+        new Function(source).call(window);
+        const select = makeSelect();
+        const { parent, before, after } = surround(select);
+        globalThis.jQuery(select).select2();
+        const container = globalThis.jQuery(select).data('select2').$container[0];
+        const result = mount({ select });
+
+        result.destroy();
+
+        expect([...parent.children]).toEqual([before, select, container, after]);
+        globalThis.jQuery(select).select2('destroy');
+    });
+
+    test('does not bring back a select2 container that select2 already removed', () => {
+        loadJQuery();
+        const source = readFileSync(new URL('../../public/lib/select2.min.js', import.meta.url), 'utf8');
+        new Function(source).call(window);
+        const select = makeSelect();
+        const { parent, before, after } = surround(select);
+        globalThis.jQuery(select).select2();
+        const container = globalThis.jQuery(select).data('select2').$container[0];
+        const result = mount({ select });
+        globalThis.jQuery(select).select2('destroy');
+
+        result.destroy();
+
+        expect(container.isConnected).toBe(false);
+        expect([...parent.children]).toEqual([before, select, after]);
+    });
+});
+
 describe('createProfileRow', () => {
     function makeProfiles() {
         const select = document.createElement('select');

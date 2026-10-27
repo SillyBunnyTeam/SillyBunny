@@ -171,6 +171,8 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 // ── Import under test (after all unstable_mockModule calls) ───────────────────
 
 const { createListEditor } = await import('../../public/scripts/sillybunny-list-editor.js');
+const { isListEditorCollapsed } = await import('../../public/scripts/sillybunny-editor/list-shell.js');
+const { LAYOUT_MOBILE_QUERY } = await import('../../public/scripts/sillybunny-editor/breakpoints.js');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -317,6 +319,33 @@ describe('createListEditor', () => {
             const editor = createListEditor(config);
             editor.layout();
             expect(editor.root.dataset.collapsed).toBe('true');
+        });
+    });
+
+    describe('collapse rule', () => {
+        test('the panes stack on a phone viewport whatever the width, and below collapseAt otherwise', () => {
+            expect(isListEditorCollapsed({ viewportMobile: true, width: 2000, collapseAt: 400 })).toBe(true);
+            expect(isListEditorCollapsed({ viewportMobile: false, width: 399, collapseAt: 400 })).toBe(true);
+            expect(isListEditorCollapsed({ viewportMobile: false, width: 400, collapseAt: 400 })).toBe(false);
+        });
+
+        test('collapseAt defaults to 720', () => {
+            expect(isListEditorCollapsed({ viewportMobile: false, width: 719 })).toBe(true);
+            expect(isListEditorCollapsed({ viewportMobile: false, width: 720 })).toBe(false);
+        });
+
+        test('the shell watches the shared layout query and decides with the exported rule at the boundary', () => {
+            const config = makeConfig({ collapseAt: 400 });
+            const editor = createListEditor(config);
+            expect(global.matchMedia).toHaveBeenCalledWith(LAYOUT_MOBILE_QUERY);
+            editor.root.clientWidth = 400;
+            editor.layout();
+            expect(editor.collapsed).toBe(isListEditorCollapsed({ viewportMobile: false, width: 400, collapseAt: 400 }));
+            expect(editor.collapsed).toBe(false);
+            editor.root.clientWidth = 399;
+            editor.layout();
+            expect(editor.collapsed).toBe(isListEditorCollapsed({ viewportMobile: false, width: 399, collapseAt: 400 }));
+            expect(editor.collapsed).toBe(true);
         });
     });
 

@@ -102,6 +102,44 @@ describe('openDialog structure', () => {
         expect(header.hasAttribute('data-header-centering-loose')).toBe(false);
         shortTitleCleanup();
     });
+    test('header centering counts the inline padding of the title wrapper', () => {
+        const header = document.createElement('header');
+        header.className = 'sb-dialog__header';
+        const start = document.createElement('div');
+        start.className = 'sb-dialog__header-start';
+        const titles = document.createElement('div');
+        titles.className = 'sb-dialog__titles';
+        const title = document.createElement('h2');
+        title.className = 'sb-dialog__title';
+        const end = document.createElement('div');
+        end.className = 'sb-dialog__header-end';
+        header.append(start, titles, end);
+        titles.append(title);
+        Object.defineProperty(header, 'clientWidth', { configurable: true, value: 390 });
+        Object.defineProperty(start, 'offsetWidth', { configurable: true, value: 38 });
+        Object.defineProperty(end, 'offsetWidth', { configurable: true, value: 132 });
+        // After the 12px grid gaps, 378px are free. A centred title gets 114px of them, a loose one 208px.
+        Object.defineProperty(title, 'scrollWidth', { configurable: true, value: 110 });
+        const padding = { [titles.className]: '6px' };
+        const styles = jest.spyOn(window, 'getComputedStyle').mockImplementation(node => ({
+            paddingInlineStart: padding[node.className] ?? '0px',
+            paddingInlineEnd: padding[node.className] ?? '0px',
+        }));
+
+        try {
+            const withPadding = bindHeaderLayout(header);
+            expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+            withPadding();
+
+            padding[titles.className] = '0px';
+            const withoutPadding = bindHeaderLayout(header);
+            expect(header.hasAttribute('data-header-centering-loose')).toBe(false);
+            withoutPadding();
+        } finally {
+            styles.mockRestore();
+        }
+    });
+
     test.each(['dialog', 'window'])('%s tier: native modal host, scrim, surface, header and scrolling body', tier => {
         const content = document.createElement('p');
         const dialog = openDialog({ tier, title: 'Title', subtitle: 'Sub', content, className: 'my-surface' });
@@ -501,7 +539,6 @@ describe('selection mode in dialog pages', () => {
         const selection = createSelectionMode({
             root: content,
             list,
-            header: dialog.header,
             actionBar,
             actions: [],
             headerSlots: {
@@ -644,6 +681,26 @@ describe('bottom sheets', () => {
 });
 
 describe('pages', () => {
+    test('a pushed page reports isOpen until it is popped, and not after its frame closes', async () => {
+        const dialog = openDialog({ title: 'Root' });
+        const page = dialog.push({ title: 'Child' });
+        const nested = page.push({ title: 'Nested' });
+        expect([page.isOpen, nested.isOpen]).toEqual([true, true]);
+        expect(dialog.isOpen).toBe(true);
+
+        nested.close();
+        expect([page.isOpen, nested.isOpen]).toEqual([true, false]);
+        await nested.closed;
+        expect(nested.close()).toBe(false);
+        expect(nested.isOpen).toBe(false);
+
+        const again = page.push({ title: 'Again' });
+        expect(again.isOpen).toBe(true);
+        dialog.forceClose();
+        await dialog.closed;
+        expect([page.isOpen, again.isOpen]).toEqual([false, false]);
+    });
+
     test('an immediate-apply page shows Back and Close; Back pops it and returns focus', async () => {
         const dialog = openDialog({ title: 'Root', content: document.createElement('button') });
         const trigger = dialog.body.querySelector('button');

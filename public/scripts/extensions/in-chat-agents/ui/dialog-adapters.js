@@ -1,5 +1,5 @@
 import { t } from '../../../i18n.js';
-import { createCheckRow, createEntryRow, createPrefGroup } from '../../../sillybunny-editor/rows.js';
+import { createCheckRow, createEntryRow, createPrefGroup, moveCaption } from '../../../sillybunny-editor/rows.js';
 import { createSelectRow } from '../../../sillybunny-editor/select-row.js';
 import { createToggleRow } from '../../../sillybunny-editor/toggle-row.js';
 
@@ -13,12 +13,6 @@ function asElement(source) {
 
 function textOf(node) {
     return node?.textContent.replace(/\s+/g, ' ').trim() ?? '';
-}
-
-function moveCaption(target, source) {
-    if (!source) return;
-    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
-    target.replaceChildren(...source.childNodes);
 }
 
 function labelText(label) {
@@ -36,7 +30,7 @@ function checkboxGroup(labels, field) {
         if (!input) throw new TypeError('An in-chat agents choice needs a checkbox.');
         const caption = label.querySelector('span');
         const row = createCheckRow({ label: '', field: input.id || input.name || input.value || field, input });
-        moveCaption(row.row.querySelector('.ds-row-label'), caption);
+        moveCaption(row.row.querySelector('.ds-row-label'), caption, { keepSource: true });
         label.replaceWith(row.row);
         return row;
     });

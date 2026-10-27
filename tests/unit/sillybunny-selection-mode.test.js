@@ -117,6 +117,176 @@ describe('selection mode', () => {
         expect(list).toBeTruthy();
     });
 
+    describe('header slots without a standalone header', () => {
+        function makeSlots() {
+            const dialogHeader = document.createElement('header');
+            const start = document.createElement('div');
+            const end = document.createElement('div');
+            const titleNode = document.createElement('h2');
+            titleNode.textContent = 'Chats';
+            const closeButton = document.createElement('button');
+            end.append(closeButton);
+            dialogHeader.append(start, titleNode, end);
+            document.body.append(dialogHeader);
+            return { header: dialogHeader, headerStart: start, headerEnd: end, titleNode, closeButton };
+        }
+
+        function makeSlotted(slots = makeSlots()) {
+            const root = document.createElement('section');
+            const list = document.createElement('div');
+            list.tabIndex = 0;
+            list.append(createRow('a'), createRow('b'));
+            const actionBar = document.createElement('div');
+            root.append(list, actionBar);
+            document.body.append(root);
+            const selection = createSelectionMode({ root, list, actionBar, headerSlots: slots });
+            cleanups.push(() => selection.destroy());
+            return { selection, slots, root, actionBar };
+        }
+
+        test('needs no header element, and does not hide the real header', () => {
+            const { selection, slots } = makeSlotted();
+
+            expect(slots.header.hidden).toBe(false);
+            selection.enter('a');
+            expect(slots.header.hidden).toBe(false);
+            expect(slots.header.classList.contains('is-selection-mode')).toBe(true);
+            selection.exit();
+            expect(slots.header.hidden).toBe(false);
+            expect(slots.header.classList.contains('is-selection-mode')).toBe(false);
+        });
+
+        test('a header passed beside the slots is left alone', () => {
+            const { header } = makeSelection({ headerSlots: makeSlots() });
+
+            expect(header.hidden).toBe(false);
+        });
+
+        test('rejects a mode with neither a header nor slots', () => {
+            const root = document.createElement('section');
+            const list = document.createElement('div');
+            const actionBar = document.createElement('div');
+
+            expect(() => createSelectionMode({ root, list, actionBar })).toThrow(TypeError);
+        });
+
+        test('rejects slots that lack a header part when selection starts', () => {
+            const slots = makeSlots();
+            delete slots.headerEnd;
+            const { selection } = makeSlotted(slots);
+
+            expect(() => selection.enter('a')).toThrow(TypeError);
+            expect(selection.isActive).toBe(false);
+            expect(slots.header.classList.contains('is-selection-mode')).toBe(false);
+        });
+
+        test('exposes its header controls on the handle and leaves the slots object as given', () => {
+            const slots = makeSlots();
+            const given = Object.keys(slots);
+            const { selection } = makeSlotted(slots);
+
+            expect([selection.cancelButton, selection.selectAllButton, selection.selectionTitle]).toEqual([null, null, null]);
+            selection.enter('a');
+            expect(selection.cancelButton).toBe(slots.headerStart.querySelector('.sb-selection-cancel'));
+            expect(selection.selectAllButton).toBe(slots.headerEnd.querySelector('.sb-selection-select-all'));
+            expect(selection.selectionTitle).toBe(slots.titleNode);
+            expect(selection.selectionTitle.textContent).toBe('1 selected');
+            expect(Object.keys(slots)).toEqual(given);
+            selection.exit();
+            expect([selection.cancelButton, selection.selectAllButton, selection.selectionTitle]).toEqual([null, null, null]);
+            expect(Object.keys(slots)).toEqual(given);
+        });
+
+        test('restores the header it entered when the caller points the slots elsewhere meanwhile', () => {
+            const slots = makeSlots();
+            const other = makeSlots();
+            const { selection } = makeSlotted(slots);
+
+            selection.enter('a');
+            slots.titleNode.textContent = '1 selected';
+            const entered = { ...slots };
+            Object.assign(slots, other);
+            selection.exit();
+
+            expect(entered.header.classList.contains('is-selection-mode')).toBe(false);
+            expect(entered.headerStart.querySelector('.sb-selection-cancel')).toBeNull();
+            expect(entered.headerEnd.querySelector('.sb-selection-select-all')).toBeNull();
+            expect(entered.titleNode.textContent).toBe('Chats');
+            expect(other.titleNode.textContent).toBe('Chats');
+            expect(selection.cancelButton).toBeNull();
+        });
+
+        test('survives a dialog search that re-renders the list while it closes', () => {
+            const slots = makeSlots();
+            let selection;
+            slots.search = { isOpen: true, query: 'needle', open: jest.fn(), setQuery: jest.fn(), close: jest.fn(() => selection.decorate()) };
+            ({ selection } = makeSlotted(slots));
+
+            expect(() => selection.enter('a')).not.toThrow();
+
+            expect(selection.cancelButton).not.toBeNull();
+            expect(selection.selectionTitle.textContent).toBe('1 selected');
+            expect(selection.selectAllButton.getAttribute('aria-pressed')).toBe('false');
+        });
+
+        test('a change handler that leaves selection mode during enter ends it cleanly', () => {
+            const slots = makeSlots();
+            const onExit = jest.fn();
+            const root = document.createElement('section');
+            const list = document.createElement('div');
+            list.append(createRow('a'));
+            const actionBar = document.createElement('div');
+            root.append(list, actionBar);
+            document.body.append(root);
+            const selection = createSelectionMode({ root, list, actionBar, headerSlots: slots, onExit, onChange: () => selection.exit() });
+            cleanups.push(() => selection.destroy());
+
+            expect(() => selection.enter('a')).not.toThrow();
+
+            expect(selection.isActive).toBe(false);
+            expect(onExit).toHaveBeenCalledTimes(1);
+            expect(slots.header.classList.contains('is-selection-mode')).toBe(false);
+            expect(slots.headerStart.querySelector('.sb-selection-cancel')).toBeNull();
+            expect(slots.titleNode.textContent).toBe('Chats');
+        });
+
+        test('a dialog search that fails to close leaves the mode inactive with the header restored', () => {
+            const slots = makeSlots();
+            const toggle = document.createElement('button');
+            slots.headerStart.append(toggle);
+            slots.search = { isOpen: true, query: 'needle', open: jest.fn(), setQuery: jest.fn(), close: jest.fn(() => { throw new Error('search failed'); }) };
+            const { selection, actionBar } = makeSlotted(slots);
+
+            expect(() => selection.enter('a')).toThrow('search failed');
+
+            expect(selection.isActive).toBe(false);
+            expect(toggle.hidden).toBe(false);
+            expect(slots.header.classList.contains('is-selection-mode')).toBe(false);
+            expect(slots.titleNode.textContent).toBe('Chats');
+            expect(slots.headerStart.querySelector('.sb-selection-cancel')).toBeNull();
+            expect(actionBar.hidden).toBe(true);
+            expect(() => selection.exit()).not.toThrow();
+            expect(() => selection.enter('a')).toThrow('search failed');
+        });
+
+        test('uses Select All as the default label', () => {
+            const { selection, slots } = makeSlotted();
+
+            selection.enter('a');
+            expect(slots.headerEnd.querySelector('.sb-selection-select-all').textContent).toBe('Select All');
+        });
+    });
+
+    test('the standalone header uses Select All as the default label', () => {
+        const { selection, header } = makeSelection();
+
+        selection.enter('a');
+        expect(header.querySelector('.sb-selection-select-all').textContent).toBe('Select All');
+        expect(selection.selectAllButton).toBe(header.querySelector('.sb-selection-select-all'));
+        expect(selection.cancelButton).toBe(header.querySelector('.sb-selection-cancel'));
+        expect(selection.selectionTitle).toBe(header.querySelector('.sb-selection-title'));
+    });
+
     test('starts inactive without filling the header or action bar', () => {
         const { selection, root, header, actionBar } = makeSelection();
 

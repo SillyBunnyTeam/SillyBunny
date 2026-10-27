@@ -120,18 +120,45 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await shot(page, 'selection');
             await expectCleanLayout(page, 'selection');
             // Header bars raise their text buttons; the selection mode's own flat rule must not reach them.
+            const raised = await dialog(page).evaluate(surface => {
+                const probe = document.createElement('i');
+                probe.style.background = 'var(--sb-raised-bg)';
+                surface.append(probe);
+                const fill = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return fill;
+            });
             for (const control of ['.sb-dialog__selection-cancel', '.sb-dialog__selection-select-all']) {
                 const look = await page.locator(`.sbca-dialog ${control}`).evaluate(node => {
                     const style = getComputedStyle(node);
-                    return { background: style.backgroundColor, border: style.borderTopWidth };
+                    return { background: style.backgroundColor, border: style.borderTopWidth, height: node.getBoundingClientRect().height };
                 });
-                expect(look.background, `${control} fill`).not.toBe('rgba(0, 0, 0, 0)');
+                expect(look.background, `${control} fill`).toBe(raised);
                 expect(look.border, `${control} border`).toBe('1px');
+                expect(look.height, `${control} height`).toBe(isTouch(viewport) ? 44 : 38);
             }
             const bar = page.locator('.sbca-dialog .sb-selection-action-bar');
             for (const name of ['Favorite', 'Folder…', 'Collections…', 'Tags…']) {
                 await expectReachable(page, bar.getByRole('button', { name, exact: true }), `the ${name} action`);
             }
+
+            // With every chat selected the theme's pressed accent must not recolour the raised header button.
+            const selectAll = page.locator('.sbca-dialog .sb-dialog__selection-select-all');
+            await selectAll.click();
+            await expect(selectAll).toHaveAttribute('aria-pressed', 'true');
+            await page.mouse.move(0, 0);
+            const bodyColor = await dialog(page).evaluate(surface => {
+                const probe = document.createElement('i');
+                probe.style.color = 'var(--SmartThemeBodyColor)';
+                surface.append(probe);
+                const color = getComputedStyle(probe).color;
+                probe.remove();
+                return color;
+            });
+            await shot(page, 'selection-all');
+            await expect(selectAll).toHaveCSS('background-color', raised);
+            await expect(selectAll).toHaveCSS('box-shadow', 'none');
+            await expect(selectAll).toHaveCSS('color', bodyColor);
             await page.keyboard.press('Escape');
 
             await openMenuItem(page, 'Manage Organization');

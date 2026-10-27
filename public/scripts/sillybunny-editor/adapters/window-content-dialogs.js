@@ -1,6 +1,6 @@
 import { t } from '../../i18n.js';
 import { openActionMenu } from '../../sillybunny-action-menu.js';
-import { createComboRow, createEntryRow, createPrefGroup, releaseRowIds } from '../rows.js';
+import { createComboRow, createEntryRow, createPrefGroup, moveCaption, releaseRowIds } from '../rows.js';
 
 function asElement(source) {
     const root = source?.jquery ? source.get(0) : source;
@@ -20,13 +20,6 @@ function stripTrailingColon(node) {
     }
     if (!lastTextNode) return;
     lastTextNode.textContent = lastTextNode.textContent.replace(/[:：](\s*)$/u, '$1');
-}
-
-function moveCaption(target, source) {
-    if (!source) return;
-    if (source.dataset.i18n) target.dataset.i18n = source.dataset.i18n;
-    target.replaceChildren(...source.childNodes);
-    source.remove();
 }
 
 function windowOptions(root, options = {}) {

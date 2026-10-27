@@ -1,16 +1,12 @@
 import { t } from '../../i18n.js';
-import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createPropertyRow, releaseRowIds } from '../../sillybunny-editor/rows.js';
+import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createPropertyRow, moveCaption, releaseRowIds } from '../../sillybunny-editor/rows.js';
 
-function moveCaption(row, caption, selector = '.ds-row-label') {
+/** Heading-like captions give up their content; any other node (a label with a control) moves whole. */
+function adoptCaption(row, caption, selector = '.ds-row-label') {
     if (!caption) return;
     const target = row.querySelector(selector);
-    if (!caption.matches('h2, h3, small')) {
-        target.replaceChildren(caption);
-        return;
-    }
-    if (caption.dataset.i18n) target.dataset.i18n = caption.dataset.i18n;
-    target.replaceChildren(...caption.childNodes);
-    caption.remove();
+    if (caption.matches('h2, h3, small')) moveCaption(target, caption);
+    else target.replaceChildren(caption);
 }
 
 /** Adopt choices before Popup's generic boolean fallback can turn them into switches. */
@@ -24,7 +20,7 @@ export function createProfileChoices(root, { title, subtitle, selector = 'label.
             ? [...caption.parentNode.childNodes].filter(node => node !== caption).map(node => node.textContent).join('').trim()
             : '';
         const row = createCheckRow({ label: '', subtitle: value, field: input.value, input });
-        moveCaption(row.row, caption);
+        adoptCaption(row.row, caption);
         inputs.push(input);
         return row;
     });
@@ -66,10 +62,10 @@ export function profileDialogOptions(root, { edit = false } = {}) {
     const settingsCaption = edit ? root.querySelector('[data-i18n="Included settings:"]') : null;
     const hint = root.querySelector('small');
     const choices = createProfileChoices(root, { title: settingsCaption?.textContent.trim(), subtitle: hint?.textContent.replace(/\s+/g, ' ').trim() });
-    if (settingsCaption) moveCaption(choices.section, settingsCaption, '.ds-pref-group-heading');
-    if (hint) moveCaption(choices.section, hint, '.ds-pref-group-subtitle');
+    if (settingsCaption) adoptCaption(choices.section, settingsCaption, '.ds-pref-group-heading');
+    if (hint) adoptCaption(choices.section, hint, '.ds-pref-group-subtitle');
     const folderRow = folder ? createComboRow({ label: folderCaption.textContent.trim(), field: 'profile-folder', select: folder }) : null;
-    if (folderRow) moveCaption(folderRow.row, folderCaption);
+    if (folderRow) adoptCaption(folderRow.row, folderCaption);
     const identity = createPrefGroup({ field: 'profile-identity', rows: folderRow ? [folderRow] : [] });
     root.classList.add('sb-connection-dialog-content');
     root.replaceChildren(...[heading, identity.section, choices.section].filter(Boolean));
@@ -79,7 +75,7 @@ export function profileDialogOptions(root, { edit = false } = {}) {
         okButton: t`Save`,
         onOpen(popup) {
             const name = createEntryRow({ label: '', field: 'profile-name', input: popup.mainInput });
-            moveCaption(name.row, nameCaption);
+            adoptCaption(name.row, nameCaption);
             identity.group.prepend(name.row);
             popup.mainInput.focus({ preventScroll: true });
         },
@@ -117,7 +113,7 @@ export function adaptProfileFolders(root) {
             remove.click();
         });
         const row = createEntryRow({ label: t`Folder:`, subtitle: count.textContent, field: input.id || 'folder-name', input, floating: true, suffix: remove });
-        moveCaption(row.row, count, '.ds-row-entry__caption');
+        adoptCaption(row.row, count, '.ds-row-entry__caption');
         row.row.querySelector('.ds-row-label').dataset.i18n = 'Folder:';
         item.className = 'folder-item';
         item.replaceChildren(row.row);
@@ -126,7 +122,7 @@ export function adaptProfileFolders(root) {
     const empty = root.querySelector('.folder-empty-message');
     empty?.classList.add('ds-row');
     const list = createPrefGroup({ subtitle: note.textContent.trim(), field: 'profile-folders', rows: folders.length ? folders : [empty] });
-    moveCaption(list.section, note, '.ds-pref-group-subtitle');
+    adoptCaption(list.section, note, '.ds-pref-group-subtitle');
     const input = root.querySelector('#new_profile_folder_name');
     const add = root.querySelector('#add_new_folder');
     const entry = createEntryRow({ label: input.placeholder, field: 'new-folder', input, floating: true, suffix: add });
@@ -142,8 +138,8 @@ export function adaptProfileDetails(root) {
             const caption = item.querySelector('.profile-summary-label');
             const value = item.querySelector('.profile-summary-value');
             const row = createPropertyRow({ label: '', value: '', field: `profile-property-${index}` });
-            moveCaption(row.row, caption, '.ds-row-subtitle');
-            moveCaption(row.row, value, '.ds-row-property__value');
+            adoptCaption(row.row, caption, '.ds-row-subtitle');
+            adoptCaption(row.row, value, '.ds-row-property__value');
             return row;
         });
         list.replaceWith(createPrefGroup({ field: 'profile-properties', rows }).section);
@@ -153,8 +149,8 @@ export function adaptProfileDetails(root) {
         const container = omitted.parentElement;
         const value = omitted.nextElementSibling;
         const row = createPropertyRow({ label: '', value: '', field: 'omitted-settings' });
-        moveCaption(row.row, omitted, '.ds-row-subtitle');
-        moveCaption(row.row, value, '.ds-row-property__value');
+        adoptCaption(row.row, omitted, '.ds-row-subtitle');
+        adoptCaption(row.row, value, '.ds-row-property__value');
         container.replaceWith(createPrefGroup({ field: 'omitted-settings-group', rows: [row] }).section);
     }
     root.classList.add('sb-connection-dialog-content');

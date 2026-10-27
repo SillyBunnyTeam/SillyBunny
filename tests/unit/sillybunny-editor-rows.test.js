@@ -15,6 +15,7 @@ import {
     createExpanderRow,
     createButtonRow,
     createPrefGroup,
+    moveCaption,
 } from '../../public/scripts/sillybunny-editor/rows.js';
 
 function node(tag, text = '') {
@@ -54,6 +55,70 @@ const controlFactories = [
     ['spin', createSpinRow, 3, 4],
     ['entry', createEntryRow, 'first', 'second'],
 ];
+
+describe('moveCaption', () => {
+    function caption({ id = '', i18n = '', html = '<b>Name</b> text:' } = {}) {
+        const source = node('span');
+        source.innerHTML = html;
+        if (id) source.id = id;
+        if (i18n) source.dataset.i18n = i18n;
+        document.body.replaceChildren(source);
+        return source;
+    }
+
+    test('moves the caption children and data-i18n, then removes the emptied caption', () => {
+        const source = caption({ i18n: 'Name' });
+        const bold = source.firstChild;
+        const target = node('span', 'old');
+
+        moveCaption(target, source);
+
+        expect(target.firstChild).toBe(bold);
+        expect(target.textContent).toBe('Name text:');
+        expect(target.dataset.i18n).toBe('Name');
+        expect(target.id).toBe('');
+        expect(source.isConnected).toBe(false);
+    });
+
+    test('leaves the target as it is without a caption', () => {
+        const target = node('span', 'kept');
+
+        moveCaption(target, null);
+        moveCaption(target, undefined);
+
+        expect(target.textContent).toBe('kept');
+        expect(target.hasAttribute('data-i18n')).toBe(false);
+    });
+
+    test('copyId moves the caption id for references that name it', () => {
+        const source = caption({ id: 'caption-id' });
+        const target = node('span');
+
+        moveCaption(target, source, { copyId: true });
+
+        expect(target.id).toBe('caption-id');
+    });
+
+    test('keepSource leaves the emptied caption in the document', () => {
+        const source = caption();
+        const target = node('span');
+
+        moveCaption(target, source, { keepSource: true });
+
+        expect(source.isConnected).toBe(true);
+        expect(source.childNodes).toHaveLength(0);
+        expect(target.textContent).toBe('Name text:');
+    });
+
+    test('stripColon flattens to trimmed plain text without the trailing colon', () => {
+        const target = node('span');
+
+        moveCaption(target, caption({ html: ' <b>Name</b> text： ' }), { stripColon: true });
+
+        expect(target.children).toHaveLength(0);
+        expect(target.textContent).toBe('Name text');
+    });
+});
 
 describe('shared row behavior', () => {
     test('destroying nested rows releases generated, explicit, heading and description reservations', () => {
