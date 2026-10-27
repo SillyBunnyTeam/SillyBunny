@@ -226,7 +226,7 @@ export async function bootArchive(page, viewport, options = {}) {
         return fulfillJson(route, archivePage(rows, null, body.scope === 'archive' ? null : SECOND_READ_TOKEN));
     });
 
-    await bootMiscDialogs(page, viewport);
+    await bootMiscDialogs(page, viewport, { configureSettings: options.configureSettings, reducedMotion: options.reducedMotion });
 
     await page.evaluate(async ({ characters, groups }) => {
         const host = await import('/script.js');

@@ -12,10 +12,10 @@ function payload(request) {
     return body ? JSON.parse((request.headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString()) : {};
 }
 
-export async function bootMiscDialogs(page, viewport, { admin = false, configureSettings } = {}) {
+export async function bootMiscDialogs(page, viewport, { admin = false, configureSettings, reducedMotion = 'reduce' } = {}) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion });
     const state = { settings: [], users: [], installs: [], branches: [] };
     const currentUser = { handle: 'dialog-user', name: 'Dialog User', admin, enabled: true, password: true, created: 0, avatar: '/img/ai4.png' };
     const data = { name: 'Dialog Character', description: '', personality: '', scenario: '', first_mes: 'Hello', mes_example: '', creator_notes: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], tags: [], creator: '', character_version: '', extensions: { talkativeness: 0.5 } };
