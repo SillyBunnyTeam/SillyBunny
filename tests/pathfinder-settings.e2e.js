@@ -53,7 +53,7 @@ async function openSettings(page, baseURL) {
         if (/^\/api\/.*\/(save|delete|create|edit|rename|update|import|upload|restore|duplicate|write|set)$/.test(url.pathname)) {
             return route.fulfill({ json: {} });
         }
-        return route.continue();
+        return route.fallback();
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -240,28 +240,35 @@ test('Stop cancels a real auxiliary request without saving a late summary', asyn
     await expect(page.locator('#pf--summary-create')).toBeEnabled();
 });
 
+const windowResultState = page => page.evaluate(() => Promise.race([window.__pathfinderWindowResult.then(() => 'resolved'), Promise.resolve('pending')]));
+
+async function showPathfinderWindow(page, width) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.evaluate(async () => {
+        const ui = await import('/scripts/extensions/in-chat-agents/pathfinder-settings-ui.js');
+        const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+        const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+        const panel = await ui.openPathfinderSettings(store.getAgentById('pf-e2e-agent'));
+        const popup = new Popup(panel, POPUP_TYPE.TEXT, '', {
+            okButton: 'Close',
+            tier: 'window',
+            title: 'Pathfinder',
+            wide: true,
+            large: true,
+            onClosing: () => ui.canClosePathfinderSettings(panel),
+        });
+        window.__pathfinderWindowResult = popup.show();
+    });
+    const dialog = page.locator('dialog[open]');
+    await expect(dialog).toHaveClass(/sb-dialog--window/);
+    return dialog;
+}
+
 for (const width of [1440, 390]) {
     test(`${width}px Pathfinder editor keeps its existing Close result in a scrollable Window`, async ({ page, baseURL }) => {
         const state = await openSettings(page, baseURL);
         await protectMaintainerServer(page);
-        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-        await page.evaluate(async () => {
-            const ui = await import('/scripts/extensions/in-chat-agents/pathfinder-settings-ui.js');
-            const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
-            const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
-            const panel = await ui.openPathfinderSettings(store.getAgentById('pf-e2e-agent'));
-            const popup = new Popup(panel, POPUP_TYPE.TEXT, '', {
-                okButton: 'Close',
-                tier: 'window',
-                title: 'Pathfinder',
-                wide: true,
-                large: true,
-                onClosing: () => ui.canClosePathfinderSettings(panel),
-            });
-            window.__pathfinderWindowResult = popup.show();
-        });
-        const dialog = page.locator('dialog[open]');
-        await expect(dialog).toHaveClass(/sb-dialog--window/);
+        const dialog = await showPathfinderWindow(page, width);
         await expect(dialog.locator('.sb-dialog__title')).toHaveText('Pathfinder');
         await expect(dialog.locator('.popup-button-close')).toBeVisible();
         await expect(dialog.locator('.popup-button-ok')).toBeHidden();
@@ -281,5 +288,52 @@ for (const width of [1440, 390]) {
         await expect(dialog).toHaveCount(0);
         expect(await page.evaluate(async () => await window.__pathfinderWindowResult)).toBe(1);
         expect(state.saves).toEqual([]);
+    });
+
+    test(`${width}px Pathfinder editor stays open when a save fails during Close, then closes on the next Close`, async ({ page, baseURL }) => {
+        await protectMaintainerServer(page);
+        const state = await openSettings(page, baseURL);
+        const dialog = await showPathfinderWindow(page, width);
+        const savedSettings = () => page.evaluate(async () => JSON.stringify((await import('/scripts/extensions/in-chat-agents/agent-store.js')).getAgentById('pf-e2e-agent').settings));
+        const before = await savedSettings();
+
+        state.saveMode = 'hold';
+        await dialog.locator('#pf--enable-tools').check();
+        await expect.poll(() => state.heldSaves.length).toBe(1);
+        await dialog.locator('.popup-button-close').click();
+        await expect(dialog).toBeVisible();
+        expect(await windowResultState(page)).toBe('pending');
+        await state.heldSaves[0].fulfill({ status: 503, json: {} });
+
+        await expect(dialog.locator('#pf--settings-save-status')).toContainText('Save failed:');
+        await expect(dialog).toBeVisible();
+        expect(await windowResultState(page)).toBe('pending');
+        await expect(dialog.locator('#pf--enable-tools')).toBeChecked();
+        expect(await savedSettings()).toBe(before);
+        expect(state.saves).toHaveLength(1);
+
+        await dialog.locator('.popup-button-close').click();
+        await expect(dialog).toHaveCount(0);
+        expect(await page.evaluate(async () => await window.__pathfinderWindowResult)).toBe(1);
+        expect(state.saves).toHaveLength(1);
+        expect(await savedSettings()).toBe(before);
+    });
+
+    test(`${width}px Pathfinder editor closes once a pending save succeeds during Close`, async ({ page, baseURL }) => {
+        await protectMaintainerServer(page);
+        const state = await openSettings(page, baseURL);
+        const dialog = await showPathfinderWindow(page, width);
+
+        state.saveMode = 'hold';
+        await dialog.locator('#pf--enable-tools').check();
+        await expect.poll(() => state.heldSaves.length).toBe(1);
+        await dialog.locator('.popup-button-close').click();
+        await expect(dialog).toBeVisible();
+        expect(await windowResultState(page)).toBe('pending');
+        await state.heldSaves[0].fulfill({ json: {} });
+
+        await expect(dialog).toHaveCount(0);
+        expect(await page.evaluate(async () => await window.__pathfinderWindowResult)).toBe(1);
+        expect(state.saves).toHaveLength(1);
     });
 }

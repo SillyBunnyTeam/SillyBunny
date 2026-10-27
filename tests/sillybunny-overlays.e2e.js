@@ -311,6 +311,7 @@ for (const width of [1440, 390]) {
             await expect(filteredRows).toHaveCount(1);
             const renameRow = frame.locator('#select_chat_div .select_chat_block_wrapper').filter({ hasText: 'QA History Rename' });
             await renameRow.getByRole('button', { name: 'Export JSONL chat file', exact: true }).click();
+            await expect(page.getByRole('menu', { name: 'Export Chat', exact: true })).toBeVisible();
             await page.getByRole('menuitem', { name: 'Export JSONL chat file', exact: true }).click();
             await expect.poll(() => exportRequests.length).toBe(1);
             expect(exportRequests[0]).toMatchObject({ file: 'QA History Rename.jsonl', format: 'jsonl' });
@@ -498,11 +499,12 @@ for (const width of [1440, 390]) {
             const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
             await expect(frame).toBeVisible();
             const statusPage = frame.locator('#select_chat_div .sb-status-page');
-            await expect(statusPage).toContainText('TODO(copy)');
+            await expect(statusPage).toContainText('No Chats');
+            await expect(statusPage).toContainText('Saved chats appear here.');
 
             await frame.getByRole('searchbox', { name: 'Search', exact: true }).fill('missing');
             await expect(statusPage).toContainText('No results');
-            await expect(statusPage).not.toContainText('TODO(copy)');
+            await expect(statusPage).not.toContainText('No Chats');
             await frame.locator('.sb-dialog__close').click();
             await expect(frame).toHaveCount(0);
             await expect(page.locator('#select_chat_popup').locator('xpath=..')).toHaveAttribute('id', 'shadow_select_chat_popup');

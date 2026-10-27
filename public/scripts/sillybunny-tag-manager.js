@@ -45,13 +45,11 @@ function button(label, glyph, action, className = '') {
 /** Parses a pending tag name without mutating the shared tag model. */
 export function parseTagName(value, tags, ownId = null) {
     const name = value.trim();
-    // HUMAN: replace — A tag name must not be empty.
-    if (!name) return { ok: false, error: t`lorum ipsum` };
+    if (!name) return { ok: false, error: t`Enter a name.` };
     const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const duplicate = tags.some(tag => tag.id !== ownId
         && tag.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === normalized);
-    // HUMAN: replace — Another tag already has this name.
-    if (duplicate) return { ok: false, error: t`lorum ipsum` };
+    if (duplicate) return { ok: false, error: t`That name is already in use.` };
     return { ok: true, name };
 }
 
@@ -266,10 +264,8 @@ export function createTagManager(adapter) {
         const index = ordered.indexOf(tag);
         const manual = state.settings.tag_sort_mode === 'manual' && !search.query;
         return [{ items: [
-            // HUMAN: replace — Background colour action label.
-            item(t`lorum ipsum`, 'palette', () => showColor(tag, 'color')),
-            // HUMAN: replace — Text colour action label.
-            item(t`lorum ipsum`, 'font', () => showColor(tag, 'color2')),
+            item(t`Background Color`, 'palette', () => showColor(tag, 'color')),
+            item(t`Text Color`, 'font', () => showColor(tag, 'color2')),
         ] }, { items: [
             item(t`Hide on character card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { kind: 'check', checked: Boolean(tag.is_hidden_on_character_card) }),
         ] }, { items: [
@@ -357,8 +353,7 @@ export function createTagManager(adapter) {
             picker.id = `${tag.id}-tag-${property}`;
             picker.setAttribute('color', tag[property] || defaultColor);
             picker.setAttribute('data-default-color', defaultColor);
-            // HUMAN: replace — Background/text colour picker accessible label.
-            picker.setAttribute('aria-label', t`lorum ipsum`);
+            picker.setAttribute('aria-label', property === 'color' ? t`Background Color` : t`Text Color`);
             picker.addEventListener('change', event => actions.color(event, property));
             const reset = button(t`Link to theme color`, 'link', () => picker.color = defaultColor);
             const dismiss = button(t`Close`, 'xmark', () => entry.colors.hidden = true);

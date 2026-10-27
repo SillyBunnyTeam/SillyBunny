@@ -217,6 +217,7 @@ for (const width of [1440, 390]) {
             await field.fill('qa beta');
             await field.press('Enter');
             await expect(field).toHaveAttribute('aria-invalid', 'true');
+            await expect(row(page, fixtureTag).locator('.sb-tag-manager__error')).toHaveText('That name is already in use.');
             await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toBeVisible();
             await expect(field).toBeFocused();
@@ -285,11 +286,13 @@ for (const width of [1440, 390]) {
             await prepare(page, width);
             await openFromList(page);
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
-            await page.locator('#sb-action-menu:visible [role="menuitem"]').filter({ hasText: 'lorum ipsum' }).first().click();
+            await expect(page.locator('#sb-action-menu:visible').getByRole('menuitem', { name: 'Text Color', exact: true })).toBeVisible();
+            await page.locator('#sb-action-menu:visible [role="menuitem"]').filter({ hasText: 'Background Color' }).first().click();
             const pickerPage = page.locator('.sb-dialog-host .sb-dialog__page.sb-color-picker-dialog');
             if (width <= 450) await expect(pickerPage).toBeVisible();
             const picker = page.locator('.sb-color-picker-menu:visible');
             await expect(picker).toBeVisible();
+            await expect(page.locator('toolcool-color-picker[aria-label="Background Color"]')).toBeAttached();
             const hex = picker.getByRole('textbox', { name: 'Hex', exact: true });
             await hex.fill('#22cc88');
             await hex.press('Enter');

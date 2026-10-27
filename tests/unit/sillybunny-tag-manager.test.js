@@ -72,8 +72,8 @@ function mount() {
 describe('tag manager model', () => {
     test('trims names; rejects empty, case and accent duplicates except self', () => {
         expect(parseTagName('  New  ', state.tags)).toEqual({ ok: true, name: 'New' });
-        expect(parseTagName(' \n ', state.tags).ok).toBe(false);
-        expect(parseTagName('alpha', state.tags).ok).toBe(false);
+        expect(parseTagName(' \n ', state.tags)).toEqual({ ok: false, error: 'Enter a name.' });
+        expect(parseTagName('alpha', state.tags)).toEqual({ ok: false, error: 'That name is already in use.' });
         expect(parseTagName('BETA', state.tags).ok).toBe(false);
         expect(parseTagName('Alpha', state.tags, 'alpha').ok).toBe(true);
     });

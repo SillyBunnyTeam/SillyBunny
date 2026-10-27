@@ -148,7 +148,7 @@ export function openChatHistoryDialog() {
     const legacyImport = popup?.querySelector('#chat_import_button');
     const backupsButton = popup?.querySelector('[aria-controls="chat_backups_list"]');
     const backupsList = popup?.querySelector('#chat_backups_list');
-    const originalExportLabel = popup?.querySelector('.exportRawChatButton')?.getAttribute('title') || t`TODO(copy)`;
+    const originalExportLabel = popup?.querySelector('.exportRawChatButton')?.getAttribute('title') || t`Export JSONL chat file`;
     if (!(popup instanceof HTMLElement) || !(legacyHost instanceof HTMLElement) || !(searchInput instanceof HTMLInputElement) || !(chatList instanceof HTMLElement)) {
         throw new Error('Chat History markup is incomplete: expected #select_chat_popup, #shadow_select_chat_popup, #select_chat_search, and #select_chat_div.');
     }
@@ -220,7 +220,7 @@ export function openChatHistoryDialog() {
     banner.append(status, cancelButton);
     const ownerName = currentDetails?.name2 ?? '';
     const title = heading?.querySelector('[data-i18n="Chat History"]')?.textContent?.trim() || t`Chat History`;
-    const cleanupTitle = cleanupGroup.getAttribute('aria-label') || t`TODO(copy)`;
+    const cleanupTitle = cleanupGroup.getAttribute('aria-label') || t`Chat Cleanup`;
     const menuItems = () => [{ items: [
         { label: t`Import Chat`, icon: 'fa-solid fa-file-import', onSelect: () => popup.querySelector('#chat_import_button')?.click() },
         { label: t`Backups`, icon: 'fa-solid fa-box-archive', onSelect: () => popup.querySelector('[aria-controls="chat_backups_list"]')?.click() },
@@ -309,11 +309,11 @@ export function openChatHistoryDialog() {
     };
     const exportMenu = (trigger, row) => openActionMenu({
         trigger,
-        title: row.querySelector('.exportRawChatButton')?.getAttribute('title') || t`TODO(copy)`,
+        title: t`Export Chat`,
         bounds: frame.surface,
         sections: [{ items: [
-            { label: row.querySelector('.exportRawChatButton')?.getAttribute('title') || t`TODO(copy)`, icon: 'fa-solid fa-file-export', onSelect: () => row.querySelector('.exportRawChatButton')?.click() },
-            { label: row.querySelector('.exportChatButton')?.getAttribute('title') || t`TODO(copy)`, icon: 'fa-solid fa-file-lines', onSelect: () => row.querySelector('.exportChatButton')?.click() },
+            { label: row.querySelector('.exportRawChatButton')?.getAttribute('title') || t`Export JSONL chat file`, icon: 'fa-solid fa-file-export', onSelect: () => row.querySelector('.exportRawChatButton')?.click() },
+            { label: row.querySelector('.exportChatButton')?.getAttribute('title') || t`Download chat as plain text document`, icon: 'fa-solid fa-file-lines', onSelect: () => row.querySelector('.exportChatButton')?.click() },
         ] }],
     });
     const decorateRow = wrapper => {
@@ -369,12 +369,7 @@ export function openChatHistoryDialog() {
             node.setAttribute('role', 'button');
             node.tabIndex = 0;
             const actionLabel = node.getAttribute('title') || node.getAttribute('aria-label');
-            if (actionLabel) {
-                node.setAttribute('aria-label', actionLabel);
-            } else {
-                node.setAttribute('aria-label', t`TODO(copy)`);
-                node.setAttribute('data-sb-copy-placeholder', 'true');
-            }
+            node.setAttribute('aria-label', actionLabel || t`Chat Action`);
             node.addEventListener('keydown', event => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();
@@ -395,7 +390,7 @@ export function openChatHistoryDialog() {
         chatRow.querySelectorAll('.exportRawChatButton, .exportChatButton').forEach(node => node.classList.add('sb-chat-history-legacy-export'));
     };
     const decorateAllRows = () => chatList.querySelectorAll('.select_chat_block_wrapper').forEach(decorateRow);
-    const emptyState = createStatusPage({ icon: 'comments', title: t`TODO(copy)`, description: t`TODO(copy)`, compact: true });
+    const emptyState = createStatusPage({ icon: 'comments', title: t`No Chats`, description: t`Saved chats appear here.`, compact: true });
     let emptyStateMode = null;
     const syncEmptyState = () => {
         const hasRows = chatList.querySelector('.select_chat_block_wrapper') instanceof HTMLElement;
@@ -406,8 +401,8 @@ export function openChatHistoryDialog() {
             emptyStateMode = mode;
             emptyState.update({
                 icon: searching ? 'magnifying-glass' : 'comments',
-                title: searching ? t`No results` : t`TODO(copy)`,
-                description: searching ? '' : t`TODO(copy)`,
+                title: searching ? t`No results` : t`No Chats`,
+                description: searching ? '' : t`Saved chats appear here.`,
             });
         }
         if (!hasRows && !chatList.contains(emptyState.element)) chatList.append(emptyState.element);

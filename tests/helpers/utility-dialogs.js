@@ -1,5 +1,6 @@
 import { gunzipSync } from 'node:zlib';
 import { bootMiscDialogs, MISC_VIEWPORTS } from './misc-dialogs.js';
+import { fetchBodyOrSkip } from './route-fetch.js';
 
 export const UTILITY_VIEWPORTS = MISC_VIEWPORTS;
 export const UTILITY_SURFACES = ['recent', 'persona', 'secret', 'regex', 'quick-reply', 'image', 'web', 'mediawiki', 'fandom', 'youtube', 'icons'];
@@ -14,8 +15,9 @@ export async function bootUtilityDialogs(page, viewport) {
     // Internal entry points are exposed only in the test response, never the shipped module.
     for (const [path, name] of [['welcome-screen.js', 'openRecentChatsSettingsPopup'], ['extensions/stable-diffusion/index.js', 'refinePrompt']]) {
         await page.route(`**/scripts/${path}*`, async route => {
-            const response = await route.fetch();
-            return route.fulfill({ response, body: `${await response.text()}\nexport { ${name} as utilityTestOpen };\n` });
+            const fetched = await fetchBodyOrSkip(route, response => response.text());
+            if (!fetched) return;
+            return route.fulfill({ response: fetched.response, body: `${fetched.body}\nexport { ${name} as utilityTestOpen };\n` });
         });
     }
     await page.context().route(/\/api\/(?:secrets\/(?:write|delete|rotate|rename)|search\/(?:visit|transcript)|plugins\/fandom\/scrape[^/]*|sd\/[^/]+|quick-replies\/(?:save|delete)|avatars\/(?:upload|delete))$/, route => route.fulfill({ status: 400, body: 'Blocked by utility dialog test' }));

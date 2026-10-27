@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { appendFileSync } from 'node:fs';
 import { test } from '@playwright/test';
+import { fetchBodyOrSkip } from './route-fetch.js';
 
 function auditSettings(titlePath, event) {
     if (!process.env.SILLYBUNNY_SETTINGS_AUDIT) return;
@@ -54,8 +55,10 @@ export async function protectMaintainerServer(page) {
         delete headers['content-encoding'];
         delete headers['content-length'];
         // A chat read with allow_create can write a new file; only probe without creation.
-        const response = await route.fetch({ headers, postData: { ...payload, allow_create: false } });
-        return response.status() === 404 ? route.fulfill({ json: [] }) : route.fulfill({ response });
+        const fetched = await fetchBodyOrSkip(route, response => response.body(), { headers, postData: { ...payload, allow_create: false } });
+        if (!fetched) return;
+        const { response, body } = fetched;
+        return response.status() === 404 ? route.fulfill({ json: [] }) : route.fulfill({ response, body });
     });
     await page.route(/\/api\/chats\/(?:group\/)?(?:save|delete|rename)$/, route => route.fulfill({ json: {} }));
     await page.route(/\/api\/stats\/(?:update|recreate)$/, route => route.fulfill({ json: {} }));
@@ -72,8 +75,9 @@ export async function protectMaintainerServer(page) {
         delete headers['content-encoding'];
         delete headers['content-length'];
         // clearTombstone deletes a tombstone file; read the default preset without it.
-        const response = await route.fetch({ headers, postData: { ...payload, clearTombstone: false } });
-        return route.fulfill({ response });
+        const fetched = await fetchBodyOrSkip(route, response => response.body(), { headers, postData: { ...payload, clearTombstone: false } });
+        if (!fetched) return;
+        return route.fulfill({ response: fetched.response, body: fetched.body });
     });
     // Key status tests mock /api/secrets/read instead of storing keys.
     await page.route('**/api/secrets/write', route => route.fulfill({ json: { id: 'sb-qa-stub' } }));

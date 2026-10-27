@@ -441,8 +441,7 @@ export function mountWorldInfoEditor(container) {
         return keys.filter(uid => state.data?.entries?.[uid]);
     }
 
-    // HUMAN: replace — selection count label; no matching count key exists in the locale.
-    const selectionTitle = count => `${count} ${t`lorum ipsum`}`;
+    const selectionTitle = count => t`${count} selected`;
 
     async function bulkAction(action) {
         if (bulkBusy) return;

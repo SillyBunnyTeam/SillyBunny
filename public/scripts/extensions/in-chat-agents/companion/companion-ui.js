@@ -2,6 +2,7 @@ import { DOMPurify, showdown } from '../../../../lib.js';
 import { chat, saveChatDebounced, substituteParams, substituteParamsExtended } from '../../../../script.js';
 import { encodeStyleTags, decodeStyleTags } from '../../../chats.js';
 import { eventSource, event_types } from '../../../events.js';
+import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
 import { attachTextareaFullscreen } from '../textarea-fullscreen.js';
@@ -517,6 +518,7 @@ function buildCompanionCard(agentId, result, message) {
     // Results saved before profile labels were resolved to names may carry raw profile ids.
     const meta = [profileLabel, modelLabel].filter(isReadableLabel).join(' / ');
     const openAttribute = result.collapsed ? '' : ' open';
+    const editNoteLabel = escapeHtml(t`Edit Companion Note`);
     const lorebookButton = isLorebookAgent(getAgentById(agentId)) && status === 'done'
         ? '<button type="button" class="ica--companion-action" data-action="send-to-lorebook" title="Send companion note to lorebook" aria-label="Send companion note to lorebook"><i class="fa-solid fa-book-medical"></i></button>'
         : '';
@@ -533,7 +535,7 @@ function buildCompanionCard(agentId, result, message) {
                 <span class="ica--companion-status">${escapeHtml(getStatusLabel(status))}</span>
                 <span class="ica--companion-actions">
                     <button type="button" class="ica--companion-action" data-action="regenerate" title="Regenerate companion note" aria-label="Regenerate companion note"><i class="fa-solid fa-rotate-right"></i></button>
-                    <button type="button" class="ica--companion-action" data-action="edit" title="Edit companion note" aria-label="Edit companion note"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <button type="button" class="ica--companion-action" data-action="edit" title="${editNoteLabel}" aria-label="${editNoteLabel}"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${lorebookButton}
                     <button type="button" class="ica--companion-action" data-action="copy" title="Copy companion note" aria-label="Copy companion note"><i class="fa-solid fa-copy"></i></button>
                     <button type="button" class="ica--companion-action caution" data-action="delete" title="Delete companion note" aria-label="Delete companion note"><i class="fa-solid fa-trash"></i></button>
@@ -766,7 +768,7 @@ export async function editCompanionResult(messageIndex, agentId, message, result
         okButton: 'Save Note',
         cancelButton: 'Cancel',
         tier: 'window',
-        title: 'Edit companion note',
+        title: t`Edit Companion Note`,
         wide: true,
         large: true,
     }).show();

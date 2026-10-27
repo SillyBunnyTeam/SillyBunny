@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 import { protectMaintainerServer } from './maintainer-server.js';
+import { fetchJsonOrSkip } from './route-fetch.js';
 
 export const BOOK = 'qa-import-book';
 const AVATAR = readFileSync(new URL('../../public/img/ai4.png', import.meta.url));
@@ -67,8 +68,8 @@ export async function protectImportFixtures(page) {
         headers: { 'Content-Type': 'application/json', 'X-Custom-Content-Type': 'lorebook', 'Content-Disposition': `attachment; filename="${BOOK}.json"` },
     }));
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const settings = await response.json();
+        const settings = await fetchJsonOrSkip(route);
+        if (!settings) return;
         return route.fulfill({ json: { ...settings, world_names: [...books] } });
     });
     await page.route('**/api/chats/get', route => route.fulfill({ json: [] }));

@@ -230,14 +230,13 @@ function createPanelShell({ id, element, title }) {
     menuButton.setAttribute('aria-haspopup', 'menu');
     menuButton.setAttribute('aria-expanded', 'false');
 
-    const moveSideLabel = t`TODO(copy)`;
+    const moveSideLabel = t`Move to Other Side`;
     const menu = createElement('div', 'sb-side-panel__menu');
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
     const moveSideButton = createElement('button', 'sb-side-panel__menu-item', moveSideLabel);
     moveSideButton.type = 'button';
     moveSideButton.setAttribute('role', 'menuitem');
-    moveSideButton.dataset.sbCopyPlaceholder = 'true';
     menu.append(moveSideButton);
 
     const closeButton = createIconButton({

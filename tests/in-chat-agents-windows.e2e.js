@@ -118,13 +118,13 @@ for (const width of [1440, 390]) {
             await seedCompanionPanel(page);
             await page.locator('#sb-settings-close').click();
             const card = page.locator('#chat .ica--companion-card').first();
-            await card.getByRole('button', { name: 'Edit companion note', exact: true }).click();
+            await card.getByRole('button', { name: 'Edit Companion Note', exact: true }).click();
             const dialog = page.locator('dialog[open]');
             await expect(dialog).toHaveClass(/sb-dialog--window/);
             const handleLayer = await page.locator('.ica--tpanel-handle').evaluate(node => Number.parseInt(getComputedStyle(node).zIndex, 10));
             const overlayLayer = await page.evaluate(() => Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sb-z-overlay'), 10));
             expect(handleLayer).toBeLessThan(overlayLayer);
-            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Edit companion note');
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Edit Companion Note');
             await expect(dialog.locator('.popup-button-cancel')).toHaveText('Cancel');
             await expect(dialog.locator('.popup-button-ok')).toHaveText('Save Note');
             await expect(dialog.locator('.popup-button-close')).toBeHidden();
@@ -137,6 +137,57 @@ for (const width of [1440, 390]) {
                 return app.chat[0].extra.inChatAgentCompanionResults['qa-note'].content;
             })).toBe(updated);
             expect(driver.writes.filter(write => /generate|completion/i.test(write.path))).toEqual([]);
+            expect(driver.errors).toEqual([]);
+        });
+
+        test('companion note editor leaves the note unchanged and sends no write on Cancel or Escape', async ({ page, baseURL }) => {
+            const driver = await setupWindowSurface(page, baseURL, width);
+            await seedCompanionPanel(page);
+            await page.locator('#sb-settings-close').click();
+            const card = page.locator('#chat .ica--companion-card').first();
+            const original = 'The party agreed to meet at the fountain before dusk.';
+            const readNote = () => page.evaluate(async () => (await import('/script.js')).chat[0].extra.inChatAgentCompanionResults['qa-note'].content);
+            // The fixture has no open chat file, so a scheduled save fires its debounce log but sends no request.
+            const saveTimers = [];
+            page.on('console', message => { if (message.text() === 'Chat save timeout triggered') saveTimers.push(message.text()); });
+            await expect(card.locator('.ica--companion-body')).toContainText(original);
+            // Seeding and rendering may schedule their own save; cancel it so only the dialog's saves count.
+            await page.evaluate(async () => (await import('/script.js')).cancelDebouncedChatSave());
+            saveTimers.length = 0;
+            driver.writes.length = 0;
+
+            const dialog = page.locator('dialog[open]');
+            const editor = dialog.locator('.ica--companion-edit-popup textarea');
+            const dismissals = [
+                ['Cancel button', () => dialog.locator('.popup-button-cancel').click()],
+                ['Escape', () => page.keyboard.press('Escape')],
+            ];
+            for (const [name, dismiss] of dismissals) {
+                await card.getByRole('button', { name: 'Edit Companion Note', exact: true }).click();
+                await expect(dialog).toHaveClass(/sb-dialog--window/);
+                await expect(editor).toHaveValue(original);
+                await editor.fill(`Discarded edit through ${name}`);
+                await dismiss();
+                await expect(dialog).toHaveCount(0);
+                await expect(card.locator('.ica--companion-body')).toContainText(original);
+                await expect(card.locator('.ica--companion-body')).not.toContainText('Discarded edit');
+                expect(await readNote()).toBe(original);
+            }
+
+            // The chat save is debounced; wait past that window so a stray save would have fired.
+            await page.evaluate(async margin => {
+                const { DEFAULT_SAVE_EDIT_TIMEOUT } = await import('/script.js');
+                await new Promise(resolve => setTimeout(resolve, DEFAULT_SAVE_EDIT_TIMEOUT + margin));
+            }, 500);
+            expect(saveTimers).toEqual([]);
+            expect(driver.writes).toEqual([]);
+
+            await card.getByRole('button', { name: 'Edit Companion Note', exact: true }).click();
+            await editor.fill('Saved edit proves the save path is observed');
+            await dialog.locator('.popup-button-ok').click();
+            await expect(dialog).toHaveCount(0);
+            await expect.poll(() => saveTimers.length).toBe(1);
+            expect(await readNote()).toBe('Saved edit proves the save path is observed');
             expect(driver.errors).toEqual([]);
         });
     });

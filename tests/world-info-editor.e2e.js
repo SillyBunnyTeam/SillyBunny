@@ -458,7 +458,7 @@ test.describe('World Info selection mode', () => {
         const editor = await openBook(page);
         await enterSelection(page, editor);
         await expect(editor.locator('.sb-wi-list-header')).toBeHidden();
-        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
         await expect(editor.locator('.sb-selection-action:disabled')).toHaveCount(4);
         await row(editor, 'Alpha').focus();
         for (const key of ['x', 'Control+f', 'Meta+f']) {
@@ -472,13 +472,13 @@ test.describe('World Info selection mode', () => {
         await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
         await row(editor, 'Beta').focus();
         await page.keyboard.press('Space');
-        await expect(editor.locator('.sb-selection-title')).toHaveText('2 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('2 selected');
         await page.keyboard.press('Control+a');
-        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
         await editor.locator('.sb-selection-select-all').click();
-        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
         await page.keyboard.press('Meta+a');
-        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
         await page.keyboard.press('Escape');
         await expect(editor).toHaveAttribute('data-selection-mode', 'false');
         await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
@@ -534,7 +534,7 @@ test.describe('World Info selection mode', () => {
         await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
         expect(saves).toHaveLength(1);
         await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
-        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
     });
 
     for (const width of [1440, 390]) {
@@ -586,13 +586,13 @@ test.describe('World Info selection mode', () => {
         };
         await transfer('Copy');
         await expect.poll(async () => Object.values(await readEntries(page, TARGET_BOOK)).map(entry => entry.comment).sort()).toEqual(['Alpha', 'Beta']);
-        await expect(editor.locator('.sb-selection-title')).toHaveText('2 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('2 selected');
         expect(Object.keys(await readEntries(page))).toHaveLength(3);
         await expect(editor.locator('.sb-wi-entry')).toBeVisible();
         await transfer('Move');
         await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
         await expect.poll(async () => Object.keys(await readEntries(page, TARGET_BOOK)).length).toBe(4);
-        await expect(editor.locator('.sb-selection-title')).toHaveText('0 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
         await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
     });
 
@@ -607,14 +607,14 @@ test.describe('World Info selection mode', () => {
         }, BOOK);
         const editor = await openBook(page, 10);
         await editor.getByRole('listitem', { name: 'Alpha', exact: true }).click({ button: 'right' });
-        await expect(editor.locator('.sb-selection-title')).toHaveText('1 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('1 selected');
         await editor.locator('.sb-list-pagination__next').click();
         await expect(editor.locator('.sb-wi-row')).toHaveCount(2);
         await editor.locator('.sb-selection-select-all').click();
-        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
         await editor.locator('.sb-wi-search').evaluate(node => { node.value = 'missing'; node.dispatchEvent(new Event('input', { bubbles: true })); });
         await expect(editor.locator('.sb-wi-list-status')).toHaveText('No results');
-        await expect(editor.locator('.sb-selection-title')).toHaveText('3 lorum ipsum');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
         await page.evaluate(() => {
             const select = document.getElementById('world_editor_select');
             select.value = '';

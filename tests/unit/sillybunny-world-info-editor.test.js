@@ -1039,12 +1039,12 @@ describe('World Info selection mode', () => {
         const trigger = container.querySelector('.sb-wi-book-actions');
         await selectMenuAction('Select');
         expect(container.querySelector('.sb-wi-editor').dataset.selectionMode).toBe('true');
-        expect(count()).toBe('0 lorum ipsum');
+        expect(count()).toBe('0 selected');
         expect(document.activeElement).toBe(container.querySelector('.sb-selection-cancel'));
         await open(0);
         await open(7);
         expect(selected()).toEqual(['0', '7']);
-        expect(count()).toBe('2 lorum ipsum');
+        expect(count()).toBe('2 selected');
         expect(mountEntry).not.toHaveBeenCalled();
         const first = container.querySelector('.sb-wi-row');
         first.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
@@ -1081,16 +1081,16 @@ describe('World Info selection mode', () => {
         container.querySelector('.sb-list-pagination__next').click();
         await settle();
         container.querySelector('.sb-selection-cancel').dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true }));
-        expect(count()).toBe('11 lorum ipsum');
+        expect(count()).toBe('11 selected');
         const input = container.querySelector('.sb-wi-search');
         input.value = 'Entry 2';
         input.dispatchEvent(new Event('input', { bubbles: true }));
         jest.advanceTimersByTime(300);
         await settle();
-        expect(count()).toBe('11 lorum ipsum');
+        expect(count()).toBe('11 selected');
         delete data.entries[0];
         await render(liveState, navigation.previous);
-        expect(count()).toBe('10 lorum ipsum');
+        expect(count()).toBe('10 selected');
         await render({ name: 'Book B', data: book(2) });
         expect(container.querySelector('.sb-wi-editor').dataset.selectionMode).toBe('false');
         expect(container.querySelector('.sb-selection-title')).toBeNull();
@@ -1138,7 +1138,7 @@ describe('World Info selection mode', () => {
         expect(saveWorldInfo).toHaveBeenCalledTimes(1);
         expect(detail.destroy).toHaveBeenCalled();
         expect(container.querySelector('.sb-wi-editor').dataset.open).toBe('false');
-        expect(count()).toBe('0 lorum ipsum');
+        expect(count()).toBe('0 selected');
         expect(container.querySelectorAll('.sb-wi-row')).toHaveLength(1);
     });
 
@@ -1168,7 +1168,7 @@ describe('World Info selection mode', () => {
         expect(move).toHaveBeenCalledWith(createWorldInfoDeps(), 'Book A', 'Book B', ['0', '7'], { copy });
         expect(moveEntry.mock.calls).toEqual([['Book A', 'Book B', '0', { deleteOriginal: !copy }], ['Book A', 'Book B', '7', { deleteOriginal: !copy }]]);
         expect(detail.destroy).toHaveBeenCalledTimes(copy ? 0 : 1);
-        expect(count()).toBe(copy ? '2 lorum ipsum' : '0 lorum ipsum');
+        expect(count()).toBe(copy ? '2 selected' : '0 selected');
     });
 
     test('a pending bulk save blocks duplicate actions and marks its toolbar busy', async () => {
@@ -1205,7 +1205,7 @@ describe('World Info selection mode', () => {
         openPicker.mock.calls.at(-1)[0].onSelect('Book B');
         await settle();
         expect(selected()).toEqual(['0']);
-        expect(count()).toBe('1 lorum ipsum');
+        expect(count()).toBe('1 selected');
         expect(detail.destroy).not.toHaveBeenCalled();
     });
 });

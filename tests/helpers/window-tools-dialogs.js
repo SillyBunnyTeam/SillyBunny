@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { bootMiscDialogs, MISC_VIEWPORTS } from './misc-dialogs.js';
+import { fetchJsonOrSkip } from './route-fetch.js';
 
 export const WINDOW_TOOLS_VIEWPORTS = MISC_VIEWPORTS;
 export const DATA_MAID_VIEW_TEXT = 'Data Maid viewer fixture\nExact content survives the pushed page.\n';
@@ -34,8 +35,8 @@ export async function bootWindowToolsDialogs(page, viewport, { admin = false } =
         }, true);
     }, WINDOW_TOOLS_SAFE_DEBUG_FUNCTION);
     await page.route('**/api/extensions/discover', async route => {
-        const response = await route.fetch();
-        const extensions = await response.json();
+        const extensions = await fetchJsonOrSkip(route);
+        if (!extensions) return;
         return route.fulfill({ json: [...extensions, { name: 'third-party/window-tools-branch', type: 'local' }] });
     });
     await page.route('**/scripts/extensions/third-party/window-tools-branch/manifest.json*', route => route.fulfill({ json: {

@@ -1,5 +1,6 @@
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './maintainer-server.js';
+import { fetchJsonOrSkip } from './route-fetch.js';
 
 export const MISC_VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -34,8 +35,8 @@ export async function bootMiscDialogs(page, viewport, { admin = false, configure
     await page.route('**/api/characters/chats', route => route.fulfill({ json: {} }));
     await page.route('**/api/chats/get', route => route.fulfill({ json: [] }));
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const body = await response.json();
+        const body = await fetchJsonOrSkip(route);
+        if (!body) return;
         const settings = JSON.parse(body.settings);
         settings.firstRun = false;
         settings.main_api = 'openai';

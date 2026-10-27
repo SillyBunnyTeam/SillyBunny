@@ -1,5 +1,6 @@
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './maintainer-server.js';
+import { fetchJsonOrSkip } from './route-fetch.js';
 
 export const CM_VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -20,8 +21,8 @@ export async function bootConnectionDialogs(page, viewport) {
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const data = await response.json();
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
         settings.main_api = 'openai';

@@ -291,6 +291,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         const category = manager.locator('.dataMaidCategory').first();
         await expect(category.locator('.dataMaidCategoryContent')).toBeVisible();
         await expect(category.locator('.dataMaidToggleCategory')).toHaveAttribute('aria-expanded', 'true');
+        await expect(category.getByRole('button', { name: 'Show or Hide Files', exact: true })).toHaveAttribute('title', 'Show or Hide Files');
         await category.locator('.dataMaidToggleCategory').click();
         await expect(category.locator('.dataMaidCategoryContent')).toBeHidden();
         await expect(category.locator('.dataMaidToggleCategory')).toHaveAttribute('aria-expanded', 'false');

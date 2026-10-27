@@ -171,6 +171,7 @@ for (const viewport of VIEWPORTS) {
 
         await panel.locator('.sb-side-panel__menu-trigger').click();
         await expect(panel.locator('.sb-side-panel__menu-item')).toBeVisible();
+        await expect(panel.getByRole('menuitem', { name: 'Move to Other Side', exact: true })).toBeVisible();
         await panel.locator('.sb-side-panel__menu-item').click();
         const sideState = await page.evaluate(async () => {
             const module = await import('/scripts/power-user.js');
