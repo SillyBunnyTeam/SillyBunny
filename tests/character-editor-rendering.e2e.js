@@ -123,6 +123,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
     });
 }
 
+// A popup keeps [open] while its close animation runs, so a popup opened right after another closes would otherwise match twice.
+const activePopup = page => page.locator('dialog.popup[open]:not([closing])');
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     test(`character editor popups keep their actions reachable at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);
@@ -133,7 +136,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.keyboard.press('Escape');
 
         await page.evaluate(() => { void import('/script.js').then(app => app.duplicateCharacter()); });
-        const duplicate = page.locator('dialog.popup[open]');
+        const duplicate = activePopup(page);
         await expect(duplicate).toContainText('duplicate this character');
         await duplicate.locator('.popup-button-cancel').click();
 
@@ -150,14 +153,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             };
             void personas.showCharConnections();
         });
-        await expect(page.locator('dialog.popup[open]')).toContainText('Persona Connections');
+        await expect(activePopup(page)).toContainText('Persona Connections');
         await page.keyboard.press('Escape');
 
         await page.locator('#world_button').click({ modifiers: ['Shift'] });
-        await expect(page.locator('dialog.popup[open]')).toBeVisible();
+        await expect(activePopup(page)).toBeVisible();
         await page.keyboard.press('Escape');
         await page.locator('#sb_character_editor_toolbar .chat_lorebook_button').click({ modifiers: ['Shift'] });
-        await expect(page.locator('dialog.popup[open]')).toBeVisible();
+        await expect(activePopup(page)).toBeVisible();
         await page.keyboard.press('Escape');
     });
 }

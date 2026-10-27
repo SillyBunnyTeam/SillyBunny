@@ -196,7 +196,8 @@ test.describe('Persona editor', () => {
         await expect(description).not.toBeFocused();
         await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
         await entry.getByRole('button', { name: 'Back', exact: true }).click();
-        const dialog = page.locator('dialog.popup[open]');
+        // The Cancel popup keeps [open] while it closes, and the second Back opens another guard before that ends.
+        const dialog = page.locator('dialog.popup[open]:not([closing])');
         await expect(dialog).toBeVisible();
         for (const label of ['Cancel', 'Discard', 'Save']) await expect(dialog.getByText(label, { exact: true })).toBeVisible();
         await dialog.getByText('Cancel', { exact: true }).click();
