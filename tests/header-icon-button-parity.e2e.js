@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 const character = {
     name: 'Header Icon Character', description: '', personality: '', scenario: '', first_mes: 'Hello', mes_example: '',
@@ -68,8 +69,8 @@ test.describe('character list and editor header icon parity', () => {
         await page.route('**/api/chats/get', route => route.fulfill({ json: [] }));
         await page.route('**/api/groups/all', route => route.fulfill({ json: [] }));
         await page.route('**/api/settings/get', async route => {
-            const response = await route.fetch();
-            const settings = await response.json();
+            const settings = await fetchJsonOrSkip(route);
+            if (!settings) return;
             return route.fulfill({ json: { ...settings, world_names: [worldInfoBook] } });
         });
         await page.route('**/api/worldinfo/get', route => route.fulfill({ json: { entries: { 0: { uid: 0, comment: 'Header Icon Entry', key: [], content: '', order: 100 } } } }));

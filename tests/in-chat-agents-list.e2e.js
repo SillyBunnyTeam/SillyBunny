@@ -4,6 +4,7 @@ import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-age
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -30,8 +31,9 @@ async function openAgents(page, baseURL, width = 1440) {
         const url = new URL(request.url());
         if (url.origin !== origin) return route.abort();
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
             settings.main_api = 'openai';
             data.settings = JSON.stringify(settings);

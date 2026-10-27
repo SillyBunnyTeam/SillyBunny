@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { acceptPopup } from './helpers/popup.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 // End-to-end coverage for the connection profile change notice: one summary toast per user switch,
 // silent scripted switches, the "Also sets" card line, and the id-keyed View popup.
@@ -106,13 +107,13 @@ async function loadApp(page, { autosave = true, profiles = PROFILES } = {}) {
         const url = new URL(request.url());
         if (url.origin !== origin) return route.abort();
         if (url.pathname === '/api/extensions/discover') {
-            const response = await route.fetch();
-            const extensions = await response.json();
+            const extensions = await fetchJsonOrSkip(route);
+            if (!extensions) return;
             return route.fulfill({ json: extensions.filter(extension => !extension.name.startsWith('third-party/')) });
         }
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const data = await fetchJsonOrSkip(route);
+            if (!data) return;
             data.request_compression = { ...data.request_compression, enabled: false };
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;

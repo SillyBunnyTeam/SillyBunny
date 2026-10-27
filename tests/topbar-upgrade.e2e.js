@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -34,8 +35,9 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
         ? route.continue()
         : route.abort());
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const data = await response.json();
+        const fetched = await fetchBodyOrSkip(route, response => response.json());
+        if (!fetched) return;
+        const { response, body: data } = fetched;
         const serverSettings = JSON.parse(data.settings);
         serverSettings.firstRun = false;
         await route.fulfill({ response, json: { ...data, settings: JSON.stringify(serverSettings) } });

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { showList } from './helpers/chats-archive.js';
 import { bootMiscDialogs } from './helpers/misc-dialogs.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 const VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -24,9 +25,9 @@ function requestBody(request) {
 async function bootMediaDialogs(page, viewport) {
     const state = { assetDownloads: [], workflowSaves: [] };
     await page.route('**/scripts/extensions/prompt-inspector/index.js*', async route => {
-        const response = await route.fetch();
-        const source = await response.text();
-        return route.fulfill({ response, body: `${source}\nexport { showPromptInspector as windowMediaTestShowPromptInspector };` });
+        const fetched = await fetchBodyOrSkip(route, response => response.text());
+        if (!fetched) return;
+        return route.fulfill({ response: fetched.response, body: `${fetched.body}\nexport { showPromptInspector as windowMediaTestShowPromptInspector };` });
     });
     await page.context().route(/\/api\/sd\//, route => route.fulfill({ status: 400, body: 'Blocked by Window media dialog test' }));
     await page.context().route('**/api/extensions/install', route => route.fulfill({ status: 400, body: 'Extension install stays intercepted' }));

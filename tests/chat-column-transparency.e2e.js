@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { dismissOnboardingIfPresent } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readBundledTheme = name => JSON.parse(readFileSync(path.join(repoRoot, 'default', 'content', 'themes', `${name}.json`), 'utf8'));
@@ -68,8 +69,9 @@ async function interceptWrites(page) {
         const request = route.request();
         const url = new URL(request.url());
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             settings._version ??= settingsVersion;

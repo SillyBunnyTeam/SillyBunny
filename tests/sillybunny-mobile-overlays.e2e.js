@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 const publicRoot = path.resolve(fileURLToPath(new URL('../public/', import.meta.url)));
 const WORLD_BOOK = `SB_MOBILE_OVERLAYS_${Date.now()}`;
@@ -23,8 +24,9 @@ async function waitForApp(page) {
 
 async function useChatCompletionSettings(page) {
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const data = await response.json();
+        const fetched = await fetchBodyOrSkip(route, response => response.json());
+        if (!fetched) return;
+        const { response, body: data } = fetched;
         const settings = JSON.parse(data.settings);
         settings.main_api = 'openai';
         data.settings = JSON.stringify(settings);
@@ -69,8 +71,9 @@ async function installWorldInfoFixture(page) {
     });
     const book = { entries: { 0: entry(0, 'Alpha'), 1: entry(1, 'Beta') } };
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        return route.fulfill({ response, json: { ...(await response.json()), world_names: [WORLD_BOOK] } });
+        const fetched = await fetchBodyOrSkip(route, response => response.json());
+        if (!fetched) return;
+        return route.fulfill({ response: fetched.response, json: { ...fetched.body, world_names: [WORLD_BOOK] } });
     });
     await page.route('**/api/worldinfo/**', route => {
         const endpoint = new URL(route.request().url()).pathname.split('/').at(-1);
@@ -213,8 +216,9 @@ async function mountColorPicker(page) {
             });
         }
         if (pathname === '/lib.js') {
-            const response = await route.fetch({ url: new URL('/lib.js', process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4455').href });
-            return route.fulfill({ response });
+            const fetched = await fetchBodyOrSkip(route, response => response.body(), { url: new URL('/lib.js', process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4455').href });
+            if (!fetched) return;
+            return route.fulfill({ response: fetched.response, body: fetched.body });
         }
         if (pathname === '/scripts/i18n.js') {
             return route.fulfill({

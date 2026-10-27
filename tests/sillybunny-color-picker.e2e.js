@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 const publicRoot = path.resolve(fileURLToPath(new URL('../public/', import.meta.url)));
 const appBaseUrl = process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4455';
@@ -40,8 +41,9 @@ async function mountPicker(page, { accent = false, fallback = false } = {}) {
             });
         }
         if (pathname === '/lib.js') {
-            const response = await route.fetch({ url: new URL('/lib.js', appBaseUrl).href });
-            return route.fulfill({ response });
+            const fetched = await fetchBodyOrSkip(route, response => response.body(), { url: new URL('/lib.js', appBaseUrl).href });
+            if (!fetched) return;
+            return route.fulfill({ response: fetched.response, body: fetched.body });
         }
         if (pathname === '/scripts/i18n.js') {
             return route.fulfill({

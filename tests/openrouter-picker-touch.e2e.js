@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.setTimeout(90000);
@@ -20,8 +21,9 @@ async function openQuantizations(page, baseURL, kind = 'chat') {
         const url = new URL(request.url());
         if (url.origin !== origin) return route.abort();
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             settings._version = version;
@@ -35,8 +37,9 @@ async function openQuantizations(page, baseURL, kind = 'chat') {
             return route.fulfill({ response, json: data });
         }
         if (url.pathname === '/api/extensions/discover') {
-            const response = await route.fetch();
-            return route.fulfill({ json: (await response.json()).filter(extension => !extension.name.startsWith('third-party/')) });
+            const extensions = await fetchJsonOrSkip(route);
+            if (!extensions) return;
+            return route.fulfill({ json: extensions.filter(extension => !extension.name.startsWith('third-party/')) });
         }
         if (url.pathname === '/api/settings/save') return route.fulfill({ json: { result: 'ok', version: ++version } });
         if (url.pathname === '/api/secrets/read') return route.fulfill({ json: {} });

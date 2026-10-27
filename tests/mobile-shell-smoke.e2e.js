@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
@@ -73,8 +74,8 @@ async function interceptWrites(page, baseURL) {
 
         if (url.pathname === '/api/settings/get') {
             // One retry: the fetch can land on a keep-alive socket the server just closed.
-            const response = await route.fetch().catch(() => route.fetch());
-            const data = await response.json();
+            const data = await fetchJsonOrSkip(route, undefined, { retryOnce: true });
+            if (!data) return;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             settings.power_user.auto_connect = false;

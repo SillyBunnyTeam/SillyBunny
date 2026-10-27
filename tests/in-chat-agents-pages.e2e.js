@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openEditorAgents, waitForEditorApp } from './helpers/in-chat-agents-editor.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -172,8 +173,8 @@ for (const width of [1440, 390]) {
                 await route.fulfill({ json: { result: 'ok', version } });
             });
             await page.route('**/api/settings/get', async route => {
-                const response = await route.fetch();
-                const data = await response.json();
+                const data = await fetchJsonOrSkip(route);
+                if (!data) return;
                 if (saved) data.settings = JSON.stringify(saved);
                 data.inChatAgents = agents;
                 data.request_compression = { ...data.request_compression, enabled: false };

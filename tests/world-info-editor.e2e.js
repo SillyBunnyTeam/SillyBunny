@@ -4,6 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
@@ -20,8 +21,8 @@ test.beforeEach(async ({ page }) => {
     });
     const books = new Map([[BOOK, { entries: { 0: entry(0, 'Alpha'), 1: entry(1, 'Beta'), 2: entry(2, 'Gamma', { disable: true }) } }]]);
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const payload = await response.json();
+        const payload = await fetchJsonOrSkip(route);
+        if (!payload) return;
         return route.fulfill({ json: { ...payload, world_names: [...books.keys()] } });
     });
     await page.route('**/api/worldinfo/**', route => {

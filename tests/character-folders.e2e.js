@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 function readPayload(request) {
     const body = request.postDataBuffer();
@@ -25,8 +26,8 @@ function makeCharacters(count) {
 async function routeSettings(page, edit) {
     const state = { saved: [] };
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const payload = await response.json();
+        const payload = await fetchJsonOrSkip(route);
+        if (!payload) return;
         const settings = JSON.parse(payload.settings);
         edit(settings);
         return route.fulfill({ json: { ...payload, settings: JSON.stringify(settings) } });

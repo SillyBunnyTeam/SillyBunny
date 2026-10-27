@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 const sessions = new WeakMap();
 
@@ -23,8 +24,8 @@ test.beforeEach(async ({ page }) => {
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
     await page.route('**/api/avatars/get', async route => {
-        const response = await route.fetch();
-        const avatars = await response.json();
+        const avatars = await fetchJsonOrSkip(route);
+        if (!avatars) return;
         return route.fulfill({ json: [...avatars, ...session.createdAvatars] });
     });
     await page.route('**/api/avatars/upload', route => {

@@ -4,6 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 const VIEWPORTS = [
     { width: 1920, height: 1080 },
@@ -367,8 +368,9 @@ async function boot(page, viewport, { motion = false } = {}) {
     if (motion) {
         // The test data turns the reduced-motion setting on, which would skip the sheet spring.
         await page.route('**/api/settings/get', async route => {
-            const response = await route.fetch();
-            const data = await response.json();
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
             settings.power_user.reduced_motion = false;
             return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });

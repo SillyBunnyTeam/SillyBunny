@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -17,13 +18,13 @@ async function openConversation(page, baseURL) {
         const url = new URL(request.url());
         if (url.origin !== origin) return route.abort();
         if (url.pathname === '/api/extensions/discover') {
-            const response = await route.fetch();
-            const extensions = await response.json();
+            const extensions = await fetchJsonOrSkip(route);
+            if (!extensions) return;
             return route.fulfill({ json: extensions.filter(extension => !extension.name.startsWith('third-party/')) });
         }
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const data = await fetchJsonOrSkip(route);
+            if (!data) return;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             settings.power_user.auto_connect = false;

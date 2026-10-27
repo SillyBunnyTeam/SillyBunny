@@ -14,11 +14,14 @@ function isTestEndedError(error) {
  * @param {import('@playwright/test').Route} route
  * @param {(response: import('@playwright/test').APIResponse) => Promise<unknown>} readBody
  * @param {Parameters<import('@playwright/test').Route['fetch']>[0]} [options]
+ * @param {{ retryOnce?: boolean }} [behavior] `retryOnce` repeats a failed fetch one time, for a keep-alive socket the server just closed.
  * @returns {Promise<{ response: import('@playwright/test').APIResponse, body: unknown } | null>}
  */
-export async function fetchBodyOrSkip(route, readBody, options) {
+export async function fetchBodyOrSkip(route, readBody, options, { retryOnce = false } = {}) {
     try {
-        const response = await route.fetch(options);
+        const response = retryOnce
+            ? await route.fetch(options).catch(() => route.fetch(options))
+            : await route.fetch(options);
         return { response, body: await readBody(response) };
     } catch (error) {
         if (isTestEndedError(error)) return null;
@@ -27,7 +30,7 @@ export async function fetchBodyOrSkip(route, readBody, options) {
 }
 
 /** Returns the parsed JSON of a route's real response, or `null` when the test ended first. */
-export async function fetchJsonOrSkip(route, options) {
-    const fetched = await fetchBodyOrSkip(route, response => response.json(), options);
+export async function fetchJsonOrSkip(route, options, behavior) {
+    const fetched = await fetchBodyOrSkip(route, response => response.json(), options, behavior);
     return fetched ? fetched.body : null;
 }

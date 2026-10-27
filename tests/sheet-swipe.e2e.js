@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 /*
  * Every overlay bottom sheet that a sheet controller or the Conversation workspace builds has the
@@ -16,8 +17,9 @@ async function waitForApp(page) {
 // The test data turns the reduced-motion setting on, which would skip every spring.
 async function useMotion(page) {
     await page.route('**/api/settings/get', async route => {
-        const response = await route.fetch();
-        const data = await response.json();
+        const fetched = await fetchBodyOrSkip(route, response => response.json());
+        if (!fetched) return;
+        const { response, body: data } = fetched;
         const settings = JSON.parse(data.settings);
         settings.power_user.reduced_motion = false;
         return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
@@ -45,13 +47,13 @@ async function bootConversation(page, baseURL) {
         const url = new URL(request.url());
         if (url.origin !== origin) return route.abort();
         if (url.pathname === '/api/extensions/discover') {
-            const response = await route.fetch();
-            const extensions = await response.json();
+            const extensions = await fetchJsonOrSkip(route);
+            if (!extensions) return;
             return route.fulfill({ json: extensions.filter(extension => !extension.name.startsWith('third-party/')) });
         }
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const data = await fetchJsonOrSkip(route);
+            if (!data) return;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             settings.power_user.auto_connect = false;

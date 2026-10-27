@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { acceptPopup } from './helpers/popup.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
@@ -111,8 +112,9 @@ async function installFixture(page, { dragLocked = false } = {}) {
         const url = new URL(request.url());
 
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
 
             settings.main_api = 'openai';

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
@@ -132,8 +133,9 @@ async function mockWrites(page, settingsStore = null) {
         const method = request.method();
 
         if (url.pathname === '/api/settings/get') {
-            const response = await route.fetch();
-            const data = await response.json();
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
             const settings = settingsStore?.saved ?? JSON.parse(data.settings);
             settings.firstRun = false;
             settings._version ??= settingsVersion;

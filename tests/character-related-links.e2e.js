@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 const CHARACTER = 'qa-related-character.png';
 const PERSONA = 'qa-related-persona.png';
@@ -12,8 +13,8 @@ test.beforeEach(async ({ page }) => {
     await page.route(/\/api\/avatars\/(?:upload|delete)$/, route => route.abort());
     await page.route(/\/api\/worldinfo\/(?:edit|delete|rename|import)$/, route => route.abort());
     await page.route('**/api/avatars/get', async route => {
-        const response = await route.fetch();
-        const avatars = await response.json();
+        const avatars = await fetchJsonOrSkip(route);
+        if (!avatars) return;
         await route.fulfill({ json: [...avatars, PERSONA] });
     });
     await page.route('**/api/chats/get', route => route.fulfill({ json: [
