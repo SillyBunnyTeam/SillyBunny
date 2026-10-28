@@ -6217,6 +6217,13 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     transform: none !important;
 }
 
+/* Themes set the mobile #left-nav-panel height with ID-level !important rules. That height is taller
+   than the page body, so without this rule the host clips the end of every Backend section. */
+#sb-settings-shell-host > #left-nav-panel.sb-settings-mounted-shell {
+    height: 100% !important;
+    max-height: none !important;
+}
+
 #sb-settings-shell-host > .sb-settings-mounted-shell {
     display: flex;
     position: static;

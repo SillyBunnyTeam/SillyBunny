@@ -901,6 +901,27 @@ test('Mobile Sampling follows provider and manual sampler visibility', async ({ 
     await expectNoOverflow(sampling);
 });
 
+test('Mobile Backend pages stay inside the settings page when a theme sizes the drawers by ID', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await page.setViewportSize({ width: 390, height: 844 });
+    // The Moonlit Echoes theme extension ships this mobile drawer rule.
+    await page.addStyleTag({ content: `
+        @media screen and (max-width: 1000px) {
+            body:has(#sb-topbar-stack) :is(#left-nav-panel, #right-nav-panel) {
+                height: calc(100dvh - var(--topBarBlockSize)) !important;
+                max-height: calc(100dvh - var(--topBarBlockSize)) !important;
+            }
+        }
+    ` });
+    for (const tab of ['connections', 'sampling', 'prompting', 'editor', 'context']) {
+        const panel = await openPanel(page, tab);
+        await expect.poll(() => panel.locator('.sb-shell-panel-scroller').evaluate(scroller => {
+            const host = document.getElementById('sb-settings-shell-host');
+            return scroller.getBoundingClientRect().bottom - host.getBoundingClientRect().bottom;
+        }), { message: tab }).toBeLessThanOrEqual(1);
+    }
+});
+
 for (const api of ['openai', 'textgenerationwebui']) {
     test(`${api} presets retain imports, switching, exports and prompt metadata`, async ({ page, baseURL }) => {
         await loadSettings(page, baseURL);
