@@ -10,7 +10,6 @@ import _ from 'lodash';
 import mime from 'mime-types';
 import { Jimp, JimpMime } from '../jimp.js';
 import { safeCrop, safeCover } from '../jimp-safe.js';
-import storage from 'node-persist';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
@@ -20,11 +19,11 @@ import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
 import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
-import { getUserDirectoriesList } from '../users.js';
 import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+import { CharacterIndex } from '../character-index.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
 import {
@@ -85,143 +84,17 @@ const isSameFile = (firstPath, secondPath) => {
     }
 };
 
-class DiskCache {
-    /**
-     * @type {string}
-     * @readonly
-     */
-    static DIRECTORY = 'characters';
-
-    /**
-     * @type {number}
-     * @readonly
-     */
-    static SYNC_INTERVAL = 5 * 60 * 1000;
-
-    /** @type {import('node-persist').LocalStorage} */
-    #instance;
-
-    /** @type {NodeJS.Timeout} */
-    #syncInterval;
-
-    /**
-     * Queue of user handles to sync.
-     * @type {Set<string>}
-     * @readonly
-     */
-    syncQueue = new Set();
-
-    /**
-     * Path to the cache directory.
-     * @returns {string}
-     */
-    get cachePath() {
-        return path.join(globalThis.DATA_ROOT, '_cache', DiskCache.DIRECTORY);
-    }
-
-    /**
-     * Returns the list of hashed keys in the cache.
-     * @returns {string[]}
-     */
-    get hashedKeys() {
-        return fs.readdirSync(this.cachePath);
-    }
-
-    /**
-     * Processes the synchronization queue.
-     * @returns {Promise<void>}
-     */
-    async #syncCacheEntries() {
-        try {
-            if (!useDiskCache || this.syncQueue.size === 0) {
-                return;
-            }
-
-            // SillyBunny: verify() deletes each entry whose card is not in these directories, so this list must include all users.
-            const directories = await getUserDirectoriesList();
-            this.syncQueue.clear();
-
-            await this.verify(directories);
-        } catch (error) {
-            console.error('Error while synchronizing cache entries:', error);
-        }
-    }
-
-    /**
-     * Gets the disk cache instance.
-     * @returns {Promise<import('node-persist').LocalStorage>}
-     */
-    async instance() {
-        if (this.#instance) {
-            return this.#instance;
-        }
-
-        this.#instance = storage.create({
-            dir: this.cachePath,
-            ttl: false,
-            forgiveParseErrors: true,
-            expiredInterval: 0,
-            // @ts-ignore
-            maxFileDescriptors: 100,
-        });
-        await this.#instance.init();
-        this.#syncInterval = setInterval(this.#syncCacheEntries.bind(this), DiskCache.SYNC_INTERVAL);
-        return this.#instance;
-    }
-
-    /**
-     * Verifies disk cache size and prunes it if necessary.
-     * @param {import('../users.js').UserDirectoryList[]} directoriesList List of user directories
-     * @returns {Promise<void>}
-     */
-    async verify(directoriesList) {
-        try {
-            if (!useDiskCache) {
-                return;
-            }
-
-            const cache = await this.instance();
-            const validKeys = new Set();
-            for (const dir of directoriesList) {
-                const files = fs.readdirSync(dir.characters, { withFileTypes: true });
-                for (const file of files.filter(f => f.isFile() && path.extname(f.name) === '.png')) {
-                    const filePath = path.join(dir.characters, file.name);
-                    const cacheKey = getCacheKey(filePath);
-                    validKeys.add(path.parse(cache.getDatumPath(cacheKey)).base);
-                }
-            }
-            for (const key of this.hashedKeys) {
-                if (!validKeys.has(key)) {
-                    // SillyBunny: hashedKeys holds sha256 file names, and removeItem() hashes its key again, so delete the file directly.
-                    await fsPromises.rm(path.join(this.cachePath, key), { force: true });
-                }
-            }
-        } catch (error) {
-            console.error('Error while verifying disk cache:', error);
-        }
-    }
-
-    dispose() {
-        if (this.#syncInterval) {
-            clearInterval(this.#syncInterval);
-        }
-    }
-}
-
-export const diskCache = new DiskCache();
+// SillyBunny: a SQLite index that can be deleted and rebuilt at any time replaces upstream's node-persist DiskCache.
+export const characterIndex = new CharacterIndex({ enabled: useDiskCache });
 
 /**
  * Gets the cache key for the specified image file.
  * @param {string} inputFile - Path to the image file
+ * @param {fs.Stats|undefined} fileStat - Image file metadata, or undefined if the file does not exist
  * @returns {string} - Cache key
  */
-function getCacheKey(inputFile) {
-    if (fs.existsSync(inputFile)) {
-        const stat = fs.statSync(inputFile);
-        return `${inputFile}-${stat.mtimeMs}`;
-    }
-
-    return inputFile;
+function getCacheKey(inputFile, fileStat) {
+    return fileStat ? `${inputFile}-${fileStat.mtimeMs}` : inputFile;
 }
 
 /**
@@ -232,32 +105,19 @@ function getCacheKey(inputFile) {
  */
 async function readCharacterData(inputFile, inputFormat = 'png') {
     recoverFileWriteSync(inputFile);
-    const cacheKey = getCacheKey(inputFile);
+    const fileStat = fs.statSync(inputFile, { throwIfNoEntry: false });
+    const cacheKey = getCacheKey(inputFile, fileStat);
     if (memoryCache.has(cacheKey)) {
         return memoryCache.get(cacheKey);
     }
-    if (useDiskCache) {
-        try {
-            const cache = await diskCache.instance();
-            const cachedData = await cache.getItem(cacheKey);
-            if (cachedData) {
-                return cachedData;
-            }
-        } catch (error) {
-            console.warn('Error while reading from disk cache:', error);
-        }
+    const indexedData = fileStat && characterIndex.get(inputFile, fileStat);
+    if (indexedData) {
+        return indexedData;
     }
 
     const result = await parse(inputFile, inputFormat);
     !isAndroid && memoryCache.set(cacheKey, result);
-    if (useDiskCache) {
-        try {
-            const cache = await diskCache.instance();
-            await cache.setItem(cacheKey, result);
-        } catch (error) {
-            console.warn('Error while writing to disk cache:', error);
-        }
-    }
+    fileStat && characterIndex.set(inputFile, fileStat, result);
     return result;
 }
 
@@ -346,9 +206,8 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
                 break;
             }
         }
-        if (useDiskCache && !Buffer.isBuffer(inputFile)) {
-            diskCache.syncQueue.add(request.user.profile.handle);
-        }
+        // SillyBunny: a file system with coarse timestamps can give the edited card the same size and mtime, so the index cannot detect the change.
+        characterIndex.delete(outputImagePath);
 
         if (fileExists) {
             ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, migrationFallback, operationTime);
@@ -1786,6 +1645,8 @@ router.post('/all', async function (request, response) {
         recoverFileWritesInDirectorySync(request.user.directories.characters);
         const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
+        // SillyBunny: this listing is where the index finds cards that were deleted or renamed, also outside the app.
+        characterIndex.pruneDirectory(request.user.directories.characters, pngFiles);
         const fileStats = new Map();
         const dateAddedEntries = pngFiles.map(file => {
             try {
