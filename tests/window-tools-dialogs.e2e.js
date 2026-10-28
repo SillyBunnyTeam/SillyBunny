@@ -4,6 +4,7 @@ import {
     DATA_MAID_FILE_HASHES, expectToolPage, expectToolParentRestored, expectToolWindow,
     WINDOW_TOOLS_SAFE_DEBUG_FUNCTION, WINDOW_TOOLS_VIEWPORTS,
 } from './helpers/window-tools-dialogs.js';
+import { openMiscFixtureChat } from './helpers/misc-dialogs.js';
 
 test.setTimeout(90000);
 test.use({ serviceWorkers: 'block' });
@@ -66,6 +67,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
 
     test(`Token Counter is a scrollable Window and retains token results at ${size}`, async ({ page }) => {
         await bootWindowToolsDialogs(page, viewport);
+        await openMiscFixtureChat(page, { waitForAutofocus: true });
         await page.locator('#extensionsMenuButton').click();
         await page.locator('#token_counter').click();
         const popup = await currentToolPopup(page, '#token_counter_textarea');

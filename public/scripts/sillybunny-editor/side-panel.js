@@ -371,6 +371,21 @@ function movePanelToSheetRoot(entry) {
     if (entry.panel.parentElement !== chatShell) chatShell.insertBefore(entry.panel, composer);
 }
 
+/**
+ * The sheet sits above the composer. Where the composer has no layout box (Home hides it), the
+ * sheet sits on the bottom edge of the chat shell instead.
+ */
+export function getSheetAnchorTop(shellRect, composer) {
+    return composer.getClientRects().length > 0 ? composer.getBoundingClientRect().top : shellRect.bottom;
+}
+
+export function computeSheetGeometry({ shellRect, anchorTop, viewportHeight }) {
+    const availableHeight = Math.max(0, anchorTop - shellRect.top - SHEET_COMPOSER_CLEARANCE);
+    const sheetHeight = Math.min(viewportHeight / 2, availableHeight);
+    const panelTop = Math.max(shellRect.top, anchorTop - sheetHeight - SHEET_COMPOSER_CLEARANCE);
+    return { sheetHeight, panelTop, chatHeight: Math.max(0, panelTop - shellRect.top) };
+}
+
 function applySheetGeometry(entry) {
     const chatShell = document.getElementById('sheld');
     const chat = document.getElementById('chat');
@@ -378,11 +393,8 @@ function applySheetGeometry(entry) {
     if (!chatShell || !chat || !composer) return;
 
     const shellRect = chatShell.getBoundingClientRect();
-    const composerRect = composer.getBoundingClientRect();
-    const availableHeight = Math.max(0, composerRect.top - shellRect.top - SHEET_COMPOSER_CLEARANCE);
-    const sheetHeight = Math.min(window.innerHeight / 2, availableHeight);
-    const panelTop = Math.max(shellRect.top, composerRect.top - sheetHeight - SHEET_COMPOSER_CLEARANCE);
-    const chatHeight = Math.max(0, panelTop - shellRect.top);
+    const anchorTop = getSheetAnchorTop(shellRect, composer);
+    const { sheetHeight, panelTop, chatHeight } = computeSheetGeometry({ shellRect, anchorTop, viewportHeight: window.innerHeight });
     entry.panel.style.setProperty('--sb-side-panel-sheet-height', `${sheetHeight}px`);
     entry.panel.style.setProperty('--sb-side-panel-sheet-top', `${panelTop}px`);
     chat.style.setProperty('--sb-side-panel-chat-height', `${chatHeight}px`);

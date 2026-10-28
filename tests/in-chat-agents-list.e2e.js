@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
 import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
@@ -19,7 +20,7 @@ const selectionLayout = {
     390: { titleX: 72, descriptionRight: 314, truncated: true },
 };
 
-async function openAgents(page, baseURL, width = 1440) {
+async function openAgents(page, baseURL, width = 1440, { withChat = false } = {}) {
     const origin = new URL(baseURL).origin;
     assertIsolatedServer(baseURL, 'Agents');
     const writes = [];
@@ -59,6 +60,7 @@ async function openAgents(page, baseURL, width = 1440) {
     });
     await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'));
+    if (withChat) await selectSampleCharacter(page);
     await page.evaluate(async () => {
         window.$('#themes').val('Libadwaita').trigger('change');
         const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
@@ -729,7 +731,7 @@ test('failed saved bulk save retains selection and retries without changing row 
 });
 
 test('new drafts, manual-target cancel, pin, duplicate, import and saved-only export keep catalogue boundaries', async ({ page, baseURL }) => {
-    const { root, saves } = await openAgents(page, baseURL);
+    const { root, saves } = await openAgents(page, baseURL, 1440, { withChat: true });
     for (const label of ['New Agent', 'New Companion']) {
         await menu(page, root, 'Add Agent');
         await page.getByRole('menuitem', { name: label, exact: true }).click();

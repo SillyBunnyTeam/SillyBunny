@@ -11,6 +11,7 @@ import {
 } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
+import { HOME_STATE_CHANGED_EVENT, initHomeState, isHomeActive } from './sillybunny-home-state.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import './sillybunny-extension-actions.js';
@@ -1385,8 +1386,6 @@ const sbState = {
     initRetryTimer: 0,
     initRetryCount: 0,
     initObserver: null,
-    landingPageObserver: null,
-    landingPageSyncFrame: 0,
     inlineDrawerAutoClose: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.settingsDrawerAutoClose), false),
     theme: SB_SHELL_THEME,
     frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
@@ -3890,6 +3889,10 @@ function getTopBarCharacterLabel(context = getSillyTavernContext()) {
 }
 
 function getDefaultTopBarLabel(context = getSillyTavernContext()) {
+    if (isHomeActive()) {
+        return t`Home`;
+    }
+
     return getTopBarCharacterLabel(context) || SB_IDLE_BRAND_LABEL;
 }
 
@@ -4031,7 +4034,6 @@ function returnToChatSurface() {
     closeCharacterPanel();
     closeMobileNav();
     closeMobileChatTools();
-    queueLandingPageStateSync();
 }
 
 function bindTopBarTitle(title) {
@@ -8020,7 +8022,7 @@ function preloadPanelStylesheets(shellKey, tabId = null) {
 }
 
 function isLandingPageVisible() {
-    return isActuallyVisible(document.querySelector('.welcomePanel'));
+    return isHomeActive();
 }
 
 function syncHomeButtonState() {
@@ -8029,7 +8031,7 @@ function syncHomeButtonState() {
         return;
     }
 
-    const isHomeVisible = isLandingPageVisible();
+    const isHomeVisible = isHomeActive();
     setButtonPressed(homeButton, isHomeVisible);
     homeButton.classList.toggle('is-current', isHomeVisible);
 
@@ -8040,38 +8042,25 @@ function syncHomeButtonState() {
     }
 }
 
-function queueLandingPageStateSync() {
-    if (sbState.landingPageSyncFrame) {
+function handleHomeStateChanged() {
+    syncHomeButtonState();
+    updateTopBarBrand();
+
+    if (!isHomeActive()) {
         return;
     }
 
-    sbState.landingPageSyncFrame = window.requestAnimationFrame(() => {
-        sbState.landingPageSyncFrame = 0;
-        syncHomeButtonState();
-    });
+    closeMobileChatTools();
+    const composer = document.getElementById('form_sheld');
+    if (composer?.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
 }
 
-function bindLandingPageObserver() {
-    const chatRoot = document.getElementById('chat');
-    if (!(chatRoot instanceof HTMLElement)) {
-        return;
-    }
-
-    sbState.landingPageObserver?.disconnect();
-
-    const observer = new MutationObserver(() => {
-        queueLandingPageStateSync();
-    });
-
-    observer.observe(chatRoot, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class', 'style', 'hidden'],
-    });
-
-    sbState.landingPageObserver = observer;
-    queueLandingPageStateSync();
+function bindHomeState() {
+    document.addEventListener(HOME_STATE_CHANGED_EVENT, handleHomeStateChanged);
+    initHomeState();
+    syncHomeButtonState();
 }
 
 async function returnToLandingPage() {
@@ -8083,7 +8072,6 @@ async function returnToLandingPage() {
     closeMobileChatTools();
 
     if (isLandingPageVisible()) {
-        queueLandingPageStateSync();
         document.getElementById('chat')?.scrollTo({
             top: 0,
             behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -8095,12 +8083,10 @@ async function returnToLandingPage() {
 
     if (typeof context?.closeCurrentChat === 'function') {
         await context.closeCurrentChat();
-        queueLandingPageStateSync();
         return;
     }
 
     document.getElementById('option_close_chat')?.click();
-    queueLandingPageStateSync();
 }
 
 function syncProxyButtonState(proxyButton, sourceIcon) {
@@ -8512,7 +8498,7 @@ function buildTopBar() {
     updateShortcutButton('slot5');
     updateShortcutButton('slot6');
     syncTopbarLayoutState();
-    queueLandingPageStateSync();
+    syncHomeButtonState();
     scheduleCharacterToggleGhostSync();
     queueTopbarPageStateSync();
 }
@@ -15220,7 +15206,7 @@ function initAll() {
     buildTopBar();
     // Must follow buildTopBar(): it rearranges the buttons that call creates.
     applyTopbarIconsOnlyPreference();
-    bindLandingPageObserver();
+    bindHomeState();
     buildBottomChatBar();
     // SillyBunny: user input ends the ⬇ scroll-to-bottom ladder so a mid-ladder flick is not snapped back.
     getChatScrollElement()?.addEventListener('wheel', cancelPendingBottomChatScroll, { passive: true });

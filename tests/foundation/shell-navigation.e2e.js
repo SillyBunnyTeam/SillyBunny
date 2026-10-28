@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { selectSampleCharacter } from '../chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from '../helpers/maintainer-server.js';
 
 const layerTwoControls = [
@@ -281,6 +282,8 @@ test('mobile settings page and chat tools use WAAPI motion with reduced-motion f
     await page.locator('#sb-settings-close').click();
     await expect(settingsPage).toHaveAttribute('hidden');
 
+    // The chat chip belongs to the composer, which Home does not have.
+    await selectSampleCharacter(page);
     await page.locator('.sb-bottom-chat-chip').click();
     const sheet = page.locator('#sb-bottom-chat-sheet');
     const surface = await sheet.elementHandle();

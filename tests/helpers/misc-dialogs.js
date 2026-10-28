@@ -84,6 +84,26 @@ export async function bootMiscDialogs(page, viewport, { admin = false, configure
     return state;
 }
 
+/**
+ * Opens the fixture character's chat. Home has no composer, so specs that use the composer's menus need a chat.
+ * `waitForAutofocus` waits for the composer focus that follows a chat load, for specs that open a composer menu at once.
+ */
+export async function openMiscFixtureChat(page, { waitForAutofocus = false } = {}) {
+    await page.route('**/api/chats/save', route => route.fulfill({ json: {} }));
+    await page.evaluate(async () => {
+        const core = await import('/script.js');
+        const characterId = core.characters.findIndex(entry => entry.avatar === 'misc-dialog-character.png');
+        if (characterId < 0) throw new Error('The misc fixture character is missing.');
+        // bootMiscDialogs already marks the character as selected, which makes selecting it again a no-op.
+        core.setCharacterId(undefined);
+        await core.selectCharacterById(characterId, { switchMenu: false });
+    });
+    await page.locator('#send_textarea').waitFor({ state: 'visible', timeout: 15_000 });
+    if (!waitForAutofocus) return;
+    // Opening a chat focuses the composer after a short delay, and its click closes any menu opened before it.
+    await page.waitForFunction(() => document.activeElement?.id === 'send_textarea', null, { timeout: 15_000 });
+}
+
 export async function openMiscDialog(page, surface) {
     if (['password', 'settings', 'reset', 'delete'].includes(surface)) {
         await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));

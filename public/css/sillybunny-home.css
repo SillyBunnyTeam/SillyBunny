@@ -1,0 +1,13 @@
+#sheld[data-sb-home='on'] > #form_sheld {
+    display: none;
+}
+
+/* The base #chat max-height subtracts --bottomFormBlockSize, which assumes a composer below the chat. Home has none. */
+#sheld[data-sb-home='on'] > #chat {
+    max-height: none;
+}
+
+/* The composer normally carries the bottom safe-area padding. Without it, the Home content keeps that space itself. */
+#sheld[data-sb-home='on'] > #chat > .welcomePanel {
+    margin-block-end: env(safe-area-inset-bottom, 0px);
+}

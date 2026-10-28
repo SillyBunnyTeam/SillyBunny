@@ -16,7 +16,7 @@ import {
     waitForDetail,
 } from './chats-archive.js';
 import { installProbes, settleTransitions } from './dialog-accessibility.js';
-import { bootMiscDialogs } from './misc-dialogs.js';
+import { bootMiscDialogs, openMiscFixtureChat } from './misc-dialogs.js';
 
 export const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 390, height: 844 };
@@ -76,6 +76,13 @@ export async function bootMisc(page, baseURL, viewport, options) {
     const { context, configureSettings, reducedMotion } = await prepareBoot(page, baseURL, options);
     await bootMiscDialogs(page, viewport, { configureSettings, reducedMotion });
     await installProbes(page);
+    return context;
+}
+
+/** Boots the misc fixture and opens its character's chat, because Home has no composer. */
+export async function bootMiscWithChat(page, baseURL, viewport, options) {
+    const context = await bootMisc(page, baseURL, viewport, options);
+    await openMiscFixtureChat(page);
     return context;
 }
 
@@ -194,7 +201,7 @@ export const SURFACES = [
         rootSelector: 'dialog[open]',
         frameSelector: 'dialog[open].sb-dialog',
         isOpen: page => page.locator('dialog[open]:not([closing])'),
-        boot: bootMisc,
+        boot: bootMiscWithChat,
         // The Popup destructive confirms sit behind data-dependent triggers (prompts, backups, attachments), so
         // the test calls Popup with the option set those callers pass.
         async open(page) {
@@ -348,7 +355,7 @@ export const SURFACES = [
         rootSelector: PANEL_SELECTOR,
         frameSelector: PANEL_SELECTOR,
         isOpen: page => page.locator(`${PANEL_SELECTOR}:visible`),
-        boot: bootMisc,
+        boot: bootMiscWithChat,
         // The Options menu items sit far from the menu button in tab order, so the item takes focus directly.
         async open(page) {
             await page.evaluate(value => document.documentElement.style.setProperty('--sheldWidth', value), '55vw');

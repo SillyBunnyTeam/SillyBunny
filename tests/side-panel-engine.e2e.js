@@ -1,5 +1,6 @@
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- viewport mode selects docked or sheet-specific geometry assertions. */
 import { expect, test } from '@playwright/test';
+import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 const VIEWPORTS = [
@@ -16,9 +17,7 @@ const VIEWPORTS = [
 async function boot(page, viewport) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
-    await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
-    await page.waitForFunction(() => !document.getElementById('preloader'));
+    await openQuietChatForSmoke(page);
 }
 
 for (const viewport of VIEWPORTS) {
@@ -33,12 +32,13 @@ for (const viewport of VIEWPORTS) {
                 visualNovelWrapper.id = 'visual-novel-wrapper';
                 document.body.append(visualNovelWrapper);
             }
-            window.qaVisualNovelWrapperState = {
-                created: visualNovelWrapperCreated,
-                display: visualNovelWrapper.style.getPropertyValue('display'),
-                displayPriority: visualNovelWrapper.style.getPropertyPriority('display'),
-            };
-            visualNovelWrapper.style.display = 'flex';
+            window.qaVisualNovelWrapperState = { created: visualNovelWrapperCreated };
+            // The Expressions worker sets an inline display:none on this wrapper whenever a character chat is open.
+            // An inline display set here would be overwritten within a few hundred milliseconds.
+            const holdVisible = document.createElement('style');
+            holdVisible.id = 'qa-visual-novel-visible';
+            holdVisible.textContent = '#visual-novel-wrapper { display: flex !important; }';
+            document.head.append(holdVisible);
 
             const opener = document.createElement('button');
             opener.id = 'qa-side-panel-opener';
@@ -102,7 +102,7 @@ for (const viewport of VIEWPORTS) {
                 chatContent: { left: chatContentRect.left, right: chatContentRect.right, top: chatContentRect.top, bottom: chatContentRect.bottom },
                 initialChat: initial,
                 topBar: { bottom: topBarRect.bottom },
-                composer: { top: composerRect.top, bottom: composerRect.bottom },
+                composer: { left: composerRect.left, width: composerRect.width, top: composerRect.top, bottom: composerRect.bottom },
                 sendFormVisible: !!sendForm && sendForm.getClientRects().length > 0,
                 sendTextareaVisible: !!sendTextarea && sendTextarea.getClientRects().length > 0,
                 panelIntersectsChat: intersects(panelRect, panel.classList.contains('sb-side-panel--sheet') ? chatContentRect : chatRect),
@@ -127,8 +127,7 @@ for (const viewport of VIEWPORTS) {
             const wrapperState = window.qaVisualNovelWrapperState;
             const wrapper = document.getElementById('visual-novel-wrapper');
             if (wrapperState.created) wrapper.remove();
-            else if (wrapperState.display) wrapper.style.setProperty('display', wrapperState.display, wrapperState.displayPriority);
-            else wrapper.style.removeProperty('display');
+            document.getElementById('qa-visual-novel-visible').remove();
             document.getElementById('qa-zoomed-avatar').remove();
             return result;
         });
@@ -158,6 +157,8 @@ for (const viewport of VIEWPORTS) {
         } else {
             expect(geometry.panelIntersectsChat, JSON.stringify(geometry)).toBe(false);
             expect(geometry.panelIntersectsComposer).toBe(false);
+            expect(Math.abs(geometry.composer.left - geometry.chat.left)).toBeLessThan(1);
+            expect(Math.abs(geometry.composer.width - geometry.chat.width)).toBeLessThan(1);
             if (viewport.width === 1440 && viewport.height === 900) expect(geometry.panelIntersectsShell).toBe(false);
             expect(geometry.panelShadow).toBe('none');
             expect(geometry.panelIsAboveZoomedAvatar).toBe(true);

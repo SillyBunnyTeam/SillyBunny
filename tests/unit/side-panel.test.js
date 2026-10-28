@@ -2,7 +2,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join(''), translate: value => value }));
-const { computeSidePanelLayout } = await import('../../public/scripts/sillybunny-editor/side-panel.js');
+const { computeSheetGeometry, computeSidePanelLayout, getSheetAnchorTop } = await import('../../public/scripts/sillybunny-editor/side-panel.js');
 
 function panel(id, side = 'left') {
     return { id, side };
@@ -97,5 +97,42 @@ describe('computeSidePanelLayout', () => {
         expect(() => layout({ width: 0, chatWidth: 0 })).toThrow('viewport.width');
         expect(() => layout({ width: 800, chatWidth: -1 })).toThrow('chat.width');
         expect(() => layout({ width: 800, chatWidth: 400, panels: [panel('same'), panel('same')] })).toThrow('Duplicate');
+    });
+});
+
+describe('sheet geometry', () => {
+    const shellRect = { top: 54, bottom: 844 };
+
+    function fakeElement({ rendered, top }) {
+        return {
+            getClientRects: () => (rendered ? [{}] : []),
+            getBoundingClientRect: () => ({ top }),
+        };
+    }
+
+    test('anchors the sheet above a rendered composer', () => {
+        const anchorTop = getSheetAnchorTop(shellRect, fakeElement({ rendered: true, top: 700 }));
+
+        expect(anchorTop).toBe(700);
+        expect(computeSheetGeometry({ shellRect, anchorTop, viewportHeight: 844 })).toEqual({
+            sheetHeight: 422,
+            panelTop: 272,
+            chatHeight: 218,
+        });
+    });
+
+    test('anchors the sheet at the bottom of the shell when the composer has no layout box', () => {
+        const anchorTop = getSheetAnchorTop(shellRect, fakeElement({ rendered: false, top: 0 }));
+
+        expect(anchorTop).toBe(844);
+        const { sheetHeight, panelTop } = computeSheetGeometry({ shellRect, anchorTop, viewportHeight: 844 });
+        expect(sheetHeight).toBeGreaterThan(0);
+        expect(panelTop + sheetHeight).toBeLessThanOrEqual(shellRect.bottom);
+    });
+
+    test('keeps a short chat area above a sheet that is limited by the available height', () => {
+        const result = computeSheetGeometry({ shellRect: { top: 54, bottom: 200 }, anchorTop: 200, viewportHeight: 844 });
+
+        expect(result).toEqual({ sheetHeight: 140, panelTop: 54, chatHeight: 0 });
     });
 });

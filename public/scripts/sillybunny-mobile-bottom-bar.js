@@ -8,6 +8,7 @@
 import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, animateHeightFrom, animateIn, originFrom, play, stopMotion } from './sillybunny-motion.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
+import { HOME_STATE_CHANGED_EVENT, isHomeActive } from './sillybunny-home-state.js';
 
 const SHEET_ID = 'sb-bottom-chat-sheet';
 const SHEET_TITLE_ID = 'sb-bottom-chat-sheet-title';
@@ -275,7 +276,7 @@ function handleBarMutation() {
 }
 
 function syncBarShown() {
-    const shown = state.active && Boolean(state.bar) && !state.bar.classList.contains('displayNone');
+    const shown = state.active && Boolean(state.bar) && !state.bar.classList.contains('displayNone') && !isHomeActive();
     document.documentElement.toggleAttribute('data-sb-mobile-chat-bar-shown', shown);
     if (!shown) {
         closeSheet();
@@ -401,6 +402,7 @@ export function initializeMobileBottomBar() {
         return;
     }
     state.initialized = true;
+    document.addEventListener(HOME_STATE_CHANGED_EVENT, syncBarShown);
 
     const bar = document.getElementById('sb-bottom-chat-bar');
     if (bar) {

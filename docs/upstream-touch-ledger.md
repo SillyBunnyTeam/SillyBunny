@@ -1115,6 +1115,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-28, PR #870 (marker and unit tests checked). |
 | Owner | UI overhaul integrator. |
 
+### `public/style.css` - Home stylesheet import
+| Field | Value |
+| --- | --- |
+| File | `public/style.css` |
+| Area | Home state and shell layout. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/css/sillybunny-home.css` (Home layout rules) and `public/scripts/sillybunny-home-state.js` (`#sheld[data-sb-home='on']`, derived from a `.welcomePanel` in `#chat` while Conversation mode is off). |
+| Adapter shape | One `@import url(css/sillybunny-home.css?v=…)` line after the `welcome.css` import, under one `/* SillyBunny: */` marker. A change to `style.css` needs a new `style.css?v=` key at both `public/index.html` call sites (the preload and the stylesheet link), as the `index.html` boot-assets entry describes. |
+| Protecting tests | `tests/unit/sillybunny-home-state.test.js`; `tests/home-state.e2e.js` (composer hidden and `#chat` filling the shell on Home at 1440×900 and 390×844, composer back in a chat, Conversation over Home, Ctrl+O, mobile chat bar and side-panel sheet on Home); `tests/unit/side-panel.test.js` (sheet anchor without a composer); `tests/side-panel-engine.e2e.js`. |
+| Validation | 2026-10-29: root and tests lint pass; unit 456 suites, 6,932 passed, 2 skipped; Chromium e2e of the Home, side-panel, mobile shell, dialog and overlay specs (347 passed; only the known `character-shell-performance:29` ×2 and `mobile-composer-spacing:57` failures); foundation Chromium 71 passed, 33 skipped (three runs); `npm run check:frontend-budgets` passes. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-29, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

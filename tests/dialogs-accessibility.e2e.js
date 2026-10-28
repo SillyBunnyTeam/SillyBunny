@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { dialog as archiveDialog, isCollapsed, rows, waitForDetail } from './helpers/chats-archive.js';
 import { a11yShot, expectSingleFocusRing, settleTransitions, tabUntil, walkTabOrder } from './helpers/dialog-accessibility.js';
-import { DESKTOP, SURFACES, TEXT_SCALE, bootMisc, openArchiveList, pressKey } from './helpers/dialog-accessibility-surfaces.js';
+import { DESKTOP, SURFACES, TEXT_SCALE, bootMisc, bootMiscWithChat, openArchiveList, pressKey } from './helpers/dialog-accessibility-surfaces.js';
 
 /**
  * Accessibility checks for the dialog frame, the Chat Archive, action-menu sheets and side panels:
@@ -235,7 +235,7 @@ test.describe('Forced colours keep a focus indicator on controls that hide their
         // forced-colours palette, so its emulation leaves the outline transparent.
         // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
         test.skip(browserName === 'webkit', 'WebKit does not repaint a transparent outline in forced colours');
-        await bootMisc(page, baseURL, DESKTOP, { motion: false });
+        await bootMiscWithChat(page, baseURL, DESKTOP, { motion: false });
         await page.emulateMedia({ forcedColors: 'active' });
         const indicatorOf = control => control.evaluate(element => {
             const style = getComputedStyle(element);
@@ -311,7 +311,7 @@ test.describe('Enter on a real button', () => {
     });
 
     test('an element that is only an .interactable still activates once', async ({ page, baseURL }) => {
-        await bootMisc(page, baseURL, DESKTOP, { motion: false });
+        await bootMiscWithChat(page, baseURL, DESKTOP, { motion: false });
         const trigger = page.locator('#options_button');
         await expect(trigger).toHaveJSProperty('tagName', 'DIV');
         await page.evaluate(() => {

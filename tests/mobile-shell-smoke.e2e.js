@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+import { openQuietChatForSmoke, selectSampleCharacter, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -348,6 +348,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
     });
 
     test('chat chip sheet opens, closes on Escape, and stays inside the viewport', async ({ page }, testInfo) => {
+        await selectSampleCharacter(page);
         const chip = page.locator('#sb-bottom-chat-bar .sb-bottom-chat-chip');
         await expect(chip).toBeVisible();
         await chip.click();
@@ -414,6 +415,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
     });
 
     test('chat tools close on Escape and hand focus back', async ({ page }) => {
+        await selectSampleCharacter(page);
         const composer = page.locator('#send_textarea');
 
         await composer.focus();
@@ -438,6 +440,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
     test('every primary chat surface stays inside the document viewport', async ({ page }) => {
         test.setTimeout(120_000);
+        await selectSampleCharacter(page);
 
         const detachedAutocompleteErrors = [];
         page.on('pageerror', error => {
@@ -810,6 +813,7 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
     });
 
     test('composer stays on screen through keyboard-style viewport shrink', async ({ page }, testInfo) => {
+        await selectSampleCharacter(page);
         await page.setViewportSize({ width: 390, height: 500 });
 
         await expect.poll(async () => {
@@ -843,7 +847,7 @@ test.describe('mobile shell smoke at narrow 320x568', () => {
     });
 
     test('composer fits and the send target keeps its current floor', async ({ page }) => {
-        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page);
 
         // Compact mode and connection state come from the linked user profile;
         // normalize both so this measures the stylesheet contract, not the

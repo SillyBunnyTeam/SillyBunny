@@ -55,7 +55,7 @@ test.describe('mobile composer spacing at 320x568', () => {
     });
 
     test('normal and compact modes keep the action rails clear of the textarea', async ({ page }) => {
-        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page);
 
         await page.evaluate(() => {
             document.documentElement.style.setProperty('--sb-bottom-bar-scale', '1.5');
