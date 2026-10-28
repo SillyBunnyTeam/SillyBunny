@@ -1035,7 +1035,7 @@ function _bindFieldDirtyListeners() {
 
     // Favorite button toggle
     document.getElementById('favorite_button')?.addEventListener('click', () => {
-        // State update happens inside the upstream handler; we re-check after it runs
+        // A new card's star updates inside the upstream handler, so re-check after it runs
         requestAnimationFrame(() => session.changed());
     });
 }
@@ -1104,8 +1104,9 @@ function _restoreSnapshot(snap) {
         }
     }
 
-    // Restore favorite state via DOM (avoids needing the unexported fav_ch_checked)
-    if ('_fav' in snap) {
+    // Restore favorite state via DOM (avoids needing the unexported fav_ch_checked).
+    // A saved card's star saves on click, so a draft or baseline must not replay it.
+    if ('_fav' in snap && session.context?.mode === 'create') {
         const btn = document.getElementById('favorite_button');
         const currentFav = btn?.classList.contains('fav_on') ?? false;
         if (btn && currentFav !== snap._fav) {
