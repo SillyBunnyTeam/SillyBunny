@@ -18302,6 +18302,12 @@ jQuery(async function () {
     });
 
     $('#favorite_button').on('click', function () {
+        // SillyBunny: a saved card's favourite is a live flag, as in the character list, so leaving
+        // the explicit-save editor without Save cannot drop it. A new card keeps it until creation.
+        if ($('#form_create').attr('actiontype') === 'editcharacter') {
+            void toggleCharacterFavoriteById(String($('#avatar_url_pole').val()));
+            return;
+        }
         updateFavButtonState(!fav_ch_checked);
         // SillyBunny: explicit-save model; controller marks dirty via requestAnimationFrame (Step 3b)
     });

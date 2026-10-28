@@ -272,6 +272,13 @@ describe('editor navigation guards', () => {
         expect(other.matches(CHARACTER_TAB_GUARD_SELECTOR)).toBe(false);
     });
 
+    test('both guard selectors cover the settings page close button', () => {
+        const close = document.createElement('button');
+        close.id = 'sb-settings-close';
+        expect(close.matches(CHARACTER_TAB_GUARD_SELECTOR)).toBe(true);
+        expect(close.matches(characterTabGuardSelector('persona'))).toBe(true);
+    });
+
     // jsdom cannot create trusted events, so the intercept path is covered by e2e; here the
     // replayed (untrusted) click must pass straight through to the target.
     test('untrusted replays pass a custom guardSelector untouched', () => {

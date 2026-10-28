@@ -1040,10 +1040,6 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 }
 
-.sb-brand-title.is-previewing {
-    background: var(--sb-flat-selected-bg);
-}
-
 .sb-brand-title:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
@@ -6215,6 +6211,13 @@ body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
     height: 100% !important;
     max-height: none !important;
     transform: none !important;
+}
+
+/* Themes set the mobile #left-nav-panel height with ID-level !important rules. That height is taller
+   than the page body, so without this rule the host clips the end of every Backend section. */
+#sb-settings-shell-host > #left-nav-panel.sb-settings-mounted-shell {
+    height: 100% !important;
+    max-height: none !important;
 }
 
 #sb-settings-shell-host > .sb-settings-mounted-shell {

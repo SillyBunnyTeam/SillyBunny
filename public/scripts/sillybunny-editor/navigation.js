@@ -17,22 +17,24 @@ const DISCARD_RESULT = 2;
  * @property {() => void} close  Leaves the editor (navigates back to its list).
  * @property {() => void} [afterDiscard]  Editor-specific resync after a discard.
  * @property {string} [guardSelector]  Click targets that must pass the leave guard first.
- *     Defaults to the character-panel tabs other than the character editor's own.
+ *     Defaults to the character-panel tabs other than the character editor's own, and the settings page's close button.
  * @property {boolean} [escape=true]  Guard Escape here; false when the editor's shell owns Escape.
  */
 
 // Character panel tabs: the drawer rail uses data-sb-character-tab, the page-hosted
 // layout uses data-sb-settings-tab. The character and group editors live on "editor".
+// The settings page's close button hides the editor like a tab switch, so the guard covers it too.
+const SETTINGS_CLOSE_SELECTOR = '#sb-settings-close';
 export const CHARACTER_TAB_GUARD_SELECTOR = '[data-sb-character-tab]:not([data-sb-character-tab="editor"]), '
-    + '[data-sb-settings-tab]:not([data-sb-settings-tab="editor"])';
+    + `[data-sb-settings-tab]:not([data-sb-settings-tab="editor"]), ${SETTINGS_CLOSE_SELECTOR}`;
 
 /**
- * Tab selector guarding every character-panel tab except `tabId`.
+ * Selector guarding every character-panel tab except `tabId`, and the settings page's close button.
  * @param {string} tabId
  */
 export function characterTabGuardSelector(tabId) {
     const id = String(tabId).replace(/["\\]/g, '\\$&');
-    return `[data-sb-character-tab]:not([data-sb-character-tab="${id}"]), [data-sb-settings-tab]:not([data-sb-settings-tab="${id}"])`;
+    return `[data-sb-character-tab]:not([data-sb-character-tab="${id}"]), [data-sb-settings-tab]:not([data-sb-settings-tab="${id}"]), ${SETTINGS_CLOSE_SELECTOR}`;
 }
 
 /** @type {Set<EditorRegistration>} */
