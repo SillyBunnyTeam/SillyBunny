@@ -148,7 +148,7 @@ When upstream SillyTavern publishes a new release tag:
 
 ## Setting up the dev environment
 
-1. Required software: git and Bun (≥ 1.3.14) for normal local development. Node.js (≥ 20) and npm are also required when testing Node.js compatibility or matching CI behaviour.
+1. Required software: git and Bun (≥ 1.3.14) for normal local development. Node.js (≥ 22.13) and npm are also required when testing Node.js compatibility or matching CI behaviour.
 2. An IDE or editor of your choice. Visual Studio Code is a safe default.
 3. A Chromium, Gecko (Firefox), and WebKit browser for compatibility checks.
 4. For the Android app in `android/`: JDK 21, plus the Android SDK and NDK versions pinned in `android/app/build.gradle.kts`. The Gradle wrapper is committed, so run `./gradlew` from `android/`.

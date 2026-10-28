@@ -222,7 +222,7 @@ describe('launcher parity', () => {
     test('pins runtimes that support supervised Windows shutdown', () => {
         expect(packageJson.engines).toEqual({
             bun: '>= 1.3.14',
-            node: '>= 20',
+            node: '>= 22.13',
         });
         expect(packageJson.packageManager).toBe('bun@1.4.4');
         expect(dockerfileSource).toMatch(/^FROM oven\/bun:1\.4\.4-alpine$/m);
