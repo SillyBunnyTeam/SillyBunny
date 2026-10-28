@@ -3011,6 +3011,12 @@ async function onDeleteGroupClick() {
 }
 
 async function onFavoriteGroupClick() {
+    // SillyBunny: a saved group's favourite is a live flag, as in the group list, so leaving
+    // the explicit-save editor without Save cannot drop it. A new group keeps it in its draft.
+    if (editorDraft?.id) {
+        await toggleGroupFavoriteById(editorDraft.id);
+        return;
+    }
     updateFavButtonState(!fav_grp_checked);
     if (isGroupEditorActive()) {
         _editDraft((draft) => { draft.fav = fav_grp_checked; return true; });
@@ -3679,6 +3685,8 @@ function applyEditorSnapshot(snapshot) {
         member_models: '_models',
     };
     for (const key of EDITABLE_KEYS) {
+        // A saved group's star saves on click, so a backup or baseline must not replay it.
+        if (key === 'fav' && editorDraft.id) continue;
         const storedKey = Object.hasOwn(snapshot, key) ? key : legacyKeys[key];
         if (!Object.hasOwn(snapshot, storedKey)) continue;
         editorDraft[key] = _draftDefaultFor(key, { [key]: snapshot[storedKey] });
