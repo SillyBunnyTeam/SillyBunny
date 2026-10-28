@@ -5,6 +5,7 @@ import {
     expectInsideBody, expectNoSecretLeaks, expectParentRestored, expectPushedPage,
     expectWindow, openApiKeyManager, openDataBank, openRegex,
 } from './helpers/window-dialogs.js';
+import { copiedText, suggestedName, trackClipboard } from './helpers/browser-neutral.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 
 test.setTimeout(90000);
@@ -145,7 +146,7 @@ async function openScraperNotepad(page, manager) {
 for (const viewport of WINDOW_VIEWPORTS) {
     const size = `${viewport.width}×${viewport.height}`;
 
-    test(`Data Bank Window reaches last actions, toggles :has() bulk mode and accepts a .popup file drop at ${size}`, async ({ page }) => {
+    test(`Data Bank Window reaches last actions, toggles :has() bulk mode and accepts a .popup file drop at ${size}`, async ({ page, browserName }) => {
         const state = await bootWindowDialogs(page, viewport);
         const manager = await openDataBank(page);
         await expectWindow(manager, viewport);
@@ -264,7 +265,7 @@ for (const viewport of WINDOW_VIEWPORTS) {
         const downloadPromise = page.waitForEvent('download');
         await rows.first().locator('.attachmentRowMenu').click();
         await page.getByRole('menuitem', { name: 'Download', exact: true }).click();
-        expect((await downloadPromise).suggestedFilename()).toBe('Window attachment 01.txt');
+        expect(suggestedName(await downloadPromise, browserName)).toBe('Window attachment 01.txt');
 
         await manager.locator('.attachmentsBulkEditButton').click();
         await expect(manager.locator('.attachmentsBulkEditCheckbox')).toBeChecked();
@@ -582,9 +583,9 @@ for (const viewport of WINDOW_VIEWPORTS) {
         expect(state.pageErrors).toEqual([]);
     });
 
-    test(`API Keys Window reaches row actions and keeps Add/Rename Alerts and secret values isolated at ${size}`, async ({ page }) => {
+    test(`API Keys Window reaches row actions and keeps Add/Rename Alerts and secret values isolated at ${size}`, async ({ page, browserName }) => {
         const state = await bootWindowDialogs(page, viewport);
-        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+        await trackClipboard(page, browserName);
         const manager = await openApiKeyManager(page);
         await expectWindow(manager, viewport);
         const rows = manager.locator('.secretKeyManagerItem');
@@ -603,7 +604,7 @@ for (const viewport of WINDOW_VIEWPORTS) {
         await expect.poll(() => state.secrets.filter(request => request.endpoint === 'rotate')).toEqual([{ endpoint: 'rotate', key: 'api_key_openai', id: 'window-secret-23' }]);
         await expect(rows.last()).toHaveClass(/active/);
         await rows.last().locator('[data-action="copy-secret"]').click();
-        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(SECRET_SENTINEL);
+        await expect.poll(() => copiedText(page, browserName)).toBe(SECRET_SENTINEL);
         await expectNoSecretLeaks(page, state);
 
         for (const exit of ['cancel', 'escape', 'save']) {

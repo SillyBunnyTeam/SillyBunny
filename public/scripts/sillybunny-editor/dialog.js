@@ -108,7 +108,16 @@ export function bindHeaderLayout(header) {
         const titleWidth = title.scrollWidth + inlinePadding(titles);
         const centeredCapacity = Math.max(0, available - (width * 2));
         const looseCapacity = Math.max(0, available - start - trailing);
-        const needsLooseCentering = titleWidth > centeredCapacity + 1 && titleWidth <= looseCapacity + 1;
+        // The one pixel of slack absorbs rounding but also hides a 1px overflow, which the browser still clips with
+        // an ellipsis, so `isClipped` catches that overflow. A zero client width means the title is not laid out
+        // (detached, display:none, or jsdom), where the comparison would read every title as clipped.
+        // Once loose, the box is as wide as its text and no longer reads as clipped, so the capacity test alone must
+        // keep it loose, and it stays loose until the title is a full pixel inside the centred capacity. Widths are
+        // integers and capacities are fractional, so a title on the limit would otherwise flip back to centred,
+        // clip, and flip again on every pass.
+        const isClipped = title.clientWidth > 0 && title.scrollWidth > title.clientWidth;
+        const slack = header.hasAttribute('data-header-centering-loose') ? -1 : 1;
+        const needsLooseCentering = (isClipped || titleWidth > centeredCapacity + slack) && titleWidth <= looseCapacity + 1;
         // The selection count is the one title that must stay readable. When it cannot share the row
         // with Cancel, Select All and Close, the CSS moves it to a second row, and the side columns
         // then only need their own width.

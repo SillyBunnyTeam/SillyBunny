@@ -350,6 +350,9 @@ for (const width of [1440, 390]) {
             await page.mouse.move(origin.x + origin.width / 2, origin.y + origin.height / 2);
             await page.mouse.down();
             await expect(row(page, fixtureTag)).toBeVisible();
+            // The sheet layout holds a drag back by 30 ms, as a touch press does. WebKit plays the whole mouse path
+            // faster than that, and a release before the hold ends starts no drag.
+            await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 60)));
             await page.mouse.move(origin.x + origin.width / 2, target.y + target.height - 4, { steps: 12 });
             await page.mouse.up();
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/power-user.js')).power_user.tag_sort_mode)).toBe('manual');

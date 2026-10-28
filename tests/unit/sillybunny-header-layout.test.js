@@ -87,6 +87,57 @@ describe('bindHeaderLayout stacking', () => {
         unbind();
     });
 
+    test('moves a title that the centred column clips by one pixel to the loose layout and keeps it there', async () => {
+        const { header, state, unbind } = buildHeader({ selection: false, titleWidth: 201 });
+        // Centred, the title box is 200px wide. Loose, the box is as wide as the title text.
+        const title = header.querySelector('.sb-dialog__title');
+        Object.defineProperty(title, 'clientWidth', {
+            configurable: true,
+            get: () => (header.hasAttribute('data-header-centering-loose') ? state.titleWidth : 200),
+        });
+        await resync(header);
+
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+        await resync(header);
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+        unbind();
+    });
+
+    test('keeps a clipped title that sits exactly on the centred capacity loose, without toggling', async () => {
+        const { header, state, unbind } = buildHeader({ selection: false, titleWidth: 200 });
+        // The centred box is one pixel short of the text, so it clips, while the text width equals the capacity.
+        const title = header.querySelector('.sb-dialog__title');
+        Object.defineProperty(title, 'clientWidth', {
+            configurable: true,
+            get: () => (header.hasAttribute('data-header-centering-loose') ? state.titleWidth : 199),
+        });
+        const changes = [];
+        new MutationObserver(records => changes.push(...records)).observe(header, { attributes: true, attributeFilter: ['data-header-centering-loose'] });
+        await resync(header);
+        for (let pass = 0; pass < 5; pass++) await resync(header);
+
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+        expect(changes).toHaveLength(1);
+        unbind();
+    });
+
+    test('returns a loose title to the centre once it is a pixel inside the centred capacity', async () => {
+        const { header, state, unbind } = buildHeader({ selection: false, titleWidth: 201 });
+        const title = header.querySelector('.sb-dialog__title');
+        Object.defineProperty(title, 'clientWidth', { configurable: true, get: () => 200 });
+        await resync(header);
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+
+        state.titleWidth = 200;
+        await resync(header);
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(true);
+
+        state.titleWidth = 198;
+        await resync(header);
+        expect(header.hasAttribute('data-header-centering-loose')).toBe(false);
+        unbind();
+    });
+
     test('clears the stack when the title gets shorter', async () => {
         const { header, state, unbind } = buildHeader({ selection: true, titleWidth: 300 });
         expect(header.hasAttribute('data-header-stacked')).toBe(true);

@@ -230,7 +230,11 @@ test.describe('One focus ring on a .menu_button', () => {
 });
 
 test.describe('Forced colours keep a focus indicator on controls that hide their outline', () => {
-    test('the composer buttons and the Options and Extensions menu rows', async ({ page, baseURL }) => {
+    test('the composer buttons and the Options and Extensions menu rows', async ({ page, baseURL, browserName }) => {
+        // These rows keep a transparent outline that the engine repaints in forced colours. WebKit has no
+        // forced-colours palette, so its emulation leaves the outline transparent.
+        // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
+        test.skip(browserName === 'webkit', 'WebKit does not repaint a transparent outline in forced colours');
         await bootMisc(page, baseURL, DESKTOP, { motion: false });
         await page.emulateMedia({ forcedColors: 'active' });
         const indicatorOf = control => control.evaluate(element => {

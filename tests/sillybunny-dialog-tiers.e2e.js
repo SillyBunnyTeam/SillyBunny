@@ -90,6 +90,16 @@ for (const viewport of VIEWPORTS) {
             }, text);
             const popup = page.locator('dialog.popup[open]').last();
             await expect(popup.locator('.sb-dialog__title')).toHaveText(text);
+            // Text width differs per engine, so the same words can land inside the centring limit. Narrow letters are
+            // added until the title is just past it, so every engine checks the same case.
+            await popup.locator('.sb-dialog__title').evaluate(async title => {
+                const header = title.closest('.sb-dialog__header');
+                const settled = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                for (let added = 0; added < 24 && !header.hasAttribute('data-header-centering-loose'); added++) {
+                    title.textContent += 'i';
+                    await settled();
+                }
+            });
             await expect(popup.locator('.sb-dialog__header')).toHaveAttribute('data-header-centering-loose', '');
             const headerFit = await popup.evaluate(node => {
                 const titleNode = node.querySelector('.sb-dialog__title');

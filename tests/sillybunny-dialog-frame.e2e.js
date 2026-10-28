@@ -430,9 +430,12 @@ test('popover sheet swipe closes and content scrolling does not', async ({ page 
     await sheet.locator('.sb-action-sheet-body').hover();
     await page.mouse.wheel(0, 150);
     await expect(sheet).toBeVisible();
-    await sheet.locator('.sb-dialog__handle').evaluate(node => {
+    await sheet.locator('.sb-dialog__handle').evaluate(async node => {
         const y = node.getBoundingClientRect().top + 5;
         node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7, pointerType: 'touch', clientY: y, button: 0 }));
+        // The swipe is judged by velocity, and WebKit stamps events at 1 ms resolution, so a release
+        // in the same millisecond reads as zero speed.
+        await new Promise(resolve => setTimeout(resolve, 20));
         node.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, pointerType: 'touch', clientY: y + 120, button: 0 }));
     });
     await expect(sheet).toBeHidden();

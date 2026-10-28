@@ -105,6 +105,9 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
                     await addFolder.click();
                 }
                 const input = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('textbox', { name: 'New Folder', exact: true });
+                // The popover moves focus to its entry on a later frame. Typing and Tab before that frame run would
+                // have focus pulled back to the entry afterwards, which a user cannot outpace.
+                await expect(input).toBeFocused();
                 await input.fill(name);
                 if (page.viewportSize().width > 450) {
                     const create = page.locator('.sb-custom-popover:visible').getByRole('button', { name: 'Create', exact: true });
@@ -279,8 +282,9 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
                 clearListFilters(settings);
                 settings.power_user.bogus_folders = true;
                 delete settings.power_user.sb_folders;
-                settings.tags = [...(settings.tags ?? []), ...structuredClone(legacyTags)];
-                settings.tag_map = { ...(settings.tag_map ?? {}), ...structuredClone(legacyMap) };
+                // Replaces the saved tags, so qa- tags that other specs left on the server cannot reach the exact-list checks below.
+                settings.tags = structuredClone(legacyTags);
+                settings.tag_map = structuredClone(legacyMap);
             });
             await routeCharacters(page, characters);
             await page.goto('/');

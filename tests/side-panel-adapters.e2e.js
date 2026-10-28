@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { restoreAnimationSpeed, slowAnimations } from './helpers/animation-speed.js';
+import { keysFromLastRadioToFirst } from './helpers/browser-neutral.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -311,14 +313,12 @@ test.describe('the side-panel sheet swipe at 390×844', () => {
         const restTop = await topOf(panel);
 
         await dragDown(page, await centreOf(panel.locator(':scope > .sb-dialog__handle')), 220);
-        const client = await page.context().newCDPSession(page);
-        await client.send('Animation.enable');
-        await client.send('Animation.setPlaybackRate', { playbackRate: 0.05 });
+        await slowAnimations(page, 0.05);
         await page.mouse.up();
         // The slide is still running, from the dragged position, and the panel has not closed yet.
         expect(await topOf(panel)).toBeGreaterThanOrEqual(restTop + 200);
         await expect(panel).toBeVisible();
-        await client.send('Animation.setPlaybackRate', { playbackRate: 1 });
+        await restoreAnimationSpeed(page);
 
         await expect(panel).toBeHidden();
         await expect(page.locator('body')).not.toHaveClass(/sb-has-side-panel-sheet/);
@@ -334,9 +334,7 @@ test.describe('the side-panel sheet swipe at 390×844', () => {
         await boot(page, SHEET_VIEWPORT, { motion: true });
         expect(await page.evaluate(async () => (await import('/scripts/sillybunny-motion.js')).prefersReducedMotion())).toBe(false);
         // Slowing the page's animations keeps the entry running while the pointer goes down.
-        const client = await page.context().newCDPSession(page);
-        await client.send('Animation.enable');
-        await client.send('Animation.setPlaybackRate', { playbackRate: 0.02 });
+        await slowAnimations(page, 0.02);
 
         const panel = await openPanel(page, PANELS[0]);
         await expect(panel).toHaveClass(/sb-side-panel--sheet/);
@@ -346,7 +344,7 @@ test.describe('the side-panel sheet swipe at 390×844', () => {
 
         await expect.poll(() => topOf(panel)).toBeCloseTo(sheetTop + 60, 0);
         expect(await panel.evaluate(element => element.getAnimations().length)).toBe(0);
-        await client.send('Animation.setPlaybackRate', { playbackRate: 1 });
+        await restoreAnimationSpeed(page);
         await page.mouse.up();
         await expect.poll(() => topOf(panel)).toBeCloseTo(sheetTop, 0);
         await expect(panel).toBeVisible();
@@ -656,7 +654,7 @@ test('real panels return focus and Escape closes Token Probabilities, CFG, then 
     await expect(authorsNote).toBeHidden();
 });
 
-test('Author\'s Note and CFG keep their existing metadata and settings save contracts', async ({ page }) => {
+test('Author\'s Note and CFG keep their existing metadata and settings save contracts', async ({ page, browserName }) => {
     await boot(page, { width: 1440, height: 900 });
     const saved = { settings: [], chats: [] };
     await page.route('**/api/settings/save', async route => {
@@ -721,14 +719,14 @@ test('Author\'s Note and CFG keep their existing metadata and settings save cont
     expect(positionVisibility.mainDepth).toBe(false);
     expect(positionVisibility.mainRole).toBe(false);
     await page.locator('input[name="extension_floating_position"][value="1"]').focus();
-    await page.keyboard.press('ArrowRight');
+    for (const key of keysFromLastRadioToFirst(browserName, 3)) await page.keyboard.press(key);
     await expect(page.locator('input[name="extension_floating_position"][value="2"]')).toBeChecked();
     await expect(page.locator('.ds-row[data-sb-editor-field="authors-note-main-depth"]')).toBeHidden();
     await page.evaluate(async () => (await import('/scripts/slash-commands.js')).executeSlashCommandsWithOptions('/note-position chat'));
     await expect(page.locator('.ds-row[data-sb-editor-field="authors-note-main-depth"]')).toBeVisible();
 
     await page.locator('input[name="extension_floating_char_position"][value="2"]').focus();
-    await page.keyboard.press('ArrowRight');
+    for (const key of keysFromLastRadioToFirst(browserName, 3)) await page.keyboard.press(key);
     await expect(page.locator('input[name="extension_floating_char_position"][value="0"]')).toBeChecked();
     await page.locator('input[name="extension_floating_char_position"][value="2"]').evaluate(input => {
         input.checked = true;

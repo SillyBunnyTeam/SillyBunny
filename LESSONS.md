@@ -201,6 +201,11 @@ This is the largest class by a wide margin.
 - **Focus return:** after a dialog or side panel closes, the opener can be disabled, hidden or removed, and focus then fell to the document.
   - **Guard:** `returnFocusTo()` in `public/scripts/sillybunny-editor/page-chain.js`. It retries a disabled opener for a few frames, falls back to a recorded container or a fallback control, and never focuses behind another open modal.
   - **Tests:** `tests/unit/sillybunny-return-focus.test.js`, `tests/dialogs-accessibility.e2e.js` (Escape returns focus).
+  - **WebKit:** WebKit can refuse `focus()` on a visible opener for a frame after a dialog is removed. `returnFocusTo()` retries any opener that is connected, focusable, visible and not behind a modal, and falls back at once for an opener that can never take focus.
+- **Header title clipping:** `bindHeaderLayout()` in `public/scripts/sillybunny-editor/dialog.js` compares integer widths with fractional capacities.
+  - **Breaks:** the old one-pixel slack kept a title that overflowed by one pixel centred, so the browser clipped it with an ellipsis (seen in WebKit on "0 selected").
+  - **Guard:** a clipped title switches to the loose layout, and a loose header stays loose until the title is a full pixel inside the centred capacity, so the layout cannot flip on every resize pass.
+  - **Tests:** `tests/unit/sillybunny-header-layout.test.js`, `tests/sillybunny-chats-archive-layout.e2e.js`.
 - **Motion end state on a direct cancel:** `play()` in `public/scripts/sillybunny-motion.js` ran `onEnd` only on finish or through `motion.cancel()`.
   - **Breaks:** code that cancelled the animation directly, for example through `getAnimations()`, skipped `onEnd`. A pushed dialog page then never hid the page it covered, which stayed visible with its own Close.
   - **Guard:** `animation.oncancel` runs the cleanup and `onEnd` while the motion is still the active one, so no path runs them twice.
@@ -209,6 +214,11 @@ This is the largest class by a wide margin.
   - **Guard:** for an `openDialog` host, get the Close through `visiblePageClose(host)` in `tests/helpers/dialog-pages.js`, which first waits for exactly one unhidden page. A Popup page is its own `dialog.popup` with no `.sb-dialog__page` wrapper, and its Back button keeps the close class, so match `.sb-dialog__close:not(.sb-dialog__back)` there.
   - **Pitfall:** looping animations outside the surface under test, such as the hidden `#connection_profile_spinner`, run for the whole session. Count only the surface's own animations, and read geometry only after its own animations finish.
   - **Tests:** `tests/tag-manager.e2e.js`, `tests/character-folders.e2e.js`, `tests/sillybunny-overlays.e2e.js`, `tests/side-panel-engine.e2e.js`, `tests/side-panel-adapters.e2e.js`.
+  - **Pitfall:** a closing menu keeps its items in the DOM during its exit fade, so a strict `menuitem` locator can match two. A saved `reduced_motion: true` in the test data root hides these races, so clear it before a run.
+- **Service workers bypass route stubs:** once the app's `/sw.js` controls a page, `page.route()` does not see the requests the service worker handles, so stubs are skipped and writes reach the real server.
+  - **Breaks:** under WebKit, the Account settings test in `tests/misc-form-dialogs.e2e.js` posted `/api/users/reset-settings` to the test server, and every later boot showed the first-run welcome popup.
+  - **Guard:** `serviceWorkers: 'block'` in `tests/playwright.webkit.config.js`. In `tests/playwright.config.js` (Chromium) service workers are not blocked by default; specs that stub writes opt in with `test.use({ serviceWorkers: 'block' })`.
+  - **Tests:** `tests/playwright.webkit.config.js` runs the dialog specs with service workers blocked.
 
 ### Upstream compatibility and sync
 

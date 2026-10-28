@@ -5,6 +5,10 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 
+// The overlays are measured and queried the moment they open. The app turns its own reduced-motion setting on from
+// this media query at boot, so the result does not depend on what the server's saved settings hold.
+test.use({ reducedMotion: 'reduce' });
+
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
 });
@@ -569,6 +573,7 @@ async function prepareCharacterList(page) {
         tags.tags.push(
             { id: 'qa-overlay-tag', name: 'QA Overlay Tag', color: 'rgb(90, 160, 220)', color2: '' },
             { id: 'qa-overlay-added-tag', name: 'QA Added Tag', color: 'rgb(100, 170, 230)', color2: '' },
+            { id: 'qa-overlay-spare-tag', name: 'QA Spare Tag', color: 'rgb(110, 180, 240)', color2: '' },
         );
         tags.tag_map['qa-overlay-character.png'] = ['qa-overlay-tag'];
         await app.printCharacters(false);
@@ -609,7 +614,14 @@ for (const width of [1440, 390]) {
             await expect.poll(tagMap).toEqual(expect.arrayContaining(['qa-overlay-tag', 'qa-overlay-added-tag']));
             await expect.poll(() => settingsSaves.some(payload => payload.tag_map?.['qa-overlay-character.png']?.includes('qa-overlay-added-tag'))).toBe(true);
 
+            // Escape closes the suggestion list while it is open and the dialog once it is not. Choosing a tag closes
+            // the list, so it is reopened with a tag that is still unused, whatever else the saved settings hold.
+            await tagInput.press('ArrowDown');
+            const suggestions = page.locator('.ui-autocomplete:visible .ui-menu-item');
+            await expect(suggestions.filter({ hasText: 'QA Spare Tag' })).toBeVisible();
             await tagInput.press('Escape');
+            await expect(suggestions).toHaveCount(0);
+            await expect(frame).toBeVisible();
             await frame.locator('#bulkTagList .tag[id="qa-overlay-tag"] .tag_remove').click();
             await expect.poll(tagMap).toEqual(['qa-overlay-added-tag']);
             await expect.poll(() => settingsSaves.some(payload => {

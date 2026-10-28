@@ -1337,7 +1337,7 @@ test.describe('the layout follows the window while a list page covers the sideba
 
         await page.setViewportSize(WIDE);
         await expect(page.locator('.sbca-list-page')).toHaveCount(0);
-        expect(await isCollapsed(page)).toBe(false);
+        await expect.poll(() => isCollapsed(page)).toBe(false);
         await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
         await expect(rows(page).first()).toBeVisible();
         await expect(page.locator('.sbca-location[aria-pressed="true"]')).toBeFocused();
@@ -1359,7 +1359,7 @@ test.describe('the layout follows the window while a list page covers the sideba
         await goBack(page);
         await expect(page.locator('.sbca-detail-page')).toHaveCount(0);
         await expect(page.locator('.sbca-list-page')).toHaveCount(0);
-        expect(await isCollapsed(page)).toBe(false);
+        await expect.poll(() => isCollapsed(page)).toBe(false);
         await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
         await expect(rows(page).first()).toBeVisible();
         await expect(rows(page).filter({ hasText: 'Alice - Long saga' })).toBeFocused();

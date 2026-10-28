@@ -150,6 +150,64 @@ describe('returnFocusTo', () => {
         expect(document.activeElement).toBe(get('fallback'));
     });
 
+    describe('an enabled, visible opener that refuses focus', () => {
+        // WebKit can refuse focus for a frame after the dialog it came from is removed. The stub refuses
+        // until `acceptFrom` frames have run, then lets the real focus() through.
+        function refuseFocus(opener, acceptFrom) {
+            let framesRun = 0;
+            const realFocus = opener.focus.bind(opener);
+            const attempts = jest.fn(options => { if (framesRun >= acceptFrom) realFocus(options); });
+            opener.focus = attempts;
+            return { attempts, advance: () => { framesRun += 1; runFrame(); } };
+        }
+
+        test('takes focus on a later frame, and the fallback never gets it', () => {
+            const get = mount('<button id="opener">Open</button><button id="fallback">Fallback</button>');
+            const { advance } = refuseFocus(get('opener'), 2);
+
+            returnFocusTo(get('opener'), { fallback: get('fallback') });
+            expect(document.activeElement).toBe(document.body);
+            advance();
+            expect(document.activeElement).toBe(document.body);
+            advance();
+
+            expect(document.activeElement).toBe(get('opener'));
+            expect(frames).toHaveLength(0);
+        });
+
+        test('falls back after 8 frames when it never takes focus', () => {
+            const get = mount('<button id="opener">Open</button><button id="fallback">Fallback</button>');
+            const { attempts, advance } = refuseFocus(get('opener'), Infinity);
+
+            returnFocusTo(get('opener'), { fallback: get('fallback') });
+            for (let frame = 0; frame < 7; frame++) advance();
+            expect(document.activeElement).toBe(document.body);
+            advance();
+
+            expect(document.activeElement).toBe(get('fallback'));
+            expect(frames).toHaveLength(0);
+            expect(attempts.mock.calls.length).toBeGreaterThan(1);
+        });
+    });
+
+    describe('an opener that can never take focus', () => {
+        test.each([
+            ['has no tabindex and is not a control', '<div id="opener">Open</div>'],
+            ['has tabindex -1', '<div id="opener" tabindex="-1">Open</div>'],
+            ['has visibility hidden', '<button id="opener" style="visibility: hidden">Open</button>'],
+            ['has display none', '<button id="opener" style="display: none">Open</button>'],
+        ])('goes straight to the fallback when it %s', (_name, markup) => {
+            const get = mount(`${markup}<button id="fallback">Fallback</button>`);
+            // jsdom does no rendering checks, so the browser's refusal is stated here.
+            get('opener').focus = () => {};
+
+            returnFocusTo(get('opener'), { fallback: get('fallback') });
+
+            expect(document.activeElement).toBe(get('fallback'));
+            expect(frames).toHaveLength(0);
+        });
+    });
+
     describe('with modal dialogs open', () => {
         // jsdom has no `:modal`. Every selector that asks for it is answered from a data-modal attribute instead,
         // so the code under test sees what a browser shows, whichever DOM API it uses to ask.

@@ -1,9 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { keysFromLastRadioToFirst } from './helpers/browser-neutral.js';
 import { bootUtilityDialogs, expectUtilityFrame, openUtilityDialog, UTILITY_VIEWPORTS } from './helpers/utility-dialogs.js';
 
 test.setTimeout(90000);
-// The app worker can serve extension modules without passing through Playwright's routes.
+// Playwright's `page.route` does not see requests that the app's service worker handles, so the worker is blocked
+// to keep every stub in effect.
 test.use({ serviceWorkers: 'block' });
+
+// Only Transfer removes the reply from its source set.
+const SOURCE_REPLIES_LEFT = { Transfer: 0, Copy: 1, 'Shift+Enter': 1 };
 
 async function arrowChoice(page, popup, selector, nextValue) {
     await popup.locator(selector).focus();
@@ -83,7 +88,7 @@ for (const viewport of UTILITY_VIEWPORTS) {
         expect(state.secrets).toHaveLength(1);
     });
 
-    test(`Regex import keeps native target events and arrow-key grouping at ${size}`, async ({ page }) => {
+    test(`Regex import keeps native target events and arrow-key grouping at ${size}`, async ({ page, browserName }) => {
         const state = await bootUtilityDialogs(page, viewport);
         const popup = await openUtilityDialog(page, 'regex');
         await expectUtilityFrame(popup, viewport, expect);
@@ -91,15 +96,15 @@ for (const viewport of UTILITY_VIEWPORTS) {
         await arrowChoice(page, popup, '#regex_import_target_global', 'preset');
         await page.keyboard.press('ArrowRight');
         await expect(popup.locator('#regex_import_target_scoped')).toBeChecked();
-        await page.keyboard.press('ArrowRight');
+        for (const key of keysFromLastRadioToFirst(browserName, 3)) await page.keyboard.press(key);
         await expect(popup.locator('#regex_import_target_global')).toBeChecked();
         await popup.locator('.sb-dialog__close').click();
         await expect.poll(() => state.settings.some(settings => settings.extension_settings.regex.some(script => script.scriptName === 'Utility imported regex'))).toBe(true);
     });
 
-    for (const action of ['Transfer', 'Copy', 'Shift+Enter']) {
+    for (const action of Object.keys(SOURCE_REPLIES_LEFT)) {
         test(`Quick Reply ${action} keeps response layout and source/target results at ${size}`, async ({ page }) => {
-            await bootUtilityDialogs(page, viewport);
+            const state = await bootUtilityDialogs(page, viewport);
             const popup = await openUtilityDialog(page, 'quick-reply');
             await expectUtilityFrame(popup, viewport, expect);
             const copy = popup.locator('.sb-dialog__bottom-bar .qr--copy');
@@ -115,7 +120,12 @@ for (const viewport of UTILITY_VIEWPORTS) {
             } else {
                 await (action === 'Copy' ? copy : popup.locator('.popup-button-ok')).click();
             }
-            await expect.poll(() => page.evaluate(() => ({ source: window.__utilityReplies.source.qrList.length, target: window.__utilityReplies.target.qrList.map(qr => ({ label: qr.label, message: qr.message, icon: qr.icon })) }))).toEqual({ source: action === 'Transfer' ? 0 : 1, target: [{ label: 'Utility Reply', message: '/echo fixture', icon: 'fa-star' }] });
+            const sourceCount = SOURCE_REPLIES_LEFT[action];
+            await expect.poll(() => page.evaluate(() => ({ source: window.__utilityReplies.source.qrList.length, target: window.__utilityReplies.target.qrList.map(qr => ({ label: qr.label, message: qr.message, icon: qr.icon })) }))).toEqual({ source: sourceCount, target: [{ label: 'Utility Reply', message: '/echo fixture', icon: 'fa-star' }] });
+            // Each set saves 200 ms after its last change. Ending the test earlier lets that save run after the
+            // test's routes are gone, which writes both sets to the real server.
+            const expectedSaves = [['Utility Target', 1], ['Utility Source', sourceCount]];
+            await expect.poll(() => expectedSaves.every(([name, length]) => state.replies.some(reply => reply.name === name && reply.qrList.length === length))).toBe(true);
         });
     }
 

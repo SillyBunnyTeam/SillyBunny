@@ -103,9 +103,10 @@ export function unregisterChainLevel(level) {
     return Promise.all(orphans.map(page => closeChain(topmostPage(page))));
 }
 
-// A caller that disables the opener while its dialog is open re-enables it in a `finally` that runs
-// right after the dialog settles. A few frames is enough for that, and short enough that focus does
-// not sit on the document for long when the opener stays disabled.
+// An opener can refuse focus for a moment and take it later: a caller that disables it while its dialog is open
+// re-enables it in a `finally` that runs right after the dialog settles, and WebKit can keep refusing focus for
+// a frame after the dialog is removed. A few frames covers both, and is short enough that focus does not sit on
+// the document for long when the opener never takes focus.
 const OPENER_RETRY_FRAMES = 8;
 
 /** Whether a modal dialog is open and `node` sits outside every one of them. `:modal` is unknown to older engines and to jsdom. */
@@ -128,6 +129,16 @@ function tryFocus(node) {
     return document.activeElement === node;
 }
 
+/** Whether a refusing `node` is only waiting: it can be focused in principle and nothing permanent blocks it. */
+function mayAcceptFocusLater(node) {
+    if (!node.isConnected || node.closest('[inert], [hidden]') || isBehindModal(node)) return false;
+    // `tabIndex` is 0 for natively focusable controls, a disabled one included, and -1 for anything else without a tabindex.
+    if (node.tabIndex < 0) return false;
+    if (typeof node.checkVisibility === 'function') return node.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true });
+    const style = getComputedStyle(node);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
 /** A focused element that was hidden keeps `activeElement` until the next render, so it counts as lost. */
 function isFocusLost() {
     const active = document.activeElement;
@@ -148,11 +159,11 @@ function focusNearby(origin, skip) {
 /**
  * Returns focus to the control that opened a dialog or panel, once that dialog has closed.
  *
- * A disabled opener is a temporary state, so focus waits a few frames for it to be enabled again. An
- * opener that is hidden, inert or gone will not come back, so focus goes at once to `fallback` and then
- * to the nearest control around the opener. A removed or missing opener has no neighbours of its own,
- * so the recorded `container` stands in for it. Focus that has already moved to another control is never
- * taken back, and focus never goes behind an open modal dialog.
+ * A visible opener that does not take focus yet is a temporary state, for example a disabled control, so
+ * focus waits a few frames for it. An opener that is hidden, inert or gone will not come back, so focus
+ * goes at once to `fallback` and then to the nearest control around the opener. A removed or missing
+ * opener has no neighbours of its own, so the recorded `container` stands in for it. Focus that has
+ * already moved to another control is never taken back, and focus never goes behind an open modal dialog.
  *
  * @param {Element|null} opener The control that had focus when the dialog opened.
  * @param {object} [options]
@@ -171,8 +182,7 @@ export function returnFocusTo(opener, { fallback = null, container = null } = {}
         }
         if (!(container?.isConnected && focusNearby(container, null))) tryFocus(fallback);
     };
-    const waitsForEnable = Boolean(target?.isConnected) && (target.matches(':disabled') || target.getAttribute('aria-disabled') === 'true');
-    if (!waitsForEnable) {
+    if (!target || !mayAcceptFocusLater(target)) {
         fallBack();
         return;
     }

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { restoreAnimationSpeed, slowAnimations } from './helpers/animation-speed.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 /*
@@ -58,6 +59,9 @@ async function bootConversation(page, baseURL) {
             settings.firstRun = false;
             settings.power_user.auto_connect = false;
             settings.power_user.reduced_motion = false;
+            // Visual Novel mode moves #sheld below the fold on a phone, which puts the sheet's handle
+            // outside the viewport. WebKit does not deliver mouse events there, Chromium does.
+            settings.power_user.waifuMode = false;
             settings.extension_settings.sillybunny_conversation = {};
             settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
@@ -285,12 +289,10 @@ for (const surface of SURFACES) {
                 const { sheet, handle, restTop } = await openSettled(surface, page, baseURL);
                 await dragDown(page, handle, 300);
                 // A slowed page keeps the exit running long enough to read the sheet's position.
-                const client = await page.context().newCDPSession(page);
-                await client.send('Animation.enable');
-                await client.send('Animation.setPlaybackRate', { playbackRate: 0.05 });
+                await slowAnimations(page, 0.05);
                 await page.mouse.up();
                 expect(await topOf(sheet)).toBeGreaterThanOrEqual(restTop + 250);
-                await client.send('Animation.setPlaybackRate', { playbackRate: 1 });
+                await restoreAnimationSpeed(page);
                 await expect(sheet).toBeHidden();
             });
         }
@@ -417,13 +419,11 @@ test.describe('Conversation pickers at 390×844', () => {
             const restTop = await topOf(picker);
 
             await dragDown(page, picker.locator(':scope > .sb-dialog__handle'), 300);
-            const client = await page.context().newCDPSession(page);
-            await client.send('Animation.enable');
-            await client.send('Animation.setPlaybackRate', { playbackRate: 0.05 });
+            await slowAnimations(page, 0.05);
             await page.mouse.up();
             expect(await topOf(picker)).toBeGreaterThanOrEqual(restTop + 250);
             await expect(backdrop).toHaveAttribute('data-open', 'true');
-            await client.send('Animation.setPlaybackRate', { playbackRate: 1 });
+            await restoreAnimationSpeed(page);
 
             await expect(picker).toBeHidden();
             await expect(backdrop).toHaveAttribute('data-open', 'false');

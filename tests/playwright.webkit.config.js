@@ -31,5 +31,8 @@ const DIALOG_SPECS = [
 export default defineConfig({
     ...baseConfig,
     testMatch: DIALOG_SPECS.map(name => `**/${name}.e2e.js`),
-    projects: [{ name: 'webkit', use: { browserName: 'webkit' } }],
+    // Playwright's `page.route` does not see a request that a service worker handles. The app's worker claims
+    // the page, so stubs are skipped for the requests it takes over, and a destructive call such as
+    // /api/users/reset-settings reaches the real server. Blocking the worker keeps every request routable.
+    projects: [{ name: 'webkit', use: { browserName: 'webkit', serviceWorkers: 'block' } }],
 });

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { activateButton } from './helpers/browser-neutral.js';
 import { openMenuItem } from './helpers/chats-archive.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
@@ -65,7 +66,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     test.describe(`native dialog replacements at ${viewport.width}×${viewport.height}`, () => {
         test.use({ viewport });
 
-        test('SillyTavern folder import keeps the replacement action destructive and Cancel focused', async ({ page }) => {
+        test('SillyTavern folder import keeps the replacement action destructive and Cancel focused', async ({ page, browserName }) => {
             let importRequests = 0;
             await page.route('**/api/users/import-sillytavern/folder', route => {
                 importRequests++;
@@ -74,7 +75,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
             const panel = page.locator('[data-sb-panel="data-security"]');
             await panel.locator('#sb-import-path-input').fill('/tmp/sillytavern-fixture');
-            await panel.getByRole('button', { name: 'Import Folder', exact: true }).click();
+            await activateButton(page, panel.getByRole('button', { name: 'Import Folder', exact: true }), browserName);
 
             const alert = await expectAlert(page);
             await expect(alert).toContainText('/tmp/sillytavern-fixture');
