@@ -1040,10 +1040,6 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 }
 
-.sb-brand-title.is-previewing {
-    background: var(--sb-flat-selected-bg);
-}
-
 .sb-brand-title:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);

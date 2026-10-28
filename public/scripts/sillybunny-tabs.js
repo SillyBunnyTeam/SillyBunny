@@ -589,9 +589,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
-    topbarLabelClickCycle: 'sb-topbar-label-click-cycle',
-    topbarLabelClickCycleDesktop: 'sb-topbar-label-click-cycle-desktop',
-    topbarLabelClickCycleMobile: 'sb-topbar-label-click-cycle-mobile',
     chatbarVisible: 'sb-chatbar-visible',
     topbarOffset: 'sb-topbar-offset',
     settingsDrawerStatePrefix: 'sb-settings-inline-drawer',
@@ -1005,7 +1002,6 @@ const SB_TOPBAR_LABEL_PARTS = Object.freeze([
 const SB_TOPBAR_LABEL_PART_ORDER = Object.freeze(SB_TOPBAR_LABEL_PARTS.map(part => part.id));
 const SB_TOPBAR_LABEL_PART_IDS = new Set(SB_TOPBAR_LABEL_PART_ORDER);
 const SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH = 48;
-const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;
 const SB_TOPBAR_DRAG_X_RATIO = 0.36;
 const SB_TOPBAR_DRAG_Y_RATIO = 0.24;
 const SB_TOPBAR_CONTEXT_REFRESH_DEBOUNCE = 220;
@@ -1427,17 +1423,11 @@ const sbState = {
             ? 'char'
             : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
-        clickCycle: {
-            desktop: readTopbarLabelClickCycle('desktop'),
-            mobile: readTopbarLabelClickCycle('mobile'),
-        },
         contextTokens: null,
         refreshTimer: 0,
         refreshInFlight: false,
         refreshPending: false,
         refreshToken: 0,
-        cyclePart: '',
-        cycleResetTimer: 0,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -1612,21 +1602,6 @@ function normalizeStoredBoolean(value, fallback = false) {
     }
 
     return fallback;
-}
-
-function readTopbarLabelClickCycle(mode) {
-    const storageKey = mode === 'mobile'
-        ? SB_STORAGE_KEYS.topbarLabelClickCycleMobile
-        : SB_STORAGE_KEYS.topbarLabelClickCycleDesktop;
-    // Keep the old choice as a read-only seed until each layout has its own saved value.
-    return normalizeStoredBoolean(
-        safeGetItem(storageKey),
-        normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true),
-    );
-}
-
-function isTopbarLabelClickCycleEnabled() {
-    return isMobileViewport() ? sbState.topbarLabel.clickCycle.mobile : sbState.topbarLabel.clickCycle.desktop;
 }
 
 function getQuickActionState(mode) {
@@ -2002,8 +1977,6 @@ function restorePersistedTopbarState() {
         ? 'char'
         : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
-    sbState.topbarLabel.clickCycle.desktop = readTopbarLabelClickCycle('desktop');
-    sbState.topbarLabel.clickCycle.mobile = readTopbarLabelClickCycle('mobile');
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
@@ -3640,32 +3613,7 @@ function setTopbarCustomText(value) {
     }
 
     sbState.topbarLabel.customText = nextText;
-    if (!nextText && sbState.topbarLabel.cyclePart === 'custom') {
-        resetTopBarLabelCycle({ refresh: false });
-    }
-
     safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);
-    flushSbStorageWrites();
-    updateThemePickerUi();
-    updateTopBarBrand();
-}
-
-function setTopbarLabelClickCycle(enabled) {
-    const mode = isMobileViewport() ? 'mobile' : 'desktop';
-    const nextValue = Boolean(enabled);
-    if (sbState.topbarLabel.clickCycle[mode] === nextValue) {
-        return;
-    }
-
-    sbState.topbarLabel.clickCycle[mode] = nextValue;
-    if (!nextValue) {
-        resetTopBarLabelCycle({ refresh: false });
-    }
-
-    const storageKey = mode === 'mobile'
-        ? SB_STORAGE_KEYS.topbarLabelClickCycleMobile
-        : SB_STORAGE_KEYS.topbarLabelClickCycleDesktop;
-    safeSetItem(storageKey, String(nextValue));
     flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
@@ -3978,8 +3926,7 @@ function setTopbarContextTokens(tokens) {
 
 function isTopbarContextLabelEnabled() {
     return sbState.topbarLabel.desktopParts.includes('ctx')
-        || sbState.topbarLabel.mobilePart === 'ctx'
-        || sbState.topbarLabel.cyclePart === 'ctx';
+        || sbState.topbarLabel.mobilePart === 'ctx';
 }
 
 function syncTopbarContextTokensFromPromptManager() {
@@ -4059,19 +4006,6 @@ function getConfiguredTopbarLabelParts() {
     return normalizeTopbarLabelParts(sbState.topbarLabel.desktopParts);
 }
 
-function getTopbarLabelPartOption(partId) {
-    return SB_TOPBAR_LABEL_PARTS.find(part => part.id === partId) ?? null;
-}
-
-function getTopbarLabelCycleParts() {
-    const cycleParts = ['', 'ctx', 'char'];
-    if (sbState.topbarLabel.customText) {
-        cycleParts.push('custom');
-    }
-
-    return cycleParts;
-}
-
 function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     switch (partId) {
         case 'ctx':
@@ -4089,60 +4023,6 @@ function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     }
 }
 
-function getTopBarLabelPreviewText(partId, context = getSillyTavernContext()) {
-    const normalizedPart = normalizeTopbarLabelPart(partId);
-    const labelText = normalizedPart ? getTopBarLabelPartText(normalizedPart, context) : '';
-    if (labelText) {
-        return labelText;
-    }
-
-    if (normalizedPart === 'ctx') {
-        return '...';
-    }
-
-    return getTopbarLabelPartOption(normalizedPart)?.label ?? '';
-}
-
-function resetTopBarLabelCycle({ refresh = true } = {}) {
-    const hadCyclePart = Boolean(sbState.topbarLabel.cyclePart);
-    window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
-    sbState.topbarLabel.cycleResetTimer = 0;
-    sbState.topbarLabel.cyclePart = '';
-
-    if (hadCyclePart && refresh) {
-        updateTopBarBrand();
-    }
-}
-
-function scheduleTopBarLabelCycleReset() {
-    window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
-    sbState.topbarLabel.cycleResetTimer = window.setTimeout(() => {
-        resetTopBarLabelCycle();
-    }, SB_TOPBAR_LABEL_CYCLE_RESET_MS);
-}
-
-function cycleTopBarLabel() {
-    const cycleParts = getTopbarLabelCycleParts();
-    const currentPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, '');
-    const currentIndex = cycleParts.indexOf(currentPart);
-    const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
-    const nextPart = cycleParts[nextIndex % cycleParts.length];
-
-    sbState.topbarLabel.cyclePart = nextPart;
-    if (nextPart) {
-        scheduleTopBarLabelCycleReset();
-    } else {
-        window.clearTimeout(sbState.topbarLabel.cycleResetTimer);
-        sbState.topbarLabel.cycleResetTimer = 0;
-    }
-
-    if (nextPart === 'ctx') {
-        scheduleTopbarContextRefresh(0);
-    }
-
-    updateTopBarBrand();
-}
-
 function returnToChatSurface() {
     // Close every overlay surface without touching the active chat itself.
     window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
@@ -4154,24 +4034,15 @@ function returnToChatSurface() {
     queueLandingPageStateSync();
 }
 
-function handleTopBarTitleActivation() {
-    if (isTopbarLabelClickCycleEnabled()) {
-        cycleTopBarLabel();
+function bindTopBarTitle(title) {
+    if (!(title instanceof HTMLElement) || title.dataset.sbTopbarTitleBound === 'true') {
         return;
     }
 
-    returnToChatSurface();
-}
-
-function bindTopBarTitleCycle(title) {
-    if (!(title instanceof HTMLElement) || title.dataset.sbTopbarTitleCycleBound === 'true') {
-        return;
-    }
-
-    title.dataset.sbTopbarTitleCycleBound = 'true';
+    title.dataset.sbTopbarTitleBound = 'true';
     title.addEventListener('click', event => {
         event.stopPropagation();
-        handleTopBarTitleActivation();
+        returnToChatSurface();
     });
     title.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') {
@@ -4180,17 +4051,12 @@ function bindTopBarTitleCycle(title) {
 
         event.preventDefault();
         event.stopPropagation();
-        handleTopBarTitleActivation();
+        returnToChatSurface();
     });
 }
 
 function getTopBarLabel() {
     const context = getSillyTavernContext();
-    const previewPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, '');
-    if (previewPart) {
-        return getTopBarLabelPreviewText(previewPart, context);
-    }
-
     const parts = getConfiguredTopbarLabelParts()
         .map(partId => normalizeTopbarLabelPart(partId))
         .filter(Boolean);
@@ -4214,14 +4080,11 @@ function updateTopBarBrand() {
     const label = getTopBarLabel();
     const isActiveChat = hasActiveTopBarChat(context);
 
-    bindTopBarTitleCycle(title);
+    bindTopBarTitle(title);
     title.textContent = label;
     title.title = label;
-    title.setAttribute('aria-label', isTopbarLabelClickCycleEnabled()
-        ? `${label}. Tap to preview top bar label options.`
-        : `${label}. Tap to return to the chat.`);
+    title.setAttribute('aria-label', `${label}. Tap to return to the chat.`);
     title.classList.toggle('is-chat', isActiveChat);
-    title.classList.toggle('is-previewing', Boolean(sbState.topbarLabel.cyclePart));
     brand.dataset.brandState = isActiveChat ? 'chat' : 'idle';
     queueTopbarBrandFit();
 }
@@ -4281,24 +4144,6 @@ function bindTopBarBrand() {
         refresh();
         scheduleTopbarContextRefresh();
     };
-    const resetCycleAndRefreshWithContext = () => {
-        resetTopBarLabelCycle({ refresh: false });
-        refreshWithContext();
-    };
-    // SillyBunny: top-bar taps only preview alternate labels; chat/context moves restore configured text.
-    const resetCycleEvents = new Set([
-        eventTypes.APP_READY,
-        eventTypes.CHAT_CHANGED,
-        eventTypes.CHAT_CREATED,
-        eventTypes.GROUP_CHAT_CREATED,
-        eventTypes.CHARACTER_EDITED,
-        eventTypes.CHARACTER_RENAMED,
-        eventTypes.CHARACTER_DELETED,
-        eventTypes.GROUP_UPDATED,
-        eventTypes.PERSONA_CHANGED,
-        eventTypes.MAIN_API_CHANGED,
-        eventTypes.SETTINGS_UPDATED,
-    ].filter(Boolean));
     const events = [
         eventTypes.APP_READY,
         eventTypes.CHAT_CHANGED,
@@ -4318,8 +4163,7 @@ function bindTopBarBrand() {
     ].filter(Boolean);
 
     for (const eventName of new Set(events)) {
-        const eventHandler = resetCycleEvents.has(eventName) ? resetCycleAndRefreshWithContext : refreshWithContext;
-        eventSource.on(eventName, eventHandler);
+        eventSource.on(eventName, refreshWithContext);
     }
 
     if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
@@ -8054,8 +7898,6 @@ window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
     // Crossing the breakpoint can change which device's icons-only setting is in force, so the
     // whole preference re-applies rather than just the group order.
     applyTopbarIconsOnlyPreference();
-    resetTopBarLabelCycle({ refresh: false });
-    updateThemePickerUi();
     updateTopBarBrand();
     // Crossing the breakpoint also decides which rail third-party composer buttons belong in.
     queueComposerControlPlacement();
@@ -8585,7 +8427,7 @@ function buildTopBar() {
     }
 
     centerGroup.innerHTML = `
-        <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to preview top bar label options">${SB_IDLE_BRAND_LABEL}</div>
+        <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to return to the chat">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
     // SillyBunny: each cluster rail is built beside the top bar anchor it belongs to and stays
@@ -11846,33 +11688,6 @@ function createTopbarLabelSettingsGroup() {
         setTopbarCustomText(input instanceof HTMLInputElement ? input.value : '');
     });
 
-    const clickCycleId = 'sb-topbar-label-click-cycle-input';
-    const clickCycleOption = createElement('label', {
-        className: 'sb-topbar-label-option sb-topbar-label-click-cycle-option',
-        attrs: {
-            for: clickCycleId,
-        },
-    });
-    const clickCycleCheckbox = createElement('input', {
-        id: clickCycleId,
-        className: 'sb-topbar-label-checkbox',
-        attrs: {
-            type: 'checkbox',
-            'data-sb-topbar-label-click-cycle-input': 'true',
-        },
-    });
-    const clickCycleCopy = createElement('span', { className: 'sb-topbar-label-option-copy' });
-    const clickCycleTitle = createElement('strong', { text: 'Click To Preview Label Options' });
-    const clickCycleDescription = createElement('small', { text: 'When enabled, clicking the label cycles through a preview of each part. When disabled, the label stays on your selection above and clicking it returns to the chat.' });
-
-    clickCycleCheckbox.addEventListener('change', event => {
-        const input = event.currentTarget;
-        setTopbarLabelClickCycle(input instanceof HTMLInputElement ? input.checked : true);
-    });
-
-    clickCycleCopy.append(clickCycleTitle, clickCycleDescription);
-    clickCycleOption.append(clickCycleCheckbox, clickCycleCopy);
-
     desktopHeading.append(desktopTitle, desktopDescription);
     mobileHeading.append(mobileTitle, mobileDescription);
     customTextHeading.append(customTextTitle, customTextDescription);
@@ -11890,7 +11705,7 @@ function createTopbarLabelSettingsGroup() {
     return createThemeSettingsDrawer({
         id: 'sb-topbar-label-drawer',
         title: 'Top Bar Label',
-        content: [description, desktopSection, mobileSection, customTextField, clickCycleOption],
+        content: [description, desktopSection, mobileSection, customTextField],
     });
 }
 
@@ -12128,15 +11943,6 @@ function updateThemePickerUi() {
 
     if (customTextInput instanceof HTMLInputElement && customTextInput.value !== sbState.topbarLabel.customText) {
         customTextInput.value = sbState.topbarLabel.customText;
-    }
-
-    for (const input of document.querySelectorAll('[data-sb-topbar-label-click-cycle-input]')) {
-        if (!(input instanceof HTMLInputElement)) {
-            continue;
-        }
-
-        input.checked = isTopbarLabelClickCycleEnabled();
-        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', input.checked);
     }
 
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
