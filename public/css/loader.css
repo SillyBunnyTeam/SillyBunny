@@ -25,102 +25,102 @@
     pointer-events: none;
 }
 
+/* SillyBunny: the mascot sheet, flavour line and animated dots replace the upstream throbber, logo and
+   message. sillybunny-splash.js sets --sb-boot-sheet, --sb-boot-frames, --sb-boot-frame-w,
+   --sb-boot-frame-h and --sb-boot-duration on the mascot. Frame 0 and fully shown dots are the
+   un-animated state, so a reduced-motion override only has to drop the animations. The media-query
+   override uses :nth-child(n) to match the per-dot selectors' specificity; it then wins on its own and
+   does not depend on the global reduced-motion rule in sillybunny-theme.css. The 128px fallbacks
+   reserve the mascot box until the script sets the real frame size. */
 .sb-boot-splash {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4rem;
+    gap: 1.5rem;
 }
 
-.sb-boot-throbber {
-    --throbber-size: 2.5rem;
-    --throbber-spoke-length: 0.72rem;
-    --throbber-spoke-width: 0.28rem;
-    position: relative;
-    width: var(--throbber-size);
-    height: var(--throbber-size);
-    color: var(--sb-accent, var(--sb-boot-fg, var(--SmartThemeBodyColor)));
+.sb-boot-mascot {
+    flex: none;
+    width: var(--sb-boot-frame-w, 128px);
+    height: var(--sb-boot-frame-h, 128px);
+    background-image: var(--sb-boot-sheet);
+    background-repeat: no-repeat;
+    background-position: 0 0;
+    image-rendering: pixelated;
+    animation: sb-boot-mascot-frames var(--sb-boot-duration) steps(var(--sb-boot-frames)) infinite;
 }
 
-.sb-boot-throbber > span {
-    position: absolute;
-    inset: 0;
-    opacity: 0.18;
-    transform: rotate(var(--throbber-angle));
-    animation: sb-boot-throbber-pulse 960ms var(--sb-ease, ease-out) infinite;
-    animation-delay: var(--throbber-delay);
+.sb-boot-line {
+    margin: 0;
+    max-width: min(32rem, calc(100vw - 3rem));
+    font-size: var(--sb-type-title);
+    font-weight: 500;
+    text-align: center;
 }
 
-.sb-boot-throbber > span::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: var(--throbber-spoke-width);
-    height: var(--throbber-spoke-length);
-    transform: translateX(-50%);
-    border-radius: var(--throbber-spoke-width);
-    background: color-mix(in srgb, currentColor 88%, var(--sb-boot-fg, currentColor));
+.sb-boot-dots > span:nth-child(1) {
+    animation: sb-boot-dot-1 1200ms steps(1, end) infinite;
 }
 
-.sb-boot-throbber > span:nth-child(1) {
-    --throbber-angle: 0deg;
-    --throbber-delay: 0ms;
+.sb-boot-dots > span:nth-child(2) {
+    animation: sb-boot-dot-2 1200ms steps(1, end) infinite;
 }
 
-.sb-boot-throbber > span:nth-child(2) {
-    --throbber-angle: 45deg;
-    --throbber-delay: 120ms;
+.sb-boot-dots > span:nth-child(3) {
+    animation: sb-boot-dot-3 1200ms steps(1, end) infinite;
 }
 
-.sb-boot-throbber > span:nth-child(3) {
-    --throbber-angle: 90deg;
-    --throbber-delay: 240ms;
-}
-
-.sb-boot-throbber > span:nth-child(4) {
-    --throbber-angle: 135deg;
-    --throbber-delay: 360ms;
-}
-
-.sb-boot-throbber > span:nth-child(5) {
-    --throbber-angle: 180deg;
-    --throbber-delay: 480ms;
-}
-
-.sb-boot-throbber > span:nth-child(6) {
-    --throbber-angle: 225deg;
-    --throbber-delay: 600ms;
-}
-
-.sb-boot-throbber > span:nth-child(7) {
-    --throbber-angle: 270deg;
-    --throbber-delay: 720ms;
-}
-
-.sb-boot-throbber > span:nth-child(8) {
-    --throbber-angle: 315deg;
-    --throbber-delay: 840ms;
-}
-
-@keyframes sb-boot-throbber-pulse {
-    0%,
-    12% {
-        opacity: 1;
+@keyframes sb-boot-mascot-frames {
+    from {
+        background-position: 0 0;
     }
 
-    38%,
-    100% {
-        opacity: 0.18;
+    to {
+        background-position: calc(var(--sb-boot-frames) * var(--sb-boot-frame-w) * -1) 0;
+    }
+}
+
+@keyframes sb-boot-dot-1 {
+    0% {
+        opacity: 0;
+    }
+
+    25% {
+        opacity: 1;
+    }
+}
+
+@keyframes sb-boot-dot-2 {
+    0% {
+        opacity: 0;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes sb-boot-dot-3 {
+    0% {
+        opacity: 0;
+    }
+
+    75% {
+        opacity: 1;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sb-boot-throbber > span {
+    .sb-boot-mascot,
+    .sb-boot-dots > span:nth-child(n) {
         animation: none;
-        opacity: 0.72;
     }
+}
+
+#preloader.sb-boot-reduced .sb-boot-mascot,
+#preloader.sb-boot-reduced .sb-boot-dots > span {
+    animation: none;
 }
 
 #load-spinner {
@@ -159,22 +159,4 @@
 .action-loader-stop:hover {
     opacity: 1;
     color: color-mix(in srgb, currentColor 40%, #e74c3c 60%);
-}
-
-/* Splash screen styles for branded loading */
-.splash-logo {
-    /* max original px, or 40% of the viewport on mobile */
-    width: min(150px, 40vw);
-    height: auto;
-    aspect-ratio: 1;
-    image-rendering: pixelated;
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-}
-
-.splash-message {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 500;
-    opacity: 0.9;
-    letter-spacing: 0.02em;
 }
