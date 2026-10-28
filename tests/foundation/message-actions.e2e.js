@@ -4,12 +4,17 @@ const LONG_NAME = 'Seraphina, Guardian of the Eldoria Forest, Keeper of the Moon
 const target = '#chat .mes[mesid="4"]';
 
 test.beforeEach(async ({ page, baseURL }) => {
+    // A settings save without a version token makes the app show an error toast, which can cover the control under test.
+    let settingsVersion = Date.now();
     await page.route('**/*', route => {
         const url = new URL(route.request().url());
         if (url.origin !== baseURL) {
             return route.abort();
         }
-        if (url.pathname === '/api/chats/save' || url.pathname === '/api/settings/save') {
+        if (url.pathname === '/api/settings/save') {
+            return route.fulfill({ json: { version: ++settingsVersion } });
+        }
+        if (url.pathname === '/api/chats/save') {
             return route.fulfill({ json: {} });
         }
         return route.continue();
