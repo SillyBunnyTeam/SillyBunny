@@ -12,6 +12,7 @@ import {
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
 import { HOME_STATE_CHANGED_EVENT, initHomeState, isHomeActive } from './sillybunny-home-state.js';
+import { CHAT_MODE_CHANGED_EVENT, getLastChatMode, initChatModeMemory, recordChatMode } from './sillybunny-chat-mode-memory.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import './sillybunny-extension-actions.js';
@@ -47,7 +48,7 @@ import {
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
-import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
+import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getCurrentChatId, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 import { addLanguagesToDropdown, t } from './i18n.js';
 import { syncUserControls } from './user.js';
 import {
@@ -4026,9 +4027,16 @@ function getTopBarLabelPartText(partId, context = getSillyTavernContext()) {
     }
 }
 
+function recordRoleplayIfChatShown() {
+    if (getCurrentChatId() !== undefined) {
+        recordChatMode('roleplay');
+    }
+}
+
 function returnToChatSurface() {
     // Close every overlay surface without touching the active chat itself.
     window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+    recordRoleplayIfChatShown();
     closeShell('left');
     closeShell('right');
     closeCharacterPanel();
@@ -7619,6 +7627,7 @@ function setCharacterShellMode(mode) {
         }));
     } else {
         window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
+        recordRoleplayIfChatShown();
     }
 
     syncCharacterModeToggle();
@@ -8082,7 +8091,10 @@ async function returnToLandingPage() {
     const context = getSillyTavernContext();
 
     if (typeof context?.closeCurrentChat === 'function') {
-        await context.closeCurrentChat();
+        // A chat that stays open after Conversation closed is a Roleplay chat.
+        if (!await context.closeCurrentChat()) {
+            recordRoleplayIfChatShown();
+        }
         return;
     }
 
@@ -15206,6 +15218,7 @@ function initAll() {
     buildTopBar();
     // Must follow buildTopBar(): it rearranges the buttons that call creates.
     applyTopbarIconsOnlyPreference();
+    initChatModeMemory();
     bindHomeState();
     buildBottomChatBar();
     // SillyBunny: user input ends the ⬇ scroll-to-bottom ladder so a mid-ladder flick is not snapped back.
@@ -16097,8 +16110,53 @@ function getActiveChatMode() {
     return conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
 }
 
+// Neither mode is active on Home, so the switcher shows the mode that chats open in.
+function getDisplayedChatMode() {
+    return isHomeActive() ? getLastChatMode() : getActiveChatMode();
+}
+
+let homeRoleplayResumePending = false;
+
+async function resumeRoleplayFromHome() {
+    if (homeRoleplayResumePending) {
+        return;
+    }
+
+    homeRoleplayResumePending = true;
+    let resumed = false;
+    try {
+        const { resumeLatestRoleplayChat } = await import('./welcome-screen.js');
+        resumed = await resumeLatestRoleplayChat({ canOpen: isHomeActive });
+    } catch (error) {
+        console.warn('Could not resume the latest Roleplay chat', error);
+    } finally {
+        homeRoleplayResumePending = false;
+    }
+
+    // The user may have chosen something else while the request ran.
+    if (!resumed && isHomeActive() && !isCharacterPanelOpen()) {
+        toggleCharacterPanel();
+    }
+}
+
+function enterChatMode(mode) {
+    if (!isHomeActive()) {
+        if (mode !== getActiveChatMode()) {
+            setCharacterShellMode(mode);
+        }
+        return;
+    }
+
+    if (mode === 'roleplay') {
+        void resumeRoleplayFromHome();
+        return;
+    }
+
+    setCharacterShellMode(mode);
+}
+
 function syncModeToggleButton() {
-    const mode = SB_CHAT_MODES.find(entry => entry.id === getActiveChatMode()) ?? SB_CHAT_MODES[0];
+    const mode = SB_CHAT_MODES.find(entry => entry.id === getDisplayedChatMode()) ?? SB_CHAT_MODES[0];
     const modeToggleBtn = document.getElementById('sb-mode-toggle');
     if (!(modeToggleBtn instanceof HTMLElement)) {
         return;
@@ -16144,9 +16202,7 @@ function closeModeDropdown({ restoreFocus = false } = {}) {
 }
 
 function toggleChatMode() {
-    const activeMode = conversationState.conversationWorkspaceOpen ? 'conversation' : 'roleplay';
-    const next = activeMode === 'roleplay' ? 'conversation' : 'roleplay';
-    setCharacterShellMode(next);
+    enterChatMode(getDisplayedChatMode() === 'roleplay' ? 'conversation' : 'roleplay');
 }
 
 function openModeDropdown() {
@@ -16155,7 +16211,7 @@ function openModeDropdown() {
         return;
     }
 
-    const activeMode = getActiveChatMode();
+    const activeMode = getDisplayedChatMode();
     const menu = createElement('div', {
         id: 'sb-mode-menu',
         attrs: {
@@ -16177,9 +16233,7 @@ function openModeDropdown() {
         item.innerHTML = `<i class="fa-solid ${mode.icon} sb-mode-menu-icon" aria-hidden="true"></i><span class="sb-mode-menu-label">${mode.label}</span><span class="sb-mode-menu-desc">${mode.description}</span><i class="fa-solid fa-check sb-mode-menu-check" aria-hidden="true"></i>`;
         item.addEventListener('click', () => {
             closeModeDropdown({ restoreFocus: true });
-            if (mode.id !== getActiveChatMode()) {
-                setCharacterShellMode(mode.id);
-            }
+            enterChatMode(mode.id);
         });
         menu.appendChild(item);
     }
@@ -16242,6 +16296,8 @@ function initModeToggle() {
     }
     document.documentElement.dataset.sbModeToggleBound = 'true';
     window.addEventListener('sb:conversation-workspace-state-changed', syncModeToggleButton);
+    document.addEventListener(HOME_STATE_CHANGED_EVENT, syncModeToggleButton);
+    document.addEventListener(CHAT_MODE_CHANGED_EVENT, syncModeToggleButton);
     syncModeToggleButton();
 }
 

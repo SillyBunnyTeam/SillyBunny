@@ -111,6 +111,8 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/frontend-asset-middleware.test.js`, `tests/restart-cache-clear.test.js`.
 - **No test:** `b6d657e08` (#380, stale iOS service-worker cache), `fe3e25446` (#429, versioned module URLs evaluate `script.js` twice).
 - **Fixes:** #416 (restore JavaScript revalidation), #906 (boot races the restart cache-clear reload).
+- **Account storage before init:** `accountStorage.init(state)` merges the saved settings over the current state (`public/scripts/util/AccountStorage.js:79–81`), so a value written with `setItem()` before `getSettings()` runs is replaced by the saved one. `public/scripts/sillybunny-chat-mode-memory.js` keeps such an early write in memory, writes it again on `SETTINGS_LOADED`, and then leaves `accountStorage` authoritative. Test: `tests/unit/sillybunny-chat-mode-memory.test.js`.
+- **Home re-render:** `openWelcomeScreen({ force: true })` (pin, rename or delete in Recent Chats) empties `#chat` before it appends the new panel, so the Home state turns off and on within one task. A listener that acts when Home turns off must judge it after that task, as `sillybunny-chat-mode-memory.js` does with `setTimeout(0)`. Test: `tests/home-mode-memory.e2e.js` (re-rendering Home keeps the remembered mode).
 - **Stylesheet keys:** a stylesheet referenced under two different `?v=` keys loads twice, which is the same cause as `fe3e25446` for modules. When you change a stylesheet, give it one new key at every call site in the same commit (`index.html` and every `loadStylesheetAsync` literal), then grep for one key per file. `820589f4d` moved the eight stylesheets changed for PR #870 to one new key each.
 
 ### Runtimes, Termux, launchers and updates

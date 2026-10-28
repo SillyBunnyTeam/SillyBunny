@@ -2113,6 +2113,46 @@ async function openRecentGroupChat(groupId, fileName) {
     }
 }
 
+// SillyBunny: the Home mode switcher resumes the newest Roleplay chat, so pins must not decide which one that is.
+/**
+ * Opens the character or group chat with the newest last message.
+ * @param {object} [options]
+ * @param {() => boolean} [options.canOpen] Checked after the request; nothing opens when it returns false.
+ * @returns {Promise<boolean>} True if a chat is open afterwards.
+ */
+export async function resumeLatestRoleplayChat({ canOpen = () => true } = {}) {
+    try {
+        const response = await fetch('/api/chats/recent', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ max: getRecentChatsSettings().maxDisplayed, pinned: [], metadata: false, previewMessages: 0 }),
+            cache: 'no-cache',
+        });
+        if (!response.ok) {
+            console.warn(`Failed to fetch recent chats to resume (status ${response.status})`);
+            return false;
+        }
+
+        /** @type {RecentChat[]} */
+        const recentChats = await response.json();
+        const [latest] = (Array.isArray(recentChats) ? recentChats : [])
+            .filter(chat => chat.file_name && (characters.some(x => x.avatar === chat.avatar) || groups.some(x => x.id === chat.group)))
+            .sort((a, b) => sortMoments(timestampToMoment(a.last_mes), timestampToMoment(b.last_mes)));
+        if (latest && canOpen()) {
+            const chatName = latest.file_name.replace('.jsonl', '');
+            if (latest.group) {
+                await openRecentGroupChat(latest.group, chatName);
+            } else {
+                await openRecentCharacterChat(latest.avatar, chatName);
+            }
+        }
+        return getCurrentChatId() !== undefined;
+    } catch (error) {
+        console.warn('Failed to resume the latest Roleplay chat', error);
+        return false;
+    }
+}
+
 /**
  * Renames a recent character chat.
  * @param {string} avatarId Avatar file name

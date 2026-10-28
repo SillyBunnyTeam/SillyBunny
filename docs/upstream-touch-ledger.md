@@ -1129,6 +1129,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-29, PR #870. |
 | Owner | TODO(copy) |
 
+### `public/scripts/welcome-screen.js` - Home mode switcher resume
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/welcome-screen.js` |
+| Area | Home, top-bar mode switcher. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-chat-mode-memory.js` (`WelcomePage_LastMode`, recorded when Conversation opens and when a Roleplay chat is shown) and the switcher in `public/scripts/sillybunny-tabs.js` (`getDisplayedChatMode()`, `enterChatMode()`, `resumeRoleplayFromHome()`). |
+| Adapter shape | One exported function under one `// SillyBunny:` marker, `resumeLatestRoleplayChat({ canOpen })`: it requests `/api/chats/recent` with `pinned: []`, keeps chats whose character or group still exists, picks the newest by `last_mes`, and opens it through the existing `openRecentCharacterChat()` / `openRecentGroupChat()`. It returns whether a chat is open afterwards. |
+| Protecting tests | `tests/unit/sillybunny-chat-mode-memory.test.js`; `tests/home-mode-memory.e2e.js` (switcher on Home shows the remembered mode; Roleplay on Home resumes the newest chat with pins ignored, opens Characters when there is none or the request fails, and is cancelled when the user picks Conversation meanwhile; temporary chats and the title click; Ctrl+M on Home). |
+| Validation | 2026-10-29: root and tests lint pass; unit 457 suites, 6,959 passed, 2 skipped; Chromium e2e `home-mode-memory`, `home-state`, `topbar-upgrade` and the three `conversation-*` specs 72 passed; foundation Chromium 71 passed, 33 skipped. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-29, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
