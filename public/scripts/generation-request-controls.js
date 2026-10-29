@@ -31,7 +31,7 @@ export function requestUsesReasoning(data) {
     if (isKimiK3Model(model) || /(?:^|[/:])o[134](?:[-/:]|$)|gpt-6-astra|gpt-oss|grok-(?:3-mini|4|code)|deepseek[-_](?:r1|reasoner|v4)|qwq|qvq|magistral|(?:^|[-_/:])(?:reasoner|reasoning|thinking)(?:[-_/:]|$)/.test(model)) {
         return true;
     }
-    if (/gemini-(?:2\.5|3)/.test(model)) {
+    if (/gemini-(?:2\.5|3|4)/.test(model)) {
         return !(effort === 'min' && /gemini-2\.5-flash/.test(model));
     }
     if (data.chat_completion_source === 'moonshot' && /kimi-k2\.5/.test(model)) {
