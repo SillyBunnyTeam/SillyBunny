@@ -3333,20 +3333,24 @@
                                 </div>
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_google_select">
-                                    <optgroup label="Gemini 3.7">
-                                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                                    <!-- SillyBunny: track the current AI Studio catalog, which routes gemini-3.7-flash and gemini-3.5-flash to gemini-3.8-flash and gemini-3.6-flash. -->
+                                    <optgroup label="Gemini 4">
+                                        <option value="gemini-4-argon">gemini-4-argon</option>
+                                    </optgroup>
+                                    <optgroup label="Gemini 3.8">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.6">
                                         <option value="gemini-3.6-flash">gemini-3.6-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
-                                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                                         <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
-                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (deprecated)</option>
+                                        <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
+                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
                                         <option value="gemini-3-pro-image">gemini-3-pro-image</option>
@@ -3356,7 +3360,10 @@
                                         <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                         <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                         <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (deprecated)</option>
+                                    </optgroup>
+                                    <optgroup label="Nano Banana">
+                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                     </optgroup>
                                     <!-- SillyBunny: Gemma 4 remains available after the older Gemini API Gemma catalog retired. -->
                                     <optgroup label="Gemma 4">
@@ -3490,11 +3497,18 @@
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_vertexai_select">
                                     <!-- data-mode="full" is for models that require a service account -->
+                                    <!-- SillyBunny: track the current Vertex AI catalog. "(deprecated)" marks a model with an announced retirement date. -->
+                                    <optgroup label="Gemini 4">
+                                        <option value="gemini-4-argon">gemini-4-argon</option>
+                                    </optgroup>
+                                    <optgroup label="Gemini 3.8">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                                    </optgroup>
                                     <optgroup label="Gemini 3.7">
-                                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                                        <option value="gemini-3.7-flash">gemini-3.7-flash (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.6">
-                                        <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+                                        <option value="gemini-3.6-flash">gemini-3.6-flash (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
                                         <option value="gemini-3.5-flash">gemini-3.5-flash</option>
@@ -3503,6 +3517,7 @@
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                                         <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                                        <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
                                         <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
@@ -3510,10 +3525,13 @@
                                         <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
                                     </optgroup>
                                     <optgroup label="Gemini 2.5">
-                                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                        <option value="gemini-2.5-pro">gemini-2.5-pro (deprecated)</option>
+                                        <option value="gemini-2.5-flash">gemini-2.5-flash (deprecated)</option>
+                                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (deprecated)</option>
+                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (deprecated)</option>
+                                    </optgroup>
+                                    <optgroup label="Nano Banana">
+                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                     </optgroup>
                                     <optgroup id="vertexai_other_models" label="From API"></optgroup>
                                 </select>
