@@ -5,6 +5,10 @@ const mockOaiSettings = {
     chat_completion_source: 'openai',
     openai_model: 'gpt-4-turbo',
 };
+const mockKoboldCpp = {
+    count: jest.fn(),
+    loadedModel: '',
+};
 
 await jest.unstable_mockModule('../public/lib.js', () => ({
     localforage: {
@@ -31,7 +35,8 @@ await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
-    chat_completion_sources: { OPENAI: 'openai', OPENAI_RESPONSES: 'openai_responses' },
+    chat_completion_sources: { OPENAI: 'openai', OPENAI_RESPONSES: 'openai_responses', KOBOLDCPP: 'koboldcpp' },
+    getChatCompletionModel: () => mockKoboldCpp.loadedModel,
     model_list: [],
     oai_settings: mockOaiSettings,
 }));
@@ -71,9 +76,15 @@ await jest.unstable_mockModule('../public/scripts/textgen-models.js', () => ({
     openRouterModels: [],
 }));
 
+await jest.unstable_mockModule('../public/scripts/sillybunny-koboldcpp-models.js', () => ({
+    countKoboldCppChatTokens: (...args) => mockKoboldCpp.count(...args),
+    isKoboldCppChatCompletion: () => mockOaiSettings.chat_completion_source === 'koboldcpp',
+}));
+
 const {
     countTokensOpenAIAsync,
     getTokenizerModel,
+    guesstimate,
     primeOpenAITokenCache,
 } = await import('../public/scripts/tokenizers.js');
 
@@ -176,5 +187,51 @@ describe('OpenAI token cache priming', () => {
         await primeOpenAITokenCache(undefined);
 
         expect(globalThis.jQuery.ajax).not.toHaveBeenCalled();
+    });
+});
+
+describe('KoboldCpp token counting', () => {
+    beforeEach(() => {
+        globalThis.jQuery = { ajax: jest.fn() };
+        mockOaiSettings.chat_completion_source = 'koboldcpp';
+        mockKoboldCpp.loadedModel = 'koboldcpp/Qwen3-0.6B-Q8_0';
+        mockKoboldCpp.count.mockReset();
+    });
+
+    test('keys counts by the loaded model, or by the source while no model is loaded', () => {
+        expect(getTokenizerModel()).toBe('koboldcpp/Qwen3-0.6B-Q8_0');
+
+        mockKoboldCpp.loadedModel = '';
+        expect(getTokenizerModel()).toBe('koboldcpp');
+    });
+
+    test('counts each message once with KoboldCpp and skips the batch request', async () => {
+        const [message] = makeMessages(1, 'koboldcpp');
+        mockKoboldCpp.count.mockResolvedValue(12);
+
+        await primeOpenAITokenCache([message]);
+        expect(await countTokensOpenAIAsync(message, true)).toBe(12);
+        expect(await countTokensOpenAIAsync(message, true)).toBe(12);
+
+        expect(mockKoboldCpp.count).toHaveBeenCalledTimes(1);
+        expect(mockKoboldCpp.count).toHaveBeenCalledWith([message]);
+        expect(globalThis.jQuery.ajax).not.toHaveBeenCalled();
+    });
+
+    test('counts again after a switch to another model', async () => {
+        const [message] = makeMessages(1, 'koboldcpp-switch');
+        mockKoboldCpp.count.mockResolvedValueOnce(12).mockResolvedValueOnce(15);
+
+        expect(await countTokensOpenAIAsync(message, true)).toBe(12);
+        mockKoboldCpp.loadedModel = 'koboldcpp/SmolVLM-256M-Instruct-Q8_0';
+        expect(await countTokensOpenAIAsync(message, true)).toBe(15);
+    });
+
+    test('keeps a failed count out of the cache', async () => {
+        const [message] = makeMessages(1, 'koboldcpp-failed');
+        mockKoboldCpp.count.mockResolvedValueOnce(null).mockResolvedValueOnce(9);
+
+        expect(await countTokensOpenAIAsync(message, true)).toBe(guesstimate(JSON.stringify(message)));
+        expect(await countTokensOpenAIAsync(message, true)).toBe(9);
     });
 });

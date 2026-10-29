@@ -57,6 +57,8 @@ function makeRuntime(overrides = {}) {
         applyKimiK3ModelParameterConstraints,
         isKimiK3Model,
         migrateNanoGptProviderSettings,
+        isKoboldCppChatCompletion: () => settings.chat_completion_source === 'koboldcpp',
+        getKoboldCppChatState: () => null,
         t: strings => strings.join(''),
     });
     load(context, 'openai', [
