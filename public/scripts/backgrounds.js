@@ -1935,7 +1935,14 @@ export function initBackgrounds() {
         await onChatChanged();
     });
 
-    $('#bg_tabs').tabs();
+    // SillyBunny: <base href="/"> makes each tab link resolve to "/#id", so with a query string in the page URL jQuery UI treats the tab as remote and loads the whole app into a new panel. aria-controls binds each tab to its existing panel.
+    for (const anchor of document.querySelectorAll('#bg_tabs .bg_tabs_list > li > a')) {
+        anchor.parentElement.setAttribute('aria-controls', anchor.hash.slice(1));
+    }
+    // SillyBunny: with a query string jQuery UI still counts these tabs as remote and would fetch "/" on init and on every tab switch; history.replaceState can also add the query later.
+    $('#bg_tabs').tabs({ beforeLoad: event => event.preventDefault() });
+    // SillyBunny: jQuery UI marks panels of "remote" tabs as live regions, which would announce every thumbnail change.
+    $('#bg_tabs > .ui-tabs-panel').removeAttr('aria-live');
     // SillyBunny: one toolbar button follows the active source instead of competing tab observers.
     setupBackgroundScrollToTop();
     document.getElementById('Backgrounds')?.addEventListener('keydown', event => {

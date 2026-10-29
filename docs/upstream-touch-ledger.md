@@ -1157,6 +1157,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-29, PR #870. |
 | Owner | TODO(copy) |
 
+### `public/scripts/backgrounds.js` - Backgrounds tabs with a query string
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/backgrounds.js` |
+| Area | Backgrounds panel tabs (Global, Chat) and app boot. |
+| Divergence reason | TODO(copy) |
+| Target seam | `initBackgrounds()`: the jQuery UI `$('#bg_tabs').tabs()` call. `public/index.html:6` (`<base href="/">`) and the tab markup (`#bg_tabs`, anchors `href="#bg_global_tab"` and `href="#bg_chat_tab"`) stay unchanged. |
+| Adapter shape | Three marked lines before and after the upstream `tabs()` call: set each tab `<li>`'s `aria-controls` from its anchor's hash, pass `beforeLoad: event => event.preventDefault()`, and remove the `aria-live` jQuery UI adds to panels it treats as remote. Without them, any query string in the page URL makes jQuery UI fetch `/` into a new tab panel, duplicating the app's DOM. |
+| Protecting tests | `tests/backgrounds-tabs-query.e2e.js` (query at init, query lost, query gained after init, no query: one `#sheld` and `#chat`, panels `bg_global_tab` and `bg_chat_tab`, no `aria-live`, no request for `/`). |
+| Validation | 2026-10-30: the spec fails on the old code (two `#sheld`), and a reviewer's mutation runs fail it without each of the three changes; `--repeat-each=2` 8 of 8; `sillybunny-settings-consistency` and `home-state` 38 of 38; root and tests lint clean; unit suite green. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-30, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
