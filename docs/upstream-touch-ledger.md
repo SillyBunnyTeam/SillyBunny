@@ -350,6 +350,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
 | Owner | Bugfix integrator. |
 
+### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Google model catalog
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, `src/prompt-converters.js`. |
+| Area | Settings and generation lifecycle (Google AI Studio and Vertex AI model pickers and Gemini request builders). |
+| Divergence reason | TODO(copy) |
+| Target seam | None yet; the changes follow upstream's per-model option lists and regex patterns, so a future upstream sync can drop them once upstream covers these models. |
+| Adapter shape | Static `<option>` entries and `(deprecated)` labels in both pickers and the caption list; two AI Studio entries in `migrateChatCompletionSettings`; context, vision, video and audio list entries in `openai.js`; regex alternations and list entries in `getGeminiBody`, `convertGooglePrompt` and `calculateGoogleBudgetTokens`. |
+| Protecting tests | `tests/openai-static-models.test.js`, `tests/google-model-request.test.js`, `tests/prompt-converters.test.js`, `tests/story-mode-request-controls.test.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the four protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
+| Rollback path | Revert the option entries, the two AI Studio migration entries and the regex alternations. No data cleanup is needed, because a saved `gemini-3.8-flash` or `gemini-3.6-flash` selection stays valid on AI Studio. |
+| Last reviewed | 2026-10-29 Google model catalog update. |
+| Owner | TODO(copy) |
+
 ### `public/index.html` - in-chat agent message action buttons
 | Field | Value |
 | --- | --- |
