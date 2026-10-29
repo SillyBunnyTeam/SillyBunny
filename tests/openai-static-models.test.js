@@ -88,13 +88,16 @@ const retiredGoogleStudioModels = [
     'gemma-3-1b-it',
 ];
 
-// IDs removed from Vertex AI selects (the Gemini 2.0 batch; 3.x previews are Vertex-only retained)
+// IDs removed from Vertex AI selects (the retired Gemini 2.0 and 2.5 models; 3.x previews are Vertex-only retained)
 const retiredVertexModels = [
     'gemini-2.0-flash-exp',
     'gemini-2.0-flash-preview-image-generation',
     'gemini-2.0-flash',
     'gemini-2.0-flash-001',
     'gemini-2.0-flash-lite-001',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
 ];
 
 function readSource(relativePath) {
@@ -284,7 +287,7 @@ test('Google AI Studio pickers include current models and omit all retired Gemin
     expect(captionAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
 });
 
-test('Vertex AI pickers include current models and omit retired Gemini 2.0 entries', () => {
+test('Vertex AI pickers include current models and omit retired Gemini 2.0 and 2.5 entries', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
 
