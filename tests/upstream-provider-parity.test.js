@@ -57,6 +57,8 @@ function makeRuntime(overrides = {}) {
         applyKimiK3ModelParameterConstraints,
         isKimiK3Model,
         migrateNanoGptProviderSettings,
+        isKoboldCppChatCompletion: () => settings.chat_completion_source === 'koboldcpp',
+        getKoboldCppChatState: () => null,
         t: strings => strings.join(''),
     });
     load(context, 'openai', [
@@ -246,6 +248,88 @@ describe('upstream provider request integration', () => {
         expect(runtime.settings.chat_completion_source).toBe('custom');
         const defaultRuntime = makeRuntime({ chat_completion_source: 'pollinations' });
         expect((await defaultRuntime.build('test-model', 'normal', [])).generate_data.pollinations_endpoint).toBe('authenticated');
+    });
+
+    test('builds KoboldCpp requests with its own URL, samplers and Additional Parameters', async () => {
+        const runtime = makeRuntime({
+            chat_completion_source: 'koboldcpp',
+            koboldcpp_url: 'http://127.0.0.1:5001',
+            koboldcpp_include_body: 'name: {{char}}',
+            koboldcpp_exclude_body: '- top_a',
+            koboldcpp_include_headers: 'X-Character: {{char}}',
+            custom_include_body: 'custom_only: true',
+            freq_pen_openai: 0.4,
+            top_k_openai: 0,
+            min_p_openai: 0.05,
+            top_a_openai: 0.2,
+            repetition_penalty_openai: 1.1,
+            reasoning_effort: 'min',
+        });
+
+        const { generate_data: result } = await runtime.build('', 'normal', [{ role: 'user', content: 'Hello' }]);
+
+        expect(result).toMatchObject({
+            chat_completion_source: 'koboldcpp',
+            koboldcpp_url: 'http://127.0.0.1:5001',
+            koboldcpp_include_body: 'name: Character',
+            koboldcpp_exclude_body: '- top_a',
+            koboldcpp_include_headers: 'X-Character: Character',
+            top_k: 0,
+            min_p: 0.05,
+            top_a: 0.2,
+            repetition_penalty: 1.1,
+            reasoning_effort: 'minimal',
+        });
+        expect(result).not.toHaveProperty('frequency_penalty');
+        expect(result).not.toHaveProperty('custom_include_body');
+
+        runtime.settings.reasoning_effort = 'none';
+        expect((await runtime.build('', 'normal', [])).generate_data.reasoning_effort).toBeUndefined();
+    });
+
+    test('reads KoboldCpp thinking from reasoning_content', () => {
+        const runtime = makeRuntime({ chat_completion_source: 'koboldcpp' });
+        const state = { reasoning: '' };
+
+        const text = runtime.stream({ choices: [{ delta: { content: 'Answer', reasoning_content: 'Thought' } }] }, state, { chatCompletionSource: 'koboldcpp' });
+
+        expect(text).toBe('Answer');
+        expect(state.reasoning).toBe('Thought');
+        expect(runtime.extract({ choices: [{ message: { reasoning_content: 'Stored thought' } }] }, { mainApi: 'openai', chatCompletionSource: 'koboldcpp' })).toBe('Stored thought');
+    });
+
+    test('names the model KoboldCpp has loaded, and none while KoboldCpp reports it inactive', () => {
+        const runtime = makeRuntime({ chat_completion_source: 'koboldcpp' });
+
+        runtime.context.getKoboldCppChatState = () => ({ loadedModel: 'koboldcpp/Qwen3-0.6B-Q8_0' });
+        expect(runtime.context.getChatCompletionModel()).toBe('koboldcpp/Qwen3-0.6B-Q8_0');
+        expect(runtime.tokenizer()).toBe('koboldcpp/Qwen3-0.6B-Q8_0');
+
+        runtime.context.getKoboldCppChatState = () => ({ loadedModel: 'inactive' });
+        expect(runtime.context.getChatCompletionModel()).toBe('');
+        expect(runtime.tokenizer()).toBe('koboldcpp');
+    });
+
+    test('routes KoboldCpp profile requests to the profile URL and Additional Parameters', async () => {
+        const runtime = makeRuntime({ koboldcpp_url: 'http://127.0.0.1:5001', koboldcpp_include_body: 'active: true' });
+
+        const result = await runtime.service.presetToGeneratePayload({}, {}, {
+            messages: [],
+            model: '',
+            chat_completion_source: 'koboldcpp',
+            koboldcpp_url: 'http://127.0.0.1:5002',
+            custom_include_body: 'profile: {{char}}',
+            custom_include_headers: 'X-Profile: yes',
+        });
+
+        expect(result).toMatchObject({
+            chat_completion_source: 'koboldcpp',
+            koboldcpp_url: 'http://127.0.0.1:5002',
+            koboldcpp_include_body: 'profile: Character',
+            koboldcpp_include_headers: 'X-Profile: yes',
+        });
+        expect(runtime.settings.koboldcpp_url).toBe('http://127.0.0.1:5001');
+        expect(runtime.settings.koboldcpp_include_body).toBe('active: true');
     });
 
     test('surfaces provider error details in successful HTTP responses instead of OK', () => {

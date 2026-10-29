@@ -342,7 +342,7 @@
                             -->
                             <div id="range_block_novel">
                                 <div class="flex-container gap10h5v justifyCenter">
-                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi,koboldcpp" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Temperature">Temperature</span>
                                         </small>
@@ -591,7 +591,7 @@
                                     </div>
                                 </div>
                                 <div class="flex-container gap10h5v justifyCenter">
-                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi,koboldcpp" data-tg-samplers="temp" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Temperature">Temperature</span>
                                             <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Temperature controls the randomness in token selection" title="Temperature controls the randomness in token selection:&#13;- low temperature (<1.0) leads to more predictable text, favoring higher probability tokens.&#13;- high temperature (>1.0) increases creativity and diversity in the output by giving lower probability tokens a better chance.&#13;Set to 1.0 for the original probabilities."></div>
@@ -606,14 +606,14 @@
                                         <input class="neo-range-slider" type="range" id="freq_pen_openai" name="volume" min="-2" max="2" step="0.01" aria-label="Frequency Penalty" data-i18n="[aria-label]Frequency Penalty">
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="freq_pen_openai" id="freq_pen_counter_openai" aria-label="Frequency Penalty" data-i18n="[aria-label]Frequency Penalty">
                                     </div>
-                                    <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai,linkapi" data-tg-samplers="presence_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,aimlapi,openrouter,custom,cohere,perplexity,groq,siliconflow,mistralai,electronhub,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,chutes,workers_ai,linkapi,koboldcpp" data-tg-samplers="presence_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Presence Penalty">Presence Penalty</span>
                                         </small>
                                         <input class="neo-range-slider" type="range" id="pres_pen_openai" name="volume" min="-2" max="2" step="0.01" aria-label="Presence Penalty" data-i18n="[aria-label]Presence Penalty">
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="pres_pen_openai" id="pres_pen_counter_openai" aria-label="Presence Penalty" data-i18n="[aria-label]Presence Penalty">
                                     </div>
-                                    <div data-source="claude,aimlapi,openrouter,makersuite,vertexai,cohere,perplexity,electronhub,chutes,nanogpt,workers_ai,linkapi" data-tg-samplers="top_k" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="claude,aimlapi,openrouter,makersuite,vertexai,cohere,perplexity,electronhub,chutes,nanogpt,workers_ai,linkapi,koboldcpp" data-tg-samplers="top_k" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Top K">Top K</span>
                                             <div class="fa-solid fa-circle-info opacity50p" title="Top K sets a maximum amount of top tokens that can be chosen from.&#13;E.g Top K is 20, this means only the 20 highest ranking tokens will be kept (regardless of their probabilities being diverse or limited).&#13;Set to 0 (or -1, depending on your backend) to disable." data-i18n="[title]Top_K_desc"></div>
@@ -621,7 +621,7 @@
                                         <input class="neo-range-slider" type="range" id="top_k_openai" name="volume" min="0" max="500" step="1">
                                         <input class="neo-range-input" type="number" min="0" max="500" step="1" data-for="top_k_openai" id="top_k_counter_openai">
                                     </div>
-                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi" data-tg-samplers="top_p" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openai,claude,aimlapi,openrouter,ai21,makersuite,vertexai,mistralai,custom,cohere,perplexity,groq,siliconflow,minimax,electronhub,chutes,nanogpt,deepseek,xai,pollinations,moonshot,fireworks,cometapi,azure_openai,zai,workers_ai,linkapi,koboldcpp" data-tg-samplers="top_p" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Top P">Top P</span>
                                             <div class="fa-solid fa-circle-info opacity50p" title="Top P (a.k.a. nucleus sampling) adds up all the top tokens required to add up to the target percentage.&#13;E.g If the Top 2 tokens are both 25%, and Top P is 0.50, only the Top 2 tokens are considered.&#13;Set to 1.0 to disable." data-i18n="[title]Top_P_desc"></div>
@@ -629,14 +629,14 @@
                                         <input class="neo-range-slider" type="range" id="top_p_openai" name="volume" min="0" max="1" step="0.01" aria-label="Top P" data-i18n="[aria-label]Top P">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.01" data-for="top_p_openai" id="top_p_counter_openai" aria-label="Top P" data-i18n="[aria-label]Top P">
                                     </div>
-                                    <div data-source="openrouter,nanogpt,chutes,workers_ai" data-tg-samplers="repetition_penalty" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openrouter,nanogpt,chutes,workers_ai,koboldcpp" data-tg-samplers="repetition_penalty" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Repetition Penalty">Repetition Penalty</span>
                                         </small>
                                         <input class="neo-range-slider" type="range" id="repetition_penalty_openai" name="volume" min="1" max="2" step="0.01">
                                         <input class="neo-range-input" type="number" min="1" max="2" step="0.01" data-for="repetition_penalty_openai" id="repetition_penalty_counter_openai">
                                     </div>
-                                    <div data-source="openrouter,nanogpt,chutes" data-tg-samplers="min_p" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openrouter,nanogpt,chutes,koboldcpp" data-tg-samplers="min_p" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Min P">Min P</span>
                                             <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Min_P_desc" title="Min P sets a base minimum probability. This is scaled according to the top token's probability.&#13;E.g If Top token is 80% probability, and Min P is 0.1, only tokens higher than 8% would be considered.&#13;Set to 0 to disable."></div>
@@ -644,7 +644,7 @@
                                         <input class="neo-range-slider" type="range" id="min_p_openai" name="volume" min="0" max="1" step="0.001">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.001" data-for="min_p_openai" id="min_p_counter_openai">
                                     </div>
-                                    <div data-source="openrouter,nanogpt" data-tg-samplers="top_a" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
+                                    <div data-source="openrouter,nanogpt,koboldcpp" data-tg-samplers="top_a" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small>
                                             <span data-i18n="Top A">Top A</span>
                                             <div class="fa-solid fa-circle-info opacity50p" title="Top A sets a threshold for token selection based on the square of the highest token probability.&#13;E.g if the Top-A value is 0.2 and the top token's probability is 50%, tokens with probabilities below 5% (0.2 * 0.5^2) are excluded.&#13;Set to 0 to disable." data-i18n="[title]Top_A_desc"></div>
@@ -841,7 +841,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="range-block" data-source="openai,openrouter,mistralai,custom,cohere,groq,electronhub,chutes,nanogpt,xai,pollinations,aimlapi,makersuite,vertexai,azure_openai,workers_ai,linkapi">
+                                <div class="range-block" data-source="openai,openrouter,mistralai,custom,cohere,groq,electronhub,chutes,nanogpt,xai,pollinations,aimlapi,makersuite,vertexai,azure_openai,workers_ai,linkapi,koboldcpp">
                                     <div class="range-block-title justifyLeft" data-i18n="Seed">
                                         Seed
                                     </div>
@@ -1881,7 +1881,7 @@
                                             </b>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="openai,cohere,mistralai,custom,claude,aimlapi,openrouter,groq,siliconflow,minimax,deepseek,makersuite,vertexai,ai21,xai,pollinations,moonshot,fireworks,cometapi,electronhub,chutes,azure_openai,zai,nanogpt,workers_ai,linkapi">
+                                    <div class="range-block" data-source="openai,cohere,mistralai,custom,claude,aimlapi,openrouter,groq,siliconflow,minimax,deepseek,makersuite,vertexai,ai21,xai,pollinations,moonshot,fireworks,cometapi,electronhub,chutes,azure_openai,zai,nanogpt,workers_ai,linkapi,koboldcpp">
                                         <label for="openai_function_calling" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_function_calling" type="checkbox" />
                                             <span data-i18n="Enable function calling">Enable function calling</span>
@@ -1934,7 +1934,7 @@
                                             </em>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="openai,aimlapi,openrouter,mistralai,makersuite,vertexai,claude,custom,xai,pollinations,moonshot,cohere,cometapi,nanogpt,electronhub,azure_openai,zai,siliconflow,chutes,workers_ai,linkapi">
+                                    <div class="range-block" data-source="openai,aimlapi,openrouter,mistralai,makersuite,vertexai,claude,custom,xai,pollinations,moonshot,cohere,cometapi,nanogpt,electronhub,azure_openai,zai,siliconflow,chutes,workers_ai,linkapi,koboldcpp">
                                         <label for="openai_media_inlining" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_media_inlining" type="checkbox" />
                                             <span data-i18n="Send inline media">Send inline media</span>
@@ -1947,7 +1947,7 @@
                                                     <i class="icon-supported fa-solid fa-film" title="Supported by the current model" data-i18n="[title]Supported by the current model"></i>
                                                     <i class="icon-unsupported fa-solid fa-film" title="Unsupported by the current model" data-i18n="[title]Unsupported by the current model"></i>
                                                 </div>
-                                                <div id="openai_audio_inlining_supported" data-cc-toggle="false" data-source="makersuite,vertexai,openrouter,openai,custom">
+                                                <div id="openai_audio_inlining_supported" data-cc-toggle="false" data-source="makersuite,vertexai,openrouter,openai,custom,koboldcpp">
                                                     <i class="icon-supported fa-solid fa-music" title="Supported by the current model" data-i18n="[title]Supported by the current model"></i>
                                                     <i class="icon-unsupported fa-solid fa-music" title="Unsupported by the current model" data-i18n="[title]Unsupported by the current model"></i>
                                                 </div>
@@ -2019,7 +2019,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="deepseek,aimlapi,openrouter,custom,claude,xai,makersuite,vertexai,pollinations,moonshot,mistralai,fireworks,cometapi,electronhub,chutes,azure_openai,nanogpt,zai,linkapi">
+                                    <div class="range-block" data-source="deepseek,aimlapi,openrouter,custom,claude,xai,makersuite,vertexai,pollinations,moonshot,mistralai,fireworks,cometapi,electronhub,chutes,azure_openai,nanogpt,zai,linkapi,koboldcpp">
                                         <label for="openai_show_thoughts" class="checkbox_label widthFreeExpand">
                                             <input id="openai_show_thoughts" type="checkbox" />
                                             <span data-i18n="Request model reasoning">Request model reasoning</span>
@@ -2062,7 +2062,7 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi,deepseek,zai,moonshot,fireworks">
+                                    <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10" data-source="openai,custom,claude,xai,makersuite,vertexai,aimlapi,openrouter,pollinations,perplexity,cometapi,electronhub,azure_openai,chutes,nanogpt,linkapi,deepseek,zai,moonshot,fireworks,koboldcpp">
                                         <div class="flex-container oneline-dropdown" title="Constrains effort on reasoning for reasoning models.&#10;Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response." data-i18n="[title]Constrains effort on reasoning for reasoning models.">
                                             <label for="openai_reasoning_effort">
                                                 <span data-i18n="Reasoning Effort">Reasoning Effort</span>
@@ -2082,6 +2082,10 @@
                                             </div>
                                             <div class="toggle-description justifyLeft marginBot5" data-source="fireworks" data-i18n="Fireworks supports low, medium, high, and max as distinct effort levels. Minimum is aliased to low. Auto does not send an effort level.">
                                                 Fireworks supports low, medium, high, and max as distinct effort levels. Minimum is aliased to low. Auto does not send an effort level.
+                                            </div>
+                                            <!-- SillyBunny: KoboldCpp turns effort levels into its own thinking limits. -->
+                                            <div class="toggle-description justifyLeft marginBot5" data-source="koboldcpp" data-i18n="KoboldCpp limits thinking to part of the response length at Minimum, Low, Medium and High. At Extra High and Maximum, thinking has no limit. None sends no effort level, so KoboldCpp uses the effort it was started with.">
+                                                KoboldCpp limits thinking to part of the response length at Minimum, Low, Medium and High. At Extra High and Maximum, thinking has no limit. None sends no effort level, so KoboldCpp uses the effort it was started with.
                                             </div>
                                             <div class="toggle-description justifyLeft marginBot5" data-source="claude" data-i18n="Selects an effort level on adaptive-thinking models. On older Claude models, it allocates a portion of the response length to thinking. Auto does not request thinking.">
                                                 Selects an effort level on adaptive-thinking models. On older Claude models, it allocates a portion of the response length to thinking. Auto does not request thinking.
@@ -2820,7 +2824,8 @@
                                 </div>
                                 <h4 data-i18n="koboldcpp API key (optional)">koboldcpp API key (optional)</h4>
                                 <div class="flex-container">
-                                    <input id="api_key_koboldcpp" name="api_key_koboldcpp" class="text_pole flex1 wide100p" type="text" autocomplete="off">
+                                    <!-- SillyBunny: the class shows this key in the KoboldCpp Chat Completion form as well. -->
+                                    <input id="api_key_koboldcpp" name="api_key_koboldcpp" class="text_pole flex1 wide100p api_key_koboldcpp" type="text" autocomplete="off">
                                     <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_koboldcpp">
                                     </div>
                                 </div>
@@ -2894,6 +2899,8 @@
                                 <option value="makersuite">Google AI Studio</option>
                                 <option value="gemini_interactions">Gemini Interactions API</option>
                                 <option value="vertexai">Google Vertex AI</option>
+                                <!-- SillyBunny: KoboldCpp's own Chat Completions API, apart from the KoboldCpp Text Completion API. -->
+                                <option value="koboldcpp">KoboldCpp</option>
                                 <option value="linkapi">LinkAPI</option>
                                 <option value="mistralai">MistralAI</option>
                                 <option value="minimax">MiniMax</option>
@@ -3944,6 +3951,32 @@
                                 </small>
                             </div>
                         </form>
+                        <!-- SillyBunny: KoboldCpp's own Chat Completions API. It shares the API key and the URL history with the KoboldCpp Text Completion API. -->
+                        <div id="koboldcpp_form" data-source="koboldcpp">
+                            <div class="flex-container flexFlowColumn">
+                                <a href="https://github.com/LostRuins/koboldcpp" target="_blank">
+                                    LostRuins/koboldcpp
+                                </a>
+                            </div>
+                            <h4 data-i18n="koboldcpp API key (optional)">koboldcpp API key (optional)</h4>
+                            <div class="flex-container">
+                                <input id="api_key_koboldcpp_chat" name="api_key_koboldcpp" class="text_pole flex1 wide100p api_key_koboldcpp" type="text" autocomplete="off">
+                                <div title="Manage API keys" data-i18n="[title]Manage API keys" class="menu_button fa-solid fa-key fa-fw manage-api-keys" data-key="api_key_koboldcpp"></div>
+                            </div>
+                            <div data-for="api_key_koboldcpp_chat" class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you click 'Connect'.">
+                                For privacy reasons, your API key will be hidden after you click 'Connect'.
+                            </div>
+                            <h4 data-i18n="API url">API URL</h4>
+                            <small data-i18n="Example: http://127.0.0.1:5001">Example: http://127.0.0.1:5001</small>
+                            <input id="koboldcpp_chat_url_text" class="text_pole wide100p" value="" autocomplete="off" data-server-history="koboldcpp">
+                            <h4 data-i18n="KoboldCpp Model">KoboldCpp Model</h4>
+                            <select id="koboldcpp_chat_model">
+                                <option value="" data-i18n="-- Connect to the API --">-- Connect to the API --</option>
+                            </select>
+                            <div class="marginTopBot5 displayNone">
+                                <small id="koboldcpp_chat_model_hint"></small>
+                            </div>
+                        </div>
                         <div id="xai_form" data-source="xai">
                             <h4>
                                 <a data-i18n="xAI API Key" href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">
@@ -4179,9 +4212,10 @@
                             </select>
                         </div>
                         <div class="flex-container flex">
-                            <div id="api_button_openai" class="api_button menu_button menu_button_icon" type="submit" data-i18n="Connect">Connect</div>
+                            <!-- SillyBunny: the label ties Connect to the KoboldCpp URL history, which saves the URL on Connect and connects when a saved URL is picked. -->
+                            <div id="api_button_openai" class="api_button menu_button menu_button_icon" type="submit" data-i18n="Connect" data-server-connect="koboldcpp">Connect</div>
                             <div class="api_loading menu_button menu_button_icon" data-i18n="Cancel">Cancel</div>
-                            <div data-source="custom" id="customize_additional_parameters" class="menu_button menu_button_icon" data-i18n="Additional Parameters">Additional Parameters</div>
+                            <div data-source="custom,koboldcpp" id="customize_additional_parameters" class="menu_button menu_button_icon" data-i18n="Additional Parameters">Additional Parameters</div>
                             <div data-source="openrouter" class="menu_button menu_button_icon openrouter_authorize" title="Get your OpenRouter API token using OAuth flow. You will be redirected to openrouter.ai" data-i18n="Authorize;[title]Get your OpenRouter API token using OAuth flow. You will be redirected to openrouter.ai">Authorize</div>
                             <div id="test_api_button" class="menu_button menu_button_icon" title="Verifies your API connection by sending a short test message. Be aware that you'll be credited for it!" data-i18n="Test Message;[title]Verifies your API connection by sending a short test message. Be aware that you'll be credited for it!">Test Message</div>
                         </div>

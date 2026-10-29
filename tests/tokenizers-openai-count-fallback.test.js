@@ -5,6 +5,7 @@ const mockOaiSettings = {
     chat_completion_source: 'openai',
     openai_model: 'gpt-4-turbo',
 };
+const mockCountKoboldCppChatTokens = jest.fn();
 
 await jest.unstable_mockModule('../public/lib.js', () => ({
     localforage: {
@@ -31,7 +32,8 @@ await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
-    chat_completion_sources: { OPENAI: 'openai' },
+    chat_completion_sources: { OPENAI: 'openai', KOBOLDCPP: 'koboldcpp' },
+    getChatCompletionModel: () => '',
     model_list: [],
     oai_settings: mockOaiSettings,
 }));
@@ -63,6 +65,11 @@ await jest.unstable_mockModule('../public/scripts/textgen-models.js', () => ({
     openRouterModels: [],
 }));
 
+await jest.unstable_mockModule('../public/scripts/sillybunny-koboldcpp-models.js', () => ({
+    countKoboldCppChatTokens: mockCountKoboldCppChatTokens,
+    isKoboldCppChatCompletion: () => mockOaiSettings.chat_completion_source === 'koboldcpp',
+}));
+
 const {
     countChatCompletionPayloadTokensOpenAIAsync,
     countTokensOpenAIAsync,
@@ -72,6 +79,8 @@ const {
 describe('OpenAI token counting resilience', () => {
     beforeEach(() => {
         globalThis.jQuery = { ajax: jest.fn() };
+        mockOaiSettings.chat_completion_source = 'openai';
+        mockCountKoboldCppChatTokens.mockReset();
     });
 
     test('falls back to a guesstimate when the tokenizer endpoint rejects with a jqXHR', async () => {
@@ -98,5 +107,27 @@ describe('OpenAI token counting resilience', () => {
         const count = await countChatCompletionPayloadTokensOpenAIAsync([{ role: 'user', content: 'hi' }]);
 
         expect(count).toBe(42);
+    });
+
+    test('counts a finalized KoboldCpp payload with KoboldCpp', async () => {
+        mockOaiSettings.chat_completion_source = 'koboldcpp';
+        const messages = [{ role: 'user', content: 'hi' }];
+        mockCountKoboldCppChatTokens.mockResolvedValue(17);
+
+        const count = await countChatCompletionPayloadTokensOpenAIAsync(messages);
+
+        expect(count).toBe(17);
+        expect(mockCountKoboldCppChatTokens).toHaveBeenCalledWith(messages);
+        expect(globalThis.jQuery.ajax).not.toHaveBeenCalled();
+    });
+
+    test('falls back to a guesstimate when KoboldCpp cannot count a payload', async () => {
+        mockOaiSettings.chat_completion_source = 'koboldcpp';
+        const messages = [{ role: 'user', content: 'hi' }];
+        mockCountKoboldCppChatTokens.mockResolvedValue(null);
+
+        const count = await countChatCompletionPayloadTokensOpenAIAsync(messages);
+
+        expect(count).toBe(guesstimate(JSON.stringify(messages)));
     });
 });
