@@ -1,15 +1,15 @@
 import { t } from '../i18n.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
-import { stubAction } from './stubs.js';
 
 /**
  * Fills the links section: Help and Bundled Extras, each a row with a trailing arrow.
  * @param {HTMLElement} panel The `.welcomePanel` root.
  * @param {object} actions
  * @param {(opener: HTMLElement) => void} actions.openBundledExtras Receives the row, so focus can come back to it.
+ * @param {() => void} actions.openHelp
  */
-export function mountLinks(panel, { openBundledExtras }) {
+export function mountLinks(panel, { openBundledExtras, openHelp }) {
     const section = panel.querySelector('[data-sb-home-region="links"]');
     if (!section) {
         return;
@@ -20,10 +20,13 @@ export function mountLinks(panel, { openBundledExtras }) {
         subtitle: COPY_PLACEHOLDER,
         field: 'links-help',
         activatable: true,
-        onActivate: stubAction('links.help'),
+        // Safari does not focus a button on click, and the window returns focus to the element that had it.
+        onActivate: () => {
+            help.row.focus({ preventScroll: true });
+            openHelp();
+        },
     });
     markRowSubtitle(help, 'HOME-ROW-HELP');
-    help.row.dataset.sbStub = 'true';
 
     const extras = createRow({
         label: t`Bundled Extras`,

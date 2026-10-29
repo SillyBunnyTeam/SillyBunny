@@ -9,7 +9,6 @@ describe('Home stubs', () => {
             'assistant.new-chat',
             'assistant.temporary-chat',
             'assistant.open-in-mode',
-            'links.help',
         ]);
     });
 

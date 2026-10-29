@@ -7,7 +7,6 @@ export const HOME_STUBS = Object.freeze([
     'assistant.new-chat',
     'assistant.temporary-chat',
     'assistant.open-in-mode',
-    'links.help',
 ]);
 
 /**

@@ -699,18 +699,16 @@ for (const { name, columns, options } of VIEWPORTS) {
             await expect(trigger).toBeFocused();
         });
 
-        test('activating an Assistants row or the Help row does nothing yet', async ({ page }) => {
+        test('activating an Assistants row does nothing yet', async ({ page }) => {
             await chooseMode(page, 'full');
             const mode = await page.locator('#chat > .welcomePanel').getAttribute('data-home-panel-mode');
 
             await assistantRow(page, 'Reisen').getByRole('button', { name: 'Reisen', exact: true }).click();
-            await page.locator('#chat > .welcomePanel [data-sb-editor-field="links-help"]').click();
 
             await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
             await expect(page.locator('dialog[open]')).toHaveCount(0);
             await expect(extrasPage(page)).toHaveCount(0);
             await expect(page.locator('#chat > .welcomePanel')).toHaveAttribute('data-home-panel-mode', mode);
-            await expect(page.locator('#chat > .welcomePanel [data-sb-editor-field="links-help"]')).toHaveAttribute('data-sb-stub', 'true');
         });
 
         test('Help and Bundled Extras are two boxed rows with a trailing arrow', async ({ page }) => {

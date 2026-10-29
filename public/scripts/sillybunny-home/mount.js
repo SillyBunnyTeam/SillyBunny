@@ -7,6 +7,7 @@ import { createHomePageHost } from './home-page.js';
 import { mountLinks } from './links-view.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
+import { openAbout, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
 
 /**
  * @typedef {object} HomeContext
@@ -56,7 +57,7 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
         return;
     }
 
-    const actions = { setDisplayMode, openRecentChatsSettings };
+    const actions = { setDisplayMode, openRecentChatsSettings, showWelcome, openKeyboardShortcuts, openHelp, openAbout };
     button.addEventListener('click', (event) => {
         openHomeMenu(button, { displayMode: getDisplayMode() }, actions, { keyboard: event.detail === 0 });
     });
@@ -82,6 +83,7 @@ export function mountHome(panel, context) {
     mountAssistants(panel);
     mountLinks(panel, {
         openBundledExtras: opener => pages.push(createExtrasPage({ goBack: () => pages.pop() }), opener),
+        openHelp,
     });
     applyDisplayMode(panel, context.getDisplayMode());
 }

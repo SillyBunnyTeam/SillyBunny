@@ -18,6 +18,7 @@ import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import './sillybunny-extension-actions.js';
 import { initializeColorPickers } from './sillybunny-color-picker.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
+import { isApplePlatform } from './sillybunny-platform.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
@@ -16344,8 +16345,7 @@ function initSettingsKeyboardShortcuts() {
     document.documentElement.dataset.sbSettingsShortcutsBound = 'true';
 
     document.addEventListener('keydown', event => {
-        const isMac = navigator.platform?.toUpperCase().includes('MAC');
-        const ctrl = isMac ? event.metaKey : event.ctrlKey;
+        const ctrl = isApplePlatform() ? event.metaKey : event.ctrlKey;
         if (!ctrl || event.altKey) {
             return;
         }
