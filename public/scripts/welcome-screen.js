@@ -11,8 +11,6 @@ import {
     getRequestHeaders,
     getThumbnailUrl,
     is_send_press,
-    main_api,
-    newAssistantChat,
     openCharacterChat,
     printCharactersDebounced,
     renameGroupOrCharacterChat,
@@ -24,24 +22,24 @@ import {
     this_chid,
 } from '../script.js';
 import { deleteGroupChatByName, getGroupAvatar, groups, is_group_generating, openGroupById, openGroupChat } from './group-chats.js';
-import { deleteExtension, enableExtension, extension_settings, findExtension, getExtensionType, installExtension } from './extensions.js';
+import { extension_settings } from './extensions.js';
 import { t } from './i18n.js';
-import { getPresetManager } from './preset-manager.js';
-import { isIOSWebKitPlatform } from './mobile-send-button.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { renderTemplateAsync } from './templates.js';
-import { isAdmin } from './user.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { clamp, flashHighlight, isElementInViewport, sortMoments, timestampToMoment } from './utils.js';
 // SillyBunny: adopt Recent Chats custom inputs into shared spin rows.
 import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
+// SillyBunny: Home sections live in their own modules and mount into the rendered template.
+import { applyDisplayMode, mountHome } from './sillybunny-home/mount.js';
+import { parseDisplayMode } from './sillybunny-home/modes.js';
+import { captureHomeFocus, restoreHomeFocus } from './sillybunny-home/focus.js';
+import { openChatMenu } from './sillybunny-home/menu.js';
+import { resolveRecentChatTarget } from './sillybunny-home/recent-chat.js';
 
 const assistantAvatarKey = 'assistant';
 const pinnedChatsKey = 'pinnedChats';
 
-const tutorialStatusKey = 'WelcomePage_TutorialStatus';
-const tutorialIndexKey = 'WelcomePage_TutorialIndex';
-const welcomeDeckViewKey = 'WelcomePage_DeckView';
 const welcomePanelModeKey = 'WelcomePage_PanelMode';
 const DEFAULT_BUNDLED_ASSISTANT_ID = 'guide';
 const bundledAssistantNahidaAvatarKey = 'bundledAssistantNahidaAvatar';
@@ -49,181 +47,6 @@ const DEFAULT_NEUTRAL_ASSISTANT_NAME = 'Assistant';
 
 const AGENT_MESSAGE_EXTRA_KEY = 'inChatAgents';
 const AGENT_PROMPT_TRANSFORM_HISTORY_KEY = 'inChatAgentTransformHistory';
-const STARTER_PACK_PRESET_NAME_SILLYBUNNY = 'Pura\'s Director Preset 15.1 (SillyBunny)';
-const STARTER_PACK_PRESET_TITLE = 'Pura\'s Director Preset';
-const TLD_PRESET_NAME = 'TLD Card Conversion Preset (Standalone)';
-const STARTER_PACK_SITE_URL = 'https://platberlitz.github.io/';
-const GEECHAN_PRESET_NAME = 'Geechan - Universal Roleplay (Chat Completions) (v5.2)';
-const GEECHAN_SITE_URL = 'https://rentry.org/geechan';
-const TLD_SITE_URL = 'https://botbooru.com/profile/25826';
-const TLD_DISCORD_PALS_URL = 'https://github.com/TheLonelyDevil9/discord-pals/';
-const STARTER_PACK_EXTENSIONS = Object.freeze({
-    dialogueColors: Object.freeze({
-        id: 'third-party/sillytavern-character-colors',
-        repoUrl: 'https://github.com/platberlitz/sillytavern-character-colors',
-    }),
-    summarySharder: Object.freeze({
-        id: 'third-party/summary-sharder',
-        repoUrl: 'https://github.com/Promansis/summary-sharder',
-    }),
-    cssSnippets: Object.freeze({
-        id: 'third-party/SillyBunny-CssSnippets',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-CssSnippets',
-    }),
-    terminalUi: Object.freeze({
-        id: 'third-party/SillyBunny-Terminal-UI',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI',
-    }),
-    groupUtilities: Object.freeze({
-        id: 'third-party/SB-GroupUtilities',
-        repoUrl: 'https://github.com/aracnai/SB-GroupUtilities',
-    }),
-    laLib: Object.freeze({
-        id: 'third-party/SillyTavern-LALib',
-        repoUrl: 'https://github.com/LenAnderson/SillyTavern-LALib',
-    }),
-    promptingLab: Object.freeze({
-        id: 'third-party/SillyBunny-Prompting-Lab',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Prompting-Lab',
-    }),
-    worldInfoLab: Object.freeze({
-        id: 'third-party/SillyBunny-WorldInfo-Lab',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-WorldInfo-Lab',
-    }),
-    regexAgentThemes: Object.freeze({
-        id: 'third-party/SillyBunny-Regex-Agent-Themes',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-Regex-Agent-Themes',
-    }),
-    botSearcher: Object.freeze({
-        id: 'third-party/SillyBunny-BotSearcher',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-BotSearcher',
-    }),
-    macroEnhanced: Object.freeze({
-        id: 'third-party/SillyBunny-MacroEnhanced',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-MacroEnhanced',
-    }),
-    promptTags: Object.freeze({
-        id: 'third-party/SillyBunny-PromptTags',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-PromptTags',
-    }),
-    alternateDescriptions: Object.freeze({
-        id: 'third-party/SillyBunny-AlternateDescriptions',
-        repoUrl: 'https://github.com/SillyBunnyTeam/SillyBunny-AlternateDescriptions',
-    }),
-});
-
-const WELCOME_TUTORIAL_STEPS = Object.freeze([
-    {
-        title: 'Your homepage',
-        body: 'The Home Page is your personal launchpad. You can quickly access various essential functions of SillyBunny here. For full access to this program\'s functionality, please use the top bar for further navigation and configuration.',
-        hint: 'If you just want to directly chat with your chosen model, clicking Temporary Chat will get you started.',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open Workspace', type: 'open-tab', value: 'left:presets' }),
-            Object.freeze({ label: 'Open Customize', type: 'open-tab', value: 'right:settings' }),
-            Object.freeze({ label: 'Open Characters', type: 'open-characters-menu' }),
-        ]),
-    },
-    {
-        title: 'Connect a model',
-        body: 'You will need to connect a large language model (LLM) to actually utilize the functionalities of this program. Open the API sub-tab found in Workspace to get started.',
-        hint: 'Not sure what provider to use? OpenRouter is a good place to start. SillyBunny needs at least one working connection before you can chat.',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open API', type: 'open-tab', value: 'left:api' }),
-            Object.freeze({ label: 'Open Sampling', type: 'open-tab', value: 'left:sampling' }),
-        ]),
-    },
-    {
-        title: 'Choose a preset',
-        body: 'Next, you can optionally enable a preset of your choice. This influences your model\'s responses and give it appropriate instructions for its task. We recommend starting with a Chat Completions preset if you\'re unsure.',
-        hint: 'Presets are entirely optional, but can be beneficial for response quality. Our bundled Geechan or Director presets are a great starting preset option if you\'re unsure.',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open Presets', type: 'open-tab', value: 'left:presets' }),
-            Object.freeze({ label: 'Open World Info', type: 'open-tab', value: 'left:world-info' }),
-        ]),
-    },
-    {
-        title: 'Load a character',
-        body: 'Now that you\'ve gotten the pre-requisites out of the way, you\'re close to being able to chat! Open the Characters menu and select a character to get started on your RP/storywriting journey.',
-        hint: 'You will need to source your own character cards from online (or create your own!) if you want more than just the bundled characters. SillyBunny supports all cards following the V2/V3 format.',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open Characters', type: 'open-characters-menu' }),
-            Object.freeze({ label: 'Open Personas', type: 'open-tab', value: 'characters:persona' }),
-            Object.freeze({ label: 'Open World Info', type: 'open-tab', value: 'left:world-info' }),
-        ]),
-    },
-    {
-        title: 'Customize your workspace',
-        body: 'Congrats, you\'re done! If you wish to delve into all the functionality and customization that SillyBunny can offer, please explore our UI from the top bar. A good starting point is SillyBunny\'s vast extension ecosystem. For more information: check out the UI Handbook tab!',
-        hint: 'The world of AI creative writing is vast and seemingly neverending. We recommend asking our built-in assistants for more help if you\'re confused!',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open UI Handbook', type: 'open-deck-view', value: 'basics' }),
-            Object.freeze({ label: 'Open Extensions', type: 'open-tab', value: 'right:extensions' }),
-            Object.freeze({ label: 'Open Assistant', type: 'open-assistant', assistantId: 'guide' }),
-            Object.freeze({ label: 'Open Assistant Nahida', type: 'open-assistant', assistantId: 'nahida' }),
-        ]),
-    },
-]);
-
-const WELCOME_GUIDE_CARDS = Object.freeze([
-    {
-        title: 'Workspace Menu',
-        body: 'Open the Workspace button in the top bar when you want to change how the LLM behaves behind the scenes. You can connect APIs, swap presets, tune samplers or formatting, and load in-chat agents to complement your chat.',
-        icon: 'fa-compass-drafting',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open the Workspace menu', type: 'open-tab', value: 'left:presets' }),
-            Object.freeze({ label: 'Open API', type: 'open-tab', value: 'left:api' }),
-            Object.freeze({ label: 'Open Sampling', type: 'open-tab', value: 'left:sampling' }),
-            Object.freeze({ label: 'Open Agents', type: 'open-tab', value: 'left:agents' }),
-        ]),
-    },
-    {
-        title: 'Customize Menu',
-        body: 'Open the Customize button in the top bar when you want to change any setting related to SillyBunny itself. This includes app settings, extensions, backgrounds, and visual settings.',
-        icon: 'fa-screwdriver-wrench',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open the Customize menu', type: 'open-tab', value: 'right:settings' }),
-            Object.freeze({ label: 'Open Extensions', type: 'open-tab', value: 'right:extensions' }),
-            Object.freeze({ label: 'Open Backgrounds', type: 'open-tab', value: 'right:background' }),
-        ]),
-    },
-    {
-        title: 'Characters Menu',
-        body: 'Open the Characters button in the top bar when you want to access characters, edit personas, or create character cards. We have a few characters bundled for you to give you an idea of how to create them!',
-        icon: 'fa-solid fa-id-card',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open the Characters menu', type: 'open-characters-menu' }),
-            Object.freeze({ label: 'Open Personas', type: 'open-tab', value: 'characters:persona' }),
-            Object.freeze({ label: 'Import Characters', type: 'open-import-characters' }),
-        ]),
-    },
-    {
-        title: 'Global Search',
-        body: 'Open the search icon in the top bar to do a global search across all settings pages to quickly find the setting you are looking for!',
-        icon: 'fa-search',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open the Search bar', type: 'open-global-search', isSearchTrigger: true }),
-        ]),
-    },
-    {
-        title: 'Quick-access Buttons',
-        body: 'We have a few quick access buttons for your convenience in the home screen. Temporary Chat opens a quick burner chat. Open Assistant brings up one of our built-in assistants. Import Characters lets you bring in a character of your choosing.',
-        icon: 'fa-hand-pointer',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Temporary Chat', type: 'open-temporary-chat' }),
-            Object.freeze({ label: 'Open Assistant', type: 'open-assistant', assistantId: 'guide' }),
-            Object.freeze({ label: 'Import Characters', type: 'open-import-characters' }),
-        ]),
-    },
-    {
-        title: 'Chat Modes',
-        body: 'With a selected character card, you can swap between either roleplay or conversation modes. Use roleplay if you want a traditional chatting experience with your character. Use conversation if you wish to simulate an instant-messaging live-chat environment with your character.',
-        icon: 'fa-comments',
-        actions: Object.freeze([
-            Object.freeze({ label: 'Open Roleplay', type: 'open-roleplay' }),
-            Object.freeze({ label: 'Open Conversation', type: 'open-conversation' }),
-        ]),
-    },
-]);
 
 const WELCOME_BUNDLED_ASSISTANTS = Object.freeze([
     Object.freeze({
@@ -287,38 +110,6 @@ const WELCOME_BUNDLED_ASSISTANTS = Object.freeze([
     }),
 ]);
 
-const WELCOME_DECK_VIEWS = Object.freeze([
-    {
-        id: 'tour',
-        title: 'Starting Tutorial',
-        summary: 'New to SillyBunny? Start here!',
-        icon: 'fa-route',
-    },
-    {
-        id: 'basics',
-        title: 'UI Handbook',
-        summary: 'A plain-English guide on our graphical shell.',
-        icon: 'fa-compass-drafting',
-    },
-    {
-        id: 'guide',
-        title: 'Bundled Assistants',
-        summary: 'Two bundled helpers for plain-English setup help.',
-        icon: 'fa-user-graduate',
-    },
-    {
-        id: 'starter',
-        title: 'Bundled Extras',
-        summary: 'A repository of our pre-bundled and recommended extensions/presets.',
-        icon: 'fa-gift',
-    },
-]);
-
-const WELCOME_PANEL_MODES = Object.freeze({
-    full: 'full',
-    compact: 'compact',
-    list: 'list',
-});
 const recentChatsSettingsKey = 'recentChatsSettings';
 
 const DEFAULT_MAX_DISPLAYED = 15;
@@ -687,27 +478,9 @@ async function ensureBundledAssistantCharacter(config, { tryCreate = true, creat
     }
 }
 
-function isWelcomeDeckView(view) {
-    return WELCOME_DECK_VIEWS.some(item => item.id === view);
-}
-
-function getInitialDeckView() {
-    const storedView = getWelcomeUiPreference(welcomeDeckViewKey) || '';
-
-    if (isWelcomeDeckView(storedView)) {
-        return storedView;
-    }
-
-    return 'tour';
-}
-
-function isWelcomePanelMode(mode) {
-    return Object.values(WELCOME_PANEL_MODES).includes(mode);
-}
-
+// SillyBunny: parseDisplayMode turns a missing or unknown stored value into Full, so no caller handles a bad mode.
 function getWelcomePanelMode() {
-    const storedMode = getWelcomeUiPreference(welcomePanelModeKey) || WELCOME_PANEL_MODES.full;
-    return isWelcomePanelMode(storedMode) ? storedMode : WELCOME_PANEL_MODES.full;
+    return parseDisplayMode(getWelcomeUiPreference(welcomePanelModeKey));
 }
 
 function getWelcomeUiPreference(key) {
@@ -741,346 +514,14 @@ function setWelcomeUiPreference(key, value) {
     }
 }
 
-function buildDeckTabs(activeView) {
-    return WELCOME_DECK_VIEWS.map(item => ({
-        ...item,
-        active: item.id === activeView,
-    }));
-}
-
-function buildGuideCards() {
-    return WELCOME_GUIDE_CARDS.map(card => ({
-        ...card,
-        actions: card.actions.map(action => ({ ...action })),
-    }));
-}
-
-function buildBundledAssistantCards() {
-    return WELCOME_BUNDLED_ASSISTANTS.map((assistant) => ({
-        id: assistant.id,
-        title: assistant.title,
-        body: assistant.body,
-        credit: assistant.credit,
-        portrait: assistant.portrait,
-        portraitAlt: assistant.portraitAlt,
-        actionLabel: assistant.actionLabel,
-        actionIcon: assistant.actionIcon,
-        cardIcon: assistant.cardIcon,
-        questions: [...assistant.questions],
-        hasQuestions: assistant.questions.length > 0,
-    }));
-}
-
-function buildTutorialSteps(activeIndex = 0) {
-    return WELCOME_TUTORIAL_STEPS.map((step, index) => ({
-        ...step,
-        actions: step.actions.map(action => ({ ...action })),
-        stepNumber: index + 1,
-        active: index === activeIndex,
-    }));
-}
-
-function getStarterPackExtensionConfig(extensionName) {
-    return Object.values(STARTER_PACK_EXTENSIONS).find(extension => extension.id === extensionName) ?? null;
-}
-
-function buildExtensionStarterPackItem({ title, body, icon, extensionName }) {
-    const extension = findExtension(extensionName);
-    const extensionConfig = getStarterPackExtensionConfig(extensionName);
-
-    if (!extension && extensionConfig) {
-        const isCurrentUserAdmin = isAdmin();
-        return {
-            title,
-            body,
-            icon,
-            statusLabel: 'Git install',
-            statusTone: 'warm',
-            actionIcon: 'fa-download',
-            actionLabel: isCurrentUserAdmin ? 'Install for all users' : 'Install for this user',
-            actionType: isCurrentUserAdmin ? 'install-starter-extension-global' : 'install-starter-extension-user',
-            actionValue: extensionName,
-            secondaryActionLabel: isCurrentUserAdmin ? 'Install for this user' : '',
-            secondaryActionIcon: 'fa-user',
-            secondaryActionType: 'install-starter-extension-user',
-            secondaryActionValue: extensionName,
-        };
-    }
-
-    if (!extension) {
-        return {
-            title,
-            body,
-            icon,
-            statusLabel: 'Unavailable',
-            statusTone: 'neutral',
-            actionIcon: 'fa-arrow-up-right-from-square',
-            actionLabel: 'Open Extensions',
-            actionType: 'open-tab',
-            actionValue: 'right:extensions',
-        };
-    }
-
-    if (extension.enabled) {
-        return {
-            title,
-            body,
-            icon,
-            statusLabel: 'Enabled',
-            statusTone: 'good',
-            actionIcon: 'fa-arrow-up-right-from-square',
-            actionLabel: 'Manage in Extensions',
-            actionType: 'open-tab',
-            actionValue: 'right:extensions',
-            secondaryActionLabel: 'Remove Extension',
-            secondaryActionIcon: 'fa-trash',
-            secondaryActionType: 'remove-starter-extension',
-            secondaryActionValue: extension.name,
-        };
-    }
-
-    return {
-        title,
-        body,
-        icon,
-        statusLabel: 'Installed',
-        statusTone: 'warm',
-        actionLabel: 'Enable and reload',
-        actionIcon: 'fa-wand-magic-sparkles',
-        actionType: 'enable-extension',
-        actionValue: extension.name,
-        secondaryActionLabel: 'Remove Extension',
-        secondaryActionIcon: 'fa-trash',
-        secondaryActionType: 'remove-starter-extension',
-        secondaryActionValue: extension.name,
-    };
-}
-
-function buildPresetStarterPackItem() {
-    const presetManager = getPresetManager('openai');
-    const sillyBunnyPreset = presetManager?.findPreset(STARTER_PACK_PRESET_NAME_SILLYBUNNY);
-    const isOpenAiStyleApi = main_api === 'openai';
-    const selectedPresetName = isOpenAiStyleApi ? presetManager?.getSelectedPresetName() : '';
-    const isSelected = selectedPresetName === STARTER_PACK_PRESET_NAME_SILLYBUNNY;
-    const hasBundledPreset = Boolean(sillyBunnyPreset);
-    const body = 'Purachina\'s Director v15.1 preset is fully bundled with SillyBunny as a preset option. This preset is ideal if you want the LLM to have maximum control over the story, the characters, *and* your persona. Simply go to the Presets menu to find it. If you wish to see more of Pura\'s character cards and other projects, check out the link below!';
-
-    if (!isOpenAiStyleApi) {
-        return {
-            title: STARTER_PACK_PRESET_TITLE,
-            body,
-            icon: 'fa-sliders',
-            statusLabel: 'Chat Completions',
-            statusTone: 'neutral',
-            actionIcon: 'fa-arrow-up-right-from-square',
-            actionLabel: 'API',
-            actionType: 'open-tab',
-            actionValue: 'left:api',
-        };
-    }
-
-    if (hasBundledPreset) {
-        return {
-            title: STARTER_PACK_PRESET_TITLE,
-            body,
-            icon: 'fa-sliders',
-            statusLabel: isSelected ? 'Selected' : 'Preset pack',
-            statusTone: isSelected ? 'good' : 'warm',
-            actionIcon: 'fa-wand-magic-sparkles',
-            actionLabel: 'Apply preset',
-            actionType: 'apply-preset',
-            actionValue: STARTER_PACK_PRESET_NAME_SILLYBUNNY,
-            secondaryActionLabel: 'Visit site',
-            secondaryActionIcon: 'fa-arrow-up-right-from-square',
-            secondaryActionType: 'open-link',
-            secondaryActionValue: STARTER_PACK_SITE_URL,
-        };
-    }
-
-    return {
-        title: STARTER_PACK_PRESET_TITLE,
-        body,
-        icon: 'fa-sliders',
-        statusLabel: 'Open Presets',
-        statusTone: 'warm',
-        actionIcon: 'fa-arrow-up-right-from-square',
-        actionLabel: 'Open Presets',
-        actionType: 'open-tab',
-        actionValue: 'left:presets',
-    };
-}
-
-function buildGeechanStarterPackItem() {
-    const presetManager = getPresetManager('openai');
-    const isOpenAiStyleApi = main_api === 'openai';
-    const isSelected = isOpenAiStyleApi && presetManager?.getSelectedPresetName() === GEECHAN_PRESET_NAME;
-    const body = 'Geechan\'s Universal Roleplay v5.2 and Universal Chatroom presets are also fully bundled with SillyBunny as a preset option. The Universal Roleplay preset is ideal if you want a traditional roleplay and storywriting experience with an LLM, while your persona and general story direction remain completely in your own hands. If you wish to see more of Geechan\'s character cards, presets, and guides, check out the link below!';
-
-    return {
-        title: 'Geechan\'s Universal Roleplay',
-        body,
-        icon: 'fa-leaf',
-        statusLabel: isSelected ? 'Selected' : 'Preset pack',
-        statusTone: isSelected ? 'good' : 'warm',
-        actionLabel: 'Apply preset',
-        actionIcon: 'fa-wand-magic-sparkles',
-        actionType: 'apply-preset',
-        actionValue: GEECHAN_PRESET_NAME,
-        secondaryActionLabel: 'Visit site',
-        secondaryActionIcon: 'fa-arrow-up-right-from-square',
-        secondaryActionType: 'open-link',
-        secondaryActionValue: GEECHAN_SITE_URL,
-    };
-}
-
-function buildTldStarterPackItem() {
-    const presetManager = getPresetManager('openai');
-    const isOpenAiStyleApi = main_api === 'openai';
-    const isSelected = isOpenAiStyleApi && presetManager?.getSelectedPresetName() === TLD_PRESET_NAME;
-    const body = 'TheLonelyDevil\'s card converter preset is ideal if you want to convert a character card into a robust, well-tested AliChat + PList format for roleplay and storywriting. Very useful if you find a card that\'s of poorer quality and want a formatting polish run applied. If you wish to see more of TheLonelyDevil\'s character cards and Discord Pals project, check out the links below!';
-
-    return {
-        title: 'TheLonelyDevil\'s Card Converter',
-        body,
-        icon: 'fa-shoe-prints',
-        statusLabel: !isOpenAiStyleApi ? 'Chat Completions' : (isSelected ? 'Selected' : 'Preset pack'),
-        statusTone: isSelected ? 'good' : 'warm',
-        actionLabel: isOpenAiStyleApi ? 'Apply preset' : 'API',
-        actionIcon: isOpenAiStyleApi ? 'fa-wand-magic-sparkles' : 'fa-arrow-up-right-from-square',
-        actionType: isOpenAiStyleApi ? 'apply-preset' : 'open-tab',
-        actionValue: isOpenAiStyleApi ? TLD_PRESET_NAME : 'left:api',
-        secondaryActionLabel: 'Visit site',
-        secondaryActionIcon: 'fa-arrow-up-right-from-square',
-        secondaryActionType: 'open-link',
-        secondaryActionValue: TLD_SITE_URL,
-        tertiaryActionLabel: 'Discord Pals',
-        tertiaryActionIcon: 'fa-arrow-up-right-from-square',
-        tertiaryActionType: 'open-link',
-        tertiaryActionValue: TLD_DISCORD_PALS_URL,
-    };
-}
-
-function buildStarterPackItems() {
-    return {
-        preInstalled: [
-            buildPresetStarterPackItem(),
-            buildGeechanStarterPackItem(),
-            buildTldStarterPackItem(),
-        ],
-        optionalOfficial: [
-            buildExtensionStarterPackItem({
-                title: 'Dialogue Colors',
-                body: 'A highly customizable extension that color-codes each character based on current chat context and certain parameters. Uses an LLM generation to write persistent <font color> tags into chat text, or can use a local DOM-only engine to color rendered dialogue without changing saved messages.',
-                icon: 'fa-palette',
-                extensionName: STARTER_PACK_EXTENSIONS.dialogueColors.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'CSS Snippets',
-                body: 'Simply adds a UI to manage custom CSS snippets. Snippets can be globally activated, linked to a specific theme, or linked to a specific chat (character / group).',
-                icon: 'fa-palette',
-                extensionName: STARTER_PACK_EXTENSIONS.cssSnippets.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'SillyBunny Terminal UI',
-                body: 'A CSS theme that mimics a traditional terminal emulator interface. This keeps the native chat window and implements a forward-facing slash-command system, reducing the surrounding UI to a tmux-style statusline.',
-                icon: 'fa-terminal',
-                extensionName: STARTER_PACK_EXTENSIONS.terminalUi.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Prompting Lab',
-                body: 'A troubleshooting extension used to diagnose the contents of your system prompt before it\'s sent to an LLM. Shows the persona, preset, connection profile, message contents, and more.',
-                icon: 'fa-flask',
-                extensionName: STARTER_PACK_EXTENSIONS.promptingLab.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'World Info Lab',
-                body: 'A troubleshooting extension used to diagnose your lorebooks and world information before it\'s sent to an LLM. Useful if you need to find problematic entries.',
-                icon: 'fa-book-atlas',
-                extensionName: STARTER_PACK_EXTENSIONS.worldInfoLab.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Regex Agent Themes',
-                body: 'Adds several themes for the Agents and companions panels found in our In-Chat Agents feature.',
-                icon: 'fa-paintbrush',
-                extensionName: STARTER_PACK_EXTENSIONS.regexAgentThemes.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Bot Searcher',
-                body: 'Adds a character-card browser to SillyBunny. It can search supported card sites, show the details each site provides, and import any selected card. Note: this requires a server plugin to use.',
-                icon: 'fa-magnifying-glass',
-                extensionName: STARTER_PACK_EXTENSIONS.botSearcher.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Macro Enhanced',
-                body: 'Adds a wide variety of new, heavily customizable macros to SillyBunny\'s STScript engine. View all macros with /help macros.',
-                icon: 'fa-code',
-                extensionName: STARTER_PACK_EXTENSIONS.macroEnhanced.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Prompt Tags',
-                body: 'Adds automatic XML tags to SillyBunny\'s prompt sections. This can be useful if you want to implement XML prompting without modifying any existing presets, personas, lorebooks, or character cards.',
-                icon: 'fa-tags',
-                extensionName: STARTER_PACK_EXTENSIONS.promptTags.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Alternate Descriptions',
-                body: 'Keeps multiple versions of a character\'s description, personality, scenario, example dialogue, main prompt, and post-history instructions in one card, with tools to switch between them.',
-                icon: 'fa-layer-group',
-                extensionName: STARTER_PACK_EXTENSIONS.alternateDescriptions.id,
-            }),
-        ],
-        optionalUnofficial: [
-            buildExtensionStarterPackItem({
-                title: 'Summary Sharder',
-                body: 'An extension that captures chat history before it falls out of context. It summarizes message ranges into structured "Memory Shards" with 16 labeled sections, manages message visibility, and routes output to system messages or lorebook entries - so nothing important is forgotten. In effect: this helps manage long-term context for LLMs.',
-                icon: 'fa-brain',
-                extensionName: STARTER_PACK_EXTENSIONS.summarySharder.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'Group Utilities',
-                body: 'A compilation of utilities used to enhance group chats and their capabilities.',
-                icon: 'fa-users',
-                extensionName: STARTER_PACK_EXTENSIONS.groupUtilities.id,
-            }),
-            buildExtensionStarterPackItem({
-                title: 'LALib',
-                body: 'A library of STScript commands - a common dependency for many popular SillyTavern extensions.',
-                icon: 'fa-toolbox',
-                extensionName: STARTER_PACK_EXTENSIONS.laLib.id,
-            }),
-        ],
-    };
-}
-
+// SillyBunny: the Home template reads only these fields. welcomePanelMode seeds data-home-panel-mode for the first paint, and mountHome then applies the mode to the regions.
 function buildWelcomeTemplateData(chats) {
-    const activeDeckView = getInitialDeckView();
-    const welcomePanelMode = getWelcomePanelMode();
-    const tutorialStatus = getWelcomeUiPreference(tutorialStatusKey) || '';
-    const storedTutorialIndex = Number.parseInt(getWelcomeUiPreference(tutorialIndexKey) || '0', 10) || 0;
-    const tutorialIndex = clamp(storedTutorialIndex, 0, WELCOME_TUTORIAL_STEPS.length - 1);
-
     return {
         chats,
         empty: !chats.length,
-        version: displayVersion,
         more: chats.length > getRecentChatsSettings().collapsedDisplayed,
-        activeDeckView,
-        welcomePanelMode,
-        welcomePanelFull: welcomePanelMode === WELCOME_PANEL_MODES.full,
-        welcomePanelCompact: welcomePanelMode === WELCOME_PANEL_MODES.compact,
-        welcomePanelListOnly: welcomePanelMode === WELCOME_PANEL_MODES.list,
+        welcomePanelMode: getWelcomePanelMode(),
         separateAgentRecentChats: shouldSeparateAgentRecentChats(),
-        deckTabs: buildDeckTabs(activeDeckView),
-        deckTourActive: activeDeckView === 'tour',
-        deckBasicsActive: activeDeckView === 'basics',
-        deckGuideActive: activeDeckView === 'guide',
-        deckStarterActive: activeDeckView === 'starter',
-        tutorialExpanded: tutorialStatus !== 'completed',
-        tutorialIndex,
-        tutorialSteps: buildTutorialSteps(tutorialIndex),
-        guideCards: buildGuideCards(),
-        bundledAssistants: buildBundledAssistantCards(),
-        starterPackItems: buildStarterPackItems(),
     };
 }
 
@@ -1193,87 +634,6 @@ function setRecentChatFilter(root, filter) {
     updateRecentChatFilterView(root);
 }
 
-function handleLinearNavigation(event, buttons, activeButton, activate) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || buttons.length === 0) {
-        return;
-    }
-
-    event.preventDefault();
-    const currentIndex = Math.max(0, buttons.indexOf(activeButton));
-    const nextIndex = event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-            ? buttons.length - 1
-            : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
-    const nextButton = buttons[nextIndex];
-    nextButton.focus();
-    activate(nextButton);
-}
-
-function openShellTab(route) {
-    // SillyBunny: accept historical launcher routes while opening relocated
-    // World Info in the Characters panel instead of the old left shell.
-    const normalizedRoute = route === 'left:world-info' ? 'characters:world-info' : route;
-    const [shellKey, tabId] = String(normalizedRoute || '').split(':');
-
-    if (!shellKey || !tabId) {
-        return false;
-    }
-
-    if (globalThis.SillyBunnyShell?.openTab) {
-        globalThis.SillyBunnyShell.openTab(shellKey, tabId);
-        return true;
-    }
-
-    const fallbackRoute = {
-        'left:presets': { selector: '#ai-config-button > .drawer-toggle', shellRoot: '#left-nav-panel' },
-        'left:sampling': { selector: '#ai-config-button > .drawer-toggle', shellRoot: '#left-nav-panel', tabId: 'sampling' },
-        'left:api': { selector: '#sys-settings-button > .drawer-toggle', shellRoot: '#left-nav-panel' },
-        'left:agents': { selector: '#ai-config-button > .drawer-toggle', shellRoot: '#left-nav-panel', tabId: 'agents' },
-        'characters:world-info': { selector: '#WI-SP-button > .drawer-toggle' },
-        'right:settings': { selector: '#user-settings-button > .drawer-toggle', shellRoot: '#user-settings-block' },
-        'right:extensions': { selector: '#extensions-settings-button > .drawer-toggle', shellRoot: '#user-settings-block' },
-        'characters:persona': { selector: '#persona-management-button > .drawer-toggle' },
-        'right:background': { selector: '#backgrounds-button > .drawer-toggle', shellRoot: '#user-settings-block' },
-    }[normalizedRoute];
-
-    if (!fallbackRoute) {
-        return false;
-    }
-
-    const fallback = document.querySelector(fallbackRoute.selector);
-    const shellRoot = fallbackRoute.shellRoot ? document.querySelector(fallbackRoute.shellRoot) : null;
-    if (!(shellRoot instanceof HTMLElement) || !shellRoot.classList.contains('openDrawer')) {
-        fallback?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    }
-    if (fallback && fallbackRoute.tabId) {
-        window.requestAnimationFrame(() => {
-            document.querySelector(`.sb-shell-tab[data-sb-tab="${fallbackRoute.tabId}"]`)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        });
-    }
-    return Boolean(fallback);
-}
-
-function focusSendTextarea(sendTextArea, { skipIOS = false } = {}) {
-    if (skipIOS && isIOSWebKitPlatform()) {
-        return;
-    }
-
-    if (sendTextArea instanceof HTMLTextAreaElement) {
-        sendTextArea.focus({ preventScroll: true });
-    }
-}
-
-function prefillSendTextarea(sendTextArea, value, { skipIOSFocus = false } = {}) {
-    if (!(sendTextArea instanceof HTMLTextAreaElement)) {
-        return;
-    }
-
-    sendTextArea.value = value;
-    sendTextArea.dispatchEvent(new Event('input', { bubbles: true }));
-    focusSendTextarea(sendTextArea, { skipIOS: skipIOSFocus });
-}
-
 // SillyBunny divergence: suppress the legacy chat shell briefly while Conversation Mode takes over from welcome-screen recent-chat entry points.
 const conversationWelcomeOpeningVisibilityKey = 'sbConversationWelcomeOpeningVisibility';
 
@@ -1335,291 +695,30 @@ async function refreshCharacterAvatarCache(avatar) {
     }
 }
 
-function setWelcomeDeckView(root, view, { persist = true } = {}) {
-    if (!(root instanceof HTMLElement)) {
-        return;
-    }
-
-    const safeView = isWelcomeDeckView(view) ? view : getInitialDeckView();
-
-    root.dataset.activeDeckView = safeView;
-
-    root.querySelectorAll('.welcomeDeckTab').forEach((button) => {
-        const active = button.getAttribute('data-deck-target') === safeView;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-selected', String(active));
-        button.setAttribute('tabindex', active ? '0' : '-1');
-    });
-
-    root.querySelectorAll('.welcomeDeckPanel').forEach((panel) => {
-        const active = panel.getAttribute('data-deck-panel') === safeView;
-        panel.classList.toggle('is-active', active);
-        panel.toggleAttribute('hidden', !active);
-        panel.setAttribute('aria-hidden', String(!active));
-    });
-
-    if (persist) {
-        setWelcomeUiPreference(welcomeDeckViewKey, safeView);
-    }
-}
-
+// SillyBunny: applyDisplayMode switches the visible regions in place, so a mode change neither fetches Recent Chats again nor renders the panel again.
 function setWelcomePanelMode(root, mode, { persist = true } = {}) {
     if (!(root instanceof HTMLElement)) {
         return;
     }
 
-    const safeMode = isWelcomePanelMode(mode) ? mode : WELCOME_PANEL_MODES.full;
-
-    root.dataset.homePanelMode = safeMode;
-    root.classList.toggle('welcomePanel--compact', safeMode === WELCOME_PANEL_MODES.compact);
-    root.classList.toggle('welcomePanel--listOnly', safeMode === WELCOME_PANEL_MODES.list);
-
-    root.querySelectorAll('[data-welcome-panel-mode-target]').forEach((button) => {
-        const isActive = button.getAttribute('data-welcome-panel-mode-target') === safeMode;
-        button.classList.toggle('is-active', isActive);
-
-        if (button instanceof HTMLButtonElement) {
-            button.setAttribute('aria-pressed', String(isActive));
-        }
-    });
+    const safeMode = applyDisplayMode(root, mode);
 
     if (persist) {
         setWelcomeUiPreference(welcomePanelModeKey, safeMode);
     }
 }
 
-async function applyOpenAiPreset(name) {
-    if (main_api !== 'openai') {
-        openShellTab('left:api');
-        return false;
-    }
+/** @type {import('./sillybunny-home/focus.js').HomeFocusTarget|null} */
+let rememberedHomeFocus = null;
 
-    const presetManager = getPresetManager('openai');
-    const presetValue = presetManager?.findPreset(name);
-
-    if (!presetManager || !presetValue) {
-        openShellTab('left:presets');
-        return false;
-    }
-
-    await presetManager.selectPreset(presetValue);
-    saveSettingsDebounced();
-    return true;
+function getHomePanel() {
+    const panel = document.querySelector('#chat > .welcomePanel');
+    return panel instanceof HTMLElement ? panel : null;
 }
 
-async function installStarterPackExtension(extensionName, global) {
-    const extensionConfig = getStarterPackExtensionConfig(extensionName);
-    if (!extensionConfig) {
-        return false;
-    }
-
-    try {
-        const installed = await installExtension(extensionConfig.repoUrl, global && isAdmin());
-        if (!installed) {
-            return false;
-        }
-
-        const installedExtension = findExtension(extensionName);
-        if (!installedExtension) {
-            return false;
-        }
-
-        if (!installedExtension.enabled) {
-            await enableExtension(installedExtension.name, false);
-        }
-
-        location.reload();
-        return true;
-    } catch (error) {
-        console.error(`Failed to install starter pack extension "${extensionName}".`, error);
-        return false;
-    }
-}
-
-async function removeStarterPackExtension(extensionName) {
-    const extension = findExtension(extensionName);
-    if (!extension) {
-        toastr.warning(t`Extension is no longer installed.`);
-        return;
-    }
-
-    if (getExtensionType(extension.name) === 'global' && !isAdmin()) {
-        toastr.error(t`You don't have permission to delete global extensions.`);
-        return;
-    }
-
-    const confirmed = await callGenericPopup(
-        t`Are you sure you want to remove ${extension.name}?`,
-        POPUP_TYPE.CONFIRM,
-    );
-    if (!confirmed) {
-        return;
-    }
-
-    await deleteExtension(extension.name);
-}
-
-function setTutorialUiState(panel, index, expanded, { persist = true } = {}) {
-    if (!(panel instanceof HTMLElement)) {
-        return;
-    }
-
-    const steps = Array.from(panel.querySelectorAll('.welcomeTourStep'));
-    const progressButtons = Array.from(panel.querySelectorAll('.welcomeTourProgressButton'));
-    const safeIndex = Math.max(0, Math.min(index, steps.length - 1));
-    const nextButton = panel.querySelector('.tutorialNext');
-    const previousButton = panel.querySelector('.tutorialPrev');
-    const nextLabel = nextButton?.querySelector('span');
-
-    panel.dataset.tutorialIndex = String(safeIndex);
-    panel.dataset.tutorialExpanded = String(expanded);
-    panel.classList.toggle('tutorialCollapsed', !expanded);
-    if (persist) {
-        setWelcomeUiPreference(tutorialIndexKey, String(safeIndex));
-    }
-
-    steps.forEach((step, stepIndex) => {
-        const active = stepIndex === safeIndex;
-        step.classList.toggle('is-active', active);
-        step.toggleAttribute('hidden', !active);
-        step.setAttribute('aria-hidden', String(!active));
-    });
-
-    progressButtons.forEach((button, buttonIndex) => {
-        const active = buttonIndex === safeIndex;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', String(active));
-        if (active) {
-            button.setAttribute('aria-current', 'step');
-        } else {
-            button.removeAttribute('aria-current');
-        }
-    });
-
-    if (previousButton instanceof HTMLButtonElement) {
-        previousButton.disabled = safeIndex === 0;
-    }
-
-    if (nextLabel) {
-        nextLabel.textContent = safeIndex >= steps.length - 1 ? 'Finish tour' : 'Next';
-    }
-}
-
-async function openRoleplayWorkspaceFromWelcome() {
-    const conversationModule = await import('./sillybunny-conversation.js');
-    const avatar = conversationModule.getRoleplayAvatarForWelcome?.();
-    const characterId = avatar ? characters.findIndex(character => character?.avatar === avatar) : -1;
-    if (characterId === -1) {
-        toastr.warning('Pick or import a character before opening Roleplay Mode.');
-        return false;
-    }
-
-    if (!await selectCharacterById(characterId, { switchMenu: false })) {
-        return false;
-    }
-
-    conversationModule.disableConversationModeForCurrentCharacter?.({ focusRoleplay: false });
-    document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
-    return true;
-}
-
-function dismissTutorial(panel, status) {
-    if (status) {
-        setWelcomeUiPreference(tutorialStatusKey, status);
-    }
-
-    const currentIndex = Number.parseInt(panel.dataset.tutorialIndex || '0', 10) || 0;
-    setTutorialUiState(panel, currentIndex, false);
-}
-
-async function handleWelcomeAction(button, sendTextArea) {
-    const action = button.dataset.action || '';
-    const value = button.dataset.actionValue || '';
-    const assistantId = button.dataset.assistantId || DEFAULT_BUNDLED_ASSISTANT_ID;
-    const welcomePanel = button.closest('.welcomePanel') || document.querySelector('.welcomePanel');
-    const tutorialPanel = button.closest('.welcomeTourPanel') || document.querySelector('.welcomeTourPanel');
-
-    switch (action) {
-        case 'open-tab':
-            openShellTab(value);
-            break;
-        case 'open-deck-view':
-            if (welcomePanel instanceof HTMLElement) {
-                setWelcomeDeckView(welcomePanel, value);
-            }
-            break;
-        case 'enable-extension':
-            await enableExtension(value);
-            break;
-        case 'remove-starter-extension':
-            await removeStarterPackExtension(value);
-            break;
-        case 'install-starter-extension-global':
-            await installStarterPackExtension(value, true);
-            break;
-        case 'install-starter-extension-user':
-            await installStarterPackExtension(value, false);
-            break;
-        case 'apply-preset':
-            if (await applyOpenAiPreset(value)) {
-                await refreshWelcomeScreen();
-            }
-            break;
-        case 'assistant-prompt':
-            focusSendTextarea(sendTextArea);
-            await openBundledAssistantCard(assistantId);
-            prefillSendTextarea(sendTextArea, value, { skipIOSFocus: true });
-            break;
-        case 'open-assistant':
-            focusSendTextarea(sendTextArea);
-            await openBundledAssistantCard(assistantId);
-            focusSendTextarea(sendTextArea, { skipIOS: true });
-            break;
-        case 'open-temporary-chat':
-            focusSendTextarea(sendTextArea);
-            await newAssistantChat({ temporary: true });
-            focusSendTextarea(sendTextArea, { skipIOS: true });
-            break;
-        case 'open-roleplay':
-            await openRoleplayWorkspaceFromWelcome();
-            break;
-        case 'open-conversation': {
-            const conversationModule = await import('./sillybunny-conversation.js');
-            conversationModule.openConversationWorkspaceFromWelcome?.();
-            break;
-        }
-        case 'open-characters-menu':
-            globalThis.SillyBunnyShell?.openCharacters?.();
-            break;
-        case 'open-global-search':
-            globalThis.SillyBunnyShell?.openGlobalSearch?.({ focusInput: true });
-            break;
-        case 'open-import-characters': {
-            globalThis.SillyBunnyShell?.openCharacters?.();
-            const importButton = document.getElementById('character_import_button')
-                || document.getElementById('character_import_paste_button')
-                || document.querySelector('.open_characters_library');
-            importButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            break;
-        }
-        case 'open-sample-characters':
-            document.querySelector('.open_characters_library')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            break;
-        case 'replay-tutorial':
-            setWelcomeUiPreference(tutorialStatusKey, '');
-            if (welcomePanel instanceof HTMLElement) {
-                setWelcomeDeckView(welcomePanel, 'tour');
-            }
-            if (tutorialPanel instanceof HTMLElement) {
-                setTutorialUiState(tutorialPanel, 0, true);
-            }
-            break;
-        case 'open-link':
-            if (value) {
-                window.open(value, '_blank', 'noopener,noreferrer');
-            }
-            break;
-    }
+// SillyBunny: an action that opens a popup records its control first, because the popup returns focus to a control of the old panel, and the new panel then replaces that control. Safari does not focus a button on click, so the control is passed in instead of read from document.activeElement.
+function rememberHomeFocus(control) {
+    rememberedHomeFocus = captureHomeFocus(getHomePanel(), control);
 }
 
 /**
@@ -1645,7 +744,8 @@ export async function openWelcomeScreen({ force = false, expand = false } = {}) 
     if (chatAfterFetch === undefined && force) {
         console.debug('Forcing welcome screen open.');
         chat.splice(0, chat.length);
-        $('#chat').empty();
+        // SillyBunny: keep a shown Home panel attached until its replacement is ready, so the Home state does not turn off and on.
+        $('#chat').children().not('.welcomePanel').remove();
     }
 
     await sendWelcomePanel(recentChats, expand);
@@ -1659,128 +759,39 @@ export async function openWelcomeScreen({ force = false, expand = false } = {}) 
 async function sendWelcomePanel(chats, expand = false) {
     try {
         const chatElement = document.getElementById('chat');
-        const sendTextArea = document.getElementById('send_textarea');
         if (!chatElement) {
             console.error('Chat element not found');
             return;
         }
         const templateData = buildWelcomeTemplateData(chats);
-        const template = await renderTemplateAsync('/scripts/templates/welcomePanelOnboarding.html?v=20260805p', templateData, true, true, true);
+        // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
+        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261029b', templateData, true, true, true);
+        // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.
+        if (getCurrentChatId() !== undefined) {
+            return;
+        }
         const fragment = document.createRange().createContextualFragment(template);
         const nextPanel = fragment.querySelector('.welcomePanel');
         fragment.querySelectorAll('.welcomePanel').forEach((root) => {
-            root.querySelectorAll('[data-welcome-panel-mode-target]').forEach((button) => {
-                button.addEventListener('click', () => {
-                    setWelcomePanelMode(root, button.getAttribute('data-welcome-panel-mode-target') || WELCOME_PANEL_MODES.full);
-                });
-            });
+            if (!(root instanceof HTMLElement)) {
+                return;
+            }
+
             root.querySelectorAll('[data-recent-chat-filter]').forEach((button) => {
                 button.addEventListener('click', () => {
                     const filter = button.getAttribute('data-recent-chat-filter') || 'all';
                     setRecentChatFilter(root, filter);
                 });
             });
-            root.querySelectorAll('.recentChatsSettings').forEach((button) => {
-                button.addEventListener('click', async (event) => {
-                    event.stopPropagation();
-                    await openRecentChatsSettingsPopup();
-                });
-            });
-
-            const tutorialPanel = root.querySelector('.welcomeTourPanel');
-            setWelcomePanelMode(root, root.dataset.homePanelMode || getWelcomePanelMode(), { persist: false });
-            setWelcomeDeckView(root, root.dataset.activeDeckView || getInitialDeckView(), { persist: false });
-            root.querySelectorAll('.welcomeDeckTab').forEach((button) => {
-                const activateDeckTab = () => {
-                    const targetView = button.getAttribute('data-deck-target') || '';
-                    setWelcomeDeckView(root, targetView);
-
-                    if (targetView === 'tour' && tutorialPanel instanceof HTMLElement) {
-                        setWelcomeUiPreference(tutorialStatusKey, '');
-                        const currentIndex = Number.parseInt(tutorialPanel.dataset.tutorialIndex || '0', 10) || 0;
-                        setTutorialUiState(tutorialPanel, currentIndex, true);
-                    }
-                };
-                button.addEventListener('click', activateDeckTab);
-                button.addEventListener('keydown', (event) => {
-                    const tabs = Array.from(root.querySelectorAll('.welcomeDeckTab'));
-                    handleLinearNavigation(event, tabs, button, nextButton => nextButton.click());
-                });
-            });
-
-            if (tutorialPanel instanceof HTMLElement) {
-                setTutorialUiState(
-                    tutorialPanel,
-                    Number.parseInt(tutorialPanel.dataset.tutorialIndex || '0', 10) || 0,
-                    tutorialPanel.dataset.tutorialExpanded !== 'false',
-                    { persist: false },
-                );
-
-                tutorialPanel.querySelectorAll('.welcomeTourProgressButton').forEach((button) => {
-                    const activateTutorialStep = () => {
-                        const targetIndex = Number.parseInt(button.getAttribute('data-step-target') || '0', 10) || 0;
-                        setTutorialUiState(tutorialPanel, targetIndex, true);
-                    };
-                    button.addEventListener('click', activateTutorialStep);
-                    button.addEventListener('keydown', (event) => {
-                        const buttons = Array.from(tutorialPanel.querySelectorAll('.welcomeTourProgressButton'));
-                        handleLinearNavigation(event, buttons, button, nextButton => nextButton.click());
-                    });
-                });
-
-                tutorialPanel.querySelector('.tutorialPrev')?.addEventListener('click', () => {
-                    const currentIndex = Number.parseInt(tutorialPanel.dataset.tutorialIndex || '0', 10) || 0;
-                    setTutorialUiState(tutorialPanel, currentIndex - 1, true);
-                });
-
-                tutorialPanel.querySelector('.tutorialNext')?.addEventListener('click', () => {
-                    const currentIndex = Number.parseInt(tutorialPanel.dataset.tutorialIndex || '0', 10) || 0;
-                    const lastIndex = tutorialPanel.querySelectorAll('.welcomeTourStep').length - 1;
-
-                    if (currentIndex >= lastIndex) {
-                        dismissTutorial(tutorialPanel, 'completed');
-                        return;
-                    }
-
-                    setTutorialUiState(tutorialPanel, currentIndex + 1, true);
-                });
-            }
-        });
-        fragment.querySelectorAll('.welcomeActionButton').forEach((button) => {
-            button.addEventListener('click', async (event) => {
-                event.preventDefault();
-                const isInstallAction = button.dataset.action === 'install-starter-extension-global'
-                    || button.dataset.action === 'install-starter-extension-user';
-                const starterCard = button.closest('.welcomeStarterPackCard');
-                const installButtons = isInstallAction && starterCard
-                    ? Array.from(starterCard.querySelectorAll('[data-action="install-starter-extension-global"], [data-action="install-starter-extension-user"]'))
-                    : [];
-                if (isInstallAction && button instanceof HTMLButtonElement) {
-                    if (installButtons.some(installButton => installButton instanceof HTMLButtonElement && installButton.disabled)) {
-                        return;
-                    }
-                    starterCard?.setAttribute('aria-busy', 'true');
-                    installButtons.forEach((installButton) => {
-                        if (installButton instanceof HTMLButtonElement) {
-                            installButton.disabled = true;
-                            installButton.classList.add('is-pending');
-                        }
-                    });
-                }
-
-                try {
-                    await handleWelcomeAction(button, sendTextArea);
-                } finally {
-                    if (isInstallAction && button instanceof HTMLButtonElement && document.contains(button)) {
-                        starterCard?.removeAttribute('aria-busy');
-                        installButtons.forEach((installButton) => {
-                            if (installButton instanceof HTMLButtonElement) {
-                                installButton.disabled = false;
-                                installButton.classList.remove('is-pending');
-                            }
-                        });
-                    }
-                }
+            // SillyBunny: the Home header, menu and empty states are built by sillybunny-home/.
+            mountHome(root, {
+                version: displayVersion,
+                getDisplayMode: getWelcomePanelMode,
+                setDisplayMode: mode => setWelcomePanelMode(root, mode),
+                openRecentChatsSettings: () => {
+                    rememberHomeFocus(root.querySelector('.sbHomeMenuButton'));
+                    return openRecentChatsSettingsPopup();
+                },
             });
         });
         fragment.querySelectorAll('.recentChatOpen').forEach((button) => {
@@ -1820,13 +831,6 @@ async function sendWelcomePanel(chats, expand = false) {
                 button.setAttribute('title', rotate ? showRecentChatsTitle : hideRecentChatsTitle);
             });
         });
-        fragment.querySelectorAll('button.openTemporaryChat').forEach((button) => {
-            button.addEventListener('click', async () => {
-                focusSendTextarea(sendTextArea);
-                await newAssistantChat({ temporary: true });
-                focusSendTextarea(sendTextArea, { skipIOS: true });
-            });
-        });
         fragment.querySelectorAll('.recentChat.group').forEach((groupChat) => {
             const groupId = groupChat.getAttribute('data-group');
             const group = groups.find(x => x.id === groupId);
@@ -1839,63 +843,24 @@ async function sendWelcomePanel(chats, expand = false) {
                 $(avatar).replaceWith(groupAvatar);
             }
         });
-        fragment.querySelectorAll('.recentChat .renameChat').forEach((renameButton) => {
-            renameButton.addEventListener('click', (event) => {
+        // SillyBunny: a Recent Chats row holds two controls, Pin and a menu with Rename and Delete.
+        fragment.querySelectorAll('.recentChat .chatMenu').forEach((menuButton) => {
+            menuButton.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const chatItem = renameButton.closest('.recentChat');
-                if (!chatItem) {
+                const chatItem = menuButton.closest('.recentChat');
+                if (!(menuButton instanceof HTMLElement) || !chatItem) {
                     return;
                 }
-                const avatarId = chatItem.getAttribute('data-avatar');
-                const groupId = chatItem.getAttribute('data-group');
-                const fileName = chatItem.getAttribute('data-file');
-                const branchId = chatItem.getAttribute('data-conversation-branch-id');
-                const branchName = chatItem.getAttribute('data-conversation-branch-name');
-                if (chatItem.getAttribute('data-recent-chat-type') === 'conversation') {
-                    if (avatarId && branchId && branchName) {
-                        const recentChat = chats.find(chat => chat.is_conversation
-                            && chat.avatar === avatarId
-                            && String(chat.group || '') === String(groupId || '')
-                            && chat.conversation_branch_id === branchId);
-                        void renameRecentConversationChat(avatarId, groupId, branchId, branchName, recentChat);
-                    }
-                    return;
-                }
-                if (avatarId && fileName) {
-                    void renameRecentCharacterChat(avatarId, fileName);
-                }
-                if (groupId && fileName) {
-                    void renameRecentGroupChat(groupId, fileName);
-                }
-            });
-        });
-        fragment.querySelectorAll('.recentChat .deleteChat').forEach((deleteButton) => {
-            deleteButton.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const chatItem = deleteButton.closest('.recentChat');
-                if (!chatItem) {
-                    return;
-                }
-                const avatarId = chatItem.getAttribute('data-avatar');
-                const groupId = chatItem.getAttribute('data-group');
-                const fileName = chatItem.getAttribute('data-file');
-                const branchId = chatItem.getAttribute('data-conversation-branch-id');
-                if (chatItem.getAttribute('data-recent-chat-type') === 'conversation') {
-                    if (avatarId && branchId) {
-                        const recentChat = chats.find(chat => chat.is_conversation
-                            && chat.avatar === avatarId
-                            && String(chat.group || '') === String(groupId || '')
-                            && chat.conversation_branch_id === branchId);
-                        void deleteRecentConversationChat(avatarId, groupId, branchId, recentChat);
-                    }
-                    return;
-                }
-                if (avatarId && fileName) {
-                    void deleteRecentCharacterChat(avatarId, fileName);
-                }
-                if (groupId && fileName) {
-                    void deleteRecentGroupChat(groupId, fileName);
-                }
+                const target = resolveRecentChatTarget(chatItem, chats);
+                const startAction = action => () => {
+                    rememberHomeFocus(menuButton);
+                    action(target);
+                };
+                openChatMenu(
+                    menuButton,
+                    { rename: startAction(renameRecentChat), remove: startAction(deleteRecentChat) },
+                    { keyboard: event.detail === 0, bounds: menuButton.closest('.welcomePanel') },
+                );
             });
         });
         fragment.querySelectorAll('.recentChat .pinChat').forEach((pinButton) => {
@@ -1905,18 +870,12 @@ async function sendWelcomePanel(chats, expand = false) {
                 if (!chatItem) {
                     return;
                 }
-                const avatarId = chatItem.getAttribute('data-avatar');
-                const groupId = chatItem.getAttribute('data-group');
-                const fileName = chatItem.getAttribute('data-file');
-                const branchId = chatItem.getAttribute('data-conversation-branch-id');
-                const isConversation = chatItem.getAttribute('data-recent-chat-type') === 'conversation';
-                const recentChat = chats.find(c => isConversation
-                    ? c.is_conversation && c.avatar === avatarId && String(c.group || '') === String(groupId || '') && c.conversation_branch_id === branchId
-                    : c.chat_name === fileName && ((c.is_group && c.group === groupId) || (!c.is_group && c.avatar === avatarId)));
+                const { recentChat } = resolveRecentChatTarget(chatItem, chats);
                 if (!recentChat) {
                     console.error('Recent chat not found for pinning.');
                     return;
                 }
+                rememberHomeFocus(pinButton);
                 const currentlyPinned = PinnedChatsManager.isPinned(recentChat);
                 PinnedChatsManager.toggle(recentChat, !currentlyPinned);
                 await refreshWelcomeScreen({ flashChat: recentChat });
@@ -1943,6 +902,42 @@ async function sendWelcomePanel(chats, expand = false) {
         }
     } catch (error) {
         console.error('Welcome screen error:', error);
+    }
+}
+
+/**
+ * @param {import('./sillybunny-home/recent-chat.js').RecentChatTarget} target
+ */
+function renameRecentChat(target) {
+    if (target.isConversation) {
+        if (target.avatarId && target.branchId && target.branchName) {
+            void renameRecentConversationChat(target.avatarId, target.groupId, target.branchId, target.branchName, target.recentChat);
+        }
+        return;
+    }
+    if (target.avatarId && target.fileName) {
+        void renameRecentCharacterChat(target.avatarId, target.fileName);
+    }
+    if (target.groupId && target.fileName) {
+        void renameRecentGroupChat(target.groupId, target.fileName);
+    }
+}
+
+/**
+ * @param {import('./sillybunny-home/recent-chat.js').RecentChatTarget} target
+ */
+function deleteRecentChat(target) {
+    if (target.isConversation) {
+        if (target.avatarId && target.branchId) {
+            void deleteRecentConversationChat(target.avatarId, target.groupId, target.branchId, target.recentChat);
+        }
+        return;
+    }
+    if (target.avatarId && target.fileName) {
+        void deleteRecentCharacterChat(target.avatarId, target.fileName);
+    }
+    if (target.groupId && target.fileName) {
+        void deleteRecentGroupChat(target.groupId, target.fileName);
     }
 }
 
@@ -2295,6 +1290,9 @@ async function refreshWelcomeScreen({ flashChat = null } = {}) {
     const currentPanel = chatElement.querySelector('.welcomePanel');
     const recentChatFilter = currentPanel instanceof HTMLElement ? currentPanel.dataset.recentChatFilter || 'all' : 'all';
     const expandedRecentChatFilters = currentPanel instanceof HTMLElement ? currentPanel.dataset.expandedRecentChatFilters || '' : '';
+    // SillyBunny: the new panel replaces the focused control, so the control is recorded before the render and focused again after it.
+    const focusTarget = captureHomeFocus(currentPanel instanceof HTMLElement ? currentPanel : null) ?? rememberedHomeFocus;
+    rememberedHomeFocus = null;
 
     await openWelcomeScreen({ force: true });
 
@@ -2329,6 +1327,12 @@ async function refreshWelcomeScreen({ flashChat = null } = {}) {
     } else {
         // Restore scroll position
         chatElement.scrollTop = scrollTop + (chatElement.scrollHeight - scrollHeight);
+    }
+
+    // SillyBunny: focus returns only while nothing else holds it, so a popup or a control the user moved to keeps focus.
+    const focusIsFree = !document.activeElement || document.activeElement === document.body || document.activeElement === document.documentElement;
+    if (focusTarget && focusIsFree && nextPanel instanceof HTMLElement) {
+        restoreHomeFocus(nextPanel, focusTarget);
     }
 }
 

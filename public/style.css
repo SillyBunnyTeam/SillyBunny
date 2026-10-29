@@ -10,9 +10,8 @@
 @import url(css/accounts.css);
 @import url(css/tags.css);
 @import url(css/scrollable-button.css?v=20260517a);
-@import url(css/welcome.css?v=20261001a);
-/* SillyBunny: Home hides the composer and lets the chat fill the shell */
-@import url(css/sillybunny-home.css?v=20261029a);
+/* SillyBunny: Home rules live in their own sheet */
+@import url(css/sillybunny-home.css?v=20261029c);
 @import url(css/data-maid.css);
 @import url(css/secrets.css);
 @import url(css/backgrounds.css?v=20260606a);

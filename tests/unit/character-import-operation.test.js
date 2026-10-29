@@ -150,10 +150,8 @@ describe('result-bearing import operation', () => {
     });
     test('other callers and hidden picker retain their upstream selection contract', () => {
         const utils = readFileSync(new URL('../../public/scripts/utils.js', import.meta.url), 'utf8');
-        const welcome = readFileSync(new URL('../../public/scripts/welcome-screen.js', import.meta.url), 'utf8');
         const assets = readFileSync(new URL('../../public/scripts/extensions/assets/index.js', import.meta.url), 'utf8');
         expect(utils).toContain('await processDroppedFiles([file], extraData)');
-        expect(welcome).toContain('document.getElementById(\'character_import_button\')');
         expect(assets).toContain('await processDroppedFiles([file], fileNameMap)');
         expect(source).toContain('await runCharacterImport({ files: e.target.files, policy: \'select-last\' })');
         expect(source).toContain('await processDroppedFiles(files);');

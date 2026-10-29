@@ -1119,26 +1119,26 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | File | `public/style.css` |
-| Area | Home state and shell layout. |
+| Area | Home state, Home layout and shell width. |
 | Divergence reason | TODO(copy) |
-| Target seam | `public/css/sillybunny-home.css` (Home layout rules) and `public/scripts/sillybunny-home-state.js` (`#sheld[data-sb-home='on']`, derived from a `.welcomePanel` in `#chat` while Conversation mode is off). |
-| Adapter shape | One `@import url(css/sillybunny-home.css?v=…)` line after the `welcome.css` import, under one `/* SillyBunny: */` marker. A change to `style.css` needs a new `style.css?v=` key at both `public/index.html` call sites (the preload and the stylesheet link), as the `index.html` boot-assets entry describes. |
-| Protecting tests | `tests/unit/sillybunny-home-state.test.js`; `tests/home-state.e2e.js` (composer hidden and `#chat` filling the shell on Home at 1440×900 and 390×844, composer back in a chat, Conversation over Home, Ctrl+O, mobile chat bar and side-panel sheet on Home); `tests/unit/side-panel.test.js` (sheet anchor without a composer); `tests/side-panel-engine.e2e.js`. |
-| Validation | 2026-10-29: root and tests lint pass; unit 456 suites, 6,932 passed, 2 skipped; Chromium e2e of the Home, side-panel, mobile shell, dialog and overlay specs (347 passed; only the known `character-shell-performance:29` ×2 and `mobile-composer-spacing:57` failures); foundation Chromium 71 passed, 33 skipped (three runs); `npm run check:frontend-budgets` passes. |
+| Target seam | `public/css/sillybunny-home.css` (all Home rules: the Home state, the wider Home shell on desktop, the layout, Recent Chats, and two rules carried from `welcome.css`: `#chat .mes[type="assistant_message"] .mes_button` and `.welcomeForkNotice*`); `public/scripts/sillybunny-home-state.js` (`#sheld[data-sb-home='on']`, derived from a `.welcomePanel` in `#chat` while Conversation mode is off). |
+| Adapter shape | The `welcome.css` import is replaced by one `@import url(css/sillybunny-home.css?v=…)` line under one `/* SillyBunny: */` marker; `public/css/welcome.css` stays on disk, unreferenced. A change to `style.css` needs a new `style.css?v=` key at both `public/index.html` call sites (the preload and the stylesheet link), as the `index.html` boot-assets entry describes. |
+| Protecting tests | `tests/unit/sillybunny-home-state.test.js`; `tests/home-state.e2e.js` (composer hidden and `#chat` filling the shell on Home at 1440×900 and 390×844, composer back in a chat, Conversation over Home, Ctrl+O, mobile chat bar and side-panel sheet on Home); `tests/home-layout.e2e.js` (wider Home shell and its transition back, two columns at a 1024px content width and one below, display modes); `tests/unit/side-panel.test.js`; `tests/side-panel-engine.e2e.js`. |
+| Validation | 2026-10-29: root and tests lint pass; unit 462 suites, 7,041 passed, 2 skipped; Chromium e2e of the Home, side-panel, splash and utility-dialog specs (248 passed; the one failure was a test race, fixed and then 30 of 30 under load); foundation Chromium 71 passed, 33 skipped; `npm run check:frontend-budgets` passes (blocking stylesheets 1,048,492 of 1,048,576 bytes). |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-29, PR #870. |
 | Owner | TODO(copy) |
 
-### `public/scripts/welcome-screen.js` - Home mode switcher resume
+### `public/scripts/welcome-screen.js` - Home skeleton adapter and mode switcher resume
 | Field | Value |
 | --- | --- |
 | File | `public/scripts/welcome-screen.js` |
-| Area | Home, top-bar mode switcher. |
+| Area | Home (template, Recent Chats, display modes) and the top-bar mode switcher. |
 | Divergence reason | TODO(copy) |
-| Target seam | `public/scripts/sillybunny-chat-mode-memory.js` (`WelcomePage_LastMode`, recorded when Conversation opens and when a Roleplay chat is shown) and the switcher in `public/scripts/sillybunny-tabs.js` (`getDisplayedChatMode()`, `enterChatMode()`, `resumeRoleplayFromHome()`). |
-| Adapter shape | One exported function under one `// SillyBunny:` marker, `resumeLatestRoleplayChat({ canOpen })`: it requests `/api/chats/recent` with `pinned: []`, keeps chats whose character or group still exists, picks the newest by `last_mes`, and opens it through the existing `openRecentCharacterChat()` / `openRecentGroupChat()`. It returns whether a chat is open afterwards. |
-| Protecting tests | `tests/unit/sillybunny-chat-mode-memory.test.js`; `tests/home-mode-memory.e2e.js` (switcher on Home shows the remembered mode; Roleplay on Home resumes the newest chat with pins ignored, opens Characters when there is none or the request fails, and is cancelled when the user picks Conversation meanwhile; temporary chats and the title click; Ctrl+M on Home). |
-| Validation | 2026-10-29: root and tests lint pass; unit 457 suites, 6,959 passed, 2 skipped; Chromium e2e `home-mode-memory`, `home-state`, `topbar-upgrade` and the three `conversation-*` specs 72 passed; foundation Chromium 71 passed, 33 skipped. |
+| Target seam | `public/scripts/sillybunny-home/` (`mount.js` mounts the hero, main menu, display modes and status pages; `menu.js` builds the main menu and the Recent Chats row menu; `modes.js` decides the regions per display mode; `focus.js` restores focus after a re-render; `recent-chat.js` resolves a row's chat identity); the fork-owned template `public/scripts/templates/sillybunnyHome.html`; `public/scripts/sillybunny-chat-mode-memory.js` and the switcher in `public/scripts/sillybunny-tabs.js` for the resume. |
+| Adapter shape | Under `// SillyBunny:` markers: the import of `sillybunny-home/`; the template path and its `?v=` key; `getWelcomePanelMode()` / `setWelcomePanelMode()` and the slimmed `buildWelcomeTemplateData()`; one `mountHome()` call after the template renders; a re-check after the template `await` that no chat opened meanwhile; in-place re-render (`openWelcomeScreen({ force: true })` removes only non-panel children); the row's pin plus a Chat Menu (Rename, Delete) through `resolveRecentChatTarget()`; focus capture and restore around `refreshWelcomeScreen()`; and `resumeLatestRoleplayChat({ canOpen })` for the switcher. The SillyBunny tour, handbook, Launchpad deck, starter pack, hero action grid and Temporary Chat button were removed, which shrank the file from about 2,700 to about 1,700 lines. Upstream Recent Chats behaviour and the bundled-assistant plumbing stay. |
+| Protecting tests | `tests/unit/sillybunny-home-modes.test.js`; `tests/unit/sillybunny-home-menu.test.js`; `tests/unit/sillybunny-home-focus.test.js`; `tests/unit/sillybunny-home-recent-chat.test.js`; `tests/home-layout.e2e.js`; `tests/unit/sillybunny-chat-mode-memory.test.js`; `tests/home-mode-memory.e2e.js`; `tests/conversation-mode-scoped-profile.test.js` (Conversation suppression strings); `tests/utility-dialogs.e2e.js` (Recent Chats Settings); `tests/unit/character-import-operation.test.js`. |
+| Validation | 2026-10-29: as the `public/style.css` Home entry above; `home-mode-memory` 36 passed in the same run. |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-29, PR #870. |
 | Owner | TODO(copy) |

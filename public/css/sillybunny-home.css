@@ -1,3 +1,29 @@
+/* ── Shell width ────────────────────────────────────────────────────────── */
+
+:root {
+    --sb-home-width: min(1120px, calc(100% - 32px));
+}
+
+/* Home takes a wider shell than the user's chat width. Below 769px, and on tablets up to 1180px, the shell
+   is already edge to edge. A MovingUI shell the user moved or resized keeps its own geometry: MovingUI
+   always saves `margin: unset` with it, and its inline `!important` values outrank this rule anyway.
+   --sb-home-widened tells the docked side panels to lay out against --sb-home-width. */
+@media (min-width: 769px) {
+    body:not(.movingUI) #sheld[data-sb-home='on'],
+    body.movingUI #sheld[data-sb-home='on']:not([style*='margin: unset']) {
+        --sb-home-widened: 1;
+        width: var(--sb-home-width);
+    }
+}
+
+/* Only the way back to the chat width animates. The transition sits on the state without the attribute, so
+   entering Home, which includes every page load, changes the width at once. */
+@media (min-width: 769px) and (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) #sheld:not([data-sb-home='on']) {
+        transition: width var(--sb-transition);
+    }
+}
+
 #sheld[data-sb-home='on'] > #form_sheld {
     display: none;
 }
@@ -10,4 +36,771 @@
 /* The composer normally carries the bottom safe-area padding. Without it, the Home content keeps that space itself. */
 #sheld[data-sb-home='on'] > #chat > .welcomePanel {
     margin-block-end: env(safe-area-inset-bottom, 0px);
+}
+
+#chat .mes[type="assistant_message"] .mes_button {
+    display: none;
+}
+
+.welcomeForkNotice {
+    margin-top: 14px;
+    margin-inline: auto;
+    max-width: min(100%, 600px);
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: calc(var(--mainFontSize) * 0.82);
+    line-height: 1.5;
+    display: block;
+    align-self: center;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 0;
+    box-shadow: none;
+    text-align: center;
+}
+
+.welcomeForkNotice strong {
+    font-weight: 800;
+}
+
+.welcomeForkNotice a {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Panel and layout ───────────────────────────────────────────────────── */
+
+.welcomePanel {
+    container: welcome-home / inline-size;
+    position: relative;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    width: 100%;
+    color: var(--SmartThemeBodyColor);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* A region is hidden through the attribute, so no component display value may beat it. */
+.welcomePanel [hidden] {
+    display: none !important;
+}
+
+.welcomePanel [data-sb-copy-placeholder='true'] {
+    color: var(--sb-muted-fg);
+}
+
+.sbHomeLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        'header'
+        'getting-started'
+        'assistants'
+        'recent-chats'
+        'links';
+    align-content: start;
+    box-sizing: border-box;
+    width: min(100%, 1240px);
+    margin-inline: auto;
+    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+}
+
+.sbHomeHeader {
+    grid-area: header;
+}
+
+.sbHomeSection {
+    align-self: start;
+    min-width: 0;
+}
+
+.sbHomeSection:not(:empty) {
+    margin-block-end: 24px;
+}
+
+.sbHomeSection[data-sb-home-region='getting-started'] {
+    grid-area: getting-started;
+}
+
+.sbHomeSection[data-sb-home-region='assistants'] {
+    grid-area: assistants;
+}
+
+.sbHomeSection[data-sb-home-region='recent-chats'] {
+    grid-area: recent-chats;
+}
+
+.sbHomeSection[data-sb-home-region='links'] {
+    grid-area: links;
+}
+
+@container welcome-home (min-width: 1024px) {
+    .sbHomeLayout {
+        grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+        grid-template-rows: auto auto 1fr auto;
+        grid-template-areas:
+            'header header'
+            'getting-started recent-chats'
+            'assistants recent-chats'
+            '. links';
+        column-gap: 24px;
+    }
+}
+
+/* ── Header and hero ────────────────────────────────────────────────────── */
+
+.sbHomeHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        'identity menu'
+        'hero hero';
+    align-items: start;
+    column-gap: 12px;
+    margin-block-end: 24px;
+}
+
+.sbHomeIdentity {
+    grid-area: identity;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    min-width: 0;
+}
+
+.sbHomeTitle {
+    margin: 0;
+    font-size: var(--sb-type-display);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+}
+
+.sbHomeVersion {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.35;
+}
+
+.sbHomeMenuButton {
+    grid-area: menu;
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-size: var(--sb-type-body);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeMenuButton[aria-expanded='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sbHomeMenuButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sbHomeMenuButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (hover: hover) {
+    .sbHomeMenuButton:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sbHomeHero {
+    grid-area: hero;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 24px;
+    margin-block-start: 12px;
+}
+
+.sbHomeHeroText {
+    display: flex;
+    flex: 1 1 280px;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 62ch;
+    min-width: 0;
+}
+
+.sbHomeHeroText > p,
+.sbHomeFork > p {
+    margin: 0;
+}
+
+.sbHomeDescription,
+.sbHomeGreeting {
+    font-size: var(--sb-type-body);
+    line-height: 1.55;
+}
+
+.sbHomeFork {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+}
+
+.sbHomeForkLink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    border-radius: var(--sb-radius-control);
+    color: var(--sb-accent-ink);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.sbHomeForkLink:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.welcomePanel:is([data-home-panel-mode='compact'], [data-home-panel-mode='list']) .sbHomeHeader {
+    align-items: center;
+    margin-block-end: 16px;
+}
+
+.welcomePanel:is([data-home-panel-mode='compact'], [data-home-panel-mode='list']) .sbHomeIdentity {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.welcomePanel:is([data-home-panel-mode='compact'], [data-home-panel-mode='list']) .sbHomeTitle {
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+}
+
+/* ── Art placeholders ───────────────────────────────────────────────────── */
+
+.sbHomeArt {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--sb-muted-fg);
+    font-family: var(--monoFontFamily);
+    font-size: var(--sb-type-caption);
+    line-height: 1.35;
+    text-align: center;
+}
+
+.sbHomeArt[data-sb-art-placeholder='hero-duo'] {
+    width: 320px;
+    height: 160px;
+}
+
+.sbHomeArt[data-sb-art-placeholder='empty-tewi'] {
+    width: 96px;
+    height: 96px;
+}
+
+.sbHomeArt[data-sb-art-placeholder='logo-32'] {
+    width: 32px;
+    height: 32px;
+    font-size: 7px;
+}
+
+/* ── Recent Chats ───────────────────────────────────────────────────────── */
+
+.sbHomeGroupHeader {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    margin: 0 0 8px;
+    padding-inline: 4px;
+}
+
+.recentChatsTitle {
+    margin: 0;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    letter-spacing: 0;
+}
+
+.welcomeRecentTabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.welcomeRecentTab {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.welcomeRecentTab.active {
+    background: var(--sb-flat-selected-bg);
+}
+
+.welcomeRecentTab:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .welcomeRecentTab:not(.active):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.welcomeRecent {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-card);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+}
+
+.welcomeRecent .recentChatList {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.welcomeRecent .recentChat {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    min-height: 52px;
+    padding: 8px 12px;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.welcomeRecent .recentChat.hidden,
+.welcomeRecent .recentChat.recentChatFiltered {
+    display: none;
+}
+
+.welcomeRecent .recentChat:not(.hidden):not(.recentChatFiltered) ~ .recentChat:not(.hidden):not(.recentChatFiltered)::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+}
+
+.welcomeRecent .recentChat:active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (hover: hover) {
+    .welcomeRecent .recentChat:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.welcomeRecent .recentChatOpen {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.welcomeRecent .recentChatOpen:focus-visible {
+    outline: 2px solid transparent;
+}
+
+.welcomeRecent .recentChat:has(.recentChatOpen:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.welcomeRecent .recentChat .avatar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    overflow: hidden;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.welcomeRecent .recentChat .avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+body.hideChatAvatars .welcomeRecent .recentChat .avatar {
+    display: none;
+}
+
+.welcomeRecent .recentChat .recentChatPinned {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 2;
+    color: var(--sb-accent-ink);
+    opacity: 0.92;
+    pointer-events: none;
+}
+
+.welcomeRecent .recentChatInfo {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.welcomeRecent .chatNameContainer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        'name actions'
+        'date actions';
+    align-items: center;
+    column-gap: 8px;
+    font-size: var(--sb-type-body);
+}
+
+.welcomeRecent .chatName {
+    grid-area: name;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.welcomeRecent .characterName {
+    font-weight: 700;
+}
+
+.welcomeRecent .chatDate {
+    grid-area: date;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+}
+
+.welcomeRecent .chatActions {
+    grid-area: actions;
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.welcomeRecent .chatActions button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.welcomeRecent .chatActions button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.welcomeRecent .chatActions button:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.welcomeRecent .chatActions .pinChat[aria-pressed='true'] {
+    color: var(--sb-accent-ink);
+}
+
+@media (hover: hover) {
+    .welcomeRecent .chatActions button:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.welcomeRecent .chatMessageContainer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
+.welcomeRecent .chatMessage {
+    display: -webkit-box;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+body.big-avatars .welcomeRecent .chatMessage {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+}
+
+.welcomeRecent .chatStats {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+}
+
+.welcomeRecent .counterBlock {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.welcomeRecent .counterBlock:not(:last-child)::after {
+    content: "|";
+    margin-left: 4px;
+    color: color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
+}
+
+.welcomeRecent .showMoreChats {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: 0;
+    background: transparent;
+    color: var(--sb-muted-fg);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.welcomeRecent .showMoreChats > small {
+    transition: transform var(--sb-transition-fast);
+}
+
+.welcomeRecent .showMoreChats.rotated > small {
+    transform: rotate(180deg);
+}
+
+.welcomeRecent .showMoreChats:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.welcomeRecent .showMoreChats:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .welcomeRecent .showMoreChats:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.welcomeRecent .noRecentChat {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+}
+
+.sbHomeEmptyText {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sbHomeEmptyText strong {
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+}
+
+.sbHomeEmptyText span {
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+}
+
+.welcomeRecent .sb-status-page {
+    padding: 24px 16px;
+}
+
+.welcomeRecent .sb-status-page--compact .sb-status-page__icon {
+    margin-block-end: 12px;
+    font-size: 48px;
+}
+
+.welcomeRecent .sb-status-page__description {
+    margin-block-end: 0;
+}
+
+/* ── List Only ──────────────────────────────────────────────────────────── */
+
+/* Only the header and the list are left, so the panel fills #chat and the list takes the free height.
+   The floor keeps the list usable on short windows, where #chat scrolls. */
+.welcomePanel[data-home-panel-mode='list'] {
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    min-height: 400px;
+}
+
+.welcomePanel[data-home-panel-mode='list'] .sbHomeLayout {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: min(100%, 880px);
+}
+
+.welcomePanel[data-home-panel-mode='list'] .sbHomeRecent {
+    display: flex;
+    flex: 1 1 auto;
+    align-self: stretch;
+    flex-direction: column;
+    min-height: 0;
+    margin-block-end: 0;
+}
+
+.welcomePanel[data-home-panel-mode='list'] .welcomeRecent {
+    flex: 1 1 auto;
+}
+
+/* ── Narrow content and touch ───────────────────────────────────────────── */
+
+@container welcome-home (max-width: 520px) {
+    .welcomeRecentTabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+    }
+
+    .welcomeRecentTab {
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 768px) {
+    .sbHomeLayout {
+        padding-block-start: 12px;
+        padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHomeMenuButton {
+        width: 44px;
+        height: 44px;
+    }
+
+    .sbHomeForkLink,
+    .welcomeRecentTab,
+    .welcomeRecent .showMoreChats {
+        min-height: 44px;
+    }
+
+    .welcomeRecent .chatActions button {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sbHomeMenuButton,
+    .welcomeRecentTab,
+    .welcomeRecent .recentChat,
+    .welcomeRecent .chatActions button,
+    .welcomeRecent .showMoreChats,
+    .welcomeRecent .showMoreChats > small {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sbHomeMenuButton,
+body.reduced-motion .welcomeRecentTab,
+body.reduced-motion .welcomeRecent .recentChat,
+body.reduced-motion .welcomeRecent .chatActions button,
+body.reduced-motion .welcomeRecent .showMoreChats,
+body.reduced-motion .welcomeRecent .showMoreChats > small {
+    transition: none;
+}
+
+@media (forced-colors: active) {
+    .welcomeRecentTab.active,
+    .sbHomeMenuButton[aria-expanded='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
 }

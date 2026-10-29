@@ -201,7 +201,10 @@ for (const { name, options } of VIEWPORTS) {
             await goHome(page);
             await expect(page.locator('#sb-mode-toggle')).toHaveAttribute('aria-label', modeTitle('conversation'));
 
-            await page.locator('[data-action="open-temporary-chat"]').first().evaluate(button => button.click());
+            await page.evaluate(async () => {
+                const { newAssistantChat } = await import('/script.js');
+                await newAssistantChat({ temporary: true });
+            });
             await expectChat(page);
             await goHome(page);
 

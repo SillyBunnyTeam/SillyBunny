@@ -1,4 +1,5 @@
 import { t } from '../i18n.js';
+import { HOME_STATE_CHANGED_EVENT } from '../sillybunny-home-state.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
 import { bindHeaderLayout } from './dialog.js';
 import { returnFocusTo } from './page-chain.js';
@@ -307,7 +308,9 @@ function resolveChatWidth(viewportWidth) {
     probe.style.position = 'absolute';
     probe.style.visibility = 'hidden';
     probe.style.pointerEvents = 'none';
-    probe.style.width = 'var(--sheldWidth)';
+    // Home widens the shell past the user's chat width, and the panels dock against the shell that is shown.
+    const shellIsWiderForHome = getComputedStyle(chatShell).getPropertyValue('--sb-home-widened').trim() === '1';
+    probe.style.width = shellIsWiderForHome ? 'var(--sb-home-width)' : 'var(--sheldWidth)';
     root.append(probe);
     const configuredWidth = probe.getBoundingClientRect().width;
     probe.remove();
@@ -492,6 +495,7 @@ function updateLayout() {
         if (windowEventsBound) {
             window.removeEventListener('resize', scheduleLayout);
             window.removeEventListener('orientationchange', scheduleLayout);
+            document.removeEventListener(HOME_STATE_CHANGED_EVENT, scheduleLayout);
             windowEventsBound = false;
         }
         notifySidePanelLayoutChanged();
@@ -595,6 +599,8 @@ function observeLayoutChanges() {
     if (!windowEventsBound) {
         window.addEventListener('resize', scheduleLayout, { passive: true });
         window.addEventListener('orientationchange', scheduleLayout, { passive: true });
+        // A docked shell has a fixed width, so the shell resize that the observer watches does not happen when Home starts or ends.
+        document.addEventListener(HOME_STATE_CHANGED_EVENT, scheduleLayout);
         windowEventsBound = true;
     }
 

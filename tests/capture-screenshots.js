@@ -192,15 +192,9 @@ const sections = [
         description: 'Active chat with Assistant',
         setup: async (page) => {
             await ensureOnlyOpen(page, 'none');
-            // Check if "Open Assistant" is visible on the Home page, if not click Home toggle
-            const isHome = await page.locator('button[data-assistant-id="guide"][data-action="open-assistant"]').first().isVisible().catch(() => false);
-            if (!isHome) {
-                await forceClick(page, '#sb-home-toggle');
-            }
-            // Click "Open Assistant"
-            const assistantBtn = page.locator('button[data-assistant-id="guide"][data-action="open-assistant"]').first();
-            await assistantBtn.click({ force: true, timeout: 5000 }).catch(async () => {
-                await assistantBtn.dispatchEvent('click');
+            await page.evaluate(async () => {
+                const { openPermanentAssistantCard } = await import('/scripts/welcome-screen.js');
+                await openPermanentAssistantCard();
             });
             // Wait for chat to load
             await page.waitForSelector('#chat', { state: 'visible', timeout: 10000 });
