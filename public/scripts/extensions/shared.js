@@ -622,6 +622,10 @@ export class ConnectionManagerRequestService {
                         case 'pollinations':
                             ccRequestData.pollinations_endpoint = overridePayload.pollinations_endpoint || profile['api-url'];
                             break;
+                        // SillyBunny: KoboldCpp's own Chat Completions API.
+                        case 'koboldcpp':
+                            ccRequestData.koboldcpp_url = overridePayload.koboldcpp_url || profile['api-url'];
+                            break;
                     }
 
                     return await context.ChatCompletionService.processRequest(
@@ -735,7 +739,9 @@ export class ConnectionManagerRequestService {
         try {
             const profile = this.getProfile(id);
             if (!profile?.api) return null;
-            return createModelIcon(profile.api, profile.model);
+            // SillyBunny: a profile can name its API by an alias, such as koboldcpp-chat, that has no icon of its own.
+            const api = CONNECT_API_MAP[profile.api];
+            return createModelIcon(api?.source || api?.type || api?.selected || profile.api, profile.model);
         } catch {
             return null;
         }
