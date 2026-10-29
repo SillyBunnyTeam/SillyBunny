@@ -102,6 +102,65 @@ export function openChatMenu(trigger, actions, { keyboard = false, bounds = null
     });
 }
 
+/** Marks an item whose action is not wired yet. The same marker sits on the stubbed rows. */
+const STUB_MARKER = Object.freeze({ sbStub: 'true' });
+
+/**
+ * @typedef {object} AssistantMenuActions
+ * @property {() => void} newChat
+ * @property {() => void} temporaryChat
+ * @property {(mode: 'roleplay' | 'conversation') => void} openInMode
+ */
+
+/**
+ * @param {unknown} lastMode The remembered chat mode. Anything but Conversation counts as Roleplay.
+ * @returns {'roleplay' | 'conversation'} The mode the remembered one is not.
+ */
+export function getOtherChatMode(lastMode) {
+    return lastMode === 'conversation' ? 'roleplay' : 'conversation';
+}
+
+/**
+ * New Chat and Temporary Chat open in the remembered mode. The last item opens the other one.
+ * @param {object} options
+ * @param {unknown} options.lastMode
+ * @param {AssistantMenuActions} options.actions
+ * @returns {import('../sillybunny-action-menu.js').ActionMenuSection[]}
+ */
+export function buildAssistantMenuSections({ lastMode, actions }) {
+    const otherMode = getOtherChatMode(lastMode);
+    const openInOther = otherMode === 'conversation'
+        ? { label: t`Open in Conversation`, icon: 'fa-solid fa-comments fa-fw' }
+        : { label: t`Open in Roleplay`, icon: 'fa-solid fa-masks-theater fa-fw' };
+    return [
+        {
+            items: [
+                { label: t`New Chat`, icon: 'fa-solid fa-plus fa-fw', data: STUB_MARKER, onSelect: () => actions.newChat() },
+                { label: t`Temporary Chat`, icon: 'fa-solid fa-hourglass-half fa-fw', data: STUB_MARKER, onSelect: () => actions.temporaryChat() },
+            ],
+        },
+        { items: [{ ...openInOther, data: STUB_MARKER, onSelect: () => actions.openInMode(otherMode) }] },
+    ];
+}
+
+/**
+ * Opens the menu of one assistant row below its button, or closes it when it is already open.
+ * @param {HTMLElement} trigger
+ * @param {{ lastMode: unknown, actions: AssistantMenuActions }} menu
+ * @param {object} [options]
+ * @param {boolean} [options.keyboard=false] Focus the first item, for a keyboard activation.
+ * @param {Element|null} [options.bounds=null] The popover stays inside this element.
+ */
+export function openAssistantMenu(trigger, { lastMode, actions }, { keyboard = false, bounds = null } = {}) {
+    openActionMenu({
+        trigger,
+        title: t`Assistant Menu`,
+        sections: buildAssistantMenuSections({ lastMode, actions }),
+        keyboard,
+        bounds,
+    });
+}
+
 /**
  * Opens the main menu below its button, or closes it when it is already open.
  * @param {HTMLElement} trigger

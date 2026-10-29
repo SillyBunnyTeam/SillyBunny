@@ -162,3 +162,55 @@ describe('restoreHomeFocus', () => {
         expect(document.activeElement).toBe(document.body);
     });
 });
+
+describe('section controls', () => {
+    function renderSections() {
+        const panel = renderPanel([]);
+        panel.insertAdjacentHTML('beforeend', `
+            <a class="sbHomeForkLink" href="#fork">Fork</a>
+            <button type="button" class="ds-row" data-sb-editor-field="links-bundled-extras">Bundled Extras</button>
+            <div class="ds-row" data-sb-editor-field="assistant-reisen">
+                <button type="button" class="sbHomeRowOpen">Open</button>
+                <button type="button" class="sbHomeRowMenu">Menu</button>
+            </div>
+            <details data-sb-editor-field="getting-started"><summary>Getting Started</summary></details>`);
+        return panel;
+    }
+
+    test('finds a focused row again by its field, wherever the control sits', () => {
+        const oldPanel = mount(renderSections());
+        const target = captureHomeFocus(oldPanel, oldPanel.querySelector('[data-sb-editor-field="assistant-reisen"] .sbHomeRowMenu'));
+        oldPanel.remove();
+        const newPanel = mount(renderSections());
+
+        expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector('[data-sb-editor-field="assistant-reisen"] .sbHomeRowMenu'));
+        expect(document.activeElement).toBe(newPanel.querySelector('[data-sb-editor-field="assistant-reisen"] .sbHomeRowMenu'));
+    });
+
+    test('keeps focus on a row that is itself the control, and on a summary', () => {
+        for (const selector of ['[data-sb-editor-field="links-bundled-extras"]', '[data-sb-editor-field="getting-started"] > summary']) {
+            const oldPanel = mount(renderSections());
+            const target = captureHomeFocus(oldPanel, oldPanel.querySelector(selector));
+            oldPanel.remove();
+            const newPanel = mount(renderSections());
+
+            expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector(selector));
+            newPanel.remove();
+        }
+    });
+
+    test('falls back to the main menu button when the row is gone', () => {
+        const oldPanel = mount(renderSections());
+        const target = captureHomeFocus(oldPanel, oldPanel.querySelector('[data-sb-editor-field="assistant-reisen"] .sbHomeRowOpen'));
+        oldPanel.remove();
+        const newPanel = mount(renderPanel([]));
+
+        expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector('.sbHomeMenuButton'));
+    });
+
+    test('a control outside any field row is still the main menu', () => {
+        const panel = mount(renderSections());
+
+        expect(captureHomeFocus(panel, panel.querySelector('.sbHomeForkLink')).control).toBe('main-menu');
+    });
+});

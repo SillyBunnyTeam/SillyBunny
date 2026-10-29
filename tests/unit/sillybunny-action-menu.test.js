@@ -212,6 +212,19 @@ describe('action menu optional sections', () => {
         expect(document.activeElement).toBe(items[2]);
     });
 
+    test('writes an item\'s data entries to its dataset and leaves other items alone', () => {
+        openActionMenu({
+            trigger: trigger(), keyboard: true,
+            sections: [{ items: [
+                { label: 'Marked', data: { sbStub: 'true' }, onSelect() {} },
+                { label: 'Plain', onSelect() {} },
+            ] }],
+        });
+        const [marked, plain] = [...document.querySelectorAll('[role="menuitem"]')];
+        expect(marked.dataset.sbStub).toBe('true');
+        expect('sbStub' in plain.dataset).toBe(false);
+    });
+
     test.each([['ltr', '300px'], ['rtl', '780px']])('explicit inline-start placement supports %s triggers in the trailing half', (direction, expectedLeft) => {
         const button = trigger();
         button.style.direction = direction;

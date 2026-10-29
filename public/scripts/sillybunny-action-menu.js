@@ -31,6 +31,7 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
  * @property {boolean} [disabled]
  * @property {'radio'|'check'} [kind] - Stateful indicator; checked-only items default to radio.
  * @property {boolean} [checked]
+ * @property {Record<string, string>} [data] - Written to the item's `dataset`, for example a marker that tests or tools read.
  * @property {(event: MouseEvent) => void} onSelect
  */
 
@@ -155,6 +156,9 @@ function buildMenu(sections, label) {
             }
             if (item.disabled) {
                 button.setAttribute('aria-disabled', 'true');
+            }
+            if (item.data) {
+                Object.assign(button.dataset, item.data);
             }
             const text = document.createElement('span');
             text.className = 'sb-action-menu-label';

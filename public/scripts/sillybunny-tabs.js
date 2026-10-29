@@ -15333,6 +15333,20 @@ function initAll() {
             closeAllDropdowns({ except: 'search' });
             setUniversalSearchOpenState(true, { focusInput });
         },
+        // Opens the menu and leaves it open; the toggle button itself would close a menu that is already open.
+        openModeMenu() {
+            if (!document.getElementById('sb-mode-menu')) {
+                openModeDropdown();
+            }
+        },
+        // Takes the user to a setting the way a search result does: opens the tab, shows the setting's category and pulses it.
+        revealSetting(shellKey, tabId, selector) {
+            const element = document.querySelector(selector);
+            if (!(element instanceof HTMLElement)) {
+                throw new Error(`Setting not found: ${selector}`);
+            }
+            revealSearchMatch(shellKey, { tabId, element });
+        },
         applyTheme() {
             applyShellTheme();
         },

@@ -187,6 +187,10 @@
 
 .sbHomeMenuButton {
     grid-area: menu;
+}
+
+.sbHomeMenuButton,
+.sbHomeBack {
     -webkit-appearance: none;
     appearance: none;
     display: inline-flex;
@@ -210,17 +214,20 @@
     background: var(--sb-flat-selected-bg);
 }
 
-.sbHomeMenuButton:focus-visible {
+.sbHomeMenuButton:focus-visible,
+.sbHomeBack:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sbHomeMenuButton:active {
+.sbHomeMenuButton:active,
+.sbHomeBack:active {
     background: var(--sb-flat-active-bg);
 }
 
 @media (hover: hover) {
-    .sbHomeMenuButton:hover {
+    .sbHomeMenuButton:hover,
+    .sbHomeBack:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
@@ -322,6 +329,20 @@
     height: 96px;
 }
 
+.sbHomeArt[data-sb-art-placeholder='gs-reisen'],
+.sbHomeArt[data-sb-art-placeholder='extras-tewi'] {
+    width: 96px;
+    height: 96px;
+}
+
+.sbHomeArt[data-sb-art-placeholder='row-reisen'],
+.sbHomeArt[data-sb-art-placeholder='row-tewi'] {
+    width: 64px;
+    height: 64px;
+    font-size: 9px;
+    overflow-wrap: anywhere;
+}
+
 .sbHomeArt[data-sb-art-placeholder='logo-32'] {
     width: 32px;
     height: 32px;
@@ -340,7 +361,8 @@
     padding-inline: 4px;
 }
 
-.recentChatsTitle {
+.recentChatsTitle,
+.sbHomeGroupTitle {
     margin: 0;
     font-size: var(--sb-type-title);
     font-weight: 700;
@@ -705,6 +727,185 @@ body.big-avatars .welcomeRecent .chatMessage {
     margin-block-end: 0;
 }
 
+/* ── Sections ───────────────────────────────────────────────────────────── */
+
+/* The boxed lists take the Recent Chats card radius, so the three regions read as one set. */
+.sbHomeSection .ds-pref-group,
+.sbHomePage .ds-pref-group {
+    border-radius: var(--sb-radius-card);
+}
+
+.sbHomeFlatButton {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-height: 32px;
+    margin: 0;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeFlatButton[aria-pressed='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sbHomeFlatButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeFlatButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeFlatButton:not([aria-pressed='true']):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sbHomeIntro {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sbHomeIntro > p {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+}
+
+/* The buttons drop under the text when the column is too narrow for both. */
+.sbHomeStepRow {
+    flex-wrap: wrap;
+}
+
+.sbHomeStepRow > .ds-row-text {
+    flex: 1 1 160px;
+}
+
+.sbHomeStepRow > .ds-row-suffix {
+    gap: 4px;
+    margin-inline-start: auto;
+}
+
+.sbHomeTag {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    font-weight: 400;
+}
+
+.sbHomeStepRow[data-sb-step-state='skipped'] :is(.ds-row-label, .ds-row-subtitle) {
+    color: var(--sb-muted-fg);
+}
+
+.sbHomeAssistantRow {
+    position: relative;
+    min-height: 80px;
+    padding-block: 8px;
+    transition: background-color var(--sb-transition-fast);
+}
+
+/* The menu button sits on top of the row's own button, so only a press on the row's button fills the row. */
+.sbHomeAssistantRow:has(.sbHomeRowOpen:active) {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (hover: hover) {
+    .sbHomeAssistantRow:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sbHomeRowOpen {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.sbHomeRowOpen:focus-visible {
+    outline: 2px solid transparent;
+}
+
+.sbHomeAssistantRow:has(.sbHomeRowOpen:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sbHomeAssistantPortrait {
+    display: block;
+    flex: none;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--sb-radius-control);
+    object-fit: cover;
+    object-position: center;
+}
+
+.sbHomeRowMenu {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sbHomeRowMenu[aria-expanded='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sbHomeRowMenu:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeRowMenu:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeRowMenu:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
 /* ── List Only ──────────────────────────────────────────────────────────── */
 
 /* Only the header and the list are left, so the panel fills #chat and the list takes the free height.
@@ -736,6 +937,63 @@ body.big-avatars .welcomeRecent .chatMessage {
     flex: 1 1 auto;
 }
 
+/* ── Page ───────────────────────────────────────────────────────────────── */
+
+/* The page and the sections share one grid cell while one replaces the other, so the swap does not
+   change the panel height. The clip keeps the sliding page from adding a horizontal scrollbar. */
+.welcomePanel[data-sb-home-page] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: clip;
+}
+
+.welcomePanel[data-sb-home-page] > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+}
+
+.sbHomePage {
+    display: flex;
+    flex-direction: column;
+    align-self: start;
+    gap: 24px;
+    box-sizing: border-box;
+    width: min(100%, 880px);
+    margin-inline: auto;
+    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+}
+
+.sbHomePage:focus {
+    outline: none;
+}
+
+.sbHomePageHeader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sbHomePageTitle {
+    margin: 0;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+}
+
+.sbHomePageBody {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+}
+
+.sbHomePageBody > .sbHomeIntro {
+    padding: 0 4px;
+    border-bottom: 0;
+}
+
 /* ── Narrow content and touch ───────────────────────────────────────────── */
 
 @container welcome-home (max-width: 520px) {
@@ -753,32 +1011,44 @@ body.big-avatars .welcomeRecent .chatMessage {
 }
 
 @media (max-width: 768px) {
-    .sbHomeLayout {
+    .sbHomeLayout,
+    .sbHomePage {
         padding-block-start: 12px;
         padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
     }
 }
 
 @media (pointer: coarse) {
-    .sbHomeMenuButton {
+    .sbHomeMenuButton,
+    .sbHomeBack {
         width: 44px;
         height: 44px;
     }
 
+    .sbHomeFlatButton,
     .sbHomeForkLink,
     .welcomeRecentTab,
     .welcomeRecent .showMoreChats {
         min-height: 44px;
     }
 
-    .welcomeRecent .chatActions button {
+    .welcomeRecent .chatActions button,
+    .sbHomeRowMenu {
         width: 44px;
         height: 44px;
+    }
+
+    .sbHomeFlatButton {
+        padding-inline: 14px;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .sbHomeMenuButton,
+    .sbHomeBack,
+    .sbHomeFlatButton,
+    .sbHomeAssistantRow,
+    .sbHomeRowMenu,
     .welcomeRecentTab,
     .welcomeRecent .recentChat,
     .welcomeRecent .chatActions button,
@@ -789,6 +1059,10 @@ body.big-avatars .welcomeRecent .chatMessage {
 }
 
 body.reduced-motion .sbHomeMenuButton,
+body.reduced-motion .sbHomeBack,
+body.reduced-motion .sbHomeFlatButton,
+body.reduced-motion .sbHomeAssistantRow,
+body.reduced-motion .sbHomeRowMenu,
 body.reduced-motion .welcomeRecentTab,
 body.reduced-motion .welcomeRecent .recentChat,
 body.reduced-motion .welcomeRecent .chatActions button,
@@ -799,6 +1073,8 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
 
 @media (forced-colors: active) {
     .welcomeRecentTab.active,
+    .sbHomeFlatButton[aria-pressed='true'],
+    .sbHomeRowMenu[aria-expanded='true'],
     .sbHomeMenuButton[aria-expanded='true'] {
         outline: 2px solid Highlight;
         outline-offset: -2px;

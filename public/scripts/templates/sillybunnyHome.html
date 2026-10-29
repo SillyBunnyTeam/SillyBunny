@@ -21,8 +21,13 @@
                 <div class="sbHomeArt" data-sb-home-region="mascot-art" data-sb-art-placeholder="hero-duo" aria-hidden="true">hero-duo</div>
             </div>
         </header>
-        <section class="sbHomeSection" data-sb-home-region="getting-started"></section>
-        <section class="sbHomeSection" data-sb-home-region="assistants"></section>
+        <section class="sbHomeSection" data-sb-home-region="getting-started" aria-labelledby="sb-home-gs-title"></section>
+        <section class="sbHomeSection" data-sb-home-region="assistants" aria-labelledby="sb-home-assistants-title">
+            <div class="sbHomeGroupHeader">
+                <h2 id="sb-home-assistants-title" class="sbHomeGroupTitle" data-i18n="Assistants">Assistants</h2>
+            </div>
+            <div data-sb-home-list="assistants"></div>
+        </section>
         <section class="sbHomeSection sbHomeRecent welcomeRecentShell" data-sb-home-region="recent-chats" aria-labelledby="welcome-recent-title">
             <div class="sbHomeGroupHeader">
                 <h2 id="welcome-recent-title" class="recentChatsTitle" data-i18n="Recent Chats">Recent Chats</h2>
@@ -99,6 +104,6 @@
                 </div>
             </div>
         </section>
-        <section class="sbHomeSection" data-sb-home-region="links"></section>
+        <section class="sbHomeSection" data-sb-home-region="links" aria-label="Help and Extras" data-i18n="[aria-label]Help and Extras"></section>
     </div>
 </div>

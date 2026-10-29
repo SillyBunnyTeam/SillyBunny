@@ -1,8 +1,12 @@
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { mountAssistants } from './assistants-view.js';
+import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
+import { createExtrasPage } from './extras-page.js';
+import { mountGettingStarted } from './getting-started-view.js';
+import { createHomePageHost } from './home-page.js';
+import { mountLinks } from './links-view.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
-
-const COPY_PLACEHOLDER = 'TODO(copy)';
 
 /**
  * @typedef {object} HomeContext
@@ -34,12 +38,6 @@ function getVersionLabel(version) {
     return String(version ?? '').trim().replace(/^SillyBunny\s+/i, '');
 }
 
-function markCopyPlaceholder(element, slot) {
-    element.textContent = COPY_PLACEHOLDER;
-    element.dataset.sbCopyPlaceholder = 'true';
-    element.dataset.sbCopySlot = slot;
-}
-
 function mountFilteredEmptyState(panel) {
     const container = panel.querySelector('[data-recent-chat-empty-state="filtered"]');
     if (!container) {
@@ -65,7 +63,7 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
 }
 
 /**
- * Fills a rendered Home panel: version, external links, menu, empty states and the display mode.
+ * Fills a rendered Home panel: version, external links, menu, sections, empty states and the display mode.
  * @param {HTMLElement} panel The `.welcomePanel` root, before or after it is attached.
  * @param {HomeContext} context
  */
@@ -79,5 +77,11 @@ export function mountHome(panel, context) {
     });
     mountFilteredEmptyState(panel);
     mountMenuButton(panel, context);
+    const pages = createHomePageHost(panel);
+    mountGettingStarted(panel);
+    mountAssistants(panel);
+    mountLinks(panel, {
+        openBundledExtras: opener => pages.push(createExtrasPage({ goBack: () => pages.pop() }), opener),
+    });
     applyDisplayMode(panel, context.getDisplayMode());
 }

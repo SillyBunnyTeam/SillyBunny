@@ -7,14 +7,18 @@ const ROW_CONTROLS = Object.freeze({
 });
 const SHOWN_ROW_SELECTOR = '.recentChat:not(.hidden):not(.recentChatFiltered)';
 const MAIN_MENU_SELECTOR = '.sbHomeMenuButton';
+const FIELD_SELECTOR = '[data-sb-editor-field]';
+const FIELD_CONTROLS_SELECTOR = 'button, summary, a[href]';
 
 /**
  * Where focus was in a Home panel that is about to be replaced.
- * `main-menu` stands for any control that is not part of a Recent Chats row.
+ * `section` is a control of a section row, found again by the row's `data-sb-editor-field`.
+ * `main-menu` stands for any other control that is not part of a Recent Chats row.
  * @typedef {object} HomeFocusTarget
- * @property {'open'|'pin'|'chat-menu'|'main-menu'} control
+ * @property {'open'|'pin'|'chat-menu'|'section'|'main-menu'} control
  * @property {import('./recent-chat.js').RecentChatIdentity|null} identity
  * @property {number} index Position among the shown rows, or -1 outside a row.
+ * @property {{ field: string, part: 'self'|number }} [section] Set for `section`. `part` is `self` when the row itself holds focus, or the position of the control among the row's controls.
  */
 
 function getShownRows(panel) {
@@ -34,7 +38,7 @@ export function captureHomeFocus(panel, active = document.activeElement) {
     const row = active.closest('.recentChat');
     const control = row && Object.keys(ROW_CONTROLS).find(name => active.matches(ROW_CONTROLS[name]));
     if (!row || !control) {
-        return { control: 'main-menu', identity: null, index: -1 };
+        return captureSectionControl(active) ?? { control: 'main-menu', identity: null, index: -1 };
     }
 
     return {
@@ -42,6 +46,23 @@ export function captureHomeFocus(panel, active = document.activeElement) {
         identity: readRecentChatIdentity(row),
         index: getShownRows(panel).indexOf(/** @type {HTMLElement} */ (row)),
     };
+}
+
+function captureSectionControl(active) {
+    const fieldElement = active.closest(FIELD_SELECTOR);
+    const field = fieldElement instanceof HTMLElement ? fieldElement.dataset.sbEditorField : undefined;
+    if (!(fieldElement instanceof HTMLElement) || !field) {
+        return null;
+    }
+    const position = Array.from(fieldElement.querySelectorAll(FIELD_CONTROLS_SELECTOR)).indexOf(active);
+    const part = active === fieldElement ? 'self' : position;
+    return part === -1 ? null : { control: 'section', identity: null, index: -1, section: { field, part } };
+}
+
+function findSectionControl(panel, { field, part }) {
+    const fieldElement = Array.from(panel.querySelectorAll(FIELD_SELECTOR))
+        .find(candidate => candidate instanceof HTMLElement && candidate.dataset.sbEditorField === field);
+    return part === 'self' ? fieldElement : fieldElement?.querySelectorAll(FIELD_CONTROLS_SELECTOR)[part];
 }
 
 function focusFirstTaking(candidates) {
@@ -56,7 +77,8 @@ function focusFirstTaking(candidates) {
 
 /**
  * Focuses the same control in the same row of the new panel. When the row is gone, focus goes to the
- * open control of the row that took its position, and last to the main menu button.
+ * open control of the row that took its position, and last to the main menu button. A section control
+ * that is gone, for example inside a row that is collapsed again, falls back to the main menu button.
  * @param {HTMLElement} panel The Home panel that replaced the old one.
  * @param {HomeFocusTarget|null} target
  * @returns {HTMLElement|null} The control that took focus.
@@ -67,6 +89,9 @@ export function restoreHomeFocus(panel, target) {
     }
 
     const menuButton = panel.querySelector(MAIN_MENU_SELECTOR);
+    if (target.control === 'section' && target.section) {
+        return focusFirstTaking([findSectionControl(panel, target.section), menuButton]);
+    }
     if (target.control === 'main-menu' || !target.identity) {
         return focusFirstTaking([menuButton]);
     }

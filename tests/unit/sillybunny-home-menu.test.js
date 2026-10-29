@@ -6,7 +6,7 @@ jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 }));
 const openActionMenu = jest.fn();
 jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu }));
-const { buildChatMenuSections, buildHomeMenuSections, openChatMenu } = await import('../../public/scripts/sillybunny-home/menu.js');
+const { buildAssistantMenuSections, buildChatMenuSections, buildHomeMenuSections, getOtherChatMode, openAssistantMenu, openChatMenu } = await import('../../public/scripts/sillybunny-home/menu.js');
 
 function allActions() {
     return {
@@ -144,5 +144,69 @@ describe('Recent Chats row menu', () => {
 
         expect(openActionMenu).toHaveBeenCalledWith(expect.objectContaining({ trigger, bounds, keyboard: true, title: 'Chat Menu' }));
         expect(openActionMenu.mock.calls.at(-1)[0].sections).toHaveLength(2);
+    });
+});
+
+describe('Assistant menu', () => {
+    const assistantActions = () => ({ newChat: jest.fn(), temporaryChat: jest.fn(), openInMode: jest.fn() });
+
+    test('offers the mode other than the remembered one', () => {
+        expect(getOtherChatMode('roleplay')).toBe('conversation');
+        expect(getOtherChatMode('conversation')).toBe('roleplay');
+    });
+
+    test('offers Open in Conversation after Roleplay was the last mode', () => {
+        const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() });
+
+        expect(labelsOf(sections).flat()).toEqual(['New Chat', 'Temporary Chat', 'Open in Conversation']);
+    });
+
+    test('offers Open in Roleplay after Conversation was the last mode', () => {
+        const sections = buildAssistantMenuSections({ lastMode: 'conversation', actions: assistantActions() });
+
+        expect(labelsOf(sections).flat()).toEqual(['New Chat', 'Temporary Chat', 'Open in Roleplay']);
+    });
+
+    test('treats an unknown remembered mode as Roleplay', () => {
+        const sections = buildAssistantMenuSections({ lastMode: undefined, actions: assistantActions() });
+
+        expect(labelsOf(sections).flat()).toContain('Open in Conversation');
+    });
+
+    test('keeps the mode item in a section of its own and gives every item an explicit icon', () => {
+        const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() });
+
+        expect(labelsOf(sections)).toEqual([['New Chat', 'Temporary Chat'], ['Open in Conversation']]);
+        for (const item of sections.flatMap(section => section.items)) {
+            expect(item.icon).toMatch(/^fa-solid fa-[a-z-]+ fa-fw$/);
+        }
+    });
+
+    test('marks every item as a stub until its action is wired', () => {
+        const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() });
+
+        expect(sections.flatMap(section => section.items).map(item => item.data)).toEqual(Array(3).fill({ sbStub: 'true' }));
+    });
+
+    test('runs the matching action for each item, passing the mode the item opens', () => {
+        const actions = assistantActions();
+        const [chats, mode] = buildAssistantMenuSections({ lastMode: 'roleplay', actions });
+
+        chats.items[0].onSelect();
+        chats.items[1].onSelect();
+        mode.items[0].onSelect();
+
+        expect(actions.newChat).toHaveBeenCalledTimes(1);
+        expect(actions.temporaryChat).toHaveBeenCalledTimes(1);
+        expect(actions.openInMode).toHaveBeenCalledWith('conversation');
+    });
+
+    test('opens the shared action menu named Assistant Menu, kept inside the given bounds', () => {
+        const trigger = {};
+        const bounds = {};
+
+        openAssistantMenu(trigger, { lastMode: 'roleplay', actions: assistantActions() }, { keyboard: true, bounds });
+
+        expect(openActionMenu).toHaveBeenCalledWith(expect.objectContaining({ trigger, bounds, keyboard: true, title: 'Assistant Menu' }));
     });
 });

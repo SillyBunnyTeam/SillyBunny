@@ -32,6 +32,8 @@ import { clamp, flashHighlight, isElementInViewport, sortMoments, timestampToMom
 import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 // SillyBunny: Home sections live in their own modules and mount into the rendered template.
 import { applyDisplayMode, mountHome } from './sillybunny-home/mount.js';
+import { ensureHomeStyles } from './sillybunny-home/styles.js';
+import { isHomePageOpen, runAfterHomePageCloses } from './sillybunny-home/home-page.js';
 import { parseDisplayMode } from './sillybunny-home/modes.js';
 import { captureHomeFocus, restoreHomeFocus } from './sillybunny-home/focus.js';
 import { openChatMenu } from './sillybunny-home/menu.js';
@@ -734,6 +736,12 @@ export async function openWelcomeScreen({ force = false, expand = false } = {}) 
         return;
     }
 
+    // SillyBunny: a render replaces the panel, which would drop an open Home page with its scroll and focus. The latest request runs once when the page closes.
+    if (isHomePageOpen()) {
+        runAfterHomePageCloses(() => refreshWelcomeScreen());
+        return;
+    }
+
     const recentChats = await getRecentChats();
     const chatAfterFetch = getCurrentChatId();
     if (chatAfterFetch !== currentChatId) {
@@ -765,7 +773,11 @@ async function sendWelcomePanel(chats, expand = false) {
         }
         const templateData = buildWelcomeTemplateData(chats);
         // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
-        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261029b', templateData, true, true, true);
+        // SillyBunny: the shared row styles load with the template, so the sections never paint unstyled.
+        const [template] = await Promise.all([
+            renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261029c', templateData, true, true, true),
+            ensureHomeStyles(),
+        ]);
         // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.
         if (getCurrentChatId() !== undefined) {
             return;
