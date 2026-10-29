@@ -685,18 +685,21 @@ async function sendMakerSuiteRequest(request, response) {
             'gemini-2.5-flash-image',
             'gemini-3-pro-image',
             'gemini-3.1-flash-image',
+            'gemini-3.1-flash-lite-image', // SillyBunny: Nano Banana 2 Lite image output
+            'gemini-nano-banana-2.1', // SillyBunny: Nano Banana 2.1 image output
         ];
 
-        const isThinkingConfigModel = m => (/^gemini-2.5-(flash|pro)/.test(m) && !/-image(-preview)?$/.test(m)) || (/^gemini-3[.\d]*-(flash|pro)/.test(m));
-        const isImageSizeModel = m => /^gemini-3/.test(m);
+        const isThinkingConfigModel = m => (/^gemini-2.5-(flash|pro)/.test(m) && !/-image(-preview)?$/.test(m)) || (/^gemini-3[.\d]*-(flash|pro)/.test(m)) || /^gemini-(?:4|nano-banana)/.test(m); // SillyBunny: Gemini 4 and Nano Banana take thinkingLevel
+        const isImageSizeModel = m => /^gemini-(?:3|nano-banana)/.test(m) && !/flash-lite-image/.test(m); // SillyBunny: Nano Banana takes imageSize, and gemini-3.1-flash-lite-image renders only at 1K, so it gets none
         // https://ai.google.dev/gemini-api/docs/latest-model#api-changes-and-parameter-updates
-        const noSamplingModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
+        const noSamplingModel = /gemini-3\.[678]-flash|gemini-3\.5-flash-lite|gemini-4|gemini-nano-banana/.test(model); // SillyBunny: Gemini 4 and Nano Banana ignore sampling parameters
 
         const noSearchModels = [
             'gemini-2.0-flash-lite',
             'gemini-2.0-flash-lite-001',
             'gemini-2.0-flash-lite-preview-02-05',
             'gemini-robotics-er-1.5-preview',
+            'gemini-3.1-flash-lite-image', // SillyBunny: gemini-3.1-flash-lite-image has no Google Search grounding
         ];
         // #endregion
 

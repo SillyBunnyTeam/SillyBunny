@@ -77,7 +77,7 @@ describe('Google model request compatibility', () => {
         nodeFetchMock.mockImplementation((url, options) => actualNodeFetch(url, options));
     });
 
-    function makeRequest(model) {
+    function makeRequest(model, options = {}) {
         return fetch(`${baseUrl}/api/backends/chat-completions/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -90,11 +90,12 @@ describe('Google model request compatibility', () => {
                 top_p: 0.9,
                 top_k: 40,
                 messages: [{ role: 'user', content: 'Question' }],
+                ...options,
             }),
         });
     }
 
-    test.each(['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'])(
+    test.each(['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-nano-banana-2.1'])(
         'omits unsupported sampling parameters for %s',
         async (model) => {
             const response = await makeRequest(model);
@@ -117,5 +118,36 @@ describe('Google model request compatibility', () => {
             topK: 40,
             candidateCount: 1,
         });
+    });
+
+    test('sends a thinking level for Gemini 4', async () => {
+        const response = await makeRequest('gemini-4-argon', { reasoning_effort: 'medium' });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'medium' });
+    });
+
+    test('requests image output with a size for Nano Banana 2.1', async () => {
+        const response = await makeRequest('gemini-nano-banana-2.1', {
+            request_images: true,
+            request_image_resolution: '2K',
+            request_image_aspect_ratio: '16:9',
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.generationConfig.responseModalities).toEqual(['text', 'image']);
+        expect(capturedBody.generationConfig.imageConfig).toEqual({ imageSize: '2K', aspectRatio: '16:9' });
+    });
+
+    test('omits the image size for gemini-3.1-flash-lite-image, which renders only at 1K', async () => {
+        const response = await makeRequest('gemini-3.1-flash-lite-image', {
+            request_images: true,
+            request_image_resolution: '2K',
+            request_image_aspect_ratio: '16:9',
+        });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.generationConfig.responseModalities).toEqual(['text', 'image']);
+        expect(capturedBody.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9' });
     });
 });
