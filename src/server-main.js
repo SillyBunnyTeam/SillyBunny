@@ -87,7 +87,7 @@ import { init as statsInit, onExit as statsOnExit } from './endpoints/stats.js';
 import { checkForNewContent, PRESET_CONTENT_TYPES } from './endpoints/content-manager.js';
 import { init as settingsInit } from './endpoints/settings.js';
 import { ServerStartup, setupPrivateEndpoints } from './server-startup.js';
-import { diskCache } from './endpoints/characters.js';
+import { characterIndex } from './endpoints/characters.js';
 import { migrateFlatSecrets } from './endpoints/secrets.js';
 import { migrateGroupChatsMetadataFormat } from './endpoints/groups.js';
 
@@ -521,7 +521,7 @@ async function preSetupTasks() {
         if (typeof cleanupPlugins === 'function') {
             await cleanupPlugins();
         }
-        diskCache.dispose();
+        characterIndex.close();
         setWindowTitle(consoleTitle);
         process.exit(exitCode);
     };
@@ -607,7 +607,7 @@ async function runDeferredStartupTasks() {
     }
 
     try {
-        await diskCache.verify(startupDirectories);
+        await characterIndex.prune(startupDirectories);
     } catch (error) {
         console.error('Deferred startup maintenance failed.', error);
     }
