@@ -9,6 +9,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
 import { updateServiceTierOptions } from './service-tiers.js';
+import { initKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 
 let mancerModels = [];
 let togetherModels = [];
@@ -1190,6 +1191,8 @@ export function initTextGenModels() {
     $('#llamacpp_model').on('change', onLlamaCppModelSelect);
     $('#generic_model_select').on('change', onGenericModelSelect);
     $('#featherless_model').on('change', () => onFeatherlessModelSelect(String($('#featherless_model').val())));
+    // SillyBunny: KoboldCpp admin-mode model switcher.
+    initKoboldCppModels();
 
     const providersSelect = $('.openrouter_providers');
     for (const selector of Object.keys(OPENROUTER_PROVIDER_WARNING_SELECTORS)) {
@@ -1247,6 +1250,13 @@ export function initTextGenModels() {
         searchInputCssClass: 'text_pole',
         width: '100%',
         allowClear: true,
+    });
+    // SillyBunny: KoboldCpp admin-mode model switcher.
+    $('#koboldcpp_model').select2({
+        ...select2Defaults,
+        searchInputPlaceholder: t`Search models...`,
+        searchInputCssClass: 'text_pole',
+        width: '100%',
     });
     $('#generic_model_select').select2({
         ...select2Defaults,

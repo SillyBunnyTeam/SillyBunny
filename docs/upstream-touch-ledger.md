@@ -403,6 +403,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
 
+### `public/index.html`, `public/scripts/textgen-models.js`, `public/scripts/textgen-settings.js`, and `src/endpoints/backends/text-completions.js` - KoboldCpp model switcher
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/textgen-models.js`, `public/scripts/textgen-settings.js`, `src/endpoints/backends/text-completions.js` |
+| Area | API connection settings and Text Completion backend routing. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-koboldcpp-models.js` for the dropdown, switching, the restart wait and `/kcpp-model`; `src/endpoints/backends/koboldcpp-admin.js` for requests to KoboldCpp's admin API. |
+| Adapter shape | `public/index.html` adds one block to the KoboldCpp connection form: a heading, the `#koboldcpp_model` select with a placeholder option, and the hidden `#koboldcpp_model_hint` row. `initTextGenModels()` calls `initKoboldCppModels()` and gives `#koboldcpp_model` the same Select2 setup as the other model selects. `getStatusTextgen()` calls `refreshKoboldCppModels()` each time KoboldCpp answers a status check. `text-completions.js` imports `koboldCppAdminRouter` and mounts it at `/koboldcpp`, which serves `/models`, `/load` and `/uptime` under `/api/backends/text-completions/koboldcpp`. |
+| Protecting tests | `tests/koboldcpp-admin.test.js` covers entry filtering, loaded-file matching and the three routes. No automated test covers the browser hooks; the browser smoke in Validation protects them. |
+| Validation | `npm run lint`, `npm run test:unit --prefix tests -- koboldcpp-admin.test.js`, `npm run check:frontend-budgets`, `bun run start` and `npm run start:node` boots that call `/status` and the three routes against a mock of KoboldCpp's admin API, and desktop and mobile browser smoke of listing, switching, a failed load, unloading and `/kcpp-model` against the same mock. |
+| Rollback path | Remove the `public/index.html` block and each `SillyBunny:`-marked hook with its import in the other three files, then delete the two modules and `tests/koboldcpp-admin.test.js`. The switcher stores no settings or user data, so nothing needs migrating and the KoboldCpp Text Completion connection keeps working; scripts that call `/kcpp-model` then stop at an unknown-command error. |
+| Last reviewed | 2026-10-29 PR #941 KoboldCpp model switcher (issue #939). |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/speech.js`, `public/scripts/extensions/tts/index.js`, and `public/scripts/extensions/tts/pollinations.js` - Conversation TTS bridge and Pollinations audio path
 | Field | Value |
 | --- | --- |
