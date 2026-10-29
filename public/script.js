@@ -6452,7 +6452,11 @@ class StreamingProcessor {
         return (allowStopped || (!this.isStopped && !this.abortController.signal.aborted))
             && (allowStopped || (this.isCurrentGeneration?.() ?? true))
             && streamingProcessor === this && activeGenerationRun === this.originRun
-            && chatGeneration === this.originChatGeneration && getCurrentChatId() === this.originChatId
+            && this.#isOriginMessage(messageId);
+    }
+
+    #isOriginMessage(messageId) {
+        return chatGeneration === this.originChatGeneration && getCurrentChatId() === this.originChatId
             && (this.type === 'impersonate' || messageId < 0 || (this.message !== null
                 && chat[messageId] === this.message && (this.swipeId === undefined || this.message.swipe_id === this.swipeId)));
     }
@@ -6890,6 +6894,27 @@ class StreamingProcessor {
         this.isStopped = true;
         this.isCancelled = true;
         this.abortController.abort();
+    }
+
+    /**
+     * Keeps the reply that a Stop interrupted: ends its reasoning with all reasoning that arrived,
+     * records the reasoning duration, renders the message again and saves the chat.
+     * Emits STREAM_REASONING_DONE if the reasoning was in progress, but not MESSAGE_RECEIVED.
+     * Stops without more changes if the chat or the message changes while it runs.
+     * @returns {Promise<void>}
+     */
+    async finalizeStoppedMessage() {
+        const messageId = this.messageId;
+        if (this.type === 'impersonate' || messageId < 0 || !this.#isOriginMessage(messageId)) return;
+        // SillyBunny: the user stopped the reply, so the server must no longer replace this message.
+        delete this.message.extra?.[GENERATION_PLACEHOLDER_KEY];
+        this.#applyPendingReasoning();
+        await this.reasoningHandler.finish(messageId);
+        if (!this.#isOriginMessage(messageId)) return;
+        syncMesToSwipe(messageId);
+        await updateMessageBlock(messageId, this.message);
+        if (!this.#isOriginMessage(messageId)) return;
+        await saveChatConditional();
     }
 
     /**
@@ -9342,6 +9367,8 @@ export function stopGeneration() {
 
     if (stopState.shouldStopStreaming) {
         activeStreamingProcessor.onStopStreaming();
+        // SillyBunny: a cancelled run never finishes its reply, so Stop finishes and saves what arrived.
+        activeStreamingProcessor.finalizeStoppedMessage();
     }
 
     if (stopState.shouldAbortRequest && abortController) {
