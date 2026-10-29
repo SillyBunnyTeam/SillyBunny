@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000}</style>
+<title>fixture-file</title></head><body>
+<input class="b" id="pick" type="file" multiple accept=".json,image/png">
+<script>
+window.results = { changes: 0 };
+document.getElementById('pick').addEventListener('change', (e) => { results.changes++; results.files = e.target.files.length; });
+document.getElementById('pick').addEventListener('cancel', () => { results.cancelled = true; });
+</script>
+</body></html>

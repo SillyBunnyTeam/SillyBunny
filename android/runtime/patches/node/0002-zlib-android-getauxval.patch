@@ -1,0 +1,36 @@
+--- a/deps/zlib/cpu_features.c
++++ b/deps/zlib/cpu_features.c
+@@ -43,9 +43,8 @@
+ #include <pthread.h>
+ #endif
+ 
+-#if defined(ARMV8_OS_ANDROID)
+-#include <cpu-features.h>
+-#elif defined(ARMV8_OS_LINUX)
++/* API 29 Bionic exposes auxiliary vectors without the NDK cpufeatures helper. */
++#if defined(ARMV8_OS_ANDROID) || defined(ARMV8_OS_LINUX)
+ #include <asm/hwcap.h>
+ #include <sys/auxv.h>
+ #elif defined(ARMV8_OS_FUCHSIA)
+@@ -106,13 +105,15 @@
+ static void _cpu_check_features(void)
+ {
+ #if defined(ARMV8_OS_ANDROID) && defined(__aarch64__)
+-    uint64_t features = android_getCpuFeatures();
+-    arm_cpu_enable_crc32 = !!(features & ANDROID_CPU_ARM64_FEATURE_CRC32);
+-    arm_cpu_enable_pmull = !!(features & ANDROID_CPU_ARM64_FEATURE_PMULL);
++    /* Use Bionic directly; Node does not link android_getCpuFeatures. */
++    unsigned long features = getauxval(AT_HWCAP);
++    arm_cpu_enable_crc32 = !!(features & HWCAP_CRC32);
++    arm_cpu_enable_pmull = !!(features & HWCAP_PMULL);
+ #elif defined(ARMV8_OS_ANDROID) /* aarch32 */
+-    uint64_t features = android_getCpuFeatures();
+-    arm_cpu_enable_crc32 = !!(features & ANDROID_CPU_ARM_FEATURE_CRC32);
+-    arm_cpu_enable_pmull = !!(features & ANDROID_CPU_ARM_FEATURE_PMULL);
++    /* ARM32 optional crypto features are exposed in the second vector. */
++    unsigned long features = getauxval(AT_HWCAP2);
++    arm_cpu_enable_crc32 = !!(features & HWCAP2_CRC32);
++    arm_cpu_enable_pmull = !!(features & HWCAP2_PMULL);
+ #elif defined(ARMV8_OS_LINUX) && defined(__aarch64__)
+     unsigned long features = getauxval(AT_HWCAP);
+     arm_cpu_enable_crc32 = !!(features & HWCAP_CRC32);

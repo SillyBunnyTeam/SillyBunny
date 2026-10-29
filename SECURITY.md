@@ -29,6 +29,15 @@ Examples of in-scope issues include, but are not limited to:
 - Path traversal, arbitrary file read/write/delete, unsafe ZIP extraction or update behavior, and launcher or dependency-install paths that can execute untrusted code unexpectedly.
 - Remote request filtering bypasses, SSRF-style provider requests, unsafe proxy handling, or model/provider integrations that leak private local data.
 - Security regressions in Bun or Node.js parity paths, Docker startup, Termux launchers, or updater flows.
+<!--
+MANDATORY: maintainers write the Android app's scope items here. The item below is a placeholder (docs/android-apk-plan.md §8 and §9.13).
+Cover:
+- The APK's launch-token gate: the server inside the app answers only requests that carry the token of the app's own launch.
+- The APK update manifest (android-update.json) and the app's checks of each update's signature, plus the release workflow's refusal of a signing certificate that differs from earlier releases'.
+- The Android runtime pipeline: the Node.js binaries on GHCR pinned by digest, the pinned Termux packages, and the input mirror that keeps a copy of both.
+- Signing-key handling (the android-signing environment and its secrets), and why changes to android/ and to the release workflows need maintainer review (CODEOWNERS).
+-->
+- TODO(copy)
 
 While we strive to ensure the security of this project, please note that there may be limitations on resources, response times, and mitigations.
 

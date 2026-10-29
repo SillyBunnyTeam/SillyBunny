@@ -2,6 +2,10 @@ name: 🏷️ Draft Release
 
 # Pushing a vX.Y.Z or vX.Y.Z-rc.N tag creates a draft GitHub release with generated notes.
 # Maintainers write the notes and publish; nothing here publishes on its own.
+# The Android APKs (plan §6.1-§6.3): decide re-attaches the previous release's APKs or builds new ones, the
+# shared Android smoke must pass, a new build is signed in the android-signing environment (the only job that
+# receives the signing secrets), and the draft gets the APKs before android-update.json, which goes up only once
+# every APK it lists is attached with its size and SHA-256.
 
 on:
   push:
@@ -17,14 +21,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  draft-release:
-    name: 🏷️ Create draft release
+  decide:
+    name: 🏷️ Decide the release
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # write: GitHub lists draft releases only to a token with push access, and the versionCode rule counts
+    # drafts. This job creates and changes nothing.
     permissions:
       contents: write
-      id-token: write
-      attestations: write
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      android: ${{ steps.android.outputs.action }}
+      default-ref: ${{ steps.android.outputs.default-ref }}
+      inputs-hash: ${{ steps.android.outputs.inputs-hash }}
+      previous-tag: ${{ steps.android.outputs.previous-tag }}
+      expected-signing-cert: ${{ steps.android.outputs.expected-signing-cert }}
 
     steps:
       - name: Checkout tag
@@ -68,6 +79,457 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Plan §6.1: re-attach the previous same-channel release's APKs when inputsHash matches it, otherwise build
+      # with a versionCode above every earlier release's. While android/runtime.lock leaves the Node binaries
+      # unpinned nothing can be built: skip the APKs when no earlier release has android-update.json, and fail
+      # before anything is drafted otherwise.
+      - name: Decide the Android APKs
+        id: android
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          decision="$RUNNER_TEMP/android-decision.json"
+          if ! node android/release/release-decision.mjs --prerelease "$PRERELEASE" --commit "$GITHUB_SHA" \
+            --github-repository "$GITHUB_REPOSITORY" --github-api-url "$GITHUB_API_URL" --exclude-tag "$TAG" \
+            --skip-unpinned-runtime > "$decision"; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+          cat "$decision"
+          action=$(jq -r '.action' "$decision")
+          case "$action" in
+            build | reattach | skip) ;;
+            *)
+              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '{"code":"unknown-android-decision"}' >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "action=$action"
+            echo "default-ref=$(jq -r '.defaultRef' "$decision")"
+            echo "inputs-hash=$(jq -r '.inputsHash' "$decision")"
+            echo "previous-tag=$(jq -r '.previous.tag // empty' "$decision")"
+            echo "expected-signing-cert=$(jq -r '.expectedSigningCert // empty' "$decision")"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$action" = skip ]; then
+            echo '::notice title=TODO(copy)::TODO(copy)'
+            printf 'TODO(copy)\n\n- android: `skip`\n- reason: `unpinned-runtime`\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # build-release-apks.sh reads the pinned Termux debs and sources only from the mirror, so a missing
+      # mirror fails here, before anything is built or drafted.
+      - name: Check the input mirror
+        if: steps.android.outputs.action == 'build'
+        run: |
+          set -euo pipefail
+          if ! python3 -I -B android/runtime/runtime-mirror.py --check; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+
+  # The whole recipe is android/release/build-release-apks.sh, under android/ where inputsHash covers it; this
+  # job passes only the channel and the output directory. No signing secrets reach it.
+  android-build:
+    name: Build the Android APKs
+    needs: decide
+    if: needs.decide.outputs.android == 'build'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install the runtime tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends patchelf python3-pyelftools zstd
+
+      - name: Set up oras
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.5/oras_1.3.5_linux_amd64.tar.gz
+          checksum: f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22
+
+      - name: Set up JDK 21 and the Android SDK packages
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          (yes || true) | "$sdkmanager" --licenses > /dev/null
+          "$sdkmanager" --install 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370' > "$RUNNER_TEMP/sdkmanager.log"
+
+      - name: Build the unsigned APKs and the sources archive
+        env:
+          DEFAULT_REF: ${{ needs.decide.outputs.default-ref }}
+        run: bash android/release/build-release-apks.sh "$DEFAULT_REF" "$RUNNER_TEMP/android-unsigned"
+
+      # Both artifacts are downloaded after the android-signing approval, which can wait up to 30 days.
+      - name: Upload the unsigned APKs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-unsigned-apks
+          path: ${{ runner.temp }}/android-unsigned/SillyBunny-android-*-unsigned.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: true
+
+      - name: Upload the sources archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-sources
+          path: ${{ runner.temp }}/android-unsigned/SillyBunny-android-sources.tar.zst
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: true
+
+      # Build reports only: never android/.gradle/, which holds caches and, in signed builds, signing material.
+      - name: Upload build reports
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-release-build-reports-${{ github.run_attempt }}
+          path: |
+            android/app/build/reports/
+            android/build/reports/
+            ${{ runner.temp }}/sdkmanager.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Plan §7.1: the smoke tests an x86_64 test build of this commit and must pass before anything is signed or
+  # re-attached. It reports `skipped` only while the Node binaries are unpinned, which never signs anything.
+  android-smoke:
+    needs: decide
+    if: needs.decide.outputs.android == 'build' || needs.decide.outputs.android == 'reattach'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      default-ref: ${{ needs.decide.outputs.default-ref }}
+
+  # Plan §6.3. The only job in the android-signing environment and the only one that receives the signing secrets.
+  android-sign:
+    name: Sign the Android APKs
+    needs:
+      - decide
+      - android-build
+      - android-smoke
+    if: needs.decide.outputs.android == 'build' && needs.android-smoke.outputs.outcome == 'passed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: android-signing
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Set up JDK 21 and the build tools
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          (yes || true) | "$sdkmanager" --licenses > /dev/null
+          "$sdkmanager" --install 'build-tools;37.0.0' > "$RUNNER_TEMP/sdkmanager.log"
+
+      - name: Download the unsigned APKs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-unsigned-apks
+          path: ${{ runner.temp }}/android-unsigned
+
+      # The keystore exists only inside this step: sign-release-apks.sh decodes it into the ignored
+      # android/.gradle/signing/release.keystore and deletes it on exit.
+      - name: Sign the APKs
+        id: sign
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          signing="$RUNNER_TEMP/android-signing.json"
+          bash android/release/sign-release-apks.sh "$RUNNER_TEMP/android-unsigned" "$RUNNER_TEMP/android-release" > "$signing"
+          cat "$signing"
+          {
+            echo "certificate=$(jq -r '.signingCertSha256' "$signing")"
+            echo "min-sdk=$(jq -r '.minSdk' "$signing")"
+            echo "build-tools=$(jq -r '.buildTools' "$signing")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Delete the keystore
+        if: always()
+        run: rm -f android/.gradle/signing/release.keystore
+
+      - name: Check the signing certificate
+        env:
+          EXPECTED: ${{ needs.decide.outputs.expected-signing-cert }}
+          CERTIFICATE: ${{ steps.sign.outputs.certificate }}
+        run: |
+          set -euo pipefail
+          if ! check=$(node android/release/release-decision.mjs --check-signing-cert "$CERTIFICATE" \
+            --expected-signing-cert "$EXPECTED"); then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+          if [ -z "$EXPECTED" ]; then
+            printf 'TODO(copy)\n\n- signing-cert-sha256: `%s`\n' "$(jq -r '.signingCert' <<< "$check")" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Write android-update.json
+        env:
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+          DEFAULT_REF: ${{ needs.decide.outputs.default-ref }}
+          INPUTS_HASH: ${{ needs.decide.outputs.inputs-hash }}
+          CERTIFICATE: ${{ steps.sign.outputs.certificate }}
+          MIN_SDK: ${{ steps.sign.outputs.min-sdk }}
+          BUILD_TOOLS: ${{ steps.sign.outputs.build-tools }}
+        run: >-
+          node android/release/update-manifest.mjs --prerelease "$PRERELEASE" --release-tag "$TAG"
+          --default-ref "$DEFAULT_REF" --inputs-hash "$INPUTS_HASH" --signing-cert-sha256 "$CERTIFICATE"
+          --min-sdk "$MIN_SDK"
+          --apk "arm64-v8a=$RUNNER_TEMP/android-release/SillyBunny-android-arm64-v8a.apk"
+          --apk "armeabi-v7a=$RUNNER_TEMP/android-release/SillyBunny-android-armeabi-v7a.apk"
+          --verify-tools require --apksigner "$BUILD_TOOLS/apksigner" --aapt2 "$BUILD_TOOLS/aapt2"
+          --out "$RUNNER_TEMP/android-release/android-update.json"
+
+      - name: Upload the signed APKs and android-update.json
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-release
+          path: ${{ runner.temp }}/android-release
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true
+
+  # Plan §6.1: unchanged inputs re-attach the previous release's signed APKs and android-update.json byte for
+  # byte. The manifest keeps its releaseTag, so the earlier release must keep its APK assets.
+  android-reattach:
+    name: Re-attach the previous Android APKs
+    needs:
+      - decide
+      - android-smoke
+    if: needs.decide.outputs.android == 'reattach' && needs.android-smoke.outputs.outcome == 'passed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Download and check the previous release's APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_TAG: ${{ needs.decide.outputs.previous-tag }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+          INPUTS_HASH: ${{ needs.decide.outputs.inputs-hash }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/android-release"
+          mkdir -p "$out"
+          gh release download "$PREVIOUS_TAG" --repo "$GITHUB_REPOSITORY" --pattern android-update.json --dir "$out"
+          node android/release/update-manifest.mjs --validate "$out/android-update.json" --prerelease "$PRERELEASE" \
+            --inputs-hash "$INPUTS_HASH"
+          entries=$(jq -r '.assets | to_entries[] | [.key, .value.name] | @tsv' "$out/android-update.json")
+          apk_args=()
+          while IFS=$'\t' read -r abi name; do
+            gh release download "$PREVIOUS_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$name" --dir "$out"
+            apk_args+=(--apk "$abi=$out/$name")
+          done <<< "$entries"
+          node android/release/update-manifest.mjs --validate "$out/android-update.json" --prerelease "$PRERELEASE" \
+            --inputs-hash "$INPUTS_HASH" "${apk_args[@]}"
+
+      # The previous release's android-update.json can change after decide reads it.
+      - name: Check the signing certificate
+        env:
+          EXPECTED: ${{ needs.decide.outputs.expected-signing-cert }}
+        run: |
+          set -euo pipefail
+          certificate=$(jq -r '.signingCertSha256' "$RUNNER_TEMP/android-release/android-update.json")
+          if ! node android/release/release-decision.mjs --check-signing-cert "$certificate" \
+            --expected-signing-cert "$EXPECTED" > /dev/null; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            exit 1
+          fi
+
+      - name: Upload the APKs and android-update.json
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-release
+          path: ${{ runner.temp }}/android-release
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: true
+
+  draft-release:
+    name: 🏷️ Create draft release
+    needs:
+      - decide
+      - android-build
+      - android-smoke
+      - android-sign
+      - android-reattach
+    # Runs after skipped Android jobs too; the first step fails unless they match the decision.
+    if: ${{ !cancelled() && needs.decide.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Check the Android jobs
+        env:
+          ANDROID: ${{ needs.decide.outputs.android }}
+          BUILD: ${{ needs.android-build.result }}
+          SMOKE: ${{ needs.android-smoke.result }}
+          SMOKE_OUTCOME: ${{ needs.android-smoke.outputs.outcome }}
+          SIGN: ${{ needs.android-sign.result }}
+          REATTACH: ${{ needs.android-reattach.result }}
+        run: |
+          set -euo pipefail
+          case "$ANDROID/$BUILD/$SMOKE/$SMOKE_OUTCOME/$SIGN/$REATTACH" in
+            skip/skipped/skipped//skipped/skipped) ;;
+            build/success/success/passed/success/skipped) ;;
+            reattach/skipped/success/passed/skipped/success) ;;
+            *)
+              echo '::error title=TODO(copy)::TODO(copy)'
+              # Job results, the decision and the smoke outcome: plain words, safe to print unescaped.
+              printf '{"code":"android-jobs-incomplete","android":"%s","build":"%s","smoke":"%s","outcome":"%s","sign":"%s","reattach":"%s"}\n' \
+                "$ANDROID" "$BUILD" "$SMOKE" "$SMOKE_OUTCOME" "$SIGN" "$REATTACH" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Download the APKs and android-update.json
+        if: needs.decide.outputs.android != 'skip'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-release
+          path: ${{ runner.temp }}/android-release
+
+      - name: Download the sources archive
+        if: needs.decide.outputs.android == 'build'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-sources
+          path: ${{ runner.temp }}/android-sources
+
+      - name: Check the APKs against android-update.json
+        if: needs.decide.outputs.android != 'skip'
+        env:
+          ANDROID: ${{ needs.decide.outputs.android }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+          INPUTS_HASH: ${{ needs.decide.outputs.inputs-hash }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/android-release"
+          manifest="$dir/android-update.json"
+          entries=$(jq -r '.assets | to_entries[] | [.key, .value.name] | @tsv' "$manifest")
+          apk_args=()
+          expected=(android-update.json)
+          while IFS=$'\t' read -r abi name; do
+            apk_args+=(--apk "$abi=$dir/$name")
+            expected+=("$name")
+          done <<< "$entries"
+          node android/release/update-manifest.mjs --validate "$manifest" --prerelease "$PRERELEASE" \
+            --inputs-hash "$INPUTS_HASH" "${apk_args[@]}"
+          # Exactly the manifest and the APKs it lists.
+          if [ "$(cd "$dir" && ls -A | LC_ALL=C sort)" != "$(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)" ]; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '{"code":"android-release-files"}' >&2
+            exit 1
+          fi
+          # A new build names this release; a re-attached manifest keeps the release that first carried its APKs.
+          if [ "$ANDROID" = build ] && ! jq -e --arg tag "$TAG" '.releaseTag == $tag' "$manifest" > /dev/null; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '{"code":"android-release-tag"}' >&2
+            exit 1
+          fi
+
+      # Another tag's run can draft a release while this run waits for the signing approval, and the versionCode
+      # and signing certificate rules count drafts, so decide's result must still hold right before drafting.
+      - name: Check the Android decision again
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+          ANDROID: ${{ needs.decide.outputs.android }}
+          INPUTS_HASH: ${{ needs.decide.outputs.inputs-hash }}
+          PREVIOUS_TAG: ${{ needs.decide.outputs.previous-tag }}
+        run: |
+          set -euo pipefail
+          decision="$RUNNER_TEMP/android-decision-again.json"
+          if ! node android/release/release-decision.mjs --prerelease "$PRERELEASE" --commit "$GITHUB_SHA" \
+            --github-repository "$GITHUB_REPOSITORY" --github-api-url "$GITHUB_API_URL" --exclude-tag "$TAG" \
+            --skip-unpinned-runtime > "$decision" \
+            || ! jq -e --arg action "$ANDROID" --arg hash "$INPUTS_HASH" --arg previous "$PREVIOUS_TAG" \
+              '.action == $action and .inputsHash == $hash and (.previous.tag // "") == $previous' "$decision" > /dev/null; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '{"code":"android-decision-changed"}' >&2
+            exit 1
+          fi
+          if [ "$ANDROID" != skip ]; then
+            certificate=$(jq -r '.signingCertSha256' "$RUNNER_TEMP/android-release/android-update.json")
+            expected=$(jq -r '.expectedSigningCert // empty' "$decision")
+            if ! node android/release/release-decision.mjs --check-signing-cert "$certificate" \
+              --expected-signing-cert "$expected" > /dev/null; then
+              echo '::error title=TODO(copy)::TODO(copy)'
+              exit 1
+            fi
+          fi
+
       - name: Collect release assets
         id: assets
         run: |
@@ -78,6 +540,19 @@ jobs:
           if [ -d scripts/bootstrap ]; then
             find scripts/bootstrap -maxdepth 1 -type f \( -name '*.sh' -o -name '*.ps1' -o -name '*.cmd' \) -exec cp {} "$out/" \;
           fi
+          # The Android APKs and android-update.json, and the sources archive of new binaries (plan §5.3), so
+          # SHA256SUMS and the attestation cover them too.
+          shopt -s nullglob
+          for file in "$RUNNER_TEMP/android-release"/* "$RUNNER_TEMP/android-sources"/*; do
+            name=$(basename "$file")
+            if [ -e "$out/$name" ]; then
+              echo '::error title=TODO(copy)::TODO(copy)'
+              printf '{"code":"asset-name-collision","name":"%s"}\n' "$name" >&2
+              exit 1
+            fi
+            cp "$file" "$out/$name"
+          done
+          shopt -u nullglob
           if [ -n "$(ls -A "$out")" ]; then
             (cd "$out" && sha256sum -- * > SHA256SUMS)
             echo "has-assets=true" >> "$GITHUB_OUTPUT"
@@ -93,10 +568,11 @@ jobs:
           subject-path: ${{ steps.assets.outputs.dir }}/*
 
       - name: Create draft release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
           ASSET_DIR: ${{ steps.assets.outputs.dir }}
         run: |
           set -euo pipefail
@@ -107,5 +583,34 @@ jobs:
             args+=(--latest)
           fi
           shopt -s nullglob
-          assets=("$ASSET_DIR"/*)
-          gh "${args[@]}" "${assets[@]}"
+          assets=()
+          for file in "$ASSET_DIR"/*; do
+            # android-update.json goes up last, once every APK it lists is attached and checked.
+            if [ "$(basename "$file")" != android-update.json ]; then
+              assets+=("$file")
+            fi
+          done
+          url=$(gh "${args[@]}" "${assets[@]}")
+          echo "$url"
+          # The draft's html_url, which finds it for android-update.json even when another draft has its tag.
+          if [[ "$url" =~ ^https://[^[:space:]]+/releases/tag/[^[:space:]]+$ ]]; then
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The release stays a draft. attach-update-manifest.mjs downloads every APK android-update.json lists from
+      # the draft, checks its size and SHA-256, and only then uploads the manifest and reads it back.
+      - name: Attach android-update.json
+        if: needs.decide.outputs.android != 'skip'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          ASSET_DIR: ${{ steps.assets.outputs.dir }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RELEASE_URL" ]; then
+            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '{"code":"release-url-unexpected"}' >&2
+            exit 1
+          fi
+          node android/release/attach-update-manifest.mjs --repository "$GITHUB_REPOSITORY" \
+            --github-api-url "$GITHUB_API_URL" --release-url "$RELEASE_URL" --manifest "$ASSET_DIR/android-update.json"

@@ -53,6 +53,8 @@ import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 import { FRONTEND_ASSET_PREFIX, rewriteFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
 import getResponseCompressionMiddleware from './middleware/response-compression.js';
+// SillyBunny: opt-in Android localhost authentication, separate from account sessions.
+import createLaunchTokenMiddleware, { LAUNCH_COOKIE_NAME } from './middleware/launchToken.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
 import requireHttpsMiddleware from './middleware/requireHttps.js';
 import { createSession, destroySession, validateCredentials, isSessionAuthEnabled } from './middleware/sessionAuth.js';
@@ -115,6 +117,11 @@ const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
 }));
+// SillyBunny: reject other local apps before parsing bodies, logging, authentication or static files.
+const launchTokenMiddleware = createLaunchTokenMiddleware();
+if (launchTokenMiddleware) {
+    app.use(launchTokenMiddleware);
+}
 app.use(getResponseCompressionMiddleware());
 app.use(responseTime());
 
@@ -272,6 +279,10 @@ app.post('/api/cookies/clear', express.json(), (request, response) => {
         'session',
         'session.sig',
     ]);
+    // SillyBunny: clearing the launch cookie would lock the Android browser out of the server.
+    if (launchTokenMiddleware) {
+        cookieNames.delete(LAUNCH_COOKIE_NAME);
+    }
     const domains = getServerCookieClearDomains(request.hostname);
     const paths = getServerCookieClearPaths(request.path);
     const secure = isSecureCookieRequest(request);

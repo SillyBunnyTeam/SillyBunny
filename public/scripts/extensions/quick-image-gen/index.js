@@ -252,6 +252,7 @@ let checkWorldInfo, hostScriptModule, hostWorldInfoModule;
 let createGenerationParameters, getChatCompletionModel;
 let saveBase64AsFile, getSanitizedFilename, humanizedDateTime;
 let nativePopupModule = null;
+let getCurrentUserHandle = null;
 
 // Dialogs route through SillyTavern's Popup API once `popup.js` is imported during
 // init. Until then — and if that import fails — the browser dialogs stand in, so a
@@ -1362,6 +1363,10 @@ const BACKUP_KEYS = {
     [CONTEXT_MEDIA_STORE_KEY]: "_backupContextMedia",
 };
 const SYNC_CACHE_ID_KEY = "qig_sync_cache_id";
+// SillyBunny divergence: { id, user } for a sync id that the server has not confirmed yet.
+// Do not merge it into SYNC_CACHE_ID_KEY: a confirmed id that the server does not have means
+// that the server lost its settings, and loadSettings() must then ask about the browser data.
+const UNCONFIRMED_SYNC_CACHE_ID_KEY = "qig_sync_cache_id_unconfirmed";
 function writeBackupToSettings(localKey, data) {
     const backupKey = BACKUP_KEYS[localKey];
     if (!backupKey) return false;
@@ -1427,6 +1432,25 @@ async function retrySyncCacheIdClaim() {
     } finally {
         syncCacheIdClaimInFlight = false;
     }
+}
+
+// SillyBunny divergence: the host's next successful settings save, for example the one after the
+// user answers its Welcome prompt, also stores the claimed id, but QIG confirms the id only after
+// its own store saves. A claim that outlives that save gives this browser's caches and the id to
+// the next server on this origin with the same user handle, or to this server after it loses its
+// settings, without the import question.
+function removeUnconfirmedClaimWhenSaved(id) {
+    const lifecycle = createLifecycleScope();
+    lifecycle.subscribe(hostScriptModule?.eventSource, hostScriptModule?.event_types?.SETTINGS_UPDATED, () => {
+        // SETTINGS_UPDATED has no payload and can belong to a save that started before the claim.
+        void confirmSyncCacheIdSaved(id).then((confirmed) => {
+            if (!confirmed) return;
+            if (safeParse(UNCONFIRMED_SYNC_CACHE_ID_KEY, null)?.id === id) {
+                localStorage.removeItem(UNCONFIRMED_SYNC_CACHE_ID_KEY);
+            }
+            lifecycle.dispose();
+        }).catch(() => { /* the next settings save checks again */ });
+    });
 }
 
 function confirmSettingsSaveEvent(expectedValues = getSettings(), timeoutMs = 2500) {
@@ -4614,6 +4638,22 @@ async function loadSettings() {
     const savedCacheId = typeof saved?._syncCacheId === "string" ? saved._syncCacheId : "";
     let localCacheId = "";
     try { localCacheId = localStorage.getItem(SYNC_CACHE_ID_KEY) || ""; } catch { /* server state remains usable */ }
+    // SillyBunny divergence: a boot writes these caches even when its settings saves fail, for
+    // example while the host skips every save until the user answers its Welcome prompt. The
+    // server then does not get the new sync id, and without an unconfirmed claim the next boot
+    // shows the caches as legacy data. A claim counts only for the server user that wrote it,
+    // so that another user of this browser still gets the import question.
+    const userHandle = String(getCurrentUserHandle?.() || "");
+    let unconfirmedCacheId = "";
+    try {
+        const claim = JSON.parse(localStorage.getItem(UNCONFIRMED_SYNC_CACHE_ID_KEY));
+        if (!savedCacheId && !localCacheId && claim?.user === userHandle && typeof claim.id === "string") {
+            unconfirmedCacheId = claim.id;
+        }
+    } catch { /* an unreadable claim is no claim */ }
+    if (!unconfirmedCacheId) {
+        try { localStorage.removeItem(UNCONFIRMED_SYNC_CACHE_ID_KEY); } catch { /* checked again on the next boot */ }
+    }
     let localCacheWritesAllowed = true;
     if (localCacheId && localCacheId !== savedCacheId) {
         try {
@@ -4637,7 +4677,7 @@ async function loadSettings() {
         || injectInsertModeNeedsMigration
         || reviewBeforeGenerateNeedsMigration;
     if (!savedCacheId) {
-        s._syncCacheId = generateUUID();
+        s._syncCacheId = unconfirmedCacheId || generateUUID();
         serverSettingsNeedSave = true;
     }
     const restoreTargets = [
@@ -4683,10 +4723,18 @@ async function loadSettings() {
         && localLegacyReplacementRules.length > 0;
     const hasUnownedLegacyData = !savedCacheId
         && !localCacheId
+        && !unconfirmedCacheId
         && (hasUnownedSynchronizedData || hasUnownedLegacyReplacementData);
     const legacySeedApproved = hasUnownedLegacyData && await qigConfirm("Quick Image Gen found legacy browser-only settings that are not linked to a SillyTavern account. Import them into the current server user? They may include API keys and private reference images. Choose Cancel if this browser data belongs to another user.", { okButton: "Import", wide: true });
     const legacySeedDeclined = hasUnownedLegacyData && !legacySeedApproved;
-    const maySeedFromLocal = cacheOwnerMatches || legacySeedApproved;
+    const maySeedFromLocal = cacheOwnerMatches || legacySeedApproved || Boolean(unconfirmedCacheId);
+    // SillyBunny divergence: write the claim before the cache writes below, because the page can
+    // close before the server confirms the id. Declined legacy data gets no claim, so that the
+    // next boot asks again.
+    if (!savedCacheId && !legacySeedDeclined && localCacheWritesAllowed
+        && safeSetStorage(UNCONFIRMED_SYNC_CACHE_ID_KEY, JSON.stringify({ id: s._syncCacheId, user: userHandle }))) {
+        removeUnconfirmedClaimWhenSaved(s._syncCacheId);
+    }
     const quarantinedLegacyCacheKeys = new Set();
     let synchronizedFromServer = 0;
     let serverStoresSeeded = 0;
@@ -23033,6 +23081,15 @@ function initializeQuickImageGen() {
                 });
             } catch (e) {
                 console.warn("[ImageGen] Could not import popup module, using browser dialogs:", e.message);
+            }
+
+            // SillyBunny divergence: imported before loadSettings(), which binds an unconfirmed
+            // claim to the current server user.
+            try {
+                const userModule = await import("../../user.js");
+                getCurrentUserHandle = userModule.getCurrentUserHandle;
+            } catch (e) {
+                console.warn("[ImageGen] Could not import user module:", e.message);
             }
 
             await loadSettings();

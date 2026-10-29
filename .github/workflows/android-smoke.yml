@@ -1,0 +1,350 @@
+name: Android Smoke
+
+# The automated Android smoke (plan §7.1, tasks 6.2-6.4), shared by bootstrap-smoke.yml (pull requests that touch
+# Android-relevant files), nightly.yml and release.yml. It builds an x86_64 test APK of the caller's commit with the
+# fixture URL overrides, boots the emulator matrix and runs tests/android-smoke/run-smoke.js on each emulator.
+# Until android-runtime.yml first publishes the Node binaries, android/runtime.lock leaves their digests null and
+# there is nothing to package: the smoke then reports the outcome `skipped` with a notice, and never passes silently.
+
+on:
+  workflow_call:
+    inputs:
+      # The branch the test APK clones (-PdefaultRef); the fixture remote serves it as the app's update branch.
+      default-ref:
+        type: string
+        required: false
+        default: staging
+      # The commit to build and test. Empty means the caller's event commit; a scheduled caller must pass one,
+      # because its event commit is the default branch's tip.
+      ref:
+        type: string
+        required: false
+        default: ''
+    outputs:
+      outcome:
+        value: ${{ jobs.result.outputs.outcome }}
+
+permissions: {}
+
+# github.workflow is the caller's name here, so the prefix keeps this group apart from the caller's own group.
+concurrency:
+  group: android-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.guard.outputs.run }}
+      reason: ${{ steps.guard.outputs.reason }}
+      default-ref: ${{ steps.default-ref.outputs.default-ref }}
+    steps:
+      - name: Check the default-ref input
+        id: default-ref
+        env:
+          DEFAULT_REF: ${{ inputs.default-ref }}
+        run: |
+          case "$DEFAULT_REF" in
+            staging | release)
+              echo "default-ref=$DEFAULT_REF" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '{"code":"invalid-default-ref","allowed":["staging","release"]}' >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # All Node digests null: skip (outcome `skipped`, a notice and a job-summary line). All pinned: run.
+      # Anything in between is a broken lock and fails here.
+      - name: Check the Node runtime pins
+        id: guard
+        run: node tests/android-smoke/run-smoke.js guard --runtime-lock android/runtime.lock
+
+  build:
+    name: Build the x86_64 test APK
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      DEFAULT_REF: ${{ needs.plan.outputs.default-ref }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install the runtime tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends patchelf python3-pyelftools zstd
+
+      - name: Set up oras
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.5/oras_1.3.5_linux_amd64.tar.gz
+          checksum: f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22
+
+      # Track p45b's order: fetch-termux.sh, fetch-node.py by digest, build-npm.py, then build-sources.sh, which
+      # leaves the pinned Node source tarball in the download cache for the notices Gradle generates.
+      - name: Stage the Termux runtime
+        run: bash android/runtime/fetch-termux.sh
+
+      - name: Fetch Node by digest
+        run: python3 -B android/runtime/fetch-node.py
+
+      - name: Build npm
+        run: python3 -B android/runtime/build-npm.py
+
+      - name: Build the sources archive
+        run: bash android/runtime/build-sources.sh --require-node --output "$RUNNER_TEMP/SillyBunny-android-sources.tar.zst"
+
+      - name: Set up JDK 21 and the Android SDK packages
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          (yes || true) | "$sdkmanager" --licenses > /dev/null
+          "$sdkmanager" --install 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370' > "$RUNNER_TEMP/sdkmanager.log"
+
+      - name: Build the test APKs
+        working-directory: android
+        run: |
+          set -euo pipefail
+          # Without these the APK would clone and update from the real repository.
+          urls=$(node ../tests/android-smoke/run-smoke.js gradle-args --format args)
+          read -r -a fixture_urls <<< "$urls"
+          test "${#fixture_urls[@]}" -eq 3
+          ./gradlew --no-daemon --console=plain -PrequireRuntime -PincludeX86_64 "-PdefaultRef=$DEFAULT_REF" \
+            "${fixture_urls[@]}" :app:assembleDebug :app:assembleDebugAndroidTest
+          mkdir -p "$RUNNER_TEMP/android-smoke-apks"
+          cp app/build/outputs/apk/debug/app-x86_64-debug.apk "$RUNNER_TEMP/android-smoke-apks/app.apk"
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$RUNNER_TEMP/android-smoke-apks/test.apk"
+
+      # Step 6 updates the installed APK to versionCode + 1, signed with the same debug key.
+      - name: Build the update APK
+        working-directory: android
+        run: |
+          set -euo pipefail
+          urls=$(node ../tests/android-smoke/run-smoke.js gradle-args --format args)
+          read -r -a fixture_urls <<< "$urls"
+          test "${#fixture_urls[@]}" -eq 3
+          version_code=$(sed -n 's/^versionCode=//p' app-version.properties)
+          sed -i "s/^versionCode=.*/versionCode=$((version_code + 1))/" app-version.properties
+          grep -qx "versionCode=$((version_code + 1))" app-version.properties
+          ./gradlew --no-daemon --console=plain -PrequireRuntime -PincludeX86_64 "-PdefaultRef=$DEFAULT_REF" \
+            "${fixture_urls[@]}" :app:assembleDebug
+          cp app/build/outputs/apk/debug/app-x86_64-debug.apk "$RUNNER_TEMP/android-smoke-apks/update.apk"
+
+      # Step 13 on every ABI: the device run checks the x86_64 APK, this checks all of them for Bun.
+      - name: Check the APKs for Bun
+        run: >-
+          node tests/android-smoke/run-smoke.js apk-check
+          --apk android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+          --apk android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
+          --apk "$RUNNER_TEMP/android-smoke-apks/app.apk"
+          --apk "$RUNNER_TEMP/android-smoke-apks/update.apk"
+
+      - name: Upload the test APKs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-smoke-apks
+          path: ${{ runner.temp }}/android-smoke-apks
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+      # Build reports only: never android/.gradle/, which holds caches and, in release builds, signing material.
+      - name: Upload build reports
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-smoke-build-reports-${{ github.run_attempt }}
+          path: |
+            android/app/build/reports/
+            android/build/reports/
+            ${{ runner.temp }}/sdkmanager.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  smoke:
+    name: Smoke (API ${{ matrix.api-level }}, ${{ matrix.target }})
+    needs:
+      - plan
+      - build
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: '29'
+            target: default
+          - api-level: '36'
+            target: default
+          - api-level: '37.0'
+            target: google_apis_ps16k
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      - name: Install test dependencies
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc
+        run: npm ci --ignore-scripts --prefix tests
+
+      # A WebView older than the frontend's minimum (API 29's image) shows the app's version warning, so the web
+      # steps drive the frontend in a host browser instead, as the app's Open in browser does.
+      - name: Install Chromium
+        working-directory: tests
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Download the test APKs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-smoke-apks
+          path: ${{ runner.temp }}/android-smoke-apks
+
+      # The action runs cmdline-tools/latest/bin/avdmanager, so Command-line Tools 23.0 must be that folder itself.
+      - name: Pin Command-line Tools 23.0
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/cmdline-tools"
+          (yes || true) | "$tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$tools/latest/bin/sdkmanager" --install 'cmdline-tools;23.0' > /dev/null
+          rm -rf "$tools/latest"
+          mv "$tools/23.0" "$tools/latest"
+          grep -qx 'Pkg.Revision=23.0' "$tools/latest/source.properties"
+
+      # Hardware acceleration or nothing: the emulator runs with -accel on, never a silent software fallback.
+      # Without --settle, udevadm returns before udev applies the new mode, so the check can fail on a usable device.
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm --settle
+          ls -l /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+
+      # The action replaces the emulator with build 16428233 later; any build can answer -accel-check. It
+      # reports an unusable accelerator through its exit status, so the step prints the reason before failing.
+      - name: Check the hardware acceleration
+        run: |
+          set -euo pipefail
+          if [ ! -x "$ANDROID_HOME/emulator/emulator" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install emulator > /dev/null
+          fi
+          status=0
+          accel=$("$ANDROID_HOME/emulator/emulator" -accel-check 2>&1) || status=$?
+          printf '%s\n' "$accel"
+          test "$status" -eq 0
+          grep -q 'is installed and usable' <<< "$accel"
+
+      # Each script line runs on its own (`sh -c`); the first failing line ends the script and fails the step.
+      # The action stops the emulator right after the script, so `run` collects its logs itself.
+      - name: Run the smoke
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          SMOKE_API_LEVEL: ${{ matrix.api-level }}
+          SMOKE_DEFAULT_REF: ${{ needs.plan.outputs.default-ref }}
+          SMOKE_APKS: ${{ runner.temp }}/android-smoke-apks
+          SMOKE_OUT: ${{ runner.temp }}/android-smoke-out
+          SMOKE_SCRATCH: ${{ runner.temp }}/android-smoke-scratch
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          emulator-build: '16428233'
+          ram-size: '4096M'
+          disk-size: '8G'
+          cores: 2
+          force-avd-creation: true
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on
+          script: |
+            node tests/android-smoke/run-smoke.js preflight --api-level "$SMOKE_API_LEVEL" --avd test --emulator-build 16428233 --ui-timeout-seconds 600 --dns-timeout-seconds 90 --out "$SMOKE_OUT"
+            node tests/android-smoke/run-smoke.js run --apk "$SMOKE_APKS/app.apk" --update-apk "$SMOKE_APKS/update.apk" --test-apk "$SMOKE_APKS/test.apk" --default-ref "$SMOKE_DEFAULT_REF" --idle-wait-minutes 10 --out "$SMOKE_OUT" --scratch "$SMOKE_SCRATCH"
+
+      # Run results, device logs and fixture logs. No secrets reach this job.
+      - name: Upload smoke logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-smoke-logs-api-${{ matrix.api-level }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/android-smoke-out/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  result:
+    name: Result
+    needs:
+      - plan
+      - build
+      - smoke
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.outcome.outputs.outcome }}
+    steps:
+      - name: Report the outcome
+        id: outcome
+        env:
+          PLAN: ${{ needs.plan.result }}
+          RUN: ${{ needs.plan.outputs.run }}
+          REASON: ${{ needs.plan.outputs.reason }}
+          BUILD: ${{ needs.build.result }}
+          SMOKE: ${{ needs.smoke.result }}
+        run: |
+          if [ "$PLAN" = success ] && [ "$RUN" = false ]; then
+            echo 'outcome=skipped' >> "$GITHUB_OUTPUT"
+          elif [ "$PLAN" = success ] && [ "$RUN" = true ] && [ "$BUILD" = success ] && [ "$SMOKE" = success ]; then
+            echo 'outcome=passed' >> "$GITHUB_OUTPUT"
+          else
+            echo '::error title=TODO(copy)::TODO(copy)'
+            # Job results and the guard's machine codes: plain words, safe to print unescaped.
+            printf '{"plan":"%s","run":"%s","reason":"%s","build":"%s","smoke":"%s"}\n' "$PLAN" "$RUN" "$REASON" "$BUILD" "$SMOKE" >&2
+            exit 1
+          fi

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Toast when a file picker result is unusable or no picker can open. -->
+    <string name="web_files_rejected">TODO(copy)</string>
+    <!-- Toasts after a page export or download finishes or fails. -->
+    <string name="web_transfer_saved">TODO(copy)</string>
+    <string name="web_transfer_failed">TODO(copy)</string>
+    <!-- Dialog offered when this WebView cannot capture a page export. -->
+    <string name="web_transfer_unsupported_title">TODO(copy)</string>
+    <string name="web_transfer_unsupported_message">TODO(copy)</string>
+    <string name="web_transfer_open_in_browser">TODO(copy)</string>
+    <string name="web_transfer_dismiss">TODO(copy)</string>
+</resources>

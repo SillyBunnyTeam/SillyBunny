@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WebView screen (plan §4.5). Placeholder copy until humans write it. -->
+    <string name="web_dialog_ok">TODO(copy)</string>
+    <string name="web_dialog_cancel">TODO(copy)</string>
+    <string name="web_dialog_leave_title">TODO(copy)</string>
+    <string name="web_dialog_leave">TODO(copy)</string>
+    <string name="web_dialog_stay">TODO(copy)</string>
+    <string name="web_version_warning">TODO(copy)</string>
+    <string name="web_open_in_browser">TODO(copy)</string>
+    <string name="web_update_webview">TODO(copy)</string>
+    <string name="web_dismiss">TODO(copy)</string>
+    <string name="web_load_failed">TODO(copy)</string>
+    <string name="web_retry">TODO(copy)</string>
+    <string name="web_no_browser">TODO(copy)</string>
+</resources>

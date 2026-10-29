@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-fullscreen</title></head><body>
+<div id="box" style="height:120px;background:#c33;color:#fff">box</div>
+<button class="b" id="go">fullscreen</button>
+<script>
+window.results = {};
+document.getElementById('go').onclick = () => {
+  document.getElementById('box').requestFullscreen().then(() => { results.fs = 'ok'; }, (e) => { results.fs = 'err:' + e.name; });
+};
+</script>
+</body></html>
