@@ -665,6 +665,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Server runtime integrator. |
 
+### simple-git named imports
+| Field | Value |
+| --- | --- |
+| File | `plugins.js`, `src/plugin-loader.js`, `src/util.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
+| Area | Git integration for server plugins, extensions, the git backend client and version info. |
+| Divergence reason | TODO(copy) |
+| Target seam | None; the import statement is the whole divergence. |
+| Adapter shape | Each file imports the named `simpleGit` export instead of the default export and keeps its local name: `git` in `plugins.js` and `src/plugin-loader.js`, `simpleGit` in the others. |
+| Protecting tests | `tests/plugin-loader.test.js` mocks the named export. `tests/extensions-discover.test.js` loads `src/endpoints/extensions.js` and `src/git/client.js` without mocks, and most server suites load `src/util.js`, so these suites fail at import if the export is missing. No test loads `plugins.js`. |
+| Validation | `npm run lint`, `npm run test:unit --prefix tests -- plugin-loader.test.js connection-state-checker.test.js`, the full `npm run test:unit`. Manual checks on Windows with Bun and Node: extension install with and without a branch, per user and global, then version, branches, switch, update and delete; `plugins.js install` and `update`; server plugin auto-update at startup; server update, auto-stash update and branch switch in a disposable checkout; version info with `GIT_DIR` set in the server environment; an extension install with the `builtin` backend. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-24 simple-git 4 upgrade. |
+| Owner | TODO(copy) |
+
 ### Upstream test harness and dependency metadata
 | Field | Value |
 | --- | --- |
