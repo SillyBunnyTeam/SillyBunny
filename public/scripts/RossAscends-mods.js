@@ -362,9 +362,11 @@ async function RA_autoloadchat() {
     }
 }
 
-export async function favsToHotswap() {
-    const entities = getEntitiesList({ doFilter: false });
+export async function favsToHotswap({ onlyIfVisible = false } = {}) {
     const container = $('#right-nav-panel .hotswap');
+    // SillyBunny: skip the retired strip during list prints, retain explicit API rebuilding — see docs/ui-migration.md.
+    if (onlyIfVisible && !container.is(':visible')) return;
+    const entities = getEntitiesList({ doFilter: false });
 
     // The bar scrolls sideways and avatars are lazy-loaded thumbnails, so the old
     // fits-on-one-screen cap of 25 no longer applies; this is just a sanity bound.
@@ -386,7 +388,11 @@ function RA_checkOnlineStatus() {
         const send_textarea = $('#send_textarea');
         send_textarea.attr('placeholder', send_textarea.attr('no_connection_text')); //Input bar placeholder tells users they are not connected
         $('#send_form').addClass('no-connection');
-        $('#send_but').addClass('displayNone'); //send button is hidden when not connected;
+        // SillyBunny: keep idle Send visible offline, but disable keyboard activation and preserve generation hiding.
+        $('#send_but')
+            .toggleClass('displayNone', is_send_press || Boolean(selected_group && is_group_generating))
+            .addClass('disabled')
+            .attr('aria-disabled', 'true');
         $('#mes_continue').addClass('displayNone'); //continue button is hidden when not connected;
         $('#mes_impersonate').addClass('displayNone'); //continue button is hidden when not connected;
         $('#API-status-top').removeClass('fa-plug');
@@ -397,6 +403,7 @@ function RA_checkOnlineStatus() {
             const send_textarea = $('#send_textarea');
             send_textarea.attr('placeholder', send_textarea.attr('connected_text')); //on connect, placeholder tells user to type message
             $('#send_form').removeClass('no-connection');
+            $('#send_but').removeClass('disabled').attr('aria-disabled', 'false');
             $('#API-status-top').removeClass('fa-plug-circle-exclamation redOverlayGlow');
             $('#API-status-top').addClass('fa-plug');
             connection_made = true;
@@ -540,6 +547,8 @@ const saveUserInputDebounced = debounce(saveUserInput);
  * @param {JQuery} $elmnt - The element to make draggable.
  */
 export function dragElement($elmnt) {
+    // SillyBunny: registered panels use dock geometry and must not enter MovingUI's pointer workflow.
+    if ($elmnt.closest('.sb-side-panel').length) return;
     let actionType = null; // "drag" or "resize"
     let isMouseDown = false;
 
@@ -704,6 +713,7 @@ export function dragElement($elmnt) {
 
     // Setup event listeners using event delegation to support dynamic header elements like #sb_conversation_header
     $(document).off('mousedown', headerSelector).on('mousedown', headerSelector, (e) => {
+        if ($elmnt.closest('.sb-side-panel').length) return;
         const isHeader = $(e.target).closest('#sb_conversation_header').length > 0;
         const isInteractive = $(e.target).closest('button, input, select, textarea, [role="button"], a, i').length > 0;
         if ($(e.target).hasClass('drag-grabber') || (isHeader && !isInteractive)) {
@@ -715,6 +725,8 @@ export function dragElement($elmnt) {
     });
 
     $elmnt.off('mousedown').on('mousedown', (e) => {
+        // SillyBunny: this also covers a panel registered after MovingUI installed its handlers.
+        if ($elmnt.closest('.sb-side-panel').length) return;
         const rect = $elmnt[0].getBoundingClientRect();
         const resizeMargin = 16;
         const isNearRight = e.clientX > rect.right - resizeMargin;
@@ -798,21 +810,6 @@ export function initRossMods() {
     });
 
     $('#api_button').on('click', () => checkStatusDebounced());
-
-    // Mouse wheel scrolls the favorites hotswap bar sideways.
-    // Native listener because jQuery cannot register non-passive wheel handlers.
-    const hotswapBar = document.querySelector('#HotSwapWrapper .hotswap');
-    hotswapBar?.addEventListener('wheel', (event) => {
-        if (event.ctrlKey || event.metaKey) return;
-        if (hotswapBar.scrollWidth <= hotswapBar.clientWidth) return;
-        // Leave trackpad horizontal swipes to native handling
-        if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-        event.preventDefault();
-        // deltaMode 1 = lines (Firefox); convert to roughly one avatar per line
-        const step = event.deltaMode === 1 ? event.deltaY * 34 : event.deltaY;
-        // 'instant' so rapid wheel ticks accumulate instead of restarting a smooth animation
-        hotswapBar.scrollTo({ left: hotswapBar.scrollLeft + step, behavior: 'instant' });
-    }, { passive: false });
 
     //toggle pin class when lock toggle clicked
     $(RPanelPin).on('click', function () {
@@ -1244,6 +1241,14 @@ export function initRossMods() {
                 return;
             }
 
+            // SillyBunny: the settings page closes itself on Escape, and other SillyBunny surfaces mark
+            // an Escape they used with preventDefault. The page's sections stay laid out even while it
+            // is closed, so `:visible` is always true for them and they are skipped here.
+            if (event.defaultPrevented || $(event.target).closest('#sb-settings-page').length) {
+                return;
+            }
+            const settingsPageContent = '.sb-settings-mounted-shell, .sb-settings-mounted-shell *';
+
             if ($('.drawer-content')
                 .not('#WorldInfo')
                 .not('#left-nav-panel')
@@ -1252,6 +1257,7 @@ export function initRossMods() {
                 .not('#cfgConfig')
                 .not('#logprobsViewer')
                 .not('#movingDivs > div')
+                .not(settingsPageContent)
                 .is(':visible')) {
                 let visibleDrawerContent = $('.drawer-content:visible')
                     .not('#WorldInfo')
@@ -1260,7 +1266,8 @@ export function initRossMods() {
                     .not('#floatingPrompt')
                     .not('#cfgConfig')
                     .not('#logprobsViewer')
-                    .not('#movingDivs > div');
+                    .not('#movingDivs > div')
+                    .not(settingsPageContent);
                 $(visibleDrawerContent).parent().find('.drawer-icon').trigger('click');
                 return;
             }
@@ -1280,7 +1287,7 @@ export function initRossMods() {
                 return;
             }
 
-            if ($('#WorldInfo').is(':visible')) {
+            if ($('#WorldInfo').not(settingsPageContent).is(':visible')) {
                 globalThis.SillyBunnyShell?.closeCharacters?.();
                 return;
             }
@@ -1293,20 +1300,28 @@ export function initRossMods() {
                 }
             }
 
-            // SillyBunny removes the legacy left-panel pin, so Escape always closes this shell.
-            if ($('#left-nav-panel').is(':visible')) {
+            // SillyBunny removes the legacy left-panel pin. The panel lives in the settings page,
+            // so this only runs if it was never mounted there.
+            if ($('#left-nav-panel').not(settingsPageContent).is(':visible')) {
                 $('#leftNavDrawerIcon').trigger('click');
                 return;
             }
 
-            if ($('#right-nav-panel').is(':visible') &&
+            if ($('#right-nav-panel').not(settingsPageContent).is(':visible') &&
                 $(RPanelPin).prop('checked') === false) {
                 $('#rightNavDrawerIcon').trigger('click');
                 return;
             }
             if ($('.draggable').is(':visible')) {
-                // Remove the first matched element
-                $('.draggable:first').remove();
+                // SillyBunny: hidden draggables such as the chat sidebar come first in the page, and
+                // portraits stay laid out but unseen under the open settings page. Remove the topmost one in view.
+                const draggablesInView = $('.draggable:visible').filter((_, element) => getComputedStyle(element).visibility !== 'hidden');
+                draggablesInView.last().remove();
+                return;
+            }
+
+            // SillyBunny: docked panels defer to the ordered legacy Escape surfaces above.
+            if (globalThis.SillyBunnySidePanels?.closeTopmostSidePanelOnEscape?.(event)) {
                 return;
             }
         }

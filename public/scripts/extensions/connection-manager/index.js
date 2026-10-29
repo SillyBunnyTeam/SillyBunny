@@ -20,6 +20,10 @@ import { performFuzzySearch } from '/scripts/power-user.js';
 import { StreamingDisplay } from '/scripts/streaming-display.js';
 import { ConnectionManagerRequestService, getProfileServiceTier } from '../shared.js';
 import { formatReasoning } from '/scripts/reasoning.js';
+import { abandonProfileSwitchReport, beginProfileSwitchReport, clearProfileSwitchOrigin, finishProfileSwitchReport, initProfileChangeNotice, markScriptedProfileSwitch, refreshProfileSetsLine, takeProfileSwitchStart } from './profile-change-notice.js';
+import { PROFILE_SNAPSHOT_NAMES, PROFILE_SWITCH_COPY, getAppliedCommands, getProfileCommandList } from './profile-change-model.js';
+// SillyBunny: adopt upstream controls into shared dialog rows without changing profile persistence.
+import { adaptProfileDeletion, adaptProfileDetails, adaptProfileFolders, profileDialogOptions, releaseProfileDialog } from './sillybunny-dialogs.js';
 
 const MODULE_NAME = 'connection-manager';
 const NONE = '<None>';
@@ -108,6 +112,7 @@ const TC_COMMANDS = [
     'regex-preset',
 ];
 
+// SillyBunny: the profile snapshot labels live in PROFILE_SNAPSHOT_NAMES (profile-change-model.js), so each label here names one command.
 const FANCY_NAMES = {
     'api': 'API',
     'api-url': 'Server URL',
@@ -143,12 +148,6 @@ const FANCY_NAMES = {
     'prompt-post-processing': 'Prompt Post-Processing',
     'secret-id': 'Secret',
     'regex-preset': 'Regex Preset',
-    'active-agents': 'Active Agents',
-    'samplers': 'Samplers',
-    'instruct-template': 'Instruct Template',
-    'context-template': 'Context Template',
-    'system-prompt': 'System Prompt',
-    'world-info-active-count': 'World Info Active Entries',
 };
 
 /**
@@ -789,15 +788,11 @@ async function createConnectionProfile(forceName = null) {
 
     await readProfileFromCommands(mode, profile);
 
-    const profileForDisplay = makeFancyProfile(profile);
-    const template = $(await renderExtensionTemplateAsync(MODULE_NAME, 'profile', { profile: profileForDisplay }));
+    // SillyBunny: one row per applied command, keyed by command id, so a checkbox's value is the id it excludes.
+    const rows = getProfileCommandRows(profile);
+    const template = $(await renderExtensionTemplateAsync(MODULE_NAME, 'profile', { rows }));
     template.find('input[name="exclude"]').on('input', function () {
-        const fancyName = String($(this).val());
-        const keyName = Object.entries(FANCY_NAMES).find(x => x[1] === fancyName)?.[0];
-        if (!keyName) {
-            console.warn('Key not found for fancy name:', fancyName);
-            return;
-        }
+        const keyName = String($(this).val());
 
         if (!Array.isArray(profile.exclude)) {
             profile.exclude = [];
@@ -813,7 +808,8 @@ async function createConnectionProfile(forceName = null) {
     });
     const isNameTaken = (n) => extension_settings.connectionManager.profiles.some(p => p.name === n);
     const suggestedName = getUniqueName(collapseSpaces(`${profile.api ?? ''} ${profile.model ?? ''} - ${profile.preset ?? ''}`), isNameTaken);
-    let name = forceName ?? await callGenericPopup(template, POPUP_TYPE.INPUT, suggestedName);
+    // SillyBunny: check rows and an adopted mainInput share the Dialog scrolling body.
+    let name = forceName ?? await callGenericPopup(template, POPUP_TYPE.INPUT, suggestedName, profileDialogOptions(template[0]));
     // If it's cancelled, it will be false
     if (!name) {
         return null;
@@ -904,6 +900,9 @@ async function selectConnectionProfilesForDeletion() {
         okButton: t`Delete selected`,
         cancelButton: t`Cancel`,
         wide: true,
+        // SillyBunny: pick-several rows; destructive response never receives initial focus.
+        ...adaptProfileDeletion(html[0]),
+        defaultResult: POPUP_RESULT.NEGATIVE,
     }).show();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -927,6 +926,11 @@ async function deleteAllConnectionProfiles() {
     const confirm = await Popup.show.confirm(
         t`Delete selected connection profiles?`,
         t`This will permanently delete ${profilesToDelete.length} saved connection profile(s).`,
+        {
+            // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        },
     );
 
     if (!confirm) {
@@ -947,41 +951,56 @@ async function deleteAllConnectionProfiles() {
     toastr.success(t`Deleted ${profilesToDelete.length} connection profile(s).`);
 }
 
+// SillyBunny: makeFancyProfile was replaced by formatProfileCommandValue (id-keyed rows).
 /**
- * Formats the connection profile for display.
+ * Formats one recorded command value of the connection profile for display.
  * @param {ConnectionProfile} profile Connection profile
- * @returns {Object} Fancy profile
+ * @param {string} key Command id
+ * @returns {string|undefined} Display value, or undefined when the command has no value to show
  */
-function makeFancyProfile(profile) {
-    return Object.entries(FANCY_NAMES).reduce((acc, [key, value]) => {
-        const allowEmpty = ALLOW_EMPTY.includes(key);
-        if (!profile[key]) {
-            if (profile[key] === '' && allowEmpty) {
-                acc[value] = EMPTY;
-            }
-            return acc;
-        }
+function formatProfileCommandValue(profile, key) {
+    if (!profile[key]) {
+        return profile[key] === '' && ALLOW_EMPTY.includes(key) ? EMPTY : undefined;
+    }
 
-        // UUID is not very useful in the UI, so we replace it with a label (if available)
-        if (key === 'secret-id') {
-            const label = getSecretLabelById(profile[key]);
-            if (label) {
-                acc[value] = label;
-                return acc;
-            }
+    // UUID is not very useful in the UI, so we replace it with a label (if available)
+    if (key === 'secret-id') {
+        const label = getSecretLabelById(profile[key]);
+        if (label) {
+            return label;
         }
+    }
 
-        if (key === 'regex-preset') {
-            const label = extension_settings.regex_presets?.find(p => p.id === profile[key])?.name;
-            if (label) {
-                acc[value] = label;
-                return acc;
-            }
+    if (key === 'regex-preset') {
+        const label = extension_settings.regex_presets?.find(p => p.id === profile[key])?.name;
+        if (label) {
+            return label;
         }
+    }
 
-        acc[value] = profile[key];
-        return acc;
-    }, {});
+    return profile[key];
+}
+
+/**
+ * Builds one row per command a switch to the profile applies, keyed by command id, in FANCY_NAMES order.
+ * @param {ConnectionProfile} profile Connection profile
+ * @returns {{ id: string, label: string, value: string }[]} Rows for the View and Create popups
+ */
+function getProfileCommandRows(profile) {
+    // SillyBunny: rows follow the apply rules, so proxy shows None when it resets and service tier shows the tier it sends.
+    const serviceTier = getProfileServiceTier(profile);
+    const viewOrder = Object.keys(FANCY_NAMES);
+    return getAppliedCommands(profile, { ccCommands: CC_COMMANDS, tcCommands: TC_COMMANDS, allowEmpty: ALLOW_EMPTY, serviceTierApplied: serviceTier !== undefined })
+        .sort((a, b) => viewOrder.indexOf(a) - viewOrder.indexOf(b))
+        .map(id => {
+            let value = formatProfileCommandValue(profile, id);
+            if (id === 'proxy' && !profile.proxy) {
+                value = NONE;
+            } else if (id === 'service-tier') {
+                value = serviceTier === '' ? 'default' : serviceTier;
+            }
+            return { id, label: FANCY_NAMES[id], value };
+        });
 }
 
 /**
@@ -1160,7 +1179,36 @@ function renderConnectionProfiles(profiles) {
  * Renders the content of the details element.
  * @param {HTMLElement} detailsContent Content element of the details
  */
+/**
+ * Builds the profile's details as the body of the details modal.
+ *
+ * The same summary the inline card used, without the card: the modal supplies the frame, the
+ * heading, and the scroll region, so the markup here is only the list of settings and the omitted
+ * ones. Nothing is cached -- a profile can be edited while the modal is up, and the summary is
+ * cheap to build.
+ *
+ * @param {object} profile
+ * @returns {Promise<string>} sanitized HTML
+ */
+async function buildProfileDetailsContent(profile) {
+    // SillyBunny: applied commands keyed by id, then the snapshot fields under their own heading. A template
+    // snapshot is shown only for TC profiles (a profile without a mode is TC) that do not apply the template themselves.
+    const applied = getProfileCommandRows(profile);
+    const appliedIds = new Set(applied.map(row => row.id));
+    const pairedCommands = { 'instruct-template': 'instruct', 'context-template': 'context', 'system-prompt': 'sysprompt' };
+    const snapshot = Object.keys(PROFILE_SNAPSHOT_NAMES)
+        .filter(id => profile[id] !== undefined && profile[id] !== null && profile[id] !== '')
+        .filter(id => !pairedCommands[id] || (profile.mode !== 'cc' && !appliedIds.has(pairedCommands[id])))
+        .map(id => ({ id, label: PROFILE_SNAPSHOT_NAMES[id], value: profile[id] }));
+    const templateParams = { applied, snapshot, snapshotHeading: PROFILE_SWITCH_COPY.snapshotHeading };
+    if (Array.isArray(profile.exclude) && profile.exclude.length > 0) {
+        templateParams.omitted = profile.exclude.map(e => FANCY_NAMES[e] ?? PROFILE_SNAPSHOT_NAMES[e] ?? e).join(', ');
+    }
+    return renderExtensionTemplateAsync(MODULE_NAME, 'view', templateParams);
+}
+
 async function renderDetailsContent(detailsContent) {
+    refreshProfileSetsLine(); // SillyBunny: keep the "Also sets" card line in step with the selected profile.
     detailsContent.innerHTML = '';
     if (detailsContent.classList.contains('hidden')) {
         return;
@@ -1168,13 +1216,7 @@ async function renderDetailsContent(detailsContent) {
     const selectedProfile = extension_settings.connectionManager.selectedProfile;
     const profile = extension_settings.connectionManager.profiles.find(p => p.id === selectedProfile);
     if (profile) {
-        const profileForDisplay = makeFancyProfile(profile);
-        const templateParams = { profile: profileForDisplay };
-        if (Array.isArray(profile.exclude) && profile.exclude.length > 0) {
-            templateParams.omitted = profile.exclude.map(e => FANCY_NAMES[e]).join(', ');
-        }
-        const template = await renderExtensionTemplateAsync(MODULE_NAME, 'view', templateParams);
-        detailsContent.innerHTML = template;
+        detailsContent.innerHTML = await buildProfileDetailsContent(profile);
     } else {
         detailsContent.textContent = t`No profile selected`;
     }
@@ -1463,6 +1505,7 @@ export async function init() {
         updateFavoriteButtonState(Boolean(profile?.fav));
     }
     toggleProfileSpecificButtons();
+    initProfileChangeNotice({ ccCommands: CC_COMMANDS, tcCommands: TC_COMMANDS, allowEmpty: ALLOW_EMPTY, fancyNames: FANCY_NAMES }); // SillyBunny: first paint of the "Also sets" card line.
 
     /**
      * Refreshes profile organization controls after folder/favorite changes.
@@ -1499,6 +1542,8 @@ export async function init() {
             }
 
             const content = await buildFolderManagerContent();
+            // SillyBunny: release adopted row IDs before replacing immediate-apply content.
+            releaseProfileDialog(popup.content);
             popup.content.innerHTML = '';
             $(popup.content).append(content);
         }
@@ -1564,6 +1609,11 @@ export async function init() {
                     profileCount > 0
                         ? t`Deleting "${folder.name}" will move ${profileCount} profile(s) to the root level.`
                         : folder.name,
+                    {
+                        // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
+                        defaultResult: POPUP_RESULT.NEGATIVE,
+                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                    },
                 );
                 if (!confirm) {
                     return;
@@ -1581,6 +1631,8 @@ export async function init() {
                 toastr.success(t`Profile folder deleted.`);
             });
 
+            // SillyBunny: retain folder-item ancestry and every live input/action handler.
+            adaptProfileFolders(template[0]);
             return template;
         }
 
@@ -1590,6 +1642,10 @@ export async function init() {
             cancelButton: false,
             wide: true,
             allowVerticalScrolling: true,
+            // SillyBunny: immediate apply uses header Close; keep the title on content refresh.
+            tier: 'dialog',
+            title: t`Manage Profile Folders`,
+            onClose: () => releaseProfileDialog(popup.content),
         });
         await popup.show();
     }
@@ -1622,6 +1678,7 @@ export async function init() {
     });
 
     profiles.addEventListener('change', async function () {
+        const sbSwitchStart = takeProfileSwitchStart(); // SillyBunny: read the switch origin before the first await.
         const applySequence = ++profileApplySequence;
         const selectedProfile = profiles.selectedOptions[0];
         if (!selectedProfile) {
@@ -1649,10 +1706,11 @@ export async function init() {
             console.debug(`Profile not found: ${profileId}`);
             return;
         }
-
+        const sbReport = beginProfileSwitchReport({ profile, applySequence, ...sbSwitchStart }); // SillyBunny: take the before-switch snapshot.
         try {
             await applyConnectionProfile(profile);
         } catch (error) {
+            abandonProfileSwitchReport(sbReport); // SillyBunny: a failed apply leaves no baseline behind.
             if (!isProfileApplicationAbort(error)) {
                 console.error('Failed to apply connection profile', error);
             }
@@ -1665,6 +1723,7 @@ export async function init() {
 
         await saveSettings();
         await eventSource.emit(event_types.CONNECTION_PROFILE_LOADED, profile.name);
+        void finishProfileSwitchReport(sbReport, () => applySequence === profileApplySequence); // SillyBunny: summarize once settled.
     });
 
     const reloadButton = document.getElementById('reload_connection_profile');
@@ -1679,10 +1738,12 @@ export async function init() {
             console.debug('No profile selected');
             return;
         }
-        ++profileApplySequence;
+        const applySequence = ++profileApplySequence;
+        const sbReport = beginProfileSwitchReport({ profile, applySequence, origin: 'user', notify: true, previousProfileId: profile.id }); // SillyBunny: Reload reports as a user switch.
         try {
             await applyConnectionProfile(profile);
         } catch (error) {
+            abandonProfileSwitchReport(sbReport); // SillyBunny: a failed apply leaves no baseline behind.
             if (!isProfileApplicationAbort(error)) {
                 console.error('Failed to reload connection profile', error);
             }
@@ -1692,6 +1753,7 @@ export async function init() {
         await saveSettings();
         await eventSource.emit(event_types.CONNECTION_PROFILE_LOADED, profile.name);
         toastr.success('Connection profile reloaded', '', { timeOut: 1500 });
+        void finishProfileSwitchReport(sbReport, () => applySequence === profileApplySequence); // SillyBunny: summarize once settled.
     });
 
     const createButton = document.getElementById('create_connection_profile');
@@ -1771,21 +1833,20 @@ export async function init() {
 
         let saveChanges = false;
         const sortByViewOrder = (a, b) => Object.keys(FANCY_NAMES).indexOf(a) - Object.keys(FANCY_NAMES).indexOf(b);
-        const commands = profile.mode === 'cc' ? CC_COMMANDS : TC_COMMANDS;
-        const settings = commands.slice().sort(sortByViewOrder).reduce((acc, command) => {
-            const fancyName = FANCY_NAMES[command];
-            acc[fancyName] = !profile.exclude.includes(command);
-            return acc;
-        }, {});
+        // SillyBunny: one checkbox per command id (CC lists `api` twice), so a checkbox's value is the id it excludes.
+        const commands = getProfileCommandList(profile, { ccCommands: CC_COMMANDS, tcCommands: TC_COMMANDS });
+        const rows = commands.slice().sort(sortByViewOrder).map(id => ({ id, label: FANCY_NAMES[id], checked: !profile.exclude.includes(id) }));
         const folders = getSortedFolders().map(folder => ({
             ...folder,
             selected: folder.id === profile.folderId,
         }));
-        const template = $(await renderExtensionTemplateAsync(MODULE_NAME, 'edit', { name: profile.name, settings, folders }));
+        const template = $(await renderExtensionTemplateAsync(MODULE_NAME, 'edit', { name: profile.name, rows, folders }));
         let newName = await callGenericPopup(template, POPUP_TYPE.INPUT, profile.name, {
+            // SillyBunny: preserve the folder select, exclusions and name control inside shared rows.
+            ...profileDialogOptions(template[0], { edit: true }),
             customButtons: [{
                 text: t`Save and Update`,
-                classes: ['popup-button-ok'],
+                // SillyBunny: Save is the sole suggested response; keep this extra response neutral.
                 result: POPUP_RESULT.AFFIRMATIVE,
                 action: () => {
                     saveChanges = true;
@@ -1808,9 +1869,12 @@ export async function init() {
             return;
         }
 
-        const newExcludeList = template.find('input[name="exclude"]:not(:checked)').map(function () {
-            return Object.entries(FANCY_NAMES).find(x => x[1] === String($(this).val()))?.[0];
+        // SillyBunny: exclude entries the popup did not render (other mode, legacy or unknown ids) are kept as they are.
+        const renderedIds = new Set(rows.map(r => r.id));
+        const uncheckedIds = template.find('input[name="exclude"]:not(:checked)').map(function () {
+            return String($(this).val());
         }).get();
+        const newExcludeList = [...profile.exclude.filter(e => !renderedIds.has(e)), ...uncheckedIds];
         const newFolderId = normalizeFolderId(template.find('#profile_folder_select').val());
 
         const oldProfile = structuredClone(profile);
@@ -1818,7 +1882,7 @@ export async function init() {
 
         if (newExcludeList.length !== profile.exclude.length || !newExcludeList.every(e => profile.exclude.includes(e))) {
             profile.exclude = newExcludeList;
-            for (const command of newExcludeList) {
+            for (const command of uncheckedIds) { // SillyBunny: only the ids unchecked here lose their value, never carried-over entries.
                 delete profile[command];
             }
             if (saveChanges) {
@@ -1839,6 +1903,38 @@ export async function init() {
         await renderDetailsContent(detailsContent);
     });
 
+    /**
+     * Opens the selected profile's summary as a modal.
+     *
+     * The summary used to expand in place under the picker, which pushed every control below it down
+     * the page and left it there: the panel read as though the detail were one more setting, and the
+     * list it belongs to had moved off screen. A modal keeps the picker where it is and dims the rest
+     * while the summary is read, which is also how every other profile action (create, edit, rename,
+     * delete) already presents itself.
+     */
+    async function showProfileDetails() {
+        const selectedProfile = extension_settings.connectionManager.selectedProfile;
+        const profile = extension_settings.connectionManager.profiles.find(p => p.id === selectedProfile);
+        const content = profile
+            ? await buildProfileDetailsContent(profile)
+            : `<div class="margin5">${DOMPurify.sanitize(t`No profile selected`)}</div>`;
+
+        // SillyBunny: read-only values use selectable property rows, keeping summary selectors/i18n.
+        const details = $(content);
+        if (profile) adaptProfileDetails(details[0]);
+        const popup = new Popup(details, POPUP_TYPE.TEXT, profile?.name ?? '', {
+            okButton: t`Close`,
+            cancelButton: false,
+            wide: true,
+            allowVerticalScrolling: true,
+            // SillyBunny: immediate-apply viewer has header Close and no OK response.
+            tier: 'dialog',
+            title: profile?.name ?? t`View connection profile details`,
+            onClose: () => releaseProfileDialog(popup.content),
+        });
+        await popup.show();
+    }
+
     /** @type {HTMLElement} */
     const viewDetails = document.getElementById('view_connection_profile');
     viewDetails.addEventListener('click', async () => {
@@ -1846,9 +1942,12 @@ export async function init() {
             return;
         }
 
-        viewDetails.classList.toggle('active');
-        detailsContent.classList.toggle('hidden');
-        await renderDetailsContent(detailsContent);
+        viewDetails.classList.add('active');
+        try {
+            await showProfileDetails();
+        } finally {
+            viewDetails.classList.remove('active');
+        }
     });
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -1878,6 +1977,15 @@ export async function init() {
                 typeList: [ARGUMENT_TYPE.NUMBER],
                 defaultValue: '2000',
             }),
+            // SillyBunny: scripted switches stay silent unless quiet=false.
+            SlashCommandNamedArgument.fromProps({
+                name: 'quiet',
+                description: t`Suppress toast message notifications.`,
+                isRequired: false,
+                defaultValue: 'true',
+                typeList: [ARGUMENT_TYPE.BOOLEAN],
+                enumList: commonEnumProviders.boolean('trueFalse')(),
+            }),
         ],
         callback: async (args, value) => {
             if (!value || typeof value !== 'string') {
@@ -1905,7 +2013,9 @@ export async function init() {
             const awaitPromise = new Promise((resolve) => eventSource.once(event_types.CONNECTION_PROFILE_LOADED, resolve));
 
             profiles.selectedIndex = Array.from(profiles.options).findIndex(o => o.value === profile.id);
+            markScriptedProfileSwitch({ notify: isFalseBoolean(String(args?.quiet)) }); // SillyBunny: only quiet=false shows the summary.
             profiles.dispatchEvent(new Event('change'));
+            clearProfileSwitchOrigin(); // SillyBunny: drop the mark if no listener took it.
 
             if (shouldAwait) {
                 await awaitPromise;

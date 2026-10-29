@@ -3,10 +3,10 @@ import { characters, chat_metadata, eventSource, event_types, generateQuietPromp
 import { saveMetadataDebounced } from './extensions.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
-import { createThumbnail, flashHighlight, getBase64Async, stringFormat, debounce, setupScrollToTop, saveBase64AsFile, getFileExtension, sortIgnoreCaseAndAccents } from './utils.js';
+import { createThumbnail, flashHighlight, getBase64Async, stringFormat, debounce, saveBase64AsFile, getFileExtension, sortIgnoreCaseAndAccents } from './utils.js';
 import { debounce_timeout } from './constants.js';
 import { t } from './i18n.js';
-import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { groups, selected_group } from './group-chats.js';
 import { humanizedDateTime } from './RossAscends-mods.js';
 import { deleteMediaFromServer } from './chats.js';
@@ -566,7 +566,11 @@ async function onDeleteBackgroundClick(e) {
         defaultState: true,
     }];
     let deleteFromServer = false;
+    // SillyBunny: background confirmations use an explicit destructive action.
     const confirm = await Popup.show.confirm(t`Delete the background?`, null, {
+        okButton: t`Delete`,
+        defaultResult: POPUP_RESULT.NEGATIVE,
+        onOpen: popup => popup.okButton.classList.add('is-destructive'),
         customInputs: isCustom ? customInputs : [],
         onClose: (popup) => {
             if (isCustom) {
@@ -1256,7 +1260,8 @@ async function onDeleteFolder(folderId) {
     const folder = folderList.find(f => f.id === folderId);
     if (!folder) return;
 
-    const confirm = await Popup.show.confirm(t`Delete folder "${folder.name}"?`, t`Images will not be deleted, only the folder grouping.`);
+    // SillyBunny: folder deletion uses an explicit destructive action.
+    const confirm = await Popup.show.confirm(t`Delete folder "${folder.name}"?`, t`Images will not be deleted, only the folder grouping.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
     if (!confirm) return;
 
     try {
@@ -1751,6 +1756,23 @@ export function getActiveBackgroundTab() {
     return tabs.tabs('option', 'active');
 }
 
+function setupBackgroundScrollToTop() {
+    const drawer = document.getElementById('Backgrounds');
+    const button = document.getElementById('bg-scroll-top');
+    const panels = Object.values(BG_TABS).map(id => document.getElementById(id)).filter(panel => panel instanceof HTMLElement);
+    if (!(drawer instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) return;
+
+    const getActivePanel = () => panels.find(panel => panel.getClientRects().length > 0);
+    const updateVisibility = () => button.classList.toggle('visible', (getActivePanel()?.scrollTop ?? 0) > 300);
+    for (const panel of panels) panel.addEventListener('scroll', updateVisibility, { passive: true });
+    button.addEventListener('click', () => {
+        getActivePanel()?.scrollTo({ top: 0, behavior: document.body.classList.contains('reduced-motion') ? 'auto' : 'smooth' });
+    });
+    $('#bg_tabs').on('tabsactivate', updateVisibility);
+    new ResizeObserver(updateVisibility).observe(drawer);
+    updateVisibility();
+}
+
 export function initBackgrounds() {
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     eventSource.on(event_types.FORCE_SET_BACKGROUND, forceSetBackground);
@@ -1913,15 +1935,13 @@ export function initBackgrounds() {
         await onChatChanged();
     });
 
-    Object.values(BG_TABS).forEach(tabId => {
-        setupScrollToTop({
-            scrollContainerId: tabId,
-            buttonId: 'bg-scroll-top',
-            drawerId: 'Backgrounds',
-        });
-    });
-
     $('#bg_tabs').tabs();
+    // SillyBunny: one toolbar button follows the active source instead of competing tab observers.
+    setupBackgroundScrollToTop();
+    document.getElementById('Backgrounds')?.addEventListener('keydown', event => {
+        // Upstream's global Enter handler also clicks native buttons, doubling their activation.
+        if (event.key === 'Enter' && event.target instanceof HTMLElement && event.target.closest('button')) event.stopPropagation();
+    });
     $('#bg_tabs').on('tabsactivate', () => updateGroupFolderControlsVisibility());
     updateGroupFolderControlsVisibility();
     syncGroupSelectionUi();

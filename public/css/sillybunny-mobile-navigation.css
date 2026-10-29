@@ -1,0 +1,333 @@
+html[data-sb-mobile-ui] .sb-visually-hidden {
+    position: absolute !important;
+    inline-size: 1px !important;
+    block-size: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+}
+
+/* Characters sheet: same inset, radius and top edge as the Workspace/Customize sheets. */
+/* Production sets full-bleed geometry on #top-settings-holder #right-nav-panel (two IDs). */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #top-settings-holder #right-nav-panel.openDrawer,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-character-drawer-lock='right'] #top-settings-holder #right-nav-panel.openDrawer {
+    inset-inline: 8px !important;
+    --sb-mobile-shell-gap: 0px;
+    left: 8px !important;
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    top: calc(var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) + var(--sb-mobile-shell-gap)) !important;
+    height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-shell-measured-top-offset, var(--sb-topbar-layout-offset)) - var(--sb-mobile-shell-gap) - env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
+}
+
+/* List views: one even 12px gutter instead of the asymmetric 20px/8px scroller padding. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #right-nav-panel.openDrawer:is([data-menu-type='characters'], [data-menu-type='groups']) > .scrollableInner:not(#sb-specificity) {
+    padding-inline: 12px !important;
+}
+
+/* Compact bottom chat bar. See public/scripts/sillybunny-mobile-bottom-bar.js. */
+
+/* Chip row: persona, current chat chip, extension tray toggle. Search adds a second row. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar:not(#sb-specificity) {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: 4px 8px 2px;
+    border-width: 1px 0 0;
+    border-radius: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-collapse-toggle, .sb-bottom-chat-secondary-row) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > #sb-persona-bubble:not(#sb-specificity) {
+    grid-column: 1;
+    grid-row: 1;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    padding: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 44px;
+    margin: 0;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    font-size: calc(var(--mainFontSize) * 0.86);
+    text-align: start;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar:has(> .sb-bottom-chat-tray-toggle[hidden]) > .sb-bottom-chat-chip {
+    grid-column: 2 / -1;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip > i {
+    flex: none;
+    opacity: 0.7;
+    font-size: 0.9em;
+    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-chip, .sb-bottom-chat-tray-toggle) {
+    transition: border-color var(--sb-transition-fast, 180ms ease-out), background-color var(--sb-transition-fast, 180ms ease-out), color var(--sb-transition-fast, 180ms ease-out);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle > i {
+    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle[aria-expanded='true'] > i {
+    transform: rotate(-90deg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip[aria-expanded='true'] > i:last-child {
+    transform: rotate(180deg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-bottom-chat-chip-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip:active,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip[aria-expanded='true'] {
+    background: var(--sb-raised-active-bg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-chip:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-tray-toggle, .sb-bottom-chat-search-close):not(#sb-specificity) {
+    grid-column: 3;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 999px;
+    font-size: calc(var(--mainFontSize) * 0.95);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle {
+    grid-row: 1;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle[aria-expanded='true'] {
+    opacity: 1;
+    color: var(--color-primary, var(--sb-accent));
+    background: var(--sb-flat-selected-bg);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-tray-toggle, .sb-bottom-chat-search-close)[hidden],
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar:not(.sb-bottom-chat-search-open) > .sb-bottom-chat-search-close {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-field:not(#sb-specificity) {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    min-width: 0;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding-inline: 12px;
+    border-radius: 999px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-field input:not(#sb-specificity) {
+    height: 32px !important;
+    font-size: calc(var(--mainFontSize) * 0.86);
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-close {
+    grid-row: 2;
+}
+
+/* Composer sits flush under the chip row. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-chat-bar-shown] #send_form:not(#sb-specificity) {
+    padding-top: 2px !important;
+    border-top: 0 !important;
+}
+
+/*
+ * Composer toolbar: a flat row with the theme's hairline above it, as on desktop. The old pill
+ * radius curved that hairline into a capsule outline that desktop no longer has.
+ */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems:not(#sb-specificity) {
+    --sb-composer-inset: 4px;
+    min-height: calc(var(--sb-mobile-composer-input-height) + var(--sb-composer-inset) * 2 + 2px) !important;
+    padding: var(--sb-composer-inset) !important;
+    border-radius: 0 !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems > :is(#leftSendForm, #rightSendForm):not(#sb-specificity) {
+    padding: 0 !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld :is(#options_button, #leftSendForm > div, #rightSendForm > div, #send_but, .mes_stop):not(#sb-specificity) {
+    border-radius: 999px !important;
+    box-shadow: none !important;
+}
+
+/* Same card-radius entry as the desktop and Conversation composers. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld #send_textarea:not(#sb-specificity) {
+    border-radius: var(--sb-radius-card) !important;
+}
+
+/* Extension tray: hidden until the toggle opens it; shown as before when the bar itself is hidden. */
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-chat-bar-shown]:not([data-sb-mobile-tray-open]) #send_form > :is(#gg-action-button-container, .stih--buttons.stih--standalone) {
+    display: none !important;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form > #gg-action-button-container:not([hidden]),
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form > .stih--buttons.stih--standalone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px 6px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #gg-action-button-container .gg-regular-buttons-container {
+    flex: 1 1 auto;
+    width: auto;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #gg-action-button-container .stih--buttons,
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form .stih--buttons .stih--arrows {
+    gap: 6px;
+    margin: 0;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-open] #send_form :is(.gg-action-button, .stih--buttons .stih--button):not(#sb-specificity) {
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    border-radius: 999px !important;
+    font-size: calc(var(--mainFontSize) * 0.95) !important;
+}
+
+/* Chat sheet: chat picker plus every chat action as a labelled row. */
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-dialog__body {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-select {
+    min-width: 0;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions > :is(.sb-bottom-chat-nav-actions, .sb-bottom-chat-management-actions) {
+    display: contents;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:not(#sb-specificity) {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    min-height: 44px;
+    max-height: none;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    font-size: calc(var(--mainFontSize) * 0.86);
+    text-align: start;
+}
+
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-dialog.sb-bottom-chat-sheet #sb-bottom-chat-select:not(#sb-specificity) {
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: calc(var(--mainFontSize) * 0.9);
+    line-height: 44px;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn > i {
+    flex: none;
+    width: 1.25em;
+    text-align: center;
+    opacity: 0.75;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:not(#sb-specificity)::after {
+    content: attr(aria-label);
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    min-width: 0;
+    border-radius: 0;
+    background: none;
+    overflow-wrap: anywhere;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:is(:disabled, .is-disabled):not(#sb-specificity) {
+    opacity: 0.42;
+}
+
+html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:has(> .fa-trash):not(#sb-specificity) {
+    grid-column: 1 / -1;
+    color: var(--sb-color-danger, #fb7185);
+    border-color: color-mix(in srgb, var(--sb-color-danger, #fb7185) 32%, transparent);
+}

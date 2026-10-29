@@ -21,6 +21,7 @@ import {
 } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { eventSource, event_types } from '../../events.js';
+import { t } from '../../i18n.js';
 import { is_group_generating } from '../../group-chats.js';
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../popup.js';
 import { ToolManager } from '../../tool-calling.js';
@@ -4942,6 +4943,8 @@ function buildPostMainInterceptReviewPopupContent(text) {
 async function showPostMainInterceptReviewPopup(text) {
     const popupContent = buildPostMainInterceptReviewPopupContent(text);
     const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`Review the main output before it is shown in chat.`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,

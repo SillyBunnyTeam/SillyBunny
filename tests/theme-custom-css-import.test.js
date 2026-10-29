@@ -74,7 +74,7 @@ describe('theme actions keep stored theme data', () => {
     test('Reset restores colors without replacing Custom CSS', () => {
         const resetSource = requireSection('.on(\'click\', \'.sb-theme-preset-reset\'', '// Accent color presets');
 
-        expect(resetSource).toContain('applyTheme(\'Dark V 1.0\', { applyCss: false });');
+        expect(resetSource).toContain('applyTheme(\'Libadwaita\', { applyCss: false });');
     });
 });
 

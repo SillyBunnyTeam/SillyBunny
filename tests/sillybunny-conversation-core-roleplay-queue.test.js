@@ -1,6 +1,6 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
-await jest.unstable_mockModule('../public/script.js', () => ({ is_send_press: true }));
+await jest.unstable_mockModule('../public/script.js', () => ({ is_send_press: true, online_status: 'Connected' }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-engine.js', () => ({
     checkMultiCharacterChime: jest.fn(),
     handleAvailabilityAutoResponder: jest.fn(),

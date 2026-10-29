@@ -4,6 +4,14 @@
         "type": "settings"
     },
     {
+        "filename": "themes/Libadwaita.json",
+        "type": "theme"
+    },
+    {
+        "filename": "themes/Libadwaita Light.json",
+        "type": "theme"
+    },
+    {
         "filename": "themes/Dark Lite.json",
         "type": "theme"
     },

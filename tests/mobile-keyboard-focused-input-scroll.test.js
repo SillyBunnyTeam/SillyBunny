@@ -88,7 +88,8 @@ describe('mobile popup keyboard shift wiring', () => {
 
     test('only targets editable focus inside open popup dialogs on mobile', () => {
         expect(tabsSource).toContain('function getMobilePopupDialogForKeyboard(');
-        expect(tabsSource).toMatch(/\.closest\('dialog\.popup'\)/);
+        // Framed popups (.sb-dialog) handle the keyboard in sillybunny-editor/dialog.js (bindKeyboardInset).
+        expect(tabsSource).toMatch(/\.closest\('dialog\.popup:not\(\.sb-dialog\)'\)/);
         expect(tabsSource).toMatch(/isMobileViewport\(\) && isEditableElement\(activeElement\)/);
         expect(tabsSource).toMatch(/dialog instanceof HTMLElement && dialog\.open/);
     });

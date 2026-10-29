@@ -25,6 +25,8 @@ import { kai_settings } from './kai-settings.js';
 import { convertNovelPreset } from './nai-settings.js';
 import { getChatCompletionPreset, getPresetApplicationPromise, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from './popup.js';
+// SillyBunny: adopt preset choices into shared dialog rows without changing their values.
+import { presetChoicesOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 import { context_presets, getContextSettings, power_user } from './power-user.js';
 import {
     createPresetSelectTouchGuardState,
@@ -52,14 +54,15 @@ const presetManagers = {};
 const PRESET_CHANGE_EVENT_APIS = new Set(['kobold', 'novel', 'openai', 'textgenerationwebui']);
 const PRESET_CHANGE_TIMEOUT_MS = 10000;
 const PRESET_TEXT_FIELD_SELECTOR = 'textarea, input[type="text"]';
+// SillyBunny: track live text fields independently of their Presets/Editor placement, including relocated context bodies.
 const PRESET_TEXT_FIELD_PANEL_SELECTORS = Object.freeze({
-    kobold: '#kobold_api-settings',
+    kobold: '#kobold_api-settings, #grammar',
     novel: '#range_block_novel, #novel_api-settings',
-    openai: '#range_block_openai, #openai_settings',
+    openai: '#range_block_openai, #openai_settings, #completion_prompt_manager, #sb-editor-utility',
     textgenerationwebui: '#textgenerationwebui_api-settings',
-    context: '#ContextSettings',
-    instruct: '#InstructSettingsColumn',
-    sysprompt: '#SystemPromptBlock',
+    context: '#ContextSettings, #context_story_string, #context_example_separator, #context_chat_start',
+    instruct: '#InstructSettingsColumn, #InstructSequencesColumn',
+    sysprompt: '#SystemPromptBlock, #sysprompt_content, #sysprompt_post_history',
     reasoning: '#reasoning_prefix, #reasoning_suffix, #reasoning_separator',
 });
 
@@ -161,6 +164,13 @@ function registerPresetManagers() {
 
 function snapshotAllPresetManagers() {
     Object.values(presetManagers).forEach(manager => manager.scheduleSnapshotTextFields());
+}
+
+/**
+ * SillyBunny: re-evaluates unload warnings after the preset autosave setting changes.
+ */
+export function refreshPresetDirtyGuards() {
+    Object.values(presetManagers).forEach(manager => manager._updateBeforeUnload());
 }
 
 function registerPresetDirtySnapshots() {
@@ -403,6 +413,8 @@ class PresetManager {
 
         const html = $(await renderTemplateAsync('masterImport', { sections: sectionNames }));
         const popup = new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: templates remain the source of translated captions and native controls.
+            ...presetChoicesOptions(html.filter('div')[0]),
             okButton: t`Import`,
             cancelButton: t`Cancel`,
         });
@@ -415,7 +427,8 @@ class PresetManager {
         }
 
         const importedSections = [];
-        const confirmedSections = html.find('input:checked').map((_, el) => el instanceof HTMLInputElement && el.value).get();
+        // SillyBunny: Select All is presentation, not an imported section.
+        const confirmedSections = html.find('input:checked:not([data-sb-select-all])').map((_, el) => el instanceof HTMLInputElement && el.value).get();
 
         if (confirmedSections.length === 0) {
             toastr.info(t`No sections selected for import`);
@@ -446,6 +459,8 @@ class PresetManager {
         const html = $(await renderTemplateAsync('masterExport', { sections: sectionNames }));
 
         const popup = new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: preserve upstream export defaults and checked section values.
+            ...presetChoicesOptions(html.filter('div')[0]),
             okButton: t`Export`,
             cancelButton: t`Cancel`,
         });
@@ -457,7 +472,8 @@ class PresetManager {
             return;
         }
 
-        const confirmedSections = html.find('input:checked').map((_, el) => el instanceof HTMLInputElement && el.value).get();
+        // SillyBunny: Select All must never become an exported settings key.
+        const confirmedSections = html.find('input:checked:not([data-sb-select-all])').map((_, el) => el instanceof HTMLInputElement && el.value).get();
         const data = {};
 
         if (confirmedSections.length === 0) {
@@ -700,6 +716,15 @@ class PresetManager {
     }
 
     _updateBeforeUnload() {
+        // SillyBunny: with preset autosave on, edits are saved (and flushed on unload) instead of discarded.
+        if (power_user.sb_preset_autosave === true) {
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
+            }
+            return;
+        }
+
         if (this._dirty && !this._beforeUnloadHandler) {
             this._beforeUnloadHandler = (event) => {
                 event.preventDefault();
@@ -744,7 +769,8 @@ class PresetManager {
             this._checkDirty({ force: true });
         }
 
-        if (this._allowPresetSelectChange || !this._dirty) {
+        // SillyBunny: autosave flushes pending edits before the switch, so there is nothing to discard.
+        if (this._allowPresetSelectChange || !this._dirty || power_user.sb_preset_autosave === true) {
             this.scheduleSnapshotTextFields();
             return;
         }
@@ -776,7 +802,12 @@ class PresetManager {
         const bodyText = !this.isAdvancedFormatting()
             ? t`You have unsaved changes to this preset. Discard them?`
             : t`You have unsaved changes to this template. Discard them?`;
-        const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText);
+        // SillyBunny: unsaved-change confirmation names the discard action.
+        const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText, {
+            okButton: t`Discard`,
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        });
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -1282,6 +1313,9 @@ class PresetManager {
         );
 
         const result = await new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: trailing checks, Select All and a Cancel-focused destructive response.
+            ...presetChoicesOptions(html[0], { deletion: true }),
+            defaultResult: POPUP_RESULT.NEGATIVE,
             okButton: t`Delete selected`,
             cancelButton: t`Cancel`,
             wide: true,
@@ -1291,7 +1325,8 @@ class PresetManager {
             return [];
         }
 
-        return html.find('input:checked').map((_, el) => String($(el).val())).get();
+        // SillyBunny: only real preset choices contribute deletion results.
+        return html.find('input:checked:not([data-sb-select-all])').map((_, el) => String($(el).val())).get();
     }
 
     /**
@@ -1706,6 +1741,8 @@ export async function initPresetManager() {
         const confirm = await Popup.show.confirm(
             t`Delete selected ${pluralNoun}?`,
             t`This will permanently delete ${presetNames.length} selected ${pluralNoun} for this section. The built-in GUI preset is kept.`,
+            // SillyBunny: Return must cancel the final destructive confirmation too.
+            { defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') },
         );
 
         if (!confirm) {

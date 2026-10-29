@@ -1554,12 +1554,12 @@ describe('chat integrity rotation', () => {
         const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
         const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
         const selectCharacterBody = scriptSource.slice(
-            scriptSource.indexOf('export async function selectCharacterById(id, { switchMenu = true } = {})'),
+            scriptSource.indexOf('export async function selectCharacterById('),
             scriptSource.indexOf('function getBackBlock()'),
         );
         const openGroupBody = groupChatSource.slice(
-            groupChatSource.indexOf('export async function openGroupById(groupId, { switchMenu = true } = {})'),
-            groupChatSource.indexOf('async function openCharacterDefinition(characterSelect)'),
+            groupChatSource.indexOf('export async function openGroupById('),
+            groupChatSource.indexOf('async function openCharacterDefinition('),
         );
         const flushForNavigationBody = scriptSource.slice(
             scriptSource.indexOf('export async function flushPendingChatSavesForNavigation()'),

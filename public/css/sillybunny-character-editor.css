@@ -1,0 +1,1300 @@
+/* SillyBunny editor sheet — shared chrome, character sections, group sections
+ * =========================================================================
+ * One stylesheet for both explicit-save editors (Step 3b/Step 4). The header,
+ * toolbar, sections, rows and fields are shared and unstyled by ID; the
+ * character-only sections come first, then the group-only rules at the bottom.
+ * Every ID-scoped rule names both editors, so the two can never drift apart.
+ * Sharing the file also keeps the blocking-stylesheet budget from growing.
+ */
+
+/* Sheet container and scroll behavior
+   ========================================================================= */
+
+.sb-editor-sheet {
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+#right-nav-panel.openDrawer #rm_ch_create_block {
+    padding-inline-end: 0;
+    scrollbar-gutter: auto;
+    overflow: hidden;
+}
+
+.sb-editor-sheet .text_pole::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
+}
+
+.sb-editor-sheet .ds-pref-group {
+    border-radius: var(--sb-radius-card);
+}
+
+/* Framed like the Prompt Editor box; the header bar sits on the sidebar tone so it
+   reads against the page, matching the Characters/Groups list headers. */
+#form_create.sb-editor-sheet,
+#rm_group_chats_block.sb-editor-sheet {
+    --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    border: 1px solid var(--sb-list-editor-edge);
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-layer-window);
+    box-sizing: border-box;
+}
+
+@media (prefers-contrast: more) {
+    #form_create.sb-editor-sheet,
+    #rm_group_chats_block.sb-editor-sheet {
+        --sb-list-editor-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+:is(#form_create, #rm_group_chats_block).sb-editor-sheet :is(.sb-editor-header, .sb-editor-toolbar) {
+    background: var(--sb-sidebar-bg);
+}
+
+:is(#form_create, #rm_group_chats_block).sb-editor-sheet .sb-editor-toolbar {
+    border-bottom: var(--sb-headerbar-shade);
+}
+
+/* Same gutters as the Persona, World Info and Characters list panels. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+    padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;
+    overflow: hidden !important;
+    scrollbar-gutter: auto;
+}
+
+@media (max-width: 1439px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+        padding: 14px 14px 9px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+        padding-bottom: calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
+    }
+}
+
+/* The group panel is a .right_menu toggled by selectRightMenuWithAnimation
+   (script.js:14501), which writes an inline display; the group-specific
+   container rules live at the bottom of this file. */
+
+.sb-editor-sheet__content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px 16px 24px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Header — sticky, horizontal buttons
+   ========================================================================= */
+
+/* The header toggles visibility with the `hidden` attribute, but the flex
+   display declarations below would beat the UA [hidden] rule on specificity.
+   Restore the attribute's meaning for the header's own status elements. */
+.sb-editor-header > :is(.sb-editor-dirty, .sb-editor-tokens)[hidden] {
+    display: none !important;
+}
+
+.sb-editor-header {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--sb-layer-view);
+    border-bottom: 0;
+    flex-shrink: 0;
+    min-height: 52px;
+}
+
+/* Header icon geometry stays local because editor controls are smaller than shell controls. */
+.sb-editor-icon-button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--sb-control-icon-physical-size, 36px);
+    min-width: var(--sb-control-icon-physical-size, 36px);
+    height: var(--sb-control-icon-physical-size, 36px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-icon-control-radius, 10px);
+    cursor: pointer;
+}
+
+.sb-editor-icon-button:disabled {
+    cursor: default;
+}
+
+.sb-editor-icon-button i {
+    pointer-events: none;
+}
+
+/* The title doubles as the rename affordance. It is a real button so it is
+   reachable by keyboard, but it must read as a heading at rest, not a control. */
+.sb-editor-title-button {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-family: var(--mainFontFamily);
+    text-align: start;
+    cursor: text;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-editor-title-button:not(.is-static):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-editor-title-button:not(.is-static):hover .sb-editor-title {
+        text-decoration: underline dotted color-mix(in srgb, currentColor 38%, transparent);
+        text-underline-offset: 4px;
+    }
+
+    .sb-editor-title-button:not(.is-static):hover .sb-editor-title-pencil {
+        opacity: 1;
+    }
+}
+
+.sb-editor-title-button.is-static {
+    cursor: default;
+}
+
+.sb-editor-title {
+    min-width: 0;
+    margin: 0;
+    font-size: var(--sb-type-title, 16px);
+    font-weight: 700;
+    color: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-editor-title-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control, 9px);
+    background: var(--sb-flat-hover-bg);
+    font-family: inherit;
+    font-size: var(--sb-type-title, 16px);
+    font-weight: 700;
+    color: var(--sb-shell-text);
+}
+
+
+.sb-editor-title-pencil {
+    flex: 0 0 auto;
+    font-size: 0.75em;
+    color: var(--sb-muted-fg);
+    opacity: 0;
+    transition: opacity var(--sb-transition-fast);
+}
+
+.sb-editor-title-button:focus-visible .sb-editor-title-pencil {
+    opacity: 1;
+}
+
+.sb-editor-dirty {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sb-editor-dirty-dot {
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sb-accent);
+}
+
+/* Token readout — mirrors the legacy #result_info counters. */
+.sb-editor-tokens {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    font-size: var(--sb-type-meta, 13px);
+    color: var(--sb-muted-fg);
+    white-space: nowrap;
+    transition: color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+}
+
+.sb-editor-tokens.is-over-budget {
+    color: var(--sb-color-warning, var(--color-warning));
+}
+
+/* The warning glyph is a link, not a status: it only carries the warning colour
+   once the card is genuinely over budget, so the header stays quiet otherwise. */
+.sb-editor-tokens:not(.is-over-budget) .sb-editor-tokens__warning {
+    color: var(--sb-muted-fg);
+}
+
+.sb-editor-tokens__warning {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    color: inherit;
+    text-decoration: none;
+}
+
+.sb-editor-tokens__warning:focus-visible {
+    border-radius: var(--sb-radius-control, 9px);
+}
+
+.sb-editor-tokens__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Shared editor header actions (character, group, Prompt Editor, World Info).
+   Save is the suggested action; Cancel is outlined and enabled only while dirty.
+   The doubled class outranks the editors' scoped `.menu_button` resets. */
+.sb-editor-action.sb-editor-action {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-height: 38px;
+    margin: 0;
+    padding: 0 16px;
+    border-radius: var(--sb-radius-control, 9px);
+    box-shadow: none;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+/* --sb-on-accent resolves to literal black, which is unreadable on a dark
+   accent; --sb-on-solid-accent is the token designed for accent fills. */
+.sb-editor-action--primary.sb-editor-action--primary {
+    border: 0;
+    background: var(--color-primary, var(--sb-accent));
+    color: var(--sb-on-solid-accent);
+    font-weight: 600;
+}
+
+.sb-editor-action--secondary.sb-editor-action--secondary {
+    border: 1px solid var(--sb-shell-border);
+    background: transparent;
+    color: var(--sb-shell-text);
+}
+
+@media (hover: hover) {
+    .sb-editor-action--primary.sb-editor-action--primary:not(:disabled):hover {
+        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
+    }
+
+    .sb-editor-action--secondary.sb-editor-action--secondary:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+/* Icon form for crowded headers; hidden unless an editor's narrow layout opts in. */
+.sb-editor-action__icon {
+    display: none;
+}
+
+.sb-editor-action.sb-editor-action:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.sb-editor-action.sb-editor-action:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Toolbar — horizontal action buttons
+   ========================================================================= */
+
+.sb-editor-toolbar {
+    display: flex;
+    /* Upstream .form_create_bottom_buttons_block is a column flex container;
+       an explicit row keeps the actions on one line without !important. */
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    /* Override upstream .form_create_bottom_buttons_block flex: 1 1 320px which
+       causes the toolbar to eat all available space in the flex-column form */
+    flex: 0 0 auto;
+    gap: 2px;
+    padding: 6px 10px;
+    background: var(--sb-layer-view);
+    border-bottom: 1px solid var(--sb-shell-border);
+    min-height: 48px;
+    overflow: hidden;
+}
+
+/* Upstream sets display: flex on .menu_button (style.css:4254), which these divs
+   carry for their click handlers. Do not add !important here: create mode hides
+   the edit-only actions with inline styles, and !important would defeat that and
+   leave Delete/Duplicate pointing at the previously selected character.
+
+   The same class paints .menu_button as a chip (1px border, 5% fill), and
+   sillybunny-theme.css:677 re-applies a fill and a 14px radius with four :not()
+   guards, giving specificity 0,5,0, which outranks a plain class selector. A
+   toolbar of icon actions reads better as flat buttons, so the chip chrome is
+   stripped here. The #right-nav-panel prefix is what makes these declarations
+   win without !important, matching how the rest of the shell scopes its
+   overrides. Without it the toolbar renders as a mix of bordered chips and flat
+   buttons. */
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):not(.sb-header-icon-button) {
+    flex: 0 0 auto;
+    width: var(--sb-control-icon-physical-size, 36px);
+    min-width: var(--sb-control-icon-physical-size, 36px);
+    height: var(--sb-control-icon-physical-size, 36px);
+    min-height: var(--sb-control-icon-physical-size, 36px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control, 9px);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-body, 15px);
+    box-shadow: none;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):not(.sb-header-icon-button):hover {
+        background: var(--sb-flat-hover-bg);
+        border-color: transparent;
+        box-shadow: none;
+    }
+}
+
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):not(.sb-header-icon-button):active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* Transport elements kept in the DOM for their handlers and for extensions.
+   Several are re-shown by upstream with inline styles, so this must be
+   !important. The menu dispatches clicks on them instead. */
+.sb-editor-transport {
+    display: none !important;
+}
+
+/* Toolbar buttons the overflow pass moved into the ⋯ menu because the panel is
+   too narrow for the full row. The element stays in the DOM and keeps its
+   handlers; the menu forwards clicks to it. */
+.sb-editor-toolbar-collapsed {
+    display: none !important;
+}
+
+.sb-editor-toolbar-spacer {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#sb_character_editor_more {
+    flex: 0 0 auto;
+    margin-inline-start: 4px;
+}
+
+/* Upstream #char-management-dropdown styling is obsolete now the select is a
+   hidden transport; the visible menu above replaces it. */
+.sb-editor-toolbar :is(#char-management-dropdown, #group-chat-lorebook-dropdown) {
+    display: none !important;
+}
+
+/* Sections and fields
+   ========================================================================= */
+
+.sb-editor-section,
+.sb-editor-section__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.sb-editor-section-hint {
+    display: block;
+    padding: 10px 16px;
+    font-size: var(--sb-type-meta, 13px);
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
+    line-height: 1.4;
+}
+
+/* ds-field: vertical field layout (label-above-textarea). Rows use ds-row instead. */
+.ds-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+}
+
+.ds-pref-group > .ds-field:last-child {
+    border-bottom: 0;
+}
+
+.ds-field-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.ds-field-label {
+    font-size: var(--sb-type-control, 15px);
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+    margin: 0;
+}
+
+.ds-field-subtitle {
+    display: block;
+    font-size: var(--sb-type-meta, 13px);
+    font-weight: 400;
+    color: var(--sb-input-placeholder, color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent));
+    line-height: 1.4;
+    margin-top: 2px;
+    opacity: 1;
+}
+
+.ds-field-hint {
+    font-size: var(--sb-type-meta, 13px);
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
+    line-height: 1.4;
+}
+
+.ds-field-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.ds-field-actions .menu_button,
+#tags_div .tags_view,
+#sb_creator_notes_maximize {
+    margin: 0;
+    padding: 4px 10px;
+    min-height: 28px;
+    font-size: var(--sb-type-meta, 13px);
+}
+
+.ds-inline-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ds-inline-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--sb-type-control, 15px);
+}
+
+.ds-inline-control input,
+.ds-inline-control select {
+    flex: 1 1 120px;
+    min-width: 0;
+}
+
+/* ds-row-button: a whole row that is a control, e.g. a section that opens a
+   dialog. Same geometry as .ds-row-switch so the two can sit side by side. */
+.ds-row-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 10px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.ds-pref-group > .ds-row-button:last-child {
+    border-bottom: 0;
+}
+
+@media (hover: hover) {
+    .ds-row-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.ds-row-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-editor-icon-button:focus-visible,
+.sb-editor-title-button:focus-visible,
+.sb-editor-title-input:focus,
+#right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button):focus-visible,
+.sb-editor-tokens__warning:focus-visible,
+.ds-row-button:focus-visible,
+#right-nav-panel .sb-editor-sheet .editor_maximize:focus-visible,
+#sb-settings-page #right-nav-panel .ds-pref-group > .ds-row-button:focus-visible,
+#right-nav-panel [data-sb-avatar-input]:focus-visible,
+#right-nav-panel :is(#tagList, #groupTagList) .tag_remove:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* The chevron is a suffix glyph, not a state; the row itself is the control. */
+.ds-row-button > .ds-row-suffix {
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent));
+}
+
+.ds-row-button > .ds-row-suffix i + i {
+    margin-inline-start: 6px;
+}
+
+/* style.css:2866 sizes description (29dvh) and first message (clamp to 18rem)
+   from the viewport, so they dwarf every other field. One shared height for
+   every non-Metadata field; Metadata keeps its own compact sizes. */
+@media screen and (min-width: 1001px) {
+    #right-nav-panel #form_create [data-sb-section]:not([data-sb-section="metadata"]) textarea[data-sb-editor-field] {
+        height: 10.5rem;
+        min-height: 5rem;
+    }
+}
+
+/* Field pair layout for creator/version */
+.ds-field-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+}
+
+/* sillybunny-tabs.css pads every non-row .ds-pref-group child by 10px 16px when
+   the panel is mounted in the settings page. The pair is only a grid wrapper;
+   its fields already carry that padding, so the wrapper must not add more. */
+#right-nav-panel #form_create .sb-editor-section__body > .ds-field-pair {
+    padding: 0;
+}
+
+.ds-field-pair > .ds-field {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+}
+
+.ds-field-pair > .ds-field:nth-child(odd) {
+    border-right: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+}
+
+@media screen and (max-width: 620px) {
+    .ds-field-pair {
+        grid-template-columns: 1fr;
+    }
+
+    .ds-field-pair > .ds-field:nth-child(odd) {
+        border-right: 0;
+    }
+}
+
+/* Essentials section — avatar and name side by side
+   ========================================================================= */
+
+.sb-character-essentials {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    align-items: flex-start;
+}
+
+.sb-character-essentials__avatar {
+    flex-shrink: 0;
+}
+
+.sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    width: 88px;
+    height: 88px;
+    border-radius: var(--sb-radius-card, 12px);
+    overflow: hidden;
+    cursor: pointer;
+    transition: opacity var(--sb-transition-fast, 200ms ease);
+}
+
+@media (hover: hover) {
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div):hover {
+        opacity: 0.9;
+    }
+}
+
+.sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+}
+
+.sb-character-essentials__fields {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.sb-character-essentials__fields .ds-field {
+    padding: 0;
+    border-bottom: 0;
+}
+
+@media screen and (max-width: 620px) {
+    .sb-character-essentials {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    /* Fixed square that stays correct without cropping */
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
+        width: 72px;
+        height: 72px;
+    }
+}
+
+/* Preview pane — rendered Markdown output
+   ========================================================================= */
+
+/* Preview pane — replaces the textarea in-place when active
+   ========================================================================= */
+
+#form_create :is(textarea[data-sb-editor-field], .sb-preview-pane)[hidden] {
+    /* Upstream field rules set display:block, overriding the UA hidden rule. */
+    display: none !important;
+}
+
+.sb-preview-pane {
+    min-height: 0;
+    max-height: none;
+    padding: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--sb-input-bg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent));
+    border: 1px solid var(--sb-input-border, color-mix(in srgb, var(--SmartThemeBorderColor) 92%, transparent));
+    border-radius: var(--sb-radius-control, 9px);
+    font-size: var(--sb-type-control, 15px);
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+
+.sb-preview-pane:empty::before {
+    content: attr(data-empty-text);
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
+    font-style: italic;
+}
+
+.sb-preview-empty {
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
+}
+
+.sb-preview-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    margin: 2px 4px 2px 0;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
+    font-size: var(--sb-type-meta, 13px);
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.4;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Role segmented control — sits immediately before the hidden #depth_prompt_role
+   select; takes all remaining suffix space on its row. */
+#right-nav-panel .sb-boolean-radio-group[aria-label] + #depth_prompt_role {
+    /* select is a hidden transport; the segment above is the visible control */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sb-preview-pane p:first-child {
+    margin-top: 0;
+}
+
+.sb-preview-pane p:last-child {
+    margin-bottom: 0;
+}
+
+/* Creator notes preview block (live, no toggle)
+   ========================================================================= */
+
+#right-nav-panel .sb-creator-notes-preview {
+    margin: 0;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+    background: transparent;
+    border-radius: 0;
+}
+
+#right-nav-panel .sb-creator-notes-preview__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: var(--sb-type-control, 15px);
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor);
+}
+
+#right-nav-panel .sb-creator-notes-preview__body {
+    min-height: auto;
+    max-height: 200px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0;
+    font-size: var(--sb-type-control, 15px);
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.5;
+}
+
+/* Greetings editor
+   Greetings are AdwExpanderRows inside the Greetings group: one row per
+   greeting, a header row carrying the description and the Add action.
+   ========================================================================= */
+
+.sb-greetings-editor {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.ds-pref-group > .sb-greetings-editor:last-child {
+    border-bottom: 0;
+}
+
+.sb-greetings-editor__header {
+    min-height: 52px;
+}
+
+.sb-greetings-editor__header > .ds-row-suffix {
+    align-self: center;
+}
+
+/* Unify action-button chrome across the editor so Tags View, Add, and Maximize
+   all follow the flat toolbar style instead of bordered chips. The group
+   greetings button is injected by the bundled SB-GroupUtilities extension. */
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+#right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button {
+    border: 0;
+    background: transparent;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):hover,
+    #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active,
+#right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):focus-visible,
+#right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+#form_create .sb-greetings-editor__add {
+    display: inline-flex;
+    margin: 0;
+    white-space: nowrap;
+}
+
+/* style.css:7102 and :4053 give the list its own forced scroll box, which
+   reads as a nested dropdown inside the sheet. The sheet already scrolls. */
+#form_create .sb-greetings-list {
+    display: flex;
+    flex-direction: column;
+    max-height: none;
+    padding: 0;
+    overflow: visible;
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+#form_create .sb-greetings-list:empty {
+    display: none;
+}
+
+/* Each greeting keeps .alternate_greeting for extensions; neutralise the
+   legacy summary marker/indent (style.css:3876–3928) so it is a plain row. */
+#form_create .sb-greeting-row {
+    width: 100%;
+    padding: 0;
+}
+
+#form_create .sb-greetings-list > .sb-greeting-row:last-child {
+    border-bottom: 0;
+}
+
+#form_create .sb-greeting-row > summary.ds-row {
+    margin: 0;
+    padding-inline: 16px;
+    list-style: none;
+}
+
+#form_create .sb-greeting-row > summary::marker {
+    content: '';
+}
+
+.sb-greeting-row__snippet {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-greeting-row[open] .sb-greeting-row__snippet {
+    display: none;
+}
+
+.sb-greeting-row__body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+}
+
+#form_create .sb-greeting-row__textarea {
+    width: 100%;
+    min-height: 8em;
+    max-height: 50dvh;
+    margin: 0;
+    field-sizing: content;
+    box-sizing: border-box;
+}
+
+.sb-greeting-row__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sb-greeting-row__spacer {
+    flex: 1 1 auto;
+}
+
+/* Flat circular icon buttons, the libadwaita .flat .circular style. */
+.sb-greeting-row__btn {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: 15px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-greeting-row__btn:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-greeting-row__delete:not(:disabled):hover {
+        color: var(--sb-color-danger);
+    }
+}
+
+.sb-greeting-row__btn:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-greeting-row__btn:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-greeting-row__btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Greetings expander (group-only)
+   ========================================================================= */
+
+.sb-greetings-expander {
+    margin: 0;
+    padding: 0;
+    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
+}
+
+.ds-pref-group > .sb-greetings-expander:last-child {
+    border-bottom: 0;
+}
+
+.sb-greetings-expander > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.sb-greetings-expander__count {
+    margin-left: 6px;
+    padding: 2px 8px;
+    font-size: var(--sb-type-meta, 13px);
+    font-weight: 600;
+    color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
+    background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
+    border-radius: 999px;
+}
+
+.sb-greetings-expander__count:empty {
+    display: none;
+}
+
+/* AdwAlertDialog destructive response: red label, never the default action. */
+.popup-controls > .popup-button-custom.sb-editor-discard {
+    color: var(--sb-color-danger);
+}
+
+.sb-greetings-expander .sb-greetings-editor {
+    border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button),
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div),
+    .ds-row-button,
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+    #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button,
+    .sb-greeting-row__btn,
+    .sb-editor-tokens {
+        transition: none;
+    }
+}
+
+body.reduced-motion :is(
+    #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button),
+    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div),
+    .ds-row-button,
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+    #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button,
+    .sb-greeting-row__btn,
+    .sb-editor-tokens
+) {
+    transition: none;
+}
+
+/* Quick edit mode — hide all sections except Essentials
+   the toolbar and its quick-edit toggle remain accessible so the user can turn it off
+   ========================================================================= */
+
+.sb-editor-sheet--quick-edit .sb-editor-section:not([data-sb-section="essentials"]) {
+    display: none !important;
+}
+
+/* Mobile overrides
+   ========================================================================= */
+
+@media screen and (max-width: 620px) {
+    .sb-editor-sheet__content {
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .sb-editor-header {
+        padding: 6px 8px;
+        gap: 4px;
+    }
+
+    .sb-editor-toolbar {
+        padding: 6px 8px;
+    }
+
+    .ds-field {
+        padding: 10px 12px;
+    }
+
+    /* On a narrow header the token text is the first thing to go; the warning
+       icon stays so an over-budget card is still flagged. */
+    .sb-editor-tokens__value {
+        display: none;
+    }
+
+    .sb-editor-tokens.is-over-budget .sb-editor-tokens__value {
+        display: block;
+    }
+}
+
+/* Touch targets are 44px on coarse pointers; the toolbar and
+   header are the primary hit areas in this editor. */
+@media (pointer: coarse), (max-width: 768px) {
+    #right-nav-panel {
+        --sb-tag-remove-size: 44px;
+    }
+
+    #right-nav-panel .ds-field-header > .notes-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    #right-nav-panel #form_create :is(#creator_textarea, #character_version_textarea) {
+        min-height: 44px;
+    }
+
+    #right-nav-panel #talkativeness_slider {
+        height: 44px;
+        background: transparent;
+    }
+
+    #right-nav-panel #talkativeness_slider::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    }
+
+    #right-nav-panel #talkativeness_slider::-webkit-slider-thumb {
+        margin-top: -7px;
+    }
+
+    #right-nav-panel #talkativeness_slider::-moz-range-track {
+        height: 4px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    }
+
+    .sb-editor-icon-button {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+    }
+
+    .sb-editor-action.sb-editor-action {
+        min-height: 44px;
+    }
+
+    .sb-greeting-row__btn {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* Tag chips — libadwaita pill style
+   ========================================================================= */
+
+/* The .tags container (tagList) and upstream .tag pills need libadwaita
+   treatment inside the editors. Scope tightly to avoid changing global tag
+   appearance on other panels. Entity-row chips (.ds-tag-chips) mirror these
+   values in sillybunny-entity-list.css. */
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 16px 10px;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    font-size: var(--sb-type-meta, 13px);
+    font-weight: 500;
+    color: var(--SmartThemeBodyColor);
+    line-height: 1.3;
+    cursor: default;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--sb-tag-remove-size, 16px);
+    height: var(--sb-tag-remove-size, 16px);
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: 10px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+    flex-shrink: 0;
+}
+
+@media (hover: hover) {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        border-color: var(--sb-shell-border);
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:hover {
+        background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
+    }
+}
+
+/* Draft-recovery toast actions (sillybunny-editor/chrome.js). Toasts render
+   outside both editors, so this is not scoped to either sheet. */
+.sb-draft-toast__actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+/* Scroll-hide — header and toolbar collapse when scrolling down on mobile
+   ========================================================================= */
+
+@media (pointer: coarse), (max-width: 620px) {
+    /* max-height cannot interpolate from `none`, so the visible state needs a
+       concrete ceiling above the ~57px single-row bars. Visibility flips at once
+       on reveal and only after the fade on hide, which also takes the collapsed
+       bars out of the tab order. */
+    #sb_character_editor_header,
+    #sb_character_editor_toolbar,
+    #sb_group_editor_header,
+    #sb_group_editor_toolbar {
+        max-height: 6rem;
+        overflow: hidden;
+        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast), padding var(--sb-transition-fast),
+            border-width var(--sb-transition-fast), opacity var(--sb-transition-fast), visibility 0s linear 0s;
+    }
+
+    :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
+        max-height: 0;
+        min-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+        visibility: hidden;
+        opacity: 0;
+        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast), padding var(--sb-transition-fast),
+            border-width var(--sb-transition-fast), opacity var(--sb-transition-fast), visibility 0s linear var(--sb-duration-fast);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #sb_character_editor_header,
+        #sb_character_editor_toolbar,
+        #sb_group_editor_header,
+        #sb_group_editor_toolbar,
+        :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
+            transition: none;
+        }
+    }
+}
+
+/* Group editor — group-specific sheet rules (Step 4)
+   ========================================================================= */
+
+/* Panel and sheet container
+   ========================================================================= */
+
+/* #rm_group_chats_block is the toggled .right_menu, so it keeps the upstream
+   display:none and align-items:flex-start from rm-groups.css that
+   selectRightMenuWithAnimation overrides with an inline display:flex. Only the
+   sheet layout is set here, at one class more specificity than that file. */
+#rm_group_chats_block.sb-editor-sheet {
+    flex-direction: column;
+    align-items: stretch;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+/* Avatar — the label is the fixed square; the collage fills it
+   ========================================================================= */
+
+.sb-character-essentials__avatar #group_avatar_div {
+    display: block;
+    border-radius: var(--sb-radius-card, 12px);
+    overflow: hidden;
+}
+
+#group_avatar_preview,
+#group_avatar_preview > .avatar {
+    width: 100%;
+    height: 100%;
+}
+
+#group_avatar_preview > .avatar {
+    position: relative;
+}
+
+/* group-avatars.css rounds the collage to a circle for the group list; inside
+   the square editor preview it must follow the label's radius instead. */
+#group_avatar_preview .avatar.avatar_collage {
+    border-radius: inherit;
+}
+
+/* Member rows and member-list chrome live in the deferred sillybunny-entity-list.css. */
+
+/* The tag filter rows sit between the search row and the list. */
+:is(#rm_group_chats_block, #groupMemberListPopout) .rm_tag_controls {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sb-editor-section .rm_tag_controls:empty,
+:is(#rm_group_chats_block, #groupMemberListPopout) .rm_tag_controls:not(:has(.tag)) {
+    display: none;
+}

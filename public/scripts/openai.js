@@ -82,12 +82,16 @@ import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '
 import { renderTemplateAsync } from './templates.js';
 import { SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+// SillyBunny: Native confirmation uses the shared alert so discarded drafts keep a safe default.
+import { openAlert } from './sillybunny-editor/dialog.js';
 import { t } from './i18n.js';
 import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { setOpenRouterProviders, syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { getNanoGptServiceTiers, isNanoGptPayg, updateServiceTierOptions } from './service-tiers.js';
+// SillyBunny: YAML and reasoning controls adopt shared full-width Window rows.
+import { customEndpointParametersOptions } from './sillybunny-editor/adapters/window-content-dialogs.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
 import {
@@ -2505,8 +2509,16 @@ function appendOpenAIModelEntry($container, entry, favoriteValues = new Set()) {
 }
 
 function getApiSelect2DropdownParent() {
-    const apiDropdownParent = $('#rm_api_block');
-    return apiDropdownParent.length ? apiDropdownParent : $(document.body);
+    // SillyBunny (feat/v1.9.0-ui-overhaul): the provider forms live in the Connections panel, which
+    // moved them out of `#rm_api_block`. A dropdown parent that still resolves to that now-empty
+    // block would render every model picker somewhere the user cannot see, so the panel is preferred
+    // and the block is only the fallback for the brief window before the panel is built.
+    const apiDropdownParent = $('.sb-connections-panel');
+    if (apiDropdownParent.length) {
+        return apiDropdownParent;
+    }
+    const apiBlock = $('#rm_api_block');
+    return apiBlock.length ? apiBlock : $(document.body);
 }
 
 function getPromptManagerSelect2DropdownParent() {
@@ -3724,6 +3736,11 @@ function createOpenAISettingsDrawer(id, title, description) {
     const $title = $('<b>').text(title);
     const $label = $('<div>', { class: 'flex-container flexFlowColumn' })
         .append($title);
+    const isEditorDrawer = id === 'sb-openai-prompt-manager';
+    if (!isEditorDrawer) {
+        $title.addClass('sb-settings-category-title');
+        $label.addClass('sb-settings-category-heading');
+    }
 
     if (id === 'sb-openai-sampling') {
         const $helpLink = $('<a>', {
@@ -3742,7 +3759,9 @@ function createOpenAISettingsDrawer(id, title, description) {
     }
 
     if (description) {
-        $label.append($('<small>', { class: 'sb-group-meta' }).text(description));
+        const $description = $('<small>', { class: 'sb-group-meta' }).text(description);
+        if (!isEditorDrawer) $description.attr('data-i18n', description);
+        $label.append($description);
     }
 
     $header.append($label);
@@ -3761,10 +3780,11 @@ function groupOpenAISettingsIntoDrawers() {
         return;
     }
 
+    // SillyBunny: keep preset-bound prompt controls together while preserving the live upstream nodes.
     const groupConfigs = [
         {
             id: 'sb-openai-budget',
-            title: 'Token Budget',
+            title: 'Generation Settings',
             description: 'Context, response limits, swipes, and costs',
             selectors: [
                 '#range_block_openai > .range-block:has(#openai_max_context)',
@@ -3774,6 +3794,7 @@ function groupOpenAISettingsIntoDrawers() {
                 '#range_block_openai > div:has(#openrouter_max_prompt_cost)',
                 '#range_block_openai > div:has(#electronhub_max_prompt_cost)',
                 '#range_block_openai > div:has(#chutes_max_prompt_cost)',
+                '#range_block_openai > .range-block:has(#stream_toggle)',
             ],
         },
         {
@@ -3797,23 +3818,29 @@ function groupOpenAISettingsIntoDrawers() {
             ],
         },
         {
-            id: 'sb-openai-output',
-            title: 'Output',
-            description: 'Streaming, prompt templates, names, and continue behavior',
+            id: 'sb-openai-names',
+            title: 'Character Names & Prompt Formatting',
+            description: 'Control name formatting, system messages, and spacing when continuing replies.',
             selectors: [
-                '#range_block_openai > .range-block:has(#stream_toggle)',
-                '#range_block_openai > .inline-drawer:has(#main_prompt_quick_edit_textarea)',
-                '#range_block_openai > .inline-drawer:has(#impersonation_prompt_textarea)',
-                '#openai_settings > div > .inline-drawer:has(#character_names_none)',
-                '#openai_settings > div > .inline-drawer:has(#continue_postfix_none)',
-                '#openai_settings > div > .range-block:has(#continue_prefill)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
                 '#openai_settings > div > .range-block:has(#squash_system_messages)',
                 '#openai_settings > div > .range-block:has(#use_sysprompt)',
             ],
         },
         {
-            id: 'sb-openai-advanced',
-            title: 'Advanced & Reasoning',
+            id: 'sb-openai-prefill',
+            title: 'Reply Prefill',
+            description: 'Set starting text for replies and adjust continuation prefill.',
+            selectors: [
+                '#openai_settings > div > .range-block:has(#continue_prefill)',
+                '#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',
+                '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
+            ],
+        },
+        {
+            id: 'sb-openai-request',
+            title: 'Request Options',
             description: 'Tools, media, reasoning, and server config',
             selectors: [
                 '#openai_settings > div > .range-block:has(#openai_enable_web_search)',
@@ -3824,10 +3851,18 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_show_thoughts)',
                 '#openai_settings > div > .range-block:has(#openai_auto_append_reasoning_tags)',
                 '#openai_settings > div > .flex-container:has(#openai_reasoning_effort)',
-                '#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
-                '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
+            ],
+        },
+        // SillyBunny: retain Quick Prompts here; the shell moves Utility Prompts and Prompt Manager into Editor.
+        {
+            id: 'sb-openai-prompts',
+            title: 'Quick Prompts Edit / Utility Prompts',
+            description: '',
+            selectors: [
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#main_prompt_quick_edit_textarea)',
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#impersonation_prompt_textarea)',
             ],
         },
         {
@@ -3870,9 +3905,34 @@ function groupOpenAISettingsIntoDrawers() {
     updateOpenAISettingsGroupVisibility();
 }
 
+/**
+ * Gets the settings blocks a grouped OpenAI section holds.
+ *
+ * A collapsible group keeps them in its `.inline-drawer-content`. The settings page flattens the
+ * group into a static section (`flattenNestedSettingsDrawers` in sillybunny-settings-content.js),
+ * which lifts the blocks out of that wrapper and drops it, so they become the group's own children
+ * after its heading. Reading only the wrapper found no blocks once flattened, and every group was
+ * hidden as empty.
+ * @param {HTMLElement} group
+ * @returns {Element[]}
+ */
+function getOpenAISettingsGroupBlocks(group) {
+    // SillyBunny: Prompting boxes the live blocks without changing their provider visibility contract.
+    const body = group.querySelector(':scope > .sb-prompting-group-body');
+    if (body) {
+        return Array.from(body.children);
+    }
+    const content = group.querySelector(':scope > .inline-drawer-content');
+    if (content) {
+        return Array.from(content.children);
+    }
+
+    return Array.from(group.children).filter(child => !child.classList.contains('sb-settings-flat-header'));
+}
+
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
-        const blocks = $(this).children('.inline-drawer-content').children().toArray();
+        const blocks = getOpenAISettingsGroupBlocks(this);
         const hasVisibleContent = blocks.some(block => {
             if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
                 return false;
@@ -4230,17 +4290,21 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-system-prompt-cache">
                         <input id="sb-config-claude-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
+                        <small class="ds-row-subtitle" data-i18n="Let Claude cache system instructions for reuse between replies.">Let Claude cache system instructions for reuse between replies.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-extended-ttl">
                         <input id="sb-config-claude-extended-ttl" type="checkbox">
                         <span>Extended cache TTL</span>
+                        <small class="ds-row-subtitle" data-i18n="Extend the cache duration from five minutes to one hour. Cache creation costs more.">Extend the cache duration from five minutes to one hour. Cache creation costs more.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-adaptive-thinking">
                         <input id="sb-config-claude-adaptive-thinking" type="checkbox">
                         <span>Adaptive thinking</span>
+                        <small class="ds-row-subtitle" data-i18n="Let supported Claude models adjust their thinking based on your chosen reasoning effort.">Let supported Claude models adjust their thinking based on your chosen reasoning effort.</small>
                     </label>
                     <label class="sb-chat-completion-config-field" for="sb-config-claude-caching-depth">
                         <span>Caching at depth</span>
+                        <small class="ds-row-subtitle" data-i18n="Higher values place cache markers earlier in the chat. Set to -1 to disable.">Higher values place cache markers earlier in the chat. Set to -1 to disable.</small>
                         <input id="sb-config-claude-caching-depth" class="text_pole" type="number" step="1" min="-1">
                     </label>
                     <div class="toggle-description justifyLeft">
@@ -4251,15 +4315,18 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     <strong class="sb-chat-completion-config-title">Gemini</strong>
                     <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version">
                         <span>API version</span>
+                        <small class="ds-row-subtitle" data-i18n="Set the Google AI Studio API version. Leave blank to use v1beta.">Set the Google AI Studio API version. Leave blank to use v1beta.</small>
                         <input id="sb-config-gemini-api-version" class="text_pole" type="text" placeholder="v1beta">
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-thought-signatures">
                         <input id="sb-config-gemini-thought-signatures" type="checkbox">
                         <span>Thought signatures</span>
+                        <small class="ds-row-subtitle" data-i18n="Send saved thought signatures back to Gemini to preserve reasoning context between replies.">Send saved thought signatures back to Gemini to preserve reasoning context between replies.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-system-prompt-cache">
                         <input id="sb-config-gemini-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
+                        <small class="ds-row-subtitle" data-i18n="Let supported Gemini models cache system instructions through OpenRouter.">Let supported Gemini models cache system instructions through OpenRouter.</small>
                     </label>
                 </section>
             </div>
@@ -4303,7 +4370,7 @@ function buildServerChatCompletionConfigDrawer() {
 }
 
 function injectServerChatCompletionConfigCard() {
-    const $advancedDrawerContent = $('#sb-openai-advanced > .inline-drawer-content');
+    const $advancedDrawerContent = $('#sb-openai-request > .inline-drawer-content');
 
     if ($advancedDrawerContent.length === 0 || $('#sb-chat-completion-server-config, #sb-chat-completion-server-config-drawer').length) {
         return;
@@ -4311,10 +4378,17 @@ function injectServerChatCompletionConfigCard() {
 
     $advancedDrawerContent.append(buildServerChatCompletionConfigDrawer());
 
+    // SillyBunny: Reloading this editor can discard a draft, so Cancel is the default response.
     document.getElementById('sb-chat-completion-config-reload')?.addEventListener('click', async () => {
-        if (serverChatCompletionConfigState.loaded && updateServerChatCompletionConfigDirtyState()
-            && !window.confirm('Discard your unsaved server config edits and reload from config.yaml?')) {
-            return;
+        if (serverChatCompletionConfigState.loaded && updateServerChatCompletionConfigDirtyState()) {
+            const response = await openAlert({
+                heading: 'Discard your unsaved server config edits and reload from config.yaml?',
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'discard', label: t`Discard`, appearance: 'destructive' },
+                ],
+            });
+            if (response !== 'discard') return;
         }
 
         await loadServerChatCompletionConfig({ force: true });
@@ -9534,6 +9608,13 @@ function toggleChatCompletionForms() {
     }
 
     $('[data-source]').each(function () {
+        // SillyBunny: the shared Sampling tab shows every sampler for every provider
+        // (sillybunny-tabs.js SB_SAMPLER_REGISTRY); unsupported values are ignored by the provider.
+        if (this.hasAttribute('data-sb-sampler-ungated')) {
+            $(this).show();
+            return;
+        }
+
         const mode = $(this).data('source-mode');
         const validSources = $(this).data('source').split(',');
         const effectiveSource = oai_settings.chat_completion_source === chat_completion_sources.OPENAI_RESPONSES
@@ -9651,7 +9732,8 @@ async function onCustomizeParametersClick() {
 
     syncCustomReasoningPopup();
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    // SillyBunny: preserve YAML whitespace while the shared Window body owns scrolling.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, ...customEndpointParametersOptions(template) });
 }
 
 /**

@@ -4,6 +4,7 @@ const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || process.env.ST_BASE_URL 
 
 export default defineConfig({
     testMatch: '*.e2e.js',
+    testIgnore: '**/foundation/**',
     use: {
         baseURL,
         video: 'only-on-failure',

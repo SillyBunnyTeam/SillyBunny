@@ -3,8 +3,8 @@
  * Extracted from attachments.js so the coalescing/merging logic can be unit-tested
  * without the heavy DOM + jQuery imports that attachments.js pulls in.
  *
- * See CONTRIBUTING.md "Best Code Practices" — fork-specific helpers live in their
- * own self-contained files where possible.
+ * Fork-specific helpers live in their own self-contained files where possible, which keeps
+ * upstream-origin files free of SillyBunny changes.
  */
 
 import { getConversationMessageRevision } from './message-identity-utils.js';

@@ -15,7 +15,8 @@ const enableBulkEdit = () => {
 
 const disableBulkEdit = () => {
     disableBulkSelect();
-    characterGroupOverlay.browseState();
+    // SillyBunny: shared lifecycle notifications must not recursively request a legacy transition — see docs/ui-migration.md.
+    if (characterGroupOverlay.legacyRowSelectionEnabled) characterGroupOverlay.browseState();
     // hide the bulk edit option buttons
     $('.bulkEditOptionElement').hide();
     is_bulk_edit = false;
@@ -34,6 +35,8 @@ const toggleBulkEditMode = (isBulkEdit) => {
  * Toggles bulk edit mode on/off when the edit button is clicked.
  */
 function onEditButtonClick() {
+    // SillyBunny: hidden transports cannot activate the legacy UI while the shared list owns selection — see docs/ui-migration.md.
+    if (!characterGroupOverlay.legacyRowSelectionEnabled) return;
     console.log('Edit button clicked');
     toggleBulkEditMode(is_bulk_edit);
 }
@@ -42,6 +45,8 @@ function onEditButtonClick() {
  * Toggles the select state of all characters in bulk edit mode to selected. If all are selected, they'll be deselected.
  */
 function onSelectAllButtonClick() {
+    // SillyBunny: shared selection mode handles Select all across filtered pages — see docs/ui-migration.md.
+    if (!characterGroupOverlay.legacyRowSelectionEnabled) return;
     console.log('Bulk select all button clicked');
     // SillyBunny: the shell's groups view shares the upstream bulk edit controls.
     const characters = Array.from(document.querySelectorAll('#' + BulkEditOverlay.containerId + ' .' + BulkEditOverlay.characterClass + ', #' + BulkEditOverlay.containerId + ' .' + BulkEditOverlay.groupClass));
@@ -69,6 +74,8 @@ function onSelectAllButtonClick() {
  * Deletes all characters that have been selected via the bulk checkboxes.
  */
 async function onDeleteButtonClick() {
+    // SillyBunny: the shared action bar supplies explicit ids instead of legacy checkboxes — see docs/ui-migration.md.
+    if (!characterGroupOverlay.legacyRowSelectionEnabled) return;
     console.log('Delete button clicked');
 
     // We just let the button trigger the context menu delete option
@@ -116,6 +123,8 @@ function disableBulkSelect() {
  */
 export function initBulkEdit() {
     characterGroupOverlay.addStateChangeCallback((state) => {
+        // SillyBunny: preserve browse cleanup, but never inject the retired selection UI into the shared list — see docs/ui-migration.md.
+        if (!characterGroupOverlay.legacyRowSelectionEnabled && state !== BulkEditOverlayState.browse) return;
         if (state === BulkEditOverlayState.select) enableBulkEdit();
         if (state === BulkEditOverlayState.browse) disableBulkEdit();
     });

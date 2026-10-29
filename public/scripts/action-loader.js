@@ -475,8 +475,8 @@ export function getLoaderHandleById(id) {
 /** @type {Popup|null} The current loader overlay popup */
 let loaderPopup = null;
 
-/** Whether the initial HTML preloader has been removed */
-let preloaderYoinked = false;
+/** @type {Promise<void>|null} Fade-out of the initial HTML startup splash, once started */
+let preloaderDismissal = null;
 
 /**
  * Creates the default loader overlay element.
@@ -582,9 +582,6 @@ async function hideOverlay() {
 
         function cleanup() {
             loaderElement.remove();
-            // Yoink preloader entirely; it only exists to cover up unstyled content while loading JS
-            // If it's present, we remove it once and then it's gone.
-            yoinkPreloader();
 
             loaderPopup.complete(POPUP_RESULT.AFFIRMATIVE)
                 .catch((err) => console.error('Error completing loaderPopup:', err))
@@ -602,45 +599,46 @@ async function hideOverlay() {
     });
 }
 
-/**
- * Removes the initial HTML preloader element.
- * Called once after the first loader hide.
- */
-function yoinkPreloader() {
-    if (preloaderYoinked) return;
-    window.SillyBunnyBootGuard?.bootCompleted?.();
-    document.getElementById('preloader')?.remove();
-    preloaderYoinked = true;
-}
-
 // ============================================================================
 // End internal overlay management
 // ============================================================================
 
 /**
- * Forcefully removes any lingering loader overlay artifacts from the DOM.
- * Used as a safety net when the normal hide() chain may not complete.
- * @param {object} [options]
- * @param {boolean} [options.removePreloader=false] Whether to remove the initial HTML preloader too
- * @param {string} [options.reason='cleanup'] Debug label for the cleanup path
+ * Fades out the initial HTML startup splash, then removes it.
+ * Idempotent: repeated calls share the pending fade. Reduced motion disables the
+ * transition, which removes the splash immediately.
+ * @returns {Promise<void>}
  */
-export function cleanupActionLoaderArtifacts({ removePreloader = false, reason = 'cleanup' } = {}) {
-    document.getElementById('loader')?.remove();
+export function dismissPreloader() {
+    if (preloaderDismissal) return preloaderDismissal;
 
-    // Close and remove any open loader dialog overlays
-    for (const dlg of document.querySelectorAll('dialog[open]')) {
-        if (dlg.querySelector('#loader, .splash-screen, #load-spinner')) {
-            try { dlg.close(); } catch {
-                // Ignore dialog close failures before removing the element.
-            }
-            dlg.remove();
+    const preloader = document.getElementById('preloader');
+    window.SillyBunnyBootGuard?.bootCompleted?.();
+
+    preloaderDismissal = new Promise((resolve) => {
+        const finish = () => {
+            preloader?.remove();
+            resolve();
+        };
+
+        if (!preloader) {
+            finish();
+            return;
         }
-    }
 
-    if (removePreloader) {
-        yoinkPreloader();
-    }
+        preloader.classList.add('sb-boot-exit');
+        const durationMs = Math.max(...getComputedStyle(preloader).transitionDuration.split(',').map(value => parseFloat(value) * 1000 || 0));
+        if (durationMs <= 0) {
+            finish();
+            return;
+        }
 
-    // Remove dialog polyfill overlay if present
-    document.querySelector('._poly_dialog_overlay')?.remove();
+        preloader.addEventListener('transitionend', (event) => {
+            if (event.target === preloader) finish();
+        });
+        // transitionend never fires when the tab is hidden or the transition is interrupted.
+        window.setTimeout(finish, durationMs + 100);
+    });
+
+    return preloaderDismissal;
 }

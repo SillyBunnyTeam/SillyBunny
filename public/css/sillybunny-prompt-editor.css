@@ -1,0 +1,1034 @@
+.sb-editor-panel.sb-prompt-owned :is(#sb-openai-prompt-manager, #sb-editor-utility, #sb-editor-sysprompt, #sb-editor-instruct, #sb-editor-context) {
+    display: none !important;
+}
+
+body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
+    display: none !important;
+}
+
+[data-sb-panel='editor']:has(.sb-prompt-owned) .sb-shell-panel-scroller {
+    overflow: hidden !important;
+}
+
+#sb-settings-page .sb-editor-panel.sb-prompt-owned {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    gap: 8px;
+    padding-bottom: 8px;
+}
+
+#sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
+    min-width: 0;
+    padding: 6px 10px;
+}
+
+.sb-prompt-owned > .sb-backend-section-header > p {
+    display: none;
+}
+
+#sb-settings-page .sb-prompt-owned .sb-backend-title-row {
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-prompt-owned .sb-editor-meta {
+    flex: 1;
+    flex-wrap: nowrap;
+    gap: 12px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.8);
+}
+
+.sb-prompt-owned .sb-editor-meta > span {
+    overflow: hidden;
+    min-width: 0;
+    text-overflow: ellipsis;
+}
+
+#sb-settings-page .sb-prompt-owned.sb-prompt-hide-header > .sb-backend-section-header {
+    display: none;
+}
+
+.sb-prompt-editor {
+    /* Shell layout, edge and pane geometry live in sillybunny-editor-shell.css. */
+    --sb-prompt-switch-width: 42px;
+}
+
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-sheet-backdrop)[hidden],
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) [hidden] {
+    display: none !important;
+}
+
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(button, input, textarea) {
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+#sb-settings-page .sb-prompt-editor .menu_button,
+:is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button {
+    flex: none;
+    width: auto;
+    min-height: 38px;
+    margin: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
+    cursor: pointer;
+    transition: transform 100ms var(--sb-ease-out), background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#sb-settings-page .sb-prompt-editor .menu_button_icon,
+:is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button_icon {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    padding: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .menu_button_primary {
+    background: var(--sb-accent);
+    color: var(--sb-on-solid-accent);
+    font-weight: 600;
+}
+
+#sb-settings-page .sb-prompt-editor .menu_button:disabled {
+    opacity: 0.6;
+    background: var(--sb-raised-bg);
+    color: var(--sb-muted-fg);
+    cursor: not-allowed;
+}
+
+:is(.sb-prompt-list-header, .sb-prompt-detail-header) {
+    display: flex;
+    align-items: center;
+    flex: none;
+    flex-wrap: nowrap;
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
+    box-sizing: border-box;
+    gap: 4px;
+    padding: 6px 8px;
+    background: transparent;
+}
+
+.sb-prompt-list-header {
+    overflow: hidden;
+    gap: 2px;
+    padding-inline: 10px;
+}
+
+.sb-prompt-detail-header {
+    border-bottom: var(--sb-headerbar-shade);
+}
+
+.sb-prompt-list-titles {
+    flex: 1;
+    min-width: 0;
+}
+
+.sb-prompt-list-titles h2 {
+    margin: 0;
+    font-size: calc(var(--mainFontSize) * 1.08);
+    line-height: 1.25;
+}
+
+.sb-prompt-list-titles :is(h2, span) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-prompt-list-subtitle {
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+.sb-prompt-search-field {
+    --sb-prompt-search-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    height: var(--sb-prompt-search-height);
+    margin: 8px;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-flat-hover-bg);
+    border: 1px solid var(--sb-shell-border);
+    cursor: text;
+    transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-prompt-search-field:focus-within {
+    border-color: var(--color-primary, var(--sb-accent));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
+}
+
+.sb-prompt-search-field .fa-magnifying-glass {
+    font-size: 12px;
+    color: var(--sb-shell-text-secondary);
+    flex-shrink: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-search {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: var(--sb-type-control);
+    color: var(--sb-shell-text);
+    outline: none;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-search::placeholder {
+    color: var(--sb-shell-text-secondary);
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-search-field {
+    --sb-prompt-search-height: 36px;
+}
+
+.sb-prompt-list-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 8px 0 8px 8px;
+    scrollbar-gutter: stable;
+    background: transparent;
+}
+
+.sb-prompt-section {
+    margin-bottom: 18px;
+}
+
+.sb-prompt-section h3 {
+    margin: 6px 6px 8px;
+    font-size: var(--mainFontSize);
+    font-weight: 700;
+}
+
+.sb-prompt-box {
+    overflow: hidden;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-card);
+    /* libadwaita --card-bg-color: a translucent lift in dark, View white in light. */
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+:root[data-sb-surface-tone='light'] .sb-prompt-box {
+    background: var(--sb-layer-view);
+}
+
+.sb-prompt-box:empty {
+    display: none;
+}
+
+.sb-prompt-row {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    padding: 6px 8px;
+    gap: 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-prompt-row:last-child {
+    border-bottom: 0;
+}
+
+.sb-prompt-row > i {
+    flex: none;
+    width: 18px;
+    text-align: center;
+    color: var(--sb-muted-fg);
+}
+
+.sb-prompt-row-text {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+:is(.sb-prompt-row-name, .sb-prompt-row-subtitle) {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sb-prompt-row-name {
+    font-weight: 600;
+    font-size: calc(var(--mainFontSize) * 0.9);
+}
+
+.sb-prompt-row.is-disabled .sb-prompt-row-text {
+    opacity: 0.6;
+}
+
+:is(.sb-prompt-row-subtitle, .sb-prompt-token) {
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+.sb-prompt-token {
+    flex: none;
+    min-width: 14px;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-grip {
+    width: 24px;
+    min-width: 24px;
+    cursor: grab;
+    color: var(--sb-muted-fg);
+}
+
+.sb-prompt-grip[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.sb-prompt-row.is-selected {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sb-prompt-row.is-selected > i {
+    color: var(--sb-accent);
+}
+
+.sb-prompt-row .sb-switch {
+    flex: none;
+}
+
+#sb-settings-page .sb-prompt-editor input.sb-switch,
+.sb-prompt-sheet input.sb-switch,
+.sb-dialog.sb-prompt-properties-dialog input.sb-switch {
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    transition-timing-function: var(--sb-ease);
+}
+
+#sb-settings-page .sb-prompt-editor input.sb-switch::after,
+.sb-prompt-sheet input.sb-switch::after,
+.sb-dialog.sb-prompt-properties-dialog input.sb-switch::after {
+    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    transition-timing-function: var(--sb-ease);
+}
+
+:is(.sb-prompt-handle-slot, .sb-prompt-switch-slot, .sb-prompt-menu-slot) {
+    display: block;
+    flex: none;
+    height: 40px;
+    pointer-events: none;
+}
+
+:is(.sb-prompt-handle-slot, .sb-prompt-menu-slot) {
+    /* Shared icon controls impose this logical minimum even when their physical width is smaller. */
+    width: var(--sb-control-icon-physical-size);
+}
+
+.sb-prompt-switch-slot {
+    width: var(--sb-prompt-switch-width);
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-editor {
+    --sb-prompt-switch-width: 38px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-row {
+    min-height: 46px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-list-header {
+    min-height: 52px;
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-list-titles h2 {
+    font-size: var(--mainFontSize);
+}
+
+:root[data-sb-compact-mode='true'] .sb-prompt-row-name {
+    font-size: calc(var(--mainFontSize) * 0.85);
+}
+
+@container sb-list-editor-sidebar (width < 440px) {
+    .sb-prompt-row {
+        gap: 6px;
+        padding-inline: 4px;
+    }
+}
+
+@container sb-list-editor-sidebar (width < 300px) {
+    .sb-prompt-row > i {
+        display: none;
+    }
+}
+
+.sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-row-menu {
+    display: none !important;
+}
+
+.sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-row-subtitle {
+    display: none;
+}
+
+.sb-prompt-detail-header > :not(.sb-prompt-title) {
+    flex-shrink: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-title {
+    flex: 1 1 112px;
+    width: 0;
+    min-width: 112px;
+    max-width: none;
+    height: 38px;
+    margin: 0;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font-size: calc(var(--mainFontSize) * 1.08);
+    font-weight: 700;
+    text-overflow: ellipsis;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-title:read-only {
+    border: 0;
+    background: transparent;
+    outline: none;
+    box-shadow: none;
+    cursor: default;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-title:read-only:focus-visible {
+    color: var(--sb-accent);
+}
+
+.sb-prompt-dirty {
+    color: var(--sb-accent);
+}
+
+.sb-prompt-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-mode-toggle {
+    display: none !important;
+}
+
+.sb-prompt-properties {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border-bottom: var(--sb-headerbar-shade);
+    background: transparent;
+}
+
+.sb-prompt-property {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: calc(var(--mainFontSize) * 0.8);
+}
+
+.sb-prompt-property > span {
+    color: var(--sb-muted-fg);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-tc-properties select {
+    min-width: 100px;
+    min-height: 36px;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    color: inherit;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-dropdown,
+:is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-dropdown {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 128px;
+    max-width: 260px;
+    gap: 10px;
+    border: 0;
+    background: var(--sb-raised-bg);
+}
+
+.sb-prompt-dropdown > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-prompt-dropdown > i {
+    color: var(--sb-muted-fg);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-property input[type='number'],
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input[type='number'] {
+    width: 66px;
+    min-height: 36px;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    color: inherit;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-boolean-radio-group,
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-group {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    padding: 3px;
+    gap: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-boolean-radio-option,
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option {
+    display: inline-flex;
+    position: relative;
+    flex: none;
+    width: auto;
+    margin: 0;
+    min-width: 0;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span,
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span {
+    padding: 6px 9px;
+    min-height: 30px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    box-shadow: none;
+    background: transparent;
+    color: inherit;
+    line-height: 1.25;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span:hover,
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span:hover {
+    background: var(--sb-flat-hover-bg);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > input:checked + span,
+:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > input:checked + span {
+    background: var(--sb-flat-selected-bg);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-property-summary {
+    display: none;
+}
+
+.sb-prompt-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px;
+    overflow: hidden;
+}
+
+.sb-prompt-content-field {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    gap: 4px;
+}
+
+.sb-prompt-field-label {
+    flex: none;
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.8);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-textarea.sb-prompt-tc-textarea {
+    min-height: 3lh !important;
+}
+
+.sb-prompt-content-field.is-disabled .sb-prompt-tc-textarea {
+    color: var(--sb-muted-fg);
+}
+
+.sb-prompt-tc-toggle {
+    flex: none;
+    min-height: 36px;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-textarea {
+    flex: 1 1 0;
+    width: 100%;
+    height: 0;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0;
+    padding: 12px;
+    resize: none !important;
+    overflow: auto;
+    overscroll-behavior: contain;
+    font-family: var(--monoFontFamily);
+    font-size: calc(var(--mainFontSize) * 0.84);
+    line-height: 1.45;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-button);
+    background: var(--sb-composer-input-bg);
+    color: var(--SmartThemeBodyColor);
+    caret-color: var(--color-primary, var(--sb-accent));
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-textarea::placeholder {
+    /* The upstream textarea placeholder colour is important. */
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
+}
+
+.sb-prompt-preview {
+    flex: 1 1 0;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    padding: 12px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    font-family: var(--monoFontFamily);
+    font-size: calc(var(--mainFontSize) * 0.84);
+    line-height: 1.45;
+}
+
+.sb-prompt-inspect-message pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.sb-prompt-footer {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 0 12px 10px;
+    gap: 6px;
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-footer .editor_maximize[data-for] {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
+    margin-inline-start: auto;
+}
+
+.sb-prompt-editor[data-collapsed='true'] .sb-prompt-detail > .sb-prompt-properties {
+    display: none;
+}
+
+#sb-settings-page .sb-prompt-editor[data-collapsed='true'] .sb-prompt-property-summary {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    text-align: start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 0;
+    border-bottom: var(--sb-headerbar-shade);
+    border-radius: 0;
+    background: transparent;
+}
+
+.sb-prompt-toast {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    translate: -50% 0;
+    z-index: var(--sb-z-toast);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: calc(100% - 24px);
+    padding: 8px 12px;
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-toast);
+    color: #ffffff;
+    box-shadow: var(--sb-shadow-toast);
+}
+
+.sb-prompt-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--sb-z-modal) - 10);
+    border: 0;
+    background: var(--sb-dialog-backdrop);
+}
+
+.sb-prompt-sheet {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: var(--sb-z-modal);
+    max-height: 80dvh;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+    background: var(--sb-layer-dialog);
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--mainFontFamily);
+    box-shadow: var(--sb-shadow-dialog);
+}
+
+.sb-prompt-sheet > .sb-dialog__handle {
+    display: block;
+    position: absolute;
+    z-index: 2;
+    inset: 0 50% auto auto;
+    width: 80px;
+    height: 20px;
+    translate: 50% 0;
+    touch-action: none;
+}
+
+.sb-prompt-sheet > .sb-dialog__handle::before {
+    content: '';
+    position: absolute;
+    inset: 8px 19px auto;
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
+}
+
+.sb-prompt-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* The header starts the swipe-down close, so the browser must not scroll or select under the finger. */
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+
+.sb-prompt-sheet-header h2 {
+    margin: 0;
+    font-size: calc(var(--mainFontSize) * 1.08);
+}
+
+.sb-prompt-sheet .sb-prompt-properties {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.sb-dialog.sb-prompt-properties-dialog .sb-dialog__body {
+    padding: 0;
+}
+
+.sb-dialog.sb-prompt-properties-dialog .sb-prompt-properties {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.sb-dialog.sb-prompt-properties-dialog .sb-prompt-property {
+    min-height: 44px;
+    justify-content: space-between;
+}
+
+.sb-prompt-sheet .sb-prompt-property {
+    min-height: 44px;
+    justify-content: space-between;
+}
+
+.sb-prompt-popover {
+    position: fixed;
+    z-index: calc(var(--sb-z-modal) + 1);
+    max-height: min(320px, calc(100dvh - 16px));
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--mainFontFamily);
+    box-shadow: var(--sb-shadow-popover);
+    transform-origin: top left;
+}
+
+.sb-prompt-popover[inert] {
+    pointer-events: none;
+}
+
+:is(.sb-prompt-option, .sb-prompt-trigger-row) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 6px 10px;
+    border-radius: var(--sb-radius-control);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sb-prompt-option > i {
+    width: 16px;
+    visibility: hidden;
+}
+
+.sb-prompt-option[aria-selected='true'] > i {
+    visibility: visible;
+    color: var(--sb-accent);
+}
+
+.sb-prompt-option.is-active,
+.sb-prompt-trigger-row:has(input:checked) {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sb-prompt-trigger-row input {
+    accent-color: var(--sb-accent);
+}
+
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) :is(button, .sb-prompt-row):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
+    outline: none;
+    border-color: var(--sb-composer-focus-border) !important;
+    box-shadow: var(--sb-composer-focus-ring) !important;
+}
+
+#sb-settings-page .sb-prompt-editor .sb-prompt-search:is(:focus, :focus-visible) {
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > input:focus-visible + span {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) button:active {
+    transform: scale(0.97);
+}
+
+#sb-settings-page .sb-prompt-editor .is-destructive {
+    color: var(--sb-color-danger);
+}
+
+@container sb-list-editor-detail (width < 560px) {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-modes {
+        display: none !important;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-mode-toggle {
+        display: inline-flex !important;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-title {
+        min-width: 96px;
+    }
+}
+
+/* A phone-width header cannot fit text Cancel beside Save, Preview and the
+   actions menu; Cancel collapses to an icon and keeps its text for assistive tech. */
+@container sb-list-editor-detail (width < 440px) {
+    /* The icon form is a flat Libadwaita icon button, matching its header neighbours. */
+    #sb-settings-page .sb-prompt-editor .sb-prompt-cancel {
+        position: relative;
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
+        min-height: 40px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        line-height: 1;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-cancel .sb-editor-action__icon {
+        display: block;
+        line-height: 1;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-cancel .sb-editor-action__label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-save {
+        padding-inline: 12px;
+    }
+
+    @media (pointer: coarse) {
+        #sb-settings-page .sb-prompt-editor .sb-prompt-cancel {
+            width: 44px;
+            min-width: 44px;
+            height: 44px;
+            min-height: 44px;
+        }
+    }
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):hover,
+    :is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .menu_button:hover,
+    .sb-prompt-row:hover,
+    .sb-prompt-option:hover,
+    .sb-prompt-trigger-row:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    #sb-settings-page .sb-prompt-editor .menu_button_primary:not(:disabled):hover {
+        background: color-mix(in srgb, var(--sb-accent) 90%, var(--SmartThemeBodyColor));
+    }
+
+    .sb-prompt-row.is-selected:hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+@media (max-width: 768px) {
+    #sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-inline: 6px;
+    }
+
+    #sb-settings-page .sb-prompt-owned .sb-backend-title-row {
+        display: flex;
+        flex: 1 1 100%;
+        flex-wrap: nowrap;
+    }
+
+    #sb-settings-page .sb-prompt-owned :is(.sb-sampling-mode-pill, .sb-backend-title-row .menu_button) {
+        flex: none;
+        white-space: nowrap;
+    }
+
+    #sb-settings-page .sb-prompt-owned .sb-sampling-mode-pill {
+        font-size: calc(var(--mainFontSize) * 0.76);
+    }
+
+    #sb-settings-page .sb-prompt-owned .sb-editor-meta {
+        flex: 1 1 100%;
+    }
+
+    .sb-prompt-detail-header {
+        gap: 2px;
+        padding-inline: 4px;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-title {
+        flex: 1 1 0;
+        min-width: 56px;
+        padding-inline: 2px;
+    }
+
+    .sb-prompt-content {
+        padding: 8px;
+    }
+}
+
+@media (pointer: coarse) {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-footer .editor_maximize[data-for] {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
+    .sb-prompt-trigger-row {
+        min-height: 44px;
+    }
+}
+
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *,
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::before,
+body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::after {
+    transition: none !important;
+    animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *,
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::before,
+    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}

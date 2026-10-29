@@ -1,0 +1,153 @@
+/* Tag Management content. The frame (host, header bar, search row, body, sheet) is the shared
+   Window-tier dialog in sillybunny-theme.css (sillybunny-editor/dialog.js). */
+#tag_view_list .text_pole::placeholder {
+    color: var(--SmartThemeBodyColor) !important;
+    opacity: 1;
+}
+
+.sb-tag-manager .sb-tag-manager__button {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    box-shadow: none;
+}
+
+.sb-tag-manager__button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-tag-manager .tag_view_item {
+    margin: 0;
+    padding-inline: 8px;
+    flex-wrap: wrap;
+    content-visibility: visible;
+}
+
+@media (hover: hover) {
+    .sb-tag-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+}
+.sb-tag-manager .ds-entity-row--activatable:active { background: var(--sb-flat-active-bg); }
+
+.sb-tag-manager .ds-entity-row__avatar {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+    border: 0;
+    background: transparent;
+}
+
+.sb-tag-manager .ds-entity-row__subtitle {
+    color: var(--SmartThemeBodyColor);
+}
+
+.sb-tag-manager__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--sb-tag-color, var(--sb-muted-fg));
+}
+
+.sb-tag-manager__name-field {
+    min-width: 0;
+}
+
+.sb-tag-manager .sb-tag-manager__name {
+    width: 100%;
+    min-width: 0;
+    height: 1.6em;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    outline: 0;
+    box-shadow: none;
+}
+
+.sb-tag-manager .tag_view_item .ds-entity-row__title,
+.sb-tag-manager .tag_view_item .sb-tag-manager__name {
+    font-size: calc(var(--sb-type-body) * 0.9);
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.sb-tag-manager .tag_view_item .ds-entity-row__subtitle {
+    font-size: calc(var(--sb-type-body) * 0.75);
+    line-height: 1.4;
+}
+
+.sb-tag-manager .sb-tag-manager__name:focus {
+    background: var(--sb-layer-view);
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-tag-manager [aria-invalid="true"] {
+    border-color: var(--sb-color-danger);
+}
+
+.sb-tag-manager .sb-tag-manager__name[aria-invalid="true"] {
+    box-shadow: inset 0 0 0 1px var(--sb-color-danger);
+}
+
+.sb-tag-manager__error {
+    display: block;
+    padding: 2px 4px;
+    color: var(--sb-color-danger);
+    font-size: var(--sb-type-meta);
+    white-space: normal;
+}
+
+.sb-tag-manager__colors {
+    flex: 1 0 100%;
+}
+
+.sb-tag-manager__members {
+    margin-top: 12px;
+}
+
+.sb-tag-manager__member-add {
+    align-self: flex-end;
+}
+
+.sb-tag-manager .sb-tag-manager__button {
+    border-radius: 999px;
+    background: transparent !important;
+}
+
+.sb-tag-manager__colors .tag_view_color_picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (hover: hover) {
+    .sb-tag-manager .sb-tag-manager__button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
+    .sb-tag-manager .sb-tag-manager__name:hover:not(:focus) {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-tag-manager :is(.sb-tag-manager__button, .sb-tag-manager__name) {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+}

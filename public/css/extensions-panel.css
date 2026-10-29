@@ -13,14 +13,29 @@
     flex: 0 0 auto;
 }
 
-label[for="extensions_autoconnect"] {
+.extensions_info .extension_toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 0 0 42px;
+    width: 42px;
+    min-height: 24px;
+    margin-inline-start: auto;
+}
+
+.extensions_info .extension_toggle input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+label[for="extensions_autoconnect"]:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 8px;
     margin: 0 !important;
 }
 
-label[for="extensions_notify_updates"] {
+label[for="extensions_notify_updates"]:not(.ds-row) {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -94,20 +109,7 @@ label[for="extensions_notify_updates"] input[type="checkbox"] {
     font-weight: normal;
 }
 
-.extensions_info .extension_block {
-    display: flex;
-    flex-wrap: nowrap;
-    padding: 12px 14px;
-    margin-bottom: 5px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 76%, transparent);
-    border-radius: 18px;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 72px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-}
-
+/* SillyBunny: extension cards now use the manager's shared boxed list. */
 .extensions_info .extension_name {
     font-size: 1.05em;
 }
@@ -151,6 +153,7 @@ input.extension_missing[type="checkbox"] {
     display: inline-flex;
 }
 
+/* SillyBunny: the shared Window header owns extension manager actions instead of a sticky toolbar. */
 /* Fixes order of settings for extensions */
 #extensions_settings,
 #extensions_settings2 {
@@ -187,7 +190,7 @@ input.extension_missing[type="checkbox"] {
     align-items: center;
 }
 
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] > span {
+#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] > span:not(.ds-row-suffix) {
     flex: 1 1 auto;
     min-width: 0;
     white-space: normal;
@@ -227,36 +230,57 @@ input.extension_missing[type="checkbox"] {
 }
 
 .extensions_info .extension_text_block {
-    flex: 1 1 auto;
     min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
+/* SillyBunny: keep extension action controls trailing and collapse crowded rows through the adapter menu. */
 .extensions_info .extension_actions {
     display: flex;
+    flex: 0 0 auto;
     flex-wrap: nowrap;
     gap: 8px;
     align-items: center;
     align-self: center;
 }
 
-.extensions_toolbar {
-    top: 0;
-    position: -webkit-sticky;
-    position: sticky;
+.extensions_info .extension_actions:empty {
+    display: none;
+}
+
+/* SillyBunny: keep the Regex creation actions in one compact, wrapping toolbar on detail pages. */
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child {
     display: flex;
     flex-direction: row;
-    align-items: center;
     flex-wrap: wrap;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, transparent);
-    gap: 8px;
-    z-index: 1;
-    margin-bottom: 10px;
-    padding: 10px 12px;
-    border-radius: 18px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
+    align-items: center;
+    justify-content: flex-start;
+    column-gap: 0;
+    row-gap: 6px;
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button,
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > label.menu_button {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button ~ .menu_button {
+    border-inline-start-width: 0;
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button:first-child {
+    border-start-start-radius: var(--sb-radius-button, 14px);
+    border-end-start-radius: var(--sb-radius-button, 14px);
+}
+
+.sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button:last-child {
+    border-start-end-radius: var(--sb-radius-button, 14px);
+    border-end-end-radius: var(--sb-radius-button, 14px);
 }
 
 @media screen and (max-width: 1360px) and (min-width: 769px) {
@@ -284,12 +308,112 @@ input.extension_missing[type="checkbox"] {
         width: 100%;
     }
 
-    .extensions_info .extension_block {
-        flex-wrap: wrap;
+    .extensions_info .extension_actions {
+        width: auto;
+        justify-content: flex-end;
+    }
+}
+
+@media screen and (max-width: 600px) {
+    .extensions_info .extension_text_block {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        overflow-wrap: normal;
     }
 
-    .extensions_info .extension_actions {
-        width: 100%;
-        justify-content: flex-end;
+}
+
+.extensions_info .extension_block {
+    align-items: center;
+    min-width: 0;
+}
+
+.extensions_info .extension_text_block {
+    display: contents;
+}
+
+/* SillyBunny: titles yield width to the permanent trailing action and switch controls. */
+.extensions_info .extension_text_block > :not(.extension_actions) {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.extensions_info .extension_actions > button.menu_button {
+    display: inline-flex;
+    flex: 0 0 40px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--sb-shell-text);
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.extensions_info .extension_actions > button.menu_button.sb-extension-actions-menu {
+    display: none;
+}
+
+@media (hover: hover) {
+    .extensions_info .extension_actions > button.menu_button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.extensions_info .extension_actions > button.menu_button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.extensions_info .extension_actions > button.menu_button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    .extensions_info .extension_actions > button.menu_button {
+        flex-basis: 44px;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+}
+
+/* SillyBunny: the row adapter retains upstream action buttons as hidden click transports in the overflow state. */
+.extensions_info .extension_block.sb-extension-actions-collapsed .extension_actions > button.menu_button:not(.sb-extension-actions-menu) {
+    display: none;
+}
+
+.extensions_info .extension_block.sb-extension-actions-collapsed .extension_actions > button.menu_button.sb-extension-actions-menu {
+    display: inline-flex;
+}
+
+.extensions_info .extension_block.sb-extension-actions-collapsed .extension_text_block > :not(.extension_actions) {
+    flex: 1 1 40%;
+    min-width: 40%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-subpage-list,
+    .sb-subpage-detail,
+    .sb-subpage-back,
+    .extensions_info .extension_block,
+    .extensions_info .extension_actions .menu_button,
+    .regex_settings #scoped_scripts_block,
+    .regex_settings #preset_scripts_block,
+    .regex_settings .regex-toggle-off {
+        animation: none;
+        transition: none;
     }
 }

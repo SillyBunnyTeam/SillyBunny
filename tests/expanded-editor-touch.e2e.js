@@ -1,6 +1,5 @@
 import { expect, test as base } from '@playwright/test';
-import { dismissOnboardingIfPresent } from './chat-scroll-regression-helpers.js';
-import { testSetup } from './frontend/frontent-test-utils.js';
+import { bootWindowContentDialogs } from './helpers/window-content-dialogs.js';
 
 const definition = Array.from({ length: 120 }, (_, index) => `Character definition line ${index + 1}.`).join('\n');
 const test = base.extend({
@@ -41,21 +40,27 @@ async function touchMoveIsCanceled(textarea, deltaY) {
     }, deltaY);
 }
 
+async function openCharacterEditor(page) {
+    await page.locator('#sb-character-toggle').click();
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        app.setCharacterId(0);
+        app.select_selected_character(0);
+    });
+    await expect(page.locator('#sb_character_editor_header')).toBeVisible();
+}
+
 test.describe('expanded editor touch handling', () => {
     test.beforeEach(async ({ page }) => {
-        let settingsVersion = Date.now();
-        await page.route('**/api/settings/save', route => route.fulfill({ status: 200, json: { version: ++settingsVersion } }));
-        await testSetup.awaitST({ page });
-        await dismissOnboardingIfPresent(page);
-        const setupDialogClose = page.getByRole('button', { name: 'Close dialog', exact: true });
-        if (await setupDialogClose.isVisible()) {
-            await setupDialogClose.click();
-        }
-        await page.getByRole('button', { name: 'Open character management', exact: true }).click();
-        await page.getByTitle('Create New Character', { exact: true }).click();
-        await page.getByRole('tab', { name: 'Definitions', exact: true }).click();
+        await bootWindowContentDialogs(page, { width: 412, height: 839, presentation: 'sheet' });
+        await openCharacterEditor(page);
         await page.locator('#description_textarea').fill(definition);
         await page.locator('.editor_maximize[data-for="description_textarea"]').click();
+        const popup = page.locator('dialog.popup[open]').last();
+        await expect(popup).toHaveClass(/sb-dialog--window/);
+        await expect(popup.locator('.popup-content')).toHaveCSS('overflow-y', 'hidden');
+        await expect(popup.locator('.popup-body')).toHaveCSS('overflow-y', 'hidden');
+        await expect(popup.locator('.maximized_textarea')).toHaveCSS('overflow-y', 'auto');
         await expect(page.locator('.maximized_textarea')).toBeVisible();
     });
 

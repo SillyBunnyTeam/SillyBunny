@@ -39,7 +39,7 @@ return createModelIcon;`)(FakeImage, { LINKAPI: 'linkapi' });
 
 describe('message model icon label', () => {
     test('both toggles sit with the model icon toggle in Visual Toggles', () => {
-        const themeToggles = indexHtml.indexOf('<div name="themeToggles">');
+        const themeToggles = indexHtml.indexOf('<div name="themeToggles"');
         expect(themeToggles).toBeGreaterThan(-1);
 
         for (const [id] of TOGGLES) {

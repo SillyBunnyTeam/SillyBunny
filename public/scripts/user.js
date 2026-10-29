@@ -3,6 +3,11 @@ import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from './popup.js';
 import { canViewSecrets } from './secrets.js';
 import { renderTemplateAsync } from './templates.js';
 import { ensureImageFormatSupported, getBase64Async, humanFileSize } from './utils.js';
+// SillyBunny: account rows keep native password types, autocomplete, and upstream request handlers.
+import { accountFormOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: account windows adopt their source content without changing route or result contracts.
+import { accountProfileOptions, adminPanelOptions, snapshotsOptions } from './sillybunny-editor/adapters/window-content-dialogs.js';
+import { t } from './i18n.js';
 
 /**
  * @type {import('../../src/users.js').UserViewModel} Logged in user
@@ -29,6 +34,17 @@ export async function setUserControls(isEnabled) {
 
     $('#logout_button').show();
     await getCurrentUser();
+}
+
+/**
+ * SillyBunny: the settings split detaches #account_controls before the settings load, so the
+ * document-wide lookups above miss its buttons. The Data & Security tab calls this with its container.
+ * @param {ParentNode} root Subtree that holds the account controls
+ */
+export function syncUserControls(root = document) {
+    const $root = $(root);
+    $root.find('#logout_button').toggle(accountsEnabled);
+    $root.find('#admin_button').toggle(accountsEnabled && isAdmin());
 }
 
 /**
@@ -309,7 +325,8 @@ async function changePassword(handle, callback) {
         template.find('input[name="confirm"]').on('input', function () {
             confirmPassword = String($(this).val());
         });
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Change', cancelButton: 'Cancel', wide: false, large: false });
+        // SillyBunny: entry rows adopt the password fields without changing their security attributes.
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Change', cancelButton: 'Cancel', wide: false, large: false, ...accountFormOptions(template, { title: t`Change Password` }) });
         if (result === POPUP_RESULT.CANCELLED || result === POPUP_RESULT.NEGATIVE) {
             throw new Error('Change password cancelled');
         }
@@ -362,7 +379,15 @@ async function deleteUser(handle, callback) {
             confirmHandle = String($(this).val());
         });
 
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Delete', cancelButton: 'Cancel', wide: false, large: false });
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', {
+            okButton: 'Delete',
+            cancelButton: 'Cancel',
+            wide: false,
+            large: false,
+            // SillyBunny: keep Cancel focused; the frame adopts the existing wipe-data switch once.
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            ...accountFormOptions(template, { destructive: true }),
+        });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             throw new Error('Delete user cancelled');
@@ -404,7 +429,8 @@ async function resetSettings(handle, callback) {
         template.find('input[name="password"]').on('input', function () {
             password = String($(this).val());
         });
-        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false });
+        // SillyBunny: reset is destructive, never the Return default; password validation stays upstream.
+        const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false, defaultResult: POPUP_RESULT.NEGATIVE, ...accountFormOptions(template, { title: t`Reset Settings`, destructive: true }) });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             throw new Error('Reset settings cancelled');
@@ -476,7 +502,15 @@ async function restoreSnapshot(name, callback) {
             `Are you sure you want to restore the settings from "${name}"?`,
             POPUP_TYPE.CONFIRM,
             '',
-            { okButton: 'Restore', cancelButton: 'Cancel', wide: false, large: false },
+            // SillyBunny: restoring a settings snapshot is destructive; Return must not confirm it.
+            {
+                okButton: 'Restore',
+                cancelButton: 'Cancel',
+                defaultResult: POPUP_RESULT.NEGATIVE,
+                wide: false,
+                large: false,
+                onOpen(popup) { popup.okButton.classList.add('is-destructive'); },
+            },
         );
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
@@ -598,7 +632,10 @@ async function viewSettingsSnapshots() {
                 e.stopPropagation();
                 restoreSnapshot(snapshot.name, () => location.reload());
             });
-            snapshotBlock.find('.inline-drawer-toggle').on('click', async () => {
+            // SillyBunny: keep the expanded state available to assistive technology after the row moves.
+            snapshotBlock.on('inline-drawer-toggle', async () => {
+                const expandButton = snapshotBlock.find('.snapshotExpandButton');
+                expandButton.attr('aria-expanded', snapshotBlock.find('.inline-drawer-icon').hasClass('up') ? 'true' : 'false');
                 const contentBlock = snapshotBlock.find('.snapshotContent');
                 if (!contentBlock.val()) {
                     const content = await loadSnapshotContent(snapshot.name);
@@ -609,8 +646,10 @@ async function viewSettingsSnapshots() {
         }
     }
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true });
+    // SillyBunny: snapshots use the shared Window body and preserve the existing action/list nodes.
+    // SillyBunny: bind before framing moves the header action so the live handler is never lost.
     template.find('.makeSnapshotButton').on('click', () => makeSnapshot(renderSnapshots));
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, ...snapshotsOptions(template) });
     renderSnapshots();
 }
 
@@ -645,7 +684,8 @@ async function resetEverything(callback) {
             template,
             POPUP_TYPE.CONFIRM,
             '',
-            { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false },
+            // SillyBunny: preserve the two-step reset flow, with native entries and Cancel as default.
+            { okButton: 'Reset', cancelButton: 'Cancel', wide: false, large: false, defaultResult: POPUP_RESULT.NEGATIVE, ...accountFormOptions(template, { title: t`Reset Everything`, destructive: true }) },
         );
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
@@ -674,14 +714,15 @@ async function resetEverything(callback) {
 async function openUserProfile() {
     await getCurrentUser();
     const template = $(await renderTemplateAsync('userProfile'));
+    // SillyBunny: bind the account role to its adopted property row.
+    template.find('.sb-account-properties .userRole').text(currentUser.admin ? 'Admin' : 'User');
     template.find('.userName').text(currentUser.name);
     template.find('.userHandle').text(currentUser.handle);
     template.find('.avatar img').attr('src', currentUser.avatar);
-    template.find('.userRole').text(currentUser.admin ? 'Admin' : 'User');
     template.find('.userCreated').text(new Date(currentUser.created).toLocaleString());
     template.find('.hasPassword').toggle(currentUser.password);
     template.find('.noPassword').toggle(!currentUser.password);
-    template.find('.userSettingsSnapshotsButton').on('click', () => viewSettingsSnapshots());
+    // SillyBunny: Settings Snapshots and Download Backup are rows in the Data & Security Export category, so this popup binds neither.
     template.find('.userChangeNameButton').on('click', async () => changeName(currentUser.handle, currentUser.name, async () => {
         await getCurrentUser();
         template.find('.userName').text(currentUser.name);
@@ -691,12 +732,6 @@ async function openUserProfile() {
         template.find('.hasPassword').toggle(currentUser.password);
         template.find('.noPassword').toggle(!currentUser.password);
     }));
-    template.find('.userBackupButton').on('click', function () {
-        $(this).addClass('disabled');
-        backupUserData(currentUser.handle, () => {
-            $(this).removeClass('disabled');
-        });
-    });
     template.find('.userResetSettingsButton').on('click', () => resetSettings(currentUser.handle, () => location.reload()));
     template.find('.userResetAllButton').on('click', () => resetEverything(() => location.reload()));
     template.find('.userAvatarChange').on('click', () => template.find('.avatarUpload').trigger('click'));
@@ -731,6 +766,8 @@ async function openUserProfile() {
         large: false,
         allowVerticalScrolling: true,
         allowHorizontalScrolling: false,
+        // SillyBunny: account profile uses the shared Window while keeping its source controls live.
+        ...accountProfileOptions(template),
     };
     callGenericPopup(template, POPUP_TYPE.TEXT, '', popupOptions);
 }
@@ -825,17 +862,24 @@ async function openAdminPanel() {
     }
 
     const template = $(await renderTemplateAsync('admin'));
+    // SillyBunny: frame the source form before its nodes move into the Window.
+    const adminOptions = adminPanelOptions(template);
 
     template.find('.adminNav > button').on('click', function () {
+        if (this.classList.contains('newUserButton')) {
+            return;
+        }
         const target = String($(this).data('target-tab'));
         template.find('.navTab').each(function () {
             $(this).toggle(this.classList.contains(target));
         });
     });
 
+    // SillyBunny: keep the generated handle inside the active form after the form is adopted.
     template.find('.createUserDisplayName').on('input', async function () {
+        const form = $(this).closest('.userCreateForm');
         const slug = await slugify(String($(this).val()));
-        template.find('.createUserHandle').val(slug);
+        form.find('.createUserHandle').val(slug);
     });
 
     template.find('.userCreateForm').on('submit', function (event) {
@@ -845,12 +889,29 @@ async function openAdminPanel() {
 
         event.preventDefault();
         createUser(event.target, () => {
-            template.find('.manageUsersButton').trigger('click');
+            event.target.closest('dialog.popup')?.querySelector('.sb-dialog__back')?.click();
             renderUsers();
         });
     });
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false });
+    // SillyBunny: the new-user form is a pushed Window page, while the existing submit handler stays on the live form.
+    template.find('.newUserButton').on('click', function (event) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const form = adminOptions.newUserForm?.();
+        if (!form) return;
+        void callGenericPopup(form, POPUP_TYPE.TEXT, '', {
+            okButton: 'Close',
+            tier: 'window',
+            size: 'content',
+            title: t`New User`,
+            allowVerticalScrolling: true,
+            onClose: () => adminOptions.restoreNewUserForm?.(),
+        });
+    });
+
+    // SillyBunny: the admin view is a Window; its new-user inputs retain their source identities.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false, ...adminOptions });
     renderUsers();
 }
 
@@ -925,6 +986,17 @@ jQuery(() => {
     });
     $('#account_button').on('click', () => {
         openUserProfile();
+    });
+    // SillyBunny: the Data & Security Export rows hold Download Backup and Settings Snapshots instead of the Account popup.
+    $('#user_backup_button').on('click', async function () {
+        // backupUserData() calls back only on success, and this row stays on screen, so the button
+        // is enabled again after a failure too.
+        $(this).prop('disabled', true);
+        await backupUserData(getCurrentUserHandle(), () => {});
+        $(this).prop('disabled', false);
+    });
+    $('#settings_snapshots_button').on('click', () => {
+        viewSettingsSnapshots();
     });
     setInterval(async () => {
         if (currentUser) {

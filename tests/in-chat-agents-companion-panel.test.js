@@ -417,7 +417,7 @@ describe('companion tracker panel', () => {
 
         expect(html).toContain('data-agent-id="tracker-1" data-message-index="0" data-hidden="true"');
         expect(html).toContain('data-action="panel-hide"');
-        expect(html).toContain('aria-label="Unhide companion"');
+        expect(html).toContain('aria-label="Unhide Companion"');
         expect(html).toContain('data-action="panel-run-latest"');
     });
 

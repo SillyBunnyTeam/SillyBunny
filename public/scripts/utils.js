@@ -18,6 +18,8 @@ import { groups, selected_group } from './group-chats.js';
 import { getCurrentLocale, t } from './i18n.js';
 import { importWorldInfo } from './world-info.js';
 import { mapSillyBunnyVersionToStEquivalent } from './sillybunny-version-map.js';
+// SillyBunny: frame icon selection with an adopted search entry and keyboard-operable icons.
+import { iconPickerOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 
 export const shiftUpByOne = (e, i, a) => a[i] = e + 1;
 export const shiftDownByOne = (e, i, a) => a[i] = e - 1;
@@ -2665,7 +2667,8 @@ export async function showFontAwesomePicker(customList = null) {
         }
     }
     let value = '';
-    const picker = new Popup(dom, POPUP_TYPE.TEXT, null, { allowVerticalScrolling: true, okButton: 'No Icon', cancelButton: 'Cancel' });
+    // SillyBunny: Popup has no frame-search option; adopt its existing body search entry.
+    const picker = new Popup(dom, POPUP_TYPE.TEXT, null, { ...iconPickerOptions(dom), allowVerticalScrolling: true, okButton: 'No Icon', cancelButton: 'Cancel' });
     await picker.show();
     if (picker.result == POPUP_RESULT.AFFIRMATIVE) {
         return value;

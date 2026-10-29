@@ -1,0 +1,7564 @@
+{
+  "generatedAt": "2026-10-19T04:17:27.476Z",
+  "baseURL": "http://127.0.0.1:4455",
+  "sources": {
+    "cc": [
+      "openai",
+      "openai_responses",
+      "custom",
+      "ai21",
+      "aimlapi",
+      "azure_openai",
+      "chutes",
+      "claude",
+      "cohere",
+      "deepseek",
+      "electronhub",
+      "fireworks",
+      "groq",
+      "makersuite",
+      "gemini_interactions",
+      "vertexai",
+      "linkapi",
+      "mistralai",
+      "minimax",
+      "moonshot",
+      "nanogpt",
+      "openrouter",
+      "perplexity",
+      "pollinations",
+      "siliconflow",
+      "workers_ai",
+      "xai",
+      "zai"
+    ],
+    "tc": [
+      "aphrodite",
+      "dreamgen",
+      "featherless",
+      "generic",
+      "huggingface",
+      "infermaticai",
+      "koboldcpp",
+      "llamacpp",
+      "mancer",
+      "ollama",
+      "openrouter",
+      "tabby",
+      "ooba",
+      "togetherai",
+      "vllm"
+    ]
+  },
+  "targets": {
+    "openai:openai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#openai_api_usage",
+      "openai_form>a",
+      "#api_key_openai",
+      "openai_form>div[Manage API keys]",
+      "#openai_model_id",
+      "#model_openai_picker_toggle",
+      "#model_openai_select",
+      "#model_openai_favorite_toggle",
+      "#openai_bypass_status_check",
+      "#openai_show_external_models",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:openai_responses": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#openai_api_usage",
+      "openai_form>a",
+      "#api_key_openai",
+      "openai_form>div[Manage API keys]",
+      "#openai_model_id",
+      "#model_openai_picker_toggle",
+      "#model_openai_select",
+      "#model_openai_favorite_toggle",
+      "#openai_bypass_status_check",
+      "#openai_show_external_models",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:custom": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#customize_additional_parameters",
+      "#test_api_button",
+      "#custom_endpoint_preset",
+      "#save_custom_endpoint",
+      "#delete_custom_endpoint",
+      "#custom_endpoint_preset_name",
+      "#custom_api_url_text",
+      "#api_key_custom",
+      "custom_form>div[Manage API keys]",
+      "#custom_model_id",
+      "custom_form>button[Open model list]",
+      "custom_form>button[Add current model to favorites]",
+      "#model_custom_select",
+      "#custom_model_icon_detection",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:ai21": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_ai21",
+      "ai21_form>div[Manage API keys]",
+      "#ai21_model_id",
+      "ai21_form>button[Open model list]",
+      "ai21_form>button[Add current model to favorites]",
+      "#model_ai21_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:aimlapi": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_aimlapi",
+      "aimlapi_form>div[Manage API keys]",
+      "#model_aimlapi_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:azure_openai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#azure_base_url",
+      "#azure_deployment_name",
+      "#azure_api_version",
+      "#api_key_azure_openai",
+      "azure_openai_settings>div[Manage API keys]",
+      "#azure_openai_model",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:chutes": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "chutes_credits_display>a",
+      "#api_key_chutes",
+      "chutes_form>div[Manage API keys]",
+      "#model_chutes_select",
+      "#chutes_sort_models",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:claude": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "claude_form>a",
+      "#api_key_claude",
+      "claude_form>div[Manage API keys]",
+      "#claude_model_id",
+      "claude_form>button[Open model list]",
+      "claude_form>button[Add current model to favorites]",
+      "#model_claude_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:cohere": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_cohere",
+      "cohere_form>div[Manage API keys]",
+      "#cohere_model_id",
+      "cohere_form>button[Open model list]",
+      "cohere_form>button[Add current model to favorites]",
+      "#model_cohere_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:deepseek": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#api_key_deepseek",
+      "deepseek_form>div[Manage API keys]",
+      "#model_deepseek_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:electronhub": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "electronhub_form>a",
+      "#api_key_electronhub",
+      "electronhub_form>div[Manage API keys]",
+      "#model_electronhub_select",
+      "#electronhub_sort_models",
+      "#electronhub_group_models",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:fireworks": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_fireworks",
+      "fireworks_form>div[Manage API keys]",
+      "#model_fireworks_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:groq": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_groq",
+      "groq_form>div[Manage API keys]",
+      "#model_groq_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:makersuite": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#api_key_makersuite",
+      "makersuite_form>div[Manage API keys]",
+      "#makersuite_model_id",
+      "makersuite_form>button[Open model list]",
+      "makersuite_form>button[Add current model to favorites]",
+      "#model_google_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:gemini_interactions": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#api_key_makersuite",
+      "makersuite_form>div[Manage API keys]",
+      "#makersuite_model_id",
+      "makersuite_form>button[Open model list]",
+      "makersuite_form>button[Add current model to favorites]",
+      "#model_google_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:vertexai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#vertexai_auth_mode",
+      "vertexai_express_config>a",
+      "#api_key_vertexai",
+      "vertexai_express_config>div[Manage API keys]",
+      "#vertexai_express_project_id",
+      "vertexai_form>a[View available regions and models]",
+      "#vertexai_region",
+      "#vertexai_model_id",
+      "vertexai_form>button[Open model list]",
+      "vertexai_form>button[Add current model to favorites]",
+      "#model_vertexai_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:linkapi": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#oai_max_context_unlocked",
+      "linkapi_form>a",
+      "#api_key_linkapi",
+      "linkapi_form>div[Manage API keys]",
+      "#linkapi_endpoint",
+      "#linkapi_model_id",
+      "linkapi_form>button[Open model list]",
+      "linkapi_form>button[Add current model to favorites]",
+      "#model_linkapi_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:mistralai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "#api_key_mistralai",
+      "mistralai_form>div[Manage API keys]",
+      "#model_mistralai_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:minimax": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_minimax",
+      "minimax_form>div[Manage API keys]",
+      "#minimax_endpoint",
+      "#model_minimax_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:moonshot": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "moonshot_form>a",
+      "#api_key_moonshot",
+      "moonshot_form>div[Manage API keys]",
+      "#model_moonshot_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:nanogpt": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#oai_max_context_unlocked",
+      "#api_key_nanogpt",
+      "nanogpt_form>div[Manage API keys]",
+      "#model_nanogpt_select",
+      "#nanogpt_allowed_providers",
+      "nanogpt_form>textarea[Search]",
+      "#nanogpt_ignored_providers",
+      "nanogpt_form>textarea[Search]#1",
+      "#nanogpt_payg_override",
+      "#nanogpt_service_tier",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:openrouter": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "openai_api>div[Get your OpenRouter API token using OAut]",
+      "#test_api_button",
+      "#oai_max_context_unlocked",
+      "openrouter_form>a",
+      "openrouter_form>a#1",
+      "#api_key_openrouter",
+      "openrouter_form>div[Manage API keys]",
+      "#model_openrouter_select",
+      "#openrouter_use_fallback",
+      "#openrouter_sort_models",
+      "#openrouter_group_models",
+      "#openrouter_providers_chat",
+      "openrouter_form>textarea[Search]",
+      "#openrouter_service_tier_chat",
+      "#openrouter_allow_fallbacks",
+      "#openrouter_quantizations_chat",
+      "openrouter_form>textarea[Search]#1",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:perplexity": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_perplexity",
+      "perplexity_form>div[Manage API keys]",
+      "#perplexity_model_id",
+      "perplexity_form>button[Open model list]",
+      "perplexity_form>button[Add current model to favorites]",
+      "#model_perplexity_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:pollinations": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#pollinations_endpoint",
+      "pollinations_key_section>a",
+      "#api_key_pollinations",
+      "pollinations_key_section>div[Manage API keys]",
+      "#model_pollinations_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:siliconflow": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#api_key_siliconflow",
+      "siliconflow_form>div[Manage API keys]",
+      "#siliconflow_endpoint",
+      "#model_siliconflow_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:workers_ai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "workers_ai_form>a",
+      "#api_key_workers_ai",
+      "workers_ai_form>div[Manage API keys]",
+      "workers_ai_form>a#1",
+      "#workers_ai_account_id",
+      "#model_workers_ai_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:xai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "xai_form>a",
+      "#api_key_xai",
+      "xai_form>div[Manage API keys]",
+      "#model_xai_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "openai:zai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_openai",
+      "#test_api_button",
+      "#openai_proxy_preset",
+      "#save_proxy",
+      "#delete_proxy",
+      "#openai_reverse_proxy_name",
+      "#openai_reverse_proxy",
+      "#openai_proxy_access_key",
+      "#openai_proxy_access_key_show",
+      "#openai_proxy_source",
+      "zai_form>a",
+      "#api_key_zai",
+      "zai_form>div[Manage API keys]",
+      "#zai_endpoint",
+      "#zai_model_id",
+      "zai_form>button[Open model list]",
+      "zai_form>button[Add current model to favorites]",
+      "#model_zai_select",
+      "prompt_post_processing_form>a",
+      "#custom_prompt_post_processing",
+      "#main_api"
+    ],
+    "textgenerationwebui:aphrodite": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#7",
+      "#api_key_aphrodite",
+      "textgenerationwebui_api>div[Manage API keys]#10",
+      "#aphrodite_api_url_text",
+      "#aphrodite_model",
+      "#main_api"
+    ],
+    "textgenerationwebui:dreamgen": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#2",
+      "#api_key_dreamgen",
+      "textgenerationwebui_api>div[Manage API keys]#3",
+      "#model_dreamgen_select",
+      "#main_api"
+    ],
+    "textgenerationwebui:featherless": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#5",
+      "#api_key_featherless",
+      "textgenerationwebui_api>div[Manage API keys]#7",
+      "#featherless_model_search_bar",
+      "#featherless_model_sort_order",
+      "#featherless_category_selection",
+      "#featherless_class_selection",
+      "#featherless_model_grid_toggle",
+      "#main_api"
+    ],
+    "textgenerationwebui:generic": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "#api_key_generic",
+      "textgenerationwebui_api>div[Manage API keys]#5",
+      "#generic_api_url_text",
+      "#generic_model_textgenerationwebui",
+      "#generic_model_select",
+      "#bypass_status_check_textgenerationwebui",
+      "#main_api"
+    ],
+    "textgenerationwebui:huggingface": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "#api_key_huggingface",
+      "textgenerationwebui_api>div[Manage API keys]#9",
+      "#huggingface_api_url_text",
+      "#main_api"
+    ],
+    "textgenerationwebui:infermaticai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "#api_key_infermaticai",
+      "textgenerationwebui_api>div[Manage API keys]#2",
+      "#model_infermaticai_select",
+      "#main_api"
+    ],
+    "textgenerationwebui:koboldcpp": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#11",
+      "#api_key_koboldcpp",
+      "textgenerationwebui_api>div[Manage API keys]#13",
+      "#koboldcpp_api_url_text",
+      "#context_size_derived",
+      "#main_api"
+    ],
+    "textgenerationwebui:llamacpp": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#8",
+      "#api_key_llamacpp",
+      "textgenerationwebui_api>div[Manage API keys]#11",
+      "#llamacpp_api_url_text",
+      "#llamacpp_model",
+      "#context_size_derived",
+      "#main_api"
+    ],
+    "textgenerationwebui:mancer": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#3",
+      "#api_key_mancer",
+      "textgenerationwebui_api>div[Manage API keys]#4",
+      "#mancer_model",
+      "#main_api"
+    ],
+    "textgenerationwebui:ollama": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#9",
+      "#ollama_api_url_text",
+      "#ollama_model",
+      "#ollama_download_model",
+      "#main_api"
+    ],
+    "textgenerationwebui:openrouter": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>div[Get your OpenRouter API token using OAut]",
+      "textgenerationwebui_api>a",
+      "textgenerationwebui_api>a#1",
+      "#api_key_openrouter-tg",
+      "textgenerationwebui_api>div[Manage API keys]#1",
+      "#openrouter_model",
+      "#openrouter_providers_text",
+      "textgenerationwebui_api>textarea[Search]",
+      "#openrouter_service_tier_text",
+      "#openrouter_allow_fallbacks_textgenerationwebui",
+      "#openrouter_quantizations_text",
+      "textgenerationwebui_api>textarea[Search]#1",
+      "#main_api"
+    ],
+    "textgenerationwebui:tabby": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#10",
+      "#api_key_tabby",
+      "textgenerationwebui_api>div[Manage API keys]#12",
+      "#tabby_api_url_text",
+      "#tabby_model",
+      "#tabby_download_model",
+      "#main_api"
+    ],
+    "textgenerationwebui:ooba": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#4",
+      "#api_key_ooba",
+      "textgenerationwebui_api>div[Manage API keys]#6",
+      "#textgenerationwebui_api_url_text",
+      "#custom_model_textgenerationwebui",
+      "#bypass_status_check_textgenerationwebui",
+      "#main_api"
+    ],
+    "textgenerationwebui:togetherai": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "#api_key_togetherai",
+      "textgenerationwebui_api>div[Manage API keys]",
+      "#model_togetherai_select",
+      "#main_api"
+    ],
+    "textgenerationwebui:vllm": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[Source]",
+      "#api_button_textgenerationwebui",
+      "textgenerationwebui_api>a#6",
+      "#api_key_vllm",
+      "textgenerationwebui_api>div[Manage API keys]#8",
+      "#vllm_api_url_text",
+      "#vllm_model",
+      "#main_api"
+    ],
+    "novel": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[NovelAI]",
+      "left-nav-panel>button[AI Horde]",
+      "left-nav-panel>button[KoboldAI Classic]",
+      "#api_button_novel",
+      "novel_api>a",
+      "#api_key_novel",
+      "novel_api>div[Manage API keys]",
+      "novel_api>a#1",
+      "#model_novel_select",
+      "#main_api"
+    ],
+    "koboldhorde": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[NovelAI]",
+      "left-nav-panel>button[AI Horde]",
+      "left-nav-panel>button[KoboldAI Classic]",
+      "#horde_api_key",
+      "#horde_api_key_button",
+      "kobold_horde_block>div[Manage API keys]",
+      "kobold_horde_block>a",
+      "kobold_horde_block>a#1",
+      "kobold_horde_block>a#2",
+      "kobold_horde_block>a#3",
+      "#horde_auto_adjust_context_length",
+      "#horde_auto_adjust_response_length",
+      "#horde_trusted_workers_only",
+      "kobold_horde_block>a#4",
+      "#horde_kudos",
+      "#horde_refresh",
+      "#horde_model",
+      "kobold_horde_block>textarea[Search]",
+      "#main_api"
+    ],
+    "kobold": [
+      "#auto-connect-checkbox",
+      "#viewSecrets",
+      "left-nav-panel>a",
+      "#connection_profiles",
+      "#view_connection_profile",
+      "#create_connection_profile",
+      "#manage_profile_folders",
+      "#update_connection_profile",
+      "#edit_connection_profile",
+      "#toggle_profile_favorite",
+      "#reload_connection_profile",
+      "#delete_all_connection_profiles",
+      "#delete_connection_profile",
+      "left-nav-panel>button[Chat Completions]",
+      "left-nav-panel>button[Text Completions]",
+      "left-nav-panel>button[Other Backends]",
+      "left-nav-panel>button[NovelAI]",
+      "left-nav-panel>button[AI Horde]",
+      "left-nav-panel>button[KoboldAI Classic]",
+      "#api_button",
+      "#api_url_text",
+      "#main_api"
+    ]
+  },
+  "controls": {
+    "#auto-connect-checkbox": {
+      "id": "auto-connect-checkbox",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Auto-connect to Last Server Connect to the last used server when SillyBunny open"
+    },
+    "#viewSecrets": {
+      "id": "viewSecrets",
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": ""
+    },
+    "left-nav-panel>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": ""
+    },
+    "#connection_profiles": {
+      "id": "connection_profiles",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Connection Profile"
+    },
+    "#view_connection_profile": {
+      "id": "view_connection_profile",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "disabled"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "View connection profile details"
+    },
+    "#create_connection_profile": {
+      "id": "create_connection_profile",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Create a new connection profile"
+    },
+    "#manage_profile_folders": {
+      "id": "manage_profile_folders",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Manage folders"
+    },
+    "#update_connection_profile": {
+      "id": "update_connection_profile",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "disabled"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Update a connection profile"
+    },
+    "#edit_connection_profile": {
+      "id": "edit_connection_profile",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "disabled"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Edit a connection profile"
+    },
+    "#toggle_profile_favorite": {
+      "id": "toggle_profile_favorite",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "disabled"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Select a profile to toggle favorite"
+    },
+    "#reload_connection_profile": {
+      "id": "reload_connection_profile",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "disabled"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Reload a connection profile"
+    },
+    "#delete_all_connection_profiles": {
+      "id": "delete_all_connection_profiles",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Delete all connection profiles"
+    },
+    "#delete_connection_profile": {
+      "id": "delete_connection_profile",
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "disabled"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Delete a connection profile"
+    },
+    "left-nav-panel>button[Chat Completions]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "is-selected"
+      ],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Chat Completions"
+    },
+    "left-nav-panel>button[Text Completions]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Text Completions"
+    },
+    "left-nav-panel>button[Other Backends]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Other Backends"
+    },
+    "left-nav-panel>button[Source]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Source"
+    },
+    "left-nav-panel>button[OpenAI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "is-selected"
+      ],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "OpenAI"
+    },
+    "left-nav-panel>button[OpenAI (Responses)]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "OpenAI (Responses)"
+    },
+    "left-nav-panel>button[Custom (OpenAI-compatible)]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Custom (OpenAI-compatible)"
+    },
+    "left-nav-panel>button[AI21]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "AI21"
+    },
+    "left-nav-panel>button[AI/ML API]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "AI/ML API"
+    },
+    "left-nav-panel>button[Azure OpenAI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Azure OpenAI"
+    },
+    "left-nav-panel>button[Chutes]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Chutes"
+    },
+    "left-nav-panel>button[Claude]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Claude"
+    },
+    "left-nav-panel>button[Cohere]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Cohere"
+    },
+    "left-nav-panel>button[DeepSeek]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "DeepSeek"
+    },
+    "left-nav-panel>button[Electron Hub]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Electron Hub"
+    },
+    "left-nav-panel>button[Fireworks AI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Fireworks AI"
+    },
+    "left-nav-panel>button[Groq]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Groq"
+    },
+    "left-nav-panel>button[Google AI Studio]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Google AI Studio"
+    },
+    "left-nav-panel>button[Gemini Interactions API]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Gemini Interactions API"
+    },
+    "left-nav-panel>button[Google Vertex AI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Google Vertex AI"
+    },
+    "left-nav-panel>button[LinkAPI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "LinkAPI"
+    },
+    "left-nav-panel>button[MistralAI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "MistralAI"
+    },
+    "left-nav-panel>button[MiniMax]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "MiniMax"
+    },
+    "left-nav-panel>button[Moonshot AI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Moonshot AI"
+    },
+    "left-nav-panel>button[NanoGPT]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "NanoGPT"
+    },
+    "left-nav-panel>button[OpenRouter]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "OpenRouter"
+    },
+    "left-nav-panel>button[Perplexity]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Perplexity"
+    },
+    "left-nav-panel>button[Pollinations]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Pollinations"
+    },
+    "left-nav-panel>button[SiliconFlow]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "SiliconFlow"
+    },
+    "left-nav-panel>button[Cloudflare Workers AI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Cloudflare Workers AI"
+    },
+    "left-nav-panel>button[xAI (Grok)]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "xAI (Grok)"
+    },
+    "left-nav-panel>button[Z.AI (GLM)]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Z.AI (GLM)"
+    },
+    "#api_button_openai": {
+      "id": "api_button_openai",
+      "tag": "div",
+      "type": "submit",
+      "name": null,
+      "classes": [
+        "api_button",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [],
+      "label": "Connect"
+    },
+    "openai_api>div[Cancel]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "api_loading",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "openai_api",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [],
+      "label": "Cancel"
+    },
+    "#customize_additional_parameters": {
+      "id": "customize_additional_parameters",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Additional Parameters"
+    },
+    "openai_api>div[Get your OpenRouter API token using OAut]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "openrouter_authorize",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "openai_api",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Get your OpenRouter API token using OAuth flow. You will be redirected to openro"
+    },
+    "#test_api_button": {
+      "id": "test_api_button",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [],
+      "label": "Verifies your API connection by sending a short test message. Be aware that you'"
+    },
+    "#chat_completion_source": {
+      "id": "chat_completion_source",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [],
+      "label": "Chat Completion Source"
+    },
+    "#oai_max_context_unlocked": {
+      "id": "oai_max_context_unlocked",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter,nanogpt,linkapi"
+      ],
+      "label": "Unlocked Context Size Allow the context size setting to exceed the model's repor"
+    },
+    "#openai_proxy_preset": {
+      "id": "openai_proxy_preset",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": ""
+    },
+    "#save_proxy": {
+      "id": "save_proxy",
+      "tag": "i",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-save",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": "Save Proxy"
+    },
+    "#delete_proxy": {
+      "id": "delete_proxy",
+      "tag": "i",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-trash",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": "Delete Proxy"
+    },
+    "#openai_reverse_proxy_name": {
+      "id": "openai_reverse_proxy_name",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": ""
+    },
+    "#openai_reverse_proxy": {
+      "id": "openai_reverse_proxy",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": ""
+    },
+    "#openai_proxy_access_key": {
+      "id": "openai_proxy_access_key",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "flex1",
+        "masked-secret"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": ""
+    },
+    "#openai_proxy_access_key_show": {
+      "id": "openai_proxy_access_key_show",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-eye-slash",
+        "fa-fw",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": "Peek a password"
+    },
+    "#openai_proxy_source": {
+      "id": "openai_proxy_source",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai,openai_responses,claude,mistralai,makersuite,vertexai,deepseek,xai,zai,moonshot"
+      ],
+      "label": ""
+    },
+    "#openai_api_usage": {
+      "id": "openai_api_usage",
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": ""
+    },
+    "openai_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "openai_form",
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": ""
+    },
+    "#api_key_openai": {
+      "id": "api_key_openai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_openai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": ""
+    },
+    "openai_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_openai",
+      "anchor": "openai_form",
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#openai_model_id": {
+      "id": "openai_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": ""
+    },
+    "#model_openai_picker_toggle": {
+      "id": "model_openai_picker_toggle",
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": "Open model list"
+    },
+    "#model_openai_select": {
+      "id": "model_openai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": ""
+    },
+    "#model_openai_favorite_toggle": {
+      "id": "model_openai_favorite_toggle",
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#openai_bypass_status_check": {
+      "id": "openai_bypass_status_check",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": "Bypass API status check Allow generation even if the API status check fails."
+    },
+    "#openai_show_external_models": {
+      "id": "openai_show_external_models",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openai"
+      ],
+      "label": "Show \"External\" models (provided by API) Show models returned by the API in the "
+    },
+    "claude_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "claude_form",
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": ""
+    },
+    "#api_key_claude": {
+      "id": "api_key_claude",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_claude",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": ""
+    },
+    "claude_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_claude",
+      "anchor": "claude_form",
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": "Manage API keys"
+    },
+    "#claude_model_id": {
+      "id": "claude_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": ""
+    },
+    "claude_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "claude_form",
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": "Open model list"
+    },
+    "claude_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "claude_form",
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_claude_select": {
+      "id": "model_claude_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "claude_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=claude"
+      ],
+      "label": ""
+    },
+    "openrouter_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "openrouter_form",
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": ""
+    },
+    "openrouter_form>a#1": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "openrouter_form",
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": ""
+    },
+    "#api_key_openrouter": {
+      "id": "api_key_openrouter",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_openrouter",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "api_key_openrouter"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": ""
+    },
+    "openrouter_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_openrouter",
+      "anchor": "openrouter_form",
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_openrouter_select": {
+      "id": "model_openrouter_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": ""
+    },
+    "#openrouter_use_fallback": {
+      "id": "openrouter_use_fallback",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Allow fallback models Automatically chooses an alternative model if the chosen m"
+    },
+    "#openrouter_sort_models": {
+      "id": "openrouter_sort_models",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Alphabetically Price (cheapest) Context Size"
+    },
+    "#openrouter_group_models": {
+      "id": "openrouter_group_models",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Group by vendors Group models by vendor in the model selection list."
+    },
+    "#openrouter_providers_chat": {
+      "id": "openrouter_providers_chat",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "openrouter_providers",
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": ""
+    },
+    "openrouter_form>textarea[Search]": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "openrouter_form",
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Search"
+    },
+    "#openrouter_service_tier_chat": {
+      "id": "openrouter_service_tier_chat",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Flex + Priority"
+    },
+    "#openrouter_allow_fallbacks": {
+      "id": "openrouter_allow_fallbacks",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Allow fallback providers Automatically chooses an alternative provider if chosen"
+    },
+    "#openrouter_quantizations_chat": {
+      "id": "openrouter_quantizations_chat",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "openrouter_quantizations",
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": ""
+    },
+    "openrouter_form>textarea[Search]#1": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "openrouter_form",
+      "form": "openrouter_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=openrouter"
+      ],
+      "label": "Search"
+    },
+    "#api_key_ai21": {
+      "id": "api_key_ai21",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_ai21",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "ai21_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=ai21"
+      ],
+      "label": ""
+    },
+    "ai21_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_ai21",
+      "anchor": "ai21_form",
+      "form": "ai21_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=ai21"
+      ],
+      "label": "Manage API keys"
+    },
+    "#ai21_model_id": {
+      "id": "ai21_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "ai21_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=ai21"
+      ],
+      "label": ""
+    },
+    "ai21_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "ai21_form",
+      "form": "ai21_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=ai21"
+      ],
+      "label": "Open model list"
+    },
+    "ai21_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "ai21_form",
+      "form": "ai21_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=ai21"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_ai21_select": {
+      "id": "model_ai21_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "ai21_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=ai21"
+      ],
+      "label": ""
+    },
+    "#api_key_makersuite": {
+      "id": "api_key_makersuite",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_makersuite",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "makersuite_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=makersuite"
+      ],
+      "label": ""
+    },
+    "makersuite_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_makersuite",
+      "anchor": "makersuite_form",
+      "form": "makersuite_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=makersuite"
+      ],
+      "label": "Manage API keys"
+    },
+    "#makersuite_model_id": {
+      "id": "makersuite_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "makersuite_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=makersuite"
+      ],
+      "label": ""
+    },
+    "makersuite_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "makersuite_form",
+      "form": "makersuite_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=makersuite"
+      ],
+      "label": "Open model list"
+    },
+    "makersuite_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "makersuite_form",
+      "form": "makersuite_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=makersuite"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_google_select": {
+      "id": "model_google_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "makersuite_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=makersuite"
+      ],
+      "label": ""
+    },
+    "#vertexai_auth_mode": {
+      "id": "vertexai_auth_mode",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Authentication Mode:"
+    },
+    "vertexai_express_config>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "vertexai_express_config",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": ""
+    },
+    "#api_key_vertexai": {
+      "id": "api_key_vertexai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_vertexai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "API Key:"
+    },
+    "vertexai_express_config>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_vertexai",
+      "anchor": "vertexai_express_config",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#vertexai_express_project_id": {
+      "id": "vertexai_express_project_id",
+      "tag": "input",
+      "type": "text",
+      "name": "vertexai_express_project_id",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Project ID:"
+    },
+    "vertexai_full_config>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "vertexai_full_config",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": ""
+    },
+    "#vertexai_service_account_json": {
+      "id": "vertexai_service_account_json",
+      "tag": "input",
+      "type": "text",
+      "name": "vertexai_service_account_json",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Service Account JSON Content:"
+    },
+    "vertexai_full_config>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "vertexai_service_account_json",
+      "anchor": "vertexai_full_config",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#vertexai_validate_service_account": {
+      "id": "vertexai_validate_service_account",
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Validate JSON"
+    },
+    "vertexai_form>a[View available regions and models]": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "vertexai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "View available regions and models"
+    },
+    "#vertexai_region": {
+      "id": "vertexai_region",
+      "tag": "input",
+      "type": "text",
+      "name": "vertexai_region",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Region:"
+    },
+    "#vertexai_model_id": {
+      "id": "vertexai_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": ""
+    },
+    "vertexai_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "vertexai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Open model list"
+    },
+    "vertexai_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "vertexai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_vertexai_select": {
+      "id": "model_vertexai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=vertexai"
+      ],
+      "label": ""
+    },
+    "#api_key_mistralai": {
+      "id": "api_key_mistralai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_mistralai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "mistralai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=mistralai"
+      ],
+      "label": ""
+    },
+    "mistralai_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_mistralai",
+      "anchor": "mistralai_form",
+      "form": "mistralai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=mistralai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_mistralai_select": {
+      "id": "model_mistralai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "mistralai_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=mistralai"
+      ],
+      "label": ""
+    },
+    "#api_key_groq": {
+      "id": "api_key_groq",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_groq",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=groq"
+      ],
+      "label": ""
+    },
+    "groq_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_groq",
+      "anchor": "groq_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=groq"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_groq_select": {
+      "id": "model_groq_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=groq"
+      ],
+      "label": ""
+    },
+    "#api_key_siliconflow": {
+      "id": "api_key_siliconflow",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_siliconflow",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=siliconflow"
+      ],
+      "label": ""
+    },
+    "siliconflow_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_siliconflow",
+      "anchor": "siliconflow_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=siliconflow"
+      ],
+      "label": "Manage API keys"
+    },
+    "#siliconflow_endpoint": {
+      "id": "siliconflow_endpoint",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=siliconflow"
+      ],
+      "label": ""
+    },
+    "#model_siliconflow_select": {
+      "id": "model_siliconflow_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=siliconflow"
+      ],
+      "label": ""
+    },
+    "#api_key_minimax": {
+      "id": "api_key_minimax",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_minimax",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=minimax"
+      ],
+      "label": ""
+    },
+    "minimax_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_minimax",
+      "anchor": "minimax_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=minimax"
+      ],
+      "label": "Manage API keys"
+    },
+    "#minimax_endpoint": {
+      "id": "minimax_endpoint",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=minimax"
+      ],
+      "label": ""
+    },
+    "#model_minimax_select": {
+      "id": "model_minimax_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=minimax"
+      ],
+      "label": ""
+    },
+    "electronhub_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "electronhub_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=electronhub"
+      ],
+      "label": ""
+    },
+    "#api_key_electronhub": {
+      "id": "api_key_electronhub",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_electronhub",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=electronhub"
+      ],
+      "label": ""
+    },
+    "electronhub_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_electronhub",
+      "anchor": "electronhub_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=electronhub"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_electronhub_select": {
+      "id": "model_electronhub_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=electronhub"
+      ],
+      "label": ""
+    },
+    "#electronhub_sort_models": {
+      "id": "electronhub_sort_models",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=electronhub"
+      ],
+      "label": "Alphabetically Input Price (cheapest) Output Price (cheapest) Context Size"
+    },
+    "#electronhub_group_models": {
+      "id": "electronhub_group_models",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=electronhub"
+      ],
+      "label": "Group by vendors Group models by vendor in the model selection list."
+    },
+    "chutes_credits_display>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "chutes_credits_display",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=chutes"
+      ],
+      "label": ""
+    },
+    "#api_key_chutes": {
+      "id": "api_key_chutes",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_chutes",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=chutes"
+      ],
+      "label": ""
+    },
+    "chutes_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_chutes",
+      "anchor": "chutes_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=chutes"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_chutes_select": {
+      "id": "model_chutes_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=chutes"
+      ],
+      "label": ""
+    },
+    "#chutes_sort_models": {
+      "id": "chutes_sort_models",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=chutes"
+      ],
+      "label": "Alphabetically Input Price (cheapest) Output Price (cheapest) Context Size"
+    },
+    "#api_key_nanogpt": {
+      "id": "api_key_nanogpt",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_nanogpt",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": ""
+    },
+    "nanogpt_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_nanogpt",
+      "anchor": "nanogpt_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_nanogpt_select": {
+      "id": "model_nanogpt_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "NanoGPT Model"
+    },
+    "#nanogpt_allowed_providers_picker": {
+      "id": "nanogpt_allowed_providers_picker",
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Allowed providers"
+    },
+    "#nanogpt_allowed_providers": {
+      "id": "nanogpt_allowed_providers",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Allowed providers"
+    },
+    "nanogpt_form>textarea[Search]": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "nanogpt_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Search"
+    },
+    "#nanogpt_ignored_providers_picker": {
+      "id": "nanogpt_ignored_providers_picker",
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Ignored providers"
+    },
+    "#nanogpt_ignored_providers": {
+      "id": "nanogpt_ignored_providers",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Ignored providers"
+    },
+    "nanogpt_form>textarea[Search]#1": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "nanogpt_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Search"
+    },
+    "#nanogpt_payg_override": {
+      "id": "nanogpt_payg_override",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Use pay-as-you-go billing Force NanoGPT pay-as-you-go billing for this request."
+    },
+    "#nanogpt_service_tier": {
+      "id": "nanogpt_service_tier",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=nanogpt"
+      ],
+      "label": "Flex + Priority"
+    },
+    "workers_ai_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "workers_ai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=workers_ai"
+      ],
+      "label": ""
+    },
+    "#api_key_workers_ai": {
+      "id": "api_key_workers_ai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_workers_ai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=workers_ai"
+      ],
+      "label": ""
+    },
+    "workers_ai_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_workers_ai",
+      "anchor": "workers_ai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=workers_ai"
+      ],
+      "label": "Manage API keys"
+    },
+    "workers_ai_form>a#1": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "workers_ai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=workers_ai"
+      ],
+      "label": ""
+    },
+    "#workers_ai_account_id": {
+      "id": "workers_ai_account_id",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=workers_ai"
+      ],
+      "label": ""
+    },
+    "#model_workers_ai_select": {
+      "id": "model_workers_ai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=workers_ai"
+      ],
+      "label": ""
+    },
+    "#api_key_deepseek": {
+      "id": "api_key_deepseek",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_deepseek",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=deepseek"
+      ],
+      "label": ""
+    },
+    "deepseek_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_deepseek",
+      "anchor": "deepseek_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=deepseek"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_deepseek_select": {
+      "id": "model_deepseek_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=deepseek"
+      ],
+      "label": ""
+    },
+    "#api_key_fireworks": {
+      "id": "api_key_fireworks",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_fireworks",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=fireworks"
+      ],
+      "label": ""
+    },
+    "fireworks_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_fireworks",
+      "anchor": "fireworks_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=fireworks"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_fireworks_select": {
+      "id": "model_fireworks_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=fireworks"
+      ],
+      "label": ""
+    },
+    "cometapi_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "cometapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cometapi"
+      ],
+      "label": ""
+    },
+    "#api_key_cometapi": {
+      "id": "api_key_cometapi",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_cometapi",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cometapi"
+      ],
+      "label": ""
+    },
+    "cometapi_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_cometapi",
+      "anchor": "cometapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cometapi"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_cometapi_select": {
+      "id": "model_cometapi_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cometapi"
+      ],
+      "label": ""
+    },
+    "#api_key_perplexity": {
+      "id": "api_key_perplexity",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_perplexity",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=perplexity"
+      ],
+      "label": ""
+    },
+    "perplexity_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_perplexity",
+      "anchor": "perplexity_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=perplexity"
+      ],
+      "label": "Manage API keys"
+    },
+    "#perplexity_model_id": {
+      "id": "perplexity_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=perplexity"
+      ],
+      "label": ""
+    },
+    "perplexity_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "perplexity_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=perplexity"
+      ],
+      "label": "Open model list"
+    },
+    "perplexity_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "perplexity_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=perplexity"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_perplexity_select": {
+      "id": "model_perplexity_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=perplexity"
+      ],
+      "label": ""
+    },
+    "#api_key_cohere": {
+      "id": "api_key_cohere",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_cohere",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "cohere_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cohere"
+      ],
+      "label": ""
+    },
+    "cohere_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_cohere",
+      "anchor": "cohere_form",
+      "form": "cohere_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cohere"
+      ],
+      "label": "Manage API keys"
+    },
+    "#cohere_model_id": {
+      "id": "cohere_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "cohere_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cohere"
+      ],
+      "label": ""
+    },
+    "cohere_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "cohere_form",
+      "form": "cohere_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cohere"
+      ],
+      "label": "Open model list"
+    },
+    "cohere_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "cohere_form",
+      "form": "cohere_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cohere"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_cohere_select": {
+      "id": "model_cohere_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "cohere_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=cohere"
+      ],
+      "label": ""
+    },
+    "#custom_endpoint_preset": {
+      "id": "custom_endpoint_preset",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": ""
+    },
+    "#save_custom_endpoint": {
+      "id": "save_custom_endpoint",
+      "tag": "i",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-save",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Save Custom Endpoint Profile"
+    },
+    "#delete_custom_endpoint": {
+      "id": "delete_custom_endpoint",
+      "tag": "i",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-trash",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Delete Custom Endpoint Profile"
+    },
+    "#custom_endpoint_preset_name": {
+      "id": "custom_endpoint_preset_name",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": ""
+    },
+    "#custom_api_url_text": {
+      "id": "custom_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": ""
+    },
+    "#api_key_custom": {
+      "id": "api_key_custom",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_custom",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Custom API Key"
+    },
+    "custom_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_custom",
+      "anchor": "custom_form",
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Manage API keys"
+    },
+    "#custom_model_id": {
+      "id": "custom_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": ""
+    },
+    "custom_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "custom_form",
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Open model list"
+    },
+    "custom_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "custom_form",
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_custom_select": {
+      "id": "model_custom_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "model_custom_select"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Available Models"
+    },
+    "#custom_model_icon_detection": {
+      "id": "custom_model_icon_detection",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "custom_form",
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=custom"
+      ],
+      "label": "Auto-detect message icon from model name Match message icons to recognized model"
+    },
+    "xai_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "xai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=xai"
+      ],
+      "label": ""
+    },
+    "#api_key_xai": {
+      "id": "api_key_xai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_xai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=xai"
+      ],
+      "label": ""
+    },
+    "xai_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_xai",
+      "anchor": "xai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=xai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_xai_select": {
+      "id": "model_xai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=xai"
+      ],
+      "label": ""
+    },
+    "#api_key_aimlapi": {
+      "id": "api_key_aimlapi",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_aimlapi",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=aimlapi"
+      ],
+      "label": ""
+    },
+    "aimlapi_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_aimlapi",
+      "anchor": "aimlapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=aimlapi"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_aimlapi_select": {
+      "id": "model_aimlapi_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=aimlapi"
+      ],
+      "label": ""
+    },
+    "#pollinations_endpoint": {
+      "id": "pollinations_endpoint",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=pollinations"
+      ],
+      "label": ""
+    },
+    "pollinations_key_section>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "pollinations_key_section",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=pollinations"
+      ],
+      "label": ""
+    },
+    "#api_key_pollinations": {
+      "id": "api_key_pollinations",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_pollinations",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=pollinations"
+      ],
+      "label": ""
+    },
+    "pollinations_key_section>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_pollinations",
+      "anchor": "pollinations_key_section",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=pollinations"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_pollinations_select": {
+      "id": "model_pollinations_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=pollinations"
+      ],
+      "label": ""
+    },
+    "moonshot_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "moonshot_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=moonshot"
+      ],
+      "label": ""
+    },
+    "#api_key_moonshot": {
+      "id": "api_key_moonshot",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_moonshot",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=moonshot"
+      ],
+      "label": ""
+    },
+    "moonshot_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_moonshot",
+      "anchor": "moonshot_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=moonshot"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_moonshot_select": {
+      "id": "model_moonshot_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=moonshot"
+      ],
+      "label": ""
+    },
+    "zai_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "zai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": ""
+    },
+    "#api_key_zai": {
+      "id": "api_key_zai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_zai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": ""
+    },
+    "zai_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_zai",
+      "anchor": "zai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#zai_endpoint": {
+      "id": "zai_endpoint",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": ""
+    },
+    "#zai_model_id": {
+      "id": "zai_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": ""
+    },
+    "zai_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "zai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": "Open model list"
+    },
+    "zai_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "zai_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_zai_select": {
+      "id": "model_zai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=zai"
+      ],
+      "label": ""
+    },
+    "linkapi_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "linkapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": ""
+    },
+    "#api_key_linkapi": {
+      "id": "api_key_linkapi",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_linkapi",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": ""
+    },
+    "linkapi_form>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_linkapi",
+      "anchor": "linkapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": "Manage API keys"
+    },
+    "#linkapi_endpoint": {
+      "id": "linkapi_endpoint",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": ""
+    },
+    "#linkapi_model_id": {
+      "id": "linkapi_model_id",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": ""
+    },
+    "linkapi_form>button[Open model list]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "linkapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": "Open model list"
+    },
+    "linkapi_form>button[Add current model to favorites]": {
+      "id": null,
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "linkapi_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": "Add current model to favorites"
+    },
+    "#model_linkapi_select": {
+      "id": "model_linkapi_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=linkapi"
+      ],
+      "label": ""
+    },
+    "#azure_base_url": {
+      "id": "azure_base_url",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=azure_openai"
+      ],
+      "label": ""
+    },
+    "#azure_deployment_name": {
+      "id": "azure_deployment_name",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=azure_openai"
+      ],
+      "label": "The name of your model deployment in Azure."
+    },
+    "#azure_api_version": {
+      "id": "azure_api_version",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=azure_openai"
+      ],
+      "label": ""
+    },
+    "#api_key_azure_openai": {
+      "id": "api_key_azure_openai",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=azure_openai"
+      ],
+      "label": ""
+    },
+    "azure_openai_settings>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_azure_openai",
+      "anchor": "azure_openai_settings",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=azure_openai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#azure_openai_model": {
+      "id": "azure_openai_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [
+        "data-source=azure_openai"
+      ],
+      "label": ""
+    },
+    "prompt_post_processing_form>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "prompt_post_processing_form",
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [],
+      "label": ""
+    },
+    "#custom_prompt_post_processing": {
+      "id": "custom_prompt_post_processing",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": "openai_api",
+      "gates": [],
+      "label": "Applies additional processing to the prompt before sending it to the API."
+    },
+    "#api_button_textgenerationwebui": {
+      "id": "api_button_textgenerationwebui",
+      "tag": "div",
+      "type": "submit",
+      "name": null,
+      "classes": [
+        "api_button",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [],
+      "label": "Connect"
+    },
+    "textgenerationwebui_api>div[Get your OpenRouter API token using OAut]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "openrouter_authorize",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": "Get your OpenRouter API token using OAuth flow. You will be redirected to openro"
+    },
+    "textgenerationwebui_api>div[Cancel]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "api_loading",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [],
+      "label": "Cancel"
+    },
+    "#textgen_type": {
+      "id": "textgen_type",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [],
+      "label": ""
+    },
+    "#api_key_togetherai": {
+      "id": "api_key_togetherai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_togetherai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=togetherai"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_togetherai",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=togetherai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_togetherai_select": {
+      "id": "model_togetherai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=togetherai"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#1": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": ""
+    },
+    "#api_key_openrouter-tg": {
+      "id": "api_key_openrouter-tg",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_openrouter",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "api_key_openrouter"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#1": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_openrouter",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": "Manage API keys"
+    },
+    "#openrouter_model": {
+      "id": "openrouter_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": ""
+    },
+    "#openrouter_providers_text": {
+      "id": "openrouter_providers_text",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "openrouter_providers",
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>textarea[Search]": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": "Search"
+    },
+    "#openrouter_service_tier_text": {
+      "id": "openrouter_service_tier_text",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": "Flex + Priority"
+    },
+    "#openrouter_allow_fallbacks_textgenerationwebui": {
+      "id": "openrouter_allow_fallbacks_textgenerationwebui",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": "Allow fallback providers Automatically chooses an alternative provider if chosen"
+    },
+    "#openrouter_quantizations_text": {
+      "id": "openrouter_quantizations_text",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "openrouter_quantizations",
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>textarea[Search]#1": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=openrouter"
+      ],
+      "label": "Search"
+    },
+    "#api_key_infermaticai": {
+      "id": "api_key_infermaticai",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_infermaticai",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=infermaticai"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#2": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_infermaticai",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=infermaticai"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_infermaticai_select": {
+      "id": "model_infermaticai_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=infermaticai"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#2": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=dreamgen"
+      ],
+      "label": ""
+    },
+    "#api_key_dreamgen": {
+      "id": "api_key_dreamgen",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_dreamgen",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=dreamgen"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#3": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_dreamgen",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=dreamgen"
+      ],
+      "label": "Manage API keys"
+    },
+    "#model_dreamgen_select": {
+      "id": "model_dreamgen_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=dreamgen"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#3": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=mancer"
+      ],
+      "label": ""
+    },
+    "#api_key_mancer": {
+      "id": "api_key_mancer",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_mancer",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=mancer"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#4": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_mancer",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=mancer"
+      ],
+      "label": "Manage API keys"
+    },
+    "#mancer_model": {
+      "id": "mancer_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=mancer"
+      ],
+      "label": ""
+    },
+    "#api_key_generic": {
+      "id": "api_key_generic",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_generic",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=generic"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#5": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_generic",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=generic"
+      ],
+      "label": "Manage API keys"
+    },
+    "#generic_api_url_text": {
+      "id": "generic_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": "generic_api_url",
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=generic"
+      ],
+      "label": ""
+    },
+    "#generic_model_textgenerationwebui": {
+      "id": "generic_model_textgenerationwebui",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=generic"
+      ],
+      "label": ""
+    },
+    "#generic_model_select": {
+      "id": "generic_model_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p",
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=generic"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#4": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ooba"
+      ],
+      "label": ""
+    },
+    "#api_key_ooba": {
+      "id": "api_key_ooba",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_ooba",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ooba"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#6": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_ooba",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ooba"
+      ],
+      "label": "Manage API keys"
+    },
+    "#textgenerationwebui_api_url_text": {
+      "id": "textgenerationwebui_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": "textgenerationwebui_api_url",
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ooba"
+      ],
+      "label": ""
+    },
+    "#custom_model_textgenerationwebui": {
+      "id": "custom_model_textgenerationwebui",
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ooba"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#5": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "#api_key_featherless": {
+      "id": "api_key_featherless",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_featherless",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#7": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_featherless",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": "Manage API keys"
+    },
+    "#featherless_model_search_bar": {
+      "id": "featherless_model_search_bar",
+      "tag": "input",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "text_pole",
+        "width100p",
+        "flex1",
+        "margin0"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "#featherless_model_sort_order": {
+      "id": "featherless_model_sort_order",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "margin0",
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "#featherless_category_selection": {
+      "id": "featherless_category_selection",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "#featherless_class_selection": {
+      "id": "featherless_class_selection",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "#featherless_model_grid_toggle": {
+      "id": "featherless_model_grid_toggle",
+      "tag": "i",
+      "type": null,
+      "name": null,
+      "classes": [
+        "fa-solid",
+        "fa-table-cells-large",
+        "menu_button",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": "Toggle grid view"
+    },
+    "#featherless_model": {
+      "id": "featherless_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "displayNone"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=featherless"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#6": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=vllm"
+      ],
+      "label": ""
+    },
+    "#api_key_vllm": {
+      "id": "api_key_vllm",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_vllm",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=vllm"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#8": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_vllm",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=vllm"
+      ],
+      "label": "Manage API keys"
+    },
+    "#vllm_api_url_text": {
+      "id": "vllm_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=vllm"
+      ],
+      "label": ""
+    },
+    "#vllm_model": {
+      "id": "vllm_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=vllm"
+      ],
+      "label": ""
+    },
+    "#api_key_huggingface": {
+      "id": "api_key_huggingface",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_huggingface",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=huggingface"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#9": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_huggingface",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=huggingface"
+      ],
+      "label": "Manage API keys"
+    },
+    "#huggingface_api_url_text": {
+      "id": "huggingface_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=huggingface"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#7": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=aphrodite"
+      ],
+      "label": ""
+    },
+    "#api_key_aphrodite": {
+      "id": "api_key_aphrodite",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_aphrodite",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=aphrodite"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#10": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_aphrodite",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=aphrodite"
+      ],
+      "label": "Manage API keys"
+    },
+    "#aphrodite_api_url_text": {
+      "id": "aphrodite_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=aphrodite"
+      ],
+      "label": ""
+    },
+    "#aphrodite_model": {
+      "id": "aphrodite_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=aphrodite"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#8": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=llamacpp"
+      ],
+      "label": ""
+    },
+    "#api_key_llamacpp": {
+      "id": "api_key_llamacpp",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_llamacpp",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=llamacpp"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#11": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_llamacpp",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=llamacpp"
+      ],
+      "label": "Manage API keys"
+    },
+    "#llamacpp_api_url_text": {
+      "id": "llamacpp_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=llamacpp"
+      ],
+      "label": ""
+    },
+    "#llamacpp_model": {
+      "id": "llamacpp_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=llamacpp"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>a#9": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ollama"
+      ],
+      "label": ""
+    },
+    "#ollama_api_url_text": {
+      "id": "ollama_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ollama"
+      ],
+      "label": ""
+    },
+    "#ollama_model": {
+      "id": "ollama_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ollama"
+      ],
+      "label": ""
+    },
+    "#ollama_download_model": {
+      "id": "ollama_download_model",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ollama"
+      ],
+      "label": "Download"
+    },
+    "textgenerationwebui_api>a#10": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=tabby"
+      ],
+      "label": ""
+    },
+    "#api_key_tabby": {
+      "id": "api_key_tabby",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_tabby",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=tabby"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#12": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_tabby",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=tabby"
+      ],
+      "label": "Manage API keys"
+    },
+    "#tabby_api_url_text": {
+      "id": "tabby_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=tabby"
+      ],
+      "label": ""
+    },
+    "#tabby_model": {
+      "id": "tabby_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=tabby"
+      ],
+      "label": ""
+    },
+    "#tabby_download_model": {
+      "id": "tabby_download_model",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=tabby"
+      ],
+      "label": "Download"
+    },
+    "textgenerationwebui_api>a#11": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=koboldcpp"
+      ],
+      "label": ""
+    },
+    "#api_key_koboldcpp": {
+      "id": "api_key_koboldcpp",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_koboldcpp",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=koboldcpp"
+      ],
+      "label": ""
+    },
+    "textgenerationwebui_api>div[Manage API keys]#13": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_koboldcpp",
+      "anchor": "textgenerationwebui_api",
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=koboldcpp"
+      ],
+      "label": "Manage API keys"
+    },
+    "#koboldcpp_api_url_text": {
+      "id": "koboldcpp_api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "classes": [
+        "text_pole",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=koboldcpp"
+      ],
+      "label": ""
+    },
+    "#bypass_status_check_textgenerationwebui": {
+      "id": "bypass_status_check_textgenerationwebui",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=ooba, generic"
+      ],
+      "label": "Bypass status check Skip the server status check and allow generation without co"
+    },
+    "#context_size_derived": {
+      "id": "context_size_derived",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "textgenerationwebui_api",
+      "gates": [
+        "data-tg-type=koboldcpp, llamacpp"
+      ],
+      "label": "Derive context size from backend Automatically use the context size reported by "
+    },
+    "#api_button_novel": {
+      "id": "api_button_novel",
+      "tag": "div",
+      "type": "submit",
+      "name": null,
+      "classes": [
+        "api_button",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": "Connect"
+    },
+    "novel_api>div[Cancel]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "api_loading",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "novel_api",
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": "Cancel"
+    },
+    "novel_api>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "novel_api",
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": ""
+    },
+    "#api_key_novel": {
+      "id": "api_key_novel",
+      "tag": "input",
+      "type": "text",
+      "name": "api_key_novel",
+      "classes": [
+        "text_pole",
+        "flex1",
+        "wide100p"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": ""
+    },
+    "novel_api>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_novel",
+      "anchor": "novel_api",
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": "Manage API keys"
+    },
+    "novel_api>a#1": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [
+        "notes-link"
+      ],
+      "dataKey": null,
+      "anchor": "novel_api",
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": ""
+    },
+    "#model_novel_select": {
+      "id": "model_novel_select",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "novel_api",
+      "gates": [],
+      "label": ""
+    },
+    "#horde_api_key": {
+      "id": "horde_api_key",
+      "tag": "input",
+      "type": "text",
+      "name": "horde_api_key",
+      "classes": [
+        "text_pole",
+        "flex1"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "#horde_api_key_button": {
+      "id": "horde_api_key_button",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-plug",
+        "fa-fw",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Save and connect"
+    },
+    "kobold_horde_block>div[Manage API keys]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "menu_button",
+        "fa-solid",
+        "fa-key",
+        "fa-fw",
+        "manage-api-keys",
+        "interactable"
+      ],
+      "dataKey": "api_key_horde",
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Manage API keys"
+    },
+    "kobold_horde_block>a": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "kobold_horde_block>a#1": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "kobold_horde_block>a#2": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "kobold_horde_block>a#3": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "#horde_auto_adjust_context_length": {
+      "id": "horde_auto_adjust_context_length",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Adjust context size to worker capabilities Automatically reduce the context limi"
+    },
+    "#horde_auto_adjust_response_length": {
+      "id": "horde_auto_adjust_response_length",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Adjust response length to worker capabilities Automatically reduce the response "
+    },
+    "#horde_trusted_workers_only": {
+      "id": "horde_trusted_workers_only",
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Trusted workers only Can help with bad responses by queueing only the approved w"
+    },
+    "kobold_horde_block>a#4": {
+      "id": null,
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "#horde_kudos": {
+      "id": "horde_kudos",
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "#horde_refresh": {
+      "id": "horde_refresh",
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "right_menu_button",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Refresh models"
+    },
+    "#horde_model": {
+      "id": "horde_model",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [
+        "select2-hidden-accessible"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": ""
+    },
+    "kobold_horde_block>textarea[Search]": {
+      "id": null,
+      "tag": "textarea",
+      "type": "search",
+      "name": null,
+      "classes": [
+        "select2-search__field"
+      ],
+      "dataKey": null,
+      "anchor": "kobold_horde_block",
+      "form": "",
+      "providerBlock": "kobold_horde",
+      "gates": [],
+      "label": "Search"
+    },
+    "#api_button": {
+      "id": "api_button",
+      "tag": "div",
+      "type": "submit",
+      "name": null,
+      "classes": [
+        "api_button",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_api",
+      "gates": [],
+      "label": "Connect"
+    },
+    "kobold_api_block>div[Cancel]": {
+      "id": null,
+      "tag": "div",
+      "type": null,
+      "name": null,
+      "classes": [
+        "api_loading",
+        "menu_button",
+        "menu_button_icon",
+        "interactable"
+      ],
+      "dataKey": null,
+      "anchor": "kobold_api_block",
+      "form": "",
+      "providerBlock": "kobold_api",
+      "gates": [],
+      "label": "Cancel"
+    },
+    "#api_url_text": {
+      "id": "api_url_text",
+      "tag": "input",
+      "type": null,
+      "name": "api_url",
+      "classes": [
+        "text_pole"
+      ],
+      "dataKey": null,
+      "anchor": null,
+      "form": "",
+      "providerBlock": "kobold_api",
+      "gates": [],
+      "label": ""
+    },
+    "#main_api": {
+      "id": "main_api",
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": null,
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "API"
+    },
+    "left-nav-panel>button[Aphrodite]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [
+        "is-selected"
+      ],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Aphrodite"
+    },
+    "left-nav-panel>button[DreamGen]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "DreamGen"
+    },
+    "left-nav-panel>button[Featherless]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Featherless"
+    },
+    "left-nav-panel>button[Generic (OpenAI-compatible) [LM Studio, ]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Generic (OpenAI-compatible) [LM Studio, LiteLLM, etc.]"
+    },
+    "left-nav-panel>button[HuggingFace (Inference Endpoint)]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "HuggingFace (Inference Endpoint)"
+    },
+    "left-nav-panel>button[InfermaticAI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "InfermaticAI"
+    },
+    "left-nav-panel>button[KoboldCpp]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "KoboldCpp"
+    },
+    "left-nav-panel>button[llama.cpp]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "llama.cpp"
+    },
+    "left-nav-panel>button[Mancer]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Mancer"
+    },
+    "left-nav-panel>button[Ollama]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Ollama"
+    },
+    "left-nav-panel>button[TabbyAPI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "TabbyAPI"
+    },
+    "left-nav-panel>button[Text Generation WebUI (oobabooga)]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "Text Generation WebUI (oobabooga)"
+    },
+    "left-nav-panel>button[TogetherAI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "TogetherAI"
+    },
+    "left-nav-panel>button[vLLM]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "vLLM"
+    },
+    "left-nav-panel>button[NovelAI]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "NovelAI"
+    },
+    "left-nav-panel>button[AI Horde]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "AI Horde"
+    },
+    "left-nav-panel>button[KoboldAI Classic]": {
+      "id": null,
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "classes": [],
+      "dataKey": null,
+      "anchor": "left-nav-panel",
+      "form": null,
+      "providerBlock": null,
+      "gates": [],
+      "label": "KoboldAI Classic"
+    }
+  },
+  "blockedWrites": [
+    "POST /api/horde/status",
+    "POST /api/quick-replies/save"
+  ],
+  "pageErrors": []
+}

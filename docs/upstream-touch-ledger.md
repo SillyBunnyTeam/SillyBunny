@@ -24,6 +24,358 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Extension row action overflow adapter
+| Field | Value |
+| --- | --- |
+| File | `public/css/extensions-panel.css` |
+| Area | Extensions manager row layout and action overflow. |
+| Divergence reason | Upstream renders every extension action as an inline button, so rows with many actions crowd out the title on narrow screens. SillyBunny keeps the actions at the row end and moves the ones that do not fit into one overflow menu. |
+| Target seam | `public/scripts/sillybunny-extension-actions.js`. |
+| Adapter shape | Keep upstream action buttons and delegated handlers in the row; the owned adapter measures the row, hides crowded inline controls, and exposes their existing clicks through one shared action menu. |
+| Protecting tests | `tests/extensions-row-actions.e2e.js`; `tests/extensions-discover.test.js`; `tests/extensions-disable.test.js`; `tests/extensions-bundled-third-party.test.js`. |
+| Validation | 2026-10-24: root/tests lint, extension unit specs, `git diff --check`, and Chromium E2E at 1440×900 and 390×844. |
+| Rollback path | Delete the marked rules in `public/css/extensions-panel.css` that keep actions trailing, limit title width and hide the transport buttons. Remove the `import './sillybunny-extension-actions.js'` line from `public/scripts/sillybunny-tabs.js`. The upstream buttons and handlers stay in each row, so no data changes. Then drop `tests/extensions-row-actions.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Extensions manager Window adapter
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions.js`; `public/css/extensions-panel.css` |
+| Area | Extensions manager Window header, preference groups and extension rows. |
+| Divergence reason | Upstream shows the Extensions manager as a full-screen popup with a sticky toolbar of loose buttons. SillyBunny shows it in the shared Window, with the toolbar actions in header menus and each extension as a preference row, so it scrolls and fits phones like every other pop-out. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/extensions-manager-dialog.js` and `public/css/sillybunny-extensions-manager.css`; shared Window frame, action menus and preference rows. |
+| Adapter shape | Preserve the upstream update, sort, bulk-toggle, restore, extension-row and status handlers; move their existing controls into shared header menus and group suffixes without replacing source nodes. Load manager-only layout rules after the user opens the Window, and release row observers when the Window closes. |
+| Protecting tests | `tests/window-tools-dialogs.e2e.js`; `tests/extensions-row-actions.e2e.js`; `tests/extensions-discover.test.js`; `tests/extensions-disable.test.js`; `tests/extensions-bundled-third-party.test.js`. |
+| Validation | Root/tests lint, frontend budget check, diff check, and Chromium E2E at 1440×900 and 390×844. |
+| Rollback path | In `public/scripts/extensions.js`, remove the dynamic import of `extensions-manager-dialog.js`, the `adaptExtensionsManager()` call and the `tier: 'window'` and `size: 'fill'` options. Restore the `extensions_toolbar` block and the `sb-popup-fullscreen` class from `git show db00f583e:public/scripts/extensions.js`. Delete `sillybunny-extensions-manager.css`, the marked manager rules in `extensions-panel.css` and `extensions-manager-dialog.js`. Then drop the Extensions manager cases in `tests/window-tools-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Shared header icon-button markup
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Character and group editor header controls. |
+| Divergence reason | Upstream editor header controls carry their own hover and pressed styling, so they differ from the list and settings headers. SillyBunny adds one shared class so every visible header icon button looks and responds the same. |
+| Target seam | `public/css/sillybunny-editor-shell.css`; shared header-icon-button class. |
+| Adapter shape | Preserve existing IDs, handlers, transport nodes and icon geometry; add the shared state class to visible editor header controls. |
+| Protecting tests | `tests/header-icon-button-parity.e2e.js`; `tests/character-list.e2e.js`; `tests/world-info-editor.e2e.js`. |
+| Validation | 2026-10-24: root/tests lint, header parity E2E in both bundled themes, and `git diff --check`. |
+| Rollback path | Remove the `sb-header-icon-button` class from the character and group editor header controls in `public/index.html`. Leave its rules in `public/css/sillybunny-editor-shell.css`, because list and settings headers use them too. IDs, handlers and icons do not change. Then drop `tests/header-icon-button-parity.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths and markers re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Dialog frame surface and layer adjustments
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/extensions/stable-diffusion/index.js`; `public/scripts/extensions/expressions/index.js`. |
+| Area | View-surface document windows and Visual Novel sprite layering. |
+| Divergence reason | A maximized text editor, the expanded Regex output and the ComfyUI workflow are documents, so their Window body needs the View surface instead of the form surface. Upstream gives Visual Novel sprites a bare layer index as z-index, which hides them behind the chat once the shared layer ladder exists. |
+| Target seam | The `sb-document` surface check in `public/scripts/sillybunny-editor/popup-frame.js` and the `--sb-z-sprites` layer token in `public/css/sillybunny-theme.css`. |
+| Adapter shape | Mark the maximized editor, the expanded Regex output and the ComfyUI workflow editor with `sb-document`; retain source controls and handlers. Put expression sprites on the sprite layer so they stay above chat and below zoomed avatars. |
+| Protecting tests | `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/window-media-dialogs.e2e.js`; `tests/window-dialogs.e2e.js`; `tests/libadwaita-surface-layers-css.test.js`. |
+| Validation | 2026-10-24: root and tests lint; full unit suite; dialog-tier, popup-scroll, side-panel-adapters, tag-manager, and swipe-picker Chromium E2E on port 4457. |
+| Rollback path | Remove the `sb-document` class additions in `chats.js`, `regex/index.js` and `stable-diffusion/index.js`, so those windows use the default form surface. In `visualNovelUpdateLayers()` in `expressions/index.js`, put back `element.css('z-index', layerIndex)`. The layer token can stay in the theme. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Account windows and profile presentation
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/user.js`; `public/scripts/templates/userProfile.html`; `public/scripts/templates/admin.html`; `public/scripts/templates/snapshotsView.html`; `public/css/accounts.css`. |
+| Area | Account profile, administrator user list and settings snapshots. |
+| Divergence reason | Upstream shows the account profile, administrator panel and settings snapshots as loose popup markup with buttons in a row. SillyBunny shows the profile in a content-sized Dialog and the user and snapshot lists as shared Window rows, so the actions fit on phones and match the other windows. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/window-content-dialogs.js`; shared dialog frame, rows and action menu. |
+| Adapter shape | Preserve source nodes, IDs, classes, request handlers and confirmation results; present profile properties in a content-sized Dialog, user and snapshot collections in shared Window rows, and expose existing administrator actions through the row overflow menu. |
+| Protecting tests | `tests/unit/window-content-dialogs.test.js`; `tests/window-content-dialogs.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/window-dialogs.e2e.js`. |
+| Validation | 2026-10-25: focused unit and Chromium account-window E2E at 1440×900, 390×844 and 844×390. |
+| Rollback path | In `public/scripts/user.js`, remove the `accountProfileOptions()`, `adminPanelOptions()` and `snapshotsOptions()` spreads and the `tier: 'window'` option that goes with them. Revert the marked hunks in `admin.html`, `snapshotsView.html` and `accounts.css`. In `userProfile.html`, revert only the layout changes and keep the removal of the two popup buttons that the Data & Security Export entry needs. Then drop the account cases in `tests/unit/window-content-dialogs.test.js` and `tests/window-content-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Swipe Selection Window
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/swipe-picker.js`. |
+| Area | Swipe selection and swipe actions. |
+| Divergence reason | Upstream builds its own header and restyles the close button inside the popup, which does not resize or scroll well on phones. SillyBunny hands the title, Close and mobile sheet to the shared Window, and confirms swipe deletion with the shared Cancel-first Alert. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; shared destructive Alert in `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Keep swipe data, IDs, selection, branch/copy/delete handlers, preview expansion, input bounds, and swipe result semantics; request the shared Window tier and use the shared Alert for the existing preference-gated delete confirmation. Give the cloned div controls and rows button roles and keyboard activation that run the same click paths. |
+| Protecting tests | `tests/swipe-picker.e2e.js`; `tests/libadwaita-swipe-styling.test.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/sillybunny-overlays.e2e.js`. |
+| Validation | 2026-10-24: root/tests lint; full Jest (437 suites, 6,634 passed, 2 skipped); frontend budgets; diff check; Swipe Picker E2E at 1440×900 and 390×844 (2/2, including 52-row scrolling, current marker, copy, branch save interception, destructive Alert safety, Go navigation and Escape); AddSwipeNoReload + dialog tiers + Popup scroll + conversation message actions Chromium (27/27). |
+| Rollback path | In `public/scripts/swipe-picker.js`, restore the in-body `Swipe Selection` header and the restyled close button, restore the original `okButton` value that shows Go only when `canJumpToSwipe` is true, and drop `tier`, `title` and `customButtons` from the `Popup` options. Put the `callGenericPopup()` delete confirmation back in place of `openAlert()` and remove the `openAlert` import. Remove the button roles and key handlers if keyboard support is dropped too. Then update `tests/swipe-picker.e2e.js` and `tests/libadwaita-swipe-styling.test.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Confirm response labels
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`; `public/scripts/popup.js`; `public/scripts/PromptManager.js`; `public/scripts/backgrounds.js`; `public/scripts/chat-backups.js`; `public/scripts/chats.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/group-chats.js`; `public/scripts/preset-manager.js`; `public/scripts/reasoning.js`; `public/scripts/secrets.js`; `public/scripts/world-info.js`. |
+| Area | Confirmation response labels and destructive confirmation defaults. |
+| Divergence reason | Upstream confirmations use the generic OK button, and the default result is the affirmative one. SillyBunny names the affirmative response with the action's own verb and labels the default negative response Cancel, so each confirmation reads clearly and a destructive one does not default to the affirmative. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
+| Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`. |
+| Validation | Root lint; tests lint; focused and full unit suites; frontend budgets; Chromium confirmation and dialog regressions. |
+| Rollback path | In each listed file, remove the `okButton` verb strings and `defaultResult: POPUP_RESULT.NEGATIVE` options that sit under a `SillyBunny:` marker. In `public/scripts/popup.js`, remove the `cancelButtonProvided` argument passed to `framePopup()`. In `public/scripts/sillybunny-editor/popup-frame.js`, remove `replaceDefaultNegativeLabel()`. Then update `tests/unit/popup-contract.test.js` and `tests/unit/sillybunny-popup-frame.test.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Native browser dialog replacements
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js`; `public/scripts/extensions/vectors/index.js`; `public/scripts/extensions/tts/speecht5.js`. |
+| Area | Server config reload, vector index purge and SpeechT5 speaker deletion confirmations. |
+| Divergence reason | Upstream calls the browser's native confirm box for these destructive actions. That box cannot be themed or focus Cancel, and Return can confirm it. SillyBunny awaits the shared Alert instead, which puts Cancel first and focuses it. |
+| Target seam | `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Keep the existing action handlers and messages; await `openAlert()` for confirmations, focus Cancel and avoid Return confirmation for destructive actions. |
+| Protecting tests | `tests/unit/native-dialog-replacements.test.js`; `tests/unit/sillybunny-dialog.test.js`; `tests/unit/tts-voices-dialog.test.js`; `tests/native-dialog-replacements.e2e.js`; `tests/sillybunny-backend-settings.e2e.js`. |
+| Validation | 2026-10-23: root lint, ESLint for changed test files, and `git diff --check` pass; the broader tests-package lint command remains blocked by existing errors in unrelated test files. Frontend budgets pass (16 blocking stylesheets / 1005.0 KiB; 24 startup scripts / 2025.0 KiB). Full Jest: 426 suites passed; 6,442 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: native-dialog replacements 4/4, Chat Archive 15/15, dialog tiers 18/18, Popup scroll 2/2, startup-on-demand 8/8, and backend settings 21/22. The remaining backend-settings failure is the existing unsaved-template discard assertion at line 729. Visually reviewed four desktop/mobile Alert captures in `/tmp/opencode/phase7-dialog-shots/`; message wrapping and action visibility are clear. |
+| Rollback path | Replace each `await openAlert(...)` call under a `SillyBunny:` marker with the original native call: `confirm('Are you sure you want to delete this speaker?')` in `speecht5.js`, `confirm('Are you sure?')` in `vectors/index.js`, and `window.confirm(...)` for the server config reload in `openai.js`. Remove the `openAlert` imports. Then drop the matching cases in `tests/unit/native-dialog-replacements.test.js`, `tests/unit/tts-voices-dialog.test.js` and `tests/native-dialog-replacements.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Chat History Window and saved-chat deletion
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`; `public/style.css`; `public/css/mobile-styles.css`; `public/css/popup-safari-fix.css`; `public/css/chat-backups.css`. |
+| Area | Chat History and saved-chat deletion. |
+| Divergence reason | Upstream shows Chat History as a legacy popup with a fixed mobile size and its own cleanup tray. SillyBunny moves the same nodes into the shared Window, so the list scrolls and the cleanup tools sit on their own page. Deleting a saved chat uses a Cancel-first destructive Alert. |
+| Target seam | `public/scripts/sillybunny-chat-dialogs.js`; `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Move existing Chat History nodes into the shared Window, adopt the existing cleanup controls as preference rows, proxy frame-search changes through the existing input handler, and restore every source node on close. Keep the wrapper's legacy display state observable while the frame owns the visible surface. Remove upstream mobile sizing that conflicts with the Window frame. Use a Cancel-first destructive Alert for `.PastChat_cross`. |
+| Protecting tests | `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/mobile-character-toggle-and-panels.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/chat-backups.test.js`; `tests/chat-backup-sequence.test.js`; `tests/backups-hardening.test.js`. |
+| Validation | Chat History cleanup and backup-page regression coverage, focused/full overlay E2E, mobile shell checks, chat-dialog unit tests, root/tests lint, `git diff --check`, and frontend budget validation. |
+| Rollback path | In `public/script.js`, remove the `openChatHistoryDialog` import and call, and restore the upstream Chat History popup flow. In the `.PastChat_cross` handler, put the upstream `Popup` confirmation back in place of `openAlert()`. Restore the removed `#select_chat_popup` sizing in `public/css/mobile-styles.css` and `public/css/popup-safari-fix.css`. Delete the `#shadow_select_chat_popup.sb-chat-history-compat-open` rule in `public/style.css` and the marker comment in `public/css/chat-backups.css`. Then drop `tests/unit/sillybunny-chat-dialogs.test.js` and update `tests/sillybunny-overlays.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Bulk Tag Editor Dialog
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/BulkEditOverlay.js`; `public/css/character-group-overlay.css`. |
+| Area | Bulk character and group tag editing. |
+| Divergence reason | Upstream appends the bulk tag editor to the page as a custom overlay with its own heading and close control. SillyBunny moves the same markup into the shared Dialog, so it gets the standard title, Close action and phone sheet, and the tag search input matches the other framed searches. |
+| Target seam | `public/scripts/sillybunny-editor/dialog.js`. |
+| Adapter shape | Parse the existing bulk-tag markup into a fragment, move its wrapper into a Dialog, use the frame title and Close action, and keep existing action controls and IDs in the content. Add the shared `sb-dialog__entry` class to the tag search input without changing its handlers. |
+| Protecting tests | `tests/unit/bulk-edit-overlay.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/character-list.e2e.js`. |
+| Validation | 2026-10-23: root lint, `git diff --check`, and frontend budgets pass (16 blocking stylesheets / 1005.4 KiB). Full Jest: 425 suites passed; 6,425 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: overlays, character-list, mobile-shell smoke, dialog tiers, and Popup scroll 103/103. Bulk tag add/remove persisted through intercepted settings saves; the surface screenshot pair was reviewed in `/tmp/opencode/dialogs-phase6-shots/`. |
+| Rollback path | In `public/scripts/BulkEditOverlay.js`, restore `document.body.insertAdjacentHTML('beforeend', this.#getHtml())` in `show()` and the `document.body.removeChild()` call in `hide()`. Remove the `openDialog` import, the `#dialog` field and the `sb-dialog__entry` class. Revert the marked rules in `public/css/character-group-overlay.css`. Then update the bulk-tag cases in `tests/unit/bulk-edit-overlay.test.js`, `tests/sillybunny-overlays.e2e.js` and `tests/character-list.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Side-panel engine and MovingUI seam
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/RossAscends-mods.js`; `public/scripts/power-user.js`. |
+| Area | MovingUI and side-panel layout. |
+| Divergence reason | Upstream MovingUI lets any floating panel be dragged anywhere, including over the chat. SillyBunny docks registered panels in the gaps beside the chat, so MovingUI must skip them and save only the side each panel sits on. |
+| Target seam | `public/scripts/sillybunny-editor/side-panel.js`. |
+| Adapter shape | Keep MovingUI calls compatible while guarding registered panel descendants; route their existing state entries through the side controller and persist only `{ left, right }`. Reset and MovingUI off restore declared defaults. |
+| Protecting tests | `tests/unit/side-panel.test.js`; `tests/side-panel-engine.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. |
+| Validation | 2026-10-23: root lint and `git diff --check` pass; frontend budgets pass at 16 blocking stylesheets / 1005.3 KiB and 24 startup scripts / 2030.3 KiB. Full Jest: 424 suites passed; 6,420 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: side-panel engine 9/9, MovingUI shell smoke 17/17, dialog tiers 18/18, and Popup scroll 2/2 passed (46/46). Desktop 1440×900 and phone 390×844 screenshots were visually reviewed in `/tmp/opencode/side-panel-engine-shots/`. |
+| Rollback path | In `public/scripts/RossAscends-mods.js`, remove the three `.sb-side-panel` early returns in `dragElement()` and the `closeTopmostSidePanelOnEscape` call in the Escape handler. In `public/scripts/power-user.js`, remove the `side-panel.js` import, the `configureMovingUIState()` call, the `resetSidePanelSides()` call and the `applyMovingUIState()` guards. Panels then fall back to free dragging. Then drop `tests/unit/side-panel.test.js` and `tests/side-panel-engine.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Side-panel adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/authors-note.js`; `public/scripts/cfg-scale.js`; `public/scripts/logprobs.js`; `public/scripts/extensions/expressions/index.js`. |
+| Area | Author's Note, CFG, and Token Probabilities presentation. |
+| Divergence reason | Upstream shows Author's Note, CFG and Token Probabilities as free-floating panels that can cover the chat. SillyBunny docks them beside the chat, or in a bottom sheet on phones, so they stay usable while the chat stays readable. Visual Novel sprites follow the docked canvas width. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/side-panels.js`; `public/scripts/sillybunny-editor/side-panel.js`. |
+| Adapter shape | Keep source inputs, IDs, names, values, events, and save handlers; adopt controls into preference rows, route existing triggers and Escape close targets through the dock controller, and keep the logprob token DOM and keyboard handlers intact. Recent Chats uses the same controller from `sillybunny-tabs.js`; Visual Novel sprites follow docked canvas geometry. |
+| Protecting tests | `tests/unit/side-panel-adapters.test.js`; `tests/side-panel-adapters.e2e.js`; `tests/side-panel-engine.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/authors-note-chat-metadata.test.js`. No other suite covers the docked CFG or Token Probabilities panels. |
+| Validation | 2026-10-23: root lint, touched-test ESLint, and `git diff --check` pass. Frontend budgets pass at 16 blocking stylesheets / 1005.3 KiB and 24 startup scripts / 2030.3 KiB. Full Jest: 424 suites passed; 6,420 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: side-panel adapters 11/11; side-panel engine 9/9, MovingUI shell smoke 17/17, dialog tiers 18/18, and Popup scroll 2/2 (57/57 requested cases total). Refreshed and visually reviewed Author's Note and Recent Chats at 1440×900 and 390×844 in `/tmp/opencode/side-panel-shots-final/`; Recent Chats shows populated previews and its actual scroll list reaches the final fixture entry. |
+| Rollback path | In `authors-note.js`, `cfg-scale.js` and `logprobs.js`, remove the `side-panels.js` imports and the `register...Panel()`, `toggle...Panel()` and `close...Panel()` calls, and restore the upstream show and hide code. In `expressions/index.js`, remove the `sb:side-panel-layout` listener. Then drop `tests/unit/side-panel-adapters.test.js` and `tests/side-panel-adapters.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Window-tier tools
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/token-counter/index.js`; `public/scripts/extensions/token-counter/style.css`; `public/scripts/samplerSelect.js`; `public/scripts/power-user.js`; `public/scripts/data-maid-dialog.js`; `public/scripts/templates/dataMaidCategory.html`; `public/scripts/templates/dataMaidDialog.html`; `public/css/data-maid.css`. |
+| Area | Token Counter, sampler visibility, Data Maid and viewer, Debug Menu. |
+| Divergence reason | Upstream opens these tools as popups with loose checkboxes and buttons. SillyBunny presents them as Windows with shared rows, so long lists scroll, switches sit at the row end and destructive Data Maid actions default to Cancel. `data-maid-dialog.js` holds the Data Maid dialog code that was split out of upstream's `data-maid.js`, so upstream changes to that dialog must be ported there. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/window-tools-dialogs.js`; shared Popup frame and row factories. |
+| Adapter shape | Keep Token Counter, sampler visibility, debug actions and Data Maid results on their existing sources of truth; adopt sampler checkboxes and delegated debug action nodes, set explicit Window tiers, and let the Popup frame push nested Window/Dialog pages. Data Maid retains its upstream drawer classes, IDs, action nodes and toggle event path while using shared boxed rows; its category toggle is named `Show or Hide Files` through `data-i18n` on `aria-label` and `title`; delete confirmations default to Cancel. The Extensions manager keeps its existing Window tier and row identities; its shared frame body owns scrolling. |
+| Protecting tests | `tests/unit/window-tools-dialogs.test.js`; `tests/window-tools-dialogs.e2e.js` at 1440×900 and 390×844; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/sillybunny-backend-settings.e2e.js` and `tests/startup-on-demand.e2e.js`. Destructive Data Maid and debug actions are intercepted and never executed. |
+| Validation | 2026-10-22: `npm run lint`, test-file ESLint, and `git diff --check` pass. `npm run check:frontend-budgets` passes (16 blocking stylesheets / 1003.9 KiB; 24 startup scripts / 2029.3 KiB). From `tests/`, full Jest: 421 suites passed; 6,404 tests passed, 2 skipped; 1 snapshot passed. Chromium: new surface E2E + `sillybunny-dialog-tiers` + `popup-scroll` 30/30; the temporary screenshot suite 3/3; misc-form-dialogs + startup-on-demand + dialog tiers + Popup scroll 50/50; Data Maid and all remaining Chat Archive cases 14/14 when excluding its pre-existing close-target failure at line 246. Backend settings: 21/22 pass; its pre-existing unsaved-template discard alert failure at line 729 remains. Original archive run: the line 246 close target is 24px (expected ≥44px), 1 passed and 13 did not run; excluding that test yields 14/14. All destructive routes/actions are intercepted. Visually reviewed 29 desktop, phone, and landscape screenshots. |
+| Rollback path | Remove the `tokenCounterOptions()` spread in `extensions/token-counter/index.js`, the `adaptSamplerSelectList()` call in `samplerSelect.js` and the `adaptDebugMenu()` call in `power-user.js`. In `data-maid-dialog.js`, the two Data Maid templates and `data-maid.css`, revert the marked hunks. Delete the Token Counter rules in `token-counter/style.css`. Then drop `tests/unit/window-tools-dialogs.test.js` and `tests/window-tools-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Window-tier account, override, editor and prompt adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/user.js`; `public/script.js`; `public/scripts/chats.js`; `public/scripts/itemized-prompts.js`; `public/scripts/openai.js`; `public/scripts/secrets.js`. |
+| Area | Settings Snapshots, Account Profile, Admin, character settings overrides, maximized editor and Creator's Notes, Prompt Itemization/raw prompt, Custom Endpoint parameters, exposed secrets viewer. |
+| Divergence reason | Upstream shows these editors and viewers as plain popups that do not fit small screens. SillyBunny presents them in the shared Window with shared rows, so they scroll, fit phones and keep the on-screen keyboard clear of the text. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/window-content-dialogs.js`; shared Popup frame, rows and `bindKeyboardInset()`. |
+| Adapter shape | Adopt existing profile/admin/snapshot/scenario/YAML controls into explicit Window content while preserving IDs and native attributes; pass Window tiers to expanded text and itemization surfaces; use the visual viewport inset already bound by the frame. Never execute snapshot restore or account writes in tests, and keep exposed secret fixtures out of logs, storage, screenshots and video. |
+| Protecting tests | `tests/unit/window-content-dialogs.test.js`; `tests/window-content-dialogs.e2e.js` at 1440×900 and 390×844; `tests/expanded-editor-touch.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/misc-form-dialogs.e2e.js`, `tests/character-editor-rendering.e2e.js`, `tests/world-info-editor.e2e.js`, `tests/prompt-manager-characterization.e2e.js`, `tests/mobile-shell-smoke.e2e.js`, `tests/sillybunny-backend-settings.e2e.js`, `tests/sillybunny-connections-layout.e2e.js`, and `tests/window-dialogs.e2e.js`. |
+| Validation | 2026-10-22: `npm run lint`, `git diff --check`, and `npm run check:frontend-budgets` pass (16 blocking stylesheets / 1005.3 KiB; 24 startup scripts / 2029.8 KiB). From `tests/`, full Jest: 422 suites passed; 6,409 tests passed, 2 skipped; 1 snapshot passed. Chromium on port 4455: `in-chat-agents-editor.e2e.js` 50/51 (only the known missing saved tracker fixture at line 204); `window-content-dialogs.e2e.js` 24/24; `expanded-editor-touch.e2e.js` 3/3; `sillybunny-dialog-tiers.e2e.js` 18/18; `popup-scroll.e2e.js` 2/2. Combined, 97 passed and 1 known failure. The four 159.75px regex textarea failures were caused by this phase's unscoped stacked-textarea rule; `8lh` is now limited to adapter-owned scenario/YAML rows, with the focused four-viewport regression passing 4/4. Earlier shell/Connections/Window regression batch: 78/78; focused in-chat editor checks: 2/2. Existing backend settings: 21/22, with the known unsaved-template alert assertion at line 729; Quick Edit fade check passes on isolated retry after restarting port 4455. Account, snapshot, settings and secret requests are intercepted; restore and user mutations are not confirmed. Secret suite screenshots and video are disabled. Seven non-secret screenshots were reviewed in `/tmp/opencode/window-content-shots/`. |
+| Rollback path | Remove the `scenarioOverrideOptions()` spread in `script.js`, the `customEndpointParametersOptions()` spread in `openai.js`, and the `accountProfileOptions()`, `adminPanelOptions()` and `snapshotsOptions()` spreads in `user.js`. Remove the `tier: 'window'` options and titles under a `SillyBunny:` marker in `itemized-prompts.js`, `chats.js` and `secrets.js`. Then drop `tests/unit/window-content-dialogs.test.js` and `tests/window-content-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Window-tier media adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/assets/index.js`; `public/scripts/extensions/assets/style.css`; `public/scripts/extensions/stable-diffusion/index.js`; `public/scripts/extensions/stable-diffusion/style.css`. |
+| Area | Assets character browser and ComfyUI workflow editor. |
+| Divergence reason | Upstream opens the asset browser and the ComfyUI workflow editor as popups sized for desktop. SillyBunny gives them explicit Window tiers, so their long content scrolls in the shared frame and fits phones. |
+| Target seam | Shared Popup frame plus feature-local editor styles. |
+| Adapter shape | Set explicit Window tiers without replacing source content or changing results; reuse the existing Characters title; constrain asset card titles within their cards; keep ComfyUI workflow saves on the existing route and retain the JSON textarea as the editor scroller. |
+| Protecting tests | `tests/window-media-dialogs.e2e.js` at 1440×900, 390×844 and 844×390; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/character-import.e2e.js`, `tests/utility-dialogs.e2e.js`, and `tests/mobile-shell-smoke.e2e.js`. Asset downloads and ComfyUI workflow reads/saves are intercepted. |
+| Validation | 2026-10-22: `npm run lint`, test-file ESLint, `git diff --check`, and `npm run check:frontend-budgets` pass (16 blocking stylesheets / 1005.3 KiB; 24 startup scripts / 2029.8 KiB). Full Jest: 422 suites passed; 6,409 tests passed, 2 skipped; 1 snapshot passed. Chromium E2E: window media + Chat Archive + dialog tiers + Popup scroll 38/38; previously validated character import + utility dialogs 41/41 and mobile shell smoke 17/17. Assets install success and failure responses are intercepted and their UI states are checked; ComfyUI workflow routes are intercepted; Prompt Inspector response styling and save, discard and cancel-generation results are checked. Chat Archive's framed coarse-pointer close target is measured at 44px or larger in both media and archive suites. Screenshots at desktop, phone, and landscape sizes were visually reviewed in `/tmp/opencode/window-media-shots/`. |
+| Rollback path | Remove the `tier: 'window'` and `title` options from the `callGenericPopup()` call in `assets/index.js` and the `Popup` call for the ComfyUI workflow editor in `stable-diffusion/index.js`. Delete the marked rules in `assets/style.css` and `stable-diffusion/style.css`. Then drop `tests/window-media-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths and markers re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Quick Reply editor window
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/quick-reply/src/QuickReply.js`; `public/scripts/extensions/quick-reply/src/QuickReplySetLink.js`; `public/scripts/extensions/quick-reply/style.css`. |
+| Area | Quick Reply editor, context-set rows, execution debugger and minimized debugger. |
+| Divergence reason | Upstream lays the Quick Reply editor out for desktop only. SillyBunny shows it in the shared Window with shared rows, so it scrolls and fits phones, and the execution debugger stacks on narrow screens. |
+| Target seam | `public/scripts/extensions/quick-reply/src/sillybunny-editor.js`; shared rows and `public/scripts/sillybunny-editor/popup-frame.js`. |
+| Adapter shape | Keep the existing template, control identities, IDs, input/change/click listeners, live mutation/persistence, parser, debug controller, Popup callbacks and results. Pass Window/Quick Reply title options, use the shared select/switch/entry/spin rows for adopted controls, and let the existing Popup frame stack the icon picker. Feature CSS is loaded by Quick Reply's manifest, so QR-only layout and minimized-debugger rules stay in `style.css`; the earlier QR container-query workaround is gone from the global theme. |
+| Protecting tests | `tests/unit/quick-reply-editor.test.js`; `tests/quick-reply-editor.e2e.js` at 1440×900, 390×844 and 844×390; `tests/utility-dialogs.e2e.js`; `tests/quick-reply-bar-layout.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. The editor suite verifies live/persisted fields, options, context selection, icon page, execute/error/debugger controls, Ctrl+Enter, F9, Ctrl+Backslash, scrolling, split/stack debugger widths and minimization. |
+| Validation | 2026-10-22: HEAD characterization `tests/quick-reply-editor.e2e.js` 6/6 at 1440×900 and 390×844. Full Jest: 420 suites, 6,400 passed, 2 skipped, 1 snapshot passed. Root lint, test-file ESLint, and `git diff --check` pass; frontend budget passes at 16 blocking stylesheets / 1,002.9 KiB. Chromium: editor 16/16; requested editor + dialog tiers + Popup scroll + utility dialogs 62/62. Narrow debugger result width is asserted ≥90% of body at 390×844 and 844×390; desktop retains the side-by-side debugger split. Generation calls are intercepted; test slash commands use local fixtures. Refreshed 390/844 debug screenshots and 1440 desktop split were visually reviewed in `/tmp/opencode/quick-reply-layout-review/`. |
+| Rollback path | Remove the `adaptQuickReplyEditor()` call and the Window and title options in `QuickReply.js`, and revert the marked hunks in `QuickReplySetLink.js`. Delete the marked rules in `quick-reply/style.css`. Then drop `tests/unit/quick-reply-editor.test.js` and `tests/quick-reply-editor.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Window-tier Data Bank, Regex and API Keys adapters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/scrapers.js`; `public/scripts/secrets.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/extensions/regex/debugger.css`; `public/scripts/extensions/regex/debugger.html`. |
+| Area | Data Bank manager, attachment viewer/notepad, scraper notepad, Regex editor/debugger/expanded views and API Keys manager. |
+| Divergence reason | Upstream opens the Data Bank, attachment and scraper notepads, the Regex editor and debugger, and the API Keys manager as desktop-sized popups. SillyBunny gives them explicit Window tiers and titles and lets nested pages stack in one frame, so each one scrolls, fits phones and keeps one Back path. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; feature-local shared frame CSS. |
+| Adapter shape | Keep Popup content, IDs, listeners, drop target, result values and persistence unchanged; pass explicit Window tiers and titles, let nested Dialog/Window Popups use the existing page presentation, route expanded Regex navigation to the frame body, and preserve the debugger's internal result lists. Scope headings remain shared group headings outside each boxed sortable list, while every rule keeps its upstream identity and handlers. |
+| Protecting tests | `tests/window-dialogs.e2e.js` with `tests/helpers/window-dialogs.js` exercises production Data Bank/viewer/notepad/scraper, Regex editor/debugger/expanded views, and API Keys manager/Add/Rename surfaces at 1440×900 and 390×844. Regression suites: `tests/sillybunny-dialog-tiers.e2e.js`, `tests/popup-scroll.e2e.js`, `tests/utility-dialogs.e2e.js`; unit contracts: `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/secrets.test.js`, `tests/secret-inputs.test.js`. |
+| Validation | 2026-10-22: `npm run lint` and `git diff --check` pass. `npm run check:frontend-budgets` passes (16 blocking stylesheets, 1003.8 KiB; 24 startup scripts, 2029.3 KiB). From `tests/`, `npm run test:unit -- --runInBand`: 419 suites pass; 6,392 tests pass, 2 skipped; 1 snapshot passes. Chromium `npx playwright test <suite>.e2e.js --browser=chromium --workers=2`: `window-dialogs` 12 pass; `sillybunny-dialog-tiers` 18 pass; `popup-scroll` 2 pass; `utility-dialogs` 26 pass. File uploads/deletes, settings saves and every secrets endpoint are intercepted in the Window suite; assertions cover decoded upload payloads, actual scraper File returns, saved Regex settings, transient DOM/console secret leaks, parent identity, result equality and the shared frame scroller. `PHASE4_SCREENSHOTS=/tmp/opencode/phase4a-shots` captures 22 screenshots (11 desktop/phone pairs), visually reviewed. |
+| Related validation | With `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:4455`, `npx playwright test <suite>.e2e.js --browser=chromium --workers=2 --grep-invert 'in firefox\|in webkit'`: `tests/sillybunny-connections-layout.e2e.js` 49 pass; `tests/sillybunny-editor-rows-layout.e2e.js` 11 pass; `tests/sillybunny-debugger.e2e.js` 11 pass; `tests/in-chat-agents-editor.e2e.js` 50 pass, 1 fails its explicit saved-tracker prerequisite at line 204 (the isolated server has no saved tracker). A single-test rerun with `--workers=1 --grep 'real saved long tracker'` reproduces that prerequisite failure; no saved agents or unrelated tests are changed to mask it. |
+| Coverage notes | Transactional attachment/scraper notepads keep the existing Cancel/Save header; Cancel and Escape return without saving. Viewer and expanded Regex pages exercise literal Back and Escape. The expanded Steps last-link test exposed a jQuery/DOM mismatch; unwrap `.closest('.popup-content')` with `.get(0)` before native `scrollTo`. Mobile screenshots retain the existing narrow Data Bank name wrapping and expanded Steps metric clipping; no layout redesign is claimed. |
+| Rollback path | Remove the `tier: 'window'` and `title` options at the marked `callGenericPopup()` and `Popup` calls in `chats.js`, `scrapers.js`, `secrets.js` and `regex/index.js`. Revert the marked hunks in `regex/debugger.css` and `regex/debugger.html`. Then drop `tests/window-dialogs.e2e.js` and `tests/helpers/window-dialogs.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Dialog action rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/personas.js`; `public/scripts/tags.js`; `public/scripts/slash-commands.js`; `public/scripts/extensions/tts/index.js`. |
+| Area | Persona and tag actions, slash-command buttons and TTS voice previews. |
+| Divergence reason | Upstream shows persona choices, tag actions, `/buttons` results and TTS voice previews as Alerts full of loose buttons. SillyBunny puts them in the Dialog tier as shared action rows, so long lists scroll and the actions line up. |
+| Target seam | Shared Popup frame and `public/scripts/sillybunny-editor/rows.js`. |
+| Adapter shape | Keep persona/tag data, slash-command result mapping and TTS preview IDs/audio unchanged; adopt only the presentation, give the voice list an explicit `Available voices` Dialog title, and pass explicit Dialog/destructive options. |
+| Protecting tests | `tests/tag-manager.e2e.js`; `tests/persona-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/unit/tts-voices-dialog.test.js`; `tests/unit/sillybunny-editor-rows.test.js`. No test covers the `/buttons` slash command Dialog. |
+| Validation | Root lint; focused and full Jest; diff check; frontend budgets; Chromium desktop/phone dialog screenshots. |
+| Rollback path | Remove the `tier`, `title` and destructive options under a `SillyBunny:` marker in `personas.js`, `tags.js`, `slash-commands.js` and `tts/index.js`. These popups then return to their default Alert presentation. Then drop `tests/unit/tts-voices-dialog.test.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Tag Manager deletion alert and member callbacks
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/tags.js` |
+| Area | Tag Manager destructive deletion confirmation and member page data. |
+| Divergence reason | Upstream confirms tag deletion with a generic Popup where Return can confirm. SillyBunny uses the shared destructive Alert with Cancel focused and keeps the merge-target control inside it. The Tag Manager also needs avatar and member callbacks from this file for its member pages. |
+| Target seam | `public/scripts/sillybunny-editor/dialog.js` (`openAlert`); `public/scripts/sillybunny-tag-manager.js`. |
+| Adapter shape | Preserve the existing tag reference merge control and deletion persistence; replace only the confirmation surface and response IDs. Pass avatar getters and add/remove member callbacks to `openTagManager()`, which call the existing tag functions. |
+| Protecting tests | `tests/tag-manager.e2e.js`; `tests/unit/sillybunny-dialog.test.js`. |
+| Validation | Root lint; tests lint; focused and full unit tests; tag-manager Chromium E2E at desktop and phone widths. |
+| Rollback path | In `public/scripts/tags.js`, replace the `openAlert()` call in the tag-deletion handler with `callGenericPopup(popupContent, POPUP_TYPE.CONFIRM)` and the `POPUP_RESULT.AFFIRMATIVE` check, and remove the `openAlert` import. Remove `getAvatar`, `getGroupAvatar`, `addMember` and `removeMember` from the `openTagManager()` call, and the two imports they need. The merge control and deletion code stay as they are. Then update the delete case in `tests/tag-manager.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Utility dialogs - shared content rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/welcome-screen.js`; `public/scripts/personas.js`; `public/scripts/secrets.js`; `public/scripts/scrapers.js`; `public/scripts/utils.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/extensions/quick-reply/src/QuickReplySet.js`; `public/scripts/extensions/quick-reply/style.css`; `public/scripts/extensions/stable-diffusion/index.js`. Templates remain unchanged. |
+| Area | Recent Chats settings, persona creation, Add Secret, regex import target, Quick Reply transfer/copy, image prompt review, web/wiki/transcript scrapers, icon picker. |
+| Divergence reason | Upstream builds these small forms as popups with loose labels, checkboxes and numeric inputs that overflow on phones. SillyBunny adopts the same inputs into shared rows, so each form scrolls in one body and keeps its IDs, values and validation. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/utility-dialogs.js`; shared rows, toggle-row, select-row and Popup frame. |
+| Adapter shape | Keep source control identities, IDs/names/values, native handlers, Popup mainInput/inputResults and upstream validation. Adopt numeric inputs without adding normalization. Copy uses an existing custom response appended after the main response so Transfer remains the default; forward select-trigger shortcuts. Load the transfer adapter lazily to keep the set model free of UI-only imports. Icon search stays in the body because Popup has no search option; icon buttons gain keyboard activation and share the body scroller. Add Secret retains Popup's source textarea (upstream has neither a password input nor autocomplete-off). Preserve YouTube's existing post-close language-listener timing. |
+| Protecting tests | `tests/unit/utility-dialogs.test.js`; `tests/utility-dialogs.e2e.js`; full Jest; dialog-tier, popup-scroll, misc-form-dialogs, persona-editor, character-list, welcome-starter-pack-actions and quick-reply-bar-layout E2E. |
+| Validation | Root lint; full Jest; diff check; frontend budgets; Chromium desktop/mobile E2E with intercepted settings, secret, avatar, Quick Reply, scraper and image routes. Utility E2E blocks service workers so request interception also covers extension modules. |
+| Rollback path | Remove the `utilityFormOptions()`, `regexImportOptions()`, `quickReplyTransferOptions()`, `scraperDialogOptions()` and `iconPickerOptions()` spreads and their `onClose` calls in the listed files. Delete the marked rules in `quick-reply/style.css`. Then drop `tests/unit/utility-dialogs.test.js` and `tests/utility-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Miscellaneous form dialogs - shared content rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/power-user.js`; `public/script.js`; `public/scripts/extensions.js`; `public/scripts/user.js`. Templates remain unchanged. |
+| Area | Creator Notes CSS scope, external media, AI Custom CSS, message screenshot range, extension install/branch selection, account forms. |
+| Divergence reason | Upstream builds the Creator Notes CSS choice, external media, AI Custom CSS, message screenshot, extension install and account forms as popups with raw radios and inputs. SillyBunny adopts the same controls into shared rows, so they fit phones and scroll in one body while keeping their IDs, values and native events. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/misc-dialogs.js`; shared rows, toggle-row, select-row and Popup frame. |
+| Adapter shape | Preserve source inputs, native events, IDs/names/values, password types and autocomplete. Adopt radio inputs rather than mirror them. Move Popup-owned URL/branch and screenshot inputs into the scrolling body; retain mainInput and inputResults. Screenshot rows retain text input/parseInt semantics without new clamping. Dispose select observers while retaining source selects for post-close reads. Reset and delete affirmatives default to Cancel. |
+| Protecting tests | `tests/unit/misc-dialogs.test.js`; `tests/misc-form-dialogs.e2e.js`; existing row/Popup contract, message-screenshot, dialog-tier, popup-scroll, preset/lorebook and Connection Manager suites. |
+| Validation | Root lint; full Jest; frontend budgets; Chromium E2E at 1440×900 and 390×844 with intercepted settings, extension and account writes. |
+| Rollback path | Remove the `creatorStylesPreferenceOptions()`, `externalMediaOptions()`, `customCssAiOptions()`, `messageScreenshotOptions()`, `installExtensionOptions()`, `switchBranchOptions()` and `accountFormOptions()` spreads in `chats.js`, `power-user.js`, `script.js`, `extensions.js` and `user.js`. Remove the Cancel defaults on the reset and delete confirmations. Then drop `tests/unit/misc-dialogs.test.js` and `tests/misc-form-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### Preset and lorebook dialogs - shared content rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/preset-manager.js`; `public/scripts/world-info.js`; `public/scripts/personas.js`; `public/script.js`. Templates and `index.html` remain unchanged. |
+| Area | Master settings import/export, preset deletion, embedded lorebook batch import, sorting, character/persona/chat lorebook assignment. |
+| Divergence reason | Upstream shows preset import, export and deletion choices, lorebook sorting and lorebook assignment as popups with raw checkboxes and selects. SillyBunny builds shared rows from the same controls, with Select All only for long lists, so they fit phones while writes and persistence stay upstream. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js`; shared row, select-row and Popup-frame modules. |
+| Adapter shape | Prepare native choices before Popup construction; show Select All only above five candidates and exclude it from preset results. Move custom sorting inputs into the content onOpen without changing inputResults; nullable spin rows preserve empty values while retaining default numeric clamping. Mirror existing lorebook selects, reuse the auxiliary Select2 placeholder and hide only its picker sentinel, retain desktop Select2 initialization, release observers/IDs onClose. Keep section writes, sorting, imports and assignment persistence upstream. Final preset deletion also defaults to Cancel. |
+| Protecting tests | `tests/unit/preset-lorebook-dialogs.test.js`; `tests/unit/sillybunny-editor-rows.test.js`; `tests/unit/popup-contract.test.js`; `tests/preset-lorebook-dialogs.e2e.js`; WorldInfoSorting, world-info-editor, persona-editor, sillybunny-preset-autosave, character-list, sillybunny-dialog-tiers and popup-scroll E2E. |
+| Validation | Root lint; full Jest; frontend budgets; Chromium E2E at 1440×900 and 390×844 with intercepted writes. |
+| Rollback path | Remove the `presetChoicesOptions()` spread in `preset-manager.js`, the `embeddedLorebookOptions()` and `lorebookSortingOptions()` calls in `world-info.js`, and the `lorebookSelectOptions()` calls in `script.js`, `personas.js` and `world-info.js`. Remove the Cancel default on the final preset deletion. Then drop `tests/unit/preset-lorebook-dialogs.test.js` and `tests/preset-lorebook-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### `public/scripts/extensions/connection-manager/index.js` and `style.css` - profile dialog rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/connection-manager/index.js`; `public/scripts/extensions/connection-manager/style.css`. Templates remain unchanged. |
+| Area | Connection profile forms, deletion selection, folders, and details. |
+| Divergence reason | Upstream shows Connection Profile creation, deletion, folder and detail popups with raw checkboxes and lists that overflow on phones. SillyBunny builds shared rows from the same template nodes, so they scroll and fit phones, and final deletions default to Cancel. |
+| Target seam | `public/scripts/extensions/connection-manager/sillybunny-dialogs.js`; shared row and Popup-frame modules. |
+| Adapter shape | Prepare template rows before Popup construction; forward tier/title/defaultResult and lifecycle options. Final destructive confirmations default to Cancel and mark the affirmative destructive. Save and Update keeps its result/action as a neutral footer response. Keep exclusion events, folder-item ancestry, profile saving, and results upstream. Release row IDs on refresh/close. Extension CSS only scopes adapter content. |
+| Protecting tests | `tests/unit/connection-manager-dialogs.test.js`; `tests/unit/sillybunny-editor-rows.test.js`; `tests/connection-manager-dialogs.e2e.js`; connection-profile-change-notice, sillybunny-connections-layout, popup-scroll, and sillybunny-dialog-tiers E2E. |
+| Validation | Root lint; full Jest; frontend budgets; Chromium E2E at desktop, portrait, and landscape sizes. |
+| Rollback path | In `index.js`, remove the imports and calls of `profileDialogOptions()`, `adaptProfileDeletion()`, `adaptProfileFolders()` and `adaptProfileDetails()`, and the tier, title and `defaultResult` options that go with them. Delete the marked rules in `style.css`. Saved profiles are not touched. Then drop `tests/unit/connection-manager-dialogs.test.js` and `tests/connection-manager-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### `public/scripts/popup.js` and `public/css/popup.css` - shared dialog frame hook
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/popup.js`; `public/css/popup.css` (cascade overrides only; this work leaves it unchanged); `public/css/popup-safari-fix.css` (only the Chat History height rules; see the Chat History entry). |
+| Area | Popup lifecycle and dialog presentation. |
+| Divergence reason | Upstream Popup clips its content with fixed heights and hidden overflow, so long dialogs cannot scroll, and every popup has the same size and look. SillyBunny frames each Popup as an Alert, Dialog or Window through one small hook, with a single scrolling body and a sheet on phones, while the Popup API and results stay the same. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`; `public/scripts/sillybunny-editor/dialog.js`; tier CSS in `public/css/sillybunny-theme.css`. |
+| Adapter shape | `popup.js` imports `framePopup`, forwards optional `tier`/`title`/`size`, calls `opened()` after `showModal()`, `closing()` when hiding, and `dispose()` after removal. All response buttons remain descendants of `buttonControls`; custom responses use a measured footer wrapper inside it and do not grow to fill it. Cascade overrides correct upstream sizing and hidden overflow, including Safari. Window framing locks content-sized height after first layout and uses one fill opt-in for list-heavy and editor surfaces. A framed Dialog or Window opened over another framed surface becomes a page with Back and Close. `framePopup` registers each frame as a level in `public/scripts/sillybunny-editor/page-chain.js`, so Close walks the chain one level at a time. It wraps `complete` on the Popup instance, not in `popup.js`, so a chain Close can wait for a completion that is already running. |
+| Protecting tests | `tests/unit/popup-contract.test.js`, `tests/unit/sillybunny-popup-frame.test.js`, `tests/unit/sillybunny-dialog.test.js`, `tests/unit/sillybunny-page-chain.test.js`, `tests/popup-scroll.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js` (including `page chains`), `tests/window-dialogs.e2e.js`, and the popup-touching dialog suites. |
+| Validation | `npm run lint`; focused Jest suites for Popup contract/frame/dialog/rows and Tag/Folder Managers; `popup-scroll`, dialog-frame, Tag Manager and Folder Manager Chromium E2E; frontend budget check. WebKit is unavailable on this host because Playwright's system dependencies are missing. 2026-10-27 (`4ef8c438b`, page chains): the full Jest suite had 448 suites and 6,807 tests passed; 239/239 Chromium E2E passed across the dialog, Window, tier, scroll, overlay, Tag Manager, Folder Manager and Chat Archive suites. `popup.js` is unchanged. |
+| Rollback path | In `public/scripts/popup.js`, remove the `framePopup` import, the `tier`, `title` and `size` options with their typedef lines, the `this.sbFrame = framePopup(...)` call, and the `opened()`, `closing()` and `dispose()` calls. Popups then use the upstream layout, and callers that still pass `tier` or `title` have those options ignored. Delete `popup-frame.js` and `page-chain.js` only after every adapter that uses them is removed. Then drop `tests/unit/sillybunny-popup-frame.test.js` and `tests/sillybunny-dialog-frame.e2e.js`, and update `tests/unit/popup-contract.test.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### `public/script.js` and `public/scripts/user.js` - destructive Popup defaults
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`; `public/scripts/user.js`. |
+| Area | Character and user deletion confirmations. |
+| Divergence reason | Upstream confirms character and user deletion with the affirmative response as the default. SillyBunny makes Cancel the default result and marks the delete button as destructive, so a stray Return cannot delete. |
+| Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
+| Adapter shape | Pass the negative defaultResult and add is-destructive to okButton in onOpen. |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/sillybunny-dialog-tiers.e2e.js`. |
+| Validation | Root lint; full Jest suite; Chromium dialog-tier and mobile template checks. |
+| Rollback path | Remove the `defaultResult: POPUP_RESULT.NEGATIVE` option and the `onOpen` callback that adds `is-destructive` from the marked confirmations in `public/script.js` and `public/scripts/user.js`. Then update the destructive-default cases in `tests/sillybunny-dialog-tiers.e2e.js` and `tests/unit/popup-contract.test.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
 ### `public/script.js` and `public/style.css` - chat render lifecycle
 | Field | Value |
 | --- | --- |
@@ -130,6 +482,19 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 Bug 2 mobile search viewport reset. |
 | Owner | Refactor integrator and mobile shell owner. |
 
+### `public/index.html` and `public/script.js` - message actions
+| Field | Value |
+| --- | --- |
+| Area | Chat message actions. |
+| Divergence reason | DESIGN.md "Chat Transcript": a labelled message menu replaces upstream's inline `.extraMesButtons` expansion, and deleting a message always confirms with Cancel focused. |
+| Target seam | `public/scripts/sillybunny-message-actions.js`, `public/scripts/sillybunny-action-menu.js`, `public/scripts/sillybunny-delete-confirm.js`. |
+| Adapter shape | `#message_template`: `.extraMesButtons` reordered into menu sections with Checkpoint and Delete + Add Swipe moved in; Delete, Copy, Edit, and `.extraMesButtonsHint` (`fa-ellipsis-vertical`) follow in the row; edit row starts Cancel, Confirm. `script.js`: `deleteMessage()` calls `confirmMessageDeletion()`; `.mes_edit_delete` confirms unless `fromSlashCommand`. Upstream's `.extraMesButtonsHint` click handler is left in place and pre-empted in the capture phase. |
+| Protecting tests | `tests/foundation/message-actions.e2e.js`. |
+| Validation | `npm run lint`, `npm run build:frontend`, `npm run check:frontend-budgets`, foundation Playwright (chromium, all sizes). |
+| Rollback path | Restore the upstream template block and `deleteMessage()` popup call; the SillyBunny modules then only add the menu on top. |
+| Last reviewed | 2026-10-02, PR #870. |
+| Owner | UI overhaul integrator. |
+
 ### `public/scripts/openai.js` and `public/index.html` - tool recursion limit setting
 | Field | Value |
 | --- | --- |
@@ -211,15 +576,30 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `public/index.html` - boot assets and settings copy
 | Field | Value |
 | --- | --- |
+| File | `public/index.html` |
 | Area | Settings and frontend boot. |
 | Divergence reason | SillyBunny keeps `script.js` loaded through its canonical URL, keeps OOC/HTML retention settings copy synchronized with active-turn depth behavior, and exposes core background transparency sliders without requiring Moonlit Echoes. `script.js` must NEVER carry a `?v=` query: every module imports `../script.js` bare, and a versioned tag URL splits ES-module identity so `script.js` evaluates twice and registers every delegated handler twice (all inline-drawer toggles break). Stale-cache protection comes from `src/middleware/frontend-assets.js` serving JS with `Cache-Control: no-cache`, not from URL versioning. |
 | Target seam | `public/scripts/ooc-blocks.js` for retention behavior; `public/css/sillybunny-chat-styles.css` and `public/scripts/power-user.js` for core transparency behavior. |
-| Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. |
-| Protecting tests | `tests/script-module-identity.test.js`, `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- script-module-identity.test.js frontend-assets.test.js ooc-blocks.test.js`, `npm run test:unit --prefix tests -- core-message-transparency.test.js`, `npm run build:frontend`, browser smoke check. |
+| Adapter shape | Keep HTML changes limited to static boot references and settings labels/tooltips. v1.9.0 swaps the Figtree preload/stylesheet links for Adwaita Sans/Mono, drops the Figtree Google Font preset (saved `Figtree` values still load as a custom Google Font), bumps fork stylesheet cache versions, and points the theme reset tooltip at `Libadwaita`. Keep each changed cache key aligned with its fork stylesheet and deferred runtime loader. |
+| Protecting tests | `tests/script-module-identity.test.js`, `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`, `tests/mobile-css-budgets.test.js`, `tests/header-icon-button-parity.e2e.js`, `tests/in-chat-agents-list.e2e.js`, `tests/mobile-character-toggle-and-panels.e2e.js`. |
+| Validation | Unit tests for script identity and frontend assets, the focused status-page and mobile Characters E2E cases, `npm run check:frontend-budgets`, and browser smoke at desktop and mobile widths. |
 | Rollback path | Restore versioned `script.js` references, previous settings copy, and remove core transparency slider markup if cache behavior or settings semantics regress. Chat transparency CSS loading rolls back through `public/scripts/power-user.js`. |
-| Last reviewed | 2026-06-11 script.js module-identity regression fix (double-evaluated frontend after #413 re-versioned the tag; inline drawers dead). |
+| Last reviewed | 2026-10-26. |
 | Owner | Refactor integrator. |
+
+### `public/index.html` - Characters/Groups deferred stylesheet cache key
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Characters and Groups list stylesheet boot. |
+| Divergence reason | SillyBunny loads the Characters and Groups list stylesheet after startup, which upstream's static links do not do. The preload and both loader URLs must carry the same cache key, or the browser keeps a stale stylesheet. |
+| Target seam | `public/scripts/dynamic-styles.js`, `public/scripts/sillybunny-character-list.js`, and `public/scripts/sillybunny-tabs.js`. |
+| Adapter shape | Keep the preload and both deferred loader URLs on the same cache version because `loadStylesheetAsync` adopts the preloaded link by ID. |
+| Protecting tests | `tests/character-list.e2e.js` (`Groups filter toolbar avoids extra vertical padding` at desktop and mobile widths). |
+| Validation | Focused Characters/Groups E2E and `npm run check:frontend-budgets`. 2026-10-27 (`820589f4d`): the preload and both loaders moved to `?v=20261027a` together, and a repo-wide grep shows one key for the file. |
+| Rollback path | Remove the preload `<link>` for `sillybunny-character-list.css` and its `SillyBunny:` comments from `public/index.html`. The stylesheet then loads only through the loader entries in `sillybunny-character-list.js` and `sillybunny-tabs.js`. Keep those two keys equal when you bump them. |
+| Last reviewed | 2026-10-27, PR #870 (paths and markers re-checked). |
+| Owner | UI overhaul integrator. |
 
 ### `public/index.html` - mobile stylesheet media gates
 | Field | Value |
@@ -233,6 +613,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Restore prior stylesheet link gates and load order if compact desktop or mobile shell boot behavior regresses. |
 | Last reviewed | 2026-06-11 PR 2.1 mobile breakpoint ledger. |
 | Owner | Refactor integrator and mobile shell owner. |
+
+### `public/index.html` - Data & Security Usage Stats row
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-settings-content.js` (`SB_DATA_SECURITY_SECTIONS` and the Data & Security `general` category). |
+| Adapter shape | Keep one static `#user_stats_controls` row after `#account_controls`. Its button keeps the upstream `user_stats_button` class and `Usage Stats` i18n key, so the upstream binding in `public/script.js` opens `userStatsHandler()`. |
+| Protecting tests | `tests/unit/sillybunny-settings-content.test.js`, `tests/startup-on-demand.e2e.js` (`Data & Security opens Usage Stats`). |
+| Validation | `npm run test:unit --prefix tests -- unit/sillybunny-settings-content.test.js`, `npm run test:e2e --prefix tests -- startup-on-demand.e2e.js -g "Data & Security"`, `npm run lint`, `npm run check:frontend-budgets`, browser check at 1440px and 390px. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 PR `#870` Data & Security Usage Stats row. |
+| Owner | TODO(copy) |
+
+### `public/index.html`, `public/scripts/user.js`, and `public/scripts/templates/userProfile.html` - Data & Security Export category
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/user.js`, `public/scripts/templates/userProfile.html` |
+| Area | Settings and accounts. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-settings-content.js` (`SB_DATA_SECURITY_SECTIONS` and the Data & Security `export` category). |
+| Adapter shape | Keep two static rows, `#user_backup_controls` and `#settings_snapshots_controls`, after `#user_stats_controls`; the section order moves them into the `export` category after Import & Restore. Their buttons reuse the upstream `Download Backup` and `Settings Snapshots` i18n keys. The `user.js` ready block binds `#user_backup_button` to `backupUserData()` and `#settings_snapshots_button` to `viewSettingsSnapshots()`, and `openUserProfile()` binds neither popup button. `userProfile.html` drops both popup buttons and puts `data-require-accounts` on Account Actions, so the section hides with Change Password when accounts are off. |
+| Protecting tests | `tests/unit/sillybunny-settings-content.test.js`, `tests/startup-on-demand.e2e.js` (`Data & Security downloads a backup from Export`, `Download Backup is enabled again after a failed backup`, `Data & Security opens Settings Snapshots from Export`, `Account popup opens without Settings Snapshots and Download Backup`). |
+| Validation | `npm run test:unit --prefix tests -- unit/sillybunny-settings-content.test.js`, `npm run test:e2e --prefix tests -- startup-on-demand.e2e.js -g "Data & Security\|Download Backup\|Account popup"`, `npm run lint`, `npm run check:frontend-budgets`, browser check at 1440px and 390px. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 PR `#870` Data & Security Export category. |
+| Owner | TODO(copy) |
 
 ### `public/css/backgrounds.css` - background image transparency
 | Field | Value |
@@ -500,15 +908,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
-| File | `public/scripts/extensions/expressions/index.js`, `public/scripts/extensions/connection-manager/index.js`, `public/scripts/extensions/shared.js`, `public/scripts/custom-request.js`. |
+| File | `public/scripts/extensions/expressions/index.js`, `public/scripts/extensions/connection-manager/index.js`, `public/scripts/extensions/connection-manager/{settings,view,profile,edit}.html`, `public/scripts/extensions/connection-manager/style.css`, `public/scripts/extensions/shared.js`, `public/scripts/custom-request.js`. |
 | Area | Extension runtime, expressions, and connection-profile secrets. |
 | Divergence reason | Fork-owned agent classification, generated sprites, profile-scoped requests, and secret-aware connection state extend upstream extension surfaces. |
-| Target seam | `public/scripts/extensions/in-chat-agents/`, `public/scripts/extensions/expressions/`, and `public/scripts/extensions/connection-manager/`. |
+| Target seam | `public/scripts/extensions/in-chat-agents/`, `public/scripts/extensions/expressions/`, `public/scripts/extensions/connection-manager/`, `public/scripts/extensions/connection-manager/profile-change-model.js`, and `public/scripts/extensions/connection-manager/profile-change-notice.js`. |
 | Adapter shape | Keep extension boot and provider calls in upstream modules; delegate fork agent/profile decisions through existing narrow exports. |
-| Protecting tests | `tests/expressions-agent.test.js`, `tests/connection-profile-request-fields.test.js`, `tests/connection-manager-profile-save.test.js`, `tests/in-chat-agents-runner.test.js`. |
+| Protecting tests | `tests/expressions-agent.test.js`, `tests/connection-profile-request-fields.test.js`, `tests/connection-manager-profile-save.test.js`, `tests/in-chat-agents-runner.test.js`, `tests/unit/connection-profile-change-notice.test.js`, `tests/unit/connection-profile-change-notice-wiring.test.js`, `tests/connection-profile-change-notice.e2e.js`. |
 | Validation | Focused unit tests, `npm run lint`, `npm run check:frontend-budgets`. |
 | Rollback path | Disable fork classifier/profile hooks while retaining upstream expression and connection behavior. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-10-14 profile change notice. |
 | Owner | In-Chat Agents maintainer. |
 
 ### Settings, personas, presets, and prompt context
@@ -546,9 +954,9 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Chat recovery, character assets, thumbnails, and media metadata. |
 | Divergence reason | SillyBunny adds backup recovery presentation and mobile-aware character/media handling without changing upstream chat or image formats. |
 | Target seam | `public/scripts/sillybunny-tabs.js`, `src/endpoints/conversation-utils.js`, and the thumbnail/image-metadata helpers. |
-| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. |
-| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`. |
-| Validation | Focused unit tests, `node --check` on endpoint/client files, `npm run lint`. |
+| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. Treat disconnected backup controls as stale so the browser can recreate them after Chat History restores its legacy tree. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`, `tests/sillybunny-overlays.e2e.js`. |
+| Validation | Focused unit tests, Chat History overlay E2E, `node --check` on endpoint/client files, `npm run lint`. |
 | Rollback path | Revert backup UI and mobile/media adapters without deleting user chat or character data. |
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Chat and media integrator. |
@@ -572,27 +980,40 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `default/config.yaml`, `default/content/index.json`, and `default/content/settings.json`. |
 | Area | Install defaults and bundled content. |
-| Divergence reason | SillyBunny ships fork defaults, agents, presets, and settings while preserving install-time migration and reset behavior. |
+| Divergence reason | SillyBunny ships fork defaults, agents, presets, and settings while preserving install-time migration and reset behavior. v1.9.0 registers the `Libadwaita` and `Libadwaita Light` themes in `index.json`, makes `Libadwaita` the default theme with matching colors in `settings.json`, and defaults `reduced_motion` to `false`. |
 | Target seam | `src/server-init.js`, `src/endpoints/content-manager.js`, and bundled-template update helpers. |
 | Adapter shape | Preserve upstream IDs and metadata keys; change default values and bundled indexes only through existing synchronization paths. |
 | Protecting tests | `tests/default-preset-deletions.test.js`, bundled-template and agent-version tests, plus Bun initialization smoke. |
 | Validation | `npm run init`, full unit suite, and fresh-data-directory smoke. |
-| Rollback path | Restore individual defaults through the bundled update flow without deleting existing-user settings. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Rollback path | Restore individual defaults through the bundled update flow without deleting existing-user settings. Existing users keep their saved theme and motion setting. |
+| Last reviewed | 2026-10-01 PR #870 libadwaita defaults. |
 | Owner | Defaults and release integrator. |
+
+### `public/style.css` - libadwaita shell foundation
+| Field | Value |
+| --- | --- |
+| Area | Shell typography, status colors, controls, and chat disclosures. |
+| Divergence reason | The v1.9.0 libadwaita shell needs root-level defaults that load before fork sheets: Adwaita Sans/Mono font stacks, libadwaita dark status colors, the 1.81 display step, libadwaita check buttons, and short reasoning/OOC disclosure reveals. |
+| Target seam | `public/css/sillybunny-theme.css` owns layer, radius, motion, and light-tone tokens; `style.css` keeps only root defaults and base control styling. |
+| Adapter shape | Variable value swaps in `:root`, the checkbox rule block, and one `sb-chat-disclosure-in` keyframe with its two selectors. The status-colour and checkbox blocks carry `SillyBunny` inline comments. |
+| Protecting tests | `tests/ui-motion-css-compliance.test.js`, `tests/mobile-css-budgets.test.js`, `tests/frontend-assets.test.js`. |
+| Validation | `npm run lint`, `npm run check:frontend-contracts`, `npm run build:frontend`, `npm run check:frontend-budgets`, full unit suite, desktop/mobile screenshots in both tones. |
+| Rollback path | Revert the variable values, checkbox block, and disclosure keyframe; persisted themes and user CSS are unaffected. |
+| Last reviewed | 2026-10-01 PR #870 libadwaita shell. |
+| Owner | UI and shell integrator. |
 
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |
 | File | `public/locales/*.json`, `public/img/**`, `public/*.ico`, `public/login.html`, `public/manifest.json`, `public/global.d.ts`, `public/lib/polyfill.js`, and `public/webfonts/**`. |
 | Area | Branding, localization, login, PWA metadata, compatibility, and static assets. |
-| Divergence reason | SillyBunny replaces product identity and translated copy, adds fork provider assets, and keeps browser/PWA boot metadata aligned with the fork. |
+| Divergence reason | SillyBunny replaces product identity and translated copy, adds fork provider assets, and keeps browser/PWA boot metadata aligned with the fork. v1.9.0 replaces bundled Figtree with Adwaita Sans and adds Adwaita Mono (both OFL, licenses shipped alongside). |
 | Target seam | Static assets and locale catalogs; no runtime seam. |
-| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. |
-| Protecting tests | Frontend asset tests, manifest/browser smoke, README mirror validation, and full build. |
+| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. Keep font preload/rewrite paths in `public/index.html` and `src/frontend-assets.js` in sync with `public/webfonts/`. |
+| Protecting tests | `tests/frontend-assets.test.js`, manifest/browser smoke, README mirror validation, and full build. |
 | Validation | `npm run build:frontend`, `npm run check:frontend-budgets`, JSON parsing, and desktop/mobile login smoke. |
 | Rollback path | Restore individual assets or translations without changing persisted data. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-10-01 PR #870 Adwaita fonts. |
 | Owner | UI and localization integrator. |
 
 ### Upstream CSS surfaces and compatibility styling
@@ -678,6 +1099,35 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert fork fixtures/config independently from production code, retaining tests that protect shipped compatibility. |
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Test and release integrator. |
+
+### Data Bank Window redesign
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js`; `public/scripts/extensions/attachments/manager.html`; `public/scripts/extensions/attachments/style.css`. |
+| Area | Data Bank attachment manager presentation and row actions. |
+| Divergence reason | Upstream shows the Data Bank as a popup with its own toolbar and fixed layout. SillyBunny frames the same manager as a Window with shared search, sort and row menus, while the original controls, IDs and drop target stay in place. |
+| Target seam | `public/scripts/sillybunny-editor/adapters/data-bank-dialog.js`. |
+| Adapter shape | Keep source inputs, attachment IDs, scopes, render functions, existing action nodes and callbacks; frame the manager as a Window, forward shared menu actions to the original controls, and retain the `.popup` drop target. |
+| Protecting tests | `tests/window-dialogs.e2e.js` covers search, sort, coarse-pointer Close, keyboard/bulk behavior, `.popup` drop, and every row overflow action; `tests/unit/data-bank-dialog-adapter.test.js` covers source validation, sort forwarding, action forwarding, and keyboard activation; regression suites: `tests/tag-manager.e2e.js`, `tests/character-folders.e2e.js`, `tests/sillybunny-overlays.e2e.js`, `tests/sillybunny-dialog-frame.e2e.js`, `tests/sillybunny-dialog-tiers.e2e.js`, `tests/popup-scroll.e2e.js`. |
+| Validation | 2026-10-25: Chromium verification on port 4460 passed the requested 180-test E2E matrix twice, 442 unit suites (6682 passed, 2 skipped), root/tests lint with no errors, `git diff --check`, and the frontend budget at 1017.7 KiB blocking CSS. Final screenshots inspected for Data Bank main/bulk at 1440×900 and 390×844 plus Tag Manager search-open at both sizes. Attachment stylesheet reduced from 418 to 255 lines. |
+| Rollback path | In `public/scripts/chats.js`, remove the `frameDataBankManager()` and `decorateDataBankRow()` calls and their import. Revert the marked hunks in `public/scripts/extensions/attachments/manager.html` and `style.css`. Then drop `tests/unit/data-bank-dialog-adapter.test.js` and the Data Bank cases in `tests/window-dialogs.e2e.js`. |
+| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Owner | UI overhaul integrator. |
+
+### `public/scripts/keyboard.js` - Enter on native controls
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/keyboard.js` |
+| Area | Keyboard activation of `.interactable` controls. |
+| Divergence reason | Upstream turns Enter on any `.interactable` into a synthetic `click()`. Upstream's `.menu_button` controls are `<div>` elements, so that is their only activation. SillyBunny renders many of them as real `<button>` elements, which already click on Enter, so one press ran the handler twice and the second click landed on whatever took focus after the first. |
+| Target seam | `handleGlobalKeyDown()` in `public/scripts/keyboard.js`. |
+| Adapter shape | One early return, under one `// SillyBunny:` marker, skips the synthetic click when the focused element is a native `button`, `summary`, `a[href]`, or a button, submit, reset or image `input`. Every other `.interactable` element, including checkboxes and radios, keeps the upstream synthetic click. |
+| Protecting tests | `tests/unit/sillybunny-keyboard-enter.test.js`; `tests/dialogs-accessibility.e2e.js` (Enter on a real button activates once, Change Password opens one popup, the Clear cookies alert stays open, and `#options_button` still activates once); `tests/native-dialog-replacements.e2e.js`. |
+| Validation | 2026-10-28: full Jest suite 454 suites, 6,902 tests passed, 2 skipped; `dialogs-accessibility` 112/112 on Chromium; root and tests lint pass. |
+| Rollback path | Delete the marked early return in `handleGlobalKeyDown()`. Then a native button that also carries `.interactable` activates twice on Enter again, so first remove `.interactable` from the SillyBunny `<button>` controls that have it, or keep the return. Drop `tests/unit/sillybunny-keyboard-enter.test.js` and the Enter tests in `tests/dialogs-accessibility.e2e.js`. |
+| Last reviewed | 2026-10-28, PR #870 (marker and unit tests checked). |
+| Owner | UI overhaul integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?

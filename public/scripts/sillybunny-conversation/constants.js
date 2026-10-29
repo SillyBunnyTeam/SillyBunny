@@ -212,6 +212,8 @@ export const CHROME_IDS = Object.freeze({
     railFooter: 'sb_conversation_rail_footer',
     personaPicker: 'sb_conversation_persona_picker',
     userStatusPicker: 'sb_conversation_user_status_picker',
+    addDmPicker: 'sb_conversation_add_dm_picker',
+    pickerBackdrop: 'sb_conversation_picker_backdrop',
 });
 export const AVAILABILITY_COPY = Object.freeze({
     online: { label: 'Online', detail: 'Available for live DM replies.' },

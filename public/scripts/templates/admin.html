@@ -1,19 +1,21 @@
-<div class="adminTabs wide100p">
+<!-- SillyBunny: Existing admin action nodes stay intact so their handlers remain authoritative. -->
+<div class="adminTabs wide100p sb-admin-window">
     <nav class="adminNav flex-container alignItemsCenter justifyCenter">
         <button type="button" class="manageUsersButton menu_button menu_button_icon" data-target-tab="usersList">
             <h4 data-i18n="Manager Users">Manage Users</h4>
         </button>
-        <button type="button" class="newUserButton menu_button menu_button_icon" data-target-tab="registerNewUserBlock">
-            <h4 data-i18n="New User">New User</h4>
+        <button type="button" class="newUserButton menu_button menu_button_icon sb-dialog__icon-button sb-header-icon-button" data-target-tab="registerNewUserBlock" data-i18n="[aria-label]New User" aria-label="New User" title="New User">
+            <i class="fa-fw fa-solid fa-plus" aria-hidden="true"></i>
+            <h4 data-i18n="New User" hidden>New User</h4>
         </button>
     </nav>
     <div class="userAccountTemplate template_element">
-        <div class="flex-container userAccount alignItemsCenter flexGap10">
-            <div class="flex-container flexFlowColumn alignItemsCenter flexNoGap">
-                <div class="avatar" title="If a custom avatar is not set, the user's default persona image will be displayed.">
+        <div class="flex-container userAccount ds-row ds-entity-row ds-entity-row--surface ds-user-account alignItemsCenter flexGap10">
+            <div class="flex-container flexFlowColumn alignItemsCenter flexNoGap sb-user-avatar">
+                <div class="avatar ds-entity-row__avatar" title="If a custom avatar is not set, the user's default persona image will be displayed.">
                     <img src="img/ai4.png" alt="avatar">
                 </div>
-                <div class="flex-container alignItemsCenter">
+                <div class="flex-container alignItemsCenter" style="display: none;">
                     <div class="userAvatarChange right_menu_button" title="Set a custom avatar.">
                         <i class="fa-fw fa-solid fa-image"></i>
                     </div>
@@ -25,33 +27,30 @@
                     <input type="file" class="avatarUpload" accept="image/*" hidden>
                 </form>
             </div>
-            <div class="flex1 flex-container flexFlowColumn flexNoGap justifyLeft">
-                <div class="flex-container flexGap10 alignItemsCenter">
+            <!-- SillyBunny: keep the existing user fields while presenting the account as one shared row. -->
+            <div class="flex1 flex-container flexFlowColumn flexNoGap justifyLeft ds-row-text ds-entity-row__text">
+                <div class="flex-container flexGap10 alignItemsCenter sb-user-title">
                     <i class="hasPassword fa-solid fa-lock" title="This account is password protected."></i>
                     <i class="noPassword fa-solid fa-lock-open" title="This account is not password protected."></i>
-                    <h3 class="userName margin0"></h3>
+                    <h3 class="userName ds-entity-row__title margin0"></h3>
                     <small class="userHandle">&nbsp;</small>
                 </div>
-                <div class="flex-container flexFlowColumn flexNoGap">
-                    <span>
-                        <span data-i18n="Role:">Role:</span>
-                        <span class="userRole"></span>
-                    </span>
-                    <span>
-                        <span data-i18n="Status:">Status:</span>
-                        <span class="userStatus">&nbsp;</span>
-                    </span>
-                    <span>
-                        <span data-i18n="Created:">Created:</span>
-                        <span class="userCreated">&nbsp;</span>
-                    </span>
+                <div class="sb-user-meta ds-entity-row__subtitle">
+                    <span class="userRole"></span><span aria-hidden="true"> · </span>
+                    <span class="userStatus">&nbsp;</span><span aria-hidden="true"> · </span>
+                    <span class="userCreated">&nbsp;</span>
                 </div>
             </div>
-            <div class="flex-container flexFlowColumn">
-                <div class="flex-container">
-                    <div class="userChangeNameButton menu_button" title="Change user display name.">
+            <div class="flex-container flexFlowColumn userAccountActions ds-row-suffix ds-entity-row__suffix">
+                <div class="flex-container sb-user-primary-action">
+                    <button type="button" class="userChangeNameButton menu_button sb-dialog__icon-button" title="Change user display name." aria-label="Change user display name.">
                         <i class="fa-fw fa-solid fa-pencil"></i>
-                    </div>
+                    </button>
+                    <button type="button" class="userOverflowButton sb-dialog__icon-button" data-i18n="[aria-label]Menu" aria-label="Menu" title="Menu" aria-haspopup="menu" aria-expanded="false">
+                        <i class="fa-fw fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="sb-user-source-actions" style="display: none;">
                     <div class="userEnableButton menu_button" title="Enable user account.">
                         <i class="fa-fw fa-solid fa-check"></i>
                     </div>
@@ -64,8 +63,6 @@
                     <div class="userDemoteButton menu_button" title="Demote user to regular user.">
                         <i class="fa-fw fa-solid fa-arrow-down"></i>
                     </div>
-                </div>
-                <div class="flex-container">
                     <div class="userBackupButton menu_button menu_button_icon" title="Download a backup of user data.">
                         <i class="fa-fw fa-solid fa-download"></i>
                     </div>

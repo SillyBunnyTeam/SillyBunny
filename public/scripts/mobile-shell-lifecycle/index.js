@@ -19,7 +19,6 @@ export const MOBILE_SHELL_SURFACE = Object.freeze({
     RIGHT_SHELL: 'right-shell',
     CHARACTER_PANEL: 'character-panel',
     CHAT_TOOLS: 'chat-tools',
-    CONNECTION_STRIP: 'connection-strip',
 });
 
 export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
@@ -28,7 +27,6 @@ export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
     MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
     MOBILE_SHELL_SURFACE.NAV,
     MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-    MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
 ]);
 
 export const MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT = 12;
@@ -45,14 +43,12 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.LEFT_SHELL]: Object.freeze({
@@ -61,14 +57,12 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.RIGHT_SHELL]: Object.freeze({
@@ -77,14 +71,12 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.CHARACTER_PANEL]: Object.freeze({
@@ -93,14 +85,12 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.CHAT_TOOLS]: Object.freeze({
@@ -109,30 +99,12 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.NAV,
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.CONNECTION_STRIP,
-        ]),
-    }),
-    [MOBILE_SHELL_SURFACE.CONNECTION_STRIP]: Object.freeze({
-        mobile: Object.freeze([
-            MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.LEFT_SHELL,
-            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-        ]),
-        desktop: Object.freeze([
-            MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.LEFT_SHELL,
-            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
     }),
 });
@@ -498,65 +470,6 @@ export function getMobileShellQuickActionKey(action = null) {
     ].filter(Boolean).join('::');
 }
 
-/**
- * Resolves side-rail action groups without constructing DOM.
- * @param {object} options Options.
- * @param {boolean} [options.hasVerticalRail=false] Whether rail shortcuts render.
- * @param {boolean} [options.showCustomize=false] Whether built-in customize/workspace actions render.
- * @param {boolean} [options.showQuickActions=false] Whether custom quick actions render.
- * @param {object[]} [options.builtInActions=[]] Built-in actions for the current shell.
- * @param {string[]} [options.builtInActionKeys=[]] Built-in action keys to hide from custom actions.
- * @param {object[]} [options.quickActions=[]] Persisted quick actions for the active rail mode.
- * @param {object|null} [options.replacementAction=null] Optional single replacement quick action.
- * @param {string} [options.builtInGroupLabel=''] Label for the built-in action group.
- * @returns {{shouldHideCustomizeTabs: boolean, beforeGroups: object[], afterGroups: object[], quickActions: object[]}}
- */
-export function resolveMobileShellRailActionVisibility({
-    hasVerticalRail = false,
-    showCustomize = false,
-    showQuickActions = false,
-    builtInActions = [],
-    builtInActionKeys = [],
-    quickActions = [],
-    replacementAction = null,
-    builtInGroupLabel = '',
-} = {}) {
-    const shouldRenderRail = Boolean(hasVerticalRail);
-    const shouldShowCustomize = shouldRenderRail && Boolean(showCustomize);
-    const builtInItems = shouldShowCustomize && Array.isArray(builtInActions)
-        ? builtInActions.filter(Boolean)
-        : [];
-    const builtInKeys = new Set(shouldShowCustomize && Array.isArray(builtInActionKeys) ? builtInActionKeys : []);
-    const visibleQuickActions = replacementAction
-        ? [replacementAction].filter(Boolean)
-        : (Array.isArray(quickActions) ? quickActions : [])
-            .filter(action => !builtInKeys.has(getMobileShellQuickActionKey(action)));
-    const beforeGroups = [];
-    const afterGroups = [];
-
-    if (builtInItems.length > 0) {
-        beforeGroups.push({
-            type: 'built-in',
-            label: String(builtInGroupLabel || 'Built In'),
-            actions: builtInItems,
-        });
-    }
-
-    if (shouldRenderRail && Boolean(showQuickActions) && visibleQuickActions.length > 0) {
-        afterGroups.push({
-            type: 'quick-actions',
-            label: 'Quick Actions',
-            actions: visibleQuickActions,
-        });
-    }
-
-    return {
-        shouldHideCustomizeTabs: shouldShowCustomize,
-        beforeGroups,
-        afterGroups,
-        quickActions: visibleQuickActions,
-    };
-}
 
 /**
  * Resolves which open inline drawer siblings should close when a drawer opens.
@@ -713,27 +626,10 @@ export function resolveMobileModalA11yState({
     };
 }
 
-export const MOBILE_SHELL_DRAWER_BOUND_ACTION = Object.freeze({
-    BIND: 'bind',
-    CLEAR: 'clear',
-    SKIP: 'skip',
-});
-
-export const MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES = Object.freeze([
-    'top',
-    'bottom',
-    'height',
-    'max-height',
-    'box-sizing',
-]);
-
 export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
-    SYNC_MOBILE_SHELL_DRAWER_BOUNDS: 'sync-mobile-shell-drawer-bounds',
     CLOSE_MOBILE_NAV: 'close-mobile-nav',
     CLOSE_MOBILE_CHAT_TOOLS: 'close-mobile-chat-tools',
-    SYNC_MOBILE_SHELL_RAIL_ACTIONS: 'sync-mobile-shell-rail-actions',
-    SYNC_DESKTOP_SHELL_SIZING: 'sync-desktop-shell-sizing',
     APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
     SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
     UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',
@@ -776,6 +672,9 @@ const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '#ica--tracker-panel-handle',
     'dialog.popup',
     '.popup',
+    '.sb-dialog-host',
+    '.sb-dialog',
+    '.sb-side-panel',
     '.sb-shell-root',
     '.sb-shell-header',
     '.ica--tpanel',
@@ -789,8 +688,6 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     '.sb-bottom-chat-secondary-row',
     '#sb-persona-picker',
     '.group_speaker_list',
-    '.ica--agent-tabs',
-    '.ica--template-pill-row',
     '.sb-shell-nav',
     '.sb-settings-tabs-nav',
     // The icons-only top bar is made entirely of buttons, so every swipe on it matches
@@ -798,7 +695,6 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     // allowlisted here.
     '.sb-topbar-group-left',
     '.sb-conversation-channel-tabs',
-    '.sb-conversation-quick-actions',
     '.sb-character-create-bar',
     '#HotSwapWrapper .hotswap',
     '#right-nav-panel .rm_tag_controls',
@@ -1053,61 +949,6 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
     return true;
 }
 
-function clampBoundNumber(value, min, max) {
-    return Math.min(Math.max(normalizeNumber(value, min), min), max);
-}
-
-/**
- * Resolves the viewport bound decision for a single mobile shell drawer.
- * Pure decision: callers read DOM state in, apply style writes/removals out.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.isOpen=false] Whether the drawer has the openDrawer class.
- * @param {boolean} [options.isViewportBound=false] Whether the drawer carries the bound dataset marker.
- * @param {number} [options.viewportHeight=0] Current shell viewport height in px.
- * @param {number} [options.viewportTop=0] Visible viewport offset in px.
- * @param {number} [options.baseTopOffset=0] Resolved shell topbar offset in px.
- * @param {number} [options.shellGap=0] Drawer --sb-mobile-shell-gap value in px.
- * @returns {{action: string, styleWrites: Array<{property: string, value: string, priority: string}>, styleRemovals: string[]}}
- */
-export function resolveMobileDrawerBounds({
-    isMobileViewport = false,
-    isOpen = false,
-    isViewportBound = false,
-    viewportHeight = 0,
-    viewportTop = 0,
-    baseTopOffset = 0,
-    shellGap = 0,
-} = {}) {
-    const shouldBind = Boolean(isMobileViewport) && Boolean(isOpen);
-
-    if (!shouldBind) {
-        return {
-            action: isViewportBound ? MOBILE_SHELL_DRAWER_BOUND_ACTION.CLEAR : MOBILE_SHELL_DRAWER_BOUND_ACTION.SKIP,
-            styleWrites: [],
-            styleRemovals: isViewportBound ? [...MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES] : [],
-        };
-    }
-
-    const safeViewportHeight = Math.max(0, normalizeNumber(viewportHeight));
-    const safeViewportTop = Math.max(0, Math.round(normalizeNumber(viewportTop)));
-    const safeBaseTopOffset = Math.max(0, Math.round(normalizeNumber(baseTopOffset)));
-    const topOffset = clampBoundNumber(Math.round(safeBaseTopOffset + normalizeNumber(shellGap)), 0, safeViewportHeight);
-    const availableHeight = Math.max(0, safeViewportHeight - topOffset);
-
-    return {
-        action: MOBILE_SHELL_DRAWER_BOUND_ACTION.BIND,
-        styleWrites: [
-            { property: 'top', value: `${safeViewportTop + topOffset}px`, priority: 'important' },
-            { property: 'bottom', value: 'auto', priority: 'important' },
-            { property: 'box-sizing', value: 'border-box', priority: 'important' },
-            { property: 'height', value: `${availableHeight}px`, priority: 'important' },
-            { property: 'max-height', value: `${availableHeight}px`, priority: 'important' },
-        ],
-        styleRemovals: [],
-    };
-}
-
 /**
  * Resolves the ordered viewport sync work without touching shell DOM.
  * @param {object} options Options.
@@ -1119,20 +960,16 @@ export function resolveMobileViewportSyncPlan({
 } = {}) {
     const steps = [
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_SHELL_VIEWPORT_BOUNDS,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_DRAWER_BOUNDS,
     ];
 
     if (!isMobileViewport) {
         steps.push(
             MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_NAV,
             MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_CHAT_TOOLS,
-            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_DRAWER_BOUNDS,
         );
     }
 
     steps.push(
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_SHELL_RAIL_ACTIONS,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_DESKTOP_SHELL_SIZING,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
         MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
@@ -1141,28 +978,6 @@ export function resolveMobileViewportSyncPlan({
     );
 
     return { steps };
-}
-
-/**
- * Resolves how drawer bounds should be queued after mobile viewport movement.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.hasAnimationFrame=false] Whether requestAnimationFrame is available.
- * @param {number} [options.followupDelayMs=350] Follow-up sync delay.
- * @returns {{shouldSchedule: boolean, useAnimationFrame: boolean, followupDelayMs: number}}
- */
-export function resolveDrawerBoundsSyncSchedule({
-    isMobileViewport = false,
-    hasAnimationFrame = false,
-    followupDelayMs = 350,
-} = {}) {
-    const shouldSchedule = Boolean(isMobileViewport);
-
-    return {
-        shouldSchedule,
-        useAnimationFrame: shouldSchedule && Boolean(hasAnimationFrame),
-        followupDelayMs: normalizeNumber(followupDelayMs, 350),
-    };
 }
 
 /**
@@ -1202,21 +1017,14 @@ export function createMobileShellLifecycle() {
             resolveQuickActionRoute: resolveMobileShellQuickActionRoute,
             normalizeQuickAction: normalizeMobileShellQuickAction,
             getQuickActionKey: getMobileShellQuickActionKey,
-            resolveActionVisibility: resolveMobileShellRailActionVisibility,
         },
         inlineDrawers: {
             resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
             derivePersistenceKey: deriveInlineDrawerPersistenceKey,
         },
-        drawerBounds: {
-            action: MOBILE_SHELL_DRAWER_BOUND_ACTION,
-            boundStyleProperties: MOBILE_SHELL_DRAWER_BOUND_STYLE_PROPERTIES,
-            resolveBounds: resolveMobileDrawerBounds,
-        },
         viewportSync: {
             step: MOBILE_SHELL_VIEWPORT_SYNC_STEP,
             resolveSyncPlan: resolveMobileViewportSyncPlan,
-            resolveDrawerBoundsSchedule: resolveDrawerBoundsSyncSchedule,
         },
         timings: {
             navOpenGraceMs: MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,

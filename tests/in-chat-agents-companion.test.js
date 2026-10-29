@@ -79,6 +79,10 @@ describe('companion card ui', () => {
             event_types: eventTypes,
         }));
 
+        await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+            t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+        }));
+
         await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
             Popup: class {},
             POPUP_TYPE: { CONFIRM: 1 },
