@@ -995,11 +995,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Branding, localization, login, PWA metadata, compatibility, and static assets. |
 | Divergence reason | SillyBunny replaces product identity and translated copy, adds fork provider assets, and keeps browser/PWA boot metadata aligned with the fork. v1.9.0 replaces bundled Figtree with Adwaita Sans and adds Adwaita Mono (both OFL, licenses shipped alongside). |
 | Target seam | Static assets and locale catalogs; no runtime seam. |
-| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. Keep font preload/rewrite paths in `public/index.html` and `src/frontend-assets.js` in sync with `public/webfonts/`. |
-| Protecting tests | `tests/frontend-assets.test.js`, manifest/browser smoke, README mirror validation, and full build. |
-| Validation | `npm run build:frontend`, `npm run check:frontend-budgets`, JSON parsing, and desktop/mobile login smoke. |
+| Adapter shape | Preserve upstream locale keys, manifest structure, icon dimensions, and browser compatibility contracts. Keep font preload/rewrite paths in `public/index.html` and `src/frontend-assets.js` in sync with `public/webfonts/`. The Adwaita Mono files are real WOFF2 subsets of GNOME `adwaita-fonts-50.0` (`https://download.gnome.org/sources/adwaita-fonts/50/adwaita-fonts-50.0.tar.xz`, SHA-256 `4c927fbfeec1c503801ba510c2c94e0054c82c522cf7ba0d3be5d4d41fcf5c86`, `mono/AdwaitaMono-{Regular,Bold,Italic,BoldItalic}.ttf`), made with fontTools 4.67.0 `pyftsubset --unicodes=<the face's unicode-range in stylesheet.css> --layout-features='*' --name-IDs='*' --name-languages='*' --notdef-outline --flavor=woff2`. When font bytes change, change the `?v=` key on every URL in that family's `stylesheet.css` and at its `public/index.html` and `public/login.html` links together. |
+| Protecting tests | `tests/frontend-assets.test.js`, `tests/unit/webfonts-format.test.js` (every `.woff2` is WOFF2, every stylesheet URL resolves, Adwaita URLs carry a key), `tests/webfonts-load.e2e.js` (every Adwaita face loads through `FontFace` with no OTS or decode error), manifest/browser smoke, README mirror validation, and full build. |
+| Validation | `npm run build:frontend`, `npm run check:frontend-budgets`, JSON parsing, and desktop/mobile login smoke. 2026-10-30 (Adwaita Mono rebuild): cmap, outlines, advances, hinting, metrics and names compared old against new with fontTools, default shaping compared with `hb-shape`; Chromium loads all faces through the e2e above; the coder also loaded them in Firefox 157 and WebKit 27.2 in the Playwright container. |
 | Rollback path | Restore individual assets or translations without changing persisted data. |
-| Last reviewed | 2026-10-01 PR #870 Adwaita fonts. |
+| Last reviewed | 2026-10-30, PR #870 Adwaita Mono rebuild. |
 | Owner | UI and localization integrator. |
 
 ### Upstream CSS surfaces and compatibility styling
