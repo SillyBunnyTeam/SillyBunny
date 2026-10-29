@@ -159,7 +159,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
             parseToolCalls: () => {}, saveFunctionToolInvocations: jest.fn(async () => {}),
         },
     });
-    for (const name of ['unshallowCharacter', 'removeDepthPrompts', 'setExtensionPrompt', 'deleteItemizedPromptForMessage', 'removeLastMessage', 'requestMobileChatBottomPin', 'hideSwipeButtons', 'showSwipeButtons', 'setFloatingPrompt', 'flushWIInjections', 'flushEphemeralStoppingStrings', 'addPersonaDescriptionExtensionPrompt', 'setInContextMessages', 'setGenerationProgress', 'showStopButton', 'parseAndSaveLogprobs', 'playMessageSound', 'processImageAttachment', 'addOneMessage', 'statMesProcess', 'saveLogprobsForActiveMessage', 'appendMediaToMessage', 'addCopyToCodeBlocks', 'updateSwipeCounter', 'applyStreamingVisibleWrite', 'scrollStartedStreamingMessageThroughLifecycle', 'scrollChatToBottom', 'checkQuotaError', 'checkModerationError', 'tryParseStreamingError']) {
+    for (const name of ['unshallowCharacter', 'removeDepthPrompts', 'setExtensionPrompt', 'deleteItemizedPromptForMessage', 'removeLastMessage', 'requestMobileChatBottomPin', 'hideSwipeButtons', 'showSwipeButtons', 'setFloatingPrompt', 'flushWIInjections', 'flushEphemeralStoppingStrings', 'addPersonaDescriptionExtensionPrompt', 'setInContextMessages', 'setGenerationProgress', 'showStopButton', 'parseAndSaveLogprobs', 'playMessageSound', 'processImageAttachment', 'addOneMessage', 'statMesProcess', 'saveLogprobsForActiveMessage', 'appendMediaToMessage', 'addCopyToCodeBlocks', 'updateSwipeCounter', 'updateMessageBlock', 'applyStreamingVisibleWrite', 'scrollStartedStreamingMessageThroughLifecycle', 'scrollChatToBottom', 'checkQuotaError', 'checkModerationError', 'tryParseStreamingError']) {
         context[name] = jest.fn();
     }
     for (const name of ['shouldReduceStreamingDomWork', 'shouldGuardMobileChatScroll', 'shouldPinMobileChatToBottom', 'isAndroidStreamingPlatform', 'shouldUsePlainTextStreamingPreview', 'isChatRenderLifecycleRolloutEnabled', 'isHiddenReasoningModel']) {
@@ -803,6 +803,7 @@ describe('owned host generation flow', () => {
         const received = jest.fn();
         eventSource.on(event_types.MESSAGE_RECEIVED, received);
         const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+        await new Promise(resolve => setTimeout(resolve));
         expect(result).toBeUndefined();
         expect(processor.result).toBe('abcd');
         expect(processor.finishReason).toBeNull();
@@ -810,9 +811,58 @@ describe('owned host generation flow', () => {
         expect(processor.isStopped).toBe(true);
         expect(processor.abortController.signal.aborted).toBe(true);
         expect(processor.requestAbortController.signal.aborted).toBe(true);
-        expect(context.saveChatConditional).not.toHaveBeenCalled();
+        expect(context.saveChatConditional).toHaveBeenCalledTimes(buffer ? 0 : 1);
         expect(received).not.toHaveBeenCalled();
         expect(context.chat[0].mes).toBe(buffer ? 'Existing prose. ' : 'Existing prose. abcd');
+    });
+
+    /**
+     * Streams reasoning into the existing reply and presses Stop after the second chunk arrives,
+     * before a UI tick applies that chunk.
+     */
+    async function stopDuringReasoning({ onReasoningDone = () => {} } = {}) {
+        const { context, eventSource } = makeRuntime({ api: 'textgenerationwebui', stream: true });
+        Object.assign(context.chat[0], { swipe_id: 0, swipes: ['Existing prose. '], swipe_info: [{ extra: {} }] });
+        context.chunks = [
+            { text: '', state: { reasoning: 'step one ' } },
+            { text: '', state: { reasoning: 'step one step two ' } },
+            { text: 'must not be accepted', state: { reasoning: 'step one step two step three ' } },
+        ];
+        const stopped = { placeholder: undefined };
+        eventSource.on(event_types.STREAM_TOKEN_RECEIVED, () => {
+            if (!context.streamingProcessor?.pendingReasoning?.includes('two')) return;
+            stopped.placeholder = context.chat[0].extra.server_generation_placeholder;
+            context.stopGeneration();
+        });
+        const reasoningDone = jest.fn(() => onReasoningDone(context));
+        eventSource.on(event_types.STREAM_REASONING_DONE, reasoningDone);
+        const received = jest.fn();
+        eventSource.on(event_types.MESSAGE_RECEIVED, received);
+        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
+        await new Promise(resolve => setTimeout(resolve));
+        return { context, stopped, reasoningDone, received };
+    }
+
+    test('Stop during streamed reasoning finishes the reasoning that arrived and saves the reply once', async () => {
+        const { context, stopped, reasoningDone, received } = await stopDuringReasoning();
+        const message = context.chat[0];
+        expect(stopped.placeholder).toEqual(expect.any(String));
+        expect(message.mes).toBe('Existing prose. ');
+        expect(message.extra.reasoning).toBe('step one step two ');
+        expect(message.extra.reasoning_duration).toEqual(expect.any(Number));
+        expect(message.extra).not.toHaveProperty('server_generation_placeholder');
+        expect(message.swipe_info[0].extra.reasoning_duration).toBe(message.extra.reasoning_duration);
+        expect(message.swipe_info[0].extra).not.toHaveProperty('server_generation_placeholder');
+        expect(reasoningDone).toHaveBeenCalledWith('step one step two ', message.extra.reasoning_duration, 0, 'done');
+        expect(received).not.toHaveBeenCalled();
+        expect(context.saveChatConditional).toHaveBeenCalledTimes(1);
+    });
+
+    test('Stop saves nothing after the chat changes while the stopped reply finishes', async () => {
+        const { context, reasoningDone } = await stopDuringReasoning({ onReasoningDone: runtime => { runtime.chatGeneration++; } });
+        expect(reasoningDone).toHaveBeenCalledTimes(1);
+        expect(context.chat[0].swipe_info[0].extra.reasoning_duration).toBeNull();
+        expect(context.saveChatConditional).not.toHaveBeenCalled();
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('reloads the copy of a reply the server kept instead of saving its own: %s', async mode => {
