@@ -29,14 +29,16 @@ function createIcon(classes) {
  * The accessible name is a sentence. The `title` is the tooltip, which is header-capitalised, so each one is a
  * translatable string of its own with the assistant's name in it.
  */
-function createStubButton(className, { name, title, onActivate }) {
+function createActionButton(className, { name, title, stub, onActivate }) {
     const button = createElement('button', className);
     button.type = 'button';
     button.setAttribute('aria-label', name);
     if (title) {
         button.title = title;
     }
-    button.dataset.sbStub = STUB_MARKER;
+    if (stub) {
+        button.dataset.sbStub = STUB_MARKER;
+    }
     button.addEventListener('click', onActivate);
     return button;
 }
@@ -46,7 +48,7 @@ function createStubButton(className, { name, title, onActivate }) {
  * carries the full name for the icon-only form and for a label that is cut short.
  */
 function createFootButton({ icon, label, name, title, onActivate }) {
-    const button = createStubButton('sbHomeFootButton', { name, title, onActivate });
+    const button = createActionButton('sbHomeFootButton', { name, title, stub: true, onActivate });
     button.append(createIcon(`${icon} fa-fw`), createElement('span', 'sbHomeFootLabel', label));
     return button;
 }
@@ -67,8 +69,8 @@ function createMenuButton(id) {
  * The card is the activation target, and buttons cannot nest, so an overlay button covers the card behind
  * the footer, as in a Recent Chats row. The card's own text describes it.
  */
-function createCardAction({ name, title, subtitleId, onActivate }) {
-    const button = createStubButton('sbHomeCardOpen', { name, title, onActivate });
+function createCardAction({ name, title, stub, subtitleId, onActivate }) {
+    const button = createActionButton('sbHomeCardOpen', { name, title, stub, onActivate });
     button.setAttribute('aria-describedby', subtitleId);
     return button;
 }
@@ -127,6 +129,7 @@ function createAssistantCard(assistant, panel) {
         createCardAction({
             name: t`New chat with ${assistant.name}`,
             title: t`New Chat With ${assistant.name}`,
+            stub: true,
             subtitleId,
             onActivate: startNewChat,
         }),
@@ -138,7 +141,7 @@ function createAssistantCard(assistant, panel) {
 }
 
 /** A card without a footer. In a narrow grid it is a short row, and the chevron shows that it opens something. */
-function createMoreCard() {
+function createMoreCard(openMoreAssistants) {
     const titleId = 'sb-home-assistants-more-title';
     const subtitleId = 'sb-home-assistants-more-sub';
     const card = createElement('article', 'sbHomeCard sbHomeCard--more');
@@ -148,8 +151,17 @@ function createMoreCard() {
     icon.setAttribute('aria-hidden', 'true');
     icon.append(createIcon('fa-solid fa-user-plus'));
 
+    // Safari does not focus a button on click, and the window returns focus to the element that had it.
+    const action = createCardAction({
+        name: t`More Assistants`,
+        subtitleId,
+        onActivate: () => {
+            action.focus({ preventScroll: true });
+            openMoreAssistants();
+        },
+    });
     card.append(
-        createCardAction({ name: t`More Assistants`, subtitleId, onActivate: stubAction('assistants.more') }),
+        action,
         icon,
         createCardText({ name: t`More Assistants`, titleId, subtitleId, slot: MORE_SUBTITLE_SLOT }),
         createIcon('fa-solid fa-chevron-right sbHomeMoreChevron'),
@@ -160,12 +172,14 @@ function createMoreCard() {
 /**
  * Fills the Assistants section: a grid with a card for each assistant and a More Assistants card.
  * @param {HTMLElement} panel The `.welcomePanel` root.
+ * @param {object} options
+ * @param {() => void} options.openMoreAssistants Opens the Bundled Extras window at its Assistants group.
  */
-export function mountAssistants(panel) {
+export function mountAssistants(panel, { openMoreAssistants }) {
     const grid = panel.querySelector('[data-sb-home-list="assistants"]');
     if (!grid) {
         return;
     }
 
-    grid.replaceChildren(...PLACEHOLDER_ASSISTANTS.map(assistant => createAssistantCard(assistant, panel)), createMoreCard());
+    grid.replaceChildren(...PLACEHOLDER_ASSISTANTS.map(assistant => createAssistantCard(assistant, panel)), createMoreCard(openMoreAssistants));
 }

@@ -1,5 +1,5 @@
-/* Welcome, Help, About and Keyboard Shortcuts windows. Deferred: sillybunny-window-styles.js loads it with
-   the editor-shell sheet before a window opens. */
+/* The windows that open from Home: Welcome, Help, About, Keyboard Shortcuts, Getting Started and Bundled Extras.
+   Deferred: sillybunny-window-styles.js loads it with the editor-shell sheet before a window opens. */
 
 /* ── Artwork stand-ins, at the size the artwork will have ───────────────── */
 
@@ -8,11 +8,14 @@
     height: 128px;
 }
 
-.sbHomeArt[data-sb-art-placeholder='help-reisen'] {
+.sbHomeArt[data-sb-art-placeholder='help-reisen'],
+.sbHomeArt[data-sb-art-placeholder='gs-reisen'],
+.sbHomeArt[data-sb-art-placeholder='extras-tewi'] {
     width: 96px;
     height: 96px;
 }
 
+.sbHomeArt[data-sb-art-placeholder='row-nahida'],
 .sbHomeArt[data-sb-art-placeholder='logo-64'] {
     width: 64px;
     height: 64px;
@@ -20,14 +23,14 @@
 
 /* ── Shared page layout ─────────────────────────────────────────────────── */
 
-:is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog) .sb-dialog__body {
+:is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body {
     display: flex;
     flex-direction: column;
     gap: 16px;
 }
 
 /* A flex item that holds a clipped boxed list could otherwise shrink to nothing. */
-:is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog) .sb-dialog__body > * {
+:is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body > * {
     flex: none;
 }
 
@@ -260,4 +263,121 @@ kbd.sbKeys > kbd {
     font-size: var(--sb-type-headline);
     font-weight: 800;
     line-height: 1.18;
+}
+
+/* ── Getting Started and Bundled Extras ─────────────────────────────────── */
+
+.sbHomeIntro {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-inline: 4px;
+}
+
+.sbHomeIntro > p {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+}
+
+.sbHomeFlatButton {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-height: 32px;
+    margin: 0;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeFlatButton[aria-pressed='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sbHomeFlatButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeFlatButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeFlatButton:not([aria-pressed='true']):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHomeFlatButton {
+        min-height: 44px;
+        padding-inline: 14px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sbHomeFlatButton {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sbHomeFlatButton {
+    transition: none;
+}
+
+@media (forced-colors: active) {
+    .sbHomeFlatButton[aria-pressed='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+/* Optional and Skipped read as notes, so they are dimmed and not bold. The note line is in the row only while there
+   is a note to show, and a note that does not fit is cut short, so it never wraps the title. */
+.sbHomeStepNotes {
+    display: block;
+    overflow: hidden;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbHomeStepNotes[hidden] {
+    display: none;
+}
+
+.sbHomeTag + .sbHomeTag:not([hidden]) {
+    margin-inline-start: 8px;
+}
+
+.sbHomeStepRow[data-sb-step-state='skipped'] .ds-row-label {
+    color: var(--sb-muted-fg);
+}
+
+.sbHomeStepRow .ds-row-suffix {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sbBundledExtrasDialog .ds-row > .sbHomeArt {
+    margin-inline-end: 12px;
+}
+
+/* Opening at a group scrolls its heading to the top of the body, so it keeps a margin from the header. */
+.sbBundledExtrasDialog .ds-pref-group-heading {
+    scroll-margin-block-start: 12px;
 }

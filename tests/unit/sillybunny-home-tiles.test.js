@@ -31,8 +31,8 @@ function countListeners(state) {
     return { counted, counter };
 }
 
-function mount(panel, state) {
-    mountTiles(panel, { state, onRowChanged: jest.fn(), openBundledExtras: jest.fn(), openHelp: jest.fn() });
+function mount(panel, state, openers = {}) {
+    mountTiles(panel, { state, onRowChanged: jest.fn(), openGettingStarted: jest.fn(), openBundledExtras: jest.fn(), openHelp: jest.fn(), ...openers });
 }
 
 describe('Getting Started tile subscription', () => {
@@ -61,5 +61,24 @@ describe('Getting Started tile subscription', () => {
         expect(second.querySelectorAll('.sbHomeTile')).toHaveLength(2);
         expect(second.querySelector('[data-sb-home-key="getting-started"]')).toBeNull();
         expect(first.querySelector('[data-sb-home-key="getting-started"]')).not.toBeNull();
+    });
+});
+
+describe('the tiles that open windows', () => {
+    test.each([
+        ['getting-started', 'openGettingStarted'],
+        ['help', 'openHelp'],
+        ['extras', 'openBundledExtras'],
+    ])('the %s tile opens its window once, takes focus first, and is no stub', (key, opener) => {
+        const state = createGettingStartedState(['a', 'b']);
+        const panel = renderPanel();
+        const open = jest.fn(() => { expect(document.activeElement).toBe(tile); });
+        mount(panel, state, { [opener]: open });
+        const tile = panel.querySelector(`[data-sb-home-key="${key}"]`);
+
+        tile.click();
+
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(tile.dataset.sbStub).toBeUndefined();
     });
 });

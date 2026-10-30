@@ -3,11 +3,10 @@
  * control also carries `data-sb-stub="true"`.
  */
 export const HOME_STUBS = Object.freeze([
-    'getting-started.open',
-    'assistants.more',
     'assistant.new-chat',
     'assistant.temporary-chat',
     'assistant.new-chat-in-mode',
+    'bundled-extras.add-assistant',
 ]);
 
 /**

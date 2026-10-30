@@ -1,14 +1,13 @@
+import { loadListEditorStyles } from '../sillybunny-editor/list-shell.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
-import { createExtrasPage } from './extras-page.js';
 import { fitCardFooters } from './footer-fit.js';
 import { getSharedGettingStartedState } from './getting-started.js';
-import { createHomePageHost } from './home-page.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
 import { mountTiles } from './tiles-view.js';
-import { openAbout, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
+import { openAbout, openBundledExtras, openGettingStarted, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
 
 /**
  * @typedef {object} HomeContext
@@ -50,6 +49,27 @@ function mountFilteredEmptyState(panel) {
     markCopyPlaceholder(element.querySelector('.sb-status-page__title'), 'RC-FILTER-EMPTY-HEAD');
     markCopyPlaceholder(element.querySelector('.sb-status-page__description'), 'RC-FILTER-EMPTY-BODY');
     container.append(element);
+    holdUntilStatusPageStyles(container);
+}
+
+/**
+ * The status page takes its base styles from the deferred editor-shell sheet, which Home does not wait for. The
+ * container shows when a filter has no match. The first time it shows, it stays invisible until the sheet is
+ * ready, which is at once when the sheet has loaded already.
+ * @param {HTMLElement} container
+ */
+function holdUntilStatusPageStyles(container) {
+    const watcher = new MutationObserver(() => {
+        if (container.classList.contains('displayNone')) {
+            return;
+        }
+        watcher.disconnect();
+        container.style.visibility = 'hidden';
+        loadListEditorStyles()
+            .catch(error => console.warn('Failed to load the status page styles for Home.', error))
+            .finally(() => container.style.removeProperty('visibility'));
+    });
+    watcher.observe(container, { attributes: true, attributeFilter: ['class'] });
 }
 
 function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChatsSettings }, gettingStarted) {
@@ -88,14 +108,14 @@ export function mountHome(panel, context) {
     const gettingStarted = getSharedGettingStartedState();
     mountFilteredEmptyState(panel);
     mountMenuButton(panel, context, gettingStarted);
-    const pages = createHomePageHost(panel);
     mountTiles(panel, {
         state: gettingStarted,
         onRowChanged: () => applyDisplayMode(panel, panel.dataset.homePanelMode),
-        openBundledExtras: opener => pages.push(createExtrasPage({ goBack: () => pages.pop() }), opener),
+        openGettingStarted,
+        openBundledExtras,
         openHelp,
     });
-    mountAssistants(panel);
+    mountAssistants(panel, { openMoreAssistants: () => openBundledExtras({ group: 'assistants' }) });
     fitCardFooters(panel);
     applyDisplayMode(panel, context.getDisplayMode());
 }

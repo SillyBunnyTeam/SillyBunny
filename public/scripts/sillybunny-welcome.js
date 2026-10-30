@@ -3,6 +3,7 @@ import { createArtPlaceholder } from './sillybunny-home/art.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from './sillybunny-home/copy.js';
 import { getGettingStartedSteps } from './sillybunny-home/getting-started.js';
 import { openShellTarget } from './sillybunny-home/shell-targets.js';
+import { createStepRow } from './sillybunny-home/step-rows.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createEntryRow, createPrefGroup, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
@@ -103,19 +104,13 @@ function fillPersona(body) {
 }
 
 function fillWhatsNext(body, { showMe }) {
-    const rows = getGettingStartedSteps().map((step, index) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'sbHomeFlatButton';
-        button.textContent = t`Show Me`;
-        button.addEventListener('click', () => showMe(step.target));
-        const row = createRow({ label: step.title, subtitle: COPY_PLACEHOLDER, field: `welcome-step-${step.id}`, suffix: button });
-        markRowSubtitle(row, `WD-3-STEP-${index + 1}`);
-        const title = row.row.querySelector('.ds-row-label');
-        title.id = `sb-welcome-step-${step.id}-title`;
-        button.setAttribute('aria-describedby', title.id);
-        return row;
-    });
+    const rows = getGettingStartedSteps().map((step, index) => createStepRow({
+        step,
+        field: `welcome-step-${step.id}`,
+        slot: `WD-3-STEP-${index + 1}`,
+        labelId: `sb-welcome-step-${step.id}-title`,
+        onShowMe: showMe,
+    }));
     const showAtStartup = createSwitchRow({ label: t`Show at Startup`, field: 'welcome-show-at-startup', checked: false });
     body.append(
         createCopyBlock('WD-3-INTRO'),

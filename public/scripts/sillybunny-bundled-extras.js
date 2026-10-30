@@ -1,19 +1,19 @@
 /**
- * The items that Home lists on its Bundled Extras page. This module only describes them: it does not
+ * The items that Home lists in its Bundled Extras window. This module only describes them: it does not
  * install, enable or check anything.
  *
  * `url` is the repository of an extension or theme, and the creator's page for a preset, because a preset
  * has no repository of its own.
  */
 
-export const BUNDLED_EXTRA_GROUP_IDS = Object.freeze(['first-party-extensions', 'third-party-extensions', 'themes', 'presets']);
+export const BUNDLED_EXTRA_GROUP_IDS = Object.freeze(['assistants', 'first-party-extensions', 'third-party-extensions', 'themes', 'presets']);
 
 /**
  * @typedef {object} BundledExtra
  * @property {string} id Lowercase words joined by hyphens. Names the item's copy slot.
  * @property {string} name The item's own name, shown as it is.
  * @property {typeof BUNDLED_EXTRA_GROUP_IDS[number]} group
- * @property {'extension' | 'theme-extension' | 'preset'} kind
+ * @property {'assistant' | 'extension' | 'theme-extension' | 'preset'} kind
  * @property {string | null} url
  */
 
@@ -21,6 +21,7 @@ const TEAM = 'https://github.com/SillyBunnyTeam';
 
 /** @type {readonly BundledExtra[]} */
 export const BUNDLED_EXTRAS = Object.freeze([
+    { id: 'nahida', name: 'Nahida', group: 'assistants', kind: 'assistant', url: null },
     { id: 'alternate-descriptions', name: 'Alternate Descriptions', group: 'first-party-extensions', kind: 'extension', url: `${TEAM}/SillyBunny-AlternateDescriptions` },
     { id: 'bot-searcher', name: 'Bot Searcher', group: 'first-party-extensions', kind: 'extension', url: `${TEAM}/SillyBunny-BotSearcher` },
     { id: 'css-snippets', name: 'CSS Snippets', group: 'first-party-extensions', kind: 'extension', url: `${TEAM}/SillyBunny-CssSnippets` },
@@ -47,6 +48,15 @@ export const BUNDLED_EXTRAS = Object.freeze([
  */
 export function getBundledExtraSlot(id) {
     return `BE-ITEM-${id.toUpperCase()}`;
+}
+
+/**
+ * An assistant is a person with a subtitle, like a card on Home. The other items are described by their copy.
+ * @param {BundledExtra} item
+ * @returns {string} The name of the placeholder slot for the text under the item's name.
+ */
+export function getBundledExtraSubtitleSlot(item) {
+    return item.group === 'assistants' ? `AS-${item.id.toUpperCase()}-SUB` : getBundledExtraSlot(item.id);
 }
 
 /**

@@ -5,11 +5,10 @@ import { HOME_STUBS, stubAction } from '../../public/scripts/sillybunny-home/stu
 describe('Home stubs', () => {
     test('lists every stubbed action by name', () => {
         expect([...HOME_STUBS]).toEqual([
-            'getting-started.open',
-            'assistants.more',
             'assistant.new-chat',
             'assistant.temporary-chat',
             'assistant.new-chat-in-mode',
+            'bundled-extras.add-assistant',
         ]);
     });
 

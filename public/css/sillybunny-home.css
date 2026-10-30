@@ -172,8 +172,7 @@
     justify-self: end;
 }
 
-.sbHomeMenuButton,
-.sbHomeBack {
+.sbHomeMenuButton {
     -webkit-appearance: none;
     appearance: none;
     display: inline-flex;
@@ -197,20 +196,17 @@
     background: var(--sb-flat-selected-bg);
 }
 
-.sbHomeMenuButton:focus-visible,
-.sbHomeBack:focus-visible {
+.sbHomeMenuButton:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sbHomeMenuButton:active,
-.sbHomeBack:active {
+.sbHomeMenuButton:active {
     background: var(--sb-flat-active-bg);
 }
 
 @media (hover: hover) {
-    .sbHomeMenuButton:hover,
-    .sbHomeBack:hover {
+    .sbHomeMenuButton:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
@@ -302,8 +298,7 @@
     text-align: center;
 }
 
-.sbHomeArt[data-sb-art-placeholder='empty-tewi'],
-.sbHomeArt[data-sb-art-placeholder='extras-tewi'] {
+.sbHomeArt[data-sb-art-placeholder='empty-tewi'] {
     width: 96px;
     height: 96px;
 }
@@ -1062,68 +1057,6 @@ body.big-avatars .welcomeRecent .chatMessage {
     margin-block-end: 0;
 }
 
-/* ── Sections ───────────────────────────────────────────────────────────── */
-
-/* The page's boxed lists take the Recent Chats card radius, so the page reads as part of Home. */
-.sbHomePage .ds-pref-group {
-    border-radius: var(--sb-radius-card);
-}
-
-.sbHomeFlatButton {
-    -webkit-appearance: none;
-    appearance: none;
-    box-sizing: border-box;
-    min-height: 32px;
-    margin: 0;
-    padding: 4px 12px;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: var(--sb-type-meta);
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast);
-}
-
-.sbHomeFlatButton[aria-pressed='true'] {
-    background: var(--sb-flat-selected-bg);
-}
-
-.sbHomeFlatButton:active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sbHomeFlatButton:focus-visible {
-    outline: 2px solid transparent;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-@media (hover: hover) {
-    .sbHomeFlatButton:not([aria-pressed='true']):hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.sbHomeIntro {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--sb-shell-border);
-}
-
-.sbHomeIntro > p {
-    flex: 1 1 0;
-    min-width: 0;
-    margin: 0;
-    font-size: var(--sb-type-meta);
-    line-height: 1.5;
-}
-
-
 /* ── Menu buttons of the cards ──────────────────────────────────────────── */
 
 .sbHomeRowMenu {
@@ -1194,63 +1127,6 @@ body.big-avatars .welcomeRecent .chatMessage {
     flex: 1 1 auto;
 }
 
-/* ── Page ───────────────────────────────────────────────────────────────── */
-
-/* The page and the sections share one grid cell while one replaces the other, so the swap does not
-   change the panel height. The clip keeps the sliding page from adding a horizontal scrollbar. */
-.welcomePanel[data-sb-home-page] {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    overflow-x: clip;
-}
-
-.welcomePanel[data-sb-home-page] > * {
-    grid-area: 1 / 1;
-    min-width: 0;
-}
-
-.sbHomePage {
-    display: flex;
-    flex-direction: column;
-    align-self: start;
-    gap: 24px;
-    box-sizing: border-box;
-    width: min(100%, 880px);
-    margin-inline: auto;
-    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
-}
-
-.sbHomePage:focus {
-    outline: none;
-}
-
-.sbHomePageHeader {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.sbHomePageTitle {
-    margin: 0;
-    font-size: var(--sb-type-title);
-    font-weight: 700;
-    line-height: 1.18;
-    letter-spacing: 0;
-    overflow-wrap: anywhere;
-}
-
-.sbHomePageBody {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    min-width: 0;
-}
-
-.sbHomePageBody > .sbHomeIntro {
-    padding: 0 4px;
-    border-bottom: 0;
-}
-
 /* ── Narrow content and touch ───────────────────────────────────────────── */
 
 /* The hero art goes to 1x here. 740px is the container width at which the 2x art plus the band padding and the
@@ -1298,21 +1174,12 @@ body.big-avatars .welcomeRecent .chatMessage {
     }
 }
 
-@media (max-width: 768px) {
-    .sbHomePage {
-        padding-block-start: 12px;
-        padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
-    }
-}
-
 @media (pointer: coarse) {
-    .sbHomeMenuButton,
-    .sbHomeBack {
+    .sbHomeMenuButton {
         width: 44px;
         height: 44px;
     }
 
-    .sbHomeFlatButton,
     .sbHomeForkLink,
     .welcomeRecentTab,
     .welcomeRecent .showMoreChats {
@@ -1332,16 +1199,10 @@ body.big-avatars .welcomeRecent .chatMessage {
     .sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
         min-width: 44px;
     }
-
-    .sbHomeFlatButton {
-        padding-inline: 14px;
-    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .sbHomeMenuButton,
-    .sbHomeBack,
-    .sbHomeFlatButton,
     .sbHomeTile,
     .sbHomeCard,
     .sbHomeFootButton,
@@ -1356,8 +1217,6 @@ body.big-avatars .welcomeRecent .chatMessage {
 }
 
 body.reduced-motion .sbHomeMenuButton,
-body.reduced-motion .sbHomeBack,
-body.reduced-motion .sbHomeFlatButton,
 body.reduced-motion .sbHomeTile,
 body.reduced-motion .sbHomeCard,
 body.reduced-motion .sbHomeFootButton,
@@ -1372,7 +1231,6 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
 
 @media (forced-colors: active) {
     .welcomeRecentTab.active,
-    .sbHomeFlatButton[aria-pressed='true'],
     .sbHomeRowMenu[aria-expanded='true'],
     .sbHomeMenuButton[aria-expanded='true'] {
         outline: 2px solid Highlight;

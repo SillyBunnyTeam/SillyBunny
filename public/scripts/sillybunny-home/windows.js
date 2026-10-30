@@ -1,37 +1,80 @@
-import { t } from '../i18n.js';
+import { COPY_PLACEHOLDER } from './copy.js';
+
+const LOAD_ERROR_SLOT = 'HOME-WINDOW-LOAD-ERROR';
+const PANEL_SELECTOR = '#chat > .welcomePanel';
 
 /** Windows that are loading or open, by name. */
 const activeWindows = new Map();
 
 /**
+ * Names the Home control that is about to open a window, by the stable key of its tile or card. The control
+ * itself cannot be kept: a render of Home (a pin, a rename or a delete) replaces the whole panel.
+ * @returns {{ opener: Element | null, key: string | null }}
+ */
+function rememberOpener() {
+    const opener = document.activeElement;
+    return { opener, key: opener?.closest(`${PANEL_SELECTOR} [data-sb-home-key]`)?.dataset.sbHomeKey ?? null };
+}
+
+/**
+ * The window returns focus to the control that opened it. When Home rendered again meanwhile, that control is
+ * gone, so focus goes to the same tile or card in the current panel, or to the main menu button when the key
+ * is gone too, or the window was opened from the menu.
+ * @param {{ opener: Element | null, key: string | null }} remembered
+ */
+function focusCurrentOpener({ opener, key }) {
+    const panel = document.querySelector(PANEL_SELECTOR);
+    if (!panel || opener?.isConnected) {
+        return;
+    }
+    const keyed = key === null ? null : [...panel.querySelectorAll('[data-sb-home-key]')].find(node => node.dataset.sbHomeKey === key);
+    const control = keyed?.matches('button') ? keyed : keyed?.querySelector('.sbHomeCardOpen');
+    (control ?? panel.querySelector('.sbHomeMenuButton'))?.focus({ preventScroll: true });
+}
+
+/**
  * Makes the opener of one window. The module loads on first use, so Home adds nothing to startup for windows
  * the user may never open. While the window loads or is open, another activation does nothing, because a second
  * call would push the same window as a page over itself. A failed load logs the error and shows a toast.
+ * @template [Options=undefined]
  * @param {string} name
- * @param {() => Promise<{ closed: Promise<unknown> }>} load Opens the window and resolves with its handle.
- * @returns {() => void}
+ * @param {(options: Options) => Promise<{ closed: Promise<unknown> }>} load Opens the window and resolves with its handle.
+ * @returns {(options?: Options) => void}
  */
 function openOnce(name, load) {
-    return () => {
+    return (options) => {
         if (activeWindows.has(name)) {
             return;
         }
-        const pending = load();
+        const remembered = rememberOpener();
+        const pending = load(options);
         activeWindows.set(name, pending);
         const release = () => {
             if (activeWindows.get(name) === pending) {
                 activeWindows.delete(name);
             }
         };
-        pending.then(dialog => dialog.closed.then(release), (error) => {
+        pending.then(dialog => dialog.closed.then(() => {
+            release();
+            focusCurrentOpener(remembered);
+        }), (error) => {
             release();
             console.error(`Could not open the ${name} window.`, error);
-            globalThis.toastr?.error(t`TODO(copy)`);
+            reportLoadFailure();
         });
     };
+}
+
+/** The toast has no copy yet, and it carries the placeholder marks like the text of a page. */
+function reportLoadFailure() {
+    const toast = globalThis.toastr?.error(COPY_PLACEHOLDER);
+    toast?.find('.toast-message').attr({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': LOAD_ERROR_SLOT });
 }
 
 export const showWelcome = openOnce('Welcome', async () => (await import('../sillybunny-welcome.js')).openWelcomeDialog());
 export const openKeyboardShortcuts = openOnce('Keyboard Shortcuts', async () => (await import('../sillybunny-shortcuts.js')).openShortcutsWindow());
 export const openHelp = openOnce('Help', async () => (await import('../sillybunny-help/help-window.js')).openHelpWindow());
 export const openAbout = openOnce('About', async () => (await import('../sillybunny-about.js')).openAboutWindow());
+export const openGettingStarted = openOnce('Getting Started', async () => (await import('./getting-started-window.js')).openGettingStartedWindow());
+/** Takes `{ group }`, a group id to open the window at. */
+export const openBundledExtras = openOnce('Bundled Extras', async options => (await import('./bundled-extras-window.js')).openBundledExtrasWindow(options));

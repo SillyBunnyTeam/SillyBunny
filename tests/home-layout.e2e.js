@@ -45,27 +45,14 @@ const REGION_DOM_ORDER = ['hero', 'tiles', 'assistants', 'recent-chats'];
 const REGION_NAMES = { assistants: 'Assistants', 'recent-chats': 'Recent Chats', tiles: 'Quick Links' };
 const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
 const ASSISTANT_NAMES = ['Reisen', 'Tewi'];
-const EXTRAS_GROUPS = ['First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
-const EXTRAS_ITEMS = [
-    'Alternate Descriptions', 'Bot Searcher', 'CSS Snippets', 'Deep Swipe', 'Macro Enhanced', 'Prompt Tags', 'Prompting Lab',
-    'Regex Agent Themes', 'Time Machine', 'World Info Lab',
-    'Dialogue Colors', 'Summary Sharder', 'Group Utilities', 'LALib',
-    'Moonlit Echoes', 'Terminal UI',
-    'Geechan - Universal Roleplay (v5.2)', 'TLD Card Conversion Preset',
-];
-const NAVIGATION_SPRING_MS = 334;
 
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
 const tiles = page => page.locator('#chat > .welcomePanel .sbHomeTile');
 const tile = (page, key) => page.locator(`#chat > .welcomePanel .sbHomeTile[data-sb-home-key="${key}"]`);
-const bundledExtrasRow = page => tile(page, 'extras');
 const assistantCards = page => page.locator('#chat > .welcomePanel .sbHomeCard:not(.sbHomeCard--more)');
 const assistantCard = (page, name) => page.locator(`#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-${name.toLowerCase()}"]`);
 const moreCard = page => page.locator('#chat > .welcomePanel .sbHomeCard--more');
 const regionSelector = id => `.welcomePanel [data-sb-home-region="${id}"]`;
-const extrasPage = page => page.locator('#chat > .welcomePanel .sbHomePage');
-const backButton = page => extrasPage(page).getByRole('button', { name: 'Back', exact: true });
-const homeLayout = page => page.locator('#chat > .welcomePanel .sbHomeLayout');
 
 async function expectHome(page) {
     await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on', { timeout: STARTUP_TIMEOUT });
@@ -681,19 +668,18 @@ for (const { name, options } of VIEWPORTS) {
             expect(parseFloat(icon.radius)).toBeGreaterThanOrEqual(24);
         });
 
-        test('the Getting Started tile shows the progress in one string and is a stub', async ({ page }) => {
+        test('the Getting Started tile shows the progress in one string and opens its window', async ({ page }) => {
             await chooseMode(page, 'full');
             const started = tile(page, 'getting-started');
 
             await expect(started.locator('.sbHomeTileSub')).toHaveText('0 of 4');
             await expect(started.locator('.sbHomeTileSub')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
-            await expect(started).toHaveAttribute('data-sb-stub', 'true');
+            await expect(started).not.toHaveAttribute('data-sb-stub', /.*/);
             await expect(started).not.toHaveAttribute('aria-expanded', /.*/);
 
             await started.click();
 
-            await expect(page.locator('dialog[open]')).toHaveCount(0);
-            await expect(extrasPage(page)).toHaveCount(0);
+            await expect(page.locator('dialog.sb-dialog-host')).toHaveAccessibleName('Getting Started');
             await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
             await expect(page.locator('.welcomePanel details')).toHaveCount(0);
         });
@@ -1082,7 +1068,6 @@ for (const { name, options } of VIEWPORTS) {
 
             await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
             await expect(page.locator('dialog[open]')).toHaveCount(0);
-            await expect(extrasPage(page)).toHaveCount(0);
             await expect(page.locator('#chat > .welcomePanel')).toHaveAttribute('data-home-panel-mode', mode);
         });
 
@@ -1135,7 +1120,7 @@ for (const { name, options } of VIEWPORTS) {
 
                 const layout = await measureMoreAssistants(page);
 
-                expect(layout).toMatchObject({ footers: 0, icon: 1, key: 'assistants-more', stub: 'true', label: 'More Assistants', chevronShown: false });
+                expect(layout).toMatchObject({ footers: 0, icon: 1, key: 'assistants-more', stub: undefined, label: 'More Assistants', chevronShown: false });
                 expect(layout.panelWidth).toBeGreaterThan(TWO_CARDS_MAX);
                 expect(layout.more.top, 'in the same row').toBe(layout.reisen.top);
                 expect(Math.abs(layout.more.width - layout.reisen.width)).toBeLessThanOrEqual(1);
@@ -1146,7 +1131,7 @@ for (const { name, options } of VIEWPORTS) {
 
                 const layout = await measureMoreAssistants(page);
 
-                expect(layout).toMatchObject({ footers: 0, icon: 1, key: 'assistants-more', stub: 'true', label: 'More Assistants', chevronShown: true });
+                expect(layout).toMatchObject({ footers: 0, icon: 1, key: 'assistants-more', stub: undefined, label: 'More Assistants', chevronShown: true });
                 expect(layout.panelWidth).toBeLessThanOrEqual(TWO_CARDS_MAX);
                 expect(layout.reisen.top).toBe(layout.tewi.top);
                 expect(layout.more.top, 'under the cards').toBeGreaterThan(layout.reisen.top + layout.reisen.height - 1);
@@ -1220,224 +1205,6 @@ for (const { name, options } of VIEWPORTS) {
                 expect(beside).toBe(true);
             });
         }
-
-        test('the Bundled Extras tile pushes the page in place of the sections', async ({ page }) => {
-            await chooseMode(page, 'full');
-            const mode = await page.locator('#chat > .welcomePanel').getAttribute('data-home-panel-mode');
-
-            await bundledExtrasRow(page).click();
-
-            await expect(extrasPage(page)).toBeVisible();
-            await expect(extrasPage(page)).toHaveAccessibleName('Bundled Extras');
-            await expect(homeLayout(page)).toBeHidden();
-            await expect(extrasPage(page).getByRole('heading', { level: 2, name: 'Bundled Extras' })).toBeVisible();
-            await expect(backButton(page)).toBeFocused();
-            await expect(backButton(page).locator('i.fa-chevron-left')).toHaveCount(1);
-            await expect(page.locator('#chat > .welcomePanel')).toHaveAttribute('data-home-panel-mode', mode);
-            await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
-            expect(new URL(page.url()).hash).toBe('');
-        });
-
-        test('the Bundled Extras page lists its groups and items, then UI Themes', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            const content = extrasPage(page);
-
-            await expect(content.getByRole('heading', { level: 3 })).toHaveText(EXTRAS_GROUPS);
-            await expect(content.locator('.ds-row-label')).toHaveText([...EXTRAS_ITEMS, 'UI Themes']);
-            await expect(content.locator('[data-sb-copy-slot="BE-INTRO"]')).toHaveText('TODO(copy)');
-            const slots = await content.locator('.ds-row-subtitle[data-sb-copy-slot]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-sb-copy-slot')));
-            expect(slots).toHaveLength(EXTRAS_ITEMS.length);
-            expect(slots.every(slot => /^BE-ITEM-[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(slot))).toBe(true);
-            expect(new Set(slots).size).toBe(slots.length);
-            await expect(content.getByRole('button'), 'only Back and UI Themes act').toHaveCount(2);
-            await expect(content.locator('a')).toHaveCount(0);
-        });
-
-        test('the Bundled Extras art placeholder keeps its native size', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            const art = extrasPage(page).locator('[data-sb-art-placeholder="extras-tewi"]');
-
-            await expect(art).toBeVisible();
-            await expect(art).toHaveAttribute('aria-hidden', 'true');
-            const rect = await measure(page, '.welcomePanel [data-sb-art-placeholder="extras-tewi"]');
-            expect([Math.round(rect.width), Math.round(rect.height)]).toEqual([96, 96]);
-        });
-
-        test('Back returns to the sections and focus to the Bundled Extras tile', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await expect(backButton(page)).toBeFocused();
-
-            await backButton(page).click();
-
-            await expect(extrasPage(page)).toHaveCount(0);
-            await expect(homeLayout(page)).toBeVisible();
-            await expect(bundledExtrasRow(page)).toBeFocused();
-            await expect(page.locator('#chat > .welcomePanel')).not.toHaveAttribute('data-sb-home-page', /.*/);
-        });
-
-        test('Escape returns to the sections and focus to the Bundled Extras tile', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await expect(backButton(page)).toBeFocused();
-
-            await page.keyboard.press('Escape');
-
-            await expect(extrasPage(page)).toHaveCount(0);
-            await expect(homeLayout(page)).toBeVisible();
-            await expect(bundledExtrasRow(page)).toBeFocused();
-        });
-
-        test('Escape also returns after a click on the page itself, and the page can be opened again', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await extrasPage(page).locator('.sbHomePageTitle').click();
-            await expect(backButton(page)).not.toBeFocused();
-
-            await page.keyboard.press('Escape');
-            await expect(extrasPage(page)).toHaveCount(0);
-
-            await bundledExtrasRow(page).click();
-            await expect(extrasPage(page)).toBeVisible();
-            await expect(backButton(page)).toBeFocused();
-        });
-
-        test('Escape returns after focus was dropped outside the page content', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await expect(backButton(page)).toBeFocused();
-
-            await page.locator('#chat').click({ position: { x: 2, y: 300 } });
-            await expect(backButton(page)).not.toBeFocused();
-            await page.keyboard.press('Escape');
-
-            await expect(extrasPage(page)).toHaveCount(0);
-            await expect(bundledExtrasRow(page)).toBeFocused();
-        });
-
-        test('a refresh while the page is open waits, and Home shows the refreshed content once the page closes', async ({ page }) => {
-            const characters = await pickFixtureCharacters(page, 1);
-            expect(characters.length).toBeGreaterThan(0);
-            await renderHome(page, recentChatEntries(characters, 1, { distinctFiles: true }));
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await expect(backButton(page)).toBeFocused();
-            await page.evaluate(() => {
-                window.qaPanel = document.querySelector('#chat > .welcomePanel');
-                window.qaPage = document.querySelector('.sbHomePage');
-            });
-            await page.route('**/api/chats/recent', route => route.fulfill({ json: recentChatEntries(characters, 3, { distinctFiles: true }) }));
-
-            await page.evaluate(async () => {
-                const { openWelcomeScreen } = await import('/scripts/welcome-screen.js');
-                await openWelcomeScreen({ force: true });
-            });
-            await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 400)));
-
-            const whileOpen = await page.evaluate(() => ({
-                samePanel: window.qaPanel === document.querySelector('#chat > .welcomePanel'),
-                samePage: window.qaPage === document.querySelector('.sbHomePage'),
-                rows: document.querySelectorAll('.welcomePanel .recentChat').length,
-            }));
-            expect(whileOpen).toEqual({ samePanel: true, samePage: true, rows: 1 });
-            await expect(backButton(page)).toBeFocused();
-
-            await backButton(page).click();
-
-            await expect(page.locator('.welcomePanel .recentChat')).toHaveCount(3);
-            await expect(extrasPage(page)).toHaveCount(0);
-            await expect(bundledExtrasRow(page)).toBeFocused();
-            expect(await page.evaluate(() => document.querySelectorAll('#chat > .welcomePanel').length)).toBe(1);
-        });
-
-        test('while the page is open, Tab stays on the page and never reaches the hidden sections', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await expect(backButton(page)).toBeFocused();
-
-            const stops = [];
-            for (let press = 0; press < 6; press++) {
-                await page.keyboard.press('Tab');
-                stops.push(await page.evaluate(() => ({
-                    inPage: Boolean(document.activeElement?.closest('.sbHomePage')),
-                    inLayout: Boolean(document.activeElement?.closest('.sbHomeLayout')),
-                })));
-            }
-
-            expect(stops.some(stop => stop.inLayout)).toBe(false);
-            expect(stops.filter(stop => stop.inPage).length).toBeGreaterThan(0);
-        });
-
-        test('UI Themes opens Customize, Appearance with the theme select shown', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-
-            await extrasPage(page).getByRole('button', { name: 'UI Themes' }).click();
-
-            await expect(page.getByRole('tab', { name: 'Appearance', selected: true })).toBeVisible();
-            await expect(page.locator('#themes')).toBeVisible();
-
-            await extrasPage(page).getByRole('button', { name: 'UI Themes' }).dispatchEvent('click');
-            await expect(page.getByRole('tab', { name: 'Appearance', selected: true })).toBeVisible();
-            await expect(page.locator('#themes')).toBeVisible();
-        });
-
-        test('Escape closes Customize first and leaves the Bundled Extras page open', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await bundledExtrasRow(page).click();
-            await extrasPage(page).getByRole('button', { name: 'UI Themes' }).click();
-            await expect(page.locator('#themes')).toBeVisible();
-
-            await page.keyboard.press('Escape');
-
-            await expect(page.locator('#themes')).toBeHidden();
-            await expect(extrasPage(page)).toBeVisible();
-            await expect(extrasPage(page)).toHaveCount(1);
-        });
-
-        test('the page slides with the navigation spring, and instantly when motion is reduced', async ({ page }) => {
-            const durations = () => page.evaluate(() => {
-                const row = document.querySelector('[data-sb-home-key="extras"]');
-                row.click();
-                const pageNode = document.querySelector('.sbHomePage');
-                return pageNode.getAnimations().map(animation => animation.effect.getComputedTiming().duration);
-            });
-            await chooseMode(page, 'full');
-
-            expect(await durations(), 'reduced motion').toEqual([]);
-            await expect(homeLayout(page)).toBeHidden();
-            await backButton(page).click();
-            await expect(extrasPage(page)).toHaveCount(0);
-
-            await page.emulateMedia({ reducedMotion: 'no-preference' });
-            await page.evaluate(() => document.body.classList.remove('reduced-motion'));
-            expect(await durations(), 'with motion').toEqual([NAVIGATION_SPRING_MS]);
-            await expect(homeLayout(page)).toBeHidden();
-            await backButton(page).click();
-            await expect(extrasPage(page)).toHaveCount(0);
-            await expect(homeLayout(page)).toBeVisible();
-            await expect(bundledExtrasRow(page)).toBeFocused();
-        });
-
-        test('Home keeps its scroll position across the page', async ({ page }) => {
-            await chooseMode(page, 'full');
-            await page.evaluate(() => {
-                document.querySelector('.sbHomeLayout').style.paddingBlockEnd = '1500px';
-                document.querySelector('[data-sb-home-key="extras"]').scrollIntoView({ block: 'start' });
-            });
-            const before = await page.evaluate(() => document.getElementById('chat').scrollTop);
-            expect(before, 'Home is scrolled before the page opens').toBeGreaterThan(0);
-
-            await bundledExtrasRow(page).click();
-            await expect(extrasPage(page)).toBeVisible();
-            expect(await page.evaluate(() => document.getElementById('chat').scrollTop)).toBe(0);
-            await backButton(page).click();
-            await expect(homeLayout(page)).toBeVisible();
-
-            expect(await page.evaluate(() => document.getElementById('chat').scrollTop)).toBe(before);
-        });
 
         test('the fork notice link is separate from its placeholder and opens SillyTavern safely', async ({ page }) => {
             const link = page.locator('.welcomePanel a[href="https://github.com/SillyTavern/SillyTavern"]');
@@ -1920,47 +1687,38 @@ for (const { name, options } of WIDE_VIEWPORTS) {
     });
 }
 
-test.describe('Home while its template loads', () => {
+test.describe('Home filtered empty state', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
-    test('Home waits for the shared row styles and shows once they arrive', async ({ page }) => {
+    test('stays invisible until the shared styles of the status page arrive, then shows styled', async ({ page }) => {
         await protectMaintainerServer(page);
+        await installFixtureChats(page);
         let releaseSheet = () => {};
         const sheetGate = new Promise((resolve) => { releaseSheet = resolve; });
-        let sheetRequested = false;
         await page.route('**/sillybunny-editor-shell.css*', async (route) => {
-            sheetRequested = true;
             await sheetGate;
             await route.continue();
         });
-        const templateRequest = page.waitForRequest('**/scripts/templates/sillybunnyHome.html*', { timeout: STARTUP_TIMEOUT });
-
         await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await templateRequest;
-        await expect.poll(() => sheetRequested, { timeout: STARTUP_TIMEOUT }).toBe(true);
-        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1000)));
+        await expectHome(page);
+        await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+        const characters = await pickFixtureCharacters(page, 1);
+        await renderHome(page, recentChatEntries(characters, 1, { distinctFiles: true }));
+        const filtered = page.locator('.welcomePanel [data-recent-chat-empty-state="filtered"]');
 
-        await expect(page.locator('#chat > .welcomePanel')).toHaveCount(0);
+        await page.locator('.welcomePanel [data-recent-chat-filter="group"]').click();
 
+        await expect(filtered).not.toHaveClass(/displayNone/);
+        await expect(filtered).toHaveCSS('visibility', 'hidden');
         releaseSheet();
-        await expect(page.locator('#chat > .welcomePanel')).toBeAttached({ timeout: STARTUP_TIMEOUT });
-        await expect(page.locator('#chat > .welcomePanel .sbHomeTile').first()).toBeVisible();
+        await expect(filtered).toHaveCSS('visibility', 'visible');
+        await expect(filtered.locator('.sb-status-page')).toHaveCSS('display', 'flex');
+        await expect(filtered.locator('.sb-status-page__title')).toHaveAttribute('data-sb-copy-slot', 'RC-FILTER-EMPTY-HEAD');
     });
+});
 
-    test('Home still appears when the shared row styles fail to load', async ({ page }) => {
-        await protectMaintainerServer(page);
-        await page.route('**/sillybunny-editor-shell.css*', route => route.abort());
-        const warnings = [];
-        page.on('console', (message) => {
-            if (message.type() === 'warning') warnings.push(message.text());
-        });
-
-        await page.goto('/', { waitUntil: 'domcontentloaded' });
-
-        await expect(page.locator('#chat > .welcomePanel')).toBeAttached({ timeout: STARTUP_TIMEOUT });
-        await expect(page.locator('#chat > .welcomePanel [data-sb-home-region="recent-chats"]')).toBeVisible();
-        await expect.poll(() => warnings.some(text => text.includes('shared row styles for Home'))).toBe(true);
-    });
+test.describe('Home while its template loads', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
 
     test('a chat that opens during the first template request is not covered by the Home panel', async ({ page }) => {
         await protectMaintainerServer(page);

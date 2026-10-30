@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
+import { installFixtureChats } from './helpers/fixture-chats.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -31,9 +32,26 @@ const SECTION_TITLES = [
 const STEP_TITLES = ['Connect a Model', 'Set Up a Preset', 'Get a Character Card', 'Start Chatting'];
 const CREDIT_GROUPS = ['Developers', 'Designers', 'Artists', 'Documenters', 'Translators', 'Acknowledgements'];
 const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Nahida', 'Third-Party Software'];
+const EXTRAS_GROUPS = ['Assistants', 'First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
+const EXTRAS_ITEMS = [
+    'Alternate Descriptions', 'Bot Searcher', 'CSS Snippets', 'Deep Swipe', 'Macro Enhanced', 'Prompt Tags', 'Prompting Lab',
+    'Regex Agent Themes', 'Time Machine', 'World Info Lab',
+    'Dialogue Colors', 'Summary Sharder', 'Group Utilities', 'LALib',
+    'Moonlit Echoes', 'Terminal UI',
+    'Geechan - Universal Roleplay (v5.2)', 'TLD Card Conversion Preset',
+];
+/** What each Getting Started step opens, as a check that holds however often the target is opened. */
+const STEP_TARGETS = [
+    { title: 'Connect a Model', check: page => expect(page.getByRole('tab', { name: 'Connections', selected: true })).toBeVisible() },
+    { title: 'Set Up a Preset', check: page => expect(page.getByRole('tab', { name: 'Presets', selected: true })).toBeVisible() },
+    { title: 'Get a Character Card', check: page => expect(page.getByRole('tab', { name: 'Characters', selected: true })).toBeVisible() },
+    { title: 'Start Chatting', check: page => expect(page.locator('#sb-mode-menu')).toBeVisible() },
+];
 
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
 const helpTile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="help"]');
+const homeTile = (page, key) => page.locator(`#chat > .welcomePanel .sbHomeTile[data-sb-home-key="${key}"]`);
+const moreAssistants = page => page.locator('#chat > .welcomePanel .sbHomeCard--more .sbHomeCardOpen');
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const surface = host => host.locator('section.sb-dialog');
 // A push marks the covered page and a pop marks the leaving page at once, so exactly one page is left while pages slide.
@@ -50,6 +68,21 @@ async function openFromMenu(page, menuItem) {
     const host = hosts(page);
     await expect(host).toBeVisible();
     return host;
+}
+
+async function openFromTile(page, key) {
+    await homeTile(page, key).click();
+    const host = hosts(page);
+    await expect(host).toBeVisible();
+    return host;
+}
+
+async function renderHomeAgain(page) {
+    await page.evaluate(async () => {
+        const { openWelcomeScreen } = await import('/scripts/welcome-screen.js');
+        await openWelcomeScreen({ force: true });
+    });
+    await expectHome(page);
 }
 
 async function expectClosed(page) {
@@ -122,6 +155,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
         test.beforeEach(async ({ page }) => {
             await protectMaintainerServer(page);
+            await installFixtureChats(page);
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });
@@ -261,6 +295,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     await expect(current.locator('.ds-row', { hasText: stepTitle }).getByRole('button', { name: 'Show Me', exact: true })).toBeVisible();
                 }
                 await expect(current.getByRole('switch', { name: 'Show at Startup' })).not.toBeChecked();
+                await expect(current.getByRole('button', { name: 'Skip' }), 'the Welcome page only points at the steps').toHaveCount(0);
                 for (const stepTitle of STEP_TITLES) {
                     await expect(current.locator('.ds-row', { hasText: stepTitle }).getByRole('button', { name: 'Show Me', exact: true })).toHaveAccessibleDescription(stepTitle);
                 }
@@ -680,10 +715,476 @@ for (const { name, sheet, options } of VIEWPORTS) {
             });
         });
 
+        test.describe('Getting Started', () => {
+            const rowOf = (host, title) => host.locator('.ds-row', { hasText: title });
+
+            test(`opens from its tile as a dialog${sheet ? ' sheet' : ''} with the progress in the header`, async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+
+                await expect(surface(host)).toHaveClass(/\bsb-dialog--dialog\b/);
+                await expect(host).toHaveAttribute('data-presentation', sheet ? 'sheet' : 'floating');
+                await expect(host).toHaveAccessibleName('Getting Started');
+                await expect(host.locator('.sb-dialog__subtitle')).toHaveText('0 of 4');
+                await expect(homeTile(page, 'getting-started')).not.toHaveAttribute('data-sb-stub', /.*/);
+            });
+
+            test('shows Reisen\'s art and intro, then the four steps with their placeholders, Show Me and Skip', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+
+                await expectArt(host, 'gs-reisen', [96, 96]);
+                await expectSlots(host, ['GS-INTRO', 'GS-1-BODY', 'GS-2-BODY', 'GS-3-BODY', 'GS-4-BODY']);
+                await expectNoUnmarkedPlaceholder(host);
+                await expect(host.locator('.ds-row-label')).toHaveText([
+                    'Connect a Model', 'Set Up a Preset', 'Get a Character Card', 'Start Chatting',
+                ]);
+                for (const title of STEP_TITLES) {
+                    const row = rowOf(host, title);
+                    await expect(row.getByRole('button', { name: 'Show Me', exact: true })).toHaveAccessibleDescription(new RegExp(`^${title}`));
+                    await expect(row.getByRole('button', { name: 'Skip', exact: true })).toHaveAttribute('aria-pressed', 'false');
+                }
+                await expect(host.locator('.sbHomeTag:visible')).toHaveText(['Optional']);
+            });
+
+            for (const { title, check } of STEP_TARGETS) {
+                test(`Show Me on "${title}" closes the window and opens its target`, async ({ page }) => {
+                    const host = await openFromTile(page, 'getting-started');
+
+                    await rowOf(host, title).getByRole('button', { name: 'Show Me', exact: true }).click();
+
+                    await expect(hosts(page)).toHaveCount(0);
+                    await check(page);
+                });
+            }
+
+            test('Skip marks the step, moves the progress in the window and on the tile, and a second press undoes it', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                const row = rowOf(host, 'Get a Character Card');
+                const skip = row.getByRole('button', { name: 'Skip', exact: true });
+
+                await skip.click();
+
+                await expect(skip).toHaveAttribute('aria-pressed', 'true');
+                await expect(row.locator('.sbHomeTag:visible')).toHaveText(['Skipped']);
+                await expect(host.locator('.sb-dialog__subtitle')).toHaveText('1 of 4');
+                await expect(homeTile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('1 of 4');
+
+                await skip.click();
+
+                await expect(skip).toHaveAttribute('aria-pressed', 'false');
+                await expect(row.locator('.sbHomeTag:visible')).toHaveCount(0);
+                await expect(host.locator('.sb-dialog__subtitle')).toHaveText('0 of 4');
+                await expect(homeTile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('0 of 4');
+            });
+
+            const geometry = row => row.evaluate((node) => {
+                const top = node.getBoundingClientRect().top;
+                const place = selector => node.querySelector(selector).getBoundingClientRect().top - top;
+                const notes = node.querySelector('.sbHomeStepNotes');
+                const noteBox = notes && !notes.hidden ? notes.getBoundingClientRect() : null;
+                return {
+                    height: node.getBoundingClientRect().height,
+                    title: place('.ds-row-label'),
+                    subtitle: place('.ds-row-subtitle'),
+                    noteHeight: noteBox?.height ?? 0,
+                    noteTags: noteBox ? [...notes.querySelectorAll('.sbHomeTag')].filter(tag => !tag.hidden).map(tag => tag.textContent) : null,
+                };
+            });
+
+            test('no row has an empty note line at rest, and only the Set Up a Preset row shows Optional', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+
+                for (const title of STEP_TITLES) {
+                    const { noteTags } = await geometry(rowOf(host, title));
+                    expect(noteTags, `the note line of ${title}`).toEqual(title === 'Set Up a Preset' ? ['Optional'] : null);
+                }
+                await expect(host.locator('.sbHomeStepNotes:visible')).toHaveCount(1);
+            });
+
+            test('pressing Skip on the Set Up a Preset row never changes its height', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                const row = rowOf(host, 'Set Up a Preset');
+                const skip = row.getByRole('button', { name: 'Skip', exact: true });
+                const before = await geometry(row);
+
+                await skip.click();
+                const skipped = await geometry(row);
+                await skip.click();
+
+                expect(skipped.noteTags, 'Skipped joins Optional on one line').toEqual(['Optional', 'Skipped']);
+                expect(skipped.height).toBe(before.height);
+                expect(skipped.noteHeight).toBe(before.noteHeight);
+                expect(await geometry(row)).toEqual(before);
+            });
+
+            test('a long translation of Optional does not change the height of the Set Up a Preset row when it is skipped', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                const row = rowOf(host, 'Set Up a Preset');
+                await row.locator('.sbHomeTag').first().evaluate((tag) => { tag.textContent = 'Facultatif, vous pouvez le faire plus tard'; });
+                const before = await geometry(row);
+
+                await row.getByRole('button', { name: 'Skip', exact: true }).click();
+
+                const skipped = await geometry(row);
+                expect(skipped.height).toBe(before.height);
+                expect(skipped.noteHeight, 'the notes stay on one line').toBe(before.noteHeight);
+                await expect(row.locator('.sbHomeTag:visible')).toHaveCount(2);
+            });
+
+            for (const title of STEP_TITLES.filter(name => name !== 'Set Up a Preset')) {
+                test(`skipping ${title} adds one note line under the text and takes it away again`, async ({ page }) => {
+                    const host = await openFromTile(page, 'getting-started');
+                    const row = rowOf(host, title);
+                    const skip = row.getByRole('button', { name: 'Skip', exact: true });
+                    const before = await geometry(row);
+
+                    await skip.click();
+                    const skipped = await geometry(row);
+                    await skip.click();
+                    const after = await geometry(row);
+
+                    expect(skipped.noteTags).toEqual(['Skipped']);
+                    // The text is centred in the row, so it rises by half of what the row gained at most.
+                    const rise = before.title - skipped.title;
+                    expect(rise, 'the title does not move down').toBeGreaterThanOrEqual(0);
+                    expect(rise, 'the title rises by half a note line at most').toBeLessThanOrEqual(skipped.noteHeight / 2 + 0.5);
+                    expect(skipped.subtitle - skipped.title, 'the title and the text keep their distance').toBe(before.subtitle - before.title);
+                    expect(skipped.height - before.height, 'the row grows by the note line').toBeGreaterThan(0);
+                    expect(skipped.height - before.height, 'and by no more than the note line').toBeLessThanOrEqual(skipped.noteHeight);
+                    expect(after, 'undoing Skip restores the row').toEqual(before);
+                });
+            }
+
+            test('a note line never wraps the title or the text of a row', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                const row = rowOf(host, 'Connect a Model');
+                await row.getByRole('button', { name: 'Skip', exact: true }).click();
+
+                const lines = await row.locator('.sbHomeStepNotes').evaluate((node) => {
+                    const style = getComputedStyle(node);
+                    return { whiteSpace: style.whiteSpace, overflow: style.overflow, ellipsis: style.textOverflow, lines: Math.round(node.getBoundingClientRect().height / parseFloat(style.lineHeight)) };
+                });
+                expect(lines).toEqual({ whiteSpace: 'nowrap', overflow: 'hidden', ellipsis: 'ellipsis', lines: 1 });
+            });
+
+            test('a skipped step stays skipped after Home renders again and the window opens again', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                await rowOf(host, 'Connect a Model').getByRole('button', { name: 'Skip', exact: true }).click();
+                await page.keyboard.press('Escape');
+                await expectClosed(page);
+
+                await renderHomeAgain(page);
+                await expect(homeTile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('1 of 4');
+                const again = await openFromTile(page, 'getting-started');
+
+                await expect(again.locator('.sb-dialog__subtitle')).toHaveText('1 of 4');
+                await expect(rowOf(again, 'Connect a Model').getByRole('button', { name: 'Skip', exact: true })).toHaveAttribute('aria-pressed', 'true');
+            });
+
+            test('a Home that renders while the window is open leaves it open, and the new tile follows the window', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+
+                await renderHomeAgain(page);
+                await expect(host).toBeVisible();
+                await rowOf(host, 'Start Chatting').getByRole('button', { name: 'Skip', exact: true }).click();
+
+                await expect(host.locator('.sb-dialog__subtitle')).toHaveText('1 of 4');
+                await expect(homeTile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('1 of 4');
+            });
+
+            test('when every step is resolved the tile goes, the other two fill the row, and the window stays open until it is closed', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+
+                for (const title of STEP_TITLES) {
+                    await rowOf(host, title).getByRole('button', { name: 'Skip', exact: true }).click();
+                }
+
+                await expect(host.locator('.sb-dialog__subtitle')).toHaveText('4 of 4');
+                await expect(host).toBeVisible();
+                await expect(homeTile(page, 'getting-started')).toHaveCount(0);
+                await expect(page.locator('#chat > .welcomePanel .sbHomeTile .sbHomeTileTitle')).toHaveText(['Help', 'Bundled Extras']);
+                const widths = await page.locator('#chat > .welcomePanel .sbHomeTile').evaluateAll((tiles) => {
+                    const row = tiles[0].parentElement.getBoundingClientRect();
+                    return { row: row.width, tiles: tiles.map(node => node.getBoundingClientRect().width) };
+                });
+                expect(Math.abs(widths.tiles[0] - widths.tiles[1])).toBeLessThanOrEqual(1);
+                expect(widths.tiles[0] + widths.tiles[1]).toBeGreaterThan(widths.row * 0.9);
+
+                await (await visiblePageClose(host)).click();
+
+                await expectClosed(page);
+                await expect(page.locator('#chat > .welcomePanel :focus'), 'focus lands in Home, not on the page body').toHaveCount(1);
+                await expect(page.locator('#chat > .welcomePanel .sbHomeTile')).toHaveCount(2);
+            });
+
+            test('Escape closes the window and gives focus back to the tile', async ({ page }) => {
+                await openFromTile(page, 'getting-started');
+
+                await page.keyboard.press('Escape');
+
+                await expectClosed(page);
+                await expect(homeTile(page, 'getting-started')).toBeFocused();
+            });
+
+            test('Close closes the window and gives focus back to the tile', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+
+                await (await visiblePageClose(host)).click();
+
+                await expectClosed(page);
+                await expect(homeTile(page, 'getting-started')).toBeFocused();
+            });
+
+            test('activating the tile twice opens one window', async ({ page }) => {
+                await homeTile(page, 'getting-started').evaluate((tile) => {
+                    tile.click();
+                    tile.click();
+                });
+
+                await expect(hosts(page)).toHaveCount(1);
+                await expect(hosts(page).locator('.sb-dialog__page')).toHaveCount(1);
+            });
+
+            test('a window that fails to load toasts with its copy slot, logs the error, and can be opened again', async ({ page }) => {
+                const errors = [];
+                page.on('console', message => message.type() === 'error' && errors.push(message.text()));
+                await showToasts(page);
+                await page.route('**/sillybunny-home/getting-started-window.js*', route => route.abort());
+
+                await homeTile(page, 'getting-started').click();
+
+                await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toHaveText(COPY_PLACEHOLDER);
+                await expect(page.locator('#toast-container .toast-message[data-sb-copy-placeholder="true"]')).toBeVisible();
+                await expect(hosts(page)).toHaveCount(0);
+                expect(errors.some(line => line.includes('Could not open the Getting Started window'))).toBe(true);
+
+                await page.unroute('**/sillybunny-home/getting-started-window.js*');
+                const host = await openFromTile(page, 'getting-started');
+                await expect(host).toHaveAccessibleName('Getting Started');
+            });
+        });
+
+        test.describe('Focus after Home renders while a window is open', () => {
+            for (const [key, title] of [['getting-started', 'Getting Started'], ['help', 'Help'], ['extras', 'Bundled Extras']]) {
+                test(`Escape on ${title} gives focus to the ${title} tile of the new panel`, async ({ page }) => {
+                    const host = await openFromTile(page, key);
+                    const replaced = await homeTile(page, key).evaluate((tile) => {
+                        window.qaOldPanel = tile.closest('.welcomePanel');
+                        return true;
+                    });
+                    expect(replaced).toBe(true);
+
+                    await renderHomeAgain(page);
+                    await expect(host).toBeVisible();
+                    expect(await page.evaluate(() => window.qaOldPanel.isConnected), 'the first panel is gone').toBe(false);
+                    await page.keyboard.press('Escape');
+
+                    await expectClosed(page);
+                    await expect(homeTile(page, key)).toBeFocused();
+                });
+            }
+
+            test('Escape on a window from the main menu gives focus to the main menu button of the new panel', async ({ page }) => {
+                await openFromMenu(page, 'About SillyBunny');
+
+                await renderHomeAgain(page);
+                await page.keyboard.press('Escape');
+
+                await expectClosed(page);
+                await expect(menuButton(page)).toBeFocused();
+            });
+
+            test('Escape on the More Assistants window gives focus to the More Assistants card of the new panel', async ({ page }) => {
+                await moreAssistants(page).click();
+                await expect(hosts(page)).toBeVisible();
+
+                await renderHomeAgain(page);
+                await page.keyboard.press('Escape');
+
+                await expectClosed(page);
+                await expect(moreAssistants(page)).toBeFocused();
+            });
+
+            test('Escape gives focus to the main menu button when the tile is gone from the new panel', async ({ page }) => {
+                await openFromTile(page, 'getting-started');
+
+                await page.evaluate(async () => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    getSharedGettingStartedState().setHidden(true);
+                });
+                await renderHomeAgain(page);
+                await page.keyboard.press('Escape');
+
+                await expectClosed(page);
+                await expect(menuButton(page)).toBeFocused();
+            });
+        });
+
+        test.describe('Bundled Extras', () => {
+            const labelsOf = host => host.locator('.ds-row-label');
+
+            test(`opens from its tile as a window${sheet ? ' sheet' : ''}`, async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                await expect(surface(host)).toHaveClass(/\bsb-dialog--window\b/);
+                await expect(host).toHaveAttribute('data-presentation', sheet ? 'sheet' : 'floating');
+                await expect(host).toHaveAccessibleName('Bundled Extras');
+                await expect(homeTile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
+            });
+
+            test('lists the Assistants group first, then every extension, theme and preset, then UI Themes', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                await expect(host.getByRole('heading', { level: 3 })).toHaveText(EXTRAS_GROUPS);
+                await expect(labelsOf(host)).toHaveText(['Nahida', ...EXTRAS_ITEMS, 'UI Themes']);
+            });
+
+            test('keeps the intro, the Nahida subtitle and every item description as marked placeholders', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                const found = await readCopyPlaceholders(host);
+                const slots = found.map(entry => entry.slot);
+
+                expect(slots).toContain('BE-INTRO');
+                expect(slots).toContain('AS-NAHIDA-SUB');
+                expect(slots.filter(slot => slot.startsWith('BE-ITEM-'))).toHaveLength(EXTRAS_ITEMS.length);
+                expect(new Set(slots).size).toBe(slots.length);
+                await expectSlots(host, ['BE-INTRO', 'AS-NAHIDA-SUB']);
+                await expectNoUnmarkedPlaceholder(host);
+            });
+
+            test('shows the Tewi art at 96px and a 64px stand-in for Nahida, and loads no portrait', async ({ page }) => {
+                const portraits = [];
+                page.on('request', request => /nahida/i.test(request.url()) && /\.(?:png|jpe?g|webp)(?:\?|$)/i.test(request.url()) && portraits.push(request.url()));
+
+                const host = await openFromTile(page, 'extras');
+
+                await expectArt(host, 'extras-tewi', [96, 96]);
+                await expectArt(host, 'row-nahida', [64, 64]);
+                expect(portraits).toEqual([]);
+            });
+
+            test('the Add button of Nahida is a stub that does nothing and sends nothing', async ({ page }) => {
+                const installs = [];
+                page.on('request', request => request.method() !== 'GET' && /install|extensions|characters/i.test(new URL(request.url()).pathname) && installs.push(request.url()));
+                const host = await openFromTile(page, 'extras');
+                const add = host.getByRole('button', { name: 'Add', exact: true });
+
+                await expect(add).toHaveAttribute('data-sb-stub', 'true');
+                await expect(add).toHaveAccessibleDescription('Nahida');
+                await add.click();
+
+                await expect(host).toBeVisible();
+                expect(installs).toEqual([]);
+            });
+
+            test('lists no link and no install action for an extension, a theme or a preset', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                await expect(host.locator('a')).toHaveCount(0);
+                await expect(host.locator('.ds-row button, button.ds-row')).toHaveText([/^Add$/, /UI Themes/]);
+            });
+
+            test('UI Themes closes the window and opens Customize, Appearance with the theme select shown', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                await host.getByRole('button', { name: 'UI Themes' }).click();
+
+                await expectClosed(page);
+                await expect(page.getByRole('tab', { name: 'Appearance', selected: true })).toBeVisible();
+                await expect(page.locator('#themes')).toBeVisible();
+            });
+
+            test('Escape closes the window and gives focus back to the tile', async ({ page }) => {
+                await openFromTile(page, 'extras');
+
+                await page.keyboard.press('Escape');
+
+                await expectClosed(page);
+                await expect(homeTile(page, 'extras')).toBeFocused();
+            });
+
+            test('Close closes the window and gives focus back to the tile', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                await (await visiblePageClose(host)).click();
+
+                await expectClosed(page);
+                await expect(homeTile(page, 'extras')).toBeFocused();
+            });
+
+            test('More Assistants opens the window at the Assistants group, with focus on its heading', async ({ page }) => {
+                await moreAssistants(page).click();
+
+                const host = hosts(page);
+                await expect(host).toBeVisible();
+                await expect(host).toHaveAccessibleName('Bundled Extras');
+                const heading = host.getByRole('heading', { level: 3, name: 'Assistants' });
+                await expect(heading).toBeFocused();
+                // Assistants is the first group, so the heading is in view without a scroll. Only a scroll puts it at the top of the body.
+                const position = await heading.evaluate((node) => {
+                    const body = node.closest('.sb-dialog__body');
+                    return { fromTop: node.getBoundingClientRect().top - body.getBoundingClientRect().top, scrolled: body.scrollTop };
+                });
+                expect(position.scrolled, 'the body scrolled past the intro').toBeGreaterThan(0);
+                expect(position.fromTop, 'the heading sits at the top of the body').toBeLessThan(40);
+            });
+
+            test('opened from the tile, the window does not take focus to a heading', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                await expect(host.locator('h3:focus')).toHaveCount(0);
+                await expect(host.locator(':focus')).toHaveCount(1);
+            });
+
+            test('More Assistants gets focus back after Escape and after Close, and opens one window when pressed twice', async ({ page }) => {
+                await moreAssistants(page).evaluate((button) => {
+                    button.click();
+                    button.click();
+                });
+                await expect(hosts(page)).toHaveCount(1);
+
+                await page.keyboard.press('Escape');
+                await expectClosed(page);
+                await expect(moreAssistants(page)).toBeFocused();
+
+                await moreAssistants(page).click();
+                await (await visiblePageClose(hosts(page))).click();
+                await expectClosed(page);
+                await expect(moreAssistants(page)).toBeFocused();
+            });
+
+            test('More Assistants is not a stub any more', async ({ page }) => {
+                await expect(moreAssistants(page)).not.toHaveAttribute('data-sb-stub', /.*/);
+            });
+
+            test('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
+                const errors = [];
+                page.on('console', message => message.type() === 'error' && errors.push(message.text()));
+                await showToasts(page);
+                await page.route('**/sillybunny-home/bundled-extras-window.js*', route => route.abort());
+
+                await moreAssistants(page).click();
+
+                await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toBeVisible();
+                await expect(hosts(page)).toHaveCount(0);
+                expect(errors.some(line => line.includes('Could not open the Bundled Extras window'))).toBe(true);
+
+                await page.unroute('**/sillybunny-home/bundled-extras-window.js*');
+                await homeTile(page, 'extras').click();
+                await expect(hosts(page)).toHaveAccessibleName('Bundled Extras');
+            });
+        });
+
         test('every window leaves no unmarked copy placeholder behind', async ({ page }) => {
             for (const { menuItem } of WINDOWS) {
                 const host = await openFromMenu(page, menuItem);
                 await expect(host).toBeVisible();
+                await expectNoUnmarkedPlaceholder(host);
+                await page.keyboard.press('Escape');
+                await expectClosed(page);
+            }
+            for (const key of ['getting-started', 'extras']) {
+                const host = await openFromTile(page, key);
                 await expectNoUnmarkedPlaceholder(host);
                 await page.keyboard.press('Escape');
                 await expectClosed(page);

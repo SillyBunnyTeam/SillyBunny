@@ -4,21 +4,29 @@ import {
     BUNDLED_EXTRAS,
     BUNDLED_EXTRA_GROUP_IDS,
     getBundledExtraSlot,
+    getBundledExtraSubtitleSlot,
     groupBundledExtras,
 } from '../../public/scripts/sillybunny-bundled-extras.js';
 
 const namesOf = group => group.items.map(item => item.name);
 
 describe('Bundled Extras data', () => {
-    test('groups the items as first-party extensions, third-party extensions, themes and presets, in that order', () => {
+    test('groups the items as assistants, first-party extensions, third-party extensions, themes and presets, in that order', () => {
         const groups = groupBundledExtras();
 
         expect(groups.map(group => group.id)).toEqual([...BUNDLED_EXTRA_GROUP_IDS]);
-        expect(BUNDLED_EXTRA_GROUP_IDS).toEqual(['first-party-extensions', 'third-party-extensions', 'themes', 'presets']);
+        expect(BUNDLED_EXTRA_GROUP_IDS).toEqual(['assistants', 'first-party-extensions', 'third-party-extensions', 'themes', 'presets']);
+    });
+
+    test('lists Nahida as the one optional assistant', () => {
+        const [assistants] = groupBundledExtras();
+
+        expect(namesOf(assistants)).toEqual(['Nahida']);
+        expect(assistants.items[0]).toMatchObject({ id: 'nahida', kind: 'assistant', url: null });
     });
 
     test('lists the first-party extensions', () => {
-        const [firstParty] = groupBundledExtras();
+        const [, firstParty] = groupBundledExtras();
 
         expect(namesOf(firstParty)).toEqual([
             'Alternate Descriptions',
@@ -35,7 +43,7 @@ describe('Bundled Extras data', () => {
     });
 
     test('lists the third-party extensions, the themes and the presets', () => {
-        const [, thirdParty, themes, presets] = groupBundledExtras();
+        const [, , thirdParty, themes, presets] = groupBundledExtras();
 
         expect(namesOf(thirdParty)).toEqual(['Dialogue Colors', 'Summary Sharder', 'Group Utilities', 'LALib']);
         expect(namesOf(themes)).toEqual(['Moonlit Echoes', 'Terminal UI']);
@@ -45,6 +53,7 @@ describe('Bundled Extras data', () => {
     test('marks every item with a kind that fits its group', () => {
         const kindsByGroup = Object.fromEntries(groupBundledExtras().map(group => [group.id, new Set(group.items.map(item => item.kind))]));
 
+        expect(kindsByGroup.assistants).toEqual(new Set(['assistant']));
         expect(kindsByGroup['first-party-extensions']).toEqual(new Set(['extension']));
         expect(kindsByGroup['third-party-extensions']).toEqual(new Set(['extension']));
         expect(kindsByGroup.themes).toEqual(new Set(['theme-extension']));
@@ -66,11 +75,18 @@ describe('Bundled Extras data', () => {
         const notHttps = BUNDLED_EXTRAS.filter(item => item.url !== null && !item.url.startsWith('https://')).map(item => item.name);
 
         expect(notHttps).toEqual([]);
-        expect(BUNDLED_EXTRAS.filter(item => item.kind !== 'preset' && withoutPage.includes(item.name))).toEqual([]);
+        expect(BUNDLED_EXTRAS.filter(item => item.kind !== 'preset' && item.kind !== 'assistant' && withoutPage.includes(item.name))).toEqual([]);
+    });
+
+    test('names the copy slot of an item description, and of an assistant subtitle', () => {
+        const byId = Object.fromEntries(BUNDLED_EXTRAS.map(item => [item.id, item]));
+
+        expect(getBundledExtraSubtitleSlot(byId['world-info-lab'])).toBe('BE-ITEM-WORLD-INFO-LAB');
+        expect(getBundledExtraSubtitleSlot(byId.nahida)).toBe('AS-NAHIDA-SUB');
     });
 
     test('points first-party items at the SillyBunnyTeam repositories', () => {
-        const [firstParty] = groupBundledExtras();
+        const firstParty = groupBundledExtras().find(group => group.id === 'first-party-extensions');
 
         for (const item of firstParty.items) {
             expect(item.url).toMatch(/^https:\/\/github\.com\/SillyBunnyTeam\/SillyBunny-[A-Za-z-]+$/);
