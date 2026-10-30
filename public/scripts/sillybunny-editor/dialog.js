@@ -638,6 +638,9 @@ export function openDialog({
         unbindGestures();
         unbindKeyboard();
         heightLock?.destroy();
+        pendingSwap = null;
+        stopMotion(pagesNode);
+        releasePins();
         for (const entry of stack.splice(0)) {
             entry.view.destroy();
             entry.resolve({ response });
@@ -654,6 +657,76 @@ export function openDialog({
         finish({ response });
     }
 
+    /*
+     * A swap of pages sizes the pages node from its old height to its new one over the slide. Without this, a
+     * content-sized dialog takes the height of the incoming page in the first frame, and a page that is positioned
+     * over the node is cropped or stretched to that height. While the node is resized, every page that shows keeps
+     * the height it has at rest: a page that follows the node would reflow, and a flex item would shrink.
+     * Swaps in one task, such as closing several pages, share one height motion.
+     */
+    const pinnedPages = new Set();
+
+    /** Pages enter from the inline end and leave toward it, so a right-to-left document mirrors the slide. */
+    function slideOffset() {
+        return getComputedStyle(pagesNode).direction === 'rtl' ? '-100%' : '100%';
+    }
+    let pendingSwap = null;
+
+    function pinPage(page, height) {
+        page.style.height = `${height}px`;
+        page.style.flexShrink = '0';
+        pinnedPages.add(page);
+    }
+
+    function releasePins() {
+        for (const page of pinnedPages) {
+            page.style.removeProperty('height');
+            page.style.removeProperty('flex-shrink');
+        }
+        pinnedPages.clear();
+    }
+
+    function shownPageHeights() {
+        return new Map([...pagesNode.children].filter(page => !page.hidden).map(page => [page, page.getBoundingClientRect().height]));
+    }
+
+    /*
+     * Runs in a microtask after the swap, so the target height includes the content that a caller adds to a
+     * pushed page after push() returns. The slide itself starts in the swap, and the first frame is not painted
+     * before this runs.
+     */
+    function startHeightMotion() {
+        if (!pendingSwap) return;
+        const { from, heights } = pendingSwap;
+        pendingSwap = null;
+        const incoming = topPage()?.view.page;
+        if (state !== 'open' || !incoming?.isConnected) return;
+        const to = pagesNode.getBoundingClientRect().height;
+        heights.set(incoming, to);
+        for (const [page, height] of heights) {
+            if (page.isConnected && !page.hidden) pinPage(page, height);
+        }
+        play(pagesNode, [{ height: `${from}px` }, { height: `${to}px` }], { ...SPRING_NAVIGATION, onEnd: releasePins });
+    }
+
+    function swapPages(swap) {
+        if (prefersReducedMotion()) {
+            swap();
+            return;
+        }
+        if (pendingSwap) {
+            for (const [page, height] of shownPageHeights()) {
+                if (!pendingSwap.heights.has(page)) pendingSwap.heights.set(page, height);
+            }
+        } else {
+            pendingSwap = { from: pagesNode.getBoundingClientRect().height, heights: shownPageHeights() };
+            // The heights are read first, because stopping a running height motion snaps the node and its pages to their end state.
+            stopMotion(pagesNode);
+            queueMicrotask(startHeightMotion);
+        }
+        swap();
+    }
+
     function popPage(response, reason = response) {
         const entry = topPage();
         if (!entry || stack.length < 2 || state !== 'open') return false;
@@ -663,19 +736,21 @@ export function openDialog({
             stack.pop();
             const previous = topPage();
             stopMotion(entry.view.page);
-            previous.view.page.classList.remove('is-underlay');
-            previous.view.page.hidden = false;
-            previous.view.page.inert = false;
             host.setAttribute('aria-labelledby', previous.view.titleNode.id);
             const leaving = entry.view.page;
-            leaving.inert = true;
-            leaving.classList.add('is-leaving');
+            swapPages(() => {
+                previous.view.page.classList.remove('is-underlay');
+                previous.view.page.hidden = false;
+                previous.view.page.inert = false;
+                leaving.inert = true;
+                leaving.classList.add('is-leaving');
+            });
             const remove = () => {
                 entry.view.destroy();
                 leaving.remove();
             };
             if (prefersReducedMotion()) remove();
-            else play(leaving, [{ transform: 'none' }, { transform: 'translateX(100%)' }], { ...SPRING_NAVIGATION, fill: 'forwards', onEnd: remove });
+            else play(leaving, [{ transform: 'none' }, { transform: `translateX(${slideOffset()})` }], { ...SPRING_NAVIGATION, fill: 'forwards', onEnd: remove });
             (entry.returnFocus?.isConnected ? entry.returnFocus : firstFocusable(previous.view.page))?.focus({ preventScroll: true });
             heightLock?.refresh();
             entry.resolve({ response });
@@ -708,19 +783,24 @@ export function openDialog({
         const entry = { view, spec, resolve, returnFocus: nested ? document.activeElement : null };
         const previous = topPage();
         stack.push(entry);
-        pagesNode.append(view.page);
+        const mount = () => {
+            pagesNode.append(view.page);
+            if (!previous) return;
+            previous.view.page.inert = true;
+            previous.view.page.classList.add('is-underlay');
+        };
+        if (previous) swapPages(mount);
+        else mount();
         heightLock?.refresh();
         host.setAttribute('aria-labelledby', view.titleNode.id);
         if (previous) {
-            previous.view.page.inert = true;
-            previous.view.page.classList.add('is-underlay');
             const hidePrevious = () => {
                 if (topPage() === previous) return;
                 previous.view.page.hidden = true;
                 previous.view.page.classList.remove('is-underlay');
             };
             if (prefersReducedMotion()) hidePrevious();
-            else play(view.page, [{ transform: 'translateX(100%)' }, { transform: 'none' }], { ...SPRING_NAVIGATION, onEnd: hidePrevious });
+            else play(view.page, [{ transform: `translateX(${slideOffset()})` }, { transform: 'none' }], { ...SPRING_NAVIGATION, onEnd: hidePrevious });
             // Callers add header actions and body content after push() returns, so the target is resolved
             // once that synchronous code has run. Resolving it now would see a page that is still empty.
             queueMicrotask(() => {

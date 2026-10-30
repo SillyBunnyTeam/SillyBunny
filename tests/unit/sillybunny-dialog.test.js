@@ -711,6 +711,23 @@ describe('pages', () => {
         expect([page.isOpen, again.isOpen]).toEqual([false, false]);
     });
 
+    test('closing the frame in the task that pushed a page leaves nothing for the page height to do', async () => {
+        const errors = [];
+        const record = event => errors.push(event.error ?? event.message);
+        window.addEventListener('error', record);
+        const dialog = openDialog({ title: 'Root' });
+        const page = dialog.push({ title: 'Child' });
+
+        dialog.forceClose();
+        await dialog.closed;
+        await Promise.resolve();
+        window.removeEventListener('error', record);
+
+        expect(errors).toEqual([]);
+        expect(page.page.style.height).toBe('');
+        expect(page.page.style.flexShrink).toBe('');
+    });
+
     test('an immediate-apply page shows Back and Close; Back pops it and returns focus', async () => {
         const dialog = openDialog({ title: 'Root', content: document.createElement('button') });
         const trigger = dialog.body.querySelector('button');
