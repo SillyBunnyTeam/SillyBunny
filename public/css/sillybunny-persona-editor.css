@@ -96,7 +96,8 @@
     font-family: inherit;
 }
 
-#PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):not(.sb-status-page__action) {
+/* :where() keeps the exclusions at zero specificity, so the touch-target rules below still win. */
+#PersonaManagement .sb-persona-editor .menu_button:where(:not(.sb-header-icon-button):not(.sb-status-page__action)) {
     display: inline-flex;
     justify-content: center;
     align-items: center;
@@ -246,7 +247,7 @@
 }
 
 @media (hover: hover) {
-    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):not(.sb-status-page__action):not(:disabled):hover {
+    #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):where(:not(.sb-status-page__action)):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }

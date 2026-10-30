@@ -109,7 +109,7 @@ const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanel
 const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261028a', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261026a', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261029a', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
 ];
 let container;

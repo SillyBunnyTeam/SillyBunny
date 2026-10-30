@@ -131,7 +131,8 @@
     font-family: inherit;
 }
 
-#WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button):not(.sb-status-page__action) {
+/* :where() keeps the exclusions at zero specificity, so the touch-target and summary rules below still win. */
+#WorldInfo .sb-wi-editor .menu_button:where(:not(.sb-header-icon-button):not(.sb-status-page__action)) {
     display: inline-flex;
     justify-content: center;
     align-items: center;
@@ -397,7 +398,7 @@
 }
 
 @media (hover: hover) {
-    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):not(.sb-header-icon-button):not(.sb-status-page__action):hover {
+    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):not(.sb-header-icon-button):where(:not(.sb-status-page__action)):hover {
         background: var(--sb-flat-hover-bg);
     }
 

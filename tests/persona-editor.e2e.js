@@ -343,4 +343,14 @@ test.describe('Persona editor on mobile', () => {
         await entry.getByRole('button', { name: 'Back', exact: true }).click();
         await expect(editor.getByRole('listitem', { name: persona.name, exact: true })).toBeInViewport();
     });
+
+    test('text action buttons keep the 44px touch target', async ({ page }) => {
+        const persona = await currentPersona(page);
+        const entry = await openPersona(page, persona.avatarId);
+        const heights = await entry.locator('.menu_button:not(.sb-header-icon-button):not(.sb-status-page__action)').evaluateAll(
+            buttons => buttons.filter(button => button.getClientRects().length).map(button => parseFloat(getComputedStyle(button).minHeight)),
+        );
+        expect(heights.length).toBeGreaterThan(0);
+        for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
+    });
 });
