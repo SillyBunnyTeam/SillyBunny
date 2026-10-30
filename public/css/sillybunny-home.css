@@ -239,14 +239,16 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sbHomeMenuButton:active {
-    background: var(--sb-flat-active-bg);
-}
-
+/* Every pressed rule of Home follows the hover rules of its control. Both have the same specificity, so the
+   later one wins, and a press must win while the pointer is still over the control. */
 @media (hover: hover) {
     .sbHomeMenuButton:hover {
         background: var(--sb-flat-hover-bg);
     }
+}
+
+.sbHomeMenuButton:active {
+    background: var(--sb-flat-active-bg);
 }
 
 /* ── Band ───────────────────────────────────────────────────────────────── */
@@ -390,14 +392,14 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sbHomeTile:active {
-    background: var(--sb-flat-active-bg);
-}
-
 @media (hover: hover) {
     .sbHomeTile:hover {
         background: var(--sb-home-tint-hover);
     }
+}
+
+.sbHomeTile:active {
+    background: var(--sb-flat-active-bg);
 }
 
 .sbHomeTileIcon {
@@ -569,10 +571,6 @@
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
-.sbHomeFootButton:active {
-    background: var(--sb-flat-active-bg);
-}
-
 .sbHomeFootButton:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -583,6 +581,10 @@
         background: var(--sb-flat-hover-bg);
         color: var(--SmartThemeBodyColor);
     }
+}
+
+.sbHomeFootButton:active {
+    background: var(--sb-flat-active-bg);
 }
 
 /* How wide the labels are depends on the font size and on the translation, so footer-fit.js measures whether both
@@ -778,6 +780,10 @@
     }
 }
 
+.welcomeRecentTab:not(.active):active {
+    background: var(--sb-flat-active-bg);
+}
+
 .welcomeRecent {
     position: relative;
     overflow: hidden;
@@ -817,7 +823,10 @@
     background: var(--sb-home-line);
 }
 
-.welcomeRecent .recentChat:active {
+/* :active matches the ancestors of a pressed element, so a plain :active would fill the row while one of its action
+   buttons is pressed. Only a press on the row's own button fills the row, as on the cards. The :has() also gives
+   this rule more specificity than the hover rule, so the pressed fill wins whatever the order. */
+.welcomeRecent .recentChat:has(.recentChatOpen:active) {
     background: var(--sb-flat-active-bg);
 }
 
@@ -950,10 +959,6 @@ body.hideChatAvatars .welcomeRecent .recentChat .avatar {
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
-.welcomeRecent .chatActions button:active {
-    background: var(--sb-flat-active-bg);
-}
-
 .welcomeRecent .chatActions button:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -968,6 +973,10 @@ body.hideChatAvatars .welcomeRecent .recentChat .avatar {
         background: var(--sb-flat-hover-bg);
         color: var(--SmartThemeBodyColor);
     }
+}
+
+.welcomeRecent .chatActions button:active {
+    background: var(--sb-flat-active-bg);
 }
 
 .welcomeRecent .chatMessageContainer {
@@ -1044,10 +1053,6 @@ body.big-avatars .welcomeRecent .chatMessage {
     transform: rotate(180deg);
 }
 
-.welcomeRecent .showMoreChats:active {
-    background: var(--sb-flat-active-bg);
-}
-
 .welcomeRecent .showMoreChats:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -1057,6 +1062,10 @@ body.big-avatars .welcomeRecent .chatMessage {
     .welcomeRecent .showMoreChats:hover {
         background: var(--sb-flat-hover-bg);
     }
+}
+
+.welcomeRecent .showMoreChats:active {
+    background: var(--sb-flat-active-bg);
 }
 
 .welcomeRecent .noRecentChat {
@@ -1124,10 +1133,6 @@ body.big-avatars .welcomeRecent .chatMessage {
     background: var(--sb-flat-selected-bg);
 }
 
-.sbHomeRowMenu:active {
-    background: var(--sb-flat-active-bg);
-}
-
 .sbHomeRowMenu:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -1138,6 +1143,10 @@ body.big-avatars .welcomeRecent .chatMessage {
         background: var(--sb-flat-hover-bg);
         color: var(--SmartThemeBodyColor);
     }
+}
+
+.sbHomeRowMenu:active {
+    background: var(--sb-flat-active-bg);
 }
 
 /* ── List Only ──────────────────────────────────────────────────────────── */
