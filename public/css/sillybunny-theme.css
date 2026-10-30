@@ -1103,10 +1103,10 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     }
 }
 
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button:not(.sb-status-page__action),
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button_icon:not(.sb-status-page__action),
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button:not(.sb-status-page__action),
-:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button_icon:not(.sb-status-page__action) {
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button:where(:not(.sb-status-page__action)),
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button_icon:where(:not(.sb-status-page__action)),
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button:where(:not(.sb-status-page__action)),
+:root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
     min-height: 32px;
     padding: 6px 10px;
     border-radius: 10px;
@@ -6346,10 +6346,10 @@ body.reduced-motion *::after {
         font-size: var(--sb-type-control);
     }
 
-    .sb-shell-panel-scroller .menu_button:not(.sb-status-page__action),
-    .sb-shell-panel-scroller .menu_button_icon:not(.sb-status-page__action),
-    .sb-shell-panel-scroller button.menu_button:not(.sb-status-page__action),
-    .sb-shell-panel-scroller button.menu_button_icon:not(.sb-status-page__action) {
+    .sb-shell-panel-scroller .menu_button:where(:not(.sb-status-page__action)),
+    .sb-shell-panel-scroller .menu_button_icon:where(:not(.sb-status-page__action)),
+    .sb-shell-panel-scroller button.menu_button:where(:not(.sb-status-page__action)),
+    .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
         min-height: 38px;
         padding: 8px 12px;
         border-radius: 12px;
