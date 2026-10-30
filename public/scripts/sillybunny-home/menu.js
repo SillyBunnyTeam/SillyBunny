@@ -101,6 +101,8 @@ export function openChatMenu(trigger, actions, { keyboard = false, bounds = null
         sections: buildChatMenuSections(actions),
         keyboard,
         bounds,
+        // The button ends its row, and the bounds are the whole Home panel, so the menu cannot tell which edge to line up with.
+        alignment: 'end',
     });
 }
 
@@ -130,8 +132,8 @@ export function getOtherChatMode(lastMode) {
 export function buildAssistantMenuSections({ lastMode, actions }) {
     const otherMode = getOtherChatMode(lastMode);
     const inOtherMode = otherMode === 'conversation'
-        ? { label: t`New Chat in Conversation`, icon: 'fa-solid fa-comments fa-fw' }
-        : { label: t`New Chat in Roleplay`, icon: 'fa-solid fa-masks-theater fa-fw' };
+        ? { label: t`New Chat in Conversation`, icon: 'fa-solid fa-comments sbHomeMenuIconFit' }
+        : { label: t`New Chat in Roleplay`, icon: 'fa-solid fa-masks-theater sbHomeMenuIconFit' };
     return [{ items: [{ ...inOtherMode, data: STUB_MARKER, onSelect: () => actions.newChatInMode(otherMode) }] }];
 }
 
@@ -150,6 +152,9 @@ export function openAssistantMenu(trigger, { lastMode, actions }, { keyboard = f
         sections: buildAssistantMenuSections({ lastMode, actions }),
         keyboard,
         bounds,
+        // The button ends the card footer, and the bounds are the whole Home panel, so a card in its start half
+        // would otherwise open toward the next card.
+        alignment: 'end',
     });
 }
 

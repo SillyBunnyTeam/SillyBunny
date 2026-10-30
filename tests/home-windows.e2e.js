@@ -1218,6 +1218,23 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expectNoUnmarkedPlaceholder(current);
             });
 
+            test('Troubleshooting shows every line of the debug info without scrolling', async ({ page }) => {
+                const host = await openFromMenu(page, 'About SillyBunny');
+                await host.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
+                const info = shownPage(host).getByRole('textbox', { name: 'Debug Information' });
+                await expect(info).toBeVisible();
+
+                const fit = await info.evaluate(node => ({
+                    scrollHeight: node.scrollHeight,
+                    clientHeight: node.clientHeight,
+                    lines: node.value.split('\n').length,
+                    lineHeight: Number.parseFloat(getComputedStyle(node).lineHeight),
+                }));
+                // Wrapped lines make the block taller than one row per line, never shorter.
+                expect(fit.clientHeight).toBeGreaterThanOrEqual(fit.lines * fit.lineHeight);
+                expect(fit.scrollHeight).toBeLessThanOrEqual(fit.clientHeight + 1);
+            });
+
             test('Troubleshooting shows real debug info that Copy puts on the clipboard and Save downloads', async ({ page, context }) => {
                 await context.grantPermissions(['clipboard-read', 'clipboard-write']);
                 const version = await readVersion(page);

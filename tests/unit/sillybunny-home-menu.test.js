@@ -151,6 +151,12 @@ describe('Recent Chats row menu', () => {
         expect(openActionMenu).toHaveBeenCalledWith(expect.objectContaining({ trigger, bounds, keyboard: true, title: 'Chat Menu' }));
         expect(openActionMenu.mock.calls.at(-1)[0].sections).toHaveLength(2);
     });
+
+    test('aligns the popover to the end of the button, which sits at the end of its row', () => {
+        openChatMenu({}, chatActions());
+
+        expect(openActionMenu).toHaveBeenCalledWith(expect.objectContaining({ alignment: 'end' }));
+    });
 });
 
 describe('Assistant menu', () => {
@@ -187,9 +193,9 @@ describe('Assistant menu', () => {
     });
 
     test.each([
-        ['roleplay', 'fa-solid fa-comments fa-fw'],
-        ['conversation', 'fa-solid fa-masks-theater fa-fw'],
-    ])('gives the item after %s an explicit icon and the stub marker', (lastMode, icon) => {
+        ['roleplay', 'fa-solid fa-comments sbHomeMenuIconFit'],
+        ['conversation', 'fa-solid fa-masks-theater sbHomeMenuIconFit'],
+    ])('gives the item after %s an explicit icon that fits the icon box, and the stub marker', (lastMode, icon) => {
         const [section] = buildAssistantMenuSections({ lastMode, actions: assistantActions() });
 
         expect(section.items[0].icon).toBe(icon);
@@ -212,5 +218,11 @@ describe('Assistant menu', () => {
         openAssistantMenu(trigger, { lastMode: 'roleplay', actions: assistantActions() }, { keyboard: true, bounds });
 
         expect(openActionMenu).toHaveBeenCalledWith(expect.objectContaining({ trigger, bounds, keyboard: true, title: 'Assistant Menu' }));
+    });
+
+    test('aligns the popover to the end of the button, which sits at the end of the card footer', () => {
+        openAssistantMenu({}, { lastMode: 'roleplay', actions: assistantActions() });
+
+        expect(openActionMenu).toHaveBeenCalledWith(expect.objectContaining({ alignment: 'end' }));
     });
 });

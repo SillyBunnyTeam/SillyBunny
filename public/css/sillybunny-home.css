@@ -196,6 +196,13 @@
     background: var(--sb-flat-selected-bg);
 }
 
+/* The menus of Home hang off body, so this rule is not under .welcomePanel. A glyph that is 1.25em wide (fa-comments,
+   fa-masks-theater) spills out of the 14px icon box of an action menu row and nearly touches the label.
+   0.8em makes it as wide as the box, so the gap matches the other rows. */
+.sb-action-menu-item > .sbHomeMenuIconFit:first-child {
+    font-size: 0.8em;
+}
+
 .sbHomeMenuButton:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -817,6 +824,8 @@
     justify-content: center;
     width: 44px;
     height: 44px;
+    /* A group chat swaps in the shared collage, whose rule gives it min-width: var(--avatar-base-width), wider than 44px. */
+    min-width: 0;
     overflow: hidden;
     border-radius: var(--sb-radius-control);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);

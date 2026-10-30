@@ -1717,6 +1717,46 @@ test.describe('Home filtered empty state', () => {
     });
 });
 
+test.describe('Home Recent Chats group row', () => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        test.describe(`at ${viewport.width}x${viewport.height}`, () => {
+            test.use({ viewport });
+
+            test('a group chat avatar is as large as an individual avatar and its text starts at the same inset', async ({ page }) => {
+                await protectMaintainerServer(page);
+                await installFixtureChats(page);
+                await page.goto('/', { waitUntil: 'domcontentloaded' });
+                await expectHome(page);
+                await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+                const characters = await pickFixtureCharacters(page, 2);
+                // The recent chat list only keeps rows whose group is known, so one stand-in group is added in the page.
+                await page.evaluate(async (members) => {
+                    const { groups } = await import('/scripts/group-chats.js');
+                    groups.push({ id: 'qa-group-1', name: 'Study Circle', members, avatar_url: '', chat_id: 'qa-group-chat', chats: ['qa-group-chat'], generation_mode: 0, disabled_members: [] });
+                }, characters.map(character => character.avatar));
+                await renderHome(page, [
+                    ...recentChatEntries(characters, 1, { distinctFiles: true }),
+                    { file_name: 'qa-group-chat.jsonl', avatar: '', group: 'qa-group-1', last_mes: Date.now() - 60_000, mes: 'Group preview', chat_items: 5, file_size: '1kb' },
+                ]);
+
+                const rows = page.locator('#chat > .welcomePanel .recentChat');
+                await expect(rows).toHaveCount(2);
+                const measure = row => row.evaluate((node) => {
+                    const avatar = node.querySelector('.avatar').getBoundingClientRect();
+                    const info = node.querySelector('.recentChatInfo').getBoundingClientRect();
+                    return { width: avatar.width, height: avatar.height, textInset: info.left - node.getBoundingClientRect().left };
+                });
+                const individual = await measure(rows.filter({ hasNot: page.locator('.avatar_collage') }));
+                const group = await measure(rows.filter({ has: page.locator('.avatar_collage') }));
+
+                expect(group.width).toBe(individual.width);
+                expect(group.height).toBe(individual.height);
+                expect(group.textInset).toBe(individual.textInset);
+            });
+        });
+    }
+});
+
 test.describe('Home while its template loads', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 

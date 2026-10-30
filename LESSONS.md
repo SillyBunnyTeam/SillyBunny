@@ -244,6 +244,8 @@ This is the largest class by a wide margin.
   - **Breaks:** under WebKit, the Account settings test in `tests/misc-form-dialogs.e2e.js` posted `/api/users/reset-settings` to the test server, and every later boot showed the first-run welcome popup.
   - **Guard:** `serviceWorkers: 'block'` in `tests/playwright.webkit.config.js`. In `tests/playwright.config.js` (Chromium) service workers are not blocked by default; specs that stub writes opt in with `test.use({ serviceWorkers: 'block' })`.
   - **Tests:** `tests/playwright.webkit.config.js` runs the dialog specs with service workers blocked.
+- **Wide glyphs in action-menu icon boxes:** the shared action-menu icon box is 14px wide (`public/css/sillybunny-message-actions.css`, `.sb-action-menu-item > :is(i, svg, img):first-child`), and `fa-fw` cannot widen it, so a 1.25em glyph such as `fa-comments` or `fa-masks-theater` spills about 2px on each side and nearly touches its label. Home's Assistant Menu scales those glyphs with `sbHomeMenuIconFit` (0.8em, `public/css/sillybunny-home.css`) instead of widening the shared box, which would move every menu label in the app. Test: `tests/home-layout.e2e.js` (the glyph-to-label gap equals the main menu's, popover and sheet).
+- **Read-only text blocks size to their text:** a fixed `rows` count clipped the last line of About → Troubleshooting on phones, where the user agent wraps. `fitToText()` (`public/scripts/sillybunny-about.js`) sizes the block from a collapsed measurement and re-fits when its width changes, capped at `min(32rem, 60dvh)` with scrolling beyond (`.sbDebugInfo`, `public/css/sillybunny-windows.css`). Test: `tests/home-windows.e2e.js` (no hidden overflow at 390 and 1440).
 
 ### Upstream compatibility and sync
 
@@ -261,3 +263,4 @@ This is the largest class by a wide margin.
 - A revert can cause its own regression: `f027cd460` (#595) restored mobile CSS that a June baseline revert removed.
 - Release promotion failed once. #866 promoted `staging` to `release` too early for v1.8.0, `5d49b0ad1` (#891) reverted it, and #892 added a workflow guard.
 - Hotfixes followed v1.2.7, v1.2.8 and v1.8.1. A cluster of fixes from 12 to 16 April led to the v1.3.6 stability release.
+- **Upstream minimum widths beat smaller fixed widths:** `body:not(.big-avatars) .avatar_collage { min-width: var(--avatar-base-width) }` (`public/css/toggle-dependent.css:213`, 50px) wins over a smaller `width`, so in Home's Recent Chats a group chat's collage was 50px beside 44px avatars and its text started 6px further in. The old Home used 60px avatars, so the minimum never showed. `.welcomeRecent .recentChat .avatar` sets `min-width: 0` (`public/css/sillybunny-home.css`). Test: `tests/home-layout.e2e.js` (group row matches an individual row).

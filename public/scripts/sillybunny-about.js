@@ -184,13 +184,37 @@ function fillLegal(body) {
     body.append(...groups.map(([title, slot]) => createSection(title, createCopyBlock(slot))));
 }
 
+/**
+ * A textarea does not grow with its text, and a phone wraps the long user agent line over more rows than
+ * `rows` allows. The block takes the height of its text and `.sbDebugInfo` caps it, so the last line is never hidden.
+ * The size is measured from a collapsed block, whose scrollHeight is the text plus its padding.
+ * @param {HTMLTextAreaElement} block
+ * @returns {() => void} Measures again; call it after the text changes.
+ */
+function fitToText(block) {
+    const fit = () => {
+        block.style.blockSize = '0';
+        const { scrollHeight, offsetHeight, clientHeight } = block;
+        // A block that is not laid out measures 0 and keeps the height of its rows until it is shown.
+        block.style.blockSize = scrollHeight > 0 ? `${scrollHeight + offsetHeight - clientHeight}px` : '';
+    };
+    let lastWidth = 0;
+    new ResizeObserver(([entry]) => {
+        if (entry.contentRect.width === lastWidth) return;
+        lastWidth = entry.contentRect.width;
+        fit();
+    }).observe(block);
+    return fit;
+}
+
 function fillTroubleshooting(body, server) {
     const read = () => formatDebugInfo({ ...readClientInfo(), ...server.details });
     const block = document.createElement('textarea');
     block.className = 'sbDebugInfo';
     block.readOnly = true;
     block.value = read();
-    server.onChange(() => { block.value = read(); });
+    const fit = fitToText(block);
+    server.onChange(() => { block.value = read(); fit(); });
     block.rows = 8;
     block.spellcheck = false;
     block.setAttribute('aria-label', t`Debug Information`);

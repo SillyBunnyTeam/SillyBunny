@@ -147,6 +147,9 @@
 .sbDebugInfo {
     box-sizing: border-box;
     width: 100%;
+    /* sillybunny-about.js sizes the block to its text; a longer text scrolls inside it. */
+    max-block-size: min(32rem, 60dvh);
+    padding-block: 8px 12px;
     resize: none;
     font-family: var(--monoFontFamily);
     font-size: calc(var(--mainFontSize) * 0.84);
