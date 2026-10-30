@@ -50,26 +50,54 @@
     max-height: none;
 }
 
-/* The column paints the opaque page tone with the theme's chat tint on top at the tint's own alpha. A tint with a
+/* The line of every Home edge comes from the text colour, as libadwaita derives its border colour, so it stays
+   visible whatever colour and alpha the theme gives its borders. The theme border only tints it. It is defined on
+   the shell so the column can draw it as well as the controls inside. */
+#sheld[data-sb-home='on'] {
+    --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, color-mix(in srgb, var(--sb-shell-border) 72%, transparent));
+}
+
+@media (prefers-contrast: more) {
+    #sheld[data-sb-home='on'] {
+        --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+/* The column paints the Window layer with the theme's chat tint on top at the tint's own alpha. A tint with a
    near-zero alpha, whose colour its author never saw, therefore never becomes a surface, and the wallpaper does not
-   show through the column at the default Surface Transparency. The tint layer is what #chat paints elsewhere:
-   --sb-chat-view-bg on wide windows, which scales the alpha and follows Surface Transparency, and the raw tint on
-   narrow ones. The page tone follows Surface Transparency too. Without relative colour syntax the page tone keeps
-   its own alpha. */
+   show through the column at the default Surface Transparency. The page tone is the Window layer mixed a little
+   toward the text colour, so the Window layer always lies on the side of it away from the text, and every theme
+   gives the column a tonal step against the page, like a libadwaita content view against its canvas. The Window
+   layer is also a surface every theme designs, since its dialogs and drawers use it. The tint layer is what #chat
+   paints elsewhere: --sb-chat-view-bg on wide windows, which scales the alpha and follows Surface Transparency, and
+   the raw tint on narrow ones. The Window layer follows Surface Transparency too. Without relative colour syntax it
+   keeps its own alpha. */
 #sheld[data-sb-home='on'] > #chat {
-    background-color: var(--sb-page-bg-source);
+    background-color: var(--sb-layer-window-source);
     background-image: linear-gradient(var(--SmartThemeChatTintColor), var(--SmartThemeChatTintColor));
 }
 
+/* A wide window shows the page around the column, and in a light theme the tonal step alone is slight, so the
+   column draws the line of the controls inside it. An inset shadow keeps the size and the radius of the column, and
+   forced colours drop shadows, so there an outline in the text colour draws the edge. A narrow window has no page
+   around it. */
 @media (min-width: 769px) {
     #sheld[data-sb-home='on'] > #chat {
         background-image: linear-gradient(var(--sb-chat-view-bg), var(--sb-chat-view-bg));
+        box-shadow: inset 0 0 0 1px var(--sb-home-line);
+    }
+}
+
+@media (min-width: 769px) and (forced-colors: active) {
+    #sheld[data-sb-home='on'] > #chat {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
     }
 }
 
 @supports (color: rgb(from black r g b / 1)) {
     #sheld[data-sb-home='on'] > #chat {
-        background-color: rgb(from var(--sb-page-bg-source) r g b / var(--sb-page-overlay-opacity));
+        background-color: rgb(from var(--sb-layer-window-source) r g b / var(--sb-page-overlay-opacity));
     }
 }
 
@@ -126,9 +154,6 @@
 
 /* One column at every width. The 32px gap sits between sections; the header pulls the band 16px closer. */
 .sbHomeLayout {
-    /* The line comes from the text colour, as libadwaita derives its border colour, so it stays visible whatever
-       colour and alpha the theme gives its borders. The theme border only tints it. */
-    --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, color-mix(in srgb, var(--sb-shell-border) 72%, transparent));
     --sb-home-tint: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     --sb-home-tint-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
     display: flex;
@@ -138,12 +163,6 @@
     width: 100%;
     padding-block: 12px calc(24px + env(safe-area-inset-bottom, 0px));
     padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
-}
-
-@media (prefers-contrast: more) {
-    .sbHomeLayout {
-        --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
-    }
 }
 
 .sbHomeSection,

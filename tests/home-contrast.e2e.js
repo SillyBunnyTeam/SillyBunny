@@ -22,6 +22,10 @@ const VIEWPORTS = [
 /** The least contrast between a control's edge and the page behind it that reads as an edge. */
 const EDGE_FLOOR = 1.24;
 const TEXT_FLOOR = 4.5;
+/** The least contrast between a line and the fill beside it that a fill alone, with no line, cannot give. */
+const LINE_FLOOR = 1.1;
+/** In forced colours the edge is the text colour on the canvas colour, so anything near a readable contrast shows it. */
+const FORCED_EDGE_FLOOR = 3;
 /** Regression floor: the edge contrast of the Home tiles in these themes, as measured before the column had a backing, rounded down, per width. */
 const EDGE_BEFORE = {
     Libadwaita: { wide: 1.06, narrow: 1.03 },
@@ -193,11 +197,30 @@ async function columnPixel(page) {
     return (await decodeClip(page, { x, y, width: 2, height: 2 }))(x, y);
 }
 
-/** How far the column is, in the worst channel, from the tint it paints without Home at the tint's own alpha over the page tone. */
-async function columnGapFromTintOverPageTone(page, columnTint) {
+/** How far the column is, in the worst channel, from the tint it paints without Home at the tint's own alpha over the Window layer. */
+async function columnGapFromTintOverWindowLayer(page, columnTint) {
     const tint = await paintOf(page, columnTint);
-    const pageTone = await paintOf(page, 'var(--sb-page-bg)');
-    return channelGap(await columnPixel(page), over(tint, pageTone));
+    const windowLayer = await paintOf(page, 'var(--sb-layer-window)');
+    return channelGap(await columnPixel(page), over(tint, windowLayer));
+}
+
+/** Pixels of the column's left edge at mid-height: the page just outside it, the edge itself and the column just inside. */
+async function columnEdgePixels(page) {
+    const box = await page.locator('#chat').evaluate((node) => {
+        const { left, top, height } = node.getBoundingClientRect();
+        return { left, top, height };
+    });
+    const x = Math.round(box.left);
+    const y = Math.round(box.top + box.height / 2);
+    const pixel = await decodeClip(page, { x: x - 6, y: y - 1, width: 16, height: 3 });
+    return { outside: pixel(x - 4, y), edge: pixel(x, y), inside: pixel(x + 3, y) };
+}
+
+/** The colour of the 1px inset line the wide column draws, or null when it draws none. */
+async function columnLineColor(page) {
+    const shadow = await page.locator('#chat').evaluate(node => getComputedStyle(node).boxShadow);
+    const line = /^(.*?)\s+0px 0px 0px 1px inset$/.exec(shadow);
+    return line ? resolveColor(page, line[1]) : null;
 }
 
 const channelGap = (a, b) => Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b));
@@ -222,8 +245,8 @@ for (const { name, options, narrow } of VIEWPORTS) {
                 await bootHome(page, 'Everforest Dark');
             });
 
-            test('the chat column looks as it did before the backing: the theme tint over the page tone', async ({ page }) => {
-                expect(await columnGapFromTintOverPageTone(page, columnTint), 'channels off the tint over the page tone').toBeLessThanOrEqual(2);
+            test('the chat column is the theme tint over the Window layer', async ({ page }) => {
+                expect(await columnGapFromTintOverWindowLayer(page, columnTint), 'channels off the tint over the Window layer').toBeLessThanOrEqual(2);
             });
         });
 
@@ -234,7 +257,7 @@ for (const { name, options, narrow } of VIEWPORTS) {
 
             test('the chat column is opaque while Home is shown, whatever the wallpaper', async ({ page }) => {
                 expect(await chatBackgroundAlpha(page)).toBe(1);
-                expect(await columnGapFromTintOverPageTone(page, columnTint), 'channels off the tint over the page tone').toBeLessThanOrEqual(2);
+                expect(await columnGapFromTintOverWindowLayer(page, columnTint), 'channels off the tint over the Window layer').toBeLessThanOrEqual(2);
             });
 
             test('the backing follows Surface Transparency, so a raised transparency shows the wallpaper again', async ({ page }) => {
@@ -250,6 +273,7 @@ for (const { name, options, narrow } of VIEWPORTS) {
 
                 expect(Math.abs(await chatBackgroundAlpha(page) - tintAlpha)).toBeLessThan(0.011);
                 expect(await page.locator('#chat').evaluate(node => getComputedStyle(node).backgroundImage), 'the plain tint is all that is left').toBe('none');
+                expect(await columnLineColor(page), 'the column line is left with Home').toBeNull();
             });
 
             for (const [label, selector] of Object.entries(TARGETS)) {
@@ -288,6 +312,21 @@ for (const { name, options, narrow } of VIEWPORTS) {
                 expect(wrong, 'lines that are not the shared line colour').toEqual([]);
             });
 
+            if (narrow) {
+                test('the column fills the window, so it draws no line', async ({ page }) => {
+                    expect(await columnLineColor(page)).toBeNull();
+                });
+            } else {
+                test('the column draws a 1px line in the shared line colour, and half of the text colour with prefers-contrast: more', async ({ page }) => {
+                    const shared = await paintOf(page, 'color-mix(in srgb, var(--SmartThemeBodyColor) 25%, color-mix(in srgb, var(--sb-shell-border) 72%, transparent))');
+                    expect(await columnLineColor(page), 'the column line').toEqual(shared);
+
+                    await page.emulateMedia({ contrast: 'more' });
+                    const half = await paintOf(page, 'color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent)');
+                    expect(await columnLineColor(page), 'the column line with more contrast').toEqual(half);
+                });
+            }
+
             test('prefers-contrast: more draws the lines with half of the text colour', async ({ page }) => {
                 await page.emulateMedia({ contrast: 'more' });
                 const expected = await resolveColor(page, await page.locator(`${PANEL} .sbHomeLayout`).evaluate((layout) => {
@@ -307,25 +346,71 @@ for (const { name, options, narrow } of VIEWPORTS) {
         });
 
         if (!narrow) {
+            for (const theme of ['Everforest Dark', 'Black Orange']) {
+                test.describe(`The edge of the Home column in ${theme}`, () => {
+                    test.beforeEach(async ({ page }) => {
+                        await bootHome(page, theme);
+                    });
+
+                    test(`stands out from the page around it by ${EDGE_FLOOR}:1, with its Window layer and with its line`, async ({ page }) => {
+                        const { outside, edge, inside } = await columnEdgePixels(page);
+
+                        expect(contrastOf(inside, outside), 'the column against the page').toBeGreaterThanOrEqual(EDGE_FLOOR);
+                        expect(contrastOf(edge, outside), 'the line against the page').toBeGreaterThanOrEqual(EDGE_FLOOR);
+                    });
+
+                    test('draws a line along its edge that the fill alone does not give', async ({ page }) => {
+                        const { outside, edge, inside } = await columnEdgePixels(page);
+
+                        expect(contrastOf(edge, inside), 'the edge pixel against the column').toBeGreaterThanOrEqual(LINE_FLOOR);
+                        expect(contrastOf(edge, outside), 'the edge pixel against the page').toBeGreaterThan(contrastOf(inside, outside));
+                    });
+
+                    test('draws the line in the shared line colour', async ({ page }) => {
+                        const shared = await paintOf(page, 'color-mix(in srgb, var(--SmartThemeBodyColor) 25%, color-mix(in srgb, var(--sb-shell-border) 72%, transparent))');
+
+                        expect(await columnLineColor(page)).toEqual(shared);
+                    });
+                });
+            }
+
+            test.describe('The edge of the Home column in forced colours', () => {
+                test.beforeEach(async ({ page }) => {
+                    await bootHome(page, 'Everforest Dark');
+                    await page.emulateMedia({ forcedColors: 'active' });
+                });
+
+                test('is a 1px outline, because forced colours drop the shadow', async ({ page }) => {
+                    const column = await page.locator('#chat').evaluate((node) => {
+                        const { outlineStyle, outlineWidth, boxShadow } = getComputedStyle(node);
+                        return { outlineStyle, outlineWidth, boxShadow };
+                    });
+                    expect(column).toMatchObject({ outlineStyle: 'solid', outlineWidth: '1px' });
+
+                    const { outside, edge } = await columnEdgePixels(page);
+                    expect(contrastOf(edge, outside), 'the edge pixel against the page beside it').toBeGreaterThanOrEqual(FORCED_EDGE_FLOOR);
+                });
+            });
+
             test.describe('A light theme whose chat tint is transparent and dark', () => {
                 test.beforeEach(async ({ page }) => {
                     await bootHome(page, 'Catppuccin Latte', { tint: 'rgba(23, 23, 23, 0)' });
                 });
 
                 test('keeps a light column, because the colour of an unseen tint never becomes a surface', async ({ page }) => {
-                    expect(await columnGapFromTintOverPageTone(page, columnTint), 'channels off the tint over the page tone').toBeLessThanOrEqual(2);
-                    const pageTone = await paintOf(page, 'var(--sb-page-bg)');
+                    expect(await columnGapFromTintOverWindowLayer(page, columnTint), 'channels off the tint over the Window layer').toBeLessThanOrEqual(2);
+                    const windowLayer = await paintOf(page, 'var(--sb-layer-window)');
 
-                    expect(contrastOf(await columnPixel(page), pageTone), 'the column and the page tone are the same shade').toBeLessThan(1.05);
+                    expect(contrastOf(await columnPixel(page), windowLayer), 'the column and the Window layer are the same shade').toBeLessThan(1.05);
                 });
 
-                test('keeps the heading as readable as the page tone made it', async ({ page }) => {
-                    const pageTone = await paintOf(page, 'var(--sb-page-bg)');
+                test('keeps the heading as readable as the Window layer makes it', async ({ page }) => {
+                    const windowLayer = await paintOf(page, 'var(--sb-layer-window)');
                     const backing = await columnPixel(page);
 
                     for (const selector of ['.sbHomeTitle', '#sb-home-assistants-title']) {
                         const text = await resolveColor(page, await page.locator(`${PANEL} ${selector}`).evaluate(node => getComputedStyle(node).color));
-                        expect(contrastOf(text, backing), selector).toBeGreaterThanOrEqual(contrastOf(text, pageTone) - 0.05);
+                        expect(contrastOf(text, backing), selector).toBeGreaterThanOrEqual(contrastOf(text, windowLayer) - 0.05);
                     }
                 });
             });
@@ -337,8 +422,8 @@ for (const { name, options, narrow } of VIEWPORTS) {
                     await bootHome(page, theme);
                 });
 
-                test('the column carries the tint of the theme at its own alpha over the page tone', async ({ page }) => {
-                    expect(await columnGapFromTintOverPageTone(page, columnTint), 'channels off the tint over the page tone').toBeLessThanOrEqual(2);
+                test('the column carries the tint of the theme at its own alpha over the Window layer', async ({ page }) => {
+                    expect(await columnGapFromTintOverWindowLayer(page, columnTint), 'channels off the tint over the Window layer').toBeLessThanOrEqual(2);
                 });
 
                 for (const [label, selector] of Object.entries(TARGETS)) {
