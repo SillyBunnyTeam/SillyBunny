@@ -21,31 +21,35 @@ describe('Home display modes', () => {
         expect(parseDisplayMode(stored)).toBe(expected);
     });
 
-    test('Full renders the hero, every section and the mascot art', () => {
+    test('Full renders the hero band, every tile, the assistant portraits, Recent Chats and the mascot art', () => {
         expect(sorted(getVisibleRegions('full'))).toEqual(sorted([
             'hero',
+            'tiles',
             'getting-started',
             'assistants',
-            'links',
+            'assistant-art',
             'recent-chats',
             'mascot-art',
         ]));
     });
 
-    test('Compact swaps the hero for the one-line header and drops Getting Started and the mascot art', () => {
+    test('Compact drops the hero band, the Getting Started tile, the portraits and the mascot art', () => {
         expect(sorted(getVisibleRegions('compact'))).toEqual(sorted([
-            'bar-logo',
+            'tiles',
             'assistants',
-            'links',
             'recent-chats',
         ]));
     });
 
-    test('List Only keeps the one-line header and Recent Chats', () => {
-        expect(sorted(getVisibleRegions('list'))).toEqual(sorted([
-            'bar-logo',
-            'recent-chats',
-        ]));
+    test('List Only keeps Recent Chats', () => {
+        expect(sorted(getVisibleRegions('list'))).toEqual(['recent-chats']);
+    });
+
+    test('no mode names the header, which every mode shows', () => {
+        for (const mode of DISPLAY_MODES) {
+            expect(getVisibleRegions(mode)).not.toContain('bar-logo');
+            expect(getVisibleRegions(mode)).not.toContain('links');
+        }
     });
 
     test('an unknown mode renders like Full', () => {

@@ -775,7 +775,7 @@ async function sendWelcomePanel(chats, expand = false) {
         // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
         // SillyBunny: the shared row styles load with the template, so the sections never paint unstyled.
         const [template] = await Promise.all([
-            renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261029c', templateData, true, true, true),
+            renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261029d', templateData, true, true, true),
             ensureHomeStyles(),
         ]);
         // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.

@@ -2,11 +2,12 @@ import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { createExtrasPage } from './extras-page.js';
-import { mountGettingStarted } from './getting-started-view.js';
+import { fitCardFooters } from './footer-fit.js';
+import { getSharedGettingStartedState } from './getting-started.js';
 import { createHomePageHost } from './home-page.js';
-import { mountLinks } from './links-view.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
+import { mountTiles } from './tiles-view.js';
 import { openAbout, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
 
 /**
@@ -51,20 +52,28 @@ function mountFilteredEmptyState(panel) {
     container.append(element);
 }
 
-function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChatsSettings }) {
+function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChatsSettings }, gettingStarted) {
     const button = panel.querySelector('.sbHomeMenuButton');
     if (!(button instanceof HTMLElement)) {
         return;
     }
 
-    const actions = { setDisplayMode, openRecentChatsSettings, showWelcome, openKeyboardShortcuts, openHelp, openAbout };
+    const actions = {
+        setDisplayMode,
+        openRecentChatsSettings,
+        showWelcome,
+        showGettingStarted: () => gettingStarted.setHidden(false),
+        openKeyboardShortcuts,
+        openHelp,
+        openAbout,
+    };
     button.addEventListener('click', (event) => {
-        openHomeMenu(button, { displayMode: getDisplayMode() }, actions, { keyboard: event.detail === 0 });
+        openHomeMenu(button, { displayMode: getDisplayMode(), gettingStartedHidden: gettingStarted.isHidden() }, actions, { keyboard: event.detail === 0 });
     });
 }
 
 /**
- * Fills a rendered Home panel: version, external links, menu, sections, empty states and the display mode.
+ * Fills a rendered Home panel: version, external links, menu, tiles, assistants, empty states and the display mode.
  * @param {HTMLElement} panel The `.welcomePanel` root, before or after it is attached.
  * @param {HomeContext} context
  */
@@ -76,14 +85,17 @@ export function mountHome(panel, context) {
         link.setAttribute('target', '_blank');
         link.setAttribute('rel', 'noopener noreferrer');
     });
+    const gettingStarted = getSharedGettingStartedState();
     mountFilteredEmptyState(panel);
-    mountMenuButton(panel, context);
+    mountMenuButton(panel, context, gettingStarted);
     const pages = createHomePageHost(panel);
-    mountGettingStarted(panel);
-    mountAssistants(panel);
-    mountLinks(panel, {
+    mountTiles(panel, {
+        state: gettingStarted,
+        onRowChanged: () => applyDisplayMode(panel, panel.dataset.homePanelMode),
         openBundledExtras: opener => pages.push(createExtrasPage({ goBack: () => pages.pop() }), opener),
         openHelp,
     });
+    mountAssistants(panel);
+    fitCardFooters(panel);
     applyDisplayMode(panel, context.getDisplayMode());
 }

@@ -2,31 +2,33 @@
     <div class="sbHomeLayout">
         <header class="sbHomeHeader" aria-labelledby="sb-home-title">
             <div class="sbHomeIdentity">
-                <div class="sbHomeArt" data-sb-home-region="bar-logo" data-sb-art-placeholder="logo-32" aria-hidden="true">logo-32</div>
-                <h1 id="sb-home-title" class="sbHomeTitle">SillyBunny</h1>
-                <span class="sbHomeVersion" data-sb-home-version></span>
+                <div class="sbHomeArt" data-sb-art-placeholder="logo-32" aria-hidden="true">logo-32</div>
+                <div class="sbHomeWordmark">
+                    <h1 id="sb-home-title" class="sbHomeTitle">SillyBunny</h1>
+                    <span class="sbHomeVersion" data-sb-home-version></span>
+                </div>
             </div>
             <button type="button" class="sbHomeMenuButton" title="Main Menu" aria-label="Main Menu" aria-haspopup="menu" aria-expanded="false" data-i18n="[title]Main Menu;[aria-label]Main Menu">
                 <i class="fa-solid fa-bars" aria-hidden="true"></i>
             </button>
-            <div class="sbHomeHero" data-sb-home-region="hero">
-                <div class="sbHomeHeroText">
-                    <p class="sbHomeDescription" data-sb-copy-placeholder="true" data-sb-copy-slot="HOME-HERO-DESC">TODO(copy)</p>
-                    <div class="sbHomeFork">
-                        <p data-sb-copy-placeholder="true" data-sb-copy-slot="HOME-HERO-FORK">TODO(copy)</p>
-                        <a class="sbHomeForkLink" href="https://github.com/SillyTavern/SillyTavern" data-sb-external-link>SillyTavern</a>
-                    </div>
-                    <p class="sbHomeGreeting" data-sb-copy-placeholder="true" data-sb-copy-slot="HOME-HERO-GREETING-01">TODO(copy)</p>
-                </div>
-                <div class="sbHomeArt" data-sb-home-region="mascot-art" data-sb-art-placeholder="hero-duo" aria-hidden="true">hero-duo</div>
-            </div>
         </header>
-        <section class="sbHomeSection" data-sb-home-region="getting-started" aria-labelledby="sb-home-gs-title"></section>
+        <div class="sbHomeBand" data-sb-home-region="hero">
+            <div class="sbHomeArt" data-sb-art-placeholder="hero-duo" aria-hidden="true">hero-duo</div>
+            <div class="sbHomeHeroText">
+                <p class="sbHomeDescription" data-sb-copy-placeholder="true" data-sb-copy-slot="HOME-HERO-DESC">TODO(copy)</p>
+                <div class="sbHomeFork">
+                    <p data-sb-copy-placeholder="true" data-sb-copy-slot="HOME-HERO-FORK">TODO(copy)</p>
+                    <a class="sbHomeForkLink" href="https://github.com/SillyTavern/SillyTavern" data-sb-external-link>SillyTavern</a>
+                </div>
+                <p class="sbHomeGreeting" data-sb-copy-placeholder="true" data-sb-copy-slot="HOME-HERO-GREETING-01">TODO(copy)</p>
+            </div>
+        </div>
+        <section class="sbHomeTiles" data-sb-home-region="tiles" aria-label="Quick Links" data-i18n="[aria-label]Quick Links"></section>
         <section class="sbHomeSection" data-sb-home-region="assistants" aria-labelledby="sb-home-assistants-title">
             <div class="sbHomeGroupHeader">
                 <h2 id="sb-home-assistants-title" class="sbHomeGroupTitle" data-i18n="Assistants">Assistants</h2>
             </div>
-            <div data-sb-home-list="assistants"></div>
+            <div class="sbHomeCards" data-sb-home-list="assistants"></div>
         </section>
         <section class="sbHomeSection sbHomeRecent welcomeRecentShell" data-sb-home-region="recent-chats" aria-labelledby="welcome-recent-title">
             <div class="sbHomeGroupHeader">
@@ -104,6 +106,5 @@
                 </div>
             </div>
         </section>
-        <section class="sbHomeSection" data-sb-home-region="links" aria-label="Help and Extras" data-i18n="[aria-label]Help and Extras"></section>
     </div>
 </div>

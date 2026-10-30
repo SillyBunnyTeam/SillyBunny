@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { installFixtureChats, pickFixtureCharacters, registerFixtureChat } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -65,14 +66,15 @@ async function countModeChanges(page) {
 
 const readModeChanges = page => page.evaluate(() => window.qaModeChanges);
 
-async function pickCharacters(page, count) {
-    return page.evaluate(count => {
+/** The chat that is open now becomes a fixture, so a later request to resume it finds the file. */
+async function adoptOpenChat(page) {
+    const openChat = await readOpenChat(page);
+    const name = await page.evaluate(() => {
         const context = window.SillyTavern.getContext();
-        return context.characters
-            .filter(character => character?.avatar && character.chat)
-            .slice(0, count)
-            .map(character => ({ avatar: character.avatar, chat: character.chat }));
-    }, count);
+        return context.characters[context.characterId].name;
+    });
+    registerFixtureChat(page, { avatar: openChat.avatar, name, chat: openChat.chatId });
+    return openChat;
 }
 
 async function trackSettingsSaves(page) {
@@ -91,6 +93,7 @@ for (const { name, options } of VIEWPORTS) {
 
         test.beforeEach(async ({ page }) => {
             await protectMaintainerServer(page);
+            await installFixtureChats(page);
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });
@@ -166,7 +169,7 @@ for (const { name, options } of VIEWPORTS) {
         test('choosing Roleplay on Home resumes the latest Roleplay chat', async ({ page }) => {
             await selectSampleCharacter(page);
             await expectChat(page);
-            const openChat = await readOpenChat(page);
+            const openChat = await adoptOpenChat(page);
             await goHome(page);
             await stubRecentChats(page, [
                 { file_name: `${openChat.chatId}.jsonl`, avatar: openChat.avatar, group: undefined, last_mes: Date.now() },
@@ -272,7 +275,7 @@ for (const { name, options } of VIEWPORTS) {
         });
 
         test('choosing Roleplay on Home opens the chat with the newest last message and ignores pins', async ({ page }) => {
-            const [pinned, newest, oldest] = await pickCharacters(page, 3);
+            const [pinned, newest, oldest] = await pickFixtureCharacters(page, 3);
             expect(newest).toBeDefined();
             const requests = [];
             await page.route('**/api/chats/recent', route => {
@@ -295,7 +298,7 @@ for (const { name, options } of VIEWPORTS) {
         });
 
         test('a Roleplay choice does not open a chat once the user has picked Conversation', async ({ page }) => {
-            const [character] = await pickCharacters(page, 1);
+            const [character] = await pickFixtureCharacters(page, 1);
             let releaseRecentChats;
             const recentChatsHeld = new Promise(resolve => { releaseRecentChats = resolve; });
             await page.route('**/api/chats/recent', async route => {
@@ -327,7 +330,7 @@ for (const { name, options } of VIEWPORTS) {
         test('Ctrl+M on Home with Conversation shown resumes Roleplay', async ({ page }) => {
             await selectSampleCharacter(page);
             await expectChat(page);
-            const openChat = await readOpenChat(page);
+            const openChat = await adoptOpenChat(page);
             await goHome(page);
             await chooseModeFromMenu(page, 'conversation');
             await expectConversation(page);

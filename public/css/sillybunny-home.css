@@ -1,18 +1,35 @@
 /* ── Shell width ────────────────────────────────────────────────────────── */
 
+/* Page Width (--sheldWidth) sets the Home width the way it sets the windows' width, with 1120px as the floor.
+   dvw matches the windows rule in sillybunny-theme.css and equals the width of the shell's containing block,
+   because the page never scrolls. */
 :root {
-    --sb-home-width: min(1120px, calc(100% - 32px));
+    --sb-home-width: min(max(1120px, var(--sheldWidth, 50vw)), calc(100dvw - 32px));
 }
 
 /* Home takes a wider shell than the user's chat width. Below 769px, and on tablets up to 1180px, the shell
    is already edge to edge. A MovingUI shell the user moved or resized keeps its own geometry: MovingUI
    always saves `margin: unset` with it, and its inline `!important` values outrank this rule anyway.
-   --sb-home-widened tells the docked side panels to lay out against --sb-home-width. */
+   --sb-home-widened tells the docked side panels to lay out against --sb-home-width. The top bar takes the
+   same value, so its edges line up with the column, and the same MovingUI exception. */
 @media (min-width: 769px) {
     body:not(.movingUI) #sheld[data-sb-home='on'],
     body.movingUI #sheld[data-sb-home='on']:not([style*='margin: unset']) {
         --sb-home-widened: 1;
         width: var(--sb-home-width);
+    }
+
+    body:not(.movingUI):has(#sheld[data-sb-home='on']) #top-bar,
+    body.movingUI:has(#sheld[data-sb-home='on']:not([style*='margin: unset'])) #top-bar {
+        --sb-topbar-max-width: var(--sb-home-width);
+    }
+
+    /* Roleplay ends its column one composer gap above the window bottom (the padding of #form_sheld). Home has
+       no composer, so the chat column takes that gap itself and keeps its rounded bottom clear of the window
+       edge. This rule and data-sb-home change together, so the resize observer in RossAscends-mods.js sees one
+       size change and does not scroll #chat. */
+    #sheld[data-sb-home='on'] > #chat {
+        margin-block-end: max(var(--sb-chat-composer-edge-gap), var(--sb-safe-area-bottom));
     }
 }
 
@@ -31,11 +48,6 @@
 /* The base #chat max-height subtracts --bottomFormBlockSize, which assumes a composer below the chat. Home has none. */
 #sheld[data-sb-home='on'] > #chat {
     max-height: none;
-}
-
-/* The composer normally carries the bottom safe-area padding. Without it, the Home content keeps that space itself. */
-#sheld[data-sb-home='on'] > #chat > .welcomePanel {
-    margin-block-end: env(safe-area-inset-bottom, 0px);
 }
 
 #chat .mes[type="assistant_message"] .mes_button {
@@ -89,83 +101,53 @@
     color: var(--sb-muted-fg);
 }
 
+/* One column at every width. The 32px gap sits between sections; the header pulls the band 16px closer. */
 .sbHomeLayout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-        'header'
-        'getting-started'
-        'assistants'
-        'recent-chats'
-        'links';
-    align-content: start;
+    --sb-home-line: color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    --sb-home-tint: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    --sb-home-tint-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
     box-sizing: border-box;
-    width: min(100%, 1240px);
-    margin-inline: auto;
-    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+    width: 100%;
+    padding-block: 12px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
 }
 
-.sbHomeHeader {
-    grid-area: header;
-}
-
-.sbHomeSection {
-    align-self: start;
+.sbHomeSection,
+.sbHomeTiles {
     min-width: 0;
 }
 
-.sbHomeSection:not(:empty) {
-    margin-block-end: 24px;
-}
+/* ── Header ─────────────────────────────────────────────────────────────── */
 
-.sbHomeSection[data-sb-home-region='getting-started'] {
-    grid-area: getting-started;
-}
-
-.sbHomeSection[data-sb-home-region='assistants'] {
-    grid-area: assistants;
-}
-
-.sbHomeSection[data-sb-home-region='recent-chats'] {
-    grid-area: recent-chats;
-}
-
-.sbHomeSection[data-sb-home-region='links'] {
-    grid-area: links;
-}
-
-@container welcome-home (min-width: 1024px) {
-    .sbHomeLayout {
-        grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-        grid-template-rows: auto auto 1fr auto;
-        grid-template-areas:
-            'header header'
-            'getting-started recent-chats'
-            'assistants recent-chats'
-            '. links';
-        column-gap: 24px;
-    }
-}
-
-/* ── Header and hero ────────────────────────────────────────────────────── */
-
+/* Three tracks keep the logo, title and version truly centred whatever the width of the menu button, and the
+   44px floor of the outer tracks keeps the group clear of the button. */
 .sbHomeHeader {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-        'identity menu'
-        'hero hero';
-    align-items: start;
-    column-gap: 12px;
-    margin-block-end: 24px;
+    grid-template-columns: minmax(44px, 1fr) auto minmax(44px, 1fr);
+    grid-template-areas: '. identity menu';
+    align-items: center;
+    min-height: 44px;
+    margin-block-end: -16px;
 }
 
 .sbHomeIdentity {
     grid-area: identity;
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* Baseline alignment keeps the smaller version on the title's text line. It sits in its own box, so the logo,
+   which has no baseline, centres against the whole wordmark. */
+.sbHomeWordmark {
+    display: flex;
     align-items: baseline;
-    gap: 4px 12px;
+    gap: 0 8px;
     min-width: 0;
 }
 
@@ -175,18 +157,19 @@
     font-weight: 800;
     line-height: 1.12;
     letter-spacing: 0;
-    overflow-wrap: anywhere;
-    text-wrap: balance;
+    white-space: nowrap;
 }
 
 .sbHomeVersion {
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     line-height: 1.35;
+    white-space: nowrap;
 }
 
 .sbHomeMenuButton {
     grid-area: menu;
+    justify-self: end;
 }
 
 .sbHomeMenuButton,
@@ -232,27 +215,42 @@
     }
 }
 
-.sbHomeHero {
-    grid-area: hero;
+/* ── Band ───────────────────────────────────────────────────────────────── */
+
+.sbHomeBand {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     align-items: center;
-    gap: 16px 24px;
-    margin-block-start: 12px;
+    gap: 24px;
+    box-sizing: border-box;
+    padding: 24px 24px 32px;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-xl);
+    background: var(--sb-layer-window);
+}
+
+/* Integer 2x when the container has room, so real pixel art stays sharp at both sizes. */
+.sbHomeBand > .sbHomeArt[data-sb-art-placeholder='hero-duo'] {
+    flex-direction: column;
+    width: 640px;
+    height: 320px;
+    max-width: 100%;
+    image-rendering: pixelated;
 }
 
 .sbHomeHeroText {
     display: flex;
-    flex: 1 1 280px;
     flex-direction: column;
+    align-items: center;
     gap: 12px;
-    max-width: 62ch;
+    max-width: 65ch;
     min-width: 0;
+    text-align: center;
 }
 
-.sbHomeHeroText > p,
-.sbHomeFork > p {
+.sbHomeHeroText p {
     margin: 0;
+    max-width: 100%;
 }
 
 .sbHomeDescription,
@@ -263,9 +261,10 @@
 
 .sbHomeFork {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px 8px;
     font-size: var(--sb-type-meta);
     line-height: 1.5;
 }
@@ -283,22 +282,6 @@
 .sbHomeForkLink:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
-}
-
-.welcomePanel:is([data-home-panel-mode='compact'], [data-home-panel-mode='list']) .sbHomeHeader {
-    align-items: center;
-    margin-block-end: 16px;
-}
-
-.welcomePanel:is([data-home-panel-mode='compact'], [data-home-panel-mode='list']) .sbHomeIdentity {
-    flex-wrap: nowrap;
-    align-items: center;
-}
-
-.welcomePanel:is([data-home-panel-mode='compact'], [data-home-panel-mode='list']) .sbHomeTitle {
-    font-size: var(--sb-type-title);
-    font-weight: 700;
-    line-height: 1.18;
 }
 
 /* ── Art placeholders ───────────────────────────────────────────────────── */
@@ -319,17 +302,7 @@
     text-align: center;
 }
 
-.sbHomeArt[data-sb-art-placeholder='hero-duo'] {
-    width: 320px;
-    height: 160px;
-}
-
-.sbHomeArt[data-sb-art-placeholder='empty-tewi'] {
-    width: 96px;
-    height: 96px;
-}
-
-.sbHomeArt[data-sb-art-placeholder='gs-reisen'],
+.sbHomeArt[data-sb-art-placeholder='empty-tewi'],
 .sbHomeArt[data-sb-art-placeholder='extras-tewi'] {
     width: 96px;
     height: 96px;
@@ -337,16 +310,366 @@
 
 .sbHomeArt[data-sb-art-placeholder='row-reisen'],
 .sbHomeArt[data-sb-art-placeholder='row-tewi'] {
-    width: 64px;
-    height: 64px;
-    font-size: 9px;
-    overflow-wrap: anywhere;
+    width: 128px;
+    height: 128px;
 }
 
 .sbHomeArt[data-sb-art-placeholder='logo-32'] {
     width: 32px;
     height: 32px;
     font-size: 7px;
+}
+
+/* ── Tiles ──────────────────────────────────────────────────────────────── */
+
+/* A tile that is removed or hidden leaves no empty track, so the others share the row. */
+.sbHomeTiles {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 12px;
+}
+
+.sbHomeTile {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 132px;
+    margin: 0;
+    padding: 20px 12px 16px;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-lg);
+    background: var(--sb-home-tint);
+    color: inherit;
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeTile:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sbHomeTile:active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (hover: hover) {
+    .sbHomeTile:hover {
+        background: var(--sb-home-tint-hover);
+    }
+}
+
+.sbHomeTileIcon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    margin-block-end: 6px;
+    border-radius: 50%;
+    background: var(--sb-raised-bg);
+    font-size: 20px;
+}
+
+.sbHomeTileTitle {
+    min-width: 0;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+}
+
+.sbHomeTileSub {
+    min-width: 0;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+/* ── Assistants ─────────────────────────────────────────────────────────── */
+
+.sbHomeCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+/* The card is its own container, so the footer labels drop by the card's width and not the window's. */
+.sbHomeCard {
+    --sb-home-card-pad: 16px;
+    container: sbhomecard / inline-size;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 16px var(--sb-home-card-pad) 0;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-lg);
+    background: var(--sb-home-tint);
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sbHomeCard:hover {
+        background: var(--sb-home-tint-hover);
+    }
+}
+
+/* The footer buttons sit above the card's own button, so only a press on the card fills the card. */
+.sbHomeCard:has(.sbHomeCardOpen:active) {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeCard:has(.sbHomeCardOpen:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sbHomeCardOpen {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.sbHomeCardOpen:focus-visible {
+    outline: 2px solid transparent;
+}
+
+.sbHomeCardArt {
+    display: flex;
+    align-self: center;
+}
+
+.sbHomeCardText {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    text-align: center;
+}
+
+.sbHomeCardName {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+}
+
+.sbHomeCardSub {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.35;
+}
+
+/* The footer reaches the card's border through negative margins of the card's padding. The strip lets a click
+   fall through to the card's own button, and only the buttons in it take clicks. */
+.sbHomeCardFooter {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    margin: auto calc(-1 * var(--sb-home-card-pad)) 0;
+    padding: 4px 8px;
+    border-top: 1px solid var(--sb-home-line);
+    pointer-events: none;
+}
+
+.sbHomeCardFooter > * {
+    pointer-events: auto;
+}
+
+.sbHomeCardFooter > .sbHomeRowMenu {
+    margin-inline-start: auto;
+}
+
+.sbHomeFootButton {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 32px;
+    margin: 0;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sbHomeFootButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeFootButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeFootButton:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+/* How wide the labels are depends on the font size and on the translation, so footer-fit.js measures whether both
+   fit and sets data-sb-footer-compact on the card when they do not. The two labels then go together. While it
+   measures, data-sb-footer-measure keeps the buttons at their natural width and the menu button next to them, so
+   the row spans what it needs. If a measure is missed, the buttons shrink and the label ends in an ellipsis,
+   which keeps the menu button inside the card. */
+.sbHomeFootLabel {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbHomeCard[data-sb-footer-measure] .sbHomeFootButton {
+    flex: none;
+}
+
+.sbHomeCard[data-sb-footer-measure] .sbHomeCardFooter > .sbHomeRowMenu {
+    margin-inline-start: 0;
+}
+
+.sbHomeCard[data-sb-footer-compact] .sbHomeFootLabel {
+    display: none;
+}
+
+.sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
+    min-width: 32px;
+}
+
+/* The icon-only footer has a fixed size whatever the font: three 44px targets plus the gaps and the padding need
+   164px of footer, which is 132px of card content at the 16px card padding and 140px at the 12px one. Below 140px
+   of card content the gaps and the padding tighten, so the menu button keeps its 44px. */
+@container sbhomecard (max-width: 140px) {
+    .sbHomeCardFooter {
+        gap: 4px;
+        padding-inline: 4px;
+    }
+}
+
+/* ── More Assistants ────────────────────────────────────────────────────── */
+
+.sbHomeCard--more {
+    padding-block-end: 16px;
+}
+
+.sbHomeMoreIcon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    align-self: center;
+    width: 128px;
+    height: 128px;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--sb-muted-fg);
+    font-size: 32px;
+}
+
+.sbHomeMoreChevron {
+    display: none;
+}
+
+/* Compact has no mascot art: the portraits are gone, so the More card's icon shrinks to its row size and centres. */
+.welcomePanel[data-home-panel-mode='compact'] .sbHomeMoreIcon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+}
+
+.welcomePanel[data-home-panel-mode='compact'] .sbHomeCard--more {
+    justify-content: center;
+}
+
+/* Two cards per line is the narrow case: More Assistants becomes a short row under them. 716px is the container
+   width below which three 220px cards no longer fit in one line, so the grid and the row change together. */
+@container welcome-home (max-width: 716px) {
+    .sbHomeCards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sbHomeCard.sbHomeCard--more {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        min-height: 52px;
+        padding: 10px 16px;
+    }
+
+    .sbHomeCard--more .sbHomeMoreIcon {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+
+    /* The subtitle sits beside the name when it fits. When it wraps, the line it wraps to falls outside the
+       one-line height and is clipped. */
+    .sbHomeCard--more .sbHomeCardText {
+        flex: 1 1 auto;
+        flex-flow: row wrap;
+        align-items: baseline;
+        justify-content: flex-start;
+        gap: 0 8px;
+        max-height: calc(var(--sb-type-title) * 1.18);
+        overflow: hidden;
+        text-align: start;
+    }
+
+    .sbHomeCard--more .sbHomeCardName {
+        display: block;
+        white-space: nowrap;
+    }
+
+    .sbHomeCard--more .sbHomeMoreChevron {
+        display: inline-block;
+        flex: none;
+        color: var(--sb-muted-fg);
+        font-size: var(--sb-type-meta);
+    }
 }
 
 /* ── Recent Chats ───────────────────────────────────────────────────────── */
@@ -356,8 +679,8 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 8px 12px;
-    margin: 0 0 8px;
+    gap: 8px 16px;
+    margin: 0 0 12px;
     padding-inline: 4px;
 }
 
@@ -370,18 +693,30 @@
     letter-spacing: 0;
 }
 
+/* One row that scrolls sideways when it does not fit. The scrollbar is hidden as in the character list; the
+   buttons stay reachable by keyboard, because focus scrolls them into view. */
 .welcomeRecentTabs {
     display: flex;
-    flex-wrap: wrap;
+    flex: 0 1 auto;
     gap: 2px;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
     padding: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
     border-radius: var(--sb-radius-control);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.welcomeRecentTabs::-webkit-scrollbar {
+    display: none;
 }
 
 .welcomeRecentTab {
     -webkit-appearance: none;
     appearance: none;
+    flex: none;
     min-height: 32px;
     padding: 4px 12px;
     border: 0;
@@ -414,8 +749,8 @@
     position: relative;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-radius: var(--sb-radius-lg);
+    background: var(--sb-home-tint);
 }
 
 .welcomeRecent .recentChatList {
@@ -729,8 +1064,7 @@ body.big-avatars .welcomeRecent .chatMessage {
 
 /* ── Sections ───────────────────────────────────────────────────────────── */
 
-/* The boxed lists take the Recent Chats card radius, so the three regions read as one set. */
-.sbHomeSection .ds-pref-group,
+/* The page's boxed lists take the Recent Chats card radius, so the page reads as part of Home. */
 .sbHomePage .ds-pref-group {
     border-radius: var(--sb-radius-card);
 }
@@ -789,86 +1123,13 @@ body.big-avatars .welcomeRecent .chatMessage {
     line-height: 1.5;
 }
 
-/* The buttons drop under the text when the column is too narrow for both. */
-.sbHomeStepRow {
-    flex-wrap: wrap;
-}
 
-.sbHomeStepRow > .ds-row-text {
-    flex: 1 1 160px;
-}
-
-.sbHomeStepRow > .ds-row-suffix {
-    gap: 4px;
-    margin-inline-start: auto;
-}
-
-.sbHomeTag {
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
-    font-weight: 400;
-}
-
-.sbHomeStepRow[data-sb-step-state='skipped'] :is(.ds-row-label, .ds-row-subtitle) {
-    color: var(--sb-muted-fg);
-}
-
-.sbHomeAssistantRow {
-    position: relative;
-    min-height: 80px;
-    padding-block: 8px;
-    transition: background-color var(--sb-transition-fast);
-}
-
-/* The menu button sits on top of the row's own button, so only a press on the row's button fills the row. */
-.sbHomeAssistantRow:has(.sbHomeRowOpen:active) {
-    background: var(--sb-flat-active-bg);
-}
-
-@media (hover: hover) {
-    .sbHomeAssistantRow:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.sbHomeRowOpen {
-    -webkit-appearance: none;
-    appearance: none;
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    border: 0;
-    border-radius: inherit;
-    background: transparent;
-    cursor: pointer;
-}
-
-.sbHomeRowOpen:focus-visible {
-    outline: 2px solid transparent;
-}
-
-.sbHomeAssistantRow:has(.sbHomeRowOpen:focus-visible) {
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sbHomeAssistantPortrait {
-    display: block;
-    flex: none;
-    width: 64px;
-    height: 64px;
-    border-radius: var(--sb-radius-control);
-    object-fit: cover;
-    object-position: center;
-}
+/* ── Menu buttons of the cards ──────────────────────────────────────────── */
 
 .sbHomeRowMenu {
     -webkit-appearance: none;
     appearance: none;
-    position: relative;
-    z-index: 2;
+    flex: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -909,7 +1170,8 @@ body.big-avatars .welcomeRecent .chatMessage {
 /* ── List Only ──────────────────────────────────────────────────────────── */
 
 /* Only the header and the list are left, so the panel fills #chat and the list takes the free height.
-   The floor keeps the list usable on short windows, where #chat scrolls. */
+   The floor keeps the list usable on short windows, where #chat scrolls. The column keeps the width of the
+   other modes. */
 .welcomePanel[data-home-panel-mode='list'] {
     display: flex;
     flex: 1 0 auto;
@@ -918,19 +1180,14 @@ body.big-avatars .welcomeRecent .chatMessage {
 }
 
 .welcomePanel[data-home-panel-mode='list'] .sbHomeLayout {
-    display: flex;
     flex: 1 1 auto;
-    flex-direction: column;
-    width: min(100%, 880px);
 }
 
 .welcomePanel[data-home-panel-mode='list'] .sbHomeRecent {
     display: flex;
     flex: 1 1 auto;
-    align-self: stretch;
     flex-direction: column;
     min-height: 0;
-    margin-block-end: 0;
 }
 
 .welcomePanel[data-home-panel-mode='list'] .welcomeRecent {
@@ -996,22 +1253,52 @@ body.big-avatars .welcomeRecent .chatMessage {
 
 /* ── Narrow content and touch ───────────────────────────────────────────── */
 
-@container welcome-home (max-width: 520px) {
-    .welcomeRecentTabs {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        width: 100%;
+/* The hero art goes to 1x here. 740px is the container width at which the 2x art plus the band padding and the
+   column padding no longer fit. */
+@container welcome-home (max-width: 740px) {
+    .sbHomeBand > .sbHomeArt[data-sb-art-placeholder='hero-duo'] {
+        width: 320px;
+        height: 160px;
+    }
+}
+
+@container welcome-home (max-width: 560px) {
+    .sbHomeLayout {
+        padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
     }
 
-    .welcomeRecentTab {
-        min-width: 0;
-        white-space: normal;
-        overflow-wrap: anywhere;
+    /* The display size plus the logo and the version no longer fit between the outer tracks of the header. */
+    .sbHomeTitle {
+        font-size: var(--sb-type-headline);
+    }
+
+    .sbHomeBand {
+        padding-inline: 16px;
+    }
+
+    .sbHomeTile {
+        padding-inline: 6px;
+    }
+}
+
+/* A 360px phone leaves a 346px container. The 1x art (320px) then fits in the band only with 4px of band padding
+   and 8px of column padding, and two assistant cards per line fit their 128px portraits only with 12px of card
+   padding. */
+@container welcome-home (max-width: 380px) {
+    .sbHomeLayout {
+        padding-inline: max(8px, env(safe-area-inset-left, 0px)) max(8px, env(safe-area-inset-right, 0px));
+    }
+
+    .sbHomeBand {
+        padding-inline: 4px;
+    }
+
+    .sbHomeCard {
+        --sb-home-card-pad: 12px;
     }
 }
 
 @media (max-width: 768px) {
-    .sbHomeLayout,
     .sbHomePage {
         padding-block-start: 12px;
         padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
@@ -1038,6 +1325,14 @@ body.big-avatars .welcomeRecent .chatMessage {
         height: 44px;
     }
 
+    .sbHomeFootButton {
+        min-height: 44px;
+    }
+
+    .sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
+        min-width: 44px;
+    }
+
     .sbHomeFlatButton {
         padding-inline: 14px;
     }
@@ -1047,7 +1342,9 @@ body.big-avatars .welcomeRecent .chatMessage {
     .sbHomeMenuButton,
     .sbHomeBack,
     .sbHomeFlatButton,
-    .sbHomeAssistantRow,
+    .sbHomeTile,
+    .sbHomeCard,
+    .sbHomeFootButton,
     .sbHomeRowMenu,
     .welcomeRecentTab,
     .welcomeRecent .recentChat,
@@ -1061,7 +1358,9 @@ body.big-avatars .welcomeRecent .chatMessage {
 body.reduced-motion .sbHomeMenuButton,
 body.reduced-motion .sbHomeBack,
 body.reduced-motion .sbHomeFlatButton,
-body.reduced-motion .sbHomeAssistantRow,
+body.reduced-motion .sbHomeTile,
+body.reduced-motion .sbHomeCard,
+body.reduced-motion .sbHomeFootButton,
 body.reduced-motion .sbHomeRowMenu,
 body.reduced-motion .welcomeRecentTab,
 body.reduced-motion .welcomeRecent .recentChat,

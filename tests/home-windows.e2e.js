@@ -33,7 +33,7 @@ const CREDIT_GROUPS = ['Developers', 'Designers', 'Artists', 'Documenters', 'Tra
 const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Nahida', 'Third-Party Software'];
 
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
-const helpRow = page => page.locator('#chat > .welcomePanel [data-sb-editor-field="links-help"]');
+const helpTile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="help"]');
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const surface = host => host.locator('section.sb-dialog');
 // A push marks the covered page and a pop marks the leaving page at once, so exactly one page is left while pages slide.
@@ -497,8 +497,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            test('activating the Help row twice opens one window, and it opens again after it closes', async ({ page }) => {
-                await helpRow(page).evaluate((row) => {
+            test('activating the Help tile twice opens one window, and it opens again after it closes', async ({ page }) => {
+                await helpTile(page).evaluate((row) => {
                     row.click();
                     row.click();
                 });
@@ -510,7 +510,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await page.keyboard.press('Escape');
                 await expectClosed(page);
-                await helpRow(page).click();
+                await helpTile(page).click();
                 await expect(hosts(page)).toHaveCount(1);
             });
 
@@ -533,17 +533,17 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host).toHaveAccessibleName('About SillyBunny');
             });
 
-            test('the Help row on Home opens Help, is no longer a stub, and gives focus back to the row', async ({ page }) => {
-                await expect(helpRow(page)).not.toHaveAttribute('data-sb-stub', /.*/);
+            test('the Help tile on Home opens Help, is no longer a stub, and gives focus back to the tile', async ({ page }) => {
+                await expect(helpTile(page)).not.toHaveAttribute('data-sb-stub', /.*/);
 
-                await helpRow(page).click();
+                await helpTile(page).click();
 
                 const host = hosts(page);
                 await expect(surface(host)).toHaveClass(/\bsb-dialog--window\b/);
                 await expect(host).toHaveAccessibleName('Help');
                 await (await visiblePageClose(host)).click();
                 await expectClosed(page);
-                await expect(helpRow(page)).toBeFocused();
+                await expect(helpTile(page)).toBeFocused();
             });
         });
 

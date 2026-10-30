@@ -1,6 +1,6 @@
 /**
  * A box that stands where artwork will go. Its name is its size key in `sillybunny-home.css`.
- * @param {string} name For example `gs-reisen`.
+ * @param {string} name For example `row-reisen`.
  * @returns {HTMLDivElement}
  */
 export function createArtPlaceholder(name) {

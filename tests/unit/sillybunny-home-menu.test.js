@@ -52,6 +52,12 @@ describe('Home main menu', () => {
         expect(actions.setDisplayMode.mock.calls.map(([mode]) => mode)).toEqual(['compact', 'list']);
     });
 
+    test.each(['compact', 'list'])('leaves Show Getting Started out in %s, where the tile never shows', (displayMode) => {
+        const sections = buildHomeMenuSections({ displayMode, gettingStartedHidden: true }, allActions());
+
+        expect(labelsOf(sections).flat()).not.toContain('Show Getting Started');
+    });
+
     test('shows Show Getting Started only while Getting Started is hidden', () => {
         const hidden = buildHomeMenuSections({ displayMode: 'full', gettingStartedHidden: true }, allActions());
         const shown = buildHomeMenuSections({ displayMode: 'full', gettingStartedHidden: false }, allActions());
@@ -148,57 +154,55 @@ describe('Recent Chats row menu', () => {
 });
 
 describe('Assistant menu', () => {
-    const assistantActions = () => ({ newChat: jest.fn(), temporaryChat: jest.fn(), openInMode: jest.fn() });
+    const assistantActions = () => ({ newChatInMode: jest.fn() });
 
     test('offers the mode other than the remembered one', () => {
         expect(getOtherChatMode('roleplay')).toBe('conversation');
         expect(getOtherChatMode('conversation')).toBe('roleplay');
     });
 
-    test('offers Open in Conversation after Roleplay was the last mode', () => {
+    test('offers a new chat in Conversation after Roleplay was the last mode', () => {
         const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() });
 
-        expect(labelsOf(sections).flat()).toEqual(['New Chat', 'Temporary Chat', 'Open in Conversation']);
+        expect(labelsOf(sections)).toEqual([['New Chat in Conversation']]);
     });
 
-    test('offers Open in Roleplay after Conversation was the last mode', () => {
+    test('offers a new chat in Roleplay after Conversation was the last mode', () => {
         const sections = buildAssistantMenuSections({ lastMode: 'conversation', actions: assistantActions() });
 
-        expect(labelsOf(sections).flat()).toEqual(['New Chat', 'Temporary Chat', 'Open in Roleplay']);
+        expect(labelsOf(sections)).toEqual([['New Chat in Roleplay']]);
     });
 
     test('treats an unknown remembered mode as Roleplay', () => {
         const sections = buildAssistantMenuSections({ lastMode: undefined, actions: assistantActions() });
 
-        expect(labelsOf(sections).flat()).toContain('Open in Conversation');
+        expect(labelsOf(sections).flat()).toEqual(['New Chat in Conversation']);
     });
 
-    test('keeps the mode item in a section of its own and gives every item an explicit icon', () => {
-        const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() });
+    test('leaves New Chat and Temporary Chat to the card footer', () => {
+        const labels = ['roleplay', 'conversation'].flatMap(lastMode => labelsOf(buildAssistantMenuSections({ lastMode, actions: assistantActions() })).flat());
 
-        expect(labelsOf(sections)).toEqual([['New Chat', 'Temporary Chat'], ['Open in Conversation']]);
-        for (const item of sections.flatMap(section => section.items)) {
-            expect(item.icon).toMatch(/^fa-solid fa-[a-z-]+ fa-fw$/);
-        }
+        expect(labels.some(label => /temporary/i.test(label))).toBe(false);
+        expect(labels.every(label => label.startsWith('New Chat in '))).toBe(true);
     });
 
-    test('marks every item as a stub until its action is wired', () => {
-        const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() });
+    test.each([
+        ['roleplay', 'fa-solid fa-comments fa-fw'],
+        ['conversation', 'fa-solid fa-masks-theater fa-fw'],
+    ])('gives the item after %s an explicit icon and the stub marker', (lastMode, icon) => {
+        const [section] = buildAssistantMenuSections({ lastMode, actions: assistantActions() });
 
-        expect(sections.flatMap(section => section.items).map(item => item.data)).toEqual(Array(3).fill({ sbStub: 'true' }));
+        expect(section.items[0].icon).toBe(icon);
+        expect(section.items[0].data).toEqual({ sbStub: 'true' });
     });
 
-    test('runs the matching action for each item, passing the mode the item opens', () => {
+    test('runs the action with the mode the item opens', () => {
         const actions = assistantActions();
-        const [chats, mode] = buildAssistantMenuSections({ lastMode: 'roleplay', actions });
 
-        chats.items[0].onSelect();
-        chats.items[1].onSelect();
-        mode.items[0].onSelect();
+        buildAssistantMenuSections({ lastMode: 'roleplay', actions })[0].items[0].onSelect();
+        buildAssistantMenuSections({ lastMode: 'conversation', actions })[0].items[0].onSelect();
 
-        expect(actions.newChat).toHaveBeenCalledTimes(1);
-        expect(actions.temporaryChat).toHaveBeenCalledTimes(1);
-        expect(actions.openInMode).toHaveBeenCalledWith('conversation');
+        expect(actions.newChatInMode.mock.calls.map(([mode]) => mode)).toEqual(['conversation', 'roleplay']);
     });
 
     test('opens the shared action menu named Assistant Menu, kept inside the given bounds', () => {

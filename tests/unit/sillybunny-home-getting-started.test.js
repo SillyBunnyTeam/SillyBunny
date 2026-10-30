@@ -4,7 +4,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
-const { createGettingStartedState, formatProgress, getGettingStartedSteps } = await import('../../public/scripts/sillybunny-home/getting-started.js');
+const { createGettingStartedState, formatProgress, getGettingStartedSteps, getSharedGettingStartedState } = await import('../../public/scripts/sillybunny-home/getting-started.js');
 
 describe('Getting Started steps', () => {
     test('lists the four steps in order with their titles', () => {
@@ -86,5 +86,45 @@ describe('Getting Started state', () => {
 
         expect(() => state.setSkipped('nope', true)).toThrow(/unknown/i);
         expect(() => state.isSkipped('nope')).toThrow(/unknown/i);
+    });
+
+    test('starts shown, and hides itself once every step is skipped', () => {
+        const state = createGettingStartedState(ids);
+        expect(state.isHidden()).toBe(false);
+
+        ids.slice(0, 3).forEach(id => state.setSkipped(id, true));
+        expect(state.isHidden()).toBe(false);
+
+        state.setSkipped(ids[3], true);
+        expect(state.isHidden()).toBe(true);
+    });
+
+    test('Show Getting Started brings it back even while every step is skipped', () => {
+        const state = createGettingStartedState(ids);
+        ids.forEach(id => state.setSkipped(id, true));
+
+        state.setHidden(false);
+
+        expect(state.isHidden()).toBe(false);
+        expect(state.getResolvedCount()).toBe(4);
+    });
+
+    test('can be hidden by hand, and tells subscribers about each change of the flag only', () => {
+        const state = createGettingStartedState(ids);
+        const listener = jest.fn();
+        state.subscribe(listener);
+
+        state.setHidden(true);
+        state.setHidden(true);
+        expect(state.isHidden()).toBe(true);
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        state.setHidden(false);
+        expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    test('one shared state serves every render of Home', () => {
+        expect(getSharedGettingStartedState()).toBe(getSharedGettingStartedState());
+        expect(getSharedGettingStartedState().getTotal()).toBe(4);
     });
 });

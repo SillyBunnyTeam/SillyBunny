@@ -29,14 +29,16 @@ export function formatProgress(resolved, total) {
 }
 
 /**
- * The state behind the Getting Started row. This one lives in memory only. The view reads the state only
+ * The state behind the Getting Started tile. This one lives in memory only. Home reads the state only
  * through this interface, so a state that is stored and driven by real signals can take its place.
+ * The state hides itself once every step is resolved; `setHidden(false)` shows it again.
  * @param {readonly string[]} stepIds
  */
 export function createGettingStartedState(stepIds) {
     const known = new Set(stepIds);
     const skipped = new Set();
     const listeners = new Set();
+    let hidden = false;
 
     function requireKnown(id) {
         if (!known.has(id)) {
@@ -48,6 +50,14 @@ export function createGettingStartedState(stepIds) {
     function isDone(id) {
         requireKnown(id);
         return false;
+    }
+
+    function getResolvedCount() {
+        return [...known].filter(id => skipped.has(id) || isDone(id)).length;
+    }
+
+    function notify() {
+        listeners.forEach(listener => listener());
     }
 
     return {
@@ -67,10 +77,17 @@ export function createGettingStartedState(stepIds) {
             } else {
                 skipped.delete(id);
             }
-            listeners.forEach(listener => listener());
+            hidden ||= getResolvedCount() === known.size;
+            notify();
         },
-        getResolvedCount() {
-            return [...known].filter(id => skipped.has(id) || isDone(id)).length;
+        getResolvedCount,
+        isHidden: () => hidden,
+        setHidden(isHidden) {
+            if (hidden === Boolean(isHidden)) {
+                return;
+            }
+            hidden = Boolean(isHidden);
+            notify();
         },
         /** @param {() => void} listener @returns {() => void} Stops the listener. */
         subscribe(listener) {
@@ -78,4 +95,16 @@ export function createGettingStartedState(stepIds) {
             return () => listeners.delete(listener);
         },
     };
+}
+
+/** @type {ReturnType<typeof createGettingStartedState> | null} */
+let sharedState = null;
+
+/**
+ * Home renders its panel again after many actions. One state for the page's lifetime keeps the progress
+ * across those renders, until a stored state replaces this one.
+ */
+export function getSharedGettingStartedState() {
+    sharedState ??= createGettingStartedState(getGettingStartedSteps().map(step => step.id));
+    return sharedState;
 }

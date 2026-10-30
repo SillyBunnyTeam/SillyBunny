@@ -1,123 +1,171 @@
 import { t } from '../i18n.js';
 import { getLastChatMode } from '../sillybunny-chat-mode-memory.js';
-import { createExpanderRow, createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { createArtPlaceholder } from './art.js';
-import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
+import { markCopyPlaceholder } from './copy.js';
 import { openAssistantMenu } from './menu.js';
-import { PLACEHOLDER_ASSISTANTS, PLACEHOLDER_MORE_ASSISTANTS } from './placeholder-assistants.js';
+import { PLACEHOLDER_ASSISTANTS } from './placeholder-assistants.js';
 import { stubAction } from './stubs.js';
 
-/**
- * The source is set when the row is first shown. A browser fetches a lazy image inside a closed
- * details element anyway, and the portrait is far larger than its thumbnail.
- */
-function createPortrait(src) {
-    const image = document.createElement('img');
-    image.className = 'sbHomeAssistantPortrait';
-    image.dataset.src = src;
-    image.alt = '';
-    image.width = 64;
-    image.height = 64;
-    image.loading = 'lazy';
-    image.decoding = 'async';
-    return image;
+const STUB_MARKER = 'true';
+const MORE_SUBTITLE_SLOT = 'AS-MORE-SUB';
+
+function createElement(tag, className, text) {
+    const element = document.createElement(tag);
+    element.className = className;
+    if (text !== undefined) {
+        element.textContent = text;
+    }
+    return element;
 }
 
-function createMenuButton(menuId) {
-    const button = document.createElement('button');
+function createIcon(classes) {
+    const icon = document.createElement('i');
+    icon.className = classes;
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+}
+
+/**
+ * The accessible name is a sentence. The `title` is the tooltip, which is header-capitalised, so each one is a
+ * translatable string of its own with the assistant's name in it.
+ */
+function createStubButton(className, { name, title, onActivate }) {
+    const button = createElement('button', className);
     button.type = 'button';
-    button.id = menuId;
-    button.className = 'sbHomeRowMenu';
+    button.setAttribute('aria-label', name);
+    if (title) {
+        button.title = title;
+    }
+    button.dataset.sbStub = STUB_MARKER;
+    button.addEventListener('click', onActivate);
+    return button;
+}
+
+/**
+ * A footer control shows its icon always and its label when the footer has room for both labels. The tooltip
+ * carries the full name for the icon-only form and for a label that is cut short.
+ */
+function createFootButton({ icon, label, name, title, onActivate }) {
+    const button = createStubButton('sbHomeFootButton', { name, title, onActivate });
+    button.append(createIcon(`${icon} fa-fw`), createElement('span', 'sbHomeFootLabel', label));
+    return button;
+}
+
+function createMenuButton(id) {
+    const button = createElement('button', 'sbHomeRowMenu');
+    button.type = 'button';
+    button.id = id;
     button.title = t`Assistant Menu`;
     button.setAttribute('aria-label', t`Assistant Menu`);
     button.setAttribute('aria-haspopup', 'menu');
     button.setAttribute('aria-expanded', 'false');
-    const icon = document.createElement('i');
-    icon.className = 'fa-solid fa-ellipsis-vertical fa-fw';
-    icon.setAttribute('aria-hidden', 'true');
-    button.append(icon);
+    button.append(createIcon('fa-solid fa-ellipsis-vertical fa-fw'));
     return button;
 }
 
 /**
- * The row is the activation target, and buttons cannot nest, so an overlay button covers the row
- * under the menu button, as in a Recent Chats row. The row's own text names and describes it.
+ * The card is the activation target, and buttons cannot nest, so an overlay button covers the card behind
+ * the footer, as in a Recent Chats row. The card's own text describes it.
  */
-function createOpenButton(titleId, subtitleId) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'sbHomeRowOpen';
-    button.setAttribute('aria-labelledby', titleId);
+function createCardAction({ name, title, subtitleId, onActivate }) {
+    const button = createStubButton('sbHomeCardOpen', { name, title, onActivate });
     button.setAttribute('aria-describedby', subtitleId);
     return button;
 }
 
-function loadPortraits(container) {
-    container.querySelectorAll('img[data-src]').forEach((image) => {
-        image.src = image.dataset.src;
-        delete image.dataset.src;
-    });
+function createCardText({ name, titleId, subtitleId, slot }) {
+    const text = createElement('div', 'sbHomeCardText');
+    const title = createElement('strong', 'sbHomeCardName', name);
+    title.id = titleId;
+    const subtitle = markCopyPlaceholder(createElement('span', 'sbHomeCardSub'), slot);
+    subtitle.id = subtitleId;
+    text.append(title, subtitle);
+    return text;
 }
 
-/** The menu opens, and its items do nothing yet. */
-const STUB_ACTIONS = Object.freeze({
-    newChat: stubAction('assistant.new-chat'),
-    temporaryChat: stubAction('assistant.temporary-chat'),
-    openInMode: stubAction('assistant.open-in-mode'),
-});
-
-function createAssistantRow(assistant, panel) {
-    const prefix = assistant.portrait ? createPortrait(assistant.portrait) : createArtPlaceholder(assistant.art);
+function createAssistantCard(assistant, panel) {
     const titleId = `sb-home-assistant-${assistant.id}-title`;
     const subtitleId = `sb-home-assistant-${assistant.id}-sub`;
+    const startNewChat = stubAction('assistant.new-chat');
+    const temporaryChat = stubAction('assistant.temporary-chat');
+    const menuActions = { newChatInMode: stubAction('assistant.new-chat-in-mode') };
+
+    const card = createElement('article', 'sbHomeCard');
+    card.dataset.sbHomeKey = `assistant-${assistant.id}`;
+
+    const art = createElement('div', 'sbHomeCardArt');
+    art.dataset.sbHomeRegion = 'assistant-art';
+    art.append(createArtPlaceholder(assistant.art));
+
     const menuButton = createMenuButton(`sb-home-assistant-${assistant.id}-menu`);
-    const openButton = createOpenButton(titleId, subtitleId);
-    const activate = stubAction('assistant.activate');
-
-    const controller = createRow({
-        label: assistant.name,
-        subtitle: COPY_PLACEHOLDER,
-        field: `assistant-${assistant.id}`,
-        prefix,
-        suffix: menuButton,
-    });
-    markRowSubtitle(controller, assistant.slot);
-    controller.row.querySelector('.ds-row-label').id = titleId;
-    controller.row.querySelector('.ds-row-subtitle').id = subtitleId;
-    // Reads as "Assistant Menu Reisen": the button's own name, then the row's title.
+    // Reads as "Assistant Menu Reisen": the button's own name, then the card's title.
     menuButton.setAttribute('aria-labelledby', `${menuButton.id} ${titleId}`);
-    controller.row.classList.add('sbHomeAssistantRow');
-    controller.row.dataset.sbStub = 'true';
-    controller.row.prepend(openButton);
-
-    openButton.addEventListener('click', () => activate());
     menuButton.addEventListener('click', (event) => {
-        openAssistantMenu(
-            menuButton,
-            { lastMode: getLastChatMode(), actions: STUB_ACTIONS },
-            { keyboard: event.detail === 0, bounds: panel },
-        );
+        openAssistantMenu(menuButton, { lastMode: getLastChatMode(), actions: menuActions }, { keyboard: event.detail === 0, bounds: panel });
     });
-    return controller;
+
+    const footer = createElement('div', 'sbHomeCardFooter');
+    footer.append(
+        createFootButton({
+            icon: 'fa-solid fa-plus',
+            label: t`Start New Chat`,
+            name: t`Start new chat with ${assistant.name}`,
+            title: t`Start New Chat With ${assistant.name}`,
+            onActivate: startNewChat,
+        }),
+        createFootButton({
+            icon: 'fa-solid fa-hourglass-half',
+            label: t`Temporary Chat`,
+            name: t`Temporary Chat with ${assistant.name}`,
+            title: t`Temporary Chat With ${assistant.name}`,
+            onActivate: temporaryChat,
+        }),
+        menuButton,
+    );
+
+    card.append(
+        createCardAction({
+            name: t`New chat with ${assistant.name}`,
+            title: t`New Chat With ${assistant.name}`,
+            subtitleId,
+            onActivate: startNewChat,
+        }),
+        art,
+        createCardText({ name: assistant.name, titleId, subtitleId, slot: assistant.slot }),
+        footer,
+    );
+    return card;
+}
+
+/** A card without a footer. In a narrow grid it is a short row, and the chevron shows that it opens something. */
+function createMoreCard() {
+    const titleId = 'sb-home-assistants-more-title';
+    const subtitleId = 'sb-home-assistants-more-sub';
+    const card = createElement('article', 'sbHomeCard sbHomeCard--more');
+    card.dataset.sbHomeKey = 'assistants-more';
+
+    const icon = createElement('div', 'sbHomeMoreIcon');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.append(createIcon('fa-solid fa-user-plus'));
+
+    card.append(
+        createCardAction({ name: t`More Assistants`, subtitleId, onActivate: stubAction('assistants.more') }),
+        icon,
+        createCardText({ name: t`More Assistants`, titleId, subtitleId, slot: MORE_SUBTITLE_SLOT }),
+        createIcon('fa-solid fa-chevron-right sbHomeMoreChevron'),
+    );
+    return card;
 }
 
 /**
- * Fills the Assistants section: a boxed list of rows and a collapsed row with the rest.
+ * Fills the Assistants section: a grid with a card for each assistant and a More Assistants card.
  * @param {HTMLElement} panel The `.welcomePanel` root.
  */
 export function mountAssistants(panel) {
-    const section = panel.querySelector('[data-sb-home-region="assistants"]');
-    const list = section?.querySelector('[data-sb-home-list="assistants"]');
-    if (!list) {
+    const grid = panel.querySelector('[data-sb-home-list="assistants"]');
+    if (!grid) {
         return;
     }
 
-    const more = createExpanderRow({
-        label: t`More Assistants`,
-        field: 'assistants-more',
-        children: PLACEHOLDER_MORE_ASSISTANTS.map(assistant => createAssistantRow(assistant, panel)),
-        onToggle: open => open && loadPortraits(more.content),
-    });
-    const rows = [...PLACEHOLDER_ASSISTANTS.map(assistant => createAssistantRow(assistant, panel)), more];
-    list.replaceChildren(createPrefGroup({ field: 'assistants-group', rows }).section);
+    grid.replaceChildren(...PLACEHOLDER_ASSISTANTS.map(assistant => createAssistantCard(assistant, panel)), createMoreCard());
 }

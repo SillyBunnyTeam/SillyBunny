@@ -46,13 +46,15 @@ function commandItems(entries) {
  * @returns {import('../sillybunny-action-menu.js').ActionMenuSection[]}
  */
 export function buildHomeMenuSections({ displayMode, gettingStartedHidden = false }, actions) {
+    // The Getting Started tile exists only in Full, so the item would do nothing anywhere else.
+    const canShowGettingStarted = gettingStartedHidden && parseDisplayMode(displayMode) === 'full';
     const sections = [
         { title: t`Display Mode`, items: displayModeItems(displayMode, actions.setDisplayMode) },
         {
             items: commandItems([
                 [actions.showWelcome, t`Show Welcome`, 'fa-solid fa-hand'],
                 [actions.openRecentChatsSettings, t`Recent Chats Settings`, 'fa-solid fa-sliders'],
-                [gettingStartedHidden ? actions.showGettingStarted : undefined, t`Show Getting Started`, 'fa-solid fa-list-check'],
+                [canShowGettingStarted ? actions.showGettingStarted : undefined, t`Show Getting Started`, 'fa-solid fa-list-check'],
             ]),
         },
         {
@@ -107,9 +109,7 @@ const STUB_MARKER = Object.freeze({ sbStub: 'true' });
 
 /**
  * @typedef {object} AssistantMenuActions
- * @property {() => void} newChat
- * @property {() => void} temporaryChat
- * @property {(mode: 'roleplay' | 'conversation') => void} openInMode
+ * @property {(mode: 'roleplay' | 'conversation') => void} newChatInMode
  */
 
 /**
@@ -121,7 +121,7 @@ export function getOtherChatMode(lastMode) {
 }
 
 /**
- * New Chat and Temporary Chat open in the remembered mode. The last item opens the other one.
+ * The card's own actions open a chat in the remembered mode, so the menu offers the other one.
  * @param {object} options
  * @param {unknown} options.lastMode
  * @param {AssistantMenuActions} options.actions
@@ -129,22 +129,14 @@ export function getOtherChatMode(lastMode) {
  */
 export function buildAssistantMenuSections({ lastMode, actions }) {
     const otherMode = getOtherChatMode(lastMode);
-    const openInOther = otherMode === 'conversation'
-        ? { label: t`Open in Conversation`, icon: 'fa-solid fa-comments fa-fw' }
-        : { label: t`Open in Roleplay`, icon: 'fa-solid fa-masks-theater fa-fw' };
-    return [
-        {
-            items: [
-                { label: t`New Chat`, icon: 'fa-solid fa-plus fa-fw', data: STUB_MARKER, onSelect: () => actions.newChat() },
-                { label: t`Temporary Chat`, icon: 'fa-solid fa-hourglass-half fa-fw', data: STUB_MARKER, onSelect: () => actions.temporaryChat() },
-            ],
-        },
-        { items: [{ ...openInOther, data: STUB_MARKER, onSelect: () => actions.openInMode(otherMode) }] },
-    ];
+    const inOtherMode = otherMode === 'conversation'
+        ? { label: t`New Chat in Conversation`, icon: 'fa-solid fa-comments fa-fw' }
+        : { label: t`New Chat in Roleplay`, icon: 'fa-solid fa-masks-theater fa-fw' };
+    return [{ items: [{ ...inOtherMode, data: STUB_MARKER, onSelect: () => actions.newChatInMode(otherMode) }] }];
 }
 
 /**
- * Opens the menu of one assistant row below its button, or closes it when it is already open.
+ * Opens the menu of one assistant card below its button, or closes it when it is already open.
  * @param {HTMLElement} trigger
  * @param {{ lastMode: unknown, actions: AssistantMenuActions }} menu
  * @param {object} [options]

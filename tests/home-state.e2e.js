@@ -54,16 +54,21 @@ for (const { name, options } of VIEWPORTS) {
             await openQuietChatForSmoke(page, { selectCharacter: false });
         });
 
-        test('boots to Home without a composer and fills the shell', async ({ page }) => {
+        test('boots to Home without a composer and fills the shell down to the composer gap', async ({ page }) => {
             await expectHome(page);
 
-            const gap = await page.evaluate(() => {
+            const { gap, expectedGap } = await page.evaluate(() => {
                 const sheld = document.getElementById('sheld').getBoundingClientRect();
                 const chat = document.getElementById('chat').getBoundingClientRect();
-                return sheld.bottom - chat.bottom;
+                // Desktop Home ends where the Roleplay composer card ends, one composer gap above the shell's bottom edge.
+                const probe = document.createElement('div');
+                probe.style.cssText = 'position: absolute; visibility: hidden; padding-block-end: max(var(--sb-chat-composer-edge-gap), var(--sb-safe-area-bottom));';
+                document.body.append(probe);
+                const composerGap = parseFloat(getComputedStyle(probe).paddingBlockEnd);
+                probe.remove();
+                return { gap: sheld.bottom - chat.bottom, expectedGap: window.innerWidth >= 769 ? composerGap : 0 };
             });
-            expect(gap).toBeLessThanOrEqual(2);
-            expect(gap).toBeGreaterThanOrEqual(-2);
+            expect(Math.abs(gap - expectedGap)).toBeLessThanOrEqual(1);
         });
 
         test('opening a chat leaves Home and brings the composer back', async ({ page }) => {
