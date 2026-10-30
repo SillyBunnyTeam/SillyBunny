@@ -934,3 +934,23 @@ describe('display-only row controllers', () => {
         expect(result.row.hidden).toBe(false);
     });
 });
+
+describe('createPrefGroup heading level', () => {
+    test('titles a group with an h3 unless the page above it asks for another level', () => {
+        const heading = options => createPrefGroup({ title: 'Group', field: 'group', ...options }).section.querySelector('.ds-pref-group-heading');
+
+        expect(heading().tagName).toBe('H3');
+        expect(heading({ headingLevel: 4 }).tagName).toBe('H4');
+        expect(heading({ headingLevel: 2 }).tagName).toBe('H2');
+    });
+
+    test('keeps the group named by its heading at any level', () => {
+        const { group, section } = createPrefGroup({ title: 'Group', field: 'group', headingLevel: 4 });
+
+        expect(group.getAttribute('aria-labelledby')).toBe(section.querySelector('h4').id);
+    });
+
+    test.each([0, 7, 3.5, '4', Number.NaN])('refuses the heading level %p', (headingLevel) => {
+        expect(() => createPrefGroup({ title: 'Group', field: 'group', headingLevel })).toThrow(RangeError);
+    });
+});

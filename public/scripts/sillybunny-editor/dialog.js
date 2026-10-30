@@ -405,7 +405,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
     const syncHeaderShade = () => header.toggleAttribute('data-scrolled', body.scrollTop > 0);
     body.addEventListener('scroll', syncHeaderShade, { passive: true });
     if (search) {
-        searchToggle = createIconButton(t`Search`, 'magnifying-glass', 'sb-dialog__search-toggle');
+        searchToggle = createIconButton(search.toggleLabel ?? t`Search`, 'magnifying-glass', 'sb-dialog__search-toggle');
         const field = element('label', 'sb-dialog__search');
         field.hidden = Boolean(search.collapsed);
         const entry = element('span', 'sb-dialog__search-entry');
@@ -511,12 +511,16 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * Over a framed Popup Dialog or Window it is a page over that Popup, with Back, and with Close when it
  * has no responses. Close closes the whole chain, one level at a time, and stops at a level that refuses.
  *
+ * `search.toggleLabel` is the accessible name and tooltip of the header search button, "Search" by default.
+ * A window with other controls named "Search" gives it a more specific name, for example "Search Help".
+ * `search.label` names the field in the same way.
+ *
  * @param {object} o
  * @param {'dialog'|'window'} [o.tier='dialog']
  * @param {string} o.title
  * @param {string} [o.subtitle]
  * @param {HTMLElement|((body: HTMLElement) => void)} [o.content]
- * @param {{ placeholder?: string, label?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, onEscape?: (event: KeyboardEvent) => boolean, onChange: (query: string) => void }|null} [o.search]
+ * @param {{ placeholder?: string, label?: string, toggleLabel?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, onEscape?: (event: KeyboardEvent) => boolean, onChange: (query: string) => void }|null} [o.search]
  * @param {((trigger: HTMLElement) => object[])|null} [o.menu] Sections for openActionMenu.
  * @param {string} [o.menuLabel]
  * @param {null|{ cancel?: { label?: string }, affirmative?: { id?: string, label: string, appearance?: 'suggested'|'destructive', enabled?: boolean }, extra?: { id: string, label: string }[] }} [o.responses]

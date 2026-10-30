@@ -75,6 +75,16 @@ describe('openDialog structure', () => {
         await dialog.closed;
     });
 
+    test('names the search toggle Search, or the name the window gives it, in its label and tooltip', () => {
+        const plain = openDialog({ title: 'Plain', search: { onChange() {} } });
+        const named = openDialog({ title: 'Named', search: { toggleLabel: 'Search Help', onChange() {} } });
+
+        expect([plain.searchToggle.getAttribute('aria-label'), plain.searchToggle.title]).toEqual(['Search', 'Search']);
+        expect([named.searchToggle.getAttribute('aria-label'), named.searchToggle.title]).toEqual(['Search Help', 'Search Help']);
+        named.forceClose();
+        plain.forceClose();
+    });
+
     test('header centering uses loose tracks when the title cannot fit beside the controls', () => {
         const header = document.createElement('header');
         header.className = 'sb-dialog__header';

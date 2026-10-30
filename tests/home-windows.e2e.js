@@ -29,6 +29,12 @@ const SECTION_TITLES = [
     'Getting Around', 'Models and Connections', 'Presets and Prompts', 'Characters and Personas', 'World Info', 'Chatting',
     'Modes', 'Agents', 'Extensions and Themes', 'Search', 'Data and Importing', 'Troubleshooting',
 ];
+const SECTION_IDS = [
+    'getting-around', 'models-and-connections', 'presets-and-prompts', 'characters-and-personas', 'world-info', 'chatting',
+    'modes', 'agents', 'extensions-and-themes', 'search', 'data-and-importing', 'troubleshooting',
+];
+const FEATURED_IDS = ['connect-to-a-model', 'choose-a-preset', 'add-a-character', 'start-a-chat'];
+const FEATURED_TITLES = ['Connect to a Model', 'Choose a Preset', 'Add a Character', 'Start a Chat'];
 const STEP_TITLES = ['Connect a Model', 'Set Up a Preset', 'Get a Character Card', 'Start Chatting'];
 const CREDIT_GROUPS = ['Developers', 'Designers', 'Artists', 'Documenters', 'Translators', 'Acknowledgements'];
 const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Nahida', 'Third-Party Software'];
@@ -124,6 +130,25 @@ async function readVersion(page) {
     return page.evaluate(() => fetch('/version').then(response => response.json()));
 }
 
+const helpSidebar = host => host.locator('.sb-list-editor__sidebar');
+const exactText = text => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+/** The boxed row of a list that carries the label, whatever description or icon sits beside it. */
+const rowByLabel = (scope, label) => scope.locator('button.ds-row').filter({ has: scope.page().locator('.ds-row-label', { hasText: exactText(label) }) });
+
+/** The computed value of custom properties, resolved the way an element would see them. */
+const readToken = (page, names) => page.evaluate((properties) => {
+    const probe = document.createElement('div');
+    document.body.append(probe);
+    const values = Object.fromEntries(properties.map((name) => {
+        probe.style.backgroundColor = '';
+        probe.style.color = '';
+        probe.style.backgroundColor = `var(${name})`;
+        return [name, getComputedStyle(probe).backgroundColor];
+    }));
+    probe.remove();
+    return values;
+}, names);
+
 const aboutRow = (host, field) => host.locator(`[data-sb-editor-field="${field}"]`);
 
 /** The test data turns the reduced-motion setting on, which would skip every spring. */
@@ -147,8 +172,16 @@ async function expectSurfaceAnimates(host) {
 }
 
 for (const { name, sheet, options } of VIEWPORTS) {
-    // A phone shows the topic as a pushed page, and a desktop beside the sections.
-    const topicViewOf = host => (sheet ? shownPage(host) : host.locator('.sb-list-editor__detail'));
+    // A phone shows each Help page as a pushed page, and a desktop shows it beside the sections.
+    const helpView = host => (sheet ? shownPage(host) : host.locator('.sb-list-editor__detail')).locator('.sbHelpPage');
+    const helpTitle = host => (sheet ? shownPage(host).locator('.sb-dialog__title') : host.locator('.sb-list-editor__detail .sbHelpPageTitle'));
+    const showIndex = async (host) => {
+        if (sheet) {
+            await rowByLabel(helpSidebar(host), 'Overview').click();
+        }
+    };
+    const showSection = (host, title) => rowByLabel(helpSidebar(host), title).click();
+    const showSectionFromIndex = (host, title) => rowByLabel(helpView(host).getByRole('group', { name: 'All Sections' }), title).click();
 
     test.describe(`Home windows at ${name}`, () => {
         test.use(options);
@@ -403,108 +436,170 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('Help', () => {
-            test('lists the twelve sections with the Reisen art and the intro placeholder', async ({ page }) => {
+            test('the front page shows the Reisen art, the intro, the featured topics and all twelve sections', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
-                const sidebar = host.locator('.sb-list-editor__sidebar');
+                await showIndex(host);
+                const view = helpView(host);
 
-                await expectArt(sidebar, 'help-reisen', [96, 96]);
-                await expectSlots(sidebar, ['HELP-INTRO']);
-                await expect(sidebar.getByRole('heading', { level: 3 })).toHaveText(SECTION_TITLES);
+                await expect(view).toHaveAttribute('data-sb-help-view', 'index');
+                await expectArt(view, 'help-reisen', [96, 96]);
+                await expectSlots(view, ['HELP-INTRO', ...FEATURED_IDS.map(id => `HELP-TOPIC-${id}-DESC`), ...SECTION_IDS.map(id => `HELP-SECTION-${id}-DESC`)]);
+                await expect(view.getByRole('group', { name: 'Featured Topics' }).locator('.ds-row-label')).toHaveText(FEATURED_TITLES);
+                const sections = view.getByRole('group', { name: 'All Sections' });
+                await expect(sections.locator('.ds-row-label')).toHaveText(SECTION_TITLES);
+                await expect(sections.locator('.sbHelpRowIcon')).toHaveCount(12);
+                await expect(view.getByRole('navigation', { name: 'Breadcrumb' })).toHaveCount(0);
                 await expectNoUnmarkedPlaceholder(host);
             });
 
-            test('shows a topic with a See Also list and follows a See Also link', async ({ page }) => {
+            test('a section from the sidebar shows the section page with its topics', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
-                const sidebar = host.locator('.sb-list-editor__sidebar');
-                const topicPage = topicViewOf(host);
 
-                await sidebar.getByRole('button', { name: 'Connect to a Model' }).click();
+                await showSection(host, 'Models and Connections');
 
-                await expect(topicPage.getByRole('heading', { name: 'Connect to a Model' })).toBeVisible();
-                await expectSlots(topicPage, ['HELP-TOPIC-connect-to-a-model']);
-                const seeAlso = topicPage.getByRole('group', { name: 'See Also' });
-                await expect(seeAlso.getByRole('button')).toHaveText(['Choose a Preset', 'Fix a Connection Problem']);
-
-                await seeAlso.getByRole('button', { name: 'Choose a Preset' }).click();
-
-                await expect(topicPage.getByRole('heading', { name: 'Choose a Preset' })).toBeVisible();
-                await expectSlots(topicPage, ['HELP-TOPIC-choose-a-preset']);
+                const view = helpView(host);
+                await expect(view).toHaveAttribute('data-sb-help-view', 'section');
+                await expect(helpTitle(host)).toHaveText('Models and Connections');
+                await expectSlots(view, ['HELP-SECTION-models-and-connections-DESC', 'HELP-TOPIC-connect-to-a-model-DESC']);
+                await expect(view.getByRole('group', { name: 'Models and Connections' }).locator('.ds-row-label')).toHaveText(['Connect to a Model']);
+                await expectNoUnmarkedPlaceholder(host);
             });
 
-            if (sheet) {
-                test('a topic opens as a pushed page and Back returns to the sections', async ({ page }) => {
-                    const host = await openFromMenu(page, 'Help');
-                    const current = shownPage(host);
-                    await expect(host.locator('.sb-list-editor__detail')).toBeHidden();
-
-                    await host.locator('.sb-list-editor__sidebar').getByRole('button', { name: 'Fix a Connection Problem' }).click();
-                    await expect(current.locator('.sb-dialog__title')).toHaveText('Fix a Connection Problem');
-
-                    await current.getByRole('button', { name: 'Back', exact: true }).click();
-                    await expect(current.locator('.sb-dialog__title')).toHaveText('Help');
-                    await expect(host.locator('.sb-list-editor__sidebar').getByRole('button', { name: 'Fix a Connection Problem' })).toBeFocused();
-                });
-            } else {
-                test('keeps the open topic while the window narrows to a page and widens again', async ({ page }) => {
-                    const host = await openFromMenu(page, 'Help');
-                    await host.locator('.sb-list-editor__sidebar').getByRole('button', { name: 'Connect to a Model' }).click();
-                    const detail = host.locator('.sb-list-editor__detail');
-                    await expect(detail.getByRole('heading', { name: 'Connect to a Model' })).toBeVisible();
-
-                    await page.setViewportSize({ width: 390, height: 844 });
-                    await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Connect to a Model');
-                    await expect(host.locator('.sb-list-editor')).toHaveAttribute('data-open', 'false');
-
-                    await page.setViewportSize({ width: 1440, height: 900 });
-                    await expect(detail.getByRole('heading', { name: 'Connect to a Model' })).toBeVisible();
-                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
-                    await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Help');
-                });
-
-                test('shows the first topic beside the sections at once', async ({ page }) => {
-                    const host = await openFromMenu(page, 'Help');
-
-                    await expect(host.locator('.sb-list-editor')).toHaveAttribute('data-collapsed', 'false');
-                    await expect(host.locator('.sb-list-editor__detail').getByRole('heading', { name: 'Find Your Way Around' })).toBeVisible();
-                    await expect(host.locator('.sb-list-editor__sidebar').getByRole('button', { name: 'Find Your Way Around' })).toHaveAttribute('aria-current', 'true');
-                });
-            }
-
-            test('search filters topics by title and by section, and a status page answers no match', async ({ page }) => {
+            test('a section row on the front page shows the same section page', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
-                const sidebar = host.locator('.sb-list-editor__sidebar');
-                const topics = sidebar.locator('[data-sb-help-topic]');
-                await expect(topics).toHaveCount(12);
+                await showIndex(host);
 
-                await host.getByRole('button', { name: 'Search', exact: true }).click();
+                await rowByLabel(helpView(host), 'Troubleshooting').click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'section');
+                await expect(helpTitle(host)).toHaveText('Troubleshooting');
+                await expectSlots(helpView(host), ['HELP-SECTION-troubleshooting-DESC', 'HELP-TOPIC-fix-a-connection-problem-DESC']);
+            });
+
+            test('a featured topic row on the front page shows the topic page', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showIndex(host);
+
+                await rowByLabel(helpView(host), 'Start a Chat').click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'topic');
+                await expect(helpTitle(host)).toHaveText('Start a Chat');
+                await expectSlots(helpView(host), ['HELP-TOPIC-start-a-chat']);
+            });
+
+            test('a topic page has the trail, the body, More Information and See Also', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showSection(host, 'Models and Connections');
+
+                await rowByLabel(helpView(host), 'Connect to a Model').click();
+
+                const view = helpView(host);
+                await expect(view).toHaveAttribute('data-sb-help-view', 'topic');
+                await expect(helpTitle(host)).toHaveText('Connect to a Model');
+                await expect(view.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button')).toHaveText(['Help', 'Models and Connections']);
+                await expectSlots(view, ['HELP-TOPIC-connect-to-a-model', 'HELP-SECTION-models-and-connections-DESC', 'HELP-TOPIC-choose-a-preset-DESC', 'HELP-TOPIC-fix-a-connection-problem-DESC']);
+                await expect(view.getByRole('group', { name: 'More Information' }).locator('.ds-row-label')).toHaveText(['Models and Connections']);
+                await expect(view.getByRole('group', { name: 'See Also' }).locator('.ds-row-label')).toHaveText(['Choose a Preset', 'Fix a Connection Problem']);
+                await expectNoUnmarkedPlaceholder(host);
+            });
+
+            test('a topic without related topics has no See Also group', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showSection(host, 'Extensions and Themes');
+
+                await rowByLabel(helpView(host), 'Install an Extension').click();
+
+                await expect(helpTitle(host)).toHaveText('Install an Extension');
+                await expect(helpView(host).getByRole('group', { name: 'More Information' })).toBeVisible();
+                await expect(helpView(host).getByRole('group', { name: 'See Also' })).toHaveCount(0);
+            });
+
+            test('the trail goes up to the section page, and from there to the front page', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showSection(host, 'Models and Connections');
+                await rowByLabel(helpView(host), 'Connect to a Model').click();
+                const trail = () => helpView(host).getByRole('navigation', { name: 'Breadcrumb' });
+
+                await trail().getByRole('button', { name: 'Models and Connections', exact: true }).click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'section');
+                await expect(helpTitle(host)).toHaveText('Models and Connections');
+
+                await rowByLabel(helpView(host), 'Connect to a Model').click();
+                await trail().getByRole('button', { name: 'Help', exact: true }).click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
+                await expectArt(helpView(host), 'help-reisen', [96, 96]);
+            });
+
+            test('More Information opens the section page', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showSection(host, 'Chatting');
+                await rowByLabel(helpView(host), 'Start a Chat').click();
+
+                await rowByLabel(helpView(host).getByRole('group', { name: 'More Information' }), 'Chatting').click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'section');
+                await expect(helpTitle(host)).toHaveText('Chatting');
+            });
+
+            test('See Also opens the related topic, which can sit in another section', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showSection(host, 'Models and Connections');
+                await rowByLabel(helpView(host), 'Connect to a Model').click();
+
+                await rowByLabel(helpView(host).getByRole('group', { name: 'See Also' }), 'Choose a Preset').click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'topic');
+                await expect(helpTitle(host)).toHaveText('Choose a Preset');
+                await expectSlots(helpView(host), ['HELP-TOPIC-choose-a-preset']);
+                await expect(helpView(host).getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button')).toHaveText(['Help', 'Presets and Prompts']);
+            });
+
+            test('search lists the matching topics by section, and a result opens its topic page', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                const results = helpSidebar(host).locator('[data-sb-help-topic] .ds-row-label');
+                const nav = helpSidebar(host).locator('[data-sb-help-nav]');
+                await expect(nav).toHaveCount(13);
+
+                await host.locator('.sb-dialog__search-toggle').click();
                 const field = host.getByRole('searchbox');
-                const intro = sidebar.locator('.sbHelpIntro');
-                await expect(intro).toBeVisible();
 
                 await field.fill('preset');
-                await expect(topics).toHaveText(['Choose a Preset']);
-                await expect(intro).toHaveCount(0);
-                await expect(sidebar.locator('[data-sb-art-placeholder]')).toHaveCount(0);
+                await expect(results).toHaveText(['Choose a Preset']);
+                await expect(nav).toHaveCount(0);
+                await expect(helpSidebar(host).getByRole('group', { name: 'Presets and Prompts' })).toBeVisible();
 
                 await field.fill('troubleshooting');
-                await expect(topics).toHaveText(['Fix a Connection Problem']);
+                await expect(results).toHaveText(['Fix a Connection Problem']);
+
+                await field.fill('preset');
+                await results.first().click();
+
+                await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'topic');
+                await expect(helpTitle(host)).toHaveText('Choose a Preset');
+            });
+
+            test('a search without a match shows the status page, and clearing it brings the sections back', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await host.locator('.sb-dialog__search-toggle').click();
+                const field = host.getByRole('searchbox');
 
                 await field.fill('zzzz');
-                await expect(topics).toHaveCount(0);
+
+                await expect(helpSidebar(host).locator('[data-sb-help-topic]')).toHaveCount(0);
                 const status = host.locator('.sb-status-page');
                 await expect(status).toBeVisible();
                 await expectSlots(status, ['HELP-SEARCH-EMPTY-HEAD', 'HELP-SEARCH-EMPTY-BODY']);
 
                 await field.fill('');
-                await expect(topics).toHaveCount(12);
+                await expect(helpSidebar(host).locator('[data-sb-help-nav]')).toHaveCount(13);
                 await expect(status).toBeHidden();
-                await expectArt(sidebar, 'help-reisen', [96, 96]);
-                await expectSlots(sidebar, ['HELP-INTRO']);
             });
 
             test('the no-match page is not a second live announcement', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
-                await host.getByRole('button', { name: 'Search', exact: true }).click();
+                await host.locator('.sb-dialog__search-toggle').click();
 
                 await host.getByRole('searchbox').fill('zzzz');
 
@@ -515,15 +610,14 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
             test('Escape closes an open search first, then the window', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
-                const topics = host.locator('.sb-list-editor__sidebar [data-sb-help-topic]');
-                await host.getByRole('button', { name: 'Search', exact: true }).click();
+                await host.locator('.sb-dialog__search-toggle').click();
                 await host.getByRole('searchbox').fill('preset');
-                await expect(topics).toHaveCount(1);
+                await expect(helpSidebar(host).locator('[data-sb-help-topic]')).toHaveCount(1);
 
                 await page.keyboard.press('Escape');
 
                 await expect(host.getByRole('searchbox')).toBeHidden();
-                await expect(topics).toHaveCount(12);
+                await expect(helpSidebar(host).locator('[data-sb-help-nav]')).toHaveCount(13);
                 await expect(hosts(page)).toHaveCount(1);
 
                 await page.keyboard.press('Escape');
@@ -531,6 +625,454 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expectClosed(page);
                 await expect(menuButton(page)).toBeFocused();
             });
+
+            test('a topic that is added to a section shows up everywhere without other changes', async ({ page }) => {
+                await page.evaluate(async () => {
+                    const { getHelpSections } = await import('/scripts/sillybunny-help/topics.js');
+                    const { openHelpWindow } = await import('/scripts/sillybunny-help/help-window.js');
+                    const getSections = () => {
+                        const sections = getHelpSections();
+                        sections.find(section => section.id === 'troubleshooting').topics.push({
+                            id: 'fix-a-slow-reply',
+                            title: 'Fix a Slow Reply',
+                            descriptionSlot: 'HELP-TOPIC-fix-a-slow-reply-DESC',
+                            bodySlot: 'HELP-TOPIC-fix-a-slow-reply',
+                            featured: true,
+                            seeAlso: ['fix-a-connection-problem'],
+                        });
+                        return sections;
+                    };
+                    await openHelpWindow({ getSections });
+                });
+                const host = hosts(page);
+                await expect(host).toBeVisible();
+
+                await showIndex(host);
+                await expect(helpView(host).getByRole('group', { name: 'Featured Topics' }).locator('.ds-row-label')).toHaveText([...FEATURED_TITLES, 'Fix a Slow Reply']);
+
+                await showSectionFromIndex(host, 'Troubleshooting');
+                await expect(helpView(host).getByRole('group', { name: 'Troubleshooting' }).locator('.ds-row-label')).toHaveText(['Fix a Connection Problem', 'Fix a Slow Reply']);
+
+                await rowByLabel(helpView(host), 'Fix a Slow Reply').click();
+                await expect(helpTitle(host)).toHaveText('Fix a Slow Reply');
+                await expectSlots(helpView(host), ['HELP-TOPIC-fix-a-slow-reply']);
+                await expect(helpView(host).getByRole('group', { name: 'See Also' }).locator('.ds-row-label')).toHaveText(['Fix a Connection Problem']);
+            });
+
+            const OUTLINES = {
+                index: sheet ? ['H2 Overview', 'H3 Featured Topics', 'H3 All Sections'] : ['H2 Help', 'H3 Featured Topics', 'H3 All Sections'],
+                section: sheet ? ['H2 Models and Connections'] : ['H2 Help', 'H3 Models and Connections'],
+                topic: sheet ? ['H2 Connect to a Model', 'H3 More Information', 'H3 See Also'] : ['H2 Help', 'H3 Connect to a Model', 'H4 More Information', 'H4 See Also'],
+            };
+            const readOutline = host => host.locator('h2, h3, h4, h5, h6').evaluateAll(nodes => nodes
+                .filter(node => node.checkVisibility())
+                .map(node => `${node.tagName} ${node.textContent.trim()}`));
+
+            test('the headings nest under the title of the window without skipping a level', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showIndex(host);
+                await expect.poll(() => readOutline(host)).toEqual(OUTLINES.index);
+
+                await showSectionFromIndex(host, 'Models and Connections');
+                await expect.poll(() => readOutline(host)).toEqual(OUTLINES.section);
+
+                await rowByLabel(helpView(host), 'Connect to a Model').click();
+                await expect.poll(() => readOutline(host)).toEqual(OUTLINES.topic);
+            });
+
+            test('every page is a region named after its title, so a page that takes focus is announced', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showIndex(host);
+                await expect(helpView(host)).toHaveAttribute('role', 'region');
+                await expect(helpView(host)).toHaveAccessibleName('Overview');
+
+                await showSectionFromIndex(host, 'Models and Connections');
+                await expect(helpView(host)).toHaveAttribute('role', 'region');
+                await expect(helpView(host)).toHaveAccessibleName('Models and Connections');
+
+                await rowByLabel(helpView(host), 'Connect to a Model').click();
+                await expect(helpView(host)).toHaveAttribute('role', 'region');
+                await expect(helpView(host)).toHaveAccessibleName('Connect to a Model');
+            });
+
+            test('going up with the trail or More Information puts focus on something that has a name', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showSection(host, 'Chatting');
+                await rowByLabel(helpView(host), 'Start a Chat').click();
+
+                await rowByLabel(helpView(host).getByRole('group', { name: 'More Information' }), 'Chatting').click();
+                await expect(host.locator(':focus')).toHaveAccessibleName('Chatting');
+
+                await rowByLabel(helpView(host), 'Start a Chat').click();
+                await helpView(host).getByRole('button', { name: 'Help', exact: true }).click();
+                await expect(host.locator(':focus')).toHaveAccessibleName('Overview');
+            });
+
+            test('the search button is named Search Help, and the Search section keeps its name', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+
+                await expect(host.getByRole('button', { name: 'Search Help', exact: true })).toHaveCount(1);
+                await expect(host.locator('.sb-dialog__search-toggle')).toHaveAttribute('title', 'Search Help');
+                await expect(host.getByRole('button', { name: 'Search', exact: true })).toHaveCount(1);
+                await expect(host.getByRole('button', { name: 'Search', exact: true })).toHaveAttribute('data-sb-help-nav', 'search');
+
+                await host.getByRole('button', { name: 'Search Help', exact: true }).click();
+                await expect(host.getByRole('searchbox', { name: 'Search Help' })).toBeVisible();
+            });
+
+            test('a model that is not valid is refused, and no window opens', async ({ page }) => {
+                const message = await page.evaluate(async () => {
+                    const { getHelpSections } = await import('/scripts/sillybunny-help/topics.js');
+                    const { openHelpWindow } = await import('/scripts/sillybunny-help/help-window.js');
+                    const getSections = () => {
+                        const sections = getHelpSections();
+                        sections[0].topics[0].seeAlso.push('no-such-topic');
+                        return sections;
+                    };
+                    try {
+                        await openHelpWindow({ getSections });
+                    } catch (error) {
+                        return error.message;
+                    }
+                    return '';
+                });
+
+                expect(message).toContain('no-such-topic');
+                await expectClosed(page);
+            });
+
+            if (sheet) {
+                test('opening at the sections and then widening shows the front page beside them', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+
+                    await page.setViewportSize({ width: 1440, height: 900 });
+
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
+                    await expect(helpSidebar(host).locator('[aria-current="page"]')).toHaveText(['Overview']);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('a section page that is open keeps its place when the window widens', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Chatting');
+                    await expect(helpTitle(host)).toHaveText('Chatting');
+
+                    await page.setViewportSize({ width: 1440, height: 900 });
+
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'section');
+                    await expect(host.locator('.sb-list-editor__detail .sbHelpPageTitle')).toHaveText('Chatting');
+                    await expect(helpSidebar(host).locator('[aria-current="page"]')).toHaveText(['Chatting']);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('a search result shows the description of its topic', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await host.locator('.sb-dialog__search-toggle').click();
+
+                    await host.getByRole('searchbox').fill('preset');
+
+                    const description = helpSidebar(host).locator('[data-sb-help-topic] .ds-row-subtitle');
+                    await expect(description).toBeVisible();
+                    await expect(description).toHaveText('TODO(copy)');
+                    await expectSlots(helpSidebar(host), ['HELP-TOPIC-choose-a-preset-DESC']);
+                    await expectNoUnmarkedPlaceholder(host);
+                });
+
+                test('the sections come first on a phone, with Overview at the top and no topic page yet', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+
+                    await expect(host.locator('.sb-list-editor__detail')).toBeHidden();
+                    await expect(helpSidebar(host).locator('[data-sb-help-nav]').locator('.ds-row-label')).toHaveText(['Overview', ...SECTION_TITLES]);
+                    await expect(helpSidebar(host).locator('[data-sb-art-placeholder]')).toHaveCount(0);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('Overview pushes the front page, and Back returns to the sections', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+
+                    await showIndex(host);
+                    await expect(helpTitle(host)).toHaveText('Overview');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpTitle(host)).toHaveText('Help');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                    await expect(rowByLabel(helpSidebar(host), 'Overview')).toBeFocused();
+                });
+
+                test('a section and a topic push one page each, and Back pops them one at a time', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+                    await expect(helpTitle(host)).toHaveText('Connect to a Model');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
+
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpTitle(host)).toHaveText('Models and Connections');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpTitle(host)).toHaveText('Help');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                    await expect(rowByLabel(helpSidebar(host), 'Models and Connections')).toBeFocused();
+                });
+
+                test('Escape pops one page per press and then closes the window', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+                    await expect(helpTitle(host)).toHaveText('Connect to a Model');
+
+                    await page.keyboard.press('Escape');
+                    await expect(helpTitle(host)).toHaveText('Models and Connections');
+                    await page.keyboard.press('Escape');
+                    await expect(helpTitle(host)).toHaveText('Help');
+                    await expect(hosts(page)).toHaveCount(1);
+
+                    await page.keyboard.press('Escape');
+                    await expectClosed(page);
+                    await expect(menuButton(page)).toBeFocused();
+                });
+
+                test('the section link of the trail agrees with Back', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+
+                    await helpView(host).getByRole('button', { name: 'Models and Connections', exact: true }).click();
+
+                    await expect(helpTitle(host)).toHaveText('Models and Connections');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpTitle(host)).toHaveText('Help');
+                });
+
+                test('the Help link of the trail leaves one page above the sections, so Back returns to them', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+
+                    await helpView(host).getByRole('button', { name: 'Help', exact: true }).click();
+
+                    await expect(helpTitle(host)).toHaveText('Overview');
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpTitle(host)).toHaveText('Help');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('See Also swaps the topic on its page, and Back returns to the page before it', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+
+                    await rowByLabel(helpView(host).getByRole('group', { name: 'See Also' }), 'Choose a Preset').click();
+
+                    await expect(helpTitle(host)).toHaveText('Choose a Preset');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpTitle(host)).toHaveText('Models and Connections');
+                });
+
+                test('a search result pushes its topic, and Back returns to the results', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await host.locator('.sb-dialog__search-toggle').click();
+                    await host.getByRole('searchbox').fill('preset');
+
+                    await helpSidebar(host).locator('[data-sb-help-topic]').click();
+                    await expect(helpTitle(host)).toHaveText('Choose a Preset');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+
+                    await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                    await expect(helpSidebar(host).locator('[data-sb-help-topic] .ds-row-label')).toHaveText(['Choose a Preset']);
+                    await expect(host.getByRole('searchbox')).toHaveValue('preset');
+                });
+
+                test('Close on a deep page closes the whole window and gives focus back to the Help tile', async ({ page }) => {
+                    await helpTile(page).click();
+                    const host = hosts(page);
+                    await expect(host).toBeVisible();
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+                    await expect(helpTitle(host)).toHaveText('Connect to a Model');
+
+                    await (await visiblePageClose(host)).click();
+
+                    await expectClosed(page);
+                    await expect(helpTile(page)).toBeFocused();
+                });
+            } else {
+                test('the front page that is open keeps its place when the window narrows and widens', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
+
+                    await page.setViewportSize({ width: 390, height: 844 });
+                    await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Overview');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+
+                    await page.setViewportSize({ width: 1440, height: 900 });
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
+                    await expect(helpSidebar(host).locator('[aria-current="page"]')).toHaveText(['Overview']);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('a section page that is open keeps its place when the window narrows and widens', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Chatting');
+                    await expect(helpTitle(host)).toHaveText('Chatting');
+
+                    await page.setViewportSize({ width: 390, height: 844 });
+                    await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Chatting');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
+
+                    await page.setViewportSize({ width: 1440, height: 900 });
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'section');
+                    await expect(helpTitle(host)).toHaveText('Chatting');
+                    await expect(helpSidebar(host).locator('[aria-current="page"]')).toHaveText(['Chatting']);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('a search result keeps its topic as one line, because the open page is beside it', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await host.locator('.sb-dialog__search-toggle').click();
+
+                    await host.getByRole('searchbox').fill('preset');
+
+                    const description = helpSidebar(host).locator('[data-sb-help-topic] .ds-row-subtitle');
+                    await expect(description).toBeHidden();
+                    await expectSlots(helpSidebar(host), ['HELP-TOPIC-choose-a-preset-DESC']);
+                });
+
+                test('the selected row has the neutral selected fill, an accent icon and no stripe', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    const selected = helpSidebar(host).locator('[aria-current="page"]');
+                    await expect(selected).toHaveText(['Models and Connections']);
+                    await page.mouse.move(2, 2);
+                    await selected.evaluate(node => node.blur());
+
+                    const expected = await readToken(page, ['--sb-flat-selected-bg', '--sb-accent']);
+                    const actual = await selected.evaluate(node => ({
+                        background: getComputedStyle(node).backgroundColor,
+                        shadow: getComputedStyle(node).boxShadow,
+                        borderLeft: getComputedStyle(node).borderInlineStartWidth,
+                        icon: getComputedStyle(node.querySelector('.sbHelpRowIcon')).color,
+                        weight: getComputedStyle(node.querySelector('.ds-row-label')).fontWeight,
+                    }));
+                    const other = await helpSidebar(host).locator('[data-sb-help-nav="chatting"] .ds-row-label').evaluate(node => getComputedStyle(node).fontWeight);
+
+                    expect(actual.background).toBe(expected['--sb-flat-selected-bg']);
+                    expect(actual.shadow).toBe('none');
+                    expect(actual.borderLeft).toBe('0px');
+                    expect(actual.icon).toBe(expected['--sb-accent']);
+                    expect(actual.weight).toBe(other);
+                });
+
+                test('the selected row keeps a selected fill while the pointer is over it, and the focus ring still shows', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    const selected = helpSidebar(host).locator('[aria-current="page"]');
+                    const expected = await readToken(page, ['--sb-flat-selected-hover-bg', '--sb-flat-hover-bg']);
+
+                    await selected.hover();
+                    await expect.poll(() => selected.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(expected['--sb-flat-selected-hover-bg']);
+                    await helpSidebar(host).locator('[data-sb-help-nav="chatting"]').hover();
+                    await expect.poll(() => helpSidebar(host).locator('[data-sb-help-nav="chatting"]').evaluate(node => getComputedStyle(node).backgroundColor)).toBe(expected['--sb-flat-hover-bg']);
+
+                    await page.mouse.move(2, 2);
+                    await page.keyboard.press('Shift');
+                    await selected.focus();
+                    await expect.poll(() => selected.evaluate(node => getComputedStyle(node).boxShadow)).not.toBe('none');
+                });
+
+                test('in forced colours the selected row is outlined, and the others are not', async ({ page }) => {
+                    await page.emulateMedia({ forcedColors: 'active' });
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+
+                    const outline = row => helpSidebar(host).locator(`[data-sb-help-nav="${row}"]`).evaluate(node => getComputedStyle(node).outlineStyle);
+
+                    expect(await outline('models-and-connections')).toBe('solid');
+                    expect(await outline('chatting')).toBe('none');
+                });
+
+                test('opens on the front page beside the sections, with Overview selected', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+
+                    await expect(host.locator('.sb-list-editor')).toHaveAttribute('data-collapsed', 'false');
+                    await expect(helpSidebar(host).locator('[data-sb-help-nav]').locator('.ds-row-label')).toHaveText(['Overview', ...SECTION_TITLES]);
+                    await expect(helpSidebar(host).locator('[aria-current="page"]')).toHaveText(['Overview']);
+                    await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
+                    await expect(helpSidebar(host).locator('[data-sb-art-placeholder]')).toHaveCount(0);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                });
+
+                test('the sidebar follows the page: a section, a topic of another section, and the front page', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    const current = helpSidebar(host).locator('[aria-current="page"]');
+
+                    await rowByLabel(helpView(host).getByRole('group', { name: 'All Sections' }), 'Chatting').click();
+                    await expect(current).toHaveText(['Chatting']);
+
+                    await rowByLabel(helpView(host), 'Start a Chat').click();
+                    await expect(current).toHaveText(['Chatting']);
+
+                    await rowByLabel(helpView(host).getByRole('group', { name: 'See Also' }), 'Add a Character').click();
+                    await expect(helpTitle(host)).toHaveText('Add a Character');
+                    await expect(current).toHaveText(['Characters and Personas']);
+
+                    await helpView(host).getByRole('button', { name: 'Help', exact: true }).click();
+                    await expect(current).toHaveText(['Overview']);
+                });
+
+                test('a click in the sidebar keeps focus on its row, and a click in the page moves focus to the new heading', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+
+                    await rowByLabel(helpSidebar(host), 'Models and Connections').click();
+                    await expect(rowByLabel(helpSidebar(host), 'Models and Connections')).toBeFocused();
+
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+                    await expect(helpTitle(host)).toBeFocused();
+
+                    await helpView(host).getByRole('button', { name: 'Models and Connections', exact: true }).click();
+                    await expect(helpTitle(host)).toBeFocused();
+                    await expect(helpTitle(host)).toHaveText('Models and Connections');
+                });
+
+                test('keeps the open topic while the window narrows to pages and widens again', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Help');
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+                    await expect(helpTitle(host)).toHaveText('Connect to a Model');
+
+                    await page.setViewportSize({ width: 390, height: 844 });
+                    await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Connect to a Model');
+                    await expect(host.locator('.sb-list-editor')).toHaveAttribute('data-open', 'false');
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
+
+                    await page.setViewportSize({ width: 1440, height: 900 });
+                    await expect(helpTitle(host)).toHaveText('Connect to a Model');
+                    await expect(helpSidebar(host).locator('[aria-current="page"]')).toHaveText(['Models and Connections']);
+                    await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
+                    await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Help');
+                });
+
+                test('Escape on any page closes the window, and focus returns to the Help tile', async ({ page }) => {
+                    await helpTile(page).click();
+                    const host = hosts(page);
+                    await expect(host).toBeVisible();
+                    await showSection(host, 'Models and Connections');
+                    await rowByLabel(helpView(host), 'Connect to a Model').click();
+                    await expect(helpTitle(host)).toHaveText('Connect to a Model');
+
+                    await page.keyboard.press('Escape');
+
+                    await expectClosed(page);
+                    await expect(helpTile(page)).toBeFocused();
+                });
+            }
 
             test('activating the Help tile twice opens one window, and it opens again after it closes', async ({ page }) => {
                 await helpTile(page).evaluate((row) => {
@@ -1203,6 +1745,7 @@ test.describe('Home windows with motion on a phone', () => {
 
     test.beforeEach(async ({ page }) => {
         await protectMaintainerServer(page);
+        await installFixtureChats(page);
         await useMotion(page);
         await openQuietChatForSmoke(page, { selectCharacter: false });
         await expectHome(page);
@@ -1233,21 +1776,44 @@ test.describe('Home windows with motion on a phone', () => {
         await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
     });
 
-    test('a Help topic slides in as a page and Back returns focus to its button', async ({ page }) => {
+    test('Help slides a section and a topic in as pages, and the trail and Back slide them out', async ({ page }) => {
         const host = await openFromMenu(page, 'Help');
         const title = shownPage(host).locator('.sb-dialog__title');
-        const topic = host.locator('.sb-list-editor__sidebar').getByRole('button', { name: 'Fix a Connection Problem' });
+        const section = rowByLabel(helpSidebar(host), 'Troubleshooting');
         await expect.poll(() => runningAnimations(host)).toBe(0);
 
-        await topic.click();
+        await section.click();
+        await expectSurfaceAnimates(host);
+        await expect(title).toHaveText('Troubleshooting');
+
+        await rowByLabel(shownPage(host), 'Fix a Connection Problem').click();
         await expectSurfaceAnimates(host);
         await expect(title).toHaveText('Fix a Connection Problem');
+        await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
+
+        await shownPage(host).getByRole('button', { name: 'Troubleshooting', exact: true }).click();
+        await expectSurfaceAnimates(host);
+        await expect(title).toHaveText('Troubleshooting');
+        await expect(host.locator('.sb-dialog__page')).toHaveCount(2);
 
         await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
         await expectSurfaceAnimates(host);
         await expect(title).toHaveText('Help');
         await expect(host.locator('.sb-dialog__page')).toHaveCount(1);
-        await expect(topic).toBeFocused();
+        await expect(section).toBeFocused();
+    });
+
+    test('Help swaps the topic of a page with See Also without sliding a second page in', async ({ page }) => {
+        const host = await openFromMenu(page, 'Help');
+        await rowByLabel(helpSidebar(host), 'Models and Connections').click();
+        await rowByLabel(shownPage(host), 'Connect to a Model').click();
+        await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Connect to a Model');
+        await expectSurfaceAnimates(host);
+
+        await rowByLabel(shownPage(host).getByRole('group', { name: 'See Also' }), 'Choose a Preset').click();
+
+        await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Choose a Preset');
+        await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
     });
 });
 

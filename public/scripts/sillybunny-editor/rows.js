@@ -633,9 +633,13 @@ export function createButtonRow({ label, icon, field, id, danger = false, onActi
  * @param {string} [options.subtitle]
  * @param {(Node|{row: HTMLElement})[]} [options.rows=[]]
  * @param {Node} [options.headerSuffix]
+ * @param {number} [options.headingLevel=3] Level of the title heading, 1 to 6. A group below a page heading takes the next level.
  * @returns {object}
  */
-export function createPrefGroup({ title, subtitle, field, id, rows = [], headerSuffix }) {
+export function createPrefGroup({ title, subtitle, field, id, rows = [], headerSuffix, headingLevel = 3 }) {
+    if (!Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6) {
+        throw new RangeError(`A group heading level is a whole number from 1 to 6, not ${headingLevel}.`);
+    }
     const section = element('section', 'sb-editor-section');
     markField(section, field, id);
     const group = element('div', 'ds-pref-group');
@@ -643,7 +647,7 @@ export function createPrefGroup({ title, subtitle, field, id, rows = [], headerS
     if (title || subtitle) {
         const header = element('div', 'ds-pref-group-header');
         if (title) {
-            const heading = element('h3', 'ds-pref-group-heading', title);
+            const heading = element(`h${headingLevel}`, 'ds-pref-group-heading', title);
             ensureId(heading);
             group.setAttribute('aria-labelledby', heading.id);
             header.append(heading);

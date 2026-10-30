@@ -1,76 +1,57 @@
 import { t } from '../i18n.js';
-import { createArtPlaceholder } from '../sillybunny-home/art.js';
-import { COPY_PLACEHOLDER, markCopyPlaceholder } from '../sillybunny-home/copy.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
+import { COPY_PLACEHOLDER, markRowSubtitle } from '../sillybunny-home/copy.js';
 import { createListEditor, isListEditorCollapsed } from '../sillybunny-editor/list-shell.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
-import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
-import { filterHelpSections, findHelpTopic, getHelpSections } from './topics.js';
+import {
+    createNoMatchPage,
+    createRowIcon,
+    createView,
+    getNavigationKey,
+    getViewAncestry,
+    getViewFocusTarget,
+    getViewTitle,
+    INDEX_VIEW,
+    isSameView,
+    OVERVIEW_KEY,
+    sectionView,
+    topicView,
+} from './help-views.js';
+import { filterHelpSections, getHelpSections, validateHelpSections } from './topics.js';
 
-/** Below this width of the window body, the sections and the topic stack as pages. */
+/** Below this width of the window body, the sections and the page stack as pages. */
 const COLLAPSE_AT = 600;
+const OVERVIEW_ICON = 'book-open';
 
-function createIntro() {
-    const intro = document.createElement('div');
-    intro.className = 'sbHelpIntro';
-    intro.append(createArtPlaceholder('help-reisen'), markCopyPlaceholder(document.createElement('p'), 'HELP-INTRO'));
-    return intro;
-}
-
-function createNoMatchPage() {
-    const { element } = createStatusPage({ icon: 'magnifying-glass', title: COPY_PLACEHOLDER, description: COPY_PLACEHOLDER, compact: true });
-    markCopyPlaceholder(element.querySelector('.sb-status-page__title'), 'HELP-SEARCH-EMPTY-HEAD');
-    markCopyPlaceholder(element.querySelector('.sb-status-page__description'), 'HELP-SEARCH-EMPTY-BODY');
-    // The search announces "No results" itself, so the page must not announce a second time.
-    element.removeAttribute('role');
-    return element;
-}
+const countTopics = sections => sections.reduce((sum, section) => sum + section.topics.length, 0);
 
 /**
- * @param {import('./topics.js').HelpTopic} topic
- * @param {object} options
- * @param {boolean} options.heading Whether the view names the topic. A pushed page already shows the title in its header.
- * @param {(id: string) => void} options.openTopic
- */
-function createTopicView(topic, { heading, openTopic }) {
-    const view = document.createElement('div');
-    view.className = 'sbHelpTopic';
-    if (heading) {
-        const title = document.createElement('h3');
-        title.className = 'sbHelpTopicTitle';
-        title.textContent = topic.title;
-        view.append(title);
-    }
-    view.append(markCopyPlaceholder(document.createElement('p'), `HELP-TOPIC-${topic.id}`));
-
-    const related = topic.seeAlso.map(id => findHelpTopic(id)).filter(Boolean);
-    if (related.length > 0) {
-        const rows = related.map(({ topic: other }) => createRow({
-            label: other.title,
-            field: `help-see-also-${other.id}`,
-            activatable: true,
-            onActivate: () => openTopic(other.id),
-        }));
-        view.append(createPrefGroup({ title: t`See Also`, field: `help-see-also-${topic.id}`, rows }).section);
-    }
-    return view;
-}
-
-/**
- * Opens the Help window. The sections sit in a sidebar and the open topic beside it. Where the window is too
- * narrow for both, the sections come first and a topic opens as a pushed page with Back, the way the Chat
- * Archive collapses its locations.
+ * Opens the Help window: the front page, a section page for each section, and a topic page for each topic.
+ *
+ * The sections sit in a sidebar and the open page beside it. A move inside the page replaces the page, and the
+ * trail of a topic is the way up, because a pushed page would cover the sidebar. Where the window is too narrow
+ * for both, the sections come first and each deeper page is pushed with Back, the way the Chat Archive
+ * collapses its locations. The trail still goes up there: it pops to the page it names, or, when that page is
+ * not in the stack, makes the first pushed page that page, so Back and the trail agree.
+ * @param {object} [options]
+ * @param {() => import('./topics.js').HelpSection[]} [options.getSections] The model to show, for a window that needs more topics than the shipped ones.
  * @returns {Promise<ReturnType<typeof openDialog>>}
  */
-export async function openHelpWindow() {
+export async function openHelpWindow({ getSections = getHelpSections } = {}) {
     await ensureWindowStyles();
+    const sections = getSections();
+    validateHelpSections(sections);
+    const entries = [
+        { key: OVERVIEW_KEY, label: t`Overview`, icon: OVERVIEW_ICON, view: INDEX_VIEW },
+        ...sections.map(section => ({ key: section.id, label: section.title, icon: section.icon, view: sectionView(section) })),
+    ];
     let query = '';
-    /** @type {{ topic: import('./topics.js').HelpTopic } | null} */
-    let pageTopic = null;
-    /** @type {ReturnType<ReturnType<typeof openDialog>['push']> | null} */
-    let topicPage = null;
+    /** @type {import('./help-views.js').HelpView} The page that is shown, or that was shown last while the window is narrow and only the sections are. */
+    let view = INDEX_VIEW;
+    /** @type {{ view: import('./help-views.js').HelpView, root: HTMLElement, handle: ReturnType<ReturnType<typeof openDialog>['push']> | null }[]} The pushed pages of a narrow window, bottom first. */
+    let pages = [];
     /** @type {boolean | null} */
     let collapsedNow = null;
     /** @type {ReturnType<typeof createListEditor> | null} The list builds its sidebar while it is created, before this is set. */
@@ -80,7 +61,7 @@ export async function openHelpWindow() {
         tier: 'window',
         title: t`Help`,
         className: 'sbHelpDialog',
-        search: { collapsed: true, onChange: (value) => { query = value; editor?.refresh(); } },
+        search: { collapsed: true, label: t`Search Help`, toggleLabel: t`Search Help`, onChange: (value) => { query = value; editor?.refresh(); } },
     });
     dialog.body.classList.add('sbHelpBody');
     // A page over the sections hides them, and a hidden list editor has no width to notice a resize with. The
@@ -89,74 +70,171 @@ export async function openHelpWindow() {
     const phone = matchMedia(LAYOUT_MOBILE_QUERY);
     const isCollapsed = () => isListEditorCollapsed({ viewportMobile: phone.matches, width: pagesNode.clientWidth, collapseAt: COLLAPSE_AT });
 
-    function markOpenTopic() {
+    /** @param {boolean} heading */
+    const viewContext = heading => ({ sections, heading, navigate });
+
+    function markCurrent() {
         if (!editor) {
             return;
         }
-        const openId = editor.isOpen ? editor.selectedKey : null;
-        for (const row of editor.sidebar.querySelectorAll('[data-sb-help-topic]')) {
-            if (row.dataset.sbHelpTopic === openId) {
-                row.setAttribute('aria-current', 'true');
+        const shown = editor.isOpen;
+        const currentKey = shown ? getNavigationKey(view) : null;
+        const currentTopic = shown && view.kind === 'topic' ? view.topic.id : null;
+        for (const row of editor.sidebar.querySelectorAll('[data-sb-help-nav], [data-sb-help-topic]')) {
+            if (row.dataset.sbHelpNav === currentKey || row.dataset.sbHelpTopic === currentTopic) {
+                row.setAttribute('aria-current', 'page');
             } else {
                 row.removeAttribute('aria-current');
             }
         }
     }
 
-    function renderSidebar(sidebar) {
-        const all = getHelpSections();
-        const sections = filterHelpSections(all, query);
-        const groups = sections.map((section) => {
+    function createNavigation() {
+        const rows = entries.map((entry) => {
+            const row = createRow({
+                label: entry.label,
+                field: `help-nav-${entry.key}`,
+                prefix: createRowIcon(entry.icon),
+                activatable: true,
+                onActivate: () => openFromSidebar(entry.view),
+            });
+            row.row.dataset.sbHelpNav = entry.key;
+            row.row.classList.add('sbHelpNavRow');
+            return row;
+        });
+        const group = createPrefGroup({ field: 'help-nav-group', rows });
+        group.group.setAttribute('aria-label', t`Help Sections`);
+        return group.section;
+    }
+
+    function createResults(matching) {
+        if (matching.length === 0) {
+            return [createNoMatchPage()];
+        }
+        return matching.map((section) => {
             const rows = section.topics.map((topic) => {
                 const row = createRow({
                     label: topic.title,
+                    subtitle: COPY_PLACEHOLDER,
                     field: `help-topic-${topic.id}`,
                     activatable: true,
-                    onActivate: () => openTopic(topic.id),
+                    onActivate: () => openFromSidebar(topicView(section, topic)),
                 });
+                markRowSubtitle(row, topic.descriptionSlot);
                 row.row.dataset.sbHelpTopic = topic.id;
-                row.row.classList.add('sbHelpTopicRow');
+                row.row.classList.add('sbHelpNavRow');
                 return row;
             });
             return createPrefGroup({ title: section.title, field: `help-section-${section.id}`, rows }).section;
         });
-        const intro = query.trim() === '' ? [createIntro()] : [];
-        sidebar.replaceChildren(...intro, ...(groups.length > 0 ? groups : [createNoMatchPage()]));
-        markOpenTopic();
-        dialog.search?.report(sections.reduce((sum, section) => sum + section.topics.length, 0), all.reduce((sum, section) => sum + section.topics.length, 0));
     }
 
-    function showTopicPage(topic) {
-        if (topicPage?.isOpen) {
-            pageTopic = { topic };
-            topicPage.setTitle(topic.title);
-            topicPage.body.replaceChildren(createTopicView(topic, { heading: false, openTopic }));
-            topicPage.body.scrollTop = 0;
-            return;
+    function renderSidebar(sidebar) {
+        const matching = filterHelpSections(sections, query);
+        sidebar.replaceChildren(...(query.trim() === '' ? [createNavigation()] : createResults(matching)));
+        markCurrent();
+        dialog.search?.report(countTopics(matching), countTopics(sections));
+    }
+
+    function renderPane(pane = editor.detail) {
+        pane.replaceChildren(createView(view, viewContext(true)));
+    }
+
+    function focusPane() {
+        const root = editor.detail.firstElementChild;
+        if (root instanceof HTMLElement) {
+            getViewFocusTarget(root).focus({ preventScroll: true });
         }
-        pageTopic = { topic };
-        const page = dialog.push({
-            title: topic.title,
-            content: body => body.append(createTopicView(topic, { heading: false, openTopic })),
+    }
+
+    /**
+     * @param {import('./help-views.js').HelpView} target
+     * @param {{ focus: boolean }} options Whether focus follows to the new page. It stays on the sidebar row that was used.
+     */
+    async function showInPane(target, { focus }) {
+        view = target;
+        const key = getNavigationKey(target);
+        if (editor.isOpen && editor.selectedKey === key) {
+            renderPane();
+        } else {
+            await editor.selectItem(entries.find(entry => entry.key === key));
+        }
+        markCurrent();
+        if (focus) {
+            focusPane();
+        }
+    }
+
+    function pushPage(target) {
+        const root = createView(target, viewContext(false));
+        const entry = { view: target, root, handle: null };
+        entry.handle = dialog.push({
+            title: getViewTitle(target),
+            content: body => body.append(root),
+            initialFocus: () => entry.root,
         });
-        topicPage = page;
-        void page.closed.then(() => {
-            if (topicPage === page) {
-                topicPage = null;
-                pageTopic = null;
+        pages.push(entry);
+        view = target;
+        void entry.handle.closed.then(() => {
+            pages = pages.filter(page => page !== entry);
+            if (collapsedNow) {
+                view = pages.at(-1)?.view ?? INDEX_VIEW;
             }
         });
     }
 
-    function openTopic(id) {
-        const found = findHelpTopic(id);
-        if (!found) {
+    function replacePage(entry, target) {
+        entry.view = target;
+        entry.root = createView(target, viewContext(false));
+        entry.handle.setTitle(getViewTitle(target));
+        entry.handle.body.replaceChildren(entry.root);
+        entry.handle.body.scrollTop = 0;
+    }
+
+    function closePagesAbove(index) {
+        for (const entry of pages.slice(index + 1).reverse()) {
+            entry.handle.forceClose();
+        }
+    }
+
+    function goUpTo(target) {
+        const found = pages.findIndex(entry => isSameView(entry.view, target));
+        const keep = Math.max(found, 0);
+        if (found < 0) {
+            replacePage(pages[keep], target);
+        }
+        closePagesAbove(keep);
+        view = target;
+        pages[keep].root.focus({ preventScroll: true });
+    }
+
+    /**
+     * @param {import('./help-views.js').HelpView} target
+     * @param {import('./help-views.js').HelpRelation} relation
+     */
+    function navigate(target, relation) {
+        if (!(collapsedNow ?? isCollapsed())) {
+            void showInPane(target, { focus: true });
             return;
         }
+        if (relation === 'up') {
+            goUpTo(target);
+            return;
+        }
+        if (relation === 'side' && pages.length > 0) {
+            replacePage(pages.at(-1), target);
+            view = target;
+            pages.at(-1).root.focus({ preventScroll: true });
+            return;
+        }
+        pushPage(target);
+    }
+
+    function openFromSidebar(target) {
         if (collapsedNow ?? isCollapsed()) {
-            showTopicPage(found.topic);
+            pushPage(target);
         } else {
-            void editor.selectItem(found.topic);
+            void showInPane(target, { focus: false });
         }
     }
 
@@ -166,20 +244,15 @@ export async function openHelpWindow() {
         }
         if (collapsed) {
             if (editor.isOpen) {
-                const topic = editor.selectedItem;
                 editor.deselectNow();
-                showTopicPage(topic);
+                getViewAncestry(view).forEach(pushPage);
             }
             return;
         }
-        const topic = pageTopic?.topic ?? (editor.isOpen ? null : getHelpSections()[0].topics[0]);
-        if (topicPage?.isOpen) {
-            topicPage.forceClose();
-        }
+        const target = pages.at(-1)?.view ?? view;
+        closePagesAbove(-1);
         editor.layout();
-        if (topic) {
-            void editor.selectItem(topic);
-        }
+        void showInPane(target, { focus: false });
     }
 
     function syncLayout() {
@@ -201,17 +274,17 @@ export async function openHelpWindow() {
         maxWidth: 360,
         collapseAt: COLLAPSE_AT,
         escapeCloses: false,
-        label: t`Help Topics`,
+        label: t`Help Sections`,
         classNames: { root: 'sbHelpShell', sidebar: 'sbHelpSidebar', detail: 'sbHelpDetail' },
         renderList: renderSidebar,
-        renderDetail: (detail, topic) => detail.replaceChildren(createTopicView(topic, { heading: true, openTopic })),
-        getKey: topic => topic.id,
+        renderDetail: renderPane,
+        getKey: entry => entry.key,
         focusTarget: () => null,
         isDirty: () => false,
         onSave: () => true,
         onDiscard: () => {},
-        onSelect: markOpenTopic,
-        onDeselect: markOpenTopic,
+        onSelect: markCurrent,
+        onDeselect: markCurrent,
     });
 
     const layoutWatcher = new ResizeObserver(syncLayout);

@@ -214,42 +214,59 @@ kbd.sbKeys > kbd {
     flex: none;
 }
 
-.sbHelpIntro {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    text-align: center;
-}
-
-.sbHelpIntro > p {
-    margin: 0;
-}
-
-.sbHelpTopicRow[aria-current='true'] {
+/* The open page takes the neutral selected fill and an accent icon. The label keeps its weight, because a
+   heavier label wraps the longer section titles and moves the rows below it. */
+.sbHelpNavRow[aria-current='page'] {
     background: var(--sb-flat-selected-bg);
 }
 
-/* The fill alone is faint on a boxed row, so the open topic also reads heavier. */
-.sbHelpTopicRow[aria-current='true'] .ds-row-label {
-    font-weight: 800;
+@media (hover: hover) {
+    .sbHelpNavRow[aria-current='page']:not(:disabled):hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
 }
 
-.sb-list-editor[data-collapsed='false'] .sbHelpTopicRow .ds-row__chevron {
+.sbHelpNavRow[aria-current='page']:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* Beside the open page a row is one line with no arrow. Its description and arrow show when the rows are a page of their own. */
+.sb-list-editor[data-collapsed='false'] .sbHelpNavRow :is(.ds-row-subtitle, .ds-row__chevron) {
     display: none;
 }
 
-.sbHelpTopic {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+.sbHelpRowIcon {
+    flex: none;
+    inline-size: 1.25em;
+    margin-inline-end: 12px;
+    color: var(--sb-muted-fg);
+    text-align: center;
 }
 
-.sbHelpTopic > p {
+.sbHelpNavRow[aria-current='page'] .sbHelpRowIcon {
+    color: var(--sb-accent);
+}
+
+.sbHelpPage {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sbHelpPage:focus,
+.sbHelpPageTitle:focus {
+    outline: none;
+}
+
+.sbHelpPage > p {
     margin: 0;
 }
 
-.sbHelpDetail > .sbHelpTopic {
+.sbHelpPage > .sb-editor-section {
+    flex: none;
+}
+
+.sbHelpDetail > .sbHelpPage {
     box-sizing: border-box;
     flex: 1 1 0;
     min-height: 0;
@@ -258,11 +275,90 @@ kbd.sbKeys > kbd {
     overscroll-behavior: contain;
 }
 
-.sbHelpTopicTitle {
+.sbHelpPageTitle {
     margin: 0;
     font-size: var(--sb-type-headline);
     font-weight: 800;
     line-height: 1.18;
+}
+
+.sbHelpTrail > ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 4px;
+    margin: 0;
+    padding: 0;
+    font-size: var(--sb-type-meta);
+    list-style: none;
+}
+
+.sbHelpTrail li {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sbHelpTrail li > span {
+    color: var(--sb-muted-fg);
+}
+
+.sbHelpTrailLink {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-height: 28px;
+    margin: 0;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sbHelpTrail li:first-child > .sbHelpTrailLink {
+    margin-inline-start: -6px;
+}
+
+.sbHelpTrailLink:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHelpTrailLink:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHelpTrailLink:hover {
+        background: var(--sb-flat-hover-bg);
+        text-decoration: underline;
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHelpTrailLink {
+        min-height: 44px;
+        padding-inline: 10px;
+    }
+
+    .sbHelpTrail li:first-child > .sbHelpTrailLink {
+        margin-inline-start: -10px;
+    }
+}
+
+@media (forced-colors: active) {
+    .sbHelpTrailLink {
+        color: LinkText;
+    }
+
+    .sbHelpNavRow[aria-current='page'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
 }
 
 /* ── Getting Started and Bundled Extras ─────────────────────────────────── */
