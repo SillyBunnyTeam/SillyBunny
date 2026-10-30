@@ -21,11 +21,12 @@ describe('Home display modes', () => {
         expect(parseDisplayMode(stored)).toBe(expected);
     });
 
-    test('Full renders the hero band, every tile, the assistant portraits, Recent Chats and the mascot art', () => {
+    test('Full renders the hero band, every tile and its voiced line, the assistant portraits, Recent Chats and the mascot art', () => {
         expect(sorted(getVisibleRegions('full'))).toEqual(sorted([
             'hero',
             'tiles',
             'getting-started',
+            'tile-lines',
             'assistants',
             'assistant-art',
             'recent-chats',
@@ -33,7 +34,7 @@ describe('Home display modes', () => {
         ]));
     });
 
-    test('Compact drops the hero band, the Getting Started tile, the portraits and the mascot art', () => {
+    test('Compact drops the hero band, the Getting Started tile, the voiced lines, the portraits and the mascot art', () => {
         expect(sorted(getVisibleRegions('compact'))).toEqual(sorted([
             'tiles',
             'assistants',

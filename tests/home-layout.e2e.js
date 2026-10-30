@@ -64,6 +64,8 @@ const HERO_NATIVE = [320, 160];
 const REGION_DOM_ORDER = ['hero', 'tiles', 'assistants', 'recent-chats'];
 const REGION_NAMES = { assistants: 'Assistants', 'recent-chats': 'Recent Chats', tiles: 'Quick Links' };
 const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
+/** The longest voiced line that stays in three lines on the narrowest tile, a 360px phone. */
+const LINE_LIMIT = 40;
 const ASSISTANT_NAMES = ['Reisen', 'Tewi'];
 
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
@@ -650,6 +652,7 @@ for (const { name, options } of VIEWPORTS) {
                 'AS-REISEN-SUB',
                 'AS-TEWI-SUB',
                 'AS-MORE-SUB',
+                'HOME-ROW-GS-LINE',
                 'HOME-ROW-HELP',
                 'HOME-ROW-EXTRAS',
             ]));
@@ -679,7 +682,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(Math.abs(layout.last - layout.row.right)).toBeLessThanOrEqual(1);
         });
 
-        test('each tile is a button with a circled icon, a title and a subtitle', async ({ page }) => {
+        test('each tile is a button with a circled icon, a title and a voiced line', async ({ page }) => {
             await chooseMode(page, 'full');
 
             await expect(tiles(page)).toHaveCount(3);
@@ -688,7 +691,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(tileNode, key).toHaveJSProperty('tagName', 'BUTTON');
                 await expect(tileNode.locator(`.sbHomeTileIcon i.${icon}`)).toHaveCount(1);
                 await expect(tileNode.locator('.sbHomeTileTitle')).toBeVisible();
-                await expect(tileNode.locator('.sbHomeTileSub')).toBeVisible();
+                await expect(tileNode.locator('.sbHomeTileLine')).toBeVisible();
             }
             const icon = await tile(page, 'help').locator('.sbHomeTileIcon').evaluate((node) => {
                 const rect = node.getBoundingClientRect();
@@ -714,13 +717,125 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel details')).toHaveCount(0);
         });
 
-        test('Help and Bundled Extras carry placeholder subtitles', async ({ page }) => {
+        test('every tile carries a voiced line as a copy placeholder in its own slot, and only Getting Started has a progress', async ({ page }) => {
             await chooseMode(page, 'full');
 
-            await expect(tile(page, 'help').locator('.sbHomeTileSub')).toHaveAttribute('data-sb-copy-slot', 'HOME-ROW-HELP');
-            await expect(tile(page, 'extras').locator('.sbHomeTileSub')).toHaveAttribute('data-sb-copy-slot', 'HOME-ROW-EXTRAS');
+            for (const [key, slot] of [['getting-started', 'HOME-ROW-GS-LINE'], ['help', 'HOME-ROW-HELP'], ['extras', 'HOME-ROW-EXTRAS']]) {
+                const line = tile(page, key).locator('.sbHomeTileLine');
+                await expect(line, key).toHaveText('TODO(copy)');
+                await expect(line, key).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(line, key).toHaveAttribute('data-sb-copy-slot', slot);
+            }
+            await expect(tile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('0 of 4');
+            await expect(tile(page, 'help').locator('.sbHomeTileSub')).toHaveCount(0);
+            await expect(tile(page, 'extras').locator('.sbHomeTileSub')).toHaveCount(0);
             await expect(tile(page, 'help')).not.toHaveAttribute('data-sb-stub', /.*/);
             await expect(tile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
+        });
+
+        test('Compact shows the title of Help and Bundled Extras without the voiced line, and Full brings it back', async ({ page }) => {
+            await chooseMode(page, 'compact');
+
+            await expect(tiles(page).locator('.sbHomeTileTitle:visible')).toHaveText(['Help', 'Bundled Extras']);
+            await expect(tiles(page).locator('.sbHomeTileLine:visible')).toHaveCount(0);
+            await expect(tiles(page).locator('.sbHomeTileLine')).toHaveCount(3);
+
+            await chooseMode(page, 'full');
+
+            await expect(tiles(page).locator('.sbHomeTileLine')).toHaveCount(3);
+            await expect(tiles(page).locator('.sbHomeTileLine').first()).toBeVisible();
+            await expect(tiles(page).locator('.sbHomeTileLine').last()).toBeVisible();
+        });
+
+        test('a tile is named by its title and described by its voiced line and progress, and Compact leaves the line out of the description', async ({ page }) => {
+            await chooseMode(page, 'full');
+
+            await expect(tile(page, 'getting-started')).toHaveAccessibleName('Getting Started');
+            await expect(tile(page, 'getting-started')).toHaveAccessibleDescription('TODO(copy) 0 of 4');
+            await expect(tile(page, 'help')).toHaveAccessibleName('Help');
+            await expect(tile(page, 'help')).toHaveAccessibleDescription('TODO(copy)');
+            await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
+            await expect(tile(page, 'extras')).toHaveAccessibleDescription('TODO(copy)');
+
+            await chooseMode(page, 'compact');
+
+            await expect(tile(page, 'help')).toHaveAccessibleName('Help');
+            await expect(tile(page, 'help')).toHaveAccessibleDescription('');
+            await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
+            await expect(tile(page, 'extras')).toHaveAccessibleDescription('');
+            await expect(tile(page, 'getting-started'), 'only the progress is left in the description').toHaveAttribute('aria-describedby', 'sb-home-tile-getting-started-progress');
+        });
+
+        test('the ids that name and describe the tiles are unique and the same after Home renders again', async ({ page }) => {
+            const ids = () => page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeTile')].map(node => [node.getAttribute('aria-labelledby'), node.getAttribute('aria-describedby')]));
+            await chooseMode(page, 'full');
+            const before = await ids();
+
+            await renderHome(page, []);
+            await chooseMode(page, 'full');
+
+            expect(await ids()).toEqual(before);
+            for (const id of before.flatMap(pair => pair.join(' ').split(' '))) {
+                await expect(page.locator(`[id="${id}"]`), id).toHaveCount(1);
+            }
+        });
+
+        test('the progress reads as the status of the tile, set apart from the voiced line above it', async ({ page }) => {
+            await chooseMode(page, 'full');
+
+            const layout = await page.evaluate(() => {
+                const started = document.querySelector('.welcomePanel .sbHomeTile[data-sb-home-key="getting-started"]');
+                const line = started.querySelector('.sbHomeTileLine');
+                const progress = started.querySelector('.sbHomeTileSub');
+                const style = getComputedStyle(progress);
+                return {
+                    gap: progress.getBoundingClientRect().top - line.getBoundingClientRect().bottom,
+                    weight: style.fontWeight,
+                    numbers: style.fontVariantNumeric,
+                    sameColour: style.color === getComputedStyle(line).color,
+                    smaller: Number.parseFloat(style.fontSize) <= Number.parseFloat(getComputedStyle(line).fontSize),
+                };
+            });
+
+            expect(layout.gap, 'space between the line and the progress').toBeGreaterThanOrEqual(10);
+            expect(layout.weight).toBe('700');
+            expect(layout.numbers).toContain('tabular-nums');
+            expect(layout.sameColour, 'no accent colour').toBe(true);
+            expect(layout.smaller, 'the label role is no larger than the line').toBe(true);
+        });
+
+        test(`a voiced line of ${LINE_LIMIT} characters fits in three lines on a tile, and a longer one is cut at three lines with its text kept`, async ({ page }) => {
+            await chooseMode(page, 'full');
+            const atLimit = 'Pick a model first, then meet everybody.';
+            expect(atLimit).toHaveLength(LINE_LIMIT);
+            const longer = `${atLimit} ${atLimit} ${atLimit}`;
+
+            const result = await page.evaluate(({ atLimit, longer }) => {
+                const lines = [...document.querySelectorAll('.welcomePanel .sbHomeTileLine')];
+                const naturalLines = (line) => {
+                    const clamp = line.style.webkitLineClamp;
+                    line.style.webkitLineClamp = 'unset';
+                    line.style.display = 'block';
+                    const count = Math.round(line.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(line).lineHeight));
+                    line.style.webkitLineClamp = clamp;
+                    line.style.display = '';
+                    return count;
+                };
+                lines.forEach((line) => { line.textContent = atLimit; });
+                const fits = lines.map(naturalLines);
+                lines.forEach((line) => { line.textContent = longer; });
+                return {
+                    fits,
+                    clamp: lines.map(line => getComputedStyle(line).webkitLineClamp),
+                    shown: lines.map(line => Math.round(line.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(line).lineHeight))),
+                    kept: lines.map(line => line.textContent === longer),
+                };
+            }, { atLimit, longer });
+
+            expect(result.fits.every(count => count <= 3), `lines of a ${LINE_LIMIT}-character line per tile: ${result.fits}`).toBe(true);
+            expect(result.clamp).toEqual(['3', '3', '3']);
+            expect(result.shown.every(count => count <= 3), `lines shown of a long line per tile: ${result.shown}`).toBe(true);
+            expect(result.kept).toEqual([true, true, true]);
         });
 
         test('with Getting Started hidden, Help and Bundled Extras each take half of the row', async ({ page }) => {
@@ -1235,6 +1350,96 @@ for (const { name, options } of VIEWPORTS) {
                 expect(beside).toBe(true);
             });
         }
+
+        for (const mode of ['full', 'compact']) {
+            for (const footer of ['labelled', 'icon-only']) {
+                test(`every icon-only control in ${mode} has a tooltip and a name, and no labelled control repeats its label, with ${footer} card footers`, async ({ page }) => {
+                    const characters = await pickFixtureCharacters(page, 2);
+                    await renderHome(page, recentChatEntries(characters, 5, { distinctFiles: true }));
+                    await chooseMode(page, mode);
+                    await expect(page.locator('.welcomePanel button.showMoreChats')).toBeVisible();
+
+                    const controls = await page.evaluate((icons) => {
+                        const visibleText = (node, pieces = []) => {
+                            let text = '';
+                            const walk = (child) => {
+                                if (child.nodeType === 3) {
+                                    text += child.textContent;
+                                    if (child.textContent.trim()) {
+                                        pieces.push(child.textContent.replace(/\s+/g, ' ').trim());
+                                    }
+                                    return;
+                                }
+                                if (child.nodeType !== 1) {
+                                    return;
+                                }
+                                const style = getComputedStyle(child);
+                                if (style.display === 'none' || style.visibility === 'hidden' || child.getAttribute('aria-hidden') === 'true' || child.classList.contains('sr-only')) {
+                                    return;
+                                }
+                                child.childNodes.forEach(walk);
+                            };
+                            node.childNodes.forEach(walk);
+                            return text.replace(/\s+/g, ' ').trim();
+                        };
+                        document.querySelectorAll('.welcomePanel .sbHomeCard[data-sb-footer-compact]').forEach(card => card.removeAttribute('data-sb-footer-compact'));
+                        if (icons) {
+                            document.querySelectorAll('.welcomePanel .sbHomeCard').forEach((card) => {
+                                if (card.querySelector('.sbHomeCardFooter')) {
+                                    card.setAttribute('data-sb-footer-compact', '');
+                                }
+                            });
+                        }
+                        const found = [...document.querySelectorAll('.welcomePanel button, .welcomePanel a[href]')].filter(node => node.getClientRects().length > 0);
+                        return found.map((node, index) => {
+                            node.dataset.qaAudit = String(index);
+                            const pieces = [];
+                            return {
+                                index,
+                                kind: node.className,
+                                text: visibleText(node, pieces),
+                                pieces,
+                                hasIcon: node.querySelector('i, svg, [class*="fa-"]') !== null,
+                                title: node.getAttribute('title') ?? '',
+                            };
+                        });
+                    }, footer === 'icon-only');
+
+                    const iconOnly = controls.filter(control => control.hasIcon && control.text === '');
+                    const labelled = controls.filter(control => control.text !== '');
+                    expect(iconOnly.map(control => control.kind.split(' ')[0]), 'the icon-only controls of Home').toEqual(expect.arrayContaining(['sbHomeMenuButton', 'pinChat', 'chatMenu', 'showMoreChats', 'sbHomeRowMenu']));
+                    const footerButtons = controls.filter(control => control.kind.startsWith('sbHomeFootButton'));
+                    expect(footerButtons.length, 'the footer buttons').toBeGreaterThan(0);
+                    expect(footerButtons.map(control => control.text === ''), 'the footer buttons show their label or not').toEqual(footerButtons.map(() => footer === 'icon-only'));
+
+                    for (const control of iconOnly) {
+                        expect(control.title.trim(), `${control.kind} has a tooltip`).not.toBe('');
+                        await expect(page.locator(`[data-qa-audit="${control.index}"]`), `${control.kind} has an accessible name`).toHaveAccessibleName(/\S/);
+                    }
+                    for (const control of labelled) {
+                        const labels = [control.text, ...control.pieces].map(label => label.trim().toLowerCase());
+                        expect(labels, `${control.kind} "${control.text}" repeats its label in the tooltip "${control.title}"`).not.toContain(control.title.trim().toLowerCase());
+                    }
+                });
+            }
+        }
+
+        test('the pin tooltips are header-capitalised and follow the state of the chat', async ({ page }) => {
+            const characters = await pickFixtureCharacters(page, 1);
+            await renderHome(page, recentChatEntries(characters, 1));
+            const pin = page.locator('.welcomePanel .recentChat .pinChat').first();
+
+            await expect(pin).toHaveAttribute('title', 'Pin Chat');
+            await expect(pin).toHaveAccessibleName('Pin Chat');
+
+            await pin.click();
+
+            const pinned = page.locator('.welcomePanel .recentChat .pinChat').first();
+            await expect(pinned).toHaveAttribute('title', 'Unpin Chat');
+            await expect(pinned).toHaveAccessibleName('Unpin Chat');
+            await pinned.click();
+            await expect(page.locator('.welcomePanel .recentChat .pinChat').first()).toHaveAttribute('title', 'Pin Chat');
+        });
 
         test('the fork notice link is separate from its placeholder and opens SillyTavern safely', async ({ page }) => {
             const link = page.locator('.welcomePanel a[href="https://github.com/SillyTavern/SillyTavern"]');

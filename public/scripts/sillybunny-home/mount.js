@@ -8,7 +8,7 @@ import { getSharedGettingStartedState } from './getting-started.js';
 import { chooseHeroArt } from './hero-art.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
-import { mountTiles } from './tiles-view.js';
+import { describeTiles, mountTiles } from './tiles-view.js';
 import { openAbout, openBundledExtras, openGettingStarted, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
 
 /**
@@ -34,6 +34,7 @@ export function applyDisplayMode(panel, mode) {
             region.hidden = !visible.has(region.dataset.sbHomeRegion ?? '');
         }
     });
+    describeTiles(panel);
     return safeMode;
 }
 

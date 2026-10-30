@@ -4,11 +4,11 @@ export const DISPLAY_MODES = Object.freeze(['full', 'compact', 'list']);
 const DEFAULT_MODE = 'full';
 
 /*
- * The header is not a region: every mode shows it. `getting-started` is the first tile of the `tiles` row, and
- * `assistant-art` is the portrait of each assistant card.
+ * The header is not a region: every mode shows it. `getting-started` is the first tile of the `tiles` row,
+ * `tile-lines` are the voiced lines under the tile titles, and `assistant-art` is the portrait of each assistant card.
  */
 const VISIBLE_REGIONS = Object.freeze({
-    full: Object.freeze(['hero', 'tiles', 'getting-started', 'assistants', 'assistant-art', 'recent-chats', 'mascot-art']),
+    full: Object.freeze(['hero', 'tiles', 'getting-started', 'tile-lines', 'assistants', 'assistant-art', 'recent-chats', 'mascot-art']),
     compact: Object.freeze(['tiles', 'assistants', 'recent-chats']),
     list: Object.freeze(['recent-chats']),
 });

@@ -73,7 +73,8 @@
                                 </div>
                                 <small class="chatDate" title="{{date_long}}">{{date_short}}</small>
                                 <div class="chatActions">
-                                    <button type="button" class="pinChat {{#if pinned}}active{{/if}}" title="{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}" aria-label="{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}" aria-pressed="{{#if pinned}}true{{else}}false{{/if}}" data-i18n="[title]{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}};[aria-label]{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}">
+                                    {{!-- The data-i18n keys of the pin button stay "Pin chat" and "Unpin chat" while its text is header-capitalised: the key is kept for the existing translation. --}}
+                                    <button type="button" class="pinChat {{#if pinned}}active{{/if}}" title="{{#if pinned}}Unpin Chat{{else}}Pin Chat{{/if}}" aria-label="{{#if pinned}}Unpin Chat{{else}}Pin Chat{{/if}}" aria-pressed="{{#if pinned}}true{{else}}false{{/if}}" data-i18n="[title]{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}};[aria-label]{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}">
                                         <i class="fa-solid fa-thumbtack fa-fw"></i>
                                     </button>
                                     <button type="button" class="chatMenu" title="Chat Menu" aria-label="Chat Menu" aria-haspopup="menu" aria-expanded="false" data-i18n="[title]Chat Menu;[aria-label]Chat Menu">

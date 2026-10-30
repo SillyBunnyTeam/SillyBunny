@@ -3,16 +3,19 @@ import { markCopyPlaceholder } from './copy.js';
 import { formatProgress } from './getting-started.js';
 
 const GETTING_STARTED_KEY = 'getting-started';
+/** The voiced lines are a region of their own, so Compact hides them like it hides the other art and prose of Full. */
+const TILE_LINES_REGION = 'tile-lines';
 
 /**
  * @param {object} options
  * @param {string} options.key Names the tile for tests and for restoring focus.
  * @param {string} options.icon
  * @param {string} options.title
+ * @param {string} options.lineSlot Copy slot of the line the tile says in the voice of an assistant.
  * @param {(tile: HTMLButtonElement) => void} options.onActivate
- * @returns {{ tile: HTMLButtonElement, subtitle: HTMLElement }}
+ * @returns {{ tile: HTMLButtonElement, line: HTMLElement }}
  */
-function createTile({ key, icon, title, onActivate }) {
+function createTile({ key, icon, title, lineSlot, onActivate }) {
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.className = 'sbHomeTile';
@@ -27,25 +30,52 @@ function createTile({ key, icon, title, onActivate }) {
 
     const titleNode = document.createElement('span');
     titleNode.className = 'sbHomeTileTitle';
+    titleNode.id = `sb-home-tile-${key}-title`;
     titleNode.textContent = title;
-    const subtitle = document.createElement('span');
-    subtitle.className = 'sbHomeTileSub';
+    const line = markCopyPlaceholder(document.createElement('span'), lineSlot);
+    line.className = 'sbHomeTileLine';
+    line.id = `sb-home-tile-${key}-line`;
+    line.dataset.sbHomeRegion = TILE_LINES_REGION;
 
-    tile.append(iconBox, titleNode, subtitle);
+    // As on the assistant cards, the title is the name and the rest of the tile is its description.
+    tile.setAttribute('aria-labelledby', titleNode.id);
+    tile.append(iconBox, titleNode, line);
+    describeTile(tile);
     tile.addEventListener('click', () => onActivate(tile));
-    return { tile, subtitle };
+    return { tile, line };
+}
+
+/**
+ * Describes a tile by its voiced line, when the line is shown, and by its progress, when it has one. A hidden
+ * element that `aria-describedby` points at is still read, so Compact takes the line out of the list.
+ * @param {HTMLElement} tile
+ */
+function describeTile(tile) {
+    const parts = [tile.querySelector('.sbHomeTileLine:not([hidden])'), tile.querySelector('.sbHomeTileSub')];
+    const ids = parts.filter(part => part instanceof HTMLElement).map(part => part.id);
+    if (ids.length === 0) {
+        tile.removeAttribute('aria-describedby');
+        return;
+    }
+    tile.setAttribute('aria-describedby', ids.join(' '));
+}
+
+/**
+ * Brings the description of every tile in step with the voiced lines that the display mode shows.
+ * @param {HTMLElement} panel The `.welcomePanel` root.
+ */
+export function describeTiles(panel) {
+    panel.querySelectorAll('.sbHomeTile').forEach((tile) => {
+        if (tile instanceof HTMLElement) {
+            describeTile(tile);
+        }
+    });
 }
 
 /** Safari does not focus a button on click, and the window returns focus to the element that had it. */
 function openFromTile(tile, open) {
     tile.focus({ preventScroll: true });
     open();
-}
-
-function createCopyTile(options, slot) {
-    const { tile, subtitle } = createTile(options);
-    markCopyPlaceholder(subtitle, slot);
-    return tile;
 }
 
 /**
@@ -58,12 +88,12 @@ function createCopyTile(options, slot) {
  * @returns {() => void} Stops following the state.
  */
 function mountGettingStartedTile(row, state, openGettingStarted, onRowChanged) {
-    /** @type {{ tile: HTMLButtonElement, subtitle: HTMLElement } | null} */
+    /** @type {{ tile: HTMLButtonElement, progress: HTMLElement } | null} */
     let current = null;
 
     function showProgress() {
         if (current) {
-            current.subtitle.textContent = formatProgress(state.getResolvedCount(), state.getTotal());
+            current.progress.textContent = formatProgress(state.getResolvedCount(), state.getTotal());
         }
     }
 
@@ -77,7 +107,20 @@ function mountGettingStartedTile(row, state, openGettingStarted, onRowChanged) {
             showProgress();
             return;
         }
-        current = createTile({ key: GETTING_STARTED_KEY, icon: 'fa-solid fa-list-check', title: t`Getting Started`, onActivate: tile => openFromTile(tile, openGettingStarted) });
+        const { tile } = createTile({
+            key: GETTING_STARTED_KEY,
+            icon: 'fa-solid fa-list-check',
+            title: t`Getting Started`,
+            lineSlot: 'HOME-ROW-GS-LINE',
+            onActivate: opened => openFromTile(opened, openGettingStarted),
+        });
+        // The progress is the tile's own status, below the voiced line that the other tiles have as well.
+        const progress = document.createElement('span');
+        progress.className = 'sbHomeTileSub';
+        progress.id = `sb-home-tile-${GETTING_STARTED_KEY}-progress`;
+        tile.append(progress);
+        describeTile(tile);
+        current = { tile, progress };
         current.tile.dataset.sbHomeRegion = GETTING_STARTED_KEY;
         showProgress();
         row.prepend(current.tile);
@@ -112,18 +155,20 @@ export function mountTiles(panel, { state, onRowChanged, openGettingStarted, ope
         return;
     }
 
-    const help = createCopyTile({
+    const { tile: help } = createTile({
         key: 'help',
         icon: 'fa-solid fa-circle-question',
         title: t`Help`,
+        lineSlot: 'HOME-ROW-HELP',
         onActivate: tile => openFromTile(tile, openHelp),
-    }, 'HOME-ROW-HELP');
-    const extras = createCopyTile({
+    });
+    const { tile: extras } = createTile({
         key: 'extras',
         icon: 'fa-solid fa-box-open',
         title: t`Bundled Extras`,
+        lineSlot: 'HOME-ROW-EXTRAS',
         onActivate: tile => openFromTile(tile, openBundledExtras),
-    }, 'HOME-ROW-EXTRAS');
+    });
 
     row.replaceChildren(help, extras);
     stopPreviousTiles = mountGettingStartedTile(row, state, openGettingStarted, onRowChanged);

@@ -765,7 +765,7 @@ async function sendWelcomePanel(chats, expand = false) {
         }
         const templateData = buildWelcomeTemplateData(chats);
         // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
-        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261031a', templateData, true, true, true);
+        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261031d', templateData, true, true, true);
         // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.
         if (getCurrentChatId() !== undefined) {
             return;
