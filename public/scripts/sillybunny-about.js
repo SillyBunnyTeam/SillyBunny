@@ -121,7 +121,10 @@ function createMainContent(server, pages) {
     const name = document.createElement('h3');
     name.className = 'sbAboutName';
     name.textContent = 'SillyBunny';
-    header.append(createArtPlaceholder('logo-64'), name, createCopyBlock('AB-DEVELOPER'));
+    const portraits = document.createElement('div');
+    portraits.className = 'sbAboutPortraits';
+    portraits.append(createArtPlaceholder('about-reisen'), createArtPlaceholder('logo-64'), createArtPlaceholder('about-tewi'));
+    header.append(portraits, name, createCopyBlock('AB-DEVELOPER'));
 
     const branch = createPropertyRow({ label: t`Branch`, value: server.details.branch, field: 'about-branch' });
     const commit = createPropertyRow({ label: t`Commit`, value: server.details.commit, field: 'about-commit' });
@@ -249,7 +252,9 @@ function fillTroubleshooting(body, server) {
     const actions = document.createElement('div');
     actions.className = 'sbWindowActions';
     actions.append(copy, save, copied);
-    body.append(block, actions);
+    const art = createArtPlaceholder('troubleshooting-reisen');
+    art.classList.add('sbWindowArt');
+    body.append(art, block, actions);
 }
 
 /**

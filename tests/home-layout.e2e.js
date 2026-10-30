@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
@@ -35,12 +36,31 @@ const ART_VISIBILITY = {
     list: { 'hero-duo': false, 'logo-32': true },
 };
 const LOGO_SIZE = [32, 32];
+
+/** A menu takes its focus in an animation frame, and its Escape handler lives inside it, so an earlier Escape is lost. */
+const FOCUSED_MENU = `${OPEN_ACTION_SHEET}:focus-within, .sb-action-popover:focus-within`;
+const ANY_MENU_PART = '.sb-action-sheet, .sb-action-sheet-backdrop, .sb-action-popover';
+
+/** Closes the open menu with Escape once it holds focus, and waits until nothing of it is left to catch a click. */
+async function escapeOpenMenu(page) {
+    await expect(page.locator(FOCUSED_MENU)).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator(ANY_MENU_PART)).toHaveCount(0);
+}
+
+const HERO_SELECTOR = ':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-placeholder="hero-duo-night"])';
+
+/** The hero is the day or the night scene by the clock of the machine, and the layout is the same for both. */
+function artSelector(id) {
+    return id === 'hero-duo' ? HERO_SELECTOR : `[data-sb-art-placeholder="${id}"]`;
+}
 // The container width at and below which the hero art, the assistant grid and More Assistants switch to their narrow form.
 const HERO_ONE_X_MAX = 740;
 const TWO_CARDS_MAX = 716;
 const VISIBLE_TILES = { full: ['Getting Started', 'Help', 'Bundled Extras'], compact: ['Help', 'Bundled Extras'], list: [] };
 const VISIBLE_FOOT_BUTTONS = { full: 4, compact: 4, list: 0 };
-const BODY_ART_SIZES = { 'empty-tewi': [96, 96], 'row-reisen': [128, 128], 'row-tewi': [128, 128] };
+const PORTRAIT_NATIVE = 64;
+const HERO_NATIVE = [320, 160];
 const REGION_DOM_ORDER = ['hero', 'tiles', 'assistants', 'recent-chats'];
 const REGION_NAMES = { assistants: 'Assistants', 'recent-chats': 'Recent Chats', tiles: 'Quick Links' };
 const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
@@ -59,8 +79,18 @@ async function expectHome(page) {
     await expect(page.locator('#chat > .welcomePanel')).toBeAttached({ timeout: STARTUP_TIMEOUT });
 }
 
-function heroArtSize(panelWidth) {
-    return panelWidth > HERO_ONE_X_MAX ? [640, 320] : [320, 160];
+/** The integer scale of the pixel art on Home: 2x above the container width where the 2x hero fits, 1x at or below it. */
+function pixelScale(panelWidth) {
+    return panelWidth > HERO_ONE_X_MAX ? 2 : 1;
+}
+
+function pixelArtSizes(panelWidth) {
+    const scale = pixelScale(panelWidth);
+    return {
+        'hero-duo': HERO_NATIVE.map(side => side * scale),
+        'row-reisen': [PORTRAIT_NATIVE * scale, PORTRAIT_NATIVE * scale],
+        'row-tewi': [PORTRAIT_NATIVE * scale, PORTRAIT_NATIVE * scale],
+    };
 }
 
 async function setGettingStartedHidden(page, hidden) {
@@ -482,7 +512,7 @@ for (const { name, options } of VIEWPORTS) {
                     expect(rendered.every(value => value === visible), `${id} in ${mode}`).toBe(true);
                 }
                 for (const [artId, visible] of Object.entries(ART_VISIBILITY[mode])) {
-                    const art = page.locator(`.welcomePanel [data-sb-art-placeholder="${artId}"]`);
+                    const art = page.locator(`.welcomePanel ${artSelector(artId)}`);
                     await expect(art).toHaveCount(1);
                     await expect(art, `${artId} in ${mode}`).toBeVisible({ visible });
                 }
@@ -576,7 +606,7 @@ for (const { name, options } of VIEWPORTS) {
 
             await expect(page.getByRole('menuitemradio', { name: 'List Only', exact: true })).toHaveAttribute('aria-checked', 'true');
             await expect(page.getByRole('menuitemradio', { name: 'Full', exact: true })).toHaveAttribute('aria-checked', 'false');
-            await page.keyboard.press('Escape');
+            await escapeOpenMenu(page);
         });
 
         test('Recent Chats Settings opens from the main menu', async ({ page }) => {
@@ -727,7 +757,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(tile(page, 'getting-started')).toBeVisible();
             await menuButton(page).click();
             await expect(page.getByRole('menuitem', { name: 'Show Getting Started', exact: true })).toHaveCount(0);
-            await page.keyboard.press('Escape');
+            await escapeOpenMenu(page);
         });
 
         test('the main menu offers Show Getting Started only in Full, where the tile can show', async ({ page }) => {
@@ -739,13 +769,13 @@ for (const { name, options } of VIEWPORTS) {
                 await menuButton(page).click();
                 await expect(page.getByRole('menuitem', { name: 'Show Welcome', exact: true })).toBeVisible();
                 await expect(page.getByRole('menuitem', { name: 'Show Getting Started', exact: true }), mode).toHaveCount(0);
-                await page.keyboard.press('Escape');
+                await escapeOpenMenu(page);
             }
 
             await chooseMode(page, 'full');
             await menuButton(page).click();
             await expect(page.getByRole('menuitem', { name: 'Show Getting Started', exact: true })).toBeVisible();
-            await page.keyboard.press('Escape');
+            await escapeOpenMenu(page);
         });
 
         test('a Getting Started tile that comes back follows the display mode', async ({ page }) => {
@@ -1008,7 +1038,7 @@ for (const { name, options } of VIEWPORTS) {
             await page.keyboard.press('Space');
             const menuPoint = await centre(card.locator('.sbHomeRowMenu'));
             await page.mouse.click(menuPoint.x, menuPoint.y);
-            await page.keyboard.press('Escape');
+            await escapeOpenMenu(page);
 
             expect(await page.evaluate(() => window.qaFooterClicks), 'the footer buttons took a mouse click and a key press each').toEqual([2, 2]);
             expect(await page.evaluate(() => window.qaCardActions), 'footer controls').toEqual({ 'assistant-reisen': 0, 'assistant-tewi': 0 });
@@ -1044,7 +1074,7 @@ for (const { name, options } of VIEWPORTS) {
             await waitForAnimationFrames(page);
             const pressedMenu = await background();
             await page.mouse.up();
-            await page.keyboard.press('Escape');
+            await escapeOpenMenu(page);
 
             const bodyPoint = await centre('.sbHomeCardName');
             await page.mouse.move(bodyPoint.x, bodyPoint.y);
@@ -1219,14 +1249,14 @@ for (const { name, options } of VIEWPORTS) {
             await chooseMode(page, 'full');
             await renderHome(page, []);
             const panelWidth = await page.evaluate(() => document.querySelector('.welcomePanel').clientWidth);
-            const sizes = { ...BODY_ART_SIZES, 'hero-duo': heroArtSize(panelWidth) };
+            const sizes = { 'empty-tewi': [96, 96], ...pixelArtSizes(panelWidth) };
 
             for (const [id, [width, height]] of Object.entries(sizes)) {
-                const box = page.locator(`.welcomePanel [data-sb-art-placeholder="${id}"]`);
+                const box = page.locator(`.welcomePanel ${artSelector(id)}`);
                 await expect(box).toBeVisible();
                 await expect(box).toHaveAttribute('aria-hidden', 'true');
-                await expect(box).toHaveText(id);
-                const rect = await measure(page, `.welcomePanel [data-sb-art-placeholder="${id}"]`);
+                await expect(box).toHaveText(id === 'hero-duo' ? /^hero-duo(-night)?$/ : id);
+                const rect = await measure(page, `.welcomePanel ${artSelector(id)}`);
                 expect([id, Math.round(rect.width), Math.round(rect.height)]).toEqual([id, width, height]);
             }
             const logo = page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]');
@@ -1234,12 +1264,38 @@ for (const { name, options } of VIEWPORTS) {
             await expect(logo).toHaveAttribute('aria-hidden', 'true');
             const logoRect = await measure(page, '.welcomePanel [data-sb-art-placeholder="logo-32"]');
             expect([Math.round(logoRect.width), Math.round(logoRect.height)]).toEqual(LOGO_SIZE);
-            expect(await page.locator('.welcomePanel [data-sb-art-placeholder="hero-duo"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
+            expect(await page.locator(`.welcomePanel ${artSelector('hero-duo')}`).evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
 
             await chooseMode(page, 'compact');
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]')).toBeVisible();
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="empty-tewi"]')).toBeHidden();
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]')).toBeHidden();
+        });
+
+        test('the hero is the day scene at 12:00 and the night scene at 20:00, picked when Home renders and not while it is shown', async ({ page }) => {
+            await chooseMode(page, 'full');
+            const hero = id => page.locator(`.welcomePanel [data-sb-art-placeholder="${id}"]`);
+
+            await page.clock.setFixedTime(new Date(2026, 9, 30, 12, 0));
+            await renderHome(page, []);
+            await expect(hero('hero-duo')).toHaveCount(1);
+            await expect(hero('hero-duo-night')).toHaveCount(0);
+
+            await page.clock.setFixedTime(new Date(2026, 9, 30, 20, 0));
+            await expect(hero('hero-duo'), 'the hero stays while Home is shown').toHaveCount(1);
+            await renderHome(page, []);
+            await expect(hero('hero-duo-night')).toHaveCount(1);
+            await expect(hero('hero-duo')).toHaveCount(0);
+            await expect(hero('hero-duo-night')).toHaveAttribute('aria-hidden', 'true');
+            await expect(hero('hero-duo-night')).toHaveText('hero-duo-night');
+            const panelWidth = await page.evaluate(() => document.querySelector('.welcomePanel').clientWidth);
+            const box = await measure(page, '.welcomePanel [data-sb-art-placeholder="hero-duo-night"]');
+            expect([Math.round(box.width), Math.round(box.height)]).toEqual(pixelArtSizes(panelWidth)['hero-duo']);
+            expect(await hero('hero-duo-night').evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
+
+            await page.clock.setFixedTime(new Date(2026, 9, 31, 6, 0));
+            await renderHome(page, []);
+            await expect(hero('hero-duo')).toHaveCount(1);
         });
 
         test('the hero band is a bordered Window-layer card with the art and the project info centred', async ({ page }) => {
@@ -1261,7 +1317,7 @@ for (const { name, options } of VIEWPORTS) {
                     background: style.backgroundColor,
                     windowLayer,
                     centre: (box.left + box.right) / 2,
-                    artCentre: centre(bandNode.querySelector('[data-sb-art-placeholder="hero-duo"]')),
+                    artCentre: centre(bandNode.querySelector(':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-placeholder="hero-duo-night"])')),
                     textCentre: centre(bandNode.querySelector('.sbHomeHeroText')),
                     textAlign: getComputedStyle(bandNode.querySelector('.sbHomeHeroText')).textAlign,
                     textWidth: bandNode.querySelector('.sbHomeHeroText').getBoundingClientRect().width,
@@ -1675,13 +1731,28 @@ for (const { name, options } of WIDE_VIEWPORTS) {
         }
 
         for (const [target, scale] of [[HERO_ONE_X_MAX, 1], [HERO_ONE_X_MAX + 1, 2]]) {
-            test(`a Home content width of exactly ${target}px draws the hero art at ${scale}x`, async ({ page }) => {
+            test(`a Home content width of exactly ${target}px draws the hero, the assistant portraits and the More Assistants icon at ${scale}x`, async ({ page }) => {
                 await chooseMode(page, 'full');
 
                 await setHomeContentWidth(page, target);
 
-                const art = await measure(page, '.welcomePanel [data-sb-art-placeholder="hero-duo"]');
-                expect([Math.round(art.width), Math.round(art.height)]).toEqual([320 * scale, 160 * scale]);
+                const sizes = {};
+                for (const [id, selector] of Object.entries({
+                    'hero-duo': artSelector('hero-duo'),
+                    'row-reisen': '[data-sb-art-placeholder="row-reisen"]',
+                    'row-tewi': '[data-sb-art-placeholder="row-tewi"]',
+                    'more-icon': '.sbHomeCard--more .sbHomeMoreIcon',
+                })) {
+                    const box = await measure(page, `.welcomePanel ${selector}`);
+                    sizes[id] = [Math.round(box.width), Math.round(box.height)];
+                }
+                expect(sizes).toEqual({
+                    'hero-duo': [320 * scale, 160 * scale],
+                    'row-reisen': [64 * scale, 64 * scale],
+                    'row-tewi': [64 * scale, 64 * scale],
+                    'more-icon': [64 * scale, 64 * scale],
+                });
+                expect(await page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
             });
         }
     });

@@ -8,9 +8,21 @@
     height: 128px;
 }
 
+/* The art of the second and third Welcome pages is as tall as the duo of the first, so the page does not move. */
+.sbHomeArt[data-sb-art-placeholder='welcome-persona-tewi'],
+.sbHomeArt[data-sb-art-placeholder='welcome-next-reisen'] {
+    width: 128px;
+    height: 128px;
+}
+
 .sbHomeArt[data-sb-art-placeholder='help-reisen'],
 .sbHomeArt[data-sb-art-placeholder='gs-reisen'],
-.sbHomeArt[data-sb-art-placeholder='extras-tewi'] {
+.sbHomeArt[data-sb-art-placeholder='gs-reisen-done'],
+.sbHomeArt[data-sb-art-placeholder='extras-tewi'],
+.sbHomeArt[data-sb-art-placeholder='shortcuts-tewi'],
+.sbHomeArt[data-sb-art-placeholder='about-reisen'],
+.sbHomeArt[data-sb-art-placeholder='about-tewi'],
+.sbHomeArt[data-sb-art-placeholder='troubleshooting-reisen'] {
     width: 96px;
     height: 96px;
 }
@@ -69,7 +81,8 @@
 
 /* ── Welcome ────────────────────────────────────────────────────────────── */
 
-.sbWelcomeArt {
+/* Art that stands alone at the top of a page. */
+.sbWindowArt {
     align-self: center;
 }
 
@@ -129,6 +142,15 @@
     align-items: center;
     gap: 8px;
     text-align: center;
+}
+
+/* Reisen, the logo and Tewi on one line. The row order follows the writing direction, so Reisen is on the start
+   side, and 96 + 64 + 96 plus two gaps fit the 328px of a 360px phone's sheet without wrapping. */
+.sbAboutPortraits {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
 }
 
 .sbAboutName {

@@ -126,6 +126,41 @@ async function expectArt(scope, id, size) {
     expect(await art.evaluate(node => [node.offsetWidth, node.offsetHeight])).toEqual(size);
 }
 
+/** Boxes of the three pieces of art on the About page, relative to the page, plus the heading under them. */
+async function readMasthead(host) {
+    return host.evaluate((root) => {
+        const rect = (selector) => {
+            const { left, right, top, bottom } = root.querySelector(selector).getBoundingClientRect();
+            return { left, right, top, bottom, middle: (top + bottom) / 2, centre: (left + right) / 2 };
+        };
+        const body = root.querySelector('.sb-dialog__page:not([hidden]) .sb-dialog__body').getBoundingClientRect();
+        return {
+            reisen: rect('[data-sb-art-placeholder="about-reisen"]'),
+            logo: rect('[data-sb-art-placeholder="logo-64"]'),
+            tewi: rect('[data-sb-art-placeholder="about-tewi"]'),
+            name: rect('.sbAboutName'),
+            body: { left: body.left, right: body.right },
+        };
+    });
+}
+
+async function expectMastheadOnOneLine(host, { rtl = false } = {}) {
+    await expectArt(host, 'about-reisen', [96, 96]);
+    await expectArt(host, 'about-tewi', [96, 96]);
+    await expectArt(host, 'logo-64', [64, 64]);
+    const { reisen, logo, tewi, name, body } = await readMasthead(host);
+    const [first, last] = rtl ? [tewi, reisen] : [reisen, tewi];
+
+    expect([reisen.middle, tewi.middle].map(middle => Math.abs(middle - logo.middle)).every(gap => gap <= 1), 'the three boxes are centred on one line').toBe(true);
+    expect(first.right, 'the left piece ends before the logo').toBeLessThanOrEqual(logo.left);
+    expect(logo.right, 'the logo ends before the right piece').toBeLessThanOrEqual(last.left);
+    expect(Math.abs(logo.centre - (first.centre + last.centre) / 2), 'the logo is centred between them').toBeLessThanOrEqual(1);
+    expect(Math.abs((logo.left - first.right) - (last.left - logo.right)), 'the gaps match').toBeLessThanOrEqual(1);
+    expect(first.left, 'inside the page on the left').toBeGreaterThanOrEqual(body.left);
+    expect(last.right, 'inside the page on the right').toBeLessThanOrEqual(body.right);
+    expect(name.top, 'the name sits below the art').toBeGreaterThanOrEqual(Math.max(reisen.bottom, tewi.bottom));
+}
+
 async function readVersion(page) {
     return page.evaluate(() => fetch('/version').then(response => response.json()));
 }
@@ -316,6 +351,40 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByText('Step 2 of 3')).toHaveCount(0);
             });
 
+            test('pages one to three keep one art position and height, page two and three at native size, and the Import page has no art', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+                const current = shownPage(host);
+                const artTop = async () => current.evaluate((node) => {
+                    const art = node.querySelector('[data-sb-art-placeholder]');
+                    return { top: art.getBoundingClientRect().top - node.querySelector('.sb-dialog__body').getBoundingClientRect().top, height: art.offsetHeight, centred: Math.abs((art.getBoundingClientRect().left + art.getBoundingClientRect().right) / 2 - (node.querySelector('.sb-dialog__body').getBoundingClientRect().left + node.querySelector('.sb-dialog__body').getBoundingClientRect().right) / 2) };
+                });
+
+                await expectArt(host, 'welcome-both', [192, 128]);
+                const first = await artTop();
+                await current.getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(current.locator('.sb-dialog__title')).toHaveText('Your Persona');
+                await expectArt(current, 'welcome-persona-tewi', [128, 128]);
+                const second = await artTop();
+                await current.getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(current.locator('.sb-dialog__title')).toHaveText('What’s Next');
+                await expectArt(current, 'welcome-next-reisen', [128, 128]);
+                const third = await artTop();
+
+                expect([second.height, third.height]).toEqual([first.height, first.height]);
+                expect([second.top, third.top]).toEqual([first.top, first.top]);
+                expect([first.centred, second.centred, third.centred].every(offset => offset <= 1), 'the art is centred on every page').toBe(true);
+                await expect(host.locator('[data-sb-art-placeholder]:visible')).toHaveCount(1);
+            });
+
+            test('the Import page has no art', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+
+                await host.getByRole('button', { name: 'Import From SillyTavern' }).click();
+
+                await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Import From SillyTavern');
+                await expect(shownPage(host).locator('[data-sb-art-placeholder]')).toHaveCount(0);
+            });
+
             test('page three lists the four steps, keeps Show at Startup unchecked, and Start closes', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
@@ -423,6 +492,28 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator('.ds-row', { has: page.locator('kbd', { hasText: 'F1' }) })).toHaveCount(0);
                 await expect(host.getByRole('group', { name: 'Chat' }).locator('.ds-row')).toHaveCount(10);
                 await expect(host.getByRole('group', { name: 'Formatting' }).locator('.ds-row')).toHaveCount(5);
+            });
+
+            test('opens with Tewi\'s art alone at the top, centred, above the first group', async ({ page }) => {
+                const host = await openFromMenu(page, 'Keyboard Shortcuts');
+
+                await expectArt(host, 'shortcuts-tewi', [96, 96]);
+                const layout = await host.evaluate((root) => {
+                    const body = root.querySelector('.sb-dialog__body');
+                    const art = body.querySelector('[data-sb-art-placeholder="shortcuts-tewi"]');
+                    const first = body.querySelector('[role="group"]');
+                    const box = art.getBoundingClientRect();
+                    const column = body.getBoundingClientRect();
+                    return {
+                        firstChild: body.firstElementChild === art,
+                        offCentre: Math.abs((box.left + box.right) / 2 - (column.left + column.right) / 2),
+                        above: box.bottom <= first.getBoundingClientRect().top,
+                        paragraphs: body.querySelectorAll('p').length,
+                    };
+                });
+                expect(layout).toEqual({ firstChild: true, offCentre: expect.any(Number), above: true, paragraphs: 0 });
+                expect(layout.offCentre).toBeLessThanOrEqual(1);
+                await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
             });
 
             test('lists the save and find shortcuts of the editors and lists', async ({ page }) => {
@@ -1130,13 +1221,32 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const host = await openFromMenu(page, 'About SillyBunny');
 
                 await expectArt(host, 'logo-64', [64, 64]);
-                await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
+                await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(3);
                 await expect(host.getByRole('heading', { name: 'SillyBunny', exact: true })).toBeVisible();
                 await expectSlots(host, ['AB-DEVELOPER']);
                 await expectNoUnmarkedPlaceholder(host);
                 await expect(host.getByText(version.pkgVersion, { exact: false }).first()).toBeVisible();
                 await expect(host.getByText(version.gitBranch, { exact: true })).toBeVisible();
                 await expect(host.getByText(version.gitRevision, { exact: true })).toBeVisible();
+            });
+
+            test('puts Reisen and Tewi either side of the logo, on one line, with the name below', async ({ page }) => {
+                const host = await openFromMenu(page, 'About SillyBunny');
+
+                await expectMastheadOnOneLine(host);
+                const { reisen, tewi, logo } = await readMasthead(host);
+                expect(reisen.centre, 'Reisen is on the start side').toBeLessThan(logo.centre);
+                expect(tewi.centre, 'Tewi is on the end side').toBeGreaterThan(logo.centre);
+            });
+
+            test('mirrors the order in a right-to-left page: Reisen on the end side', async ({ page }) => {
+                await page.evaluate(() => document.documentElement.setAttribute('dir', 'rtl'));
+                const host = await openFromMenu(page, 'About SillyBunny');
+
+                await expectMastheadOnOneLine(host, { rtl: true });
+                const { reisen, tewi, logo } = await readMasthead(host);
+                expect(reisen.centre, 'Reisen is on the start side, which is the right').toBeGreaterThan(logo.centre);
+                expect(tewi.centre, 'Tewi is on the end side, which is the left').toBeLessThan(logo.centre);
             });
 
             test('opens at once, shows a stand-in for the branch and commit, and fills them when the server answers', async ({ page }) => {
@@ -1216,6 +1326,23 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(current.getByRole('heading', { level: 3 })).toHaveText(LEGAL_GROUPS);
                 await expectSlots(current, ['AB-FANWORK', 'AB-ART-LICENCE', 'AB-NAHIDA', 'AB-THIRD-PARTY']);
                 await expectNoUnmarkedPlaceholder(current);
+            });
+
+            test('Troubleshooting opens with Reisen\'s art above the debug text', async ({ page }) => {
+                const host = await openFromMenu(page, 'About SillyBunny');
+
+                await host.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
+
+                const current = shownPage(host);
+                await expectArt(current, 'troubleshooting-reisen', [96, 96]);
+                const layout = await current.evaluate((node) => {
+                    const art = node.querySelector('[data-sb-art-placeholder="troubleshooting-reisen"]').getBoundingClientRect();
+                    const info = node.querySelector('.sbDebugInfo').getBoundingClientRect();
+                    const body = node.querySelector('.sb-dialog__body').getBoundingClientRect();
+                    return { above: art.bottom <= info.top, offCentre: Math.abs((art.left + art.right) / 2 - (body.left + body.right) / 2) };
+                });
+                expect(layout.above).toBe(true);
+                expect(layout.offCentre).toBeLessThanOrEqual(1);
             });
 
             test('Troubleshooting shows every line of the debug info without scrolling', async ({ page }) => {
@@ -1314,6 +1441,26 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     await check(page);
                 });
             }
+
+            test('Reisen shows her done pose once all four steps are skipped, live, and goes back when one is un-skipped', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                await expectArt(host, 'gs-reisen', [96, 96]);
+
+                for (const title of STEP_TITLES) {
+                    await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
+                    await rowOf(host, title).getByRole('button', { name: 'Skip', exact: true }).click();
+                }
+
+                await expect(host.locator('.sb-dialog__subtitle')).toHaveText('4 of 4');
+                await expectArt(host, 'gs-reisen-done', [96, 96]);
+                await expect(host.locator('[data-sb-art-placeholder="gs-reisen"]')).toHaveCount(0);
+                await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
+
+                await rowOf(host, 'Set Up a Preset').getByRole('button', { name: 'Skip', exact: true }).click();
+
+                await expectArt(host, 'gs-reisen', [96, 96]);
+                await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
+            });
 
             test('Skip marks the step, moves the progress in the window and on the tile, and a second press undoes it', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
@@ -1831,6 +1978,21 @@ test.describe('Home windows with motion on a phone', () => {
 
         await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Choose a Preset');
         await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
+    });
+});
+
+test.describe('About on a 360px phone', () => {
+    test.use({ viewport: { width: 360, height: 640 }, isMobile: true, hasTouch: true });
+
+    test('keeps Reisen, the logo and Tewi on one line without wrapping or leaving the sheet', async ({ page }) => {
+        await protectMaintainerServer(page);
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await expectHome(page);
+
+        const host = await openFromMenu(page, 'About SillyBunny');
+
+        await expect(host).toHaveAttribute('data-presentation', 'sheet');
+        await expectMastheadOnOneLine(host);
     });
 });
 

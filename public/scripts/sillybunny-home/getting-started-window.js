@@ -4,15 +4,28 @@ import { createPrefGroup } from '../sillybunny-editor/rows.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
 import { createArtPlaceholder } from './art.js';
 import { markCopyPlaceholder } from './copy.js';
-import { formatProgress, getGettingStartedSteps, getSharedGettingStartedState } from './getting-started.js';
+import { formatProgress, getGettingStartedSteps, getIntroArtName, getSharedGettingStartedState } from './getting-started.js';
 import { openShellTarget } from './shell-targets.js';
 import { createStepRow } from './step-rows.js';
 
-function createIntro() {
+/**
+ * @param {string} artName The art the intro opens with.
+ * @returns {{ intro: HTMLElement, showArt: (name: string) => void }} `showArt` swaps the art for the one named.
+ */
+function createIntro(artName) {
     const intro = document.createElement('div');
     intro.className = 'sbHomeIntro';
-    intro.append(createArtPlaceholder('gs-reisen'), markCopyPlaceholder(document.createElement('p'), 'GS-INTRO'));
-    return intro;
+    let art = createArtPlaceholder(artName);
+    intro.append(art, markCopyPlaceholder(document.createElement('p'), 'GS-INTRO'));
+    const showArt = (name) => {
+        if (art.dataset.sbArtPlaceholder === name) {
+            return;
+        }
+        const next = createArtPlaceholder(name);
+        art.replaceWith(next);
+        art = next;
+    };
+    return { intro, showArt };
 }
 
 /**
@@ -42,17 +55,20 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
         state,
     }));
     const progress = () => formatProgress(state.getResolvedCount(), state.getTotal());
+    const artName = () => getIntroArtName(state.getResolvedCount(), state.getTotal());
+    const { intro, showArt } = createIntro(artName());
 
     dialog = openDialog({
         tier: 'dialog',
         title: t`Getting Started`,
         subtitle: progress(),
         className: 'sbGettingStartedDialog',
-        content: body => body.append(createIntro(), createPrefGroup({ field: 'getting-started-group', rows: steps }).section),
+        content: body => body.append(intro, createPrefGroup({ field: 'getting-started-group', rows: steps }).section),
     });
     const stopFollowing = state.subscribe(() => {
         steps.forEach(step => step.sync());
         dialog.setSubtitle(progress());
+        showArt(artName());
     });
     void dialog.closed.then(stopFollowing);
     return dialog;

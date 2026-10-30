@@ -1,6 +1,7 @@
 import { t } from './i18n.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createPrefGroup, createRow } from './sillybunny-editor/rows.js';
+import { createArtPlaceholder } from './sillybunny-home/art.js';
 import { isApplePlatform } from './sillybunny-platform.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
@@ -116,6 +117,11 @@ export async function openShortcutsWindow() {
         tier: 'dialog',
         title: t`Keyboard Shortcuts`,
         className: 'sbShortcutsDialog',
-        content: body => fillShortcuts(body, getShortcuts(), apple),
+        content: (body) => {
+            const art = createArtPlaceholder('shortcuts-tewi');
+            art.classList.add('sbWindowArt');
+            body.append(art);
+            fillShortcuts(body, getShortcuts(), apple);
+        },
     });
 }

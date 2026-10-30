@@ -59,9 +59,14 @@ function createLanguageRow() {
     return createSelectRow({ select, label: t`Language`, field: 'welcome-language', searchLabel: t`Search` });
 }
 
+function createWindowArt(name) {
+    const art = createArtPlaceholder(name);
+    art.classList.add('sbWindowArt');
+    return art;
+}
+
 function fillHello(body, { language, openImport }) {
-    const art = createArtPlaceholder('welcome-both');
-    art.classList.add('sbWelcomeArt');
+    const art = createWindowArt('welcome-both');
 
     const intro = document.createElement('div');
     intro.className = 'sbWelcomeIntro';
@@ -97,6 +102,7 @@ function fillImport(body) {
 function fillPersona(body) {
     const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true });
     body.append(
+        createWindowArt('welcome-persona-tewi'),
         createCopyBlock('WD-2-PROMPT'),
         createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section,
         createPosition(2),
@@ -113,6 +119,7 @@ function fillWhatsNext(body, { showMe }) {
     }));
     const showAtStartup = createSwitchRow({ label: t`Show at Startup`, field: 'welcome-show-at-startup', checked: false });
     body.append(
+        createWindowArt('welcome-next-reisen'),
         createCopyBlock('WD-3-INTRO'),
         createPrefGroup({ field: 'welcome-steps-group', rows }).section,
         createPrefGroup({ field: 'welcome-startup-group', rows: [showAtStartup] }).section,

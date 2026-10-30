@@ -1,9 +1,11 @@
 import { loadListEditorStyles } from '../sillybunny-editor/list-shell.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { createArtPlaceholder } from './art.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
 import { getSharedGettingStartedState } from './getting-started.js';
+import { chooseHeroArt } from './hero-art.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
 import { mountTiles } from './tiles-view.js';
@@ -93,11 +95,13 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
 }
 
 /**
- * Fills a rendered Home panel: version, external links, menu, tiles, assistants, empty states and the display mode.
+ * Fills a rendered Home panel: the hero art for the time of day, version, external links, menu, tiles, assistants,
+ * empty states and the display mode.
  * @param {HTMLElement} panel The `.welcomePanel` root, before or after it is attached.
  * @param {HomeContext} context
  */
 export function mountHome(panel, context) {
+    panel.querySelector('[data-sb-home-region="hero"]')?.prepend(createArtPlaceholder(chooseHeroArt(new Date())));
     panel.querySelectorAll('[data-sb-home-version]').forEach((node) => {
         node.textContent = getVersionLabel(context.version);
     });

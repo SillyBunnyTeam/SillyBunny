@@ -265,11 +265,12 @@
     background: var(--sb-layer-window);
 }
 
-/* Integer 2x when the container has room, so real pixel art stays sharp at both sizes. */
-.sbHomeBand > .sbHomeArt[data-sb-art-placeholder='hero-duo'] {
+/* The pixel art is drawn at an integer scale so it stays sharp, and every piece of it changes scale at the same
+   container width (see the container query under Narrow content). The hero by night is the same size. */
+.sbHomeBand > .sbHomeArt:is([data-sb-art-placeholder='hero-duo'], [data-sb-art-placeholder='hero-duo-night']) {
     flex-direction: column;
-    width: 640px;
-    height: 320px;
+    width: 320px;
+    height: 160px;
     max-width: 100%;
     image-rendering: pixelated;
 }
@@ -345,8 +346,9 @@
 
 .sbHomeArt[data-sb-art-placeholder='row-reisen'],
 .sbHomeArt[data-sb-art-placeholder='row-tewi'] {
-    width: 128px;
-    height: 128px;
+    width: 64px;
+    height: 64px;
+    image-rendering: pixelated;
 }
 
 .sbHomeArt[data-sb-art-placeholder='logo-32'] {
@@ -636,12 +638,12 @@
     flex: none;
     place-items: center;
     align-self: center;
-    width: 128px;
-    height: 128px;
+    width: 64px;
+    height: 64px;
     border-radius: var(--sb-radius-control);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     color: var(--sb-muted-fg);
-    font-size: 32px;
+    font-size: 24px;
 }
 
 .sbHomeMoreChevron {
@@ -1178,12 +1180,24 @@ body.big-avatars .welcomeRecent .chatMessage {
 
 /* ── Narrow content and touch ───────────────────────────────────────────── */
 
-/* The hero art goes to 1x here. 740px is the container width at which the 2x art plus the band padding and the
-   column padding no longer fit. */
-@container welcome-home (max-width: 740px) {
-    .sbHomeBand > .sbHomeArt[data-sb-art-placeholder='hero-duo'] {
-        width: 320px;
-        height: 160px;
+/* The pixel art goes to 2x above this container width, all of it at once: the hero, the assistant portraits and
+   the icon of More Assistants. 740px is the container width at which the 2x hero plus the band padding and the
+   column padding no longer fit, and the portraits follow it so one screen has one pixel scale. */
+@container welcome-home (width > 740px) {
+    .sbHomeBand > .sbHomeArt:is([data-sb-art-placeholder='hero-duo'], [data-sb-art-placeholder='hero-duo-night']) {
+        width: 640px;
+        height: 320px;
+    }
+
+    .sbHomeArt[data-sb-art-placeholder='row-reisen'],
+    .sbHomeArt[data-sb-art-placeholder='row-tewi'],
+    .sbHomeMoreIcon {
+        width: 128px;
+        height: 128px;
+    }
+
+    .sbHomeMoreIcon {
+        font-size: 32px;
     }
 }
 
@@ -1207,8 +1221,7 @@ body.big-avatars .welcomeRecent .chatMessage {
 }
 
 /* A 360px phone leaves a 346px container. The 1x art (320px) then fits in the band only with 4px of band padding
-   and 8px of column padding, and two assistant cards per line fit their 128px portraits only with 12px of card
-   padding. */
+   and 8px of column padding. */
 @container welcome-home (max-width: 380px) {
     .sbHomeLayout {
         padding-inline: max(8px, env(safe-area-inset-left, 0px)) max(8px, env(safe-area-inset-right, 0px));
@@ -1216,10 +1229,6 @@ body.big-avatars .welcomeRecent .chatMessage {
 
     .sbHomeBand {
         padding-inline: 4px;
-    }
-
-    .sbHomeCard {
-        --sb-home-card-pad: 12px;
     }
 }
 
