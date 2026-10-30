@@ -2,7 +2,7 @@
     "name": "Catppuccin Mocha",
     "blur_strength": 8,
     "main_text_color": "rgba(192, 177, 209, 1)",
-    "italics_text_color": "rgba(203, 166, 247, 0.5)",
+    "italics_text_color": "rgba(231, 213, 255, 0.61)",
     "underline_text_color": "rgba(250, 179, 135, 1)",
     "quote_text_color": "rgba(148, 226, 213, 1)",
     "blur_tint_color": "rgba(30, 30, 46, 1)",

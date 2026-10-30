@@ -4,7 +4,7 @@
     "main_text_color": "rgba(51, 51, 56, 1)",
     "italics_text_color": "rgba(92, 92, 97, 1)",
     "underline_text_color": "rgba(92, 92, 97, 1)",
-    "quote_text_color": "rgba(53, 132, 228, 1)",
+    "quote_text_color": "rgba(4, 97, 190, 1)",
     "blur_tint_color": "rgba(250, 250, 251, 0.9)",
     "chat_tint_color": "rgba(255, 255, 255, 0.9)",
     "user_mes_blur_tint_color": "rgba(255, 255, 255, 0.9)",

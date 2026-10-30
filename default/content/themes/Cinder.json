@@ -2,7 +2,7 @@
   "name": "Cinder",
   "blur_strength": 8,
   "main_text_color": "rgba(217, 217, 217, 1)",
-  "italics_text_color": "rgba(217, 217, 217, 0.5)",
+  "italics_text_color": "rgba(253, 253, 253, 0.53)",
   "underline_text_color": "rgba(247, 247, 247, 1)",
   "quote_text_color": "rgba(197, 175, 164, 1)",
   "blur_tint_color": "rgba(34, 34, 34, 1)",

@@ -925,12 +925,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `src/endpoints/content-manager.js`, `src/server-init.js`, `src/server-main.js`, `src/util.js`, `src/plugin-loader.js`. |
 | Area | Install, defaults, server lifecycle, and runtime utilities. |
 | Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. |
-| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, and the bundled-content helpers in `content-manager.js`. |
-| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. |
-| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, and root lint. |
-| Validation | `npm run init`, `node --check src/server-init.js`, `node --check src/server-main.js`, `npm run lint`. |
+| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, and the bundled-content helpers in `content-manager.js`, including `MANAGED_BUNDLED_THEMES`, `CONTRAST_REVISED_THEME_HASHES` and `reconcileManagedBundledThemes()`. |
+| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. Each bundled theme revision lists the SHA-256 of the previous bundled file, so reconciliation replaces only an unmodified copy; edited copies stay, and deleted ones are not recreated. Seeding is unchanged. |
+| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/bundled-theme-reconcile.test.js`, and root lint. |
+| Validation | `npm run init`, `node --check src/server-init.js`, `node --check src/server-main.js`, `npm run lint`. 2026-10-31 (theme text contrast): boots under `bun server.js` and `node server.js` on data roots seeded from the previous theme files replaced the 51 unmodified copies, kept an edited copy, did not recreate a deleted one, and left the unrevised themes byte-identical. |
 | Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-10-31, PR #870 theme text contrast. |
 | Owner | Runtime and release integrator. |
 
 ### Chat backups, characters, and thumbnails
@@ -964,16 +964,30 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Bundled defaults and install-time content
 | Field | Value |
 | --- | --- |
-| File | `default/config.yaml`, `default/content/index.json`, and `default/content/settings.json`. |
+| File | `default/config.yaml`, `default/content/index.json`, `default/content/settings.json`, and `default/content/themes/*.json`. |
 | Area | Install defaults and bundled content. |
 | Divergence reason | SillyBunny ships fork defaults, agents, presets, and settings while preserving install-time migration and reset behavior. v1.9.0 registers the `Libadwaita` and `Libadwaita Light` themes in `index.json`, makes `Libadwaita` the default theme with matching colors in `settings.json`, and defaults `reduced_motion` to `false`. |
-| Target seam | `src/server-init.js`, `src/endpoints/content-manager.js`, and bundled-template update helpers. |
-| Adapter shape | Preserve upstream IDs and metadata keys; change default values and bundled indexes only through existing synchronization paths. |
-| Protecting tests | `tests/default-preset-deletions.test.js`, bundled-template and agent-version tests, plus Bun initialization smoke. |
-| Validation | `npm run init`, full unit suite, and fresh-data-directory smoke. |
+| Target seam | `src/server-init.js`, `src/endpoints/content-manager.js`, bundled-template update helpers, and `public/scripts/sillybunny-theme-revisions.js` for applied theme colours. |
+| Adapter shape | Preserve upstream IDs and metadata keys; change default values and bundled indexes only through existing synchronization paths. Bundled theme text colours are revised in place (`main_text_color`, `italics_text_color`, `underline_text_color`, `quote_text_color`, and the text rules in `custom_css` through `--customThemeColor-text` and `--customThemeColor-hover-text`); `settings.json` carries the default theme's revised palette and `sb_theme_text_revision`. |
+| Protecting tests | `tests/default-preset-deletions.test.js`, bundled-template and agent-version tests, `tests/bundled-theme-text-contrast.test.js` (every bundled theme's text roles reach 4.5:1), `tests/libadwaita-theme-migration.test.js` (`settings.json` matches the bundled Libadwaita theme), plus Bun initialization smoke. |
+| Validation | `npm run init`, full unit suite, and fresh-data-directory smoke. 2026-10-31: a browser measurement of every text role on five surfaces in all 56 themes (3,304 rows) leaves only Libadwaita Light's quote and links on the bare page tone at 4.41:1 (libadwaita's standalone blue `#0461be`, kept by choice); fresh-data boot seeded all 56 themes and the revised palette. |
 | Rollback path | Restore individual defaults through the bundled update flow without deleting existing-user settings. Existing users keep their saved theme and motion setting. |
-| Last reviewed | 2026-10-01 PR #870 libadwaita defaults. |
+| Last reviewed | 2026-10-31, PR #870 theme text contrast. |
 | Owner | Defaults and release integrator. |
+
+### `public/scripts/power-user.js` - bundled theme text repair
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js`; `public/scripts/sillybunny-theme-revisions.js`. |
+| Area | Startup migration of saved theme text colours after the bundled themes' text colours were revised. |
+| Divergence reason | TODO(copy) |
+| Target seam | `planThemeTextRepair()` and the per-theme revision data in `public/scripts/sillybunny-theme-revisions.js`. |
+| Adapter shape | Under `// SillyBunny:` markers: the `SB_THEME_TEXT_REVISION` constant; one block in `loadPowerUserSettings()` after the Libadwaita palette repair that, while `power_user.sb_theme_text_revision` is below it, imports the revisions module dynamically, applies the planned text colours (and the CSS only when it is the previous bundled CSS and the loaded theme carries the revised CSS), records the marker and saves; a failed import leaves the marker unset so the next start retries; the Dark V 1.0 migration writes the current Libadwaita quote colour; the default `settings.json` seeds `sb_theme_text_revision`, so fresh installs never load the module. A user's state changes only when the saved theme name and all ten saved colour keys equal a previous bundled version. |
+| Protecting tests | `tests/sillybunny-theme-revisions.test.js`, `tests/sillybunny-theme-text-repair.e2e.js`, `tests/libadwaita-theme-migration.test.js`. |
+| Validation | 2026-10-31: root and tests lint; full unit suite; `npm run check:frontend-budgets` (startup scripts 25 of 26; the revisions module is a dynamic import, requested only while the marker is unset); repair e2e; a 4460 boot under Bun and Node with a seeded `settings.json` holding the previous Everforest Dark palette and CSS applied the revised colours and CSS, saved the marker, and switched themes without the CSS prompt. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-31, PR #870 theme text contrast. |
+| Owner | TODO(copy) |
 
 ### `public/style.css` - libadwaita shell foundation
 | Field | Value |

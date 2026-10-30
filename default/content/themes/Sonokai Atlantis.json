@@ -2,7 +2,7 @@
     "name": "Sonokai Atlantis",
     "blur_strength": 8,
     "main_text_color": "rgba(158, 178, 184, 1)",
-    "italics_text_color": "rgba(114, 204, 232, 0.5)",
+    "italics_text_color": "rgba(182, 237, 255, 0.64)",
     "underline_text_color": "rgba(246, 156, 94, 1)",
     "quote_text_color": "rgba(157, 210, 116, 1)",
     "blur_tint_color": "rgba(42, 47, 56, 1)",
