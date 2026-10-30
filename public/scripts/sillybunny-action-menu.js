@@ -46,7 +46,6 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
 /** @typedef {({ items: ActionMenuItem[] } | { reactions: ActionMenuReaction[] }) & { title?: string }} ActionMenuSection */
 
 let mobileQuery = null;
-let sheet = null;
 let open = null;
 let initialized = false;
 
@@ -242,13 +241,58 @@ function handleMenuKeydown(event) {
     event.preventDefault();
     // Arrow keys would otherwise swipe the message underneath.
     event.stopPropagation();
-    items[next]?.focus({ preventScroll: true });
+    if (!items[next]) {
+        return;
+    }
+    items[next].focus({ preventScroll: true });
+    revealItem(items[next], { first: next === 0, last: next === items.length - 1 });
 }
 
-function ensureSheet() {
-    if (sheet) {
-        return sheet;
+/**
+ * The scroll offset that brings a row into view with the least movement.
+ * All values share one coordinate space: the row and view edges are viewport positions.
+ */
+export function getRevealScrollTop({ scrollTop, viewTop, viewBottom, itemTop, itemBottom }) {
+    // Whole pixels, so a fractional row edge cannot stay a fraction outside the view.
+    if (itemTop < viewTop) {
+        return scrollTop - Math.ceil(viewTop - itemTop);
     }
+    if (itemBottom > viewBottom) {
+        return scrollTop + Math.ceil(itemBottom - viewBottom);
+    }
+    return scrollTop;
+}
+
+/**
+ * Focus uses preventScroll so the browser does not scroll the page behind a fixed layer, which means
+ * a menu that scrolls (a popover capped to a short window, or a sheet body) must reveal the row itself.
+ * The first and last rows scroll to the edge so the padding and a section title stay in view.
+ */
+function revealItem(item, { first, last }) {
+    const scroller = item.closest('.sb-action-popover, .sb-action-sheet-body');
+    if (!scroller || scroller.scrollHeight <= scroller.clientHeight) {
+        return;
+    }
+    if (first || last) {
+        scroller.scrollTop = first ? 0 : scroller.scrollHeight;
+        return;
+    }
+    const viewTop = scroller.getBoundingClientRect().top + scroller.clientTop;
+    const itemRect = item.getBoundingClientRect();
+    scroller.scrollTop = getRevealScrollTop({
+        scrollTop: scroller.scrollTop,
+        viewTop,
+        viewBottom: viewTop + scroller.clientHeight,
+        itemTop: itemRect.top,
+        itemBottom: itemRect.bottom,
+    });
+}
+
+/**
+ * Builds the sheet for one opening. It leaves the DOM when its exit ends, so a closed menu keeps no
+ * hidden `role="menu"` with the shared id and no state a caller wrote on the frame.
+ */
+function createSheet() {
     const backdrop = document.createElement('button');
     backdrop.type = 'button';
     backdrop.className = 'sb-action-sheet-backdrop';
@@ -296,10 +340,13 @@ function ensureSheet() {
         getReturnFocus: () => (open?.trigger?.isConnected ? open.trigger : null),
         canAnimateClose: () => isMobileLayout(),
         onClose: () => finishClose(),
+        onHidden: () => {
+            backdrop.remove();
+            element.remove();
+        },
     });
-    sheet = { element, backdrop, title, subtitle, body, controller };
     bindSheetSwipeClose({ sheet: element, backdrop, headerSelector: '.sb-action-sheet-header', close: () => closeActionMenu({ restoreFocus: true }) });
-    return sheet;
+    return { element, backdrop, title, subtitle, body, controller };
 }
 
 /**
@@ -328,7 +375,9 @@ export function positionPopover(popover, trigger, point, boundsElement, alignmen
     const below = bounds.bottom - anchor.bottom - POPOVER_GAP - POPOVER_MARGIN;
     const above = anchor.top - bounds.top - POPOVER_GAP - POPOVER_MARGIN;
     const placeAbove = natural > below && above > below;
-    const available = Math.max(POPOVER_MIN_HEIGHT, placeAbove ? above : below);
+    // The minimum keeps a menu usable beside a trigger at the edge of the bounds, but never exceeds the bounds themselves.
+    const boundsRoom = Math.max(0, bounds.bottom - bounds.top - 2 * POPOVER_MARGIN);
+    const available = Math.min(Math.max(POPOVER_MIN_HEIGHT, placeAbove ? above : below), boundsRoom);
     popover.style.maxBlockSize = `${Math.floor(available)}px`;
     const height = Math.min(natural, available);
     const width = popover.offsetWidth;
@@ -347,9 +396,12 @@ export function positionPopover(popover, trigger, point, boundsElement, alignmen
     left = maxLeft < minLeft
         ? Math.max(bounds.left, Math.min(left, bounds.right - width))
         : Math.min(Math.max(left, minLeft), maxLeft);
-    const top = placeAbove ? anchor.top - POPOVER_GAP - height : anchor.bottom + POPOVER_GAP;
+    // When the minimum height does not fit beside the trigger, the menu slides over it rather than leave the bounds.
+    const minTop = bounds.top + POPOVER_MARGIN;
+    const maxTop = bounds.bottom - POPOVER_MARGIN - height;
+    const top = Math.min(Math.max(placeAbove ? anchor.top - POPOVER_GAP - height : anchor.bottom + POPOVER_GAP, minTop), Math.max(minTop, maxTop));
     popover.style.left = `${Math.round(left)}px`;
-    popover.style.top = `${Math.round(Math.max(top, POPOVER_MARGIN))}px`;
+    popover.style.top = `${Math.round(top)}px`;
     const originX = Math.round((anchor.left + anchor.right) / 2 - left);
     return `${originX}px ${placeAbove ? '100%' : '0'}`;
 }
@@ -373,7 +425,21 @@ function finishClose() {
     }
     open = null;
     setTriggerExpanded(state.trigger, false);
+    if (state.frame) {
+        releaseSheetIds(state);
+    }
     state.onClose?.();
+}
+
+/**
+ * A sheet stays in the DOM while it animates out, and the next menu may open in that time (a row that
+ * opens a nested menu does). The leaving sheet gives up the ids the next one uses, so `aria-controls`
+ * and `aria-labelledby` never resolve to the sheet that is on its way out.
+ */
+function releaseSheetIds({ frame, menu }) {
+    frame.title.removeAttribute('id');
+    frame.element.removeAttribute('aria-labelledby');
+    menu?.removeAttribute('id');
 }
 
 /**
@@ -403,13 +469,13 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     }
 
     if (isMobileLayout() && !forcePopover) {
-        const frame = ensureSheet();
+        const frame = createSheet();
         frame.title.textContent = title;
         frame.subtitle.textContent = subtitle;
         frame.subtitle.hidden = !subtitle;
         frame.body.replaceChildren(menu);
         hostOverlayLayer(frame.backdrop, frame.element);
-        open = { kind: 'sheet', trigger, menu, keyboard, onClose };
+        open = { kind: 'sheet', frame, trigger, menu, keyboard, onClose };
         setTriggerExpanded(trigger, true);
         frame.controller.open();
         return;
@@ -450,7 +516,7 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
     }
     closeActionMenu({ animate: false, restoreFocus: false });
     if (isMobileLayout()) {
-        const frame = ensureSheet();
+        const frame = createSheet();
         if (titleLabel && titleInput) {
             titleLabel.hidden = true;
             titleInput.setAttribute('aria-labelledby', SHEET_TITLE_ID);
@@ -460,7 +526,7 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
         frame.subtitle.hidden = true;
         frame.body.replaceChildren(content);
         hostOverlayLayer(frame.backdrop, frame.element);
-        open = { kind: 'sheet', trigger, keyboard: false, initialFocus, onClose };
+        open = { kind: 'sheet', frame, trigger, keyboard: false, initialFocus, onClose };
         setTriggerExpanded(trigger, true);
         frame.controller.open();
         return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
@@ -501,7 +567,7 @@ export function closeActionMenu({ animate = true, restoreFocus = false } = {}) {
         return;
     }
     if (state.kind === 'sheet') {
-        sheet.controller.close({ animate, restoreFocus });
+        state.frame.controller.close({ animate, restoreFocus });
         return;
     }
     const { popover, trigger } = state;

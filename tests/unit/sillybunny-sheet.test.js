@@ -94,6 +94,52 @@ describe('sheet exit after a swipe', () => {
     });
 });
 
+describe('sheet hidden notification', () => {
+    test('runs at once when nothing animates', () => {
+        const onHidden = jest.fn();
+        const { controller } = makeSheet({ onHidden });
+        controller.open();
+
+        controller.close({ animate: false });
+
+        expect(onHidden).toHaveBeenCalledTimes(1);
+    });
+
+    test('waits for the sheet and the backdrop to finish leaving, then runs once', () => {
+        const exits = [];
+        const leaving = (_element, _frames, hide, { onEnd }) => {
+            hide();
+            exits.push(onEnd);
+            return {};
+        };
+        animateOut.mockImplementationOnce(leaving).mockImplementationOnce(leaving);
+        const onHidden = jest.fn();
+        const { controller, sheet, backdrop } = makeSheet({ onHidden });
+        controller.open();
+
+        controller.close();
+
+        expect(sheet.hidden).toBe(true);
+        expect(backdrop.hidden).toBe(true);
+        expect(exits).toHaveLength(2);
+        expect(onHidden).not.toHaveBeenCalled();
+        exits[0]();
+        expect(onHidden).not.toHaveBeenCalled();
+        exits[1]();
+        expect(onHidden).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not run for a close that a veto refused', () => {
+        const onHidden = jest.fn();
+        const { controller } = makeSheet({ onHidden, canClose: () => false });
+        controller.open();
+
+        controller.close();
+
+        expect(onHidden).not.toHaveBeenCalled();
+    });
+});
+
 describe('sheet close guards', () => {
     test('close without canClose stays synchronous, hides both layers, restores focus and notifies once', () => {
         const { controller, sheet, backdrop, initialFocus, returnFocus, onClose } = makeSheet();
@@ -109,7 +155,7 @@ describe('sheet close guards', () => {
         expect(document.activeElement).toBe(returnFocus);
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(animateOut).toHaveBeenCalledTimes(2);
-        expect(animateOut).toHaveBeenCalledWith(sheet, expect.any(Array), expect.any(Function), { enabled: true });
+        expect(animateOut).toHaveBeenCalledWith(sheet, expect.any(Array), expect.any(Function), { enabled: true, onEnd: expect.any(Function) });
         expect(controller.close()).toBe(false);
         expect(onClose).toHaveBeenCalledTimes(1);
     });
@@ -120,7 +166,7 @@ describe('sheet close guards', () => {
 
         expect(controller.close({ animate: false, restoreFocus: false })).toBe(true);
         expect(document.activeElement).toBe(initialFocus);
-        expect(animateOut).toHaveBeenCalledWith(sheet, expect.any(Array), expect.any(Function), { enabled: false });
+        expect(animateOut).toHaveBeenCalledWith(sheet, expect.any(Array), expect.any(Function), { enabled: false, onEnd: expect.any(Function) });
     });
 
     test('a synchronous veto leaves visibility, motion, focus and onClose untouched', () => {
@@ -252,7 +298,7 @@ describe('sheet close guards', () => {
         expect(first.onClose).toHaveBeenCalledTimes(1);
         expect(canClose).not.toHaveBeenCalled();
         expect(restoreFocus).not.toHaveBeenCalled();
-        expect(animateOut).toHaveBeenCalledWith(first.sheet, expect.any(Array), expect.any(Function), { enabled: false });
+        expect(animateOut).toHaveBeenCalledWith(first.sheet, expect.any(Array), expect.any(Function), { enabled: false, onEnd: expect.any(Function) });
         expect(second.controller.isOpen()).toBe(true);
         expect(document.activeElement).toBe(second.initialFocus);
     });

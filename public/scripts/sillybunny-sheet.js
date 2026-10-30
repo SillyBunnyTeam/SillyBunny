@@ -35,12 +35,14 @@ function isFocusOnBody() {
  * @param {() => HTMLElement|null} [options.getReturnFocus] - Focus target after closing, when focus was inside or fell back to body.
  * @param {() => boolean} [options.canAnimateClose] - Return false when the sheet's styles no longer apply.
  * @param {(reason: 'escape'|'scrim'|'programmatic') => boolean|Promise<boolean>} [options.canClose]
- * @param {() => void} [options.onClose]
+ * @param {() => void} [options.onClose] - Runs when the close starts.
+ * @param {() => void} [options.onHidden] - Runs once the sheet and the backdrop have finished leaving, at once without motion.
+ *     A caller that builds a sheet for each opening removes it here.
  * @returns {{ isOpen: () => boolean, open: () => void,
  * close: (options?: { animate?: boolean, restoreFocus?: boolean, force?: boolean,
  * reason?: 'escape'|'scrim'|'programmatic' }) => boolean|Promise<boolean> }}
  */
-export function createSheetController({ sheet, backdrop, getInitialFocus, getReturnFocus = () => null, canAnimateClose = () => true, canClose, onClose = () => {} }) {
+export function createSheetController({ sheet, backdrop, getInitialFocus, getReturnFocus = () => null, canAnimateClose = () => true, canClose, onClose = () => {}, onHidden = () => {} }) {
     let closeRevision = 0;
     let closePending = false;
     const controller = {
@@ -106,12 +108,20 @@ export function createSheetController({ sheet, backdrop, getInitialFocus, getRet
         const backdropFrom = backdrop.style.opacity || '1';
         sheet.style.removeProperty('transform');
         backdrop.style.removeProperty('opacity');
-        animateOut(sheet, [{ transform: sheetFrom }, { transform: 'translateY(100%)' }], () => {
+        // animateOut returns null when nothing animates, and `onEnd` only runs for a real motion, so a null result counts as a finished exit.
+        let exitsLeft = 2;
+        const exitDone = () => {
+            if (--exitsLeft === 0) onHidden();
+        };
+        const exit = (element, keyframes, hide) => {
+            if (!animateOut(element, keyframes, hide, { enabled, onEnd: exitDone })) exitDone();
+        };
+        exit(sheet, [{ transform: sheetFrom }, { transform: 'translateY(100%)' }], () => {
             sheet.hidden = true;
-        }, { enabled });
-        animateOut(backdrop, [{ opacity: backdropFrom }, { opacity: 0 }], () => {
+        });
+        exit(backdrop, [{ opacity: backdropFrom }, { opacity: 0 }], () => {
             backdrop.hidden = true;
-        }, { enabled });
+        });
         // WebKit blurs the sheet to body on pointer down, before the click that closes it arrives,
         // so focus resting on body after the close counts as focus the sheet held.
         const returnTarget = restoreFocus && (hadFocus || isFocusOnBody()) ? getReturnFocus() : null;

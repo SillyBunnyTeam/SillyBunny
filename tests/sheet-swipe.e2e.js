@@ -275,12 +275,14 @@ for (const surface of SURFACES) {
 
         test('a long swipe closes through the normal path and leaves the result unchanged', async ({ page, baseURL }) => {
             const { sheet, handle, trigger, unchanged } = await openSettled(surface, page, baseURL);
+            // The action-menu sheet and the popover form sheet leave the DOM once they have closed, so keep the element to read the drag state from.
+            const sheetNode = await sheet.elementHandle();
             await dragDown(page, handle, 300);
             await page.mouse.up();
 
             await expect(sheet).toBeHidden();
             expect(await unchanged()).toBe(true);
-            expect(await sheet.evaluate(node => node.style.transform)).toBe('');
+            expect(await sheetNode.evaluate(node => node.style.transform)).toBe('');
             await expect(trigger).toBeFocused();
         });
 
@@ -315,11 +317,12 @@ for (const surface of SURFACES) {
         test('under reduced motion a long swipe closes at once, clears the drag and restores focus', async ({ page, baseURL }) => {
             await page.emulateMedia({ reducedMotion: 'reduce' });
             const { sheet, handle, trigger, unchanged } = await openSettled(surface, page, baseURL, { reducedMotion: true });
+            const sheetNode = await sheet.elementHandle();
             await dragDown(page, handle, 300);
             await page.mouse.up();
 
             await expect(sheet).toBeHidden();
-            expect(await sheet.evaluate(node => node.style.transform)).toBe('');
+            expect(await sheetNode.evaluate(node => node.style.transform)).toBe('');
             expect(await unchanged()).toBe(true);
             await expect(trigger).toBeFocused();
         });
