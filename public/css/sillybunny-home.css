@@ -50,6 +50,29 @@
     max-height: none;
 }
 
+/* The column paints the opaque page tone with the theme's chat tint on top at the tint's own alpha. A tint with a
+   near-zero alpha, whose colour its author never saw, therefore never becomes a surface, and the wallpaper does not
+   show through the column at the default Surface Transparency. The tint layer is what #chat paints elsewhere:
+   --sb-chat-view-bg on wide windows, which scales the alpha and follows Surface Transparency, and the raw tint on
+   narrow ones. The page tone follows Surface Transparency too. Without relative colour syntax the page tone keeps
+   its own alpha. */
+#sheld[data-sb-home='on'] > #chat {
+    background-color: var(--sb-page-bg-source);
+    background-image: linear-gradient(var(--SmartThemeChatTintColor), var(--SmartThemeChatTintColor));
+}
+
+@media (min-width: 769px) {
+    #sheld[data-sb-home='on'] > #chat {
+        background-image: linear-gradient(var(--sb-chat-view-bg), var(--sb-chat-view-bg));
+    }
+}
+
+@supports (color: rgb(from black r g b / 1)) {
+    #sheld[data-sb-home='on'] > #chat {
+        background-color: rgb(from var(--sb-page-bg-source) r g b / var(--sb-page-overlay-opacity));
+    }
+}
+
 #chat .mes[type="assistant_message"] .mes_button {
     display: none;
 }
@@ -103,7 +126,9 @@
 
 /* One column at every width. The 32px gap sits between sections; the header pulls the band 16px closer. */
 .sbHomeLayout {
-    --sb-home-line: color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    /* The line comes from the text colour, as libadwaita derives its border colour, so it stays visible whatever
+       colour and alpha the theme gives its borders. The theme border only tints it. */
+    --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, color-mix(in srgb, var(--sb-shell-border) 72%, transparent));
     --sb-home-tint: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     --sb-home-tint-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
     display: flex;
@@ -113,6 +138,12 @@
     width: 100%;
     padding-block: 12px calc(24px + env(safe-area-inset-bottom, 0px));
     padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+}
+
+@media (prefers-contrast: more) {
+    .sbHomeLayout {
+        --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
 }
 
 .sbHomeSection,
@@ -750,7 +781,7 @@
 .welcomeRecent {
     position: relative;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border: 1px solid var(--sb-home-line);
     border-radius: var(--sb-radius-lg);
     background: var(--sb-home-tint);
 }
@@ -783,7 +814,7 @@
     inset: 0 0 auto;
     height: 1px;
     pointer-events: none;
-    background: color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    background: var(--sb-home-line);
 }
 
 .welcomeRecent .recentChat:active {
@@ -982,7 +1013,7 @@ body.big-avatars .welcomeRecent .chatMessage {
 .welcomeRecent .counterBlock:not(:last-child)::after {
     content: "|";
     margin-left: 4px;
-    color: color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
+    color: var(--sb-home-line);
 }
 
 .welcomeRecent .showMoreChats {
@@ -997,7 +1028,7 @@ body.big-avatars .welcomeRecent .chatMessage {
     margin: 0;
     padding: 0;
     border: 0;
-    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-top: 1px solid var(--sb-home-line);
     border-radius: 0;
     background: transparent;
     color: var(--sb-muted-fg);
