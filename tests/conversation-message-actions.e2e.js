@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -175,7 +176,7 @@ for (const reducedMotion of ['reduce', 'no-preference']) {
         const trigger = message.locator('.sb-conversation-mobile-menu-trigger');
         await trigger.focus();
         await trigger.press('Enter');
-        const sheet = page.locator('.sb-action-sheet');
+        const sheet = page.locator(OPEN_ACTION_SHEET);
         await expect(sheet).toBeVisible();
         await sheet.getByRole('button', { name: 'Close', exact: true }).click();
         await expect(sheet).toBeHidden();

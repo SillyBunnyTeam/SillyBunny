@@ -4,6 +4,7 @@
  */
 
 import { expect } from '@playwright/test';
+import { OPEN_ACTION_SHEET } from './action-sheet.js';
 import {
     bootArchive,
     dialog as archiveDialog,
@@ -336,12 +337,12 @@ export const SURFACES = [
         modal: true,
         rootSelector: '.sb-action-sheet',
         frameSelector: '.sb-action-sheet',
-        isOpen: page => page.locator('.sb-action-sheet:visible'),
+        isOpen: page => page.locator(OPEN_ACTION_SHEET),
         boot: bootMisc,
         async open(page) {
             await openCharacterList(page);
             const opener = await openCharacterListMenu(page);
-            await waitForSurface(page, page.locator('.sb-action-sheet'));
+            await waitForSurface(page, page.locator(OPEN_ACTION_SHEET));
             return opener;
         },
         escapes: [{ closes: true, async check() {} }],

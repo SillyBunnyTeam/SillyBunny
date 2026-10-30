@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -314,7 +315,7 @@ for (const layout of layouts.filter(({ width }) => width <= 768)) {
             await expect(quickActions).toHaveAttribute('aria-expanded', 'true');
             await expect(page.getByRole('menuitem').first()).toBeVisible();
             if (layout.width <= 450 || layout.height <= 360) {
-                await expect(page.locator('.sb-action-sheet')).toBeVisible();
+                await expect(page.locator(OPEN_ACTION_SHEET)).toBeVisible();
             } else {
                 await expect(page.locator('.sb-action-popover')).toBeVisible();
             }

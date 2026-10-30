@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
@@ -104,7 +105,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
                 } else {
                     await addFolder.click();
                 }
-                const input = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('textbox', { name: 'New Folder', exact: true });
+                const input = page.locator(`.sb-custom-popover:visible, ${OPEN_ACTION_SHEET}`).getByRole('textbox', { name: 'New Folder', exact: true });
                 // The popover moves focus to its entry on a later frame. Typing and Tab before that frame run would
                 // have focus pulled back to the entry afterwards, which a user cannot outpace.
                 await expect(input).toBeFocused();

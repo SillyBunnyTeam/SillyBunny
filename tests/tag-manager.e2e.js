@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
@@ -161,9 +162,9 @@ for (const width of [1440, 390]) {
             } else {
                 await addTag.click();
             }
-            const create = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('textbox', { name: 'Create a new tag', exact: true });
+            const create = page.locator(`.sb-custom-popover:visible, ${OPEN_ACTION_SHEET}`).getByRole('textbox', { name: 'Create a new tag', exact: true });
             await create.fill('QA New');
-            const createButton = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('button', { name: 'Create', exact: true });
+            const createButton = page.locator(`.sb-custom-popover:visible, ${OPEN_ACTION_SHEET}`).getByRole('button', { name: 'Create', exact: true });
             await expect(createButton).toBeEnabled();
             await create.fill('');
             await expect(createButton).toBeDisabled();

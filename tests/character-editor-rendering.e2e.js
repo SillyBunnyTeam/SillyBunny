@@ -1,9 +1,24 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
+    // The bundled characters carry a World/Lorebook. Opening one asks to import it, and that popup covers the
+    // editor. Settings saves are stubbed below, so the "seen" flag would never persist on a fresh data root.
+    // The motion tests need motion on, and the shared data root may have saved reduced motion.
+    await page.route('**/api/settings/get', async route => {
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
+        const settings = JSON.parse(data.settings);
+        settings.firstRun = false;
+        settings.power_user.world_import_dialog = false;
+        settings.power_user.reduced_motion = false;
+        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+    });
     // Browser QA must not change the running instance's saved preferences.
     await page.route('**/api/settings/save', route => {
         const request = route.request();
@@ -14,16 +29,26 @@ test.beforeEach(async ({ page }) => {
     });
 });
 
-async function openEditor(page) {
-    await page.goto('/');
-    await page.waitForFunction(() => !document.getElementById('preloader'));
+const STARTUP_TIMEOUT = 30_000;
+
+/** Opens the first character's editor on a page whose app document has just loaded. */
+async function openFirstCharacter(page) {
+    await page.waitForFunction(() => !document.getElementById('preloader'), null, { timeout: STARTUP_TIMEOUT });
+    // The preloader goes before the character list is filled, so selecting index 0 at once finds nothing.
+    // Take the module into `window` first: a predicate that awaits the import would never wait.
+    await page.evaluate(async () => { window.qaApp = await import('/script.js'); });
+    await page.waitForFunction(() => window.qaApp.characters.length > 0, null, { timeout: STARTUP_TIMEOUT });
     await page.locator('#sb-character-toggle').click();
-    await page.evaluate(async () => {
-        const app = await import('/script.js');
-        app.setCharacterId(0);
-        app.select_selected_character(0);
+    await page.evaluate(() => {
+        window.qaApp.setCharacterId(0);
+        window.qaApp.select_selected_character(0);
     });
     await expect(page.locator('#sb_character_editor_header')).toBeVisible();
+}
+
+async function openEditor(page) {
+    await page.goto('/');
+    await openFirstCharacter(page);
 }
 
 async function expectDuplicateAligned(page) {
@@ -110,7 +135,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         for (const format of ['json', 'png']) {
             const trigger = page.locator('#export_button');
             await openExportMenu(page);
-            await expect(page.locator(viewport.width < 769 ? '.sb-action-sheet' : '.sb-action-popover')).toBeVisible();
+            await expect(page.locator(viewport.width < 769 ? OPEN_ACTION_SHEET : '.sb-action-popover')).toBeVisible();
             const save = page.waitForRequest(request => request.url().includes('/api/characters/edit'));
             const response = page.waitForResponse(response => response.url().endsWith('/api/characters/export'));
             const download = page.waitForEvent('download');
@@ -132,7 +157,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await openEditor(page);
 
         await openExportMenu(page);
-        await expect(page.locator(viewport.width < 451 ? '.sb-action-sheet' : '.sb-action-popover')).toBeVisible();
+        await expect(page.locator(viewport.width < 451 ? OPEN_ACTION_SHEET : '.sb-action-popover')).toBeVisible();
         await page.keyboard.press('Escape');
 
         await page.evaluate(() => { void import('/script.js').then(app => app.duplicateCharacter()); });
@@ -391,15 +416,7 @@ test('dirty draft recovers after page reload', async ({ page }) => {
     // beforeunload writes the draft and arms the browser's leave prompt; accept it.
     page.on('dialog', dialog => dialog.accept());
     await page.reload();
-    await page.waitForFunction(() => !document.getElementById('preloader'));
-    // Reopen editor
-    await page.locator('#sb-character-toggle').click();
-    await page.evaluate(async () => {
-        const app = await import('/script.js');
-        app.setCharacterId(0);
-        app.select_selected_character(0);
-    });
-    await expect(page.locator('#sb_character_editor_header')).toBeVisible();
+    await openFirstCharacter(page);
     await showToasts(page);
     await page.locator('#sb_draft_restore_btn').click();
     await expect(name).toHaveValue('Draft Recovery Test');

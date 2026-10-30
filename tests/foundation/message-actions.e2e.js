@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { OPEN_ACTION_SHEET } from '../helpers/action-sheet.js';
 
 const LONG_NAME = 'Seraphina, Guardian of the Eldoria Forest, Keeper of the Moonlit Glade, Warden of the Silver Springs, and Protector of Every Quiet Path';
 const target = '#chat .mes[mesid="4"]';
@@ -61,7 +62,7 @@ function visibleRowButtons(page, selector) {
         .map(button => [...button.classList].find(name => /^(mes_|extraMesButtons)/.test(name) && name !== 'mes_button') ?? button.className));
 }
 
-const sheet = '.sb-action-sheet';
+const sheet = OPEN_ACTION_SHEET;
 const popover = '.sb-action-popover';
 
 function menuLabels(page, selector) {

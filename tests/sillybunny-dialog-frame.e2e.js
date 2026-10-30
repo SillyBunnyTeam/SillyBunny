@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The viewport matrix switches between floating and sheet assertions. */
 
@@ -421,7 +422,7 @@ test('popover sheet swipe closes and content scrolling does not', async ({ page 
         content.innerHTML = '<div style="height: 1800px">Scrollable content</div>';
         window.qaPopover = openPopover({ trigger, content, title: 'Actions' });
     });
-    const sheet = page.locator('.sb-action-sheet');
+    const sheet = page.locator(OPEN_ACTION_SHEET);
     await expect(sheet).toBeVisible();
     await expect(sheet.locator('.sb-action-sheet-title')).not.toBeFocused();
     expect(await sheet.evaluate(node => getComputedStyle(node.querySelector('.sb-action-sheet-title')).boxShadow)).toBe('none');
