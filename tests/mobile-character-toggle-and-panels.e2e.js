@@ -1,8 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 async function boot(page, viewport) {
     await protectMaintainerServer(page);
+    // Opening a character with an embedded lorebook asks to import it, and that popup covers the shell. Settings
+    // saves are stubbed, so the once-only "seen" flag never persists on a fresh data root.
+    await page.route('**/api/settings/get', async route => {
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
+        const settings = JSON.parse(data.settings);
+        settings.firstRun = false;
+        settings.power_user.world_import_dialog = false;
+        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+    });
     await page.setViewportSize(viewport);
     await page.goto('/');
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
