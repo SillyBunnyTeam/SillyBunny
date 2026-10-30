@@ -350,22 +350,49 @@ function createSheet() {
 }
 
 /**
- * Places the popover beside its anchor, trailing-aligned to the trigger, inside `bounds`.
+ * The part of the layout viewport that the user can see. The visual viewport is smaller while the page is
+ * zoomed in or an on-screen keyboard is open, and a fixed popover is placed in layout viewport coordinates.
+ * Its rectangle already lies inside the layout viewport, so it is not clipped by `innerWidth` and `innerHeight`:
+ * WebKit reports those as the visual size while zoomed, and clipping would collapse a panned viewport to nothing.
+ */
+function getVisibleViewport() {
+    const visual = window.visualViewport;
+    if (!visual) {
+        return { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    }
+    const left = Math.max(0, visual.offsetLeft);
+    const top = Math.max(0, visual.offsetTop);
+    return { left, top, right: left + visual.width, bottom: top + visual.height };
+}
+
+/** True when the popover's left edge lines up with the trigger's left edge instead of its right edge. */
+function isLeftAligned({ alignment, point, trigger, anchor, bounds }) {
+    if (alignment === 'start' || alignment === 'end') {
+        const rtl = getComputedStyle(trigger).direction === 'rtl';
+        return (alignment === 'start') !== rtl;
+    }
+    return point ? true : (anchor.left + anchor.right) / 2 < (bounds.left + bounds.right) / 2;
+}
+
+/**
+ * Places the popover beside its anchor, trailing-aligned to the trigger, inside `bounds` and the visible viewport.
  * Triggers in the start half of the bounds (mirrored rows) align to their start edge instead.
  * Exported for other body-mounted popovers (the shared editor picker) so placement stays identical.
- * @param {'auto'|'start'} [alignment='auto'] Explicit inline-start alignment for wide picker triggers.
+ * @param {'auto'|'start'|'end'} [alignment='auto'] Explicit inline alignment: `start` for wide picker triggers, `end` for a
+ *     small menu button at the end of a row or card that sits inside much wider bounds.
  * @returns {string} transform-origin for the opening animation.
  */
 export function positionPopover(popover, trigger, point, boundsElement, alignment = 'auto') {
     const boundsRect = boundsElement?.getBoundingClientRect();
+    const view = getVisibleViewport();
     const bounds = boundsRect && boundsRect.width > 0
         ? {
-            left: Math.max(boundsRect.left, 0),
-            right: Math.min(boundsRect.right, window.innerWidth),
-            top: Math.max(boundsRect.top, 0),
-            bottom: Math.min(boundsRect.bottom, window.innerHeight),
+            left: Math.max(boundsRect.left, view.left),
+            right: Math.min(boundsRect.right, view.right),
+            top: Math.max(boundsRect.top, view.top),
+            bottom: Math.min(boundsRect.bottom, view.bottom),
         }
-        : { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
+        : view;
     const anchor = point
         ? { left: point.x, right: point.x, top: point.y, bottom: point.y }
         : trigger.getBoundingClientRect();
@@ -382,12 +409,8 @@ export function positionPopover(popover, trigger, point, boundsElement, alignmen
     const height = Math.min(natural, available);
     const width = popover.offsetWidth;
 
-    const startAligned = alignment === 'start'
-        ? getComputedStyle(trigger).direction !== 'rtl'
-        : point
-            ? true
-            : (anchor.left + anchor.right) / 2 < (bounds.left + bounds.right) / 2;
-    let left = startAligned ? anchor.left : anchor.right - width;
+    const leftAligned = isLeftAligned({ alignment, point, trigger, anchor, bounds });
+    let left = leftAligned ? anchor.left : anchor.right - width;
     if (point && left + width > bounds.right - POPOVER_MARGIN) {
         left = anchor.left - width;
     }
@@ -404,6 +427,47 @@ export function positionPopover(popover, trigger, point, boundsElement, alignmen
     popover.style.top = `${Math.round(top)}px`;
     const originX = Math.round((anchor.left + anchor.right) / 2 - left);
     return `${originX}px ${placeAbove ? '100%' : '0'}`;
+}
+
+/** @type {{ stop: () => void }|null} */
+let visualViewportWatch = null;
+
+/**
+ * An on-screen keyboard or a pan moves the visual viewport without a window resize or a document scroll
+ * (iOS, and Chrome with the keyboard in resizes-visual mode), so an open popover places itself again, once per frame.
+ */
+function watchVisualViewport() {
+    const visual = window.visualViewport;
+    if (!visual || visualViewportWatch) {
+        return;
+    }
+    let pending = false;
+    let frameId = 0;
+    const reposition = () => {
+        pending = false;
+        const state = open;
+        if (state?.kind !== 'popover' || (!state.point && !state.trigger?.isConnected)) {
+            return;
+        }
+        positionPopover(state.popover, state.trigger, state.point ?? null, state.bounds, state.alignment);
+    };
+    const schedule = () => {
+        if (!pending) {
+            pending = true;
+            frameId = requestAnimationFrame(reposition);
+        }
+    };
+    visual.addEventListener('resize', schedule);
+    visual.addEventListener('scroll', schedule);
+    visualViewportWatch = {
+        stop() {
+            visual.removeEventListener('resize', schedule);
+            visual.removeEventListener('scroll', schedule);
+            if (pending) {
+                cancelAnimationFrame(frameId);
+            }
+        },
+    };
 }
 
 function setTriggerExpanded(trigger, expanded) {
@@ -424,6 +488,8 @@ function finishClose() {
         return;
     }
     open = null;
+    visualViewportWatch?.stop();
+    visualViewportWatch = null;
     setTriggerExpanded(state.trigger, false);
     if (state.frame) {
         releaseSheetIds(state);
@@ -453,9 +519,10 @@ function releaseSheetIds({ frame, menu }) {
  * @param {boolean} [options.keyboard] - Focus the first row instead of the surface.
  * @param {Element|null} [options.bounds] - Desktop popover stays inside this element.
  * @param {boolean} [options.forcePopover=false] - Use an anchored popover even on mobile.
+ * @param {'auto'|'start'|'end'} [options.alignment='auto'] - Popover inline alignment; see `positionPopover`.
  * @param {() => void} [options.onClose]
  */
-export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, onClose = null }) {
+export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, alignment = 'auto', onClose = null }) {
     initialize();
     if (open?.trigger === trigger && !point) {
         closeActionMenu({ restoreFocus: true });
@@ -489,8 +556,9 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     popover.addEventListener('focusout', handlePopoverFocusOut);
     blockUpstreamDrawerClose(popover);
     hostOverlayLayer(popover);
-    const origin = positionPopover(popover, trigger, point, bounds);
-    open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds };
+    const origin = positionPopover(popover, trigger, point, bounds, alignment);
+    open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds, alignment };
+    watchVisualViewport();
     setTriggerExpanded(trigger, true);
     // Popovers open with a 200ms fade and a scale from 0.96 to 1, so they grow out of the trigger.
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
@@ -549,6 +617,7 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
     hostOverlayLayer(popover);
     const origin = positionPopover(popover, trigger, null, bounds);
     open = { kind: 'popover', trigger, popover, keyboard: false, custom: true, initialFocus, onClose, bounds };
+    watchVisualViewport();
     setTriggerExpanded(trigger, true);
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
         duration: MOTION_FAST,
@@ -679,7 +748,7 @@ function initialize() {
             if (!open.trigger?.isConnected) {
                 closeActionMenu({ animate: false });
             } else if (!open.point) {
-                positionPopover(open.popover, open.trigger, null, open.bounds);
+                positionPopover(open.popover, open.trigger, null, open.bounds, open.alignment);
             }
         }
     }, { capture: true, passive: true });
