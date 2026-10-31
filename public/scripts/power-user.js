@@ -3403,12 +3403,13 @@ async function confirmThemeCssReplace(themeName) {
     return result === POPUP_RESULT.CUSTOM1;
 }
 
+// SillyBunny: exported so Bundled Extras applies an installed theme through the same switch as the theme select.
 /**
  * Switches the UI theme, asking first when its Custom CSS would replace Custom CSS that no theme stores.
  * @param {string} name Theme name
  * @returns {Promise<boolean>} Whether the theme was switched
  */
-async function switchUiTheme(name) {
+export async function switchUiTheme(name) {
     const theme = themes.find(x => x.name == name);
 
     if (!theme || isThemeSwitchPending) {
@@ -3431,6 +3432,25 @@ async function switchUiTheme(name) {
     } finally {
         isThemeSwitchPending = false;
     }
+}
+
+// SillyBunny: Bundled Extras installs a theme file on the server; this adds it to the list the UI shows.
+/**
+ * Adds a theme that another route saved on the server to the theme list and the theme select.
+ * @param {{ name: string }} theme The saved theme.
+ * @returns {boolean} False when the list has a theme of that name already.
+ */
+export function registerUiTheme(theme) {
+    if (themes.some(x => x.name == theme.name)) {
+        return false;
+    }
+
+    themes.push(theme);
+    const option = document.createElement('option');
+    option.value = theme.name;
+    option.innerText = theme.name;
+    $('#themes').append(option);
+    return true;
 }
 
 async function deleteTheme() {

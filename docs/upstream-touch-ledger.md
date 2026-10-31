@@ -1213,6 +1213,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | TODO(copy) |
 
+### `src/server-startup.js`, `src/endpoints/themes.js`, `public/scripts/extensions.js` and `public/scripts/power-user.js` - Bundled Extras
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js`; `src/endpoints/themes.js`; `public/scripts/extensions.js`; `public/scripts/power-user.js` |
+| Area | Bundled Extras window: extension, preset and theme actions; theme creation on the server. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/endpoints/sillybunny-bundled-themes.js` (`POST /api/sillybunny/themes/install-bundled` with `{ id }`: allowlist lookup, `node-fetch` with `redirect: 'error'`, a deadline over headers and body that aborts the request, a 512 KiB streaming cap, the sha256 checked before parsing, flat-object theme validation, sanitised name, 409 for an existing theme, 10 installs per 60 s per user); `src/sillybunny-bundled-themes.js` (the pinned allowlist and its start-up check); `src/sillybunny-publish-file.js` (exclusive publish through a hard link, with an exclusive copy where the file system has none); `public/scripts/sillybunny-bundled-extras.js` and `public/scripts/sillybunny-home/bundled-extras-{window,actions,adapters,presets}.js` on the client. |
+| Adapter shape | One-line `// SillyBunny:` markers. `server-startup.js`: the router import and one `app.use('/api/sillybunny/themes', …)` beside the other `/api/sillybunny/*` routers. `themes.js`: `/create` (a fork route) publishes through the shared helper. `extensions.js`: `isOfficialExtension` treats `github.com/SillyBunnyTeam/` as first party (anchored regex); `confirmAndDeleteExtension(name)` is the old `onDeleteClick` body, exported, and the panel's handler calls it. `power-user.js`: `switchUiTheme` is exported, and `registerUiTheme(theme)` adds a theme saved by another route to the theme list and select. |
+| Protecting tests | `tests/unit/sillybunny-bundled-themes.test.js` (70, including a real local server for redirects, an endless body and stalls); `tests/unit/sillybunny-publish-file.test.js`; `tests/unit/sillybunny-official-extension.test.js` (official check, escaped delete confirm); `tests/unit/sillybunny-bundled-extras*.test.js`; `tests/bundled-extras.e2e.js` (1440×900 and 390×844: row states and actions, the panel's delete confirm with its clean-up option, per-preset Restore without selecting, the theme route on 201 and 409). |
+| Validation | 2026-11-01: root and tests lint pass; unit 27 suites, 451 passed; e2e `bundled-extras` 30; `npm run check:frontend-budgets` passes; reviewer mutation runs killed 13 of 14 server mutants (the survivor is an equivalent early exit); Bun 1.3.12 and Node 26.10 both boot and give the same answers for redirects, an endless body, stalls and `/api/themes/create`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

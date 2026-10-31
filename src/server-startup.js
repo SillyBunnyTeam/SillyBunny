@@ -59,6 +59,8 @@ import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
 // SillyBunny divergence: keep Conversation REST mounted here only; endpoint behavior stays isolated in its fork-owned router for upstream syncs.
 import { router as sillyBunnyConversationRouter } from './endpoints/sillybunny-conversation.js';
+// SillyBunny: pinned third-party CSS themes for Bundled Extras; the router is fork-owned.
+import { router as sillyBunnyBundledThemesRouter } from './endpoints/sillybunny-bundled-themes.js';
 import { resumableGenerationMiddleware, router as resumableGenerationsRouter } from './resumable-generations.js';
 
 /**
@@ -132,6 +134,8 @@ export function setupPrivateEndpoints(app) {
     // SillyBunny divergence: preserve both fork REST aliases here so future upstream merges only need to reconcile these mount points.
     app.use('/api/sillybunny-conversation', sillyBunnyConversationRouter);
     app.use('/api/sillybunny/conversation', sillyBunnyConversationRouter);
+    // SillyBunny: Bundled Extras installs pinned third-party CSS themes through its own route.
+    app.use('/api/sillybunny/themes', sillyBunnyBundledThemesRouter);
 }
 
 /**

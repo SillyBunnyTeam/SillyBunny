@@ -1,12 +1,16 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure data. */
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from '@jest/globals';
 import {
     BUNDLED_EXTRAS,
     BUNDLED_EXTRA_GROUP_IDS,
+    BUNDLED_EXTRA_KINDS,
     getBundledExtraSlot,
     getBundledExtraSubtitleSlot,
+    getExtensionFolderName,
     groupBundledExtras,
 } from '../../public/scripts/sillybunny-bundled-extras.js';
+import { BUNDLED_THEMES } from '../../src/sillybunny-bundled-themes.js';
 
 const namesOf = group => group.items.map(item => item.name);
 
@@ -57,6 +61,7 @@ describe('Bundled Extras data', () => {
         expect(kindsByGroup['first-party-extensions']).toEqual(new Set(['extension']));
         expect(kindsByGroup['third-party-extensions']).toEqual(new Set(['extension']));
         expect(kindsByGroup.themes).toEqual(new Set(['theme-extension']));
+        expect([...BUNDLED_EXTRA_KINDS]).toEqual(['assistant', 'extension', 'theme-extension', 'theme-css', 'preset']);
         expect(kindsByGroup.presets).toEqual(new Set(['preset']));
     });
 
@@ -95,5 +100,70 @@ describe('Bundled Extras data', () => {
 
     test('rejects an item in a group that does not exist', () => {
         expect(() => groupBundledExtras([{ id: 'x', name: 'X', group: 'unknown', kind: 'extension', url: null }])).toThrow(/unknown group/i);
+    });
+
+    test('leaves out Pura\'s Director Preset, which is no longer supported', () => {
+        const everything = JSON.stringify(BUNDLED_EXTRAS).toLowerCase();
+
+        expect(everything).not.toContain('pura');
+        expect(everything).not.toContain('director');
+    });
+});
+
+describe('Bundled Extras items that install', () => {
+    const indexOfBundledContent = JSON.parse(readFileSync(new URL('../../default/content/index.json', import.meta.url), 'utf8'));
+    const bundledOpenAiPresets = indexOfBundledContent
+        .filter(entry => entry.type === 'openai_preset')
+        .map(entry => entry.filename.replace(/^presets\/openai\//, '').replace(/\.json$/, ''));
+
+    test('names, for each preset, a preset that ships in default/content, which is the file the restore flow gives back', () => {
+        const presets = BUNDLED_EXTRAS.filter(item => item.kind === 'preset');
+
+        expect(presets).toHaveLength(2);
+        for (const preset of presets) {
+            expect(bundledOpenAiPresets).toContain(preset.presetName);
+        }
+    });
+
+    test('names a preset only on a preset', () => {
+        expect(BUNDLED_EXTRAS.filter(item => 'presetName' in item).every(item => item.kind === 'preset')).toBe(true);
+    });
+
+    test.each([
+        ['https://github.com/SillyBunnyTeam/SillyBunny-Deep-Swipe', 'SillyBunny-Deep-Swipe'],
+        ['https://github.com/LenAnderson/SillyTavern-LALib', 'SillyTavern-LALib'],
+        ['https://github.com/aracnai/SB-GroupUtilities.git', 'SB-GroupUtilities'],
+    ])('reads the folder the server installs %s into: %s', (url, folder) => {
+        expect(getExtensionFolderName({ kind: 'extension', url })).toBe(folder);
+    });
+
+    test('gives every extension and theme extension a folder of its own', () => {
+        const folders = BUNDLED_EXTRAS
+            .filter(item => item.kind === 'extension' || item.kind === 'theme-extension')
+            .map(getExtensionFolderName);
+
+        expect(folders.length).toBeGreaterThanOrEqual(16);
+        expect(new Set(folders).size).toBe(folders.length);
+        for (const folder of folders) {
+            expect(folder).toMatch(/^[A-Za-z0-9._-]+$/);
+        }
+    });
+
+    test('refuses to read a folder from an item that is not an extension', () => {
+        expect(() => getExtensionFolderName({ kind: 'preset', url: 'https://rentry.org/geechan' })).toThrow(/not an extension/i);
+    });
+
+    test('lists a third-party CSS theme exactly when the server allowlist can install it', () => {
+        const listed = BUNDLED_EXTRAS.filter(item => item.kind === 'theme-css').map(item => item.id).sort();
+
+        expect(listed).toEqual(Object.keys(BUNDLED_THEMES).sort());
+    });
+
+    test('keeps a third-party CSS theme in the Themes group, with the name its file carries', () => {
+        for (const item of BUNDLED_EXTRAS.filter(candidate => candidate.kind === 'theme-css')) {
+            expect(item.group).toBe('themes');
+            expect(typeof item.themeName).toBe('string');
+            expect(item.themeName).not.toBe('');
+        }
     });
 });

@@ -169,7 +169,8 @@ export function getAuthorFromUrl(url) {
 
 export const isOfficialExtension = (url) => {
     try {
-        return /^https:\/\/github\.com\/SillyTavern\/(.+)$/i.test(new URL(url).href);
+        // SillyBunny: SillyBunnyTeam repositories are first party, like SillyTavern's.
+        return /^https:\/\/github\.com\/(?:SillyTavern|SillyBunnyTeam)\/(.+)$/i.test(new URL(url).href);
     } catch {
         return false;
     }
@@ -1802,15 +1803,14 @@ async function updateExtension(extensionName, quiet, timeout = null) {
     }
 }
 
+// SillyBunny: exported so Bundled Extras confirms a removal exactly as the Extensions panel does.
 /**
- * Handles the click event for the delete button of an extension.
- * This function makes a POST request to '/api/extensions/delete' with the extension's name.
- * If the extension is deleted, it displays a success message.
+ * Asks the user to confirm the deletion of an extension, then deletes it.
  * Creates a popup for the user to confirm before delete.
  * If the extension has a clean hook, the user can optionally run it before delete.
+ * @param {string} extensionName Name of the extension
  */
-async function onDeleteClick() {
-    const extensionName = $(this).data('name');
+export async function confirmAndDeleteExtension(extensionName) {
     const isCurrentUserAdmin = isAdmin();
     const isGlobal = getExtensionType(extensionName) === 'global';
     if (isGlobal && !isCurrentUserAdmin) {
@@ -1831,6 +1831,16 @@ async function onDeleteClick() {
         const shouldClean = hasCleanHook && Boolean(popup.inputResults?.get('extension_delete_cleanup'));
         await deleteExtension(extensionName, shouldClean);
     }
+}
+
+/**
+ * Handles the click event for the delete button of an extension.
+ * This function makes a POST request to '/api/extensions/delete' with the extension's name.
+ * If the extension is deleted, it displays a success message.
+ */
+async function onDeleteClick() {
+    // SillyBunny: the panel and Bundled Extras share one confirm-and-delete path.
+    await confirmAndDeleteExtension($(this).data('name'));
 }
 
 /**

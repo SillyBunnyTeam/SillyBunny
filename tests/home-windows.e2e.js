@@ -2146,11 +2146,10 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(installs).toEqual([]);
             });
 
-            test('lists no link and no install action for an extension, a theme or a preset', async ({ page }) => {
+            test('lists no link for an extension, a theme or a preset', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expect(host.locator('a')).toHaveCount(0);
-                await expect(host.locator('.ds-row button, button.ds-row')).toHaveText([/^Add$/, /UI Themes/]);
             });
 
             test('UI Themes closes the window and opens Customize, Appearance with the theme select shown', async ({ page }) => {

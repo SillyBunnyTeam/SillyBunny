@@ -140,6 +140,8 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/server-supervisor.test.js`, `tests/base64-atomic-writes.test.js`, `tests/server-admin-update-install.test.js`, `tests/server-plugin-manager.test.js`, `tests/server-plugin-update-helper.test.js`.
 - **No test:** `c1a87366c` (#522, Bun bootstrap on Termux), `cd7429421` (issue #672, unescaped parentheses in `Start-Node.bat`).
 - **Fixes:** #806 (explicit Base64 decode on Bun), #912 (run npm through Node.js on Windows).
+- **A fetch that must stop must abort:** under Bun, `node-fetch` is a shim over the native fetch, and cancelling the body reader or leaving a `for await` loop does not close the connection; only `AbortController.abort()` does. A hostile endless body stayed open upstream until the Bundled Extras theme route aborted its request whenever its deadline or size cap ended the task (`withDeadline` in `src/endpoints/sillybunny-bundled-themes.js`). The deadline also leaves `AbortError` rejections under Bun, which `server-main.js` logs as benign. Tests: `tests/unit/sillybunny-bundled-themes.test.js` ("aborts its request once it is turned away", against a real local server).
+- **Not every data folder has hard links:** exFAT and some Android storage refuse `linkSync`. `publishNewFile()` (`src/sillybunny-publish-file.js`) publishes a new file through an exclusive hard link and falls back to an exclusive copy on `EPERM`, `ENOTSUP`, `EXDEV` or `ENOSYS`, removing a half-written copy; `/api/themes/create` and the Bundled Extras theme route use it. Test: `tests/unit/sillybunny-publish-file.test.js`.
 
 ### Security and credentials
 
