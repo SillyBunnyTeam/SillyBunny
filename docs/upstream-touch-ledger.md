@@ -1227,6 +1227,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | TODO(copy) |
 
+### `src/endpoints/content-manager.js` and `src/endpoints/presets.js` - Restore default presets
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/content-manager.js` (`restoreDefaultPresetFiles`); `src/endpoints/presets.js` (`POST /api/presets/restore-defaults`) |
+| Area | Bundled default presets: the Presets panel's "Restore default presets" button. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet: `restoreDefaultPresetFiles` and the `restore-defaults` route are SillyBunny additions inside upstream-origin files (added in `98affc781`). |
+| Adapter shape | The route passes the user's directories and the preset types to `restoreDefaultPresetFiles`, which brings back every bundled preset whose file is missing, deleted or never seeded, with an exclusive copy (`COPYFILE_EXCL`, one-line marker): a file that is there, edited or not, is never written over and is not reported as restored. A written preset gets its permissions set and its deletion record cleared. |
+| Protecting tests | `tests/default-preset-deletions.test.js` (an empty folder gets every bundled preset; a deleted preset comes back with its record cleared; an edited bundled preset and a custom preset keep their content; a file that appears during the restore is kept; only written presets are listed). |
+| Validation | 2026-11-01: root and tests lint pass; unit `default-preset`, `content-manager` and `preset` 10 suites, 139 passed; mutants with the forced copy (5 fail), a check-then-copy (1 fails) and kept files listed (4 fail); the real route on Bun and Node restored only the deleted preset and kept an edited `Default` and a custom preset. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

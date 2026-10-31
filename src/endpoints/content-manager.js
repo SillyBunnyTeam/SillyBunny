@@ -421,10 +421,12 @@ export function findDefaultPreset(directories, { folder, name }) {
 }
 
 /**
- * Restores bundled default preset files for a user.
+ * Restores the bundled default preset files that a user is missing, whether they deleted them or never had them.
+ * A file that is there is never written over, edited or not: the copy is exclusive, so a file that appears
+ * while the restore runs is kept as well. A kept file is not reported as restored.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string[]|null} types Content types to restore, or null for all preset types
- * @returns {{restored: string[], failed: {filename: string, error: string}[]}}
+ * @returns {{restored: string[], failed: {filename: string, error: string}[]}} `restored` holds the presets that were written
  */
 export function restoreDefaultPresetFiles(directories, types = null) {
     const allowedTypes = Array.isArray(types) && types.length ? new Set(types) : null;
@@ -445,7 +447,15 @@ export function restoreDefaultPresetFiles(directories, types = null) {
             }
 
             fs.mkdirSync(targetFolder, { recursive: true });
-            fs.cpSync(sourcePath, targetPath, { recursive: true, force: true });
+            try {
+                // SillyBunny: an exclusive copy, so a restore never overwrites a preset that is there.
+                fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+            } catch (error) {
+                if (error?.code === 'EEXIST') {
+                    continue;
+                }
+                throw error;
+            }
             setPermissionsSync(targetPath);
             clearDefaultPresetDeletion(directories, preset);
             restored.push(preset.filename);
