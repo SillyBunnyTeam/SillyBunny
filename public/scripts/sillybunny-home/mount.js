@@ -5,6 +5,7 @@ import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
 import { getSharedGettingStartedState } from './getting-started.js';
+import { fitHomeHeader } from './header-fit.js';
 import { chooseHeroArt } from './hero-art.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
@@ -122,5 +123,6 @@ export function mountHome(panel, context) {
     });
     mountAssistants(panel, { openMoreAssistants: () => openBundledExtras({ group: 'assistants' }) });
     fitCardFooters(panel);
+    fitHomeHeader(panel);
     applyDisplayMode(panel, context.getDisplayMode());
 }

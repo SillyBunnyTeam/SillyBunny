@@ -172,53 +172,98 @@
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
-/* Three tracks keep the logo, title and version truly centred whatever the width of the menu button, and the
-   44px floor of the outer tracks keeps the group clear of the button. */
+/* The header is one cell that holds the identity and the menu button on top of each other. The identity has
+   three tracks, so the word sits in the middle of the column whatever the widths of the logo and the version,
+   and the button, at the end of the same cell, never moves it. */
 .sbHomeHeader {
+    --sb-home-title-size: var(--sb-type-display);
+    --sb-home-title-leading: 1.12;
+    --sb-home-version-leading: 1.35;
+    --sb-home-version-gap: 2px;
+    /* The height of the line of the title. The logo is 32px, and a smaller title line still centres on it. */
+    --sb-home-title-line: max(32px, calc(var(--sb-home-title-size) * var(--sb-home-title-leading)));
     display: grid;
-    grid-template-columns: minmax(44px, 1fr) auto minmax(44px, 1fr);
-    grid-template-areas: '. identity menu';
     align-items: center;
+    box-sizing: content-box;
     min-height: 44px;
     margin-block-end: -16px;
 }
 
 .sbHomeIdentity {
-    grid-area: identity;
+    grid-area: 1 / 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: baseline;
+    min-width: 0;
+}
+
+/* The wordmark box only groups the title and the version in the markup. Its children take the tracks. */
+.sbHomeWordmark {
+    display: contents;
+}
+
+.sbHomeArt[data-sb-art-placeholder='logo-32'] {
+    grid-column: 1;
+    justify-self: end;
+    align-self: center;
+    margin-inline-end: 10px;
+}
+
+/* The title fills the height of the logo, so the logo, the button and the text line share one centre. */
+.sbHomeTitle {
+    grid-column: 2;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    min-width: 0;
-}
-
-/* Baseline alignment keeps the smaller version on the title's text line. It sits in its own box, so the logo,
-   which has no baseline, centres against the whole wordmark. */
-.sbHomeWordmark {
-    display: flex;
-    align-items: baseline;
-    gap: 0 8px;
-    min-width: 0;
-}
-
-.sbHomeTitle {
+    min-height: 32px;
     margin: 0;
-    font-size: var(--sb-type-display);
+    font-size: var(--sb-home-title-size);
     font-weight: 800;
-    line-height: 1.12;
+    line-height: var(--sb-home-title-leading);
     letter-spacing: 0;
     white-space: nowrap;
 }
 
+/* Baseline alignment keeps the smaller version on the text line of the title. */
 .sbHomeVersion {
+    grid-column: 3;
+    justify-self: start;
+    margin-inline-start: 8px;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
-    line-height: 1.35;
+    line-height: var(--sb-home-version-leading);
     white-space: nowrap;
 }
 
+/* header-fit.js sets this when the version no longer fits between the title and the menu button. The version
+   then hangs under the title, outside the centred row, so the header grows by exactly what it takes. A title
+   line taller than the 44px row makes the row grow with it, so there is no spare space to count then. */
+.sbHomeHeader[data-sb-version-below] {
+    padding-block-end: max(0px, calc(
+        var(--sb-type-meta) * var(--sb-home-version-leading) + var(--sb-home-version-gap)
+        - max(0px, (44px - var(--sb-home-title-line)) / 2)
+    ));
+}
+
+.sbHomeHeader[data-sb-version-below] .sbHomeIdentity {
+    grid-template-rows: auto 0;
+}
+
+.sbHomeHeader[data-sb-version-below] .sbHomeVersion {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: center;
+    align-self: start;
+    margin-inline-start: 0;
+    margin-block-start: var(--sb-home-version-gap);
+    /* No width, so a long version cannot widen the middle track and push the title off the centre of the
+       column. Its text overflows equally to both sides of the centre of the track. */
+    display: flex;
+    justify-content: center;
+    width: 0;
+}
+
 .sbHomeMenuButton {
-    grid-area: menu;
+    grid-area: 1 / 1;
     justify-self: end;
 }
 
@@ -1243,9 +1288,10 @@ body.big-avatars .welcomeRecent .chatMessage {
         padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
     }
 
-    /* The display size plus the logo and the version no longer fit between the outer tracks of the header. */
-    .sbHomeTitle {
-        font-size: var(--sb-type-headline);
+    /* The display size plus the logo and the version no longer fit beside each other in a narrow column. */
+    .sbHomeHeader {
+        --sb-home-title-size: var(--sb-type-headline);
+        --sb-home-title-leading: 1.18;
     }
 
     .sbHomeBand {

@@ -111,6 +111,79 @@ async function setHomeContentWidth(page, width) {
     await page.evaluate(value => document.getElementById('sheld').style.setProperty('width', `${value}px`, 'important'), width + scrollbar);
 }
 
+/** The boxes of the header of Home, and where the text line of the title and of the version sit. */
+async function readHeader(page) {
+    return page.evaluate(() => {
+        const rect = selector => document.querySelector(`.welcomePanel ${selector}`).getBoundingClientRect();
+        // An empty inline-block has its baseline at its bottom edge, so its bottom is where the text line sits.
+        // The text goes into a span first, because a flex or grid container would make the probe an item of its own.
+        const baselineOf = (selector) => {
+            const node = document.querySelector(`.welcomePanel ${selector}`);
+            const text = node.textContent;
+            const probe = document.createElement('span');
+            probe.style.cssText = 'display: inline-block; width: 0; height: 0;';
+            const line = document.createElement('span');
+            line.append(text, probe);
+            node.replaceChildren(line);
+            const { bottom } = probe.getBoundingClientRect();
+            node.replaceChildren(text);
+            return bottom;
+        };
+        const textBox = (selector) => {
+            const range = document.createRange();
+            range.selectNodeContents(document.querySelector(`.welcomePanel ${selector}`));
+            return range.getBoundingClientRect();
+        };
+        return {
+            column: rect('.sbHomeLayout'),
+            row: rect('.sbHomeHeader'),
+            logo: rect('[data-sb-art-placeholder="logo-32"]'),
+            title: rect('.sbHomeTitle'),
+            text: textBox('.sbHomeTitle'),
+            version: textBox('.sbHomeVersion'),
+            versionLine: rect('.sbHomeVersion'),
+            button: rect('.sbHomeMenuButton'),
+            edge: rect('[data-sb-home-region="recent-chats"]'),
+            titleBaseline: baselineOf('.sbHomeTitle'),
+            versionBaseline: baselineOf('.sbHomeVersion'),
+        };
+    });
+}
+
+const centreX = box => (box.left + box.right) / 2;
+const centreY = box => (box.top + box.bottom) / 2;
+
+/** Whether the version is beside the menu button without touching it, or below it. */
+function isClearOfButton({ version, button }) {
+    return version.right <= button.left || version.left >= button.right || version.top >= button.bottom;
+}
+
+/** Lengthens the version until it just touches the menu button, which is the shortest version that has to move. */
+async function lengthenVersionToTouchButton(page) {
+    const length = await page.evaluate(() => {
+        const version = document.querySelector('.welcomePanel [data-sb-home-version]');
+        const button = document.querySelector('.welcomePanel .sbHomeMenuButton');
+        // Below the title the version has no width, so only its place beside the title says when it touches.
+        document.querySelector('.welcomePanel .sbHomeHeader').removeAttribute('data-sb-version-below');
+        version.textContent = 'v2';
+        while (version.getBoundingClientRect().right + 8 <= button.getBoundingClientRect().left && version.textContent.length < 600) {
+            version.textContent += 'x';
+        }
+        return version.textContent.length;
+    });
+    await waitForAnimationFrames(page, 3);
+    return length;
+}
+
+/** Gives the header a version string of another length and lets it settle, so each placement can be tested at any width. */
+async function setVersionText(page, text) {
+    await page.evaluate((value) => { document.querySelector('.welcomePanel [data-sb-home-version]').textContent = value; }, text);
+    await waitForAnimationFrames(page, 3);
+}
+
+const VERSION_BELOW = 'data-sb-version-below';
+const SHORT_VERSION = 'v2';
+
 async function measureMoreAssistants(page) {
     return page.evaluate(() => {
         const rect = selector => document.querySelector(`.welcomePanel ${selector}`).getBoundingClientRect();
@@ -286,6 +359,7 @@ for (const { name, options } of VIEWPORTS) {
 
         test('the header row is 44px tall and sits 12px below the top of the panel', async ({ page }) => {
             await chooseMode(page, 'full');
+            await setVersionText(page, SHORT_VERSION);
             const panel = await measure(page, '#chat > .welcomePanel');
             const header = await measure(page, '.welcomePanel .sbHomeHeader');
 
@@ -361,43 +435,78 @@ for (const { name, options } of VIEWPORTS) {
         });
 
         for (const mode of ['full', 'compact', 'list']) {
-            test(`${MODE_LABELS[mode]}: the logo, title and version are centred on one baseline with the menu button at the end`, async ({ page }) => {
+            test(`${MODE_LABELS[mode]}: the title is centred on the column, the logo before it and the version after it or below it, and the menu button at the end`, async ({ page }) => {
                 await chooseMode(page, mode);
+                await waitForAnimationFrames(page, 3);
 
-                const header = await page.evaluate(() => {
-                    const rect = selector => document.querySelector(`.welcomePanel ${selector}`).getBoundingClientRect();
-                    // An empty inline-block has its baseline at its bottom edge, so its bottom is where the text line sits.
-                    const baselineOf = (selector) => {
-                        const probe = document.createElement('span');
-                        probe.style.cssText = 'display: inline-block; width: 0; height: 0;';
-                        document.querySelector(`.welcomePanel ${selector}`).append(probe);
-                        const { bottom } = probe.getBoundingClientRect();
-                        probe.remove();
-                        return bottom;
-                    };
-                    return {
-                        row: rect('.sbHomeHeader'),
-                        group: rect('.sbHomeIdentity'),
-                        logo: rect('[data-sb-art-placeholder="logo-32"]'),
-                        title: rect('.sbHomeTitle'),
-                        button: rect('.sbHomeMenuButton'),
-                        edge: rect('[data-sb-home-region="recent-chats"]'),
-                        titleBaseline: baselineOf('.sbHomeTitle'),
-                        versionBaseline: baselineOf('.sbHomeVersion'),
-                    };
-                });
-                const centreY = rect => (rect.top + rect.bottom) / 2;
+                const header = await readHeader(page);
 
-                expect(Math.abs(header.versionBaseline - header.titleBaseline), 'version baseline').toBeLessThanOrEqual(1);
+                expect(Math.abs(centreX(header.text) - centreX(header.column)), 'the word is centred on the column').toBeLessThanOrEqual(1);
+                expect(header.logo.right, 'the logo ends before the word').toBeLessThanOrEqual(header.text.left);
+                expect(header.logo.left, 'the logo stays in the column').toBeGreaterThanOrEqual(header.column.left);
                 expect(Math.abs(header.button.right - header.edge.right), 'button at the content edge').toBeLessThanOrEqual(1);
-                expect(Math.abs((header.group.left - header.row.left) - (header.row.right - header.group.right)), 'group centred').toBeLessThanOrEqual(1);
-                expect(header.group.right, 'no overlap with the button').toBeLessThanOrEqual(header.button.left);
-                expect(header.group.left).toBeGreaterThanOrEqual(header.row.left);
-                expect(Math.abs(centreY(header.button) - centreY(header.title)), 'button on the title line').toBeLessThanOrEqual(1);
-                expect(Math.abs(centreY(header.logo) - centreY(header.title)), 'logo on the title line').toBeLessThanOrEqual(1);
-                expect(Math.round(header.row.height)).toBe(44);
+                expect(Math.abs(centreY(header.button) - centreY(header.text)), 'button on the title line').toBeLessThanOrEqual(1);
+                expect(Math.abs(centreY(header.logo) - centreY(header.text)), 'logo on the title line').toBeLessThanOrEqual(1);
+                expect(isClearOfButton(header), 'the version stays clear of the button').toBe(true);
+                expect(Math.round(header.row.height)).toBeGreaterThanOrEqual(44);
             });
         }
+
+        test('a short version sits after the title on its baseline, and the header is 44px tall', async ({ page }) => {
+            await chooseMode(page, 'full');
+            await setVersionText(page, SHORT_VERSION);
+
+            const header = await readHeader(page);
+
+            await expect(page.locator('.welcomePanel .sbHomeHeader')).not.toHaveAttribute(VERSION_BELOW, /.*/);
+            expect(Math.abs(header.versionBaseline - header.titleBaseline), 'version baseline').toBeLessThanOrEqual(1);
+            expect(header.version.left, 'the version follows the word').toBeGreaterThanOrEqual(header.text.right);
+            expect(Math.abs(centreX(header.text) - centreX(header.column)), 'the word is centred on the column').toBeLessThanOrEqual(1);
+            expect(Math.round(header.row.height)).toBe(44);
+        });
+
+        test('a version that cannot fit beside the menu button goes below the title, centred under it, and the title stays centred', async ({ page }) => {
+            await chooseMode(page, 'full');
+            const length = await lengthenVersionToTouchButton(page);
+
+            expect(length, 'the shortest version that touches the button was found before the cap').toBeLessThan(600);
+            const header = await readHeader(page);
+            const hero = await measure(page, regionSelector('hero'));
+
+            await expect(page.locator('.welcomePanel .sbHomeHeader')).toHaveAttribute(VERSION_BELOW, '');
+            expect(header.version.top, 'below the title').toBeGreaterThanOrEqual(header.text.bottom - 1);
+            expect(Math.abs(centreX(header.version) - centreX(header.text)), 'centred under the word').toBeLessThanOrEqual(1);
+            expect(Math.abs(centreX(header.text) - centreX(header.column)), 'the word is centred on the column').toBeLessThanOrEqual(1);
+            expect(Math.abs(centreY(header.button) - centreY(header.text)), 'button on the title line').toBeLessThanOrEqual(1);
+            expect(Math.abs(centreY(header.logo) - centreY(header.text)), 'logo on the title line').toBeLessThanOrEqual(1);
+            expect(header.version.bottom, 'the version is inside the header').toBeLessThanOrEqual(header.row.bottom + 1);
+            expect(Math.round(hero.top - header.row.bottom), 'header to band').toBe(16);
+        });
+
+        test('with the text at 20px the title stays centred and the version stays clear of the button', async ({ page }) => {
+            await chooseMode(page, 'full');
+            await page.evaluate(() => document.documentElement.style.setProperty('--mainFontSize', '20px'));
+            await waitForAnimationFrames(page, 3);
+
+            const header = await readHeader(page);
+
+            expect(Math.abs(centreX(header.text) - centreX(header.column)), 'the word is centred on the column').toBeLessThanOrEqual(1);
+            expect(isClearOfButton(header), 'the version stays clear of the button').toBe(true);
+            expect(Math.abs(centreY(header.button) - centreY(header.text)), 'button on the title line').toBeLessThanOrEqual(1);
+        });
+
+        test('in a right-to-left page the header is mirrored and the title stays centred', async ({ page }) => {
+            await chooseMode(page, 'full');
+            await page.evaluate(() => document.documentElement.setAttribute('dir', 'rtl'));
+            await waitForAnimationFrames(page, 3);
+
+            const header = await readHeader(page);
+
+            expect(Math.abs(centreX(header.text) - centreX(header.column)), 'the word is centred on the column').toBeLessThanOrEqual(1);
+            expect(header.logo.left, 'the logo is after the word, on its right').toBeGreaterThanOrEqual(header.text.right);
+            expect(Math.abs(header.button.left - header.edge.left), 'the menu button is at the left edge').toBeLessThanOrEqual(1);
+            expect(isClearOfButton(header), 'the version stays clear of the button').toBe(true);
+        });
 
         test('the menu button is flat at rest and keeps the content edge of the band', async ({ page }) => {
             await chooseMode(page, 'full');
@@ -1932,6 +2041,38 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                 });
                 expect(layout.panel).toBe(target);
                 expect(layout.rows).toBe(narrow ? 2 : 1);
+            });
+        }
+
+        test('with the text at 24px, taller than the header row, the version below the title ends where the header ends', async ({ page }) => {
+            await chooseMode(page, 'full');
+            await page.evaluate(() => document.documentElement.style.setProperty('--mainFontSize', '24px'));
+            await lengthenVersionToTouchButton(page);
+
+            const header = await readHeader(page);
+
+            await expect(page.locator('.welcomePanel .sbHomeHeader')).toHaveAttribute(VERSION_BELOW, '');
+            expect(header.title.height, 'the title line is taller than the 44px row').toBeGreaterThan(44);
+            expect(Math.abs(header.versionLine.bottom - header.row.bottom), 'no spare space below the version').toBeLessThanOrEqual(1);
+        });
+
+        for (const fontSize of ['15px', '20px']) {
+            test(`at every content width with ${fontSize} text the title is centred and the version is clear of the menu button`, async ({ page }) => {
+                await chooseMode(page, 'full');
+                await page.evaluate(size => document.documentElement.style.setProperty('--mainFontSize', size), fontSize);
+                const measured = [];
+
+                for (const width of [300, 346, 360, 420, 480, 560, 741, 1000]) {
+                    await setHomeContentWidth(page, width);
+                    await waitForAnimationFrames(page, 3);
+                    const header = await readHeader(page);
+                    const clear = isClearOfButton(header);
+                    const centred = Math.abs(centreX(header.text) - centreX(header.column)) <= 1;
+                    const online = Math.abs(centreY(header.button) - centreY(header.text)) <= 1;
+                    measured.push({ width, clear, centred, online });
+                }
+
+                expect(measured.filter(row => !(row.clear && row.centred && row.online))).toEqual([]);
             });
         }
 
