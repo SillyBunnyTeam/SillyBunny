@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
@@ -42,12 +43,9 @@ async function bootHome(page, { motion = false } = {}) {
 
 async function seedChat(page) {
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
-    await page.evaluate(async () => {
-        const context = window.SillyTavern.getContext();
-        if (!context.characters.length) await context.getCharacters();
-        await context.selectCharacterById(0, { switchMenu: false });
-    });
-    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
+    // Closing a popup of the app by hand would leave it half closed, and its late focus change would close the menu.
+    // A character with an embedded lorebook opens one, so the helper declines it through its button.
+    await selectSampleCharacter(page);
     await page.evaluate(async () => {
         const context = window.SillyTavern.getContext();
         context.chat.length = 0;

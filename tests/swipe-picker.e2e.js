@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
@@ -93,6 +94,15 @@ test.describe('swipe picker shared Window', () => {
     test.beforeEach(async ({ page }) => {
         let settingsVersion = Date.now();
         await page.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+        // The first character with an avatar can be a bundled one with an embedded lorebook. Opening it asks to import
+        // the lorebook, and that popup covers the chat. The settings save is stubbed, so the "seen" flag never persists.
+        await page.route('**/api/settings/get', async (route) => {
+            const data = await fetchJsonOrSkip(route);
+            if (!data) return;
+            const settings = JSON.parse(data.settings);
+            settings.power_user.world_import_dialog = false;
+            return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+        });
         await testSetup.awaitST({ page });
     });
 
