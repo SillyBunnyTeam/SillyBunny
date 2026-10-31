@@ -1255,6 +1255,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | TODO(copy) |
 
+### `src/server-startup.js` - managed content routes
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js` |
+| Area | Private REST routes: status, update and restore of managed bundled content. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/endpoints/sillybunny-managed-content.js` (`createManagedContentRouter({ bundledDirectory, createService, rateLimit })`: `GET /status` memoised per user on `stateSignature()`; `POST /apply` and `POST /restore` take exactly `{ filename }`, looked up by equality in the manifest; 20 changes per 60 s per user; error codes only in responses, logged with a constant format string). |
+| Adapter shape | Two marked lines in `setupPrivateEndpoints`: the router import, and `app.use('/api/sillybunny/managed-content', …)` after the themes mount, so CSRF, login and the per-user directories apply. |
+| Protecting tests | `tests/unit/sillybunny-managed-content-router.test.js` (bad bodies, unknown and path-like names against a real temp tree, per-user isolation, generic errors, log format, rate limit including unknown names, backup before write); `tests/unit/sillybunny-managed-content-signature.test.js`. |
+| Validation | 2026-11-01: root and tests lint pass; router and signature suites 87 passed; reviewer `ses_e6c15c276ffekMopI2GmmU22vg` APPROVE (live on Node v26.10.0 and Bun 1.3.12: 403 without a CSRF token, 404, 400 and 429 with `Retry-After`); the log-format, signature and rate-limit gaps it found are fixed and red-tested. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
