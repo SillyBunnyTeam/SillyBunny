@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 async function boot(page, viewport) {
     await protectMaintainerServer(page);
@@ -11,8 +12,8 @@ async function boot(page, viewport) {
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.power_user.world_import_dialog = false;
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.setViewportSize(viewport);

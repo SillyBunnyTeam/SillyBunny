@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './maintainer-server.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
+import { applyWelcomeSettings } from './welcome-dialog.js';
 
 export const MISC_VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -39,12 +40,12 @@ export async function bootMiscDialogs(page, viewport, { admin = false, configure
         if (!body) return;
         const settings = JSON.parse(body.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.main_api = 'openai';
         settings.power_user.sb_preset_autosave = false;
         settings.power_user.custom_css = '';
         settings.power_user.external_media_allowed_overrides = [];
         settings.power_user.external_media_forbidden_overrides = [];
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         settings.extension_settings.connectionManager = {
             selectedProfile: 'misc-profile-0', folders: [],
             profiles: Array.from({ length: 6 }, (_, index) => ({ id: `misc-profile-${index}`, name: `Profile ${index}`, mode: 'cc', api: 'openai', preset: 'Default', model: 'gpt-4o', exclude: [], folderId: null })),

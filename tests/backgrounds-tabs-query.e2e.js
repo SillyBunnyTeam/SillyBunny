@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 90_000 });
@@ -15,7 +16,7 @@ async function skipFirstRun(page) {
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+        applyWelcomeSettings(settings);
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
 }

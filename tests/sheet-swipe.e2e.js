@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { restoreAnimationSpeed, slowAnimations } from './helpers/animation-speed.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 /*
  * Every overlay bottom sheet that a sheet controller or the Conversation workspace builds has the
@@ -57,13 +58,13 @@ async function bootConversation(page, baseURL) {
             if (!data) return;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings.power_user.auto_connect = false;
             settings.power_user.reduced_motion = false;
             // Visual Novel mode moves #sheld below the fold on a phone, which puts the sheet's handle
             // outside the viewport. WebKit does not deliver mouse events there, Chromium does.
             settings.power_user.waifuMode = false;
             settings.extension_settings.sillybunny_conversation = {};
-            settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });

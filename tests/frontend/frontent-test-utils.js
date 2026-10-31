@@ -1,3 +1,5 @@
+import { answerFirstRunWelcome, keepWelcomeClosed } from '../helpers/welcome-dialog.js';
+
 const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || process.env.ST_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4444';
 
 export const testSetup = {
@@ -7,6 +9,7 @@ export const testSetup = {
      * @param {import('@playwright/test').Page} params.page
      */
     goST: async ({ page }) => {
+        await keepWelcomeClosed(page.context());
         await page.goto('/');
     },
 
@@ -16,6 +19,7 @@ export const testSetup = {
      * @param {import('@playwright/test').Page} params.page
      */
     awaitST: async ({ page }) => {
+        await keepWelcomeClosed(page.context());
         await page.goto('/');
         if (await testSetup.isLoginPage({ page })) {
             // eslint-disable-next-line playwright/no-networkidle
@@ -42,21 +46,25 @@ export const testSetup = {
 
     /**
      * Waits for APP_READY on any profile, including a fresh one. A fresh data root holds
-     * startup on the first-run onboarding prompt until it is answered.
+     * startup on the first-run Welcome dialog until the persona has a name, and the helper names it.
      * SB also releases the preloader before its async startup work finishes.
      * @param {Object} params
      * @param {import('@playwright/test').Page} params.page
      */
     waitForAppReady: async ({ page }) => {
         const appEvents = await page.evaluateHandle(() => import('/scripts/events.js'));
-        const onboarding = page.locator('dialog[open]:has(.onboarding)');
         const startupState = await page.waitForFunction(({ eventSource, event_types }) => {
             if (eventSource.autoFireLastArgs.has(event_types.APP_READY)) return 'ready';
-            return document.querySelector('dialog[open] .onboarding') ? 'onboarding' : false;
+            if (document.querySelector('dialog[open] .sbWelcomeDialog')) return 'welcome';
+            return document.querySelector('dialog[open] .onboarding') ? 'popup' : false;
         }, appEvents);
-        if (await startupState.jsonValue() === 'onboarding') {
-            await onboarding.locator('.popup-input').fill('Test User');
-            await onboarding.locator('.popup-button-ok').click();
+        const state = await startupState.jsonValue();
+        if (state === 'popup') {
+            // Answering the popup of upstream would hide a Welcome dialog that failed to load.
+            throw new Error('The first run showed the onboarding popup of upstream, so the Welcome dialog did not load.');
+        }
+        if (state === 'welcome') {
+            await answerFirstRunWelcome(page);
             await page.waitForFunction(({ eventSource, event_types }) => {
                 return eventSource.autoFireLastArgs.has(event_types.APP_READY);
             }, appEvents);

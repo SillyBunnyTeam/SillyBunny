@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { chromium } from 'playwright';
 import { auditLibadwaita, LIBADWAITA_AUDIT_ALLOWLIST } from './helpers/libadwaita-audit.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4444';
 const outputPath = process.env.PHASE4_AUDIT_OUTPUT || '/tmp/opencode/phase4-libadwaita-audit.json';
@@ -195,11 +196,7 @@ async function mockWritesBeforeNavigation(page, origin) {
             data.request_compression = { ...data.request_compression, enabled: false };
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
-            settings.extension_settings ??= {};
-            settings.extension_settings['quick-image-gen'] = {
-                ...settings.extension_settings['quick-image-gen'],
-                setupWizardSeen: true,
-            };
+            applyWelcomeSettings(settings);
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
         }

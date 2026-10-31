@@ -18,3 +18,41 @@ export function seedQuickImageGenFirstRun(extensionSettings) {
     }
     return { ...extensionSettings, [QUICK_IMAGE_GEN_KEY]: { setupWizardSeen: true, starterPresetsSeeded: false } };
 }
+
+/**
+ * Shows the Welcome dialog in place of the onboarding popup of upstream, and resolves once the persona has a name.
+ * The first run is decided before the dialog loads, so a dialog that cannot load leaves nothing for APP_READY to
+ * open and the caller falls back to the popup. Only the loading is guarded: a failure after the dialog has opened
+ * must not stack the popup on top of it.
+ * @param {string} avatarId The avatar of the persona to name.
+ * @returns {Promise<boolean>} Whether Welcome handled the first run.
+ */
+export async function showFirstRunWelcome(avatarId) {
+    const boot = await importWelcomeModule(() => import('./sillybunny-home/welcome-boot.js'));
+    if (!boot) {
+        return false;
+    }
+    if (!boot.getWelcomeStartup().decide({ firstRun: true }).open) {
+        return true;
+    }
+    const welcome = await importWelcomeModule(() => import('./sillybunny-welcome.js'));
+    if (!welcome) {
+        return false;
+    }
+    await welcome.runFirstRunWelcome(avatarId);
+    return true;
+}
+
+/**
+ * @template T
+ * @param {() => Promise<T>} load
+ * @returns {Promise<T | null>} The module, or null after the failure is logged.
+ */
+async function importWelcomeModule(load) {
+    try {
+        return await load();
+    } catch (error) {
+        console.error('The Welcome dialog failed on the first run, so the onboarding popup takes over.', error);
+        return null;
+    }
+}

@@ -58,8 +58,8 @@ async function installMarkedCardScriptMessage(page, scriptHtml) {
 
 test.describe('card script sandbox runtime', () => {
     test.beforeEach(async ({ page }) => {
-        // A fresh data root stalls startup on the first-run onboarding prompt; APP_READY means
-        // no startup popup is waiting to intercept clicks on the injected message buttons.
+        // A fresh data root holds startup on the first-run Welcome dialog; APP_READY means
+        // no startup dialog is waiting to intercept clicks on the injected message buttons.
         await page.goto('/');
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
         await testSetup.waitForAppReady({ page });

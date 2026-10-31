@@ -3,6 +3,7 @@ import { gunzipSync } from 'node:zlib';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
@@ -14,9 +15,9 @@ test.beforeEach(async ({ page }) => {
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.power_user.world_import_dialog = false;
         settings.power_user.reduced_motion = false;
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     // Browser QA must not change the running instance's saved preferences.

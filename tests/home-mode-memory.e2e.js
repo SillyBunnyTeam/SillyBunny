@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { installFixtureChats, pickFixtureCharacters, registerFixtureChat } from './helpers/fixture-chats.js';
-import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
+import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -136,7 +136,7 @@ for (const { name, options } of VIEWPORTS) {
                 if (!data) return;
                 const settings = JSON.parse(data.settings);
                 settings.accountStorage = { ...settings.accountStorage, ...saved.accountStorage };
-                applyGettingStartedSettings(settings);
+                applyHomeTestSettings(settings);
                 return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
             });
             await page.reload({ waitUntil: 'domcontentloaded' });

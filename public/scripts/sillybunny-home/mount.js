@@ -12,6 +12,8 @@ import { chooseHeroArt } from './hero-art.js';
 import { openHomeMenu } from './menu.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
 import { describeTiles, mountTiles } from './tiles-view.js';
+// The APP_READY listener that opens Welcome has to exist before that event fires, so it is imported here, at load, and not on the first render of Home.
+import './welcome-boot.js';
 import { openAbout, openBundledExtras, openGettingStarted, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
 
 /**

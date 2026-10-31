@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { acceptPopup } from './helpers/popup.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
@@ -119,11 +120,11 @@ async function installFixture(page, { dragLocked = false } = {}) {
 
             settings.main_api = 'openai';
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings._version = settingsVersion;
             settings.power_user = { ...settings.power_user, sb_preset_autosave: false, prompt_manager_drag_locked: dragLocked };
             settings.extension_settings ??= {};
             settings.extension_settings.variables = { global: { [SETTER_VARIABLE]: 'on' } };
-            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
             settings.oai_settings = {
                 ...settings.oai_settings,
                 ...structuredClone(preset),

@@ -1,7 +1,11 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for the settings that a first run seeds. */
-import { describe, expect, test } from '@jest/globals';
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-const { seedQuickImageGenFirstRun } = await import('../../public/scripts/sillybunny-first-run-defaults.js');
+const runFirstRunWelcome = jest.fn();
+const decide = jest.fn();
+jest.unstable_mockModule('../../public/scripts/sillybunny-welcome.js', () => ({ runFirstRunWelcome }));
+jest.unstable_mockModule('../../public/scripts/sillybunny-home/welcome-boot.js', () => ({ getWelcomeStartup: () => ({ decide }) }));
+const { seedQuickImageGenFirstRun, showFirstRunWelcome } = await import('../../public/scripts/sillybunny-first-run-defaults.js');
 
 const SEEDED = { setupWizardSeen: true, starterPresetsSeeded: false };
 
@@ -51,5 +55,39 @@ describe('seedQuickImageGenFirstRun', () => {
         seedQuickImageGenFirstRun(input);
 
         expect(input).toStrictEqual({ 'quick-image-gen': {} });
+    });
+});
+
+describe('showFirstRunWelcome', () => {
+    beforeEach(() => {
+        runFirstRunWelcome.mockReset();
+        decide.mockReset().mockReturnValue({ open: true, reason: 'first-run' });
+    });
+
+    test('decides the first run before it loads the dialog, then runs the dialog for the avatar of the persona', async () => {
+        runFirstRunWelcome.mockResolvedValue(undefined);
+
+        const handled = await showFirstRunWelcome('user-default.png');
+
+        expect(decide).toHaveBeenCalledWith({ firstRun: true });
+        expect(runFirstRunWelcome).toHaveBeenCalledWith('user-default.png');
+        expect(decide.mock.invocationCallOrder[0]).toBeLessThan(runFirstRunWelcome.mock.invocationCallOrder[0]);
+        expect(handled).toBe(true);
+    });
+
+    test('shows no dialog for an account that was just imported, and the popup of upstream stays closed', async () => {
+        decide.mockReturnValue({ open: false, reason: 'import' });
+
+        const handled = await showFirstRunWelcome('user-default.png');
+
+        expect(runFirstRunWelcome).not.toHaveBeenCalled();
+        expect(handled).toBe(true);
+    });
+
+    test('lets a failure after the dialog has opened through, so that the popup of upstream is not stacked on it', async () => {
+        const error = new Error('The dialog broke.');
+        runFirstRunWelcome.mockRejectedValue(error);
+
+        await expect(showFirstRunWelcome('user-default.png')).rejects.toBe(error);
     });
 });

@@ -37,6 +37,14 @@ describe('Home shell targets', () => {
         expect(shell.openCharacters).not.toHaveBeenCalled();
     });
 
+    test('Personas opens Characters, Personas', () => {
+        const shell = fakeShell();
+
+        openShellTarget('personas', shell);
+
+        expect(shell.openTab).toHaveBeenCalledWith('characters', 'persona');
+    });
+
     test('the mode menu opens the top-bar mode switcher menu', () => {
         const shell = fakeShell();
 
@@ -54,7 +62,7 @@ describe('Home shell targets', () => {
     });
 
     test('names every target once', () => {
-        expect([...SHELL_TARGETS].sort()).toEqual(['characters', 'connections', 'mode-menu', 'presets', 'ui-theme']);
+        expect([...SHELL_TARGETS].sort()).toEqual(['characters', 'connections', 'mode-menu', 'personas', 'presets', 'ui-theme']);
     });
 
     test('fails loudly on an unknown target', () => {

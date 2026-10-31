@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './maintainer-server.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
+import { applyWelcomeSettings } from './welcome-dialog.js';
 
 export const PL_VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -43,11 +44,11 @@ export async function bootPresetLorebookDialogs(page, viewport) {
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.main_api = 'openai';
         settings.power_user.sb_preset_autosave = false;
         settings.oai_settings.chat_completion_source = 'openai';
         settings.oai_settings.preset_settings_openai = 'Default';
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         settings.world_info = { globalSelect: [], charLore: [] };
         const preset = data.openai_settings[data.openai_setting_names.indexOf('Default')];
         data.openai_settings = Array.from({ length: 18 }, () => preset);

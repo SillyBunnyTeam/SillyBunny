@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { appendFileSync } from 'node:fs';
 import { test } from '@playwright/test';
 import { fetchBodyOrSkip } from './route-fetch.js';
+import { keepWelcomeClosed } from './welcome-dialog.js';
 
 function auditSettings(titlePath, event) {
     if (!process.env.SILLYBUNNY_SETTINGS_AUDIT) return;
@@ -38,6 +39,8 @@ export async function protectMaintainerServer(page) {
         const payload = readPayload(route.request());
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
+    // A spec that has no settings route of its own would otherwise meet Welcome on any data root that has not seen it.
+    await keepWelcomeClosed(page.context());
     page.on('response', async response => {
         if (new URL(response.url()).pathname !== '/api/settings/save') return;
         const server = await response.serverAddr().catch(() => null);

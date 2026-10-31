@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { SEEN_VERSION_KEY, SHOW_AT_STARTUP_KEY } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -38,5 +39,17 @@ test.describe('protectMaintainerServer', () => {
         await postInvalidLastChat(page);
 
         expect((await request).postDataJSON()).toEqual({ chat: 'not-a-chat' });
+    });
+
+    test('serves settings that keep Welcome closed, for a spec that has no settings route of its own', async ({ page }) => {
+        const served = await page.evaluate(async () => {
+            const { getRequestHeaders } = await import('/script.js');
+            const response = await fetch('/api/settings/get', { method: 'POST', headers: getRequestHeaders(), body: '{}' });
+            return JSON.parse((await response.json()).settings).accountStorage;
+        });
+
+        expect(served[SHOW_AT_STARTUP_KEY]).toBe('false');
+        expect(served[SEEN_VERSION_KEY]).toBe('qa');
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
     });
 });

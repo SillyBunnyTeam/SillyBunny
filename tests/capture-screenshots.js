@@ -11,6 +11,8 @@
 import { chromium } from 'playwright';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { testSetup } from './frontend/frontent-test-utils.js';
+import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -41,15 +43,6 @@ const viewports = {
     desktop: { width: 1920, height: 1080 },
     mobile: { width: 390, height: 844 },
 };
-
-async function dismissOnboardingIfPresent(page) {
-    const onboardingDialog = page.locator('dialog[open]:has(.onboarding)').first();
-    if (await onboardingDialog.isVisible().catch(() => false)) {
-        await onboardingDialog.locator('.popup-input').fill('Screenshot Tester');
-        await onboardingDialog.locator('.popup-button-ok').click({ force: true });
-        await page.waitForTimeout(1000);
-    }
-}
 
 async function forceClick(page, selector) {
     await page.waitForSelector(selector, { state: 'attached', timeout: 10000 });
@@ -246,6 +239,7 @@ async function captureScreenshots(viewportType) {
 
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport });
+    await keepWelcomeClosed(context);
     const page = await context.newPage();
 
     // Log browser errors
@@ -262,7 +256,7 @@ async function captureScreenshots(viewportType) {
 
         // Wait for app to initialize
         await page.waitForTimeout(6000);
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
 
         // Capture each section
         for (const section of sections) {

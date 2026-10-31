@@ -3,7 +3,7 @@ import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFram
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
-import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
+import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -660,7 +660,7 @@ for (const { name, options } of VIEWPORTS) {
                 if (!data) return;
                 const settings = JSON.parse(data.settings);
                 settings.accountStorage = { ...settings.accountStorage, ...saved.accountStorage };
-                applyGettingStartedSettings(settings);
+                applyHomeTestSettings(settings);
                 return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
             });
             await page.evaluate(key => localStorage.removeItem(key), MODE_KEY);

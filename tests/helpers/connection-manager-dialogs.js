@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './maintainer-server.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
+import { applyWelcomeSettings } from './welcome-dialog.js';
 
 export const CM_VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -25,6 +26,7 @@ export async function bootConnectionDialogs(page, viewport) {
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.main_api = 'openai';
         settings.oai_settings.chat_completion_source = 'openai';
         settings.oai_settings.openai_model = 'gpt-4o';

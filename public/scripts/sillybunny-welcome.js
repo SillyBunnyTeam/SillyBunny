@@ -1,12 +1,21 @@
+import { getRequestHeaders, name1, refreshCsrfToken, setUserName } from '../script.js';
+import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { t } from './i18n.js';
+import { getUserAvatar, persona_description_positions, user_avatar } from './personas.js';
+import { power_user } from './power-user.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from './sillybunny-home/copy.js';
+import { eventSource, event_types } from './events.js';
 import { HOME_DESTINATIONS } from './sillybunny-home/destinations.js';
 import { formatProgress, getSharedGettingStartedState } from './sillybunny-home/getting-started.js';
+import { openShellTarget } from './sillybunny-home/shell-targets.js';
+import { getWelcomeStartup } from './sillybunny-home/welcome-boot.js';
 import { openBundledExtras, openFromHomeTile, openGettingStarted, openHelp } from './sillybunny-home/windows.js';
-import { openDialog } from './sillybunny-editor/dialog.js';
+import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
 import { createEntryRow, createPrefGroup, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
+import { createSillyTavernImport } from './sillybunny-welcome-import.js';
+import { savePersonaName } from './sillybunny-welcome-persona.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
 const PAGE_COUNT = 3;
@@ -82,25 +91,140 @@ function fillHello(body, { language, openImport }) {
     body.append(greeting, intro, createPrefGroup({ field: 'welcome-hello-group', rows }).section, fanWork, createPosition(1));
 }
 
-function fillImport(body) {
+/**
+ * The server answers an import with JSON, or with plain text when something in front of it failed.
+ * @param {string} endpoint
+ * @param {{ body: unknown, useFormData?: boolean }} options
+ * @returns {Promise<{ message?: string }>}
+ */
+async function requestImport(endpoint, { body, useFormData = false }) {
+    const response = await fetchWithCsrfRetry(endpoint, () => ({
+        method: 'POST',
+        headers: getRequestHeaders({ omitContentType: useFormData }),
+        body: useFormData ? /** @type {FormData} */ (body) : JSON.stringify(body),
+    }), { refreshCsrfToken });
+    const text = await response.text();
+    let data;
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch {
+        data = { message: text };
+    }
+    if (!response.ok) {
+        throw new Error(data?.error || data?.message || text || `Request failed with status ${response.status}.`);
+    }
+    return data;
+}
+
+/**
+ * Asks before an import replaces the data of the account. The title is the name of the page, and what the
+ * dialog says about the replacement is copy that is still to come.
+ * @param {string} sourceName The folder path or the file name.
+ * @returns {Promise<boolean>}
+ */
+async function confirmImport(sourceName) {
+    const body = document.createElement('div');
+    const explanation = createCopyBlock('WD-IMPORT-CONFIRM');
+    const source = document.createElement('code');
+    source.textContent = sourceName;
+    body.append(explanation, source);
+    const response = await openAlert({
+        heading: t`Import From SillyTavern`,
+        bodyNode: body,
+        responses: [
+            { id: 'cancel', label: t`Cancel` },
+            { id: 'import', label: t`Import`, appearance: 'destructive' },
+        ],
+    });
+    return response === 'import';
+}
+
+/**
+ * Fills the import page. A failed import shows the message of the server below the buttons, because the account
+ * is as it was and the user may try another folder.
+ * @param {HTMLElement} body
+ * @param {{ importer: ReturnType<typeof createSillyTavernImport> }} options
+ */
+function fillImport(body, { importer }) {
     const folder = createEntryRow({ label: t`Folder Path`, field: 'welcome-import-folder', floating: true });
+    const folderButton = createActionButton(t`Import Folder`);
+    const zipButton = createActionButton(t`Import Backup ZIP`);
+    const zipInput = document.createElement('input');
+    zipInput.type = 'file';
+    zipInput.accept = '.zip,application/zip';
+    zipInput.hidden = true;
+    const status = document.createElement('p');
+    status.className = 'sbWelcomeImportStatus';
+    status.setAttribute('role', 'status');
+    status.hidden = true;
+    const buttons = [folderButton, zipButton];
+
+    /** @param {() => Promise<import('./sillybunny-welcome-import.js').ImportResult>} start */
+    const run = async (start) => {
+        status.hidden = true;
+        folder.control.removeAttribute('aria-invalid');
+        buttons.forEach((button) => { button.disabled = true; });
+        const result = await start();
+        // An import that went through reloads the page, so its buttons stay off.
+        if (result.status !== 'imported') {
+            buttons.forEach((button) => { button.disabled = false; });
+        }
+        if (result.status === 'failed') {
+            status.textContent = result.message;
+            status.hidden = false;
+        }
+        if (result.status === 'empty') {
+            folder.control.setAttribute('aria-invalid', 'true');
+            folder.control.focus();
+        }
+    };
+
+    folderButton.addEventListener('click', () => void run(() => importer.importFolder(folder.control.value)));
+    zipButton.addEventListener('click', () => zipInput.click());
+    zipInput.addEventListener('change', () => {
+        const file = zipInput.files?.[0];
+        zipInput.value = '';
+        if (file) {
+            void run(() => importer.importZip(file));
+        }
+    });
+
     const actions = document.createElement('div');
     actions.className = 'sbWindowActions';
-    actions.append(createActionButton(t`Import Folder`, { stub: true }), createActionButton(t`Import Backup ZIP`, { stub: true }));
+    actions.append(folderButton, zipButton, zipInput);
     body.append(
         createCopyBlock('WD-IMPORT-EXPLANATION'),
         createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
         actions,
+        status,
     );
 }
 
-function fillPersona(body) {
-    const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true });
-    body.append(
-        createArtIntro({ art: 'welcome-persona-tewi', slot: 'WD-2-PROMPT' }).intro,
-        createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section,
-        createPosition(2),
-    );
+/**
+ * Fills the persona page. The first run has an empty name field, and the page asks for nothing else. After that the
+ * page shows the persona the account has, and sends the user to Characters, Personas to change it.
+ * @param {HTMLElement} body
+ * @param {object} options
+ * @param {boolean} options.nameRequired
+ * @param {(name: string) => void} options.onNameInput Called while the user types, on a first run.
+ * @param {() => void} options.managePersonas
+ * @returns {{ getName: () => string }}
+ */
+function fillPersona(body, { nameRequired, onNameInput, managePersonas }) {
+    const intro = createArtIntro({ art: 'welcome-persona-tewi', slot: 'WD-2-PROMPT' }).intro;
+    if (nameRequired) {
+        const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true, onInput: onNameInput });
+        body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section, createPosition(2));
+        return { getName: () => name.control.value };
+    }
+    const avatar = document.createElement('img');
+    avatar.className = 'sbWelcomePersonaAvatar';
+    avatar.alt = '';
+    avatar.src = getUserAvatar(user_avatar);
+    const current = createRow({ label: name1, field: 'welcome-persona-current', prefix: avatar });
+    const manage = createRow({ label: t`Manage Personas`, field: 'welcome-persona-manage', activatable: true, onActivate: managePersonas });
+    body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [current, manage] }).section, createPosition(2));
+    return { getName: () => name1 };
 }
 
 /**
@@ -133,7 +257,7 @@ function createDestinationRow({ destination, status, onActivate }) {
  * tile, its row follows the shared state: it shows the progress, and it is gone while the state hides it.
  * @returns {() => void} Stops following the Getting Started state.
  */
-function fillWhatsNext(body, { openDestination }) {
+function fillWhatsNext(body, { openDestination, startup }) {
     const state = getSharedGettingStartedState();
     const progress = document.createElement('span');
     progress.className = 'sbWelcomeRowProgress';
@@ -155,7 +279,12 @@ function fillWhatsNext(body, { openDestination }) {
     };
     sync();
 
-    const showAtStartup = createSwitchRow({ label: t`Show at Startup`, field: 'welcome-show-at-startup', checked: false });
+    const showAtStartup = createSwitchRow({
+        label: t`Show at Startup`,
+        field: 'welcome-show-at-startup',
+        checked: startup.isShownAtStartup(),
+        onChange: checked => startup.setShownAtStartup(checked),
+    });
     body.append(
         createArtIntro({ art: 'welcome-next-reisen', slot: 'WD-3-INTRO' }).intro,
         group.section,
@@ -166,15 +295,37 @@ function fillWhatsNext(body, { openDestination }) {
 }
 
 /**
+ * Runs `open` once the app is ready. Welcome that ends before startup is over, as the first run does, cannot open a
+ * window of Home yet.
+ * @param {() => void} open
+ */
+function whenAppReady(open) {
+    eventSource.once(event_types.APP_READY, open);
+}
+
+/**
  * Opens the Welcome dialog on its first page. Next pushes the following page, the page header's Back pops it.
+ * @param {object} [options]
+ * @param {boolean} [options.firstRun=false] The persona is required: the dialog cannot end until it has a name, and
+ *   naming it ends the first run.
+ * @param {string} [options.avatarId] The avatar of the persona that a first run names.
+ * @param {() => void} [options.onNamed] Called on a first run once the persona has a name, while the dialog stays open.
  * @returns {Promise<ReturnType<typeof openDialog>>}
  */
-export async function openWelcomeDialog() {
+export async function openWelcomeDialog({ firstRun = false, avatarId = user_avatar, onNamed } = {}) {
     await ensureWindowStyles();
+    const startup = getWelcomeStartup();
     /** @type {ReturnType<typeof openDialog>} */
     let dialog;
     // The row adopts the select before the dialog exists, so a failure while the dialog is built must give it back.
     const language = createLanguageRow();
+    const importer = createSillyTavernImport({
+        request: requestImport,
+        confirm: confirmImport,
+        reload: () => location.reload(),
+        markImportPending: () => startup.markImportPending(),
+        clearImportPending: () => startup.clearImportPending(),
+    });
 
     // The backdrop never ends Welcome. Escape goes back a page, except on the first page, where it does nothing.
     const stepGuard = (advance, { escape = true } = {}) => (reason) => {
@@ -185,39 +336,58 @@ export async function openWelcomeDialog() {
             return escape;
         }
         // Next is an affirmative response, which would close a page. The page vetoes the close and moves on.
-        if (reason !== 'affirmative') {
-            return true;
+        if (reason === 'affirmative') {
+            advance();
+            return false;
         }
-        advance();
-        return false;
+        return true;
     };
     const openers = { 'getting-started': openGettingStarted, help: openHelp, extras: openBundledExtras };
-    /** Start and every destination end Welcome the same way; a destination then opens its window. */
-    const finish = destination => queueMicrotask(() => {
+    /** Start, every destination and Manage Personas end Welcome the same way; `afterClosed` then opens the place. */
+    const finish = afterClosed => queueMicrotask(() => {
         void dialog.close('start');
-        if (destination) {
-            // While Welcome is open, openDialog would push the window as a page over it.
-            void dialog.closed.then(() => openFromHomeTile(destination, openers[destination]));
+        if (afterClosed) {
+            void dialog.closed.then(() => whenAppReady(afterClosed));
         }
     });
+    const openDestination = destination => finish(() => openFromHomeTile(destination, openers[destination]));
+    const managePersonas = () => finish(() => openShellTarget('personas'));
     const pushWhatsNext = () => {
         let stopProgress = () => {};
         const page = dialog.push({
             title: t`What’s Next`,
-            content: (body) => { stopProgress = fillWhatsNext(body, { openDestination: finish }); },
+            content: (body) => { stopProgress = fillWhatsNext(body, { openDestination, startup }); },
             responses: { affirmative: { id: 'start', label: t`Start` }, cancel: { label: t`Back` } },
             canClose: stepGuard(() => finish()),
         });
         void page.closed.then(() => stopProgress());
         return page;
     };
-    const pushPersona = () => dialog.push({
-        title: t`Your Persona`,
-        content: fillPersona,
-        responses: { affirmative: { id: 'next', label: t`Next` }, cancel: { label: t`Back` } },
-        canClose: stepGuard(pushWhatsNext),
-    });
-    const pushImport = () => dialog.push({ title: t`Import From SillyTavern`, content: fillImport, canClose: stepGuard(() => {}) });
+    const pushPersona = () => {
+        let persona;
+        const page = dialog.push({
+            title: t`Your Persona`,
+            content: (body) => { persona = fillPersona(body, { nameRequired: firstRun, onNameInput, managePersonas }); },
+            responses: { affirmative: { id: 'next', label: t`Next` }, cancel: { label: t`Back` } },
+            canClose: stepGuard(() => {
+                if (!firstRun) {
+                    pushWhatsNext();
+                    return;
+                }
+                if (savePersonaName({ avatarId, name: persona.getName() }, { setUserName, powerUser: power_user, positions: persona_description_positions })) {
+                    startup.completeFirstRun();
+                    onNamed?.();
+                    pushWhatsNext();
+                }
+            }),
+        });
+        function onNameInput(name) {
+            page.setResponseEnabled('next', name.trim() !== '');
+        }
+        page.setResponseEnabled('next', !firstRun);
+        return page;
+    };
+    const pushImport = () => dialog.push({ title: t`Import From SillyTavern`, content: body => fillImport(body, { importer }), canClose: stepGuard(() => {}) });
 
     try {
         dialog = openDialog({
@@ -233,6 +403,24 @@ export async function openWelcomeDialog() {
         language?.destroy();
         throw error;
     }
+    // The dialog of a first run ends only once the persona has a name, so its first page offers no Close.
+    if (firstRun) {
+        dialog.page.querySelector('.sb-dialog__cancel')?.setAttribute('hidden', '');
+    }
     void dialog.closed.then(() => language?.destroy());
     return dialog;
+}
+
+/**
+ * The first run of an account, in place of the onboarding popup of upstream. It resolves once the persona has a name,
+ * which is where the popup ended, so startup goes on with a named user while the dialog finishes on What's Next.
+ * A dialog that ends before that, which only a failure does, releases startup as well.
+ * @param {string} avatarId The avatar of the persona to name.
+ */
+export async function runFirstRunWelcome(avatarId) {
+    /** @type {() => void} */
+    let markNamed = () => {};
+    const named = new Promise((resolve) => { markNamed = resolve; });
+    const dialog = await openWelcomeDialog({ firstRun: true, avatarId, onNamed: markNamed });
+    await Promise.race([named, dialog.closed]);
 }

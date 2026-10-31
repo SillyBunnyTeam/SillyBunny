@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.setTimeout(90000);
@@ -26,12 +27,12 @@ async function openQuantizations(page, baseURL, kind = 'chat') {
             const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings._version = version;
             settings.main_api = kind === 'chat' ? 'openai' : 'textgenerationwebui';
             settings.oai_settings = { ...settings.oai_settings, chat_completion_source: 'openrouter', openrouter_quantizations: ['fp16'] };
             settings.textgenerationwebui_settings = { ...settings.textgenerationwebui_settings, type: 'openrouter', openrouter_quantizations: ['fp16'] };
             settings.extension_settings ??= {};
-            settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ response, json: data });

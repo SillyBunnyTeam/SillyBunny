@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 const CARD = 'qa-favorite-card.png';
 const GROUP = 'qa-favorite-group';
@@ -48,7 +49,9 @@ async function bootFixtures(page) {
     await page.route('**/api/settings/get', async route => {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
-        data.settings = JSON.stringify({ ...JSON.parse(data.settings), firstRun: false });
+        const settings = { ...JSON.parse(data.settings), firstRun: false };
+        applyWelcomeSettings(settings);
+        data.settings = JSON.stringify(settings);
         return route.fulfill({ json: data });
     });
     await page.route('**/api/characters/all', route => route.fulfill({ json: characters }));

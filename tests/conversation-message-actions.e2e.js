@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -26,10 +27,10 @@ async function openConversation(page, baseURL, { ooc = false } = {}) {
             if (!data) return;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings.power_user.auto_connect = false;
             settings.power_user.reduced_motion = false;
             settings.extension_settings.sillybunny_conversation = {};
-            settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });

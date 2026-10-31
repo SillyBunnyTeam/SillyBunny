@@ -263,7 +263,7 @@ import {
 } from './scripts/tags.js';
 // SillyBunny: migrate the opt-in legacy tag folders after both settings stores load.
 import { convertLegacyTagFolders } from './scripts/sillybunny-folders.js';
-import { seedQuickImageGenFirstRun } from './scripts/sillybunny-first-run-defaults.js'; // SillyBunny: first-run extension defaults.
+import { seedQuickImageGenFirstRun, showFirstRunWelcome } from './scripts/sillybunny-first-run-defaults.js'; // SillyBunny: first-run extension defaults and the first-run Welcome dialog.
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
@@ -12756,6 +12756,7 @@ export function setUserName(value, { toastPersonaNameChange = true } = {}) {
 }
 
 async function doOnboarding(avatarId) {
+    if (await showFirstRunWelcome(avatarId)) return; // SillyBunny: the Welcome dialog replaces the popup below, which stays as the fallback.
     const template = $('#onboarding_template .onboarding');
     let userName = await callGenericPopup(template, POPUP_TYPE.INPUT, currentUser?.name || name1, { wider: true, cancelButton: false });
 

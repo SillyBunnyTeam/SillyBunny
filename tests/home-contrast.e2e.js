@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
-import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
+import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -41,7 +41,7 @@ async function stubTheme(page, themeName, { tint } = {}) {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
         const settings = JSON.parse(data.settings);
-        applyGettingStartedSettings(settings, { firstRun: false });
+        applyHomeTestSettings(settings, { firstRun: false });
         const palette = { ...data.themes.find(entry => entry.name === themeName) };
         delete palette.name;
         if (tint) {
@@ -49,7 +49,6 @@ async function stubTheme(page, themeName, { tint } = {}) {
         }
         settings.power_user = { ...settings.power_user, ...palette, theme: themeName, world_import_dialog: false };
         settings.extension_settings = settings.extension_settings || {};
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
 }

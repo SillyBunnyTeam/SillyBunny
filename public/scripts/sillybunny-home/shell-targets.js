@@ -7,6 +7,7 @@ const TARGET_OPENERS = Object.freeze({
     connections: shell => shell.openTab('left', 'connections'),
     presets: shell => shell.openTab('left', 'prompting'),
     characters: shell => shell.openTab('characters', 'characters'),
+    personas: shell => shell.openTab('characters', 'persona'),
     'mode-menu': shell => shell.openModeMenu(),
     'ui-theme': shell => shell.revealSetting('right', 'appearance', '#themes'),
 });
@@ -15,6 +16,7 @@ const REQUIRED_SHELL_METHODS = Object.freeze({
     connections: 'openTab',
     presets: 'openTab',
     characters: 'openTab',
+    personas: 'openTab',
     'mode-menu': 'openModeMenu',
     'ui-theme': 'revealSetting',
 });

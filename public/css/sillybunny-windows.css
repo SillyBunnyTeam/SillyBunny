@@ -112,6 +112,22 @@
     text-align: center;
 }
 
+.sbWelcomePersonaAvatar {
+    flex: none;
+    inline-size: 40px;
+    block-size: 40px;
+    margin-inline-end: 12px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.sbWelcomeImportStatus {
+    margin: 0;
+    color: var(--sb-color-danger);
+    font-size: var(--sb-type-meta);
+    overflow-wrap: anywhere;
+}
+
 .sbWelcomeSteps {
     display: flex;
     justify-content: center;

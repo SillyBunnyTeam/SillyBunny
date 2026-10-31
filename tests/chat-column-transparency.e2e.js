@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { dismissOnboardingIfPresent } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readBundledTheme = name => JSON.parse(readFileSync(path.join(repoRoot, 'default', 'content', 'themes', `${name}.json`), 'utf8'));
@@ -74,9 +74,9 @@ async function interceptWrites(page) {
             const { response, body: data } = fetched;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings._version ??= settingsVersion;
             settings.extension_settings ??= {};
-            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ response, json: data });
@@ -173,7 +173,6 @@ test.describe('desktop chat column transparency', () => {
     test.beforeEach(async ({ page }) => {
         await interceptWrites(page);
         await testSetup.awaitST({ page });
-        await dismissOnboardingIfPresent(page);
         await page.getByRole('button', { name: 'Close dialog', exact: true }).click({ timeout: 1000 }).catch(() => {});
         await openCharacterChat(page);
         await appendUserMessage(page);

@@ -2,7 +2,7 @@ import { expect, test as base } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
-import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
+import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -256,7 +256,7 @@ async function useMotion(page) {
         const { response, body: data } = fetched;
         const settings = JSON.parse(data.settings);
         settings.power_user.reduced_motion = false;
-        applyGettingStartedSettings(settings);
+        applyHomeTestSettings(settings);
         return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
     });
 }
@@ -417,7 +417,9 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Your Persona');
                 await expect(current.getByText('Step 2 of 3')).toBeAttached();
-                await expect(current.getByRole('textbox', { name: 'Your Name' })).toBeVisible();
+                // Show Welcome is a reopen: the persona the account has, and no name to ask for.
+                await expect(current.getByRole('textbox', { name: 'Your Name' })).toHaveCount(0);
+                await expect(current.getByRole('button', { name: 'Manage Personas' })).toBeVisible();
                 await expectSlots(current, ['WD-2-PROMPT']);
 
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
@@ -650,7 +652,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect.poll(() => page.evaluate(() => window.__liveListeners())).toBe(0);
             });
 
-            test('Import From SillyTavern pushes a skeleton page whose buttons send nothing', async ({ page }) => {
+            test('Import From SillyTavern pushes a page whose buttons send nothing until there is a folder path or a chosen file', async ({ page }) => {
                 const imports = [];
                 page.on('request', request => {
                     if (/import|restore|backup/i.test(new URL(request.url()).pathname) && request.method() !== 'GET') {
@@ -668,10 +670,13 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(current.getByRole('textbox', { name: 'Folder Path' })).toBeVisible();
                 const importFolder = current.getByRole('button', { name: 'Import Folder', exact: true });
                 const importZip = current.getByRole('button', { name: 'Import Backup ZIP', exact: true });
-                await expect(importFolder).toHaveAttribute('data-sb-stub', 'true');
-                await expect(importZip).toHaveAttribute('data-sb-stub', 'true');
+                await expect(importFolder).not.toHaveAttribute('data-sb-stub', /.*/);
+                await expect(importZip).not.toHaveAttribute('data-sb-stub', /.*/);
                 await importFolder.click();
+                await expect(current.getByRole('textbox', { name: 'Folder Path' })).toHaveAttribute('aria-invalid', 'true');
+                const chooser = page.waitForEvent('filechooser');
                 await importZip.click();
+                await chooser;
                 expect(imports).toEqual([]);
 
                 await current.getByRole('button', { name: 'Back', exact: true }).click();

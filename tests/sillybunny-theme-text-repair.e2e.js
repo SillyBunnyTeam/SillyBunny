@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -30,6 +31,7 @@ async function stubSavedTheme(page, { palette = {}, customCss = previous.custom_
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.power_user = {
             ...settings.power_user,
             ...Object.fromEntries(COLOR_KEYS.map(key => [key, previous[key]])),
@@ -43,7 +45,6 @@ async function stubSavedTheme(page, { palette = {}, customCss = previous.custom_
             settings.power_user.sb_theme_text_revision = revision;
         }
         settings.extension_settings = settings.extension_settings || {};
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         const themes = [revised, ...data.themes.filter(theme => theme.name !== THEME)];
         return route.fulfill({ json: { ...data, themes, settings: JSON.stringify(settings) } });
     });

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, selectSampleCharacter, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
@@ -78,8 +79,8 @@ async function interceptWrites(page, baseURL) {
             if (!data) return;
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings.power_user.auto_connect = false;
-            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
         }

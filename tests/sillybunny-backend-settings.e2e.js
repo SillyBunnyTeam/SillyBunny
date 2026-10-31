@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { acceptPopup } from './helpers/popup.js';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -30,7 +31,7 @@ async function loadSettings(page, baseURL, settingsStore) {
             data.request_compression = { ...data.request_compression, enabled: false };
             const settings = settingsStore?.saved ?? JSON.parse(data.settings);
             settings.firstRun = false;
-            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+            applyWelcomeSettings(settings);
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
         }

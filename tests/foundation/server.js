@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import YAML from 'yaml';
+import { applyWelcomeSettings } from '../helpers/welcome-dialog.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-ui-foundation-'));
@@ -22,14 +23,7 @@ const userRoot = path.join(config.dataRoot, 'default-user');
 fs.mkdirSync(userRoot, { recursive: true });
 const settings = JSON.parse(fs.readFileSync(path.join(root, 'default/content/settings.json'), 'utf8'));
 settings.firstRun = false;
-settings.extension_settings = {
-    ...(settings.extension_settings || {}),
-    'quick-image-gen': {
-        ...(settings.extension_settings?.['quick-image-gen'] || {}),
-        setupWizardSeen: true,
-        starterPresetsSeeded: true,
-    },
-};
+applyWelcomeSettings(settings);
 fs.writeFileSync(path.join(userRoot, 'settings.json'), JSON.stringify(settings));
 
 const server = spawn(process.env.SB_UI_TEST_RUNTIME || process.execPath, ['server.js', '--configPath', configPath], {

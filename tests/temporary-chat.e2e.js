@@ -4,6 +4,7 @@ import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -95,8 +96,8 @@ async function boot(page, { extensionSettings = null } = {}) {
         if (!data) return;
         const settings = JSON.parse(data.settings);
         settings.firstRun = false;
+        applyWelcomeSettings(settings);
         settings.extension_settings = settings.extension_settings || {};
-        settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
         Object.assign(settings.extension_settings, extensionSettings ?? {});
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { WELCOME_SELECTOR, answerFirstRunWelcome, applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -36,7 +37,7 @@ async function loadApp(page, { firstRun = false, autosave = true } = {}) {
             const settings = JSON.parse(data.settings);
             settings.firstRun = firstRun;
             settings.main_api = 'openai';
-            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
+            applyWelcomeSettings(settings);
             if (autosave === null) delete settings.power_user.sb_preset_autosave;
             else settings.power_user.sb_preset_autosave = autosave;
             data.settings = JSON.stringify(settings);
@@ -68,9 +69,8 @@ async function loadApp(page, { firstRun = false, autosave = true } = {}) {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     if (firstRun) {
-        const onboarding = page.locator('.popup:has(.onboarding)');
-        await expect(onboarding).toBeVisible({ timeout: 60000 });
-        await onboarding.locator('.popup-button-ok').click();
+        await expect(page.locator(WELCOME_SELECTOR)).toBeVisible({ timeout: 60000 });
+        await answerFirstRunWelcome(page);
     }
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     return saves;

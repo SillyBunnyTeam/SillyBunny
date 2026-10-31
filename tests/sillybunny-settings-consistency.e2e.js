@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
@@ -138,12 +139,9 @@ async function mockWrites(page, settingsStore = null) {
             const { response, body: data } = fetched;
             const settings = settingsStore?.saved ?? JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings._version ??= settingsVersion;
             settings.extension_settings ??= {};
-            settings.extension_settings['quick-image-gen'] = {
-                ...settings.extension_settings['quick-image-gen'],
-                setupWizardSeen: true,
-            };
             settingsVersion = Math.max(settingsVersion, settings._version);
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);

@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { dismissOnboardingIfPresent, dismissOpenDialogIfPresent } from './chat-scroll-regression-helpers.js';
+import { testSetup } from './frontend/frontent-test-utils.js';
+import { dismissOpenDialogIfPresent } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -56,15 +58,11 @@ async function openSettings(page, baseURL) {
         return route.fallback();
     });
 
+    await keepWelcomeClosed(page.context());
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !document.getElementById('preloader'), null, { timeout: 60000 });
-    await dismissOnboardingIfPresent(page);
-    const onboardingSave = page.locator('dialog[open]:has(.onboarding) .popup-button-ok');
-    if (await onboardingSave.isVisible()) await onboardingSave.click();
+    await testSetup.waitForAppReady({ page });
     await dismissOpenDialogIfPresent(page);
-    await page.addLocatorHandler(page.locator('#qig-setup-wizard'), async wizard => {
-        await wizard.getByRole('button', { name: 'Skip', exact: true }).click();
-    });
     await page.waitForFunction(async () => (await import('/script.js')).settingsReady, null, { timeout: 60000 });
     await page.waitForFunction(() => typeof window.SillyTavern?.getContext === 'function');
     await page.locator('#extension_settings_in_chat_agents_pathfinder #pf--settings').waitFor({ state: 'attached', timeout: 60000 });

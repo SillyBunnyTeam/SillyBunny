@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { BUNDLED_CARD_AVATARS } from '../../public/scripts/sillybunny-home/bundled-cards.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
+import { applyWelcomeSettings } from './welcome-dialog.js';
 
 /** The account storage key that holds the progress of Getting Started. */
 export const GETTING_STARTED_KEY = 'WelcomePage_GettingStarted';
@@ -42,6 +43,18 @@ export function applyGettingStartedSettings(settings, { value = gettingStartedVa
 }
 
 /**
+ * For a spec about Home: the Getting Started state of `applyGettingStartedSettings` and the Welcome state of
+ * `applyWelcomeSettings`. They are one function because a route that fetches the real response is the last to
+ * answer, so a second route for Welcome would never see the request.
+ * @param {Record<string, any>} settings The parsed `settings` of `/api/settings/get`, changed in place.
+ * @param {Parameters<typeof applyGettingStartedSettings>[1] & { welcome?: import('./welcome-dialog.js').WelcomeState }} [options]
+ */
+export function applyHomeTestSettings(settings, { welcome, ...gettingStarted } = {}) {
+    applyGettingStartedSettings(settings, gettingStarted);
+    applyWelcomeSettings(settings, { welcome });
+}
+
+/**
  * Decides what the page loads for Getting Started, and keeps the rest of the account out of the way:
  * - the stored checklist: by default shown with every step open, which is what a spec about Home expects (an account
  *   with no stored value is an existing one, and its checklist starts hidden; pass `value: null` for that account);
@@ -59,7 +72,7 @@ export async function stubGettingStarted(page, { value = gettingStartedValue(), 
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
         const settings = JSON.parse(data.settings);
-        applyGettingStartedSettings(settings, { value, firstRun });
+        applyHomeTestSettings(settings, { value, firstRun });
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.route('**/api/backends/chat-completions/status', route => route.fulfill({ json: { error: true } }));
@@ -76,15 +89,17 @@ export async function stubGettingStarted(page, { value = gettingStartedValue(), 
 /**
  * Records what the app saves into the account storage, without letting it reach the server.
  * @param {import('@playwright/test').Page} page
- * @returns {Promise<{ accountStorage: Record<string, string>, saves: number }>} Updated in place by each save.
+ * @returns {Promise<{ accountStorage: Record<string, string>, saves: number, payload: Record<string, any> | null }>}
+ *   Updated in place by each save. `payload` is the whole settings object of the last save.
  */
 export async function captureAccountStorageSaves(page) {
-    const captured = { accountStorage: {}, saves: 0 };
+    const captured = { accountStorage: {}, saves: 0, payload: null };
     await page.route('**/api/settings/save', (route) => {
         const request = route.request();
         const buffer = request.headers()['content-encoding'] === 'gzip' ? gunzipSync(request.postDataBuffer()) : request.postDataBuffer();
         const payload = JSON.parse(buffer.toString());
         captured.accountStorage = payload.accountStorage ?? {};
+        captured.payload = payload;
         captured.saves += 1;
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });

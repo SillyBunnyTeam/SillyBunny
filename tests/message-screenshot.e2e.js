@@ -1,18 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { testSetup } from './frontend/frontent-test-utils.js';
+import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
 
-async function dismissOnboardingIfPresent(page) {
-    const onboardingDialog = page.locator('dialog[open]:has(.onboarding)').first();
-
-    if (await onboardingDialog.isVisible().catch(() => false)) {
-        await onboardingDialog.locator('.popup-input').fill('Screenshot Tester');
-        await onboardingDialog.locator('.popup-button-ok').click();
-        await onboardingDialog.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
-    }
-}
+test.beforeEach(({ page }) => keepWelcomeClosed(page.context()));
 
 async function installScreenshotMessage(page, messageText) {
     await page.evaluate(async (text) => {
@@ -350,7 +344,7 @@ test.describe('desktop message screenshots', () => {
     test('copies the downloaded PNG for single, range, and wand screenshots', async ({ page }) => {
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
         await installScreenshotMessage(page, 'clipboard screenshot');
         await installClipboardProbe(page);
 
@@ -365,7 +359,7 @@ test.describe('desktop message screenshots', () => {
         test(`still downloads when clipboard access is ${mode}`, async ({ page }) => {
             await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-            await dismissOnboardingIfPresent(page);
+            await testSetup.waitForAppReady({ page });
             await installScreenshotMessage(page, 'clipboard fallback');
             await installClipboardProbe(page, mode);
 
@@ -382,7 +376,7 @@ test.describe('desktop message screenshots', () => {
         page.on('download', download => downloads.push(download));
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
         await installScreenshotMessage(page, 'cancelled clipboard screenshot');
         await installClipboardProbe(page);
         await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
@@ -402,7 +396,7 @@ test.describe('desktop message screenshots', () => {
         page.on('pageerror', error => pageErrors.push(error.message));
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
         await installScreenshotMessage(page, 'clipboard screenshot retry');
         await installClipboardProbe(page);
         await page.addScriptTag({ url: '/lib/html2canvas.min.js' });
@@ -436,7 +430,7 @@ test.describe('desktop message screenshots', () => {
 
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
         await installScreenshotMessage(page, 'single screenshot oklch regression');
         await page.evaluate(() => {
             const imageSource = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');
@@ -492,7 +486,7 @@ test.describe('desktop message screenshots', () => {
         test.skip(browserName !== 'chromium', 'Windows desktop coverage uses Chromium');
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
         await installScreenshotMessage(page, 'desktop screenshot canvas side regression');
         await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
             const spacer = document.createElement('div');
@@ -511,7 +505,7 @@ test.describe('desktop message screenshots', () => {
     test('completes capture when a cloned image never finishes loading', async ({ page }) => {
         await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
         await installScreenshotMessage(page, 'hanging desktop clone image regression');
         await installHangingCloneImage(page);
 
@@ -534,7 +528,7 @@ function registerMobileScreenshotTests(profileName, targetBrowserName, useOption
         test('copies the downloaded range PNG from a confirmation gesture', async ({ page }) => {
             await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-            await dismissOnboardingIfPresent(page);
+            await testSetup.waitForAppReady({ page });
             await installScreenshotMessage(page, `${profileName} clipboard screenshot`);
             await installClipboardProbe(page);
 
@@ -546,7 +540,7 @@ function registerMobileScreenshotTests(profileName, targetBrowserName, useOption
         test('bounds long screenshot raster memory and canvas side', async ({ page }) => {
             await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-            await dismissOnboardingIfPresent(page);
+            await testSetup.waitForAppReady({ page });
             await installScreenshotMessage(page, 'mobile screenshot raster budget regression');
             await page.locator('#chat .mes[mesid="0"] .mes_text').evaluate(element => {
                 const originalFetch = window.fetch.bind(window);
@@ -574,7 +568,7 @@ function registerMobileScreenshotTests(profileName, targetBrowserName, useOption
         test('completes capture when a cloned image never finishes loading', async ({ page }) => {
             await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-            await dismissOnboardingIfPresent(page);
+            await testSetup.waitForAppReady({ page });
             await installScreenshotMessage(page, `hanging ${profileName} clone image regression`);
             await installHangingCloneImage(page);
 
@@ -592,7 +586,7 @@ function registerMobileScreenshotTests(profileName, targetBrowserName, useOption
 
             await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
-            await dismissOnboardingIfPresent(page);
+            await testSetup.waitForAppReady({ page });
             await installScreenshotMessage(page, 'stalled mobile screenshot regression');
             await page.evaluate(() => {
                 const imageSource = Object.getOwnPropertyDescriptor(window.HTMLImageElement.prototype, 'src');

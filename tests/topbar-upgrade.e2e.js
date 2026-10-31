@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -40,6 +41,7 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
         const { response, body: data } = fetched;
         const serverSettings = JSON.parse(data.settings);
         serverSettings.firstRun = false;
+        applyWelcomeSettings(serverSettings);
         await route.fulfill({ response, json: { ...data, settings: JSON.stringify(serverSettings) } });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { acceptPopup } from './helpers/popup.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 // End-to-end coverage for the connection profile change notice: one summary toast per user switch,
 // silent scripted switches, the "Also sets" card line, and the id-keyed View popup.
@@ -117,9 +118,9 @@ async function loadApp(page, { autosave = true, profiles = PROFILES } = {}) {
             data.request_compression = { ...data.request_compression, enabled: false };
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings.main_api = 'openai';
             settings.power_user.sb_preset_autosave = autosave;
-            settings.extension_settings['quick-image-gen'] = { ...settings.extension_settings['quick-image-gen'], setupWizardSeen: true };
             settings.extension_settings.connectionManager = { profiles: structuredClone(profiles), folders: [], selectedProfile: null };
             settings.extension_settings.regex_presets = structuredClone([REGEX_PRESET_A, REGEX_PRESET_B]);
             data.settings = JSON.stringify(settings);
