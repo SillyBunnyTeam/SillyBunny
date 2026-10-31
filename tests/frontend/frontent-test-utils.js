@@ -42,8 +42,7 @@ export const testSetup = {
 
     /**
      * Waits for APP_READY on any profile, including a fresh one. A fresh data root holds
-     * startup on the first-run onboarding prompt until it is answered, and opens the
-     * Quick Image Gen setup wizard underneath it; both would block later clicks.
+     * startup on the first-run onboarding prompt until it is answered.
      * SB also releases the preloader before its async startup work finishes.
      * @param {Object} params
      * @param {import('@playwright/test').Page} params.page
@@ -64,11 +63,6 @@ export const testSetup = {
         }
         await startupState.dispose();
         await appEvents.dispose();
-        // Registered only now: the wizard can sit under the modal onboarding dialog, where its
-        // Skip button is unclickable and the handler would block answering the prompt.
-        await page.addLocatorHandler(page.locator('#qig-setup-wizard'), async wizard => {
-            await wizard.getByRole('button', { name: 'Skip', exact: true }).click();
-        });
     },
 
     /**

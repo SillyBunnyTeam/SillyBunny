@@ -263,6 +263,7 @@ import {
 } from './scripts/tags.js';
 // SillyBunny: migrate the opt-in legacy tag folders after both settings stores load.
 import { convertLegacyTagFolders } from './scripts/sillybunny-folders.js';
+import { seedQuickImageGenFirstRun } from './scripts/sillybunny-first-run-defaults.js'; // SillyBunny: first-run extension defaults.
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
@@ -12943,6 +12944,7 @@ export async function getSettings() {
             if (await maybeAutoClearCacheOnVersionChange(isVersionChanged)) {
                 return;
             }
+            settings.extension_settings = seedQuickImageGenFirstRun(settings.extension_settings); // SillyBunny: keep the Quick Image Gen setup wizard from stacking under the first-run dialog.
             await loadExtensionSettings(settings, isVersionChanged, enableAutoUpdate);
             await eventSource.emit(event_types.EXTENSION_SETTINGS_LOADED);
             applyPowerUserSettings();

@@ -94,11 +94,6 @@ test('desktop Characters settings page opens from its top-bar trigger', async ({
     await page.goto('/');
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
 
-    const setupWizard = page.locator('#qig-setup-wizard');
-    if (await setupWizard.isVisible().catch(() => false)) {
-        await setupWizard.locator('.qig-close-btn').click({ force: true });
-        await expect(setupWizard).toBeHidden({ timeout: 5000 });
-    }
     await page.evaluate(() => document.body.classList.remove('reduced-motion'));
 
     await page.locator('#sb-character-toggle').click();

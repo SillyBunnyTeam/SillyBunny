@@ -63,11 +63,6 @@ test('application shell baseline and reduced motion', async ({ page }, testInfo)
     await page.route('**/api/settings/save', route => route.fulfill({ json: {} }));
     await page.goto('/');
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));
-    const setupWizard = page.locator('#qig-setup-wizard');
-    if (await setupWizard.isVisible().catch(() => false)) {
-        await setupWizard.locator('.qig-close-btn').click({ force: true });
-        await expect(setupWizard).toBeHidden({ timeout: 5000 });
-    }
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'presets'));
     const settingsPage = page.locator('#sb-settings-page');
     await expect(settingsPage).toBeVisible();

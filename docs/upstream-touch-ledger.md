@@ -1199,6 +1199,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-31, PR #870. |
 | Owner | TODO(copy) |
 
+### `public/script.js` - Quick Image Gen first-run seed
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Settings load at boot and the first-run flow. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-first-run-defaults.js` (`seedQuickImageGenFirstRun()`: an absent, `null` or empty `extension_settings['quick-image-gen']` becomes `{ setupWizardSeen: true, starterPresetsSeeded: false }`; anything else is returned unchanged). The vendored `public/scripts/extensions/quick-image-gen/` files are unchanged, and the wizard still opens from its own button (`.qig-wizard-btn`). |
+| Adapter shape | Two marked one-liners: the import, and `settings.extension_settings = seedQuickImageGenFirstRun(settings.extension_settings);` directly before `loadExtensionSettings(settings, …)` in `getSettings()`. |
+| Protecting tests | `tests/unit/sillybunny-first-run-defaults.test.js`; `tests/quick-image-gen-first-run.e2e.js` (first run: no wizard, the three starter presets, the wizard from its button; reset account: no wizard; existing account unchanged). |
+| Validation | 2026-11-01: root and tests lint pass; unit 10 passed; e2e `quick-image-gen-first-run` 5, `sillybunny-preset-autosave` 14, foundation `shared-ui` and `shell-navigation` 6 passed, 4 skipped; with the seam disabled, the no-wizard and reset tests fail. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
