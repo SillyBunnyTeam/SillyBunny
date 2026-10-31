@@ -1241,6 +1241,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | TODO(copy) |
 
+### `src/endpoints/content-manager.js` - managed bundled content reconcile
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/content-manager.js` (`seedContentForUser`) |
+| Area | Bundled default content per user at start-up: managed cards, sprite folders and worlds. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/sillybunny-managed-content.js` (`createManagedContent` → `status`, `reconcile`, `apply`, `restore`, `stateSignature`; fingerprints of a card's authored fields and image, of each sprite file, and of a world's entries and root `extensions`; classification `current`, `updated`, `modified`, `deleted`; backups in `<user>/backups/managed/`, the newest 5 per item); `scripts/build-managed-manifest.js` writes `default/content/sillybunny-managed.json`. With no manifest, nothing is managed. |
+| Adapter shape | Three marked edits: the import of `reconcileManagedContent`; `seedContentForUser` exported with an optional fourth argument (`managedDirectory`) so tests can point it at fixtures; and one `reconcileManagedContent(...)` call after `reconcileManagedBundledThemes`, before seeding, so a newly seeded item is never classified on its first start. |
+| Protecting tests | `tests/unit/sillybunny-managed-content.test.js` (fingerprints, pinned literal hashes, classification, merge keeps personal fields, sprites, worlds, backups and retention, path guards); `tests/managed-content-app-roundtrip.test.js` (the real characters router: favourite, tags, editor save with CRLF multipart, world link and unlink, rename); `tests/managed-content-seeding.test.js`; `tests/managed-content-fixtures.test.js` (committed fixtures equal the generator); `tests/managed-manifest-script.test.js`; `tests/unit/sillybunny-managed-content-signature.test.js`. |
+| Validation | 2026-11-01: root and tests lint pass; managed suites 304 passed, 19 related suites 565 passed; reviewer `ses_e6c1bf662ffec7EodqYE0Blhuv` mutants all killed after fixes (personal-field merge, deleted detection, containment, `lstat`, backup order, normalisations); fixture generator, manifest CLI and a seed/reconcile/apply/restore probe byte-identical under Node v26.10.0 and Bun 1.3.12; both runtimes boot. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

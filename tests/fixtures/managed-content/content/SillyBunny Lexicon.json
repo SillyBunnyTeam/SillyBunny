@@ -1,0 +1,20 @@
+{
+    "entries": {
+        "0": {
+            "uid": 0,
+            "displayIndex": 0,
+            "key": [
+                "fixture"
+            ],
+            "content": "The first fixture entry."
+        },
+        "1": {
+            "uid": 1,
+            "displayIndex": 1,
+            "key": [
+                "lexicon"
+            ],
+            "content": "The second fixture entry."
+        }
+    }
+}

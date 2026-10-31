@@ -14,6 +14,8 @@ import { write } from '../character-card-parser.js';
 import { serverDirectory } from '../server-directory.js';
 import { Jimp, JimpMime } from '../jimp.js';
 import { DEFAULT_AVATAR_PATH } from '../constants.js';
+// SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass.
+import { reconcileManagedContent } from '../sillybunny-managed-content.js';
 
 const contentDirectory = path.join(serverDirectory, 'default/content');
 const scaffoldDirectory = path.join(serverDirectory, 'default/scaffold');
@@ -729,14 +731,17 @@ export function reconcileManagedBundledThemes(directories) {
     }
 }
 
+// SillyBunny: exported, with a managed content directory, so seeding is testable against fixtures.
 /**
  * Seeds content for a user.
  * @param {ContentItem[]} contentIndex Content index
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string[]} forceCategories List of categories to force check (even if content check is skipped)
+ * @param {object} [options]
+ * @param {string} [options.managedDirectory] Where the managed content manifest is; tests point it at fixtures.
  * @returns {Promise<boolean>} Whether any content was added
  */
-async function seedContentForUser(contentIndex, directories, forceCategories) {
+export async function seedContentForUser(contentIndex, directories, forceCategories, { managedDirectory = contentDirectory } = {}) {
     if (!fs.existsSync(directories.root)) {
         fs.mkdirSync(directories.root, { recursive: true });
     }
@@ -747,6 +752,8 @@ async function seedContentForUser(contentIndex, directories, forceCategories) {
     writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
     reconcileManagedBundledQuickReplies(directories);
     reconcileManagedBundledThemes(directories);
+    // SillyBunny: managed content is reconciled per user; a content directory without a manifest manages nothing.
+    reconcileManagedContent({ bundledDirectory: managedDirectory, directories, setPermissions: setPermissionsSync });
     const filteredContentIndex = contentIndex.filter(contentItem => {
         if (!isPresetContentType(contentItem.type)) {
             return true;
