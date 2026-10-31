@@ -33,6 +33,27 @@ export { getTopmostDialog, hostOverlayLayer, bindSheetGestures };
 const frames = new WeakMap();
 let nextId = 0;
 
+/**
+ * The shade colour of a page slide: the theme's shadow colour at the given alpha, as the Dialog Backdrop takes it
+ * (sillybunny-theme.css). Where relative colour syntax is not supported, the neutral ink the backdrop falls back to.
+ * @type {(alpha: string) => string}
+ */
+const shadeInk = typeof CSS !== 'undefined' && CSS.supports?.('color', 'rgb(from red r g b / 0.5)')
+    ? alpha => `rgb(from var(--SmartThemeShadowColor) r g b / ${alpha})`
+    : alpha => `rgb(0 0 6 / ${alpha})`;
+
+/**
+ * The page that slides over another has an edge shadow, and the page it covers dims as more of it is covered. Both
+ * pages have the same layer tone and header layout, so without them the two headers read as one bar with two titles.
+ * AdwNavigationView does the same (adw-shadow-helper.c): the dimming is the shade colour at 25% in dark and 7% in
+ * light, which is half of the Dialog Backdrop alpha. The dim is a spread shadow of the sliding page, so it exists only
+ * while the page moves, and the pages node clips it.
+ * @param {number} dim Share of the Dialog Backdrop alpha at full dimming, from 0 (not covered) to 0.5 (fully covered).
+ */
+function slideShade(dim) {
+    return `0 0 56px ${shadeInk('var(--sb-dialog-backdrop-alpha)')}, 0 0 0 100vmax ${shadeInk(`calc(var(--sb-dialog-backdrop-alpha) * ${dim})`)}`;
+}
+
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -698,7 +719,8 @@ export function openDialog({
     /*
      * Runs in a microtask after the swap, so the target height includes the content that a caller adds to a
      * pushed page after push() returns. The slide itself starts in the swap, and the first frame is not painted
-     * before this runs.
+     * before this runs. Content that settles later, such as a block sized by a ResizeObserver, is not in this
+     * measurement: watchIncomingPage follows the target while the motion runs.
      */
     function startHeightMotion() {
         if (!pendingSwap) return;
@@ -711,7 +733,130 @@ export function openDialog({
         for (const [page, height] of heights) {
             if (page.isConnected && !page.hidden) pinPage(page, height);
         }
-        play(pagesNode, [{ height: `${from}px` }, { height: `${to}px` }], { ...SPRING_NAVIGATION, onEnd: releasePins });
+        retargets = 0;
+        // A motion that cannot run has already ended, and nothing would stop a watcher that started after it.
+        if (playHeightMotion(from, to)) watchIncomingPage(incoming);
+    }
+
+    function findHeightAnimation() {
+        return pagesNode.getAnimations().find(animation => animation.effect?.target === pagesNode);
+    }
+
+    /**
+     * @param {number} elapsed Time into the motion to continue from, in ms.
+     * @returns {boolean} Whether the motion is running.
+     */
+    function playHeightMotion(from, to, elapsed = 0) {
+        const running = play(pagesNode, [{ height: `${from}px` }, { height: `${to}px` }], { ...SPRING_NAVIGATION, onEnd: endHeightMotion }) !== null;
+        const animation = running && elapsed > 0 ? findHeightAnimation() : null;
+        if (animation) animation.currentTime = elapsed;
+        return running;
+    }
+
+    let stopWatching = null;
+    let retargeting = false;
+    let retargets = 0;
+    /*
+     * A page is followed for at most this many changes of its target per slide. The late changes that are known
+     * come from a block that fits its text once and from a caller that adds content once, so a few leave room for
+     * both. The limit also stops a page whose size never settles, for example one that animates its own height,
+     * from causing a forced layout on every frame for the length of the slide.
+     */
+    const MAX_RETARGETS = 4;
+    /** Above this share of the motion the height that remains is too small for a new start to show. */
+    const LAST_RETARGET_PROGRESS = 0.98;
+
+    function endHeightMotion() {
+        releasePins();
+        if (!retargeting) stopFollowing();
+    }
+
+    /*
+     * Content can change the size of the incoming page after the height motion has measured it: a ResizeObserver
+     * callback sizes a block to its text, or a caller adds rows after an await. The motion would then end at the
+     * old height and the dialog would jump when the pins release. So the header and the body content of the page
+     * are watched until the motion ends, and when one of them has a size other than the one it had at the
+     * measurement, the motion starts again from the height it has reached, toward the height the page has now.
+     * A page that fills a fixed-height window does not depend on its content, so it is not watched.
+     */
+    function watchIncomingPage(incoming) {
+        if (typeof ResizeObserver === 'undefined' || getComputedStyle(incoming).flexGrow !== '0') return;
+        const body = incoming.querySelector(':scope > .sb-dialog__body');
+        const sizes = new Map();
+        const measure = (node) => {
+            const { width, height } = node.getBoundingClientRect();
+            return { width, height };
+        };
+        const resizeObserver = new ResizeObserver(() => check());
+        const track = (node) => {
+            if (sizes.has(node)) return;
+            sizes.set(node, measure(node));
+            resizeObserver.observe(node);
+        };
+        const trackContent = () => {
+            track(incoming.querySelector(':scope > .sb-dialog__header'));
+            if (body) [body, ...body.children].forEach(track);
+        };
+        const hasChanged = () => {
+            let changed = false;
+            for (const [node, before] of sizes) {
+                // A node that was removed measures 0 x 0, which is not a change in the size of the page.
+                if (!node.isConnected) {
+                    sizes.delete(node);
+                    resizeObserver.unobserve(node);
+                    continue;
+                }
+                const now = measure(node);
+                if (Math.abs(now.width - before.width) >= 0.5 || Math.abs(now.height - before.height) >= 0.5) changed = true;
+            }
+            return changed;
+        };
+        function check() {
+            if (state !== 'open' || !incoming.isConnected || !hasChanged()) return;
+            retargetHeightMotion(incoming);
+            for (const node of sizes.keys()) sizes.set(node, measure(node));
+            if (++retargets >= MAX_RETARGETS) stopFollowing();
+        }
+        const mutationObserver = new MutationObserver(() => {
+            trackContent();
+            check();
+        });
+        if (body) mutationObserver.observe(body, { childList: true });
+        trackContent();
+        stopWatching = () => {
+            resizeObserver.disconnect();
+            mutationObserver.disconnect();
+        };
+    }
+
+    function stopFollowing() {
+        stopWatching?.();
+        stopWatching = null;
+    }
+
+    /*
+     * The motion continues on the timeline it had, with keyframes that give the height that shows now at the time
+     * it has reached, so its end time does not move and a target that did not change leaves it as it was.
+     */
+    function retargetHeightMotion(incoming) {
+        const staying = shownPageHeights();
+        staying.delete(incoming);
+        const current = pagesNode.getBoundingClientRect().height;
+        const animation = findHeightAnimation();
+        const progress = animation?.effect.getComputedTiming().progress ?? 1;
+        const elapsed = Number(animation?.currentTime ?? 0);
+        retargeting = true;
+        // Stopping the motion snaps the node to its natural height and releases the pins, which is how the new target is read.
+        stopMotion(pagesNode);
+        retargeting = false;
+        const to = pagesNode.getBoundingClientRect().height;
+        for (const [page, height] of staying) {
+            if (page.isConnected && !page.hidden) pinPage(page, height);
+        }
+        pinPage(incoming, to);
+        const from = (current - to * progress) / (1 - progress);
+        if (progress < LAST_RETARGET_PROGRESS && from >= 0) playHeightMotion(from, to, elapsed);
+        else playHeightMotion(current, to);
     }
 
     function swapPages(swap) {
@@ -755,7 +900,7 @@ export function openDialog({
                 leaving.remove();
             };
             if (prefersReducedMotion()) remove();
-            else play(leaving, [{ transform: 'none' }, { transform: `translateX(${slideOffset()})` }], { ...SPRING_NAVIGATION, fill: 'forwards', onEnd: remove });
+            else play(leaving, [{ transform: 'none', boxShadow: slideShade(0.5) }, { transform: `translateX(${slideOffset()})`, boxShadow: slideShade(0) }], { ...SPRING_NAVIGATION, fill: 'forwards', onEnd: remove });
             (entry.returnFocus?.isConnected ? entry.returnFocus : firstFocusable(previous.view.page))?.focus({ preventScroll: true });
             heightLock?.refresh();
             entry.resolve({ response });
@@ -805,7 +950,7 @@ export function openDialog({
                 previous.view.page.classList.remove('is-underlay');
             };
             if (prefersReducedMotion()) hidePrevious();
-            else play(view.page, [{ transform: `translateX(${slideOffset()})` }, { transform: 'none' }], { ...SPRING_NAVIGATION, onEnd: hidePrevious });
+            else play(view.page, [{ transform: `translateX(${slideOffset()})`, boxShadow: slideShade(0) }, { transform: 'none', boxShadow: slideShade(0.5) }], { ...SPRING_NAVIGATION, onEnd: hidePrevious });
             // Callers add header actions and body content after push() returns, so the target is resolved
             // once that synchronous code has run. Resolving it now would see a page that is still empty.
             queueMicrotask(() => {

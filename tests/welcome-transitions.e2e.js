@@ -104,6 +104,61 @@ async function installTransitionProbe(page) {
             await settle();
             return { before, middle, frames, after: sample() };
         };
+        // Real time, no pausing: samples the painted state after every frame, so work that lands after the first
+        // microtask (ResizeObserver callbacks, late content) is part of what the checks see.
+        window.__live = (trigger) => new Promise((resolve) => {
+            const hostNode = () => document.querySelector('dialog.sb-dialog-host:not([closing])');
+            const liveSample = () => {
+                const node = hostNode();
+                const surfaceBox = node.querySelector('.sb-dialog').getBoundingClientRect();
+                return {
+                    time: performance.now(),
+                    surface: surfaceBox.height,
+                    animating: hostAnimations().length > 0,
+                    pages: [...node.querySelectorAll('.sb-dialog__page')].filter(page => !page.hidden).map((page) => {
+                        const body = page.querySelector('.sb-dialog__body');
+                        return {
+                            title: page.querySelector('.sb-dialog__title').textContent,
+                            cls: [...page.classList].filter(name => name.startsWith('is-')).join(' '),
+                            height: page.getBoundingClientRect().height,
+                            bodyHeight: body.getBoundingClientRect().height,
+                            shadow: getComputedStyle(page).boxShadow,
+                        };
+                    }),
+                };
+            };
+            const before = liveSample();
+            const samples = [];
+            const channel = new MessageChannel();
+            let idle = 0;
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                resolve({
+                    before,
+                    samples,
+                    startedAt,
+                    backdropAlpha: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sb-dialog-backdrop-alpha')),
+                });
+            };
+            // A timer ends the run too, because a page that is hidden or throttled paints no frames.
+            setTimeout(finish, 8000);
+            channel.port1.onmessage = () => {
+                if (done) return;
+                const current = liveSample();
+                samples.push(current);
+                idle = current.animating ? 0 : idle + 1;
+                if (samples.length > 8 && idle >= 20) {
+                    finish();
+                    return;
+                }
+                requestAnimationFrame(() => channel.port2.postMessage(0));
+            };
+            const startedAt = performance.now();
+            trigger();
+            requestAnimationFrame(() => channel.port2.postMessage(0));
+        });
         window.__stopped = async (trigger, how) => {
             const host = document.querySelector('dialog.sb-dialog-host:not([closing])');
             const nodes = [...host.querySelectorAll('.sb-dialog__page, .sb-dialog__pages')];
@@ -182,17 +237,121 @@ const IDLE_ANIMATIONS = () => document.getAnimations().filter(animation => anima
 const NEXT = `${HOST} .sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving) .sb-dialog__affirmative`;
 const PINNED = `${HOST} .sb-dialog__page[style*="height"], ${HOST} .sb-dialog__pages[style*="height"], ${HOST} .sb-dialog__page[style*="flex-shrink"]`;
 
-async function openWelcome(page) {
+async function openFromMenu(page, item, title) {
     await protectMaintainerServer(page);
     await installFixtureChats(page);
     await useMotion(page);
     await openQuietChatForSmoke(page, { selectCharacter: false });
     await page.locator('#chat > .welcomePanel .sbHomeMenuButton').click();
-    await page.getByRole('menuitem', { name: 'Show Welcome', exact: true }).click();
+    await page.getByRole('menuitem', { name: item, exact: true }).click();
     await expect(page.locator(HOST)).toBeVisible();
-    await expect(page.locator(`${HOST} .sb-dialog__title`)).toHaveText('Welcome');
+    await expect(page.locator(`${HOST} .sb-dialog__title`)).toHaveText(title);
     await expect.poll(() => page.evaluate(IDLE_ANIMATIONS)).toBe(0);
     await installTransitionProbe(page);
+}
+
+const openWelcome = page => openFromMenu(page, 'Show Welcome', 'Welcome');
+const openAbout = page => openFromMenu(page, 'About SillyBunny', 'About SillyBunny');
+
+/** Presses a control of the page that shows, as a click, in real time. */
+async function runLive(page, selector, { keyboard = false } = {}) {
+    const css = `${HOST} .sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving) ${selector}`;
+    if (keyboard) {
+        await page.locator(css).focus();
+        await page.keyboard.press('Shift');
+        return page.evaluate(() => window.__live(() => document.activeElement.click()));
+    }
+    return page.evaluate(query => window.__live(() => document.querySelector(query).click()), css);
+}
+
+/** The page that slides in a painted sample: the one that leaves, or the one that enters over a covered page. */
+function findSliding(sample) {
+    return sample.pages.find(page => page.cls.includes('is-leaving'))
+        ?? sample.pages.find(page => !page.cls.includes('is-underlay') && sample.pages.some(other => other.cls.includes('is-underlay')));
+}
+
+/**
+ * Reads the colours of a computed box-shadow in the order they are painted. A theme colour that goes through relative
+ * colour syntax or an interpolation computes to a colour function such as oklab(), so each colour is kept as text
+ * with its alpha, and `opaque` is the same colour at alpha 1 for a browser to convert.
+ */
+function parseShadowColours(shadow) {
+    return [...shadow.matchAll(/(?:rgba?|color|oklab|oklch|lab|lch)\([^)]*\)/g)].map(([css]) => {
+        const alpha = css.match(/\/\s*([\d.]+)\s*\)$/);
+        return { css, a: alpha ? Number(alpha[1]) : 1, opaque: css.replace(/\/\s*[\d.]+\s*\)$/, ')') };
+    });
+}
+
+/** The sRGB channels of a CSS colour, as a browser paints it. */
+function paintedChannels(page, colour) {
+    return page.evaluate((value) => {
+        const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        context.fillStyle = value;
+        context.fillRect(0, 0, 1, 1);
+        const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+        return { r, g, b };
+    }, colour);
+}
+
+/**
+ * The dim the sliding page casts on the page it covers: it rises across a push to half the Dialog Backdrop alpha,
+ * which is libadwaita's dimming, and falls across a pop. Nothing casts a shadow once the slide is over.
+ */
+function expectDim({ samples, backdropAlpha }, { rising }) {
+    const half = backdropAlpha / 2;
+    const dims = samples.filter(sample => sample.animating).map(sample => parseShadowColours(findSliding(sample).shadow)[1].a);
+    const direction = rising ? 1 : -1;
+    for (let index = 1; index < dims.length; index++) {
+        expect((dims[index] - dims[index - 1]) * direction, `the dim ${rising ? 'rises' : 'falls'}. dims: ${dims.join(', ')}`).toBeGreaterThanOrEqual(-0.005);
+    }
+    const [start, end] = rising ? [dims[0], dims.at(-1)] : [dims.at(-1), dims[0]];
+    expect(Math.abs(end - half), `the slide ends with half the backdrop alpha (${half}) on the page. dims: ${dims.join(', ')}`).toBeLessThanOrEqual(rising ? 0.03 : half * 0.6);
+    expect(start, `the slide starts without it. dims: ${dims.join(', ')}`).toBeLessThanOrEqual(rising ? half * 0.6 : 0.03);
+    expect(samples.at(-1).pages.map(shown => shown.shadow), 'nothing casts a shadow at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
+}
+
+/** The length of the Navigation spring in sillybunny-motion.js, in ms. */
+const SLIDE_MS = 334;
+const FRAME_MS = 50;
+
+/** The time from the trigger to the last frame that had a motion running. */
+function slideLength({ samples, startedAt }) {
+    return samples.filter(sample => sample.animating).at(-1).time - startedAt;
+}
+
+/**
+ * Checks a slide that ran in real time: the dialog height moves one way and ends the slide at the height it rests
+ * at, no page reflows while it shows (unless the content itself changes), and the page that slides casts a shadow over the one it covers.
+ */
+function expectLiveSlide({ before, samples }, { contentChanges = false, minFrames = 6 } = {}) {
+    const animated = samples.filter(sample => sample.animating);
+    expect(animated.length, 'the slide painted frames').toBeGreaterThanOrEqual(minFrames);
+    const lastIndex = samples.lastIndexOf(animated.at(-1));
+    const rest = samples.at(-1).surface;
+    const heights = [before.surface, ...animated.map(sample => sample.surface)];
+    const description = `heights: ${heights.map(height => Math.round(height * 10) / 10).join(', ')}, then ${samples.slice(lastIndex + 1, lastIndex + 3).map(sample => sample.surface).join(', ')}`;
+
+    expect(Math.abs(animated.at(-1).surface - rest), `the last frame of the slide and the rest height differ. ${description}`).toBeLessThanOrEqual(TOLERANCE);
+    const direction = Math.sign(rest - before.surface);
+    for (let index = 1; index < heights.length; index++) {
+        expect((heights[index] - heights[index - 1]) * direction, `the height moves one way. ${description}`).toBeGreaterThanOrEqual(-TOLERANCE);
+    }
+
+    for (const [index, sample] of samples.entries()) {
+        for (const page of contentChanges ? [] : sample.pages) {
+            const earlier = samples[index - 1]?.pages.find(candidate => candidate.title === page.title);
+            if (!earlier) continue;
+            expect(Math.abs(page.height - earlier.height), `frame ${index}: ${page.title} changed from ${earlier.height}px to ${page.height}px`).toBeLessThanOrEqual(TOLERANCE);
+            expect(Math.abs(page.bodyHeight - earlier.bodyHeight), `frame ${index}: the body of ${page.title} changed from ${earlier.bodyHeight}px to ${page.bodyHeight}px`).toBeLessThanOrEqual(TOLERANCE);
+        }
+    }
+
+    for (const [index, sample] of animated.entries()) {
+        const sliding = findSliding(sample);
+        expect(sliding?.shadow, `frame ${index}: the sliding page casts a shadow over the page it covers`).not.toBe('none');
+        expect(sample.pages.filter(page => page !== sliding).map(page => page.shadow), `frame ${index}: the page that stays does not cast one`).toEqual(sample.pages.filter(page => page !== sliding).map(() => 'none'));
+    }
+    expect(samples.at(-1).pages.map(page => page.shadow), 'no shadow stays at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
 }
 
 /** Opens a plain dialog whose root page is 160px high; `window.__block(n)` makes content of any height. */
@@ -259,6 +418,98 @@ for (const { name, options } of VIEWPORTS) {
     });
 }
 
+for (const { name, options } of VIEWPORTS) {
+    test.describe(`Page transitions in real time at ${name}`, () => {
+        test.use(options);
+
+        for (const keyboard of [false, true]) {
+            test(`${keyboard ? 'keyboard' : 'pointer'}: Welcome, Your Persona and What\u2019s Next slide steadily`, async ({ page }) => {
+                await openWelcome(page);
+
+                for (const [label, selector] of [
+                    ['Welcome to Your Persona', '.sb-dialog__affirmative'],
+                    ['Your Persona to What\u2019s Next', '.sb-dialog__affirmative'],
+                    ['What\u2019s Next back to Your Persona', '.sb-dialog__cancel'],
+                    ['Your Persona back to Welcome', '.sb-dialog__cancel'],
+                ]) {
+                    const live = await test.step(label, () => runLive(page, selector, { keyboard }));
+                    expect(live.samples.length, `${label} painted frames`).toBeGreaterThan(8);
+                    await test.step(`${label}: frames`, () => expectLiveSlide(live));
+                }
+            });
+        }
+
+        for (const [title, section] of [['Troubleshooting', 'Troubleshooting'], ['Credits', 'Credits']]) {
+            test(`About to ${title} and back slides steadily and ends at the height the page rests at`, async ({ page }) => {
+                await openAbout(page);
+
+                const forward = await page.evaluate(label => window.__live(() => [...document.querySelectorAll('dialog.sb-dialog-host button')]
+                    .find(button => button.textContent.trim().startsWith(label)).click()), section);
+                expect(forward.samples.length, 'the push painted frames').toBeGreaterThan(8);
+                await test.step('push', () => expectLiveSlide(forward));
+                const back = await runLive(page, '.sb-dialog__back');
+                expect(back.samples.length, 'the pop painted frames').toBeGreaterThan(8);
+                await test.step('pop', () => expectLiveSlide(back));
+            });
+        }
+
+        test('Troubleshooting still ends at its rest height when the page is slow to render', async ({ page }) => {
+            await openAbout(page);
+            const session = await page.context().newCDPSession(page);
+            await session.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+
+            const forward = await page.evaluate(() => window.__live(() => [...document.querySelectorAll('dialog.sb-dialog-host button')]
+                .find(button => button.textContent.trim().startsWith('Troubleshooting')).click()));
+            await session.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
+            expect(forward.samples.length, 'the push painted frames').toBeGreaterThan(8);
+            // A slow page paints few frames of the slide, so only its end height and its direction are checked.
+            expectLiveSlide(forward, { minFrames: 2 });
+        });
+    });
+}
+
+/** Presses the About row that opens the page with this label, in real time. */
+function pushAboutPage(page, label) {
+    return page.evaluate(text => window.__live(() => [...document.querySelectorAll('dialog.sb-dialog-host button')]
+        .find(button => button.textContent.trim().startsWith(text)).click()), label);
+}
+
+test.describe('Page transition shade', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    for (const [tone, backdropAlpha] of [['dark', 0.5], ['light', 0.14]]) {
+        test(`the page it covers dims as the page slides over it, in a ${tone} surface`, async ({ page }) => {
+            await openAbout(page);
+            await page.evaluate((value) => { document.documentElement.dataset.sbSurfaceTone = value; }, tone);
+
+            const push = await pushAboutPage(page, 'Credits');
+            const pop = await runLive(page, '.sb-dialog__back');
+
+            expect(push.backdropAlpha, `the ${tone} surface has its Dialog Backdrop alpha`).toBeCloseTo(backdropAlpha, 2);
+            expectDim(push, { rising: true });
+            expectDim(pop, { rising: false });
+        });
+    }
+
+    test('the shade is the theme\u2019s shadow colour', async ({ page }) => {
+        await openAbout(page);
+        await page.evaluate(() => document.documentElement.style.setProperty('--SmartThemeShadowColor', 'rgba(80, 0, 0, 1)'));
+
+        const push = await pushAboutPage(page, 'Credits');
+
+        const animated = push.samples.filter(sample => sample.animating);
+        expect(animated.length).toBeGreaterThan(5);
+        const [edge, dim] = parseShadowColours(findSliding(animated[Math.floor(animated.length / 2)]).shadow);
+        for (const colour of [edge, dim]) {
+            const { r, g, b } = await paintedChannels(page, colour.opaque);
+            expect(r, `the shade keeps the red of the theme colour: ${colour.css}`).toBeGreaterThan(70);
+            expect(r).toBeLessThan(90);
+            expect(Math.max(g, b)).toBeLessThan(10);
+        }
+    });
+});
+
 test.describe('Welcome page transitions in a right-to-left document', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -300,6 +551,49 @@ test.describe('Shared page chain', () => {
 
         expectSteadyTransition(forward);
         expect(forward.after.surface, 'the dialog rests at the height of the late content').toBeGreaterThan(420);
+    });
+
+    test('content that grows after the slide has started moves the end of the slide with it', async ({ page }) => {
+        await openChain(page);
+
+        const live = await page.evaluate(() => window.__live(() => {
+            const block = window.__block(300);
+            window.__chain.push({ title: 'Grows', content: block });
+            setTimeout(() => { block.style.height = '420px'; }, 90);
+        }));
+
+        expectLiveSlide(live, { contentChanges: true });
+        expect(live.samples.at(-1).surface, 'the dialog rests at the height of the grown content').toBeGreaterThan(420);
+    });
+
+    test('replacing a child with one of the same height does not move the end of the slide', async ({ page }) => {
+        await openChain(page);
+
+        const live = await page.evaluate(() => window.__live(() => {
+            const first = window.__block(300);
+            window.__chain.push({ title: 'Replaced', content: first });
+            setTimeout(() => first.replaceWith(window.__block(300)), 60);
+        }));
+
+        expect(slideLength(live), 'the height motion ends with its own duration').toBeLessThanOrEqual(SLIDE_MS + FRAME_MS);
+        expectLiveSlide(live);
+    });
+
+    test('a page whose height keeps changing does not keep the slide running', async ({ page }) => {
+        await openChain(page);
+
+        const live = await page.evaluate(() => window.__live(() => {
+            const block = window.__block(300);
+            window.__chain.push({ title: 'Jitter', content: block });
+            let wide = false;
+            const timer = setInterval(() => {
+                wide = !wide;
+                block.style.height = wide ? '304px' : '300px';
+            }, 30);
+            setTimeout(() => clearInterval(timer), 1500);
+        }));
+
+        expect(slideLength(live), 'the height motion ends with its own duration').toBeLessThanOrEqual(SLIDE_MS + FRAME_MS);
     });
 
     for (const how of ['cancel', 'close']) {
