@@ -85,6 +85,8 @@ import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 import { mountAgentsPanel, getAgentsPanelSearchEntries } from './extensions/in-chat-agents/ui/agent-list.js';
 // SillyBunny: character editor controller
 import { initCharacterEditor } from './sillybunny-character-editor.js';
+import { leaveTemporaryChat } from './sillybunny-temporary-chat.js';
+import { isReservedChatName } from './sillybunny-temporary-chat-state.js';
 import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybunny-search-entities.js';
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
@@ -4888,9 +4890,19 @@ function formatChatTokenEstimate(value) {
     return `~${tokens} tokens`;
 }
 
+/**
+ * A temporary chat has no file; its stand-in id is internal, so the chat bar shows a label instead.
+ * @param {string} chatName Chat id or file name
+ * @returns {string} Text to show for it
+ */
+function describeChatName(chatName) {
+    return isReservedChatName(chatName) ? t`Temporary Chat` : chatName;
+}
+
 function formatChatSelectorLabel(fileName, tokenEstimate = 0) {
     const tokenLabel = formatChatTokenEstimate(tokenEstimate);
-    return tokenLabel ? `${fileName} (${tokenLabel})` : fileName;
+    const displayName = describeChatName(fileName);
+    return tokenLabel ? `${displayName} (${tokenLabel})` : displayName;
 }
 
 function normalizeChatInfo(chatInfo) {
@@ -5367,7 +5379,7 @@ function populateChatSelector(select, chatFiles, chatContext, placeholder) {
     }
 
     if (currentValue && !uniqueChats.some(chat => chat.fileName === currentValue)) {
-        const option = createElement('option', { text: currentValue });
+        const option = createElement('option', { text: describeChatName(currentValue) });
         option.value = currentValue;
         option.selected = true;
         select.appendChild(option);
@@ -5389,7 +5401,7 @@ function createChatFileButton(chatFile, currentChatId, onSelect, { compact = fal
     button.classList.toggle('is-current', chatFile.fileName === currentChatId);
     button.innerHTML = `
         <div class="sb-chat-file-head">
-            <strong>${chatFile.fileName}</strong>
+            <strong>${describeChatName(chatFile.fileName)}</strong>
             <small>${dateLabel || ''}</small>
         </div>
         <span class="sb-chat-file-preview">${chatFile.preview}</span>
@@ -8074,6 +8086,11 @@ function bindHomeState() {
 }
 
 async function returnToLandingPage() {
+    // A temporary chat asks before anything closes, so Cancel leaves the page as it was.
+    if (!await leaveTemporaryChat()) {
+        return;
+    }
+
     window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace'));
     closeShell('left');
     closeShell('right');
@@ -14503,7 +14520,7 @@ async function refreshBottomChatSelect() {
     // Add placeholder option showing the current chat
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = currentChatName || 'No chat selected';
+    placeholder.textContent = describeChatName(currentChatName) || 'No chat selected';
     placeholder.selected = true;
     chatSelect.appendChild(placeholder);
 
@@ -14530,7 +14547,7 @@ async function refreshBottomChatSelect() {
         if (!chatNames.includes(currentChatName)) {
             const fallback = document.createElement('option');
             fallback.value = '';
-            fallback.textContent = currentChatName || 'No chat selected';
+            fallback.textContent = describeChatName(currentChatName) || 'No chat selected';
             fallback.selected = true;
             chatSelect.prepend(fallback);
         }

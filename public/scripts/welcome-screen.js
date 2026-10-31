@@ -36,6 +36,8 @@ import { parseDisplayMode } from './sillybunny-home/modes.js';
 import { captureHomeFocus, restoreHomeFocus } from './sillybunny-home/focus.js';
 import { openChatMenu } from './sillybunny-home/menu.js';
 import { resolveRecentChatTarget } from './sillybunny-home/recent-chat.js';
+// SillyBunny: declining to leave a temporary chat is not a failure to open a recent chat.
+import { leaveTemporaryChat } from './sillybunny-temporary-chat.js';
 
 const assistantAvatarKey = 'assistant';
 const pinnedChatsKey = 'pinnedChats';
@@ -954,6 +956,10 @@ async function openRecentCharacterChat(avatarId, fileName) {
     }
 
     try {
+        // SillyBunny: asking here keeps Cancel from reading as a failure below.
+        if (!await leaveTemporaryChat()) {
+            return;
+        }
         const selected = await selectCharacterById(characterId);
         if (!selected) {
             toastr.warning(t`Failed to open recent chat. See console for details.`);

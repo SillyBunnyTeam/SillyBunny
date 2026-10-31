@@ -5,6 +5,8 @@ import { humanizeGenTime } from './RossAscends-mods.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { registerDebugFunction } from './power-user.js';
 import { t, translate } from './i18n.js';
+// SillyBunny: statMesProcess skips temporary chats.
+import { isTemporaryChat } from './sillybunny-temporary-chat-state.js';
 
 let charStats = {};
 
@@ -270,6 +272,10 @@ function countWords(str) {
  */
 async function statMesProcess(line, type, characters, this_chid, oldMessage) {
     if (this_chid === undefined || characters[this_chid] === undefined) {
+        return;
+    }
+    // SillyBunny: a temporary chat is not kept, so its messages do not count towards the character's stats.
+    if (isTemporaryChat()) {
         return;
     }
     await getStats();

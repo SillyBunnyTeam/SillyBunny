@@ -1169,6 +1169,7 @@ describe('id-based list actions', () => {
             selectCharacterById: jest.fn(),
             getGroups: jest.fn(),
             printCharacters: jest.fn(),
+            reassertReservedChatName: jest.fn(),
         });
         await context.api.getCharacters(preserveEditor ? { preserveEditor: true } : undefined);
         expect(context.setCharacterId).toHaveBeenCalledWith(0);

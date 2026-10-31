@@ -360,6 +360,10 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
+// SillyBunny: a temporary chat is never written; the narrow write seams below ask this flag. The module has no imports, so it adds no cycle.
+import { getStoredChatName, isTemporaryChat, isTemporaryChatWith, reassertReservedChatName } from './scripts/sillybunny-temporary-chat-state.js';
+// SillyBunny: starting, saving and leaving a temporary chat; its functions run only after script.js has loaded.
+import { beginTemporaryChat, endTemporaryChat, leaveTemporaryChat, showTemporaryChatError } from './scripts/sillybunny-temporary-chat.js';
 // SillyBunny: character lorebook rows mirror the existing native selects and Select2 state.
 import { lorebookSelectOptions } from './scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 // SillyBunny: screenshot spin rows preserve the existing parseInt/range-validation contract.
@@ -1393,9 +1397,11 @@ export function resultCheckStatus() {
  * @param {object} [options] Options for the switch.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
  * @param {() => void} [options.onAccepted] SillyBunny navigation acceptance after pending saves are flushed.
+ * @param {boolean} [options.temporary=false] Open a temporary chat with the character, which is never written to disk.
  * @returns {Promise<boolean>} A promise that resolves to true when the character was selected.
  */
-export async function selectCharacterById(id, { switchMenu = true, onAccepted } = {}) {
+// SillyBunny: the temporary option opens a chat with the character that is never written to disk.
+export async function selectCharacterById(id, { switchMenu = true, onAccepted, temporary = false } = {}) {
     if (characters[id] === undefined) {
         return false;
     }
@@ -1404,7 +1410,8 @@ export async function selectCharacterById(id, { switchMenu = true, onAccepted } 
         return false;
     }
 
-    if (selected_group || String(this_chid) !== String(id)) {
+    // SillyBunny: a temporary chat always starts fresh, even with the character that is already selected.
+    if (selected_group || String(this_chid) !== String(id) || temporary) {
         //if clicked on a different character from what was currently selected
         if (is_send_press) {
             return false;
@@ -1429,7 +1436,8 @@ export async function selectCharacterById(id, { switchMenu = true, onAccepted } 
         setCharacterId(id);
         chat_metadata = {};
         // SillyBunny: selection must report a failed load before the list dismisses its shell — see docs/ui-migration.md.
-        if (!await getChat({ switchMenu })) return false;
+        // SillyBunny: a temporary chat takes the greeting from the card and resolves, creates and saves no chat file.
+        if (!await (temporary ? getTemporaryChat({ switchMenu }) : getChat({ switchMenu }))) return false;
         window.dispatchEvent(new CustomEvent('sb:roleplay-character-selected', {
             detail: { avatar: characters[this_chid]?.avatar || '' },
         }));
@@ -1439,7 +1447,8 @@ export async function selectCharacterById(id, { switchMenu = true, onAccepted } 
         //if clicked on character that was already selected
         // SillyBunny: opt-in acceptance also flushes saves for the current chat — see docs/ui-migration.md.
         if (onAccepted) {
-            if (!await flushPendingChatSavesForNavigation()) return false;
+            // SillyBunny: selecting the character that is already open leaves nothing, so it never asks about a temporary chat.
+            if (!await flushPendingChatSavesForNavigation({ staying: true })) return false;
             onAccepted();
         }
         switchMenu && (selected_button = 'character_edit');
@@ -1987,6 +1996,8 @@ export async function getOneCharacter(avatarUrl) {
 
         if (indexOf !== -1) {
             characters[indexOf] = getData;
+            // SillyBunny: the server still names the real chat; a temporary chat keeps its stand-in.
+            reassertReservedChatName(characters);
         } else {
             toastr.error(t`Character ${avatarUrl} not found in the list`, t`Error`, { timeOut: 5000, preventDuplicates: true });
         }
@@ -2056,6 +2067,8 @@ export async function getCharacters({ preserveEditor = false } = {}) {
             characters[i].name = DOMPurify.sanitize(characters[i].name);
             characters[i].chat = characters[i].chat ? String(characters[i].chat) : '';
         }
+        // SillyBunny: the server still names the real chat; a temporary chat keeps its stand-in.
+        reassertReservedChatName(characters);
 
         if (previousAvatar) {
             const newCharacterId = characters.findIndex(x => x.avatar === previousAvatar);
@@ -3852,7 +3865,14 @@ export async function clearChat({ clearData = false } = {}) {
         $('.zoomed_avatar[forChar]').remove();
     } else { console.debug('saw no avatars'); }
 
-    await saveItemizedPrompts(getCurrentChatId());
+    // SillyBunny: a temporary chat has no stored prompts, and clearing its messages for another chat ends it.
+    if (isTemporaryChat()) {
+        if (clearData) {
+            endTemporaryChat();
+        }
+    } else {
+        await saveItemizedPrompts(getCurrentChatId());
+    }
     itemizedPrompts.length = 0;
 
     if (clearData) {
@@ -3974,6 +3994,14 @@ export const reloadCurrentChat = reloadChatMutex.update.bind(reloadChatMutex);
  * @returns {Promise<void>} A promise that resolves when the chat is reloaded.
  */
 export async function reloadCurrentChatUnsafe() {
+    // SillyBunny: a temporary chat is only ever reloaded for its own character. Anything else means the selection moved without leaving it.
+    if (isTemporaryChat() && !isTemporaryChatWith(characters[this_chid]?.avatar)) {
+        console.warn('A temporary chat was open for another character. Ending it before the reload.');
+        endTemporaryChat();
+        // The prompts belong to the chat that ended; clearChat would store them under the selected character.
+        itemizedPrompts.length = 0;
+    }
+
     const targetChatId = getCurrentChatId();
     const targetChid = this_chid;
     const targetGroup = selected_group;
@@ -4021,10 +4049,10 @@ export async function reloadCurrentChatUnsafe() {
                 return;
             }
 
-            // SillyBunny: persist any partial assistant message from the aborted generation.
+            // SillyBunny: persist any partial assistant message from the aborted generation. A temporary chat keeps it in memory only.
             const saved = targetGroup
                 ? await saveGroupChat(targetGroup, true)
-                : targetChid !== undefined
+                : targetChid !== undefined && !isTemporaryChat()
                     ? await saveChatConditional()
                     : true;
             if (saved !== true) {
@@ -4042,6 +4070,16 @@ export async function reloadCurrentChatUnsafe() {
             );
             return;
         }
+    }
+
+    // SillyBunny: a temporary chat has no file to read again, so a reload only redraws the messages in memory.
+    if (isTemporaryChat()) {
+        await clearChat({ clearData: false });
+        chat.forEach(ensureMessageMediaIsArray);
+        await printMessages();
+        await eventSource.emit(event_types.CHAT_CHANGED, targetChatId);
+        refreshSwipeButtons();
+        return;
     }
 
     // SillyBunny: flush pending user edits before re-reading from disk (fail-closed)
@@ -11483,6 +11521,11 @@ export async function renameCharacter(name = null, { silent = false, renameChats
         return false;
     }
 
+    // SillyBunny: renaming reloads the character's real chat, so leaving a temporary chat is asked before anything is renamed.
+    if (isTemporaryChat() && !await leaveTemporaryChat()) {
+        return false;
+    }
+
     const body = JSON.stringify({ avatar_url: oldAvatar, new_name: newValue });
     const response = await fetch('/api/characters/rename', {
         method: 'POST',
@@ -11640,6 +11683,11 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
 }
 
 export function saveChatDebounced(options = {}) {
+    // SillyBunny: a temporary chat saves nothing, so there is nothing to wait for or to flush later.
+    if (isTemporaryChat()) {
+        return;
+    }
+
     const chid = this_chid;
     const selectedGroup = selected_group;
     const chatId = getCurrentChatId();
@@ -11697,7 +11745,21 @@ async function waitForQueuedChatSaves() {
     }
 }
 
-export async function flushPendingChatSavesForNavigation() {
+export async function flushPendingChatSavesForNavigation({ staying = false } = {}) {
+    // SillyBunny: nothing is flushed for a temporary chat, because nothing is saved. Leaving it asks first when the user wrote in it.
+    if (isTemporaryChat()) {
+        if (staying) {
+            return true;
+        }
+        if (!await leaveTemporaryChat()) {
+            return false;
+        }
+        // Save as New Chat ended the temporary state, so the chat it saved is flushed like any other.
+        if (isTemporaryChat()) {
+            return true;
+        }
+    }
+
     if (hasPendingChatSave()) {
         // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
         const didFlush = await flushPendingChatSaves({ silent: true });
@@ -11720,6 +11782,11 @@ export async function flushPendingChatSavesForNavigation() {
  * @returns {Promise<boolean>} Whether the chat save completed successfully.
  */
 export async function flushPendingChatSaves({ silent = false } = {}) {
+    // SillyBunny: a temporary chat has nothing to save, so callers such as Clear cache are not told that saving failed.
+    if (isTemporaryChat()) {
+        return true;
+    }
+
     const chatId = getCurrentChatId();
 
     if (!chatId) {
@@ -11887,6 +11954,11 @@ async function saveChatImmediately(...args) {
     const resolvedCharacterName = characterName || fallbackCharacter.name;
     const resolvedAvatarUrl = avatarUrl || fallbackCharacter.avatar;
     const integrityKey = getQueuedChatIntegrityKey(resolvedAvatarUrl, fileName);
+
+    // SillyBunny: a temporary chat with a character is never written. Save as New Chat leaves the temporary state before it saves.
+    if (isTemporaryChat()) {
+        return false;
+    }
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -12380,6 +12452,52 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
         // SillyBunny: a failed strict load must not be replaced with a newly saved greeting.
         console.log(error);
         toastr.error(t`Could not load chat data. Try reloading the page.`);
+        return false;
+    }
+}
+
+// SillyBunny: opens a temporary chat, the way getChat() opens a saved one, without any chat file.
+/**
+ * Opens a temporary chat with the selected character: no chat file is resolved, created, read or saved, and the chat
+ * starts with the card's greeting. Announces itself in the order getChat() does.
+ * @param {object} [options] Options
+ * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
+ * @returns {Promise<boolean>} Whether the temporary chat opened.
+ */
+async function getTemporaryChat({ switchMenu = true } = {}) {
+    try {
+        incrementChatGeneration();
+        await unshallowCharacter(this_chid);
+        beginTemporaryChat(characters[this_chid]);
+
+        name2 = characters[this_chid].name;
+        chat.splice(0, chat.length);
+        const greeting = getFirstMessage();
+        if (greeting.mes) {
+            chat.push(greeting);
+        }
+        await printMessages();
+        select_selected_character(this_chid, { switchMenu });
+        await eventSource.emit(event_types.CHAT_CHANGED, (getCurrentChatId()));
+
+        if (chat.length === 1) {
+            await eventSource.emit(event_types.MESSAGE_RECEIVED, 0, 'first_message');
+            await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, 0, 'first_message');
+        }
+        eventSource.emit(event_types.CHAT_LOADED, { detail: { id: this_chid, character: characters[this_chid] } });
+
+        delay(debounce_timeout.short).then(() => {
+            if (!isTemporaryChat() || document.documentElement.dataset.sbSettingsOpen === 'true') return;
+            if ($(document.activeElement).is('input:visible, textarea:visible')) {
+                return;
+            }
+            $('#send_textarea').trigger('click').trigger('focus');
+        });
+        return true;
+    } catch (error) {
+        console.log(error);
+        endTemporaryChat();
+        showTemporaryChatError('TC-OPEN-ERROR');
         return false;
     }
 }
@@ -12890,7 +13008,8 @@ async function saveSettingsInner(loopCounter = 0) {
         accountStorage: accountStorage.getState(),
         currentVersion: currentVersion,
         username: name1,
-        active_character: active_character,
+        // SillyBunny: a reload must not open the character a temporary chat is with, which would create its real chat.
+        active_character: isTemporaryChat() ? null : active_character,
         active_group: active_group,
         user_avatar: user_avatar,
         amount_gen: amount_gen,
@@ -15351,7 +15470,8 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#depth_prompt_role').val(characters[chid].data?.extensions?.depth_prompt?.role ?? depth_prompt_role_default);
     $('#talkativeness_slider').val(characters[chid].talkativeness || talkativeness_default);
     $('#mes_example_textarea').val(characters[chid].mes_example);
-    $('#selected_chat_pole').val(characters[chid].chat);
+    // SillyBunny: this field is saved with the card, so it holds the real chat name while the chat is temporary.
+    $('#selected_chat_pole').val(getStoredChatName(characters[chid]));
     $('#create_date_pole').val(timestampToMoment(characters[chid].create_date).toISOString());
     $('#avatar_url_pole').val(characters[chid].avatar);
     $('#chat_import_avatar_url').val(characters[chid].avatar);
@@ -17274,6 +17394,9 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         return;
     }
 
+    // SillyBunny: a temporary chat has no file, and once it is cleared the card names its real chat again, which must not be deleted.
+    deleteCurrentChat = deleteCurrentChat && !isTemporaryChat();
+
     if (!await flushPendingChatSavesForNavigation()) {
         return;
     }
@@ -17491,6 +17614,10 @@ export async function updateRemoteChatName(characterId, newName) {
     const character = characters[characterId];
     if (!character) {
         throw new Error(`Character not found for ID: ${characterId}`);
+    }
+    // SillyBunny: the chat name of a temporary chat is a stand-in that is never recorded for the character.
+    if (isTemporaryChat()) {
+        return;
     }
     // SillyBunny: the last opened chat lives in a sidecar, not the card, so
     // switching chats no longer rewrites the character file.

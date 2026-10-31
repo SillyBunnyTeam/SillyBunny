@@ -36,6 +36,8 @@ import {
     updateMessageMetaBadges,
     updateMessageTokenAccounting,
     refreshMessageModelIcons,
+    // SillyBunny: /random leaves a temporary chat through the same seam as every other way into a chat.
+    flushPendingChatSavesForNavigation,
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
@@ -3831,12 +3833,16 @@ async function doRandomChat(_, tagName) {
         return randomIndex.toString();
     }
 
-    resetSelectedGroup();
     const characterId = getRandomCharacterId();
     if (!characterId) {
         toastr.error('No characters found');
         return;
     }
+    // SillyBunny: the user may decline to leave a temporary chat, and then nothing changes. Nothing asks without a target.
+    if (!await flushPendingChatSavesForNavigation()) {
+        return '';
+    }
+    resetSelectedGroup();
     setCharacterId(characterId);
     setActiveCharacter(characters[characterId]?.avatar);
     setActiveGroup(null);

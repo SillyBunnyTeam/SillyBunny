@@ -69,6 +69,7 @@ describe('Characters tab shell', () => {
             setWorldInfoButtonClass: jest.fn(), checkEmbeddedWorld: jest.fn(), loadCharacterEditorGreetings: jest.fn(),
             openCharacterEditorSession: jest.fn(), openCharacterEditorCreateSession: jest.fn(), isExternalMediaAllowed: () => true, getCharacterSource: () => '',
             eventSource: { emit: jest.fn() }, event_types: {}, saveSettingsDebounced: jest.fn(),
+            getStoredChatName: character => character?.chat ?? '',
         };
         const api = runInNewContext(`
             ${section(script, 'function focusUiSurface(', 'function scheduleUiSurfaceFocus(')}

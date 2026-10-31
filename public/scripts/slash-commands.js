@@ -38,6 +38,8 @@ import {
     name2,
     neutralCharacterName,
     newAssistantChat,
+    // SillyBunny: /go and /char leave a temporary chat through the same seam as every other way into a chat.
+    flushPendingChatSavesForNavigation,
     online_status,
     reloadCurrentChat,
     refreshSwipeButtons,
@@ -5135,7 +5137,10 @@ async function goToCharacterCallback(_, name) {
     const character = findChar({ name: name });
     if (character) {
         const chid = getCharIndex(character);
-        await openChat(String(chid));
+        // SillyBunny: the user may decline to leave a temporary chat, and then nothing changes.
+        if (!await openChat(String(chid))) {
+            return '';
+        }
         setActiveCharacter(character.avatar);
         setActiveGroup(null);
         return character.name;
@@ -5152,10 +5157,15 @@ async function goToCharacterCallback(_, name) {
 }
 
 async function openChat(chid) {
+    // SillyBunny: leaving a temporary chat asks first; pending saves of a normal chat land before the switch.
+    if (!await flushPendingChatSavesForNavigation()) {
+        return false;
+    }
     resetSelectedGroup();
     setCharacterId(chid);
     await delay(1);
     await reloadCurrentChat();
+    return true;
 }
 
 /**

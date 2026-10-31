@@ -23,6 +23,7 @@ function createSaveRuntime() {
         characters: [{ name: 'Bunny', avatar: 'bunny.png', chat: 'original-chat' }],
         name2: 'Bunny', neutralCharacterName: 'Assistant',
         getQueuedChatSaveAbortReason,
+        isTemporaryChat: jest.fn(() => false),
         getChatBackupSaveOptions, uuidv4: randomUUID,
         getCurrentChatId: () => runtime.characters[runtime.this_chid]?.chat,
         cloneChatSavePayload: structuredClone,
@@ -75,6 +76,59 @@ describe('real chat save queue', () => {
         releaseQueue();
         await expect(save).resolves.toBe(false);
         expect(runtime.fetch).not.toHaveBeenCalled();
+    });
+
+    test('posts /api/chats/save once for each save of the open chat', async () => {
+        const { runtime, releaseQueue } = createSaveRuntime();
+        releaseQueue();
+
+        await expect(runtime.saveChat()).resolves.toBe(true);
+        expect(runtime.fetch).toHaveBeenCalledTimes(1);
+        expect(runtime.fetch.mock.calls[0][0]).toBe('/api/chats/save');
+        await expect(runtime.saveChat()).resolves.toBe(true);
+        expect(runtime.fetch).toHaveBeenCalledTimes(2);
+        expect(JSON.parse(runtime.fetch.mock.calls[1][1].body)).toMatchObject({ file_name: 'original-chat', avatar_url: 'bunny.png' });
+    });
+
+    test('declines to save a chat with no character and no file name, without a request', async () => {
+        const { runtime, releaseQueue } = createSaveRuntime();
+        runtime.this_chid = undefined;
+        runtime.name2 = runtime.neutralCharacterName;
+        releaseQueue();
+
+        await expect(runtime.saveChat()).resolves.toBe(false);
+        expect(runtime.fetch).not.toHaveBeenCalled();
+    });
+
+    test('declines to save a character chat that has no file name, without a request', async () => {
+        const { runtime, releaseQueue } = createSaveRuntime();
+        runtime.characters[0].chat = '';
+        releaseQueue();
+
+        await expect(runtime.saveChat()).resolves.toBe(false);
+        expect(runtime.fetch).not.toHaveBeenCalled();
+        expect(runtime.console.warn).toHaveBeenCalledWith('saveChat called without chat_name and no chat file found');
+    });
+
+    test('writes nothing for a temporary chat, whatever file name the save names', async () => {
+        const { runtime, releaseQueue } = createSaveRuntime();
+        runtime.isTemporaryChat.mockReturnValue(true);
+        releaseQueue();
+
+        await expect(runtime.saveChat()).resolves.toBe(false);
+        await expect(runtime.saveChat({ chatName: 'copy-chat', withMetadata: {}, throwOnError: true })).resolves.toBe(false);
+        expect(runtime.fetch).not.toHaveBeenCalled();
+        expect(runtime.toastr.error).not.toHaveBeenCalled();
+    });
+
+    test('saves again once the chat is no longer temporary', async () => {
+        const { runtime, releaseQueue } = createSaveRuntime();
+        runtime.isTemporaryChat.mockReturnValueOnce(true);
+        releaseQueue();
+
+        await expect(runtime.saveChat()).resolves.toBe(false);
+        await expect(runtime.saveChat()).resolves.toBe(true);
+        expect(runtime.fetch).toHaveBeenCalledTimes(1);
     });
 
     test('invalidates object saves after a character switch without writing a new file', async () => {

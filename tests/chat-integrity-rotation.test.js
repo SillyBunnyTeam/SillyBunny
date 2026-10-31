@@ -1562,7 +1562,7 @@ describe('chat integrity rotation', () => {
             groupChatSource.indexOf('async function openCharacterDefinition('),
         );
         const flushForNavigationBody = scriptSource.slice(
-            scriptSource.indexOf('export async function flushPendingChatSavesForNavigation()'),
+            scriptSource.indexOf('export async function flushPendingChatSavesForNavigation('),
             scriptSource.indexOf('export async function flushPendingChatSaves('),
         );
 
