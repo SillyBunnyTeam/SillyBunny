@@ -13,6 +13,11 @@ import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-bu
 import { initializeMobileBottomBar, syncMobileBottomBar } from './sillybunny-mobile-bottom-bar.js';
 import { HOME_STATE_CHANGED_EVENT, initHomeState, isHomeActive } from './sillybunny-home-state.js';
 import { CHAT_MODE_CHANGED_EVENT, getLastChatMode, initChatModeMemory, recordChatMode } from './sillybunny-chat-mode-memory.js';
+import { initBootMarks } from './sillybunny-boot-marks.js';
+import { initSplashPreferences } from './sillybunny-splash-preferences.js';
+import { createSplashCharacterRow } from './sillybunny-splash-setting.js';
+import { power_user } from './power-user.js';
+import { accountStorage } from './util/AccountStorage.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import './sillybunny-extension-actions.js';
@@ -11617,6 +11622,20 @@ function createFrontendIconSettingsGroup() {
     return group;
 }
 
+let splashPreferences = null;
+
+/** The first call starts listening for settings events, so the drawer and the startup share one instance. */
+function getSplashPreferences() {
+    splashPreferences ??= initSplashPreferences({
+        eventSource,
+        eventTypes: event_types,
+        accountStorage,
+        storage: window.localStorage,
+        readReducedMotion: () => power_user.reduced_motion,
+    });
+    return splashPreferences;
+}
+
 function updateShortcutButton(side) {
     const buttonId = getShortcutButtonId(side);
     const button = document.getElementById(buttonId);
@@ -11803,6 +11822,7 @@ function injectThemePicker() {
     const mobileBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('mobile');
     const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
+    const splashCharacterRow = createSplashCharacterRow(getSplashPreferences());
     const shortcutSettingsGroup = createShortcutSettingsGroup();
     const desktopGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('desktop');
     const mobileGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('mobile');
@@ -11814,7 +11834,7 @@ function injectThemePicker() {
         id: 'sb-interface-drawer',
         title: 'Interface',
         description: 'Change the app icon and bottom chat bar size.',
-        content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],
+        content: [frontendIconSettingsGroup, splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],
     });
 
     getMessageStyleSelect()?.addEventListener('change', updateThemePickerUi);
@@ -15240,6 +15260,8 @@ function initAll() {
     // Must follow buildTopBar(): it rearranges the buttons that call creates.
     applyTopbarIconsOnlyPreference();
     initChatModeMemory();
+    getSplashPreferences();
+    initBootMarks({ eventSource, eventTypes: event_types });
     bindHomeState();
     buildBottomChatBar();
     // SillyBunny: user input ends the ⬇ scroll-to-bottom ladder so a mid-ladder flick is not snapped back.

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { BOOT_MARK_NAMES } from '../public/scripts/sillybunny-boot-marks.js';
 
 const require = createRequire(import.meta.url);
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -512,7 +513,19 @@ async function captureInstrumentationSnapshot(page) {
     }).catch(() => null);
 }
 
+/**
+ * The boot marks of the page, in boot order, with the time each was first made.
+ * The page runs this function on its own, so it cannot use `readBootMarks` from the module that owns the names.
+ */
+export async function readBootMarksFromPage(page) {
+    return await page.evaluate((names) => names.flatMap((name) => {
+        const [first] = globalThis.performance.getEntriesByName(name);
+        return first ? [{ name, startTime: first.startTime }] : [];
+    }), BOOT_MARK_NAMES).catch(() => []);
+}
+
 async function measurePage(page) {
+    const bootMarks = await readBootMarksFromPage(page);
     const metrics = await page.evaluate(() => {
         const browserGlobal = globalThis;
         const navigation = browserGlobal.performance.getEntriesByType('navigation')[0];
@@ -551,6 +564,7 @@ async function measurePage(page) {
 
     return {
         ...metrics,
+        bootMarks,
         longTasksAfterSynthetic,
         instrumentation: {
             ready: instrumentationAtReady,

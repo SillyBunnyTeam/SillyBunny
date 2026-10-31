@@ -159,6 +159,39 @@ describe('splash line', () => {
     });
 });
 
+describe('splash line length', () => {
+    test('a real line fits the line under the mascot on a phone, so none is longer than 32 characters', () => {
+        runSplash();
+        const realLines = Object.values(window.SillyBunnySplash.SPLASH_LINES).flat().filter(line => line !== 'TODO(copy)');
+
+        for (const line of realLines) {
+            expect(line.length).toBeLessThanOrEqual(32);
+        }
+    });
+});
+
+describe('splash boot mark', () => {
+    test('is made as soon as the script runs, with or without a preloader', () => {
+        const mark = jest.fn();
+        window.performance.mark = mark;
+
+        runSplash();
+        document.body.innerHTML = '';
+        new window.Function(splashSource)();
+
+        expect(mark).toHaveBeenCalledTimes(2);
+        expect(mark).toHaveBeenCalledWith('sb-boot-inline');
+    });
+
+    test('is skipped without a failure where the browser has no performance marks', () => {
+        window.performance.mark = undefined;
+
+        const { mascot } = runSplash({ stored: 'tewi' });
+
+        expect(mascot.dataset.variant).toBe('tewi');
+    });
+});
+
 describe('splash reduced motion', () => {
     test('adds sb-boot-reduced when the mirror says true', () => {
         localStorage.setItem('sb-reduced-motion', 'true');

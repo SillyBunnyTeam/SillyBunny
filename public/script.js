@@ -1206,6 +1206,8 @@ function rememberBootSurface() {
 
 //MARK: firstLoadInit
 async function firstLoadInit() {
+    // SillyBunny: boot timing mark; the other three live in sillybunny-boot-marks.js, sillybunny-splash.js and sillybunny-boot-guard.js.
+    globalThis.performance?.mark?.('sb-boot-init-start');
     // SillyBunny: `.splash-screen` is the boot guard's "the app is booting" marker. It is added here
     // rather than in index.html so a bundle that never runs still surfaces the 25s boot failure.
     document.querySelector('#preloader .sb-boot-splash')?.classList.add('splash-screen');

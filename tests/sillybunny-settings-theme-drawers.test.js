@@ -36,7 +36,7 @@ describe('SillyBunny settings theme drawers', () => {
         for (const drawerId of drawerIds) {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
-        expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, surfaceSliderGroup, bottomBarSliderGroup],');
+        expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],');
         expect(shellTabsSource).not.toContain('sb-shell-style-drawer');
         expect(shellTabsSource).not.toContain('data-sb-theme-option');
         expect(shellTabsSource).not.toContain('sb-frontend-icon-drawer');

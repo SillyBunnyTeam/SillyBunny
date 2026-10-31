@@ -1,6 +1,7 @@
 import { displayVersion } from '../script.js';
 import { extension_settings, extensionNames } from './extensions.js';
 import { t } from './i18n.js';
+import { readBootMarks } from './sillybunny-boot-marks.js';
 import { createArtPlaceholder } from './sillybunny-home/art.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { markCopyPlaceholder } from './sillybunny-home/copy.js';
@@ -25,6 +26,7 @@ const PENDING_VALUE = '…';
  * @property {string} userAgent
  * @property {string} viewport
  * @property {number} extensionCount
+ * @property {{ name: string, startTime: number }[]} [bootMarks]
  */
 
 /**
@@ -41,7 +43,10 @@ export function countEnabledExtensions(installed, disabled) {
  * @param {AboutInfo} info
  * @returns {string}
  */
-export function formatDebugInfo({ version, branch, commit, userAgent, viewport, extensionCount }) {
+export function formatDebugInfo({ version, branch, commit, userAgent, viewport, extensionCount, bootMarks = [] }) {
+    const bootLines = bootMarks.length > 0
+        ? bootMarks.map(({ name, startTime }) => `Boot mark ${name}: ${Math.round(startTime)} ms`)
+        : ['Boot marks: not recorded'];
     return [
         `Version: ${version}`,
         `Branch: ${branch}`,
@@ -49,6 +54,7 @@ export function formatDebugInfo({ version, branch, commit, userAgent, viewport, 
         `User agent: ${userAgent}`,
         `Viewport: ${viewport}`,
         `Enabled extensions: ${extensionCount}`,
+        ...bootLines,
     ].join('\n');
 }
 
@@ -69,6 +75,7 @@ function readClientInfo() {
         userAgent: navigator.userAgent,
         viewport: `${window.innerWidth}×${window.innerHeight}`,
         extensionCount: countEnabledExtensions(extensionNames, extension_settings.disabledExtensions ?? []),
+        bootMarks: readBootMarks(),
     };
 }
 

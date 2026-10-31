@@ -3,6 +3,11 @@
 (function () {
     'use strict';
 
+    // The first of the boot marks; the others are listed in sillybunny-boot-marks.js. Old browsers have no marks.
+    if (window.performance && typeof window.performance.mark === 'function') {
+        window.performance.mark('sb-boot-inline');
+    }
+
     var VARIANT_STORAGE_KEY = 'sb-splash-character';
     var REDUCED_MOTION_STORAGE_KEY = 'sb-reduced-motion';
     var VARIANTS = ['reisen', 'tewi', 'both'];

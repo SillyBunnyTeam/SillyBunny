@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block' });
 test.describe.configure({ timeout: 60_000 });
@@ -198,6 +199,139 @@ for (const { name, options } of VIEWPORTS) {
             releaseBoot();
 
             await expect(page.locator('#preloader')).toHaveCount(0, { timeout: STARTUP_TIMEOUT });
+        });
+    });
+}
+
+const BOOT_MARKS = ['sb-boot-inline', 'sb-boot-init-start', 'sb-boot-dismiss', 'sb-app-ready'];
+const SPLASH_CHARACTER_KEY = 'sb-splash-character';
+const SPLASH_ACCOUNT_KEY = 'WelcomePage_SplashCharacter';
+const APP_STARTUP_TIMEOUT = 60_000;
+
+/**
+ * Boots the app past the splash. `account` is merged over the saved account storage and `reducedMotion`, when given,
+ * replaces the saved setting, so a test does not depend on what the test data holds. An `undefined` value removes a key.
+ */
+async function bootApp(page, { account = {}, reducedMotion } = {}) {
+    await protectMaintainerServer(page);
+    await page.route('**/api/settings/get', async (route) => {
+        const fetched = await fetchBodyOrSkip(route, response => response.json());
+        if (!fetched) return;
+        const { response, body: data } = fetched;
+        const settings = JSON.parse(data.settings);
+        settings.accountStorage = { ...settings.accountStorage, ...account };
+        if (reducedMotion !== undefined) settings.power_user.reduced_motion = reducedMotion;
+        return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
+        null,
+        { timeout: APP_STARTUP_TIMEOUT },
+    );
+}
+
+async function openInterface(page) {
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+    await page.locator('button[data-sb-settings-tab="interface"]').evaluate(element => element.click());
+    const panel = page.locator('[data-sb-panel="interface"]');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    return panel.locator('[data-sb-editor-field="splash-character"]');
+}
+
+const readLocal = (page, key) => page.evaluate(name => localStorage.getItem(name), key);
+const readAccount = (page, key) => page.evaluate(async (name) => {
+    const { accountStorage } = await import('/scripts/util/AccountStorage.js');
+    return accountStorage.getItem(name);
+}, key);
+
+for (const { name, options } of VIEWPORTS) {
+    test.describe(`Splash settings at ${name}`, () => {
+        test.use(options);
+
+        test('Splash Character sits in Customize, Interface, with its four choices and a copy placeholder subtitle', async ({ page }) => {
+            await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: undefined } });
+            await page.evaluate(key => localStorage.removeItem(key), SPLASH_CHARACTER_KEY);
+
+            const row = await openInterface(page);
+
+            await expect(row).toBeVisible();
+            await expect(row.locator('.ds-row-label')).toHaveText('Splash Character');
+            const select = row.getByRole('combobox', { name: 'Splash Character' });
+            await expect(select.locator('option')).toHaveText(['Random', 'Reisen', 'Tewi', 'Both']);
+            await expect(select).toHaveValue('random');
+            await expect(row.locator('.ds-row-subtitle')).toHaveText('TODO(copy)');
+            await expect(row.locator('.ds-row-subtitle')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+            await expect(row.locator('.ds-row-subtitle')).toHaveAttribute('data-sb-copy-slot', 'SET-SPLASH-SUB');
+            const fitsBeside = await row.evaluate(node => node.getBoundingClientRect().right <= document.documentElement.clientWidth + 1);
+            expect(fitsBeside).toBe(true);
+        });
+
+        test('choosing a character stores it in this browser and in the account, and the next start shows it', async ({ page }) => {
+            await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: undefined } });
+            const row = await openInterface(page);
+
+            await row.getByRole('combobox', { name: 'Splash Character' }).selectOption('both');
+
+            expect(await readLocal(page, SPLASH_CHARACTER_KEY)).toBe('both');
+            expect(await readAccount(page, SPLASH_ACCOUNT_KEY)).toBe('both');
+
+            const nextStart = await page.context().newPage();
+            await protectMaintainerServer(nextStart);
+            const releaseBoot = await holdBoot(nextStart);
+            try {
+                await nextStart.goto('/', { waitUntil: 'domcontentloaded' });
+                await expect(nextStart.locator('#preloader .sb-boot-mascot')).toHaveAttribute('data-variant', 'both', { timeout: STARTUP_TIMEOUT });
+            } finally {
+                releaseBoot();
+                await nextStart.close();
+            }
+        });
+
+        test('a new browser copies the account character after the settings load, and shows it in the row', async ({ page }) => {
+            await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: 'reisen' } });
+
+            await expect.poll(() => readLocal(page, SPLASH_CHARACTER_KEY)).toBe('reisen');
+            const row = await openInterface(page);
+            await expect(row.getByRole('combobox', { name: 'Splash Character' })).toHaveValue('reisen');
+        });
+
+        test('Reduced Motion is mirrored to this browser when the settings load and on every save', async ({ page }) => {
+            await bootApp(page, { reducedMotion: false });
+            const setReducedMotion = checked => page.evaluate((value) => {
+                const box = document.querySelector('#reduced_motion');
+                box.checked = value;
+                box.dispatchEvent(new Event('input', { bubbles: true }));
+            }, checked);
+
+            await expect.poll(() => readLocal(page, 'sb-reduced-motion')).toBe('false');
+            await setReducedMotion(true);
+            await expect.poll(() => readLocal(page, 'sb-reduced-motion')).toBe('true');
+            await setReducedMotion(false);
+            await expect.poll(() => readLocal(page, 'sb-reduced-motion')).toBe('false');
+        });
+
+        test('the four boot marks are made in order, and About, Troubleshooting lists them', async ({ page }) => {
+            await bootApp(page);
+
+            const marks = await page.evaluate(names => Object.fromEntries(names.map(mark => [mark, performance.getEntriesByName(mark).map(entry => entry.startTime)])), BOOT_MARKS);
+            for (const mark of BOOT_MARKS) expect(marks[mark], mark).toHaveLength(1);
+            expect(marks['sb-boot-inline'][0]).toBeLessThan(marks['sb-boot-init-start'][0]);
+            expect(marks['sb-boot-init-start'][0]).toBeLessThan(marks['sb-boot-dismiss'][0]);
+            expect(marks['sb-boot-init-start'][0]).toBeLessThan(marks['sb-app-ready'][0]);
+
+            await page.evaluate(async () => (await import('/scripts/sillybunny-home/windows.js')).openAbout());
+            const host = page.locator('dialog.sb-dialog-host:not([closing])');
+            await host.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
+            const info = host.locator('.sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving)').getByRole('textbox', { name: 'Debug Information' });
+            await expect(info).toBeVisible();
+
+            const text = await info.inputValue();
+            for (const mark of BOOT_MARKS) {
+                expect(text).toContain(`Boot mark ${mark}: ${Math.round(marks[mark][0])} ms`);
+            }
+            const fit = await info.evaluate(node => ({ scrollHeight: node.scrollHeight, clientHeight: node.clientHeight }));
+            expect(fit.scrollHeight).toBeLessThanOrEqual(fit.clientHeight + 1);
         });
     });
 }
