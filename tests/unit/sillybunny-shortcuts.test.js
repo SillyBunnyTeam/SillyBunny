@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure functions. */
+import { readFileSync } from 'node:fs';
 import { describe, expect, jest, test } from '@jest/globals';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
@@ -7,10 +8,16 @@ jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-editor/dialog.js', () => ({ openDialog: jest.fn() }));
 const createRow = jest.fn(({ label }) => ({ row: Object.assign(document.createElement('div'), { textContent: label }) }));
-const createPrefGroup = jest.fn(({ title, rows }) => {
+const createPrefGroup = jest.fn(({ title, subtitle, rows }) => {
     const section = document.createElement('section');
     section.append(...rows.map(entry => entry.row));
     section.dataset.title = title;
+    if (subtitle) {
+        const note = document.createElement('p');
+        note.className = 'ds-pref-group-subtitle';
+        note.textContent = subtitle;
+        section.prepend(note);
+    }
     return { section };
 });
 jest.unstable_mockModule('../../public/scripts/sillybunny-editor/rows.js', () => ({ createPrefGroup, createRow }));
@@ -58,10 +65,24 @@ describe('Keyboard shortcut registry', () => {
         expect(unlabelled).toEqual([]);
     });
 
-    test('flags only the two shortcuts that have no key handler yet', () => {
-        const planned = getShortcuts().filter(entry => entry.planned).map(entry => entry.keys.join('+'));
+    test('has no entry that waits for a handler: F1 and Ctrl+? have theirs', () => {
+        expect(getShortcuts().filter(entry => 'planned' in entry)).toEqual([]);
+    });
+});
 
-        expect(planned).toEqual(['Mod+?', 'F1']);
+describe('Keyboard shortcut registry and the hotkey template', () => {
+    // `/help hotkeys` shows this file, so it is where the upstream handlers are written down.
+    const template = readFileSync(new URL('../../public/scripts/templates/hotkeys.html', import.meta.url), 'utf8');
+    const [chatPart, markdownPart] = template.split(/<strong[^>]*>Markdown Hotkeys<\/strong>/);
+    const kbdOf = part => [...part.matchAll(/<kbd[^>]*>([^<]+)<\/kbd>/g)].map(match => match[1]);
+    const spelled = scope => getShortcuts().filter(entry => entry.scope === scope).map(entry => entry.keys.join('+'));
+
+    test('lists the chat hotkeys of the template, in its order', () => {
+        expect(spelled('chat')).toEqual(kbdOf(chatPart));
+    });
+
+    test('lists the Markdown hotkeys of the template, in its order', () => {
+        expect(spelled('formatting')).toEqual(kbdOf(markdownPart));
     });
 });
 
@@ -73,22 +94,21 @@ describe('Keyboard Shortcuts window', () => {
     };
     const rowLabels = body => [...body.querySelectorAll('section > div')].map(row => row.textContent);
 
-    test('leaves out the planned shortcuts and lists the others', () => {
+    test('lists every shortcut, the two that open the windows included', () => {
         const labels = rowLabels(fill());
 
-        expect(labels).not.toContain('Keyboard Shortcuts');
-        expect(labels).not.toContain('Help');
-        expect(labels).toEqual(expect.arrayContaining(['Home', 'Save', 'Edit Last Message', 'Bold']));
-        expect(labels).toHaveLength(getShortcuts().filter(entry => !entry.planned).length);
+        expect(labels).toEqual(expect.arrayContaining(['Keyboard Shortcuts', 'Help', 'Home', 'Save', 'Edit Last Message', 'Bold']));
+        expect(labels).toHaveLength(getShortcuts().length);
     });
 
-    test('lists a planned shortcut as soon as it is no longer planned', () => {
-        const body = document.createElement('div');
-        const shortcuts = getShortcuts().map(entry => ({ ...entry, planned: false }));
+    test('explains the Formatting group with a note that is still copy, and no other group', () => {
+        const notes = [...fill().querySelectorAll('section')].map(section => [section.dataset.title, section.querySelector('.ds-pref-group-subtitle')]);
 
-        fillShortcuts(body, shortcuts, false);
-
-        expect(rowLabels(body)).toEqual(expect.arrayContaining(['Keyboard Shortcuts', 'Help']));
+        expect(notes.filter(([, note]) => note).map(([title]) => title)).toEqual(['Formatting']);
+        const [, note] = notes.find(([title]) => title === 'Formatting');
+        expect(note.textContent).toBe('TODO(copy)');
+        expect(note.dataset.sbCopyPlaceholder).toBe('true');
+        expect(note.dataset.sbCopySlot).toBe('SHORTCUTS-FORMATTING-NOTE');
     });
 
     test('titles one group per scope', () => {

@@ -93,7 +93,8 @@ export function openFromHomeTile(key, open) {
 
 export const showWelcome = openOnce('Welcome', async () => (await import('../sillybunny-welcome.js')).openWelcomeDialog());
 export const openKeyboardShortcuts = openOnce('Keyboard Shortcuts', async () => (await import('../sillybunny-shortcuts.js')).openShortcutsWindow());
-export const openHelp = openOnce('Help', async () => (await import('../sillybunny-help/help-window.js')).openHelpWindow());
+/** Takes `{ topic }`, the id of a Help topic to open the window at. */
+export const openHelp = openOnce('Help', async options => (await import('../sillybunny-help/help-window.js')).openHelpWindow({ topicId: options?.topic ?? null }));
 export const openAbout = openOnce('About', async () => (await import('../sillybunny-about.js')).openAboutWindow());
 export const openGettingStarted = openOnce('Getting Started', async () => (await import('./getting-started-window.js')).openGettingStartedWindow());
 /** Takes `{ group }`, a group id to open the window at. */

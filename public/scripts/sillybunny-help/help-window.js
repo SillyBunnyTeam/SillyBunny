@@ -1,4 +1,5 @@
 import { t } from '../i18n.js';
+import { HELP_DIALOG_CLASS } from './dialog-classes.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from '../sillybunny-home/copy.js';
@@ -15,11 +16,13 @@ import {
     getViewTitle,
     INDEX_VIEW,
     isSameView,
+    loadViewBody,
     OVERVIEW_KEY,
     sectionView,
     topicView,
 } from './help-views.js';
-import { filterHelpSections, getHelpSections, validateHelpSections } from './topics.js';
+import { createMoveRunner } from './move-runner.js';
+import { filterHelpSections, findHelpTopic, getHelpSections, validateHelpSections } from './topics.js';
 
 /** Below this width of the window body, the sections and the page stack as pages. */
 const COLLAPSE_AT = 600;
@@ -37,12 +40,19 @@ const countTopics = sections => sections.reduce((sum, section) => sum + section.
  * not in the stack, makes the first pushed page that page, so Back and the trail agree.
  * @param {object} [options]
  * @param {() => import('./topics.js').HelpSection[]} [options.getSections] The model to show, for a window that needs more topics than the shipped ones.
+ * @param {string | null} [options.topicId] A topic to open the window at, instead of the front page.
  * @returns {Promise<ReturnType<typeof openDialog>>}
  */
-export async function openHelpWindow({ getSections = getHelpSections } = {}) {
+export async function openHelpWindow({ getSections = getHelpSections, topicId = null } = {}) {
     await ensureWindowStyles();
     const sections = getSections();
     validateHelpSections(sections);
+    const found = topicId === null ? null : findHelpTopic(sections, topicId);
+    if (topicId !== null && !found) {
+        throw new Error(`Unknown Help topic: ${topicId}`);
+    }
+    /** @type {import('./help-views.js').HelpView | null} The page to show once the layout is known, if the window opens at a topic. */
+    let startingView = found && topicView(found.section, found.topic);
     const entries = [
         { key: OVERVIEW_KEY, label: t`Overview`, icon: OVERVIEW_ICON, view: INDEX_VIEW },
         ...sections.map(section => ({ key: section.id, label: section.title, icon: section.icon, view: sectionView(section) })),
@@ -54,16 +64,25 @@ export async function openHelpWindow({ getSections = getHelpSections } = {}) {
     let pages = [];
     /** @type {boolean | null} */
     let collapsedNow = null;
+    /** @type {import('./help-views.js').TopicBodies} */
+    const bodies = new Map();
     /** @type {ReturnType<typeof createListEditor> | null} The list builds its sidebar while it is created, before this is set. */
     let editor = null;
+
+    // The window opens only once its first page has what it shows, so the page is not built twice.
+    if (startingView) {
+        await loadViewBody(startingView, bodies);
+    }
 
     const dialog = openDialog({
         tier: 'window',
         title: t`Help`,
-        className: 'sbHelpDialog',
+        className: HELP_DIALOG_CLASS,
         search: { collapsed: true, label: t`Search Help`, toggleLabel: t`Search Help`, onChange: (value) => { query = value; editor?.refresh(); } },
     });
     dialog.body.classList.add('sbHelpBody');
+    // A topic page is built with its template in place, so a move to one waits for the template.
+    const moveWhenLoaded = createMoveRunner({ isOpen: () => dialog.isOpen, load: target => loadViewBody(target, bodies) });
     // A page over the sections hides them, and a hidden list editor has no width to notice a resize with. The
     // page area is always laid out, so the layout is read from it.
     const pagesNode = dialog.page.parentElement;
@@ -71,7 +90,7 @@ export async function openHelpWindow({ getSections = getHelpSections } = {}) {
     const isCollapsed = () => isListEditorCollapsed({ viewportMobile: phone.matches, width: pagesNode.clientWidth, collapseAt: COLLAPSE_AT });
 
     /** @param {boolean} heading */
-    const viewContext = heading => ({ sections, heading, navigate });
+    const viewContext = heading => ({ sections, heading, navigate, bodies });
 
     function markCurrent() {
         if (!editor) {
@@ -213,6 +232,10 @@ export async function openHelpWindow({ getSections = getHelpSections } = {}) {
      * @param {import('./help-views.js').HelpRelation} relation
      */
     function navigate(target, relation) {
+        moveWhenLoaded(target, () => moveTo(target, relation));
+    }
+
+    function moveTo(target, relation) {
         if (!(collapsedNow ?? isCollapsed())) {
             void showInPane(target, { focus: true });
             return;
@@ -231,11 +254,13 @@ export async function openHelpWindow({ getSections = getHelpSections } = {}) {
     }
 
     function openFromSidebar(target) {
-        if (collapsedNow ?? isCollapsed()) {
-            pushPage(target);
-        } else {
-            void showInPane(target, { focus: false });
-        }
+        moveWhenLoaded(target, () => {
+            if (collapsedNow ?? isCollapsed()) {
+                pushPage(target);
+            } else {
+                void showInPane(target, { focus: false });
+            }
+        });
     }
 
     function reconcileLayout(collapsed) {
@@ -263,6 +288,21 @@ export async function openHelpWindow({ getSections = getHelpSections } = {}) {
         if (collapsed !== collapsedNow) {
             collapsedNow = collapsed;
             reconcileLayout(collapsed);
+            showStartingView();
+        }
+    }
+
+    /** Opens the page that the window was asked to open at, the first time the layout is known. A narrow window stacks the pages above it. */
+    function showStartingView() {
+        const target = startingView;
+        startingView = null;
+        if (!target) {
+            return;
+        }
+        if (collapsedNow) {
+            getViewAncestry(target).forEach(pushPage);
+        } else {
+            void showInPane(target, { focus: true });
         }
     }
 

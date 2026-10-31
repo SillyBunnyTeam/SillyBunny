@@ -6,6 +6,7 @@ import { createArtIntro } from './art-intro.js';
 import { formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLineSlot, getSharedGettingStartedState } from './getting-started.js';
 import { openShellTarget } from './shell-targets.js';
 import { createStepRow } from './step-rows.js';
+import { openHelp } from './windows.js';
 
 /** @type {ReturnType<typeof openDialog> | null} */
 let openWindow = null;
@@ -30,9 +31,10 @@ export async function closeGettingStartedWindow() {
  * @param {object} [options]
  * @param {ReturnType<typeof import('./getting-started.js').createGettingStartedState>} [options.state]
  * @param {(target: string) => unknown} [options.openTarget]
+ * @param {(topicId: string) => unknown} [options.openHelpTopic] Opens Help at a topic. Learn More calls it.
  * @returns {Promise<ReturnType<typeof openDialog>>}
  */
-export async function openGettingStartedWindow({ state = getSharedGettingStartedState(), openTarget = openShellTarget } = {}) {
+export async function openGettingStartedWindow({ state = getSharedGettingStartedState(), openTarget = openShellTarget, openHelpTopic = topic => openHelp({ topic }) } = {}) {
     await ensureWindowStyles();
     /** @type {ReturnType<typeof openDialog>} */
     let dialog;
@@ -41,12 +43,18 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
         void dialog.close('show-me');
         void dialog.closed.then(() => openTarget(target));
     };
+    // Learn More leaves the window the way Show Me does, so Help does not open as a page over it.
+    const learnMore = (topicId) => {
+        void dialog.close('learn-more');
+        void dialog.closed.then(() => openHelpTopic(topicId));
+    };
     const steps = getGettingStartedSteps().map(step => createStepRow({
         step,
         field: `getting-started-${step.id}`,
         slot: step.slot,
         labelId: `sb-getting-started-${step.id}-title`,
         onShowMe: showMe,
+        onLearnMore: learnMore,
         state,
     }));
     const progress = () => formatProgress(state.getResolvedCount(), state.getTotal());

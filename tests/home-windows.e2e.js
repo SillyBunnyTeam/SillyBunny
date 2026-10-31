@@ -808,17 +808,17 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('Keyboard Shortcuts', () => {
-            test('lists General, Editors and Lists, Chat and Formatting, and leaves out the shortcuts that have no handler yet', async ({ page }) => {
+            test('lists General, Editors and Lists, Chat and Formatting, with the Keyboard Shortcuts and Help keys in General', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
                 for (const group of ['General', 'Editors and Lists', 'Chat', 'Formatting']) {
                     await expect(host.getByRole('group', { name: group })).toBeVisible();
                 }
                 const general = host.getByRole('group', { name: 'General' });
-                await expect(general.locator('.ds-row')).toHaveCount(6);
+                await expect(general.locator('.ds-row')).toHaveCount(8);
                 await expect(general.locator('.ds-row', { hasText: 'Home' }).locator('kbd kbd')).toHaveText(['Ctrl', 'O']);
-                await expect(host.locator('.ds-row', { hasText: 'Keyboard Shortcuts' })).toHaveCount(0);
-                await expect(host.locator('.ds-row', { has: page.locator('kbd', { hasText: 'F1' }) })).toHaveCount(0);
+                await expect(general.locator('.ds-row', { hasText: 'Keyboard Shortcuts' }).locator('kbd kbd')).toHaveText(['Ctrl', '?']);
+                await expect(general.locator('.ds-row', { hasText: 'Help' }).locator('kbd kbd')).toHaveText(['F1']);
                 await expect(host.getByRole('group', { name: 'Chat' }).locator('.ds-row')).toHaveCount(10);
                 await expect(host.getByRole('group', { name: 'Formatting' }).locator('.ds-row')).toHaveCount(5);
             });

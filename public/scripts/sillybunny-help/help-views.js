@@ -3,6 +3,7 @@ import { createArtIntro } from '../sillybunny-home/art-intro.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from '../sillybunny-home/copy.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { renderTemplateAsync } from '../templates.js';
 import { findHelpTopic, getFeaturedTopics } from './topics.js';
 
 let titleCount = 0;
@@ -23,6 +24,7 @@ let titleCount = 0;
  * @property {import('./topics.js').HelpSection[]} sections
  * @property {boolean} heading Whether the page names itself. A pushed page already shows its title in its header.
  * @property {(target: HelpView, relation: HelpRelation) => void} navigate
+ * @property {TopicBodies} bodies The bodies that `loadViewBody` has loaded.
  */
 
 export const OVERVIEW_KEY = 'overview';
@@ -202,13 +204,58 @@ function createTrail(section, navigate) {
     return trail;
 }
 
-function createTopicView(section, topic, { sections, heading, navigate }) {
+/**
+ * The loaded body markup of topics, by topic id. A topic whose template failed to load is stored as null, so a
+ * failure is reported once per window and the topic keeps its placeholder.
+ * @typedef {Map<string, string | null>} TopicBodies
+ */
+
+/**
+ * Loads the template of a topic page before the page is built, so the page has its body in place when it first
+ * shows. A view that needs no template, or whose body is loaded already, returns null: there is nothing to wait for.
+ * @param {HelpView} view
+ * @param {TopicBodies} bodies Filled by this call.
+ * @returns {Promise<void> | null}
+ */
+export function loadViewBody(view, bodies) {
+    if (view.kind !== 'topic' || !view.topic.template || bodies.has(view.topic.id)) {
+        return null;
+    }
+    const { id, template } = view.topic;
+    return renderTemplateAsync(template).then((markup) => {
+        if (typeof markup !== 'string') {
+            console.error(`The Help topic "${id}" could not load its template "${template}"; its page keeps the placeholder.`);
+        }
+        bodies.set(id, typeof markup === 'string' ? markup : null);
+    });
+}
+
+/**
+ * The body of a topic: its template when it has loaded, and the placeholder otherwise. The template stays in the
+ * page as direct children of the topic page, which is where the page styles its text.
+ * @param {import('./topics.js').HelpTopic} topic
+ * @param {TopicBodies} bodies
+ * @returns {Node}
+ */
+function createTopicBody(topic, bodies) {
+    const markup = bodies.get(topic.id);
+    if (markup) {
+        const body = document.createElement('template');
+        body.innerHTML = markup;
+        if (body.content.childElementCount > 0) {
+            return body.content;
+        }
+    }
+    return markCopyPlaceholder(document.createElement('p'), topic.bodySlot);
+}
+
+function createTopicView(section, topic, { sections, heading, navigate, bodies }) {
     const root = createPage({ kind: 'topic', id: topic.id, title: topic.title, heading });
     // The trail sits above the title.
     root.prepend(createTrail(section, navigate));
     // Groups sit one level under a page heading, and directly under the window title when the page has none.
     const headingLevel = heading ? 4 : 3;
-    root.append(markCopyPlaceholder(document.createElement('p'), topic.bodySlot));
+    root.append(createTopicBody(topic, bodies));
 
     const parent = createLinkRow({
         label: section.title,

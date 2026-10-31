@@ -77,7 +77,7 @@ describe('the shared step row', () => {
     test('keeps the notes on a line of their own under the text, never inside the title', () => {
         const state = createGettingStartedState(getGettingStartedSteps().map(step => step.id));
         const { row } = build(preset, { state });
-        const notes = row.querySelector('.ds-row-text > .sbHomeStepNotes');
+        const notes = row.querySelector('.ds-row-text .sbHomeStepNotes');
 
         expect(notes).not.toBeNull();
         expect(row.querySelector('.ds-row-label .sbHomeTag')).toBeNull();

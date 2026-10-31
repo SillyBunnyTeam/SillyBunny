@@ -35,11 +35,12 @@ function createTag(text) {
  * @param {string} options.slot Copy placeholder slot of the step's text.
  * @param {string} options.labelId Id of the title, which the buttons are described by.
  * @param {(target: string) => void} options.onShowMe Receives the step's shell target.
+ * @param {(topicId: string) => void} [options.onLearnMore] Receives the id of the step's Help topic. Without it the row has no Learn More.
  * @param {ReturnType<typeof import('./getting-started.js').createGettingStartedState>} [options.state]
  * @returns {{ row: HTMLElement, sync: () => void }} `sync` shows the state's current view of the step. The
  *   caller calls it when the state changes, because the row cannot know who else changes the state.
  */
-export function createStepRow({ step, field, slot, labelId, onShowMe, state }) {
+export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMore, state }) {
     const showMe = createFlatButton(t`Show Me`);
     showMe.setAttribute('aria-describedby', labelId);
     showMe.addEventListener('click', () => onShowMe(step.target));
@@ -57,6 +58,16 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, state }) {
     markRowSubtitle(controller, slot);
     controller.row.classList.add('sbHomeStepRow');
     controller.row.querySelector('.ds-row-label').id = labelId;
+    // The notes and Learn More share one block under the text, so the text column adds its 2px gap once, and a note line adds only its own height.
+    // Learn More is there and not beside Show Me and Skip because a third button in the suffix would squeeze the title column on a phone.
+    const underText = document.createElement('div');
+    controller.row.querySelector('.ds-row-text').append(underText);
+    if (onLearnMore) {
+        const learnMore = createFlatButton(t`Learn More`);
+        learnMore.setAttribute('aria-describedby', labelId);
+        learnMore.addEventListener('click', () => onLearnMore(step.helpTopic));
+        underText.append(learnMore);
+    }
     if (!skip) {
         return { row: controller.row, sync: () => {} };
     }
@@ -68,7 +79,7 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, state }) {
         notes.append(createTag(t`Optional`));
     }
     notes.append(statusTag);
-    controller.row.querySelector('.ds-row-text').append(notes);
+    underText.prepend(notes);
 
     function sync() {
         const skipped = state.isSkipped(step.id);

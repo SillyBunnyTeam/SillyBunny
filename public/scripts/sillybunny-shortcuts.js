@@ -1,7 +1,9 @@
 import { t } from './i18n.js';
+import { SHORTCUTS_DIALOG_CLASS } from './sillybunny-help/dialog-classes.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createPrefGroup, createRow } from './sillybunny-editor/rows.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
+import { COPY_PLACEHOLDER, markCopyPlaceholder } from './sillybunny-home/copy.js';
 import { isApplePlatform } from './sillybunny-platform.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
@@ -15,7 +17,6 @@ export const SHORTCUT_SCOPES = Object.freeze(['general', 'editors', 'chat', 'for
  * @property {string[]} keys One entry per key of the combination.
  * @property {'general' | 'editors' | 'chat' | 'formatting'} scope
  * @property {string} label
- * @property {boolean} [planned] No key handler runs the shortcut yet, so the window does not list it.
  */
 
 /**
@@ -24,8 +25,8 @@ export const SHORTCUT_SCOPES = Object.freeze(['general', 'editors', 'chat', 'for
  */
 export function getShortcuts() {
     return [
-        { keys: ['Mod', '?'], scope: 'general', label: t`Keyboard Shortcuts`, planned: true },
-        { keys: ['F1'], scope: 'general', label: t`Help`, planned: true },
+        { keys: ['Mod', '?'], scope: 'general', label: t`Keyboard Shortcuts` },
+        { keys: ['F1'], scope: 'general', label: t`Help` },
         { keys: ['Mod', 'O'], scope: 'general', label: t`Home` },
         { keys: ['Mod', 'U'], scope: 'general', label: t`Backend` },
         { keys: ['Mod', 'I'], scope: 'general', label: t`Customize` },
@@ -85,24 +86,31 @@ function createKeys(keys, apple) {
     return combination;
 }
 
+/** Groups that need a note, because their keys work only where a setting or a mark allows. The note is copy. */
+const SCOPE_NOTE_SLOTS = Object.freeze({ formatting: 'SHORTCUTS-FORMATTING-NOTE' });
+
 /**
- * Fills the window body with one group per scope. A planned shortcut has no handler yet, so it stays out.
+ * Fills the window body with one group per scope.
  * @param {HTMLElement} body
  * @param {Shortcut[]} shortcuts
  * @param {boolean} apple
  */
 export function fillShortcuts(body, shortcuts, apple) {
     const titles = getScopeTitles();
-    const listed = shortcuts.filter(shortcut => !shortcut.planned);
     for (const scope of SHORTCUT_SCOPES) {
-        const rows = listed
+        const rows = shortcuts
             .filter(shortcut => shortcut.scope === scope)
             .map((shortcut, index) => createRow({
                 label: shortcut.label,
                 field: `shortcut-${scope}-${index}`,
                 suffix: createKeys(shortcut.keys, apple),
             }));
-        body.append(createPrefGroup({ title: titles[scope], field: `shortcuts-${scope}`, rows }).section);
+        const noteSlot = SCOPE_NOTE_SLOTS[scope];
+        const { section } = createPrefGroup({ title: titles[scope], subtitle: noteSlot ? COPY_PLACEHOLDER : undefined, field: `shortcuts-${scope}`, rows });
+        if (noteSlot) {
+            markCopyPlaceholder(section.querySelector('.ds-pref-group-subtitle'), noteSlot);
+        }
+        body.append(section);
     }
 }
 
@@ -116,7 +124,7 @@ export async function openShortcutsWindow() {
     return openDialog({
         tier: 'dialog',
         title: t`Keyboard Shortcuts`,
-        className: 'sbShortcutsDialog',
+        className: SHORTCUTS_DIALOG_CLASS,
         content: (body) => {
             body.append(createArtIntro({ art: 'shortcuts-tewi', slot: 'SHORTCUTS-INTRO' }).intro);
             fillShortcuts(body, getShortcuts(), apple);

@@ -88,6 +88,9 @@ import { initCharacterEditor } from './sillybunny-character-editor.js';
 import { leaveTemporaryChat } from './sillybunny-temporary-chat.js';
 import { isReservedChatName } from './sillybunny-temporary-chat-state.js';
 import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybunny-search-entities.js';
+import { eventSource, event_types } from './events.js';
+import { registerHelpKeys } from './sillybunny-help/help-keys.js';
+import { openHelp, openKeyboardShortcuts } from './sillybunny-home/windows.js';
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
@@ -16432,3 +16435,7 @@ if (ctx?.eventSource && ctx?.event_types) {
         }
     });
 }
+
+// F1 opens Help and Ctrl+? opens Keyboard Shortcuts once the app is ready. The other shell shortcuts
+// are bound in initSettingsKeyboardShortcuts().
+registerHelpKeys({ eventSource, eventTypes: event_types, openHelp, openShortcuts: openKeyboardShortcuts });

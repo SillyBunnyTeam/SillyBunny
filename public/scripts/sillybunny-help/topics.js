@@ -7,7 +7,7 @@ import { t } from '../i18n.js';
  * @property {string} descriptionSlot Names the copy of the one-line description.
  * @property {string} bodySlot Names the copy of the topic body.
  * @property {boolean} featured Whether the topic is on the front page.
- * @property {string} [template] Path of the topic body template, once the body is written.
+ * @property {string} [template] Path of the topic body template under `scripts/templates/`. A topic without one shows the placeholder.
  * @property {string[]} seeAlso Ids of related topics, in display order.
  */
 
@@ -30,6 +30,7 @@ const topic = (id, title, { featured = false, seeAlso = [] } = {}) => ({
     title,
     descriptionSlot: `HELP-TOPIC-${id}-DESC`,
     bodySlot: `HELP-TOPIC-${id}`,
+    template: `help/${id}`,
     featured,
     seeAlso,
 });
