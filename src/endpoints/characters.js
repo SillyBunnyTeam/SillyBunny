@@ -20,7 +20,7 @@ import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
 import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
-import { getUserDirectories } from '../users.js';
+import { getUserDirectoriesList } from '../users.js';
 import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
@@ -137,7 +137,8 @@ class DiskCache {
                 return;
             }
 
-            const directories = [...this.syncQueue].map(entry => getUserDirectories(entry));
+            // SillyBunny: verify() deletes each entry whose card is not in these directories, so this list must include all users.
+            const directories = await getUserDirectoriesList();
             this.syncQueue.clear();
 
             await this.verify(directories);
@@ -191,7 +192,8 @@ class DiskCache {
             }
             for (const key of this.hashedKeys) {
                 if (!validKeys.has(key)) {
-                    await cache.removeItem(key);
+                    // SillyBunny: hashedKeys holds sha256 file names, and removeItem() hashes its key again, so delete the file directly.
+                    await fsPromises.rm(path.join(this.cachePath, key), { force: true });
                 }
             }
         } catch (error) {

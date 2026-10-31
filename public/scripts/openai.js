@@ -615,8 +615,8 @@ const default_settings = {
     claude_model: 'claude-opus-5',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
-    google_model: 'gemini-3.7-flash',
-    vertexai_model: 'gemini-3.7-flash',
+    google_model: 'gemini-3.8-flash',
+    vertexai_model: 'gemini-3.8-flash',
     ai21_model: 'jamba-large',
     mistralai_model: 'mistral-large-latest',
     cohere_model: 'command-r-plus',
@@ -7230,6 +7230,9 @@ function migrateChatCompletionSettings(settings) {
         { oldKey: 'vertexai_model', oldValue: 'gemini-3.1-flash-image-preview', newKey: 'vertexai_model', newValue: 'gemini-3.1-flash-image' },
         { oldKey: 'google_model', oldValue: 'gemini-3-pro-image-preview', newKey: 'google_model', newValue: 'gemini-3-pro-image' },
         { oldKey: 'vertexai_model', oldValue: 'gemini-3-pro-image-preview', newKey: 'vertexai_model', newValue: 'gemini-3-pro-image' },
+        // SillyBunny: AI Studio routes requests for these IDs to the newer model, so saved selections move to the model that answers.
+        { oldKey: 'google_model', oldValue: 'gemini-3.7-flash', newKey: 'google_model', newValue: 'gemini-3.8-flash' },
+        { oldKey: 'google_model', oldValue: 'gemini-3.5-flash', newKey: 'google_model', newValue: 'gemini-3.6-flash' },
         { oldKey: 'image_inlining', oldValue: false, newKey: 'media_inlining', newValue: false },
         { oldKey: 'image_inlining', oldValue: true, newKey: 'media_inlining', newValue: true },
         { oldKey: 'video_inlining', oldValue: true, newKey: 'media_inlining', newValue: true },
@@ -9069,6 +9072,12 @@ async function onModelChange() {
             $('#openai_max_context').attr('max', max_128k);
         } else if (value.includes('gemini-3-pro-image')) {
             $('#openai_max_context').attr('max', max_64k);
+        } else if (value.includes('gemini-3.1-flash-lite-image')) { // SillyBunny: checked before the Gemini 3 text models, whose pattern also matches this ID
+            $('#openai_max_context').attr('max', max_64k);
+        } else if (value.includes('gemini-nano-banana')) { // SillyBunny: Nano Banana context window
+            $('#openai_max_context').attr('max', max_128k);
+        } else if (value.includes('gemini-4')) { // SillyBunny: Gemini 4 context window
+            $('#openai_max_context').attr('max', max_1mil);
         } else if (/gemini-3[.\d]*-(pro|flash)/.test(value) || /gemini-2.5-(pro|flash)/.test(value) || /gemini-2.0-(pro|flash)/.test(value)) {
             $('#openai_max_context').attr('max', max_1mil);
         } else if (value.includes('gemini-exp') || value.includes('learnlm-2.0-flash') || value.includes('gemini-robotics')) {
@@ -9778,6 +9787,8 @@ export function isImageInliningSupported() {
         'gemini-2.0',
         'gemini-2.5',
         'gemini-3',
+        'gemini-4', // SillyBunny: Gemini 4 vision support
+        'gemini-nano-banana', // SillyBunny: Nano Banana vision support
         'gemini-exp-1206',
         'learnlm',
         'gemini-robotics',
@@ -9899,6 +9910,8 @@ export function isVideoInliningSupported() {
         'gemini-2.5',
         'gemini-exp-1206',
         'gemini-3',
+        'gemini-4', // SillyBunny: Gemini 4 video support
+        'gemini-nano-banana', // SillyBunny: Nano Banana video support
         // Z.AI (GLM)
         'glm-5.3-flash',
         'glm-5v-turbo',
@@ -9943,6 +9956,7 @@ export function isAudioInliningSupported() {
         'gemini-2.0',
         'gemini-2.5',
         'gemini-3',
+        'gemini-4', // SillyBunny: Gemini 4 audio support
         'gemini-exp-1206',
         'gpt-4o-audio',
         'gpt-4o-realtime',
