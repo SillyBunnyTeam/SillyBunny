@@ -2,6 +2,7 @@ import http from 'node:http';
 import { expect, test } from '@playwright/test';
 import { APP_URL, dismissOpenDialogIfPresent, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 test.describe.configure({ mode: 'serial' });
 test.use({ serviceWorkers: 'block' });
@@ -47,9 +48,14 @@ function startFakeModel(intervalMs) {
 
 /**
  * Loads the app with real chat saves, unlike openReadyChat(), and opens the sample character's chat.
+ * Settings, cards and statistics are still stubbed, so connecting the fake model stays in the page and never reaches
+ * the saved settings of the test server.
  * @param {import('@playwright/test').Page} page
  */
 async function openChat(page) {
+    await protectMaintainerServer(page);
+    // The integrity check of a real chat save is what the first test is about.
+    await page.route(/\/api\/chats\/save$/, route => route.continue());
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
     await testSetup.waitForAppReady({ page });

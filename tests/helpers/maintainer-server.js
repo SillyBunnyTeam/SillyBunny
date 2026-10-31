@@ -64,6 +64,8 @@ export async function protectMaintainerServer(page) {
     await page.route(/\/api\/stats\/(?:update|recreate)$/, route => route.fulfill({ json: {} }));
     await page.route(/\/api\/(?:characters|groups)\/(?:edit[^/]*|save[^/]*|merge-attributes)$/, route => route.fulfill({ body: 'ok' }));
     await page.route(/\/api\/(?:characters|groups)\/(?:create|delete|rename|duplicate)$/, route => route.abort());
+    // The real route records the chat in entity-last-chat.json on the data root. It answers sendStatus(200).
+    await page.route('**/api/characters/last-chat', route => route.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body: 'OK' }));
     await page.route('**/api/presets/save', route => route.fulfill({ json: { name: readPayload(route.request())?.name ?? '' } }));
     await page.route('**/api/presets/delete', route => route.fulfill({ body: 'OK' }));
     await page.route('**/api/presets/restore-defaults', route => route.fulfill({ json: { ok: true, restored: [], failed: [] } }));
