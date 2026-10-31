@@ -681,6 +681,35 @@ describe('bottom sheets', () => {
         expect(onButton.defaultPrevented).toBe(false);
     });
 
+    test('a frame that opts out of swipe has no grab handle, and a drag on the sheet or its header does nothing', () => {
+        sheet.matches = true;
+        const canClose = jest.fn(() => true);
+        const dialog = openDialog({ title: 'T', canClose, swipeToDismiss: false });
+        const handle = dialog.surface.querySelector('.sb-dialog__handle');
+        const title = dialog.header.querySelector('.sb-dialog__title');
+
+        expect(handle.hidden).toBe(true);
+        pointer(handle, 'pointerdown', 0, 0);
+        pointer(handle, 'pointerup', 400, 10);
+        pointer(title, 'pointerdown', 0, 0);
+        pointer(title, 'pointerup', 400, 10);
+
+        expect(canClose).not.toHaveBeenCalled();
+        expect(dialog.isOpen).toBe(true);
+    });
+
+    test('a frame closes on a swipe, with its grab handle shown, unless it opts out', async () => {
+        sheet.matches = true;
+        const dialog = openDialog({ title: 'T' });
+        const handle = dialog.surface.querySelector('.sb-dialog__handle');
+
+        expect(handle.hidden).toBe(false);
+        pointer(handle, 'pointerdown', 0, 0);
+        pointer(handle, 'pointerup', 400, 10);
+
+        await expect(dialog.closed).resolves.toEqual({ response: 'close' });
+    });
+
     test('inactive gestures (floating) are ignored', () => {
         const dialog = openDialog({ title: 'T' });
         const handle = dialog.surface.querySelector('.sb-dialog__handle');

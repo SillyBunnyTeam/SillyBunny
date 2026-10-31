@@ -1,5 +1,5 @@
-import { t } from '../i18n.js';
 import { markCopyPlaceholder } from './copy.js';
+import { getHomeDestination } from './destinations.js';
 import { formatProgress } from './getting-started.js';
 
 const GETTING_STARTED_KEY = 'getting-started';
@@ -72,6 +72,12 @@ export function describeTiles(panel) {
     });
 }
 
+/** A tile of one Home destination, which names its icon, title and voiced line. */
+function createDestinationTile(key, onActivate) {
+    const { icon, lineSlot, getTitle } = getHomeDestination(key);
+    return createTile({ key, icon, title: getTitle(), lineSlot, onActivate });
+}
+
 /** Safari does not focus a button on click, and the window returns focus to the element that had it. */
 function openFromTile(tile, open) {
     tile.focus({ preventScroll: true });
@@ -107,13 +113,7 @@ function mountGettingStartedTile(row, state, openGettingStarted, onRowChanged) {
             showProgress();
             return;
         }
-        const { tile } = createTile({
-            key: GETTING_STARTED_KEY,
-            icon: 'fa-solid fa-list-check',
-            title: t`Getting Started`,
-            lineSlot: 'HOME-ROW-GS-LINE',
-            onActivate: opened => openFromTile(opened, openGettingStarted),
-        });
+        const { tile } = createDestinationTile(GETTING_STARTED_KEY, opened => openFromTile(opened, openGettingStarted));
         // The progress is the tile's own status, below the voiced line that the other tiles have as well.
         const progress = document.createElement('span');
         progress.className = 'sbHomeTileSub';
@@ -155,20 +155,8 @@ export function mountTiles(panel, { state, onRowChanged, openGettingStarted, ope
         return;
     }
 
-    const { tile: help } = createTile({
-        key: 'help',
-        icon: 'fa-solid fa-circle-question',
-        title: t`Help`,
-        lineSlot: 'HOME-ROW-HELP',
-        onActivate: tile => openFromTile(tile, openHelp),
-    });
-    const { tile: extras } = createTile({
-        key: 'extras',
-        icon: 'fa-solid fa-box-open',
-        title: t`Bundled Extras`,
-        lineSlot: 'HOME-ROW-EXTRAS',
-        onActivate: tile => openFromTile(tile, openBundledExtras),
-    });
+    const { tile: help } = createDestinationTile('help', tile => openFromTile(tile, openHelp));
+    const { tile: extras } = createDestinationTile('extras', tile => openFromTile(tile, openBundledExtras));
 
     row.replaceChildren(help, extras);
     stopPreviousTiles = mountGettingStartedTile(row, state, openGettingStarted, onRowChanged);

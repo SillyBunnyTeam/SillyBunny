@@ -17,6 +17,16 @@ function rememberOpener() {
 }
 
 /**
+ * The button of the tile or card with this key in the current panel, or null.
+ * @param {string | null} key
+ * @returns {HTMLElement | null}
+ */
+function findHomeControl(key) {
+    const keyed = key === null ? null : [...document.querySelectorAll(`${PANEL_SELECTOR} [data-sb-home-key]`)].find(node => node.dataset.sbHomeKey === key);
+    return keyed?.matches('button') ? keyed : keyed?.querySelector('.sbHomeCardOpen') ?? null;
+}
+
+/**
  * The window returns focus to the control that opened it. When Home rendered again meanwhile, that control is
  * gone, so focus goes to the same tile or card in the current panel, or to the main menu button when the key
  * is gone too, or the window was opened from the menu.
@@ -27,9 +37,7 @@ function focusCurrentOpener({ opener, key }) {
     if (!panel || opener?.isConnected) {
         return;
     }
-    const keyed = key === null ? null : [...panel.querySelectorAll('[data-sb-home-key]')].find(node => node.dataset.sbHomeKey === key);
-    const control = keyed?.matches('button') ? keyed : keyed?.querySelector('.sbHomeCardOpen');
-    (control ?? panel.querySelector('.sbHomeMenuButton'))?.focus({ preventScroll: true });
+    (findHomeControl(key) ?? panel.querySelector('.sbHomeMenuButton'))?.focus({ preventScroll: true });
 }
 
 /**
@@ -69,6 +77,18 @@ function openOnce(name, load) {
 function reportLoadFailure() {
     const toast = globalThis.toastr?.error(COPY_PLACEHOLDER);
     toast?.find('.toast-message').attr({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': LOAD_ERROR_SLOT });
+}
+
+/**
+ * Opens a window from outside Home on behalf of one of its tiles. The tile takes focus first, so the window
+ * returns focus to it when it closes, as if the tile had opened the window. Without a tile, because Home is not
+ * shown, the window leaves focus where it is.
+ * @param {string} key The `data-sb-home-key` of the tile.
+ * @param {() => void} open One of the openers below.
+ */
+export function openFromHomeTile(key, open) {
+    findHomeControl(key)?.focus({ preventScroll: true });
+    open();
 }
 
 export const showWelcome = openOnce('Welcome', async () => (await import('../sillybunny-welcome.js')).openWelcomeDialog());

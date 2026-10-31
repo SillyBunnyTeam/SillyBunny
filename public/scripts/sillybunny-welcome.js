@@ -1,9 +1,9 @@
 import { t } from './i18n.js';
 import { createArtPlaceholder } from './sillybunny-home/art.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from './sillybunny-home/copy.js';
-import { getGettingStartedSteps } from './sillybunny-home/getting-started.js';
-import { openShellTarget } from './sillybunny-home/shell-targets.js';
-import { createStepRow } from './sillybunny-home/step-rows.js';
+import { HOME_DESTINATIONS } from './sillybunny-home/destinations.js';
+import { formatProgress, getSharedGettingStartedState } from './sillybunny-home/getting-started.js';
+import { openBundledExtras, openFromHomeTile, openGettingStarted, openHelp } from './sillybunny-home/windows.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createEntryRow, createPrefGroup, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
@@ -11,6 +11,7 @@ import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
 const PAGE_COUNT = 3;
 const LANGUAGE_SELECT_ID = 'onboarding_ui_language_select';
+const GETTING_STARTED_KEY = 'getting-started';
 
 function createCopyBlock(slot) {
     return markCopyPlaceholder(document.createElement('p'), slot);
@@ -109,22 +110,67 @@ function fillPersona(body) {
     );
 }
 
-function fillWhatsNext(body, { showMe }) {
-    const rows = getGettingStartedSteps().map((step, index) => createStepRow({
-        step,
-        field: `welcome-step-${step.id}`,
-        slot: `WD-3-STEP-${index + 1}`,
-        labelId: `sb-welcome-step-${step.id}-title`,
-        onShowMe: showMe,
+/**
+ * One of the places Home offers, as a boxed row with the icon, title and voiced line of its tile.
+ * @param {object} options
+ * @param {typeof HOME_DESTINATIONS[number]} options.destination
+ * @param {HTMLElement} [options.status] Shown before the arrow.
+ * @param {() => void} options.onActivate
+ */
+function createDestinationRow({ destination, status, onActivate }) {
+    const icon = document.createElement('i');
+    icon.className = `${destination.icon} fa-fw sbWelcomeRowIcon`;
+    icon.setAttribute('aria-hidden', 'true');
+    const row = createRow({
+        label: destination.getTitle(),
+        subtitle: COPY_PLACEHOLDER,
+        field: `welcome-destination-${destination.key}`,
+        prefix: icon,
+        suffix: status,
+        activatable: true,
+        onActivate,
+    });
+    markRowSubtitle(row, destination.lineSlot);
+    row.row.dataset.sbWelcomeDestination = destination.key;
+    return row;
+}
+
+/**
+ * Fills What's Next: the places Home has tiles for, and the Show at Startup switch. Like the Getting Started
+ * tile, its row follows the shared state: it shows the progress, and it is gone while the state hides it.
+ * @returns {() => void} Stops following the Getting Started state.
+ */
+function fillWhatsNext(body, { openDestination }) {
+    const state = getSharedGettingStartedState();
+    const progress = document.createElement('span');
+    progress.className = 'sbWelcomeRowProgress';
+
+    const rows = HOME_DESTINATIONS.map(destination => createDestinationRow({
+        destination,
+        status: destination.key === GETTING_STARTED_KEY ? progress : undefined,
+        onActivate: () => openDestination(destination.key),
     }));
+    const group = createPrefGroup({ field: 'welcome-destinations-group', rows });
+    const gettingStartedRow = group.group.querySelector(`[data-sb-welcome-destination="${GETTING_STARTED_KEY}"]`);
+    const sync = () => {
+        progress.textContent = formatProgress(state.getResolvedCount(), state.getTotal());
+        if (state.isHidden()) {
+            gettingStartedRow.remove();
+        } else if (!gettingStartedRow.isConnected) {
+            group.group.prepend(gettingStartedRow);
+        }
+    };
+    sync();
+
     const showAtStartup = createSwitchRow({ label: t`Show at Startup`, field: 'welcome-show-at-startup', checked: false });
     body.append(
         createWindowArt('welcome-next-reisen'),
         createCopyBlock('WD-3-INTRO'),
-        createPrefGroup({ field: 'welcome-steps-group', rows }).section,
+        group.section,
         createPrefGroup({ field: 'welcome-startup-group', rows: [showAtStartup] }).section,
         createPosition(3),
     );
+    return state.subscribe(sync);
 }
 
 /**
@@ -138,32 +184,48 @@ export async function openWelcomeDialog() {
     // The row adopts the select before the dialog exists, so a failure while the dialog is built must give it back.
     const language = createLanguageRow();
 
-    // Next is an affirmative response, which would close a page. The page vetoes the close and moves on.
-    const stepGuard = advance => (reason) => {
+    // The backdrop never ends Welcome. Escape goes back a page, except on the first page, where it does nothing.
+    const stepGuard = (advance, { escape = true } = {}) => (reason) => {
+        if (reason === 'scrim') {
+            return false;
+        }
+        if (reason === 'escape') {
+            return escape;
+        }
+        // Next is an affirmative response, which would close a page. The page vetoes the close and moves on.
         if (reason !== 'affirmative') {
             return true;
         }
         advance();
         return false;
     };
-    const finish = () => queueMicrotask(() => dialog.close('start'));
-    const showMe = (target) => {
-        void dialog.close('show-me');
-        void dialog.closed.then(() => openShellTarget(target));
-    };
-    const pushWhatsNext = () => dialog.push({
-        title: t`What’s Next`,
-        content: body => fillWhatsNext(body, { showMe }),
-        responses: { affirmative: { id: 'start', label: t`Start` }, cancel: { label: t`Back` } },
-        canClose: stepGuard(finish),
+    const openers = { 'getting-started': openGettingStarted, help: openHelp, extras: openBundledExtras };
+    /** Start and every destination end Welcome the same way; a destination then opens its window. */
+    const finish = destination => queueMicrotask(() => {
+        void dialog.close('start');
+        if (destination) {
+            // While Welcome is open, openDialog would push the window as a page over it.
+            void dialog.closed.then(() => openFromHomeTile(destination, openers[destination]));
+        }
     });
+    const pushWhatsNext = () => {
+        let stopProgress = () => {};
+        const page = dialog.push({
+            title: t`What’s Next`,
+            content: (body) => { stopProgress = fillWhatsNext(body, { openDestination: finish }); },
+            responses: { affirmative: { id: 'start', label: t`Start` }, cancel: { label: t`Back` } },
+            canClose: stepGuard(() => finish()),
+        });
+        void page.closed.then(() => stopProgress());
+        return page;
+    };
     const pushPersona = () => dialog.push({
         title: t`Your Persona`,
         content: fillPersona,
         responses: { affirmative: { id: 'next', label: t`Next` }, cancel: { label: t`Back` } },
         canClose: stepGuard(pushWhatsNext),
     });
-    const pushImport = () => dialog.push({ title: t`Import From SillyTavern`, content: fillImport });
+    const pushImport = () => dialog.push({ title: t`Import From SillyTavern`, content: fillImport, canClose: stepGuard(() => {}) });
 
     try {
         dialog = openDialog({
@@ -171,7 +233,8 @@ export async function openWelcomeDialog() {
             title: t`Welcome`,
             className: 'sbWelcomeDialog',
             responses: { affirmative: { id: 'next', label: t`Next` }, cancel: { label: t`Close` } },
-            canClose: stepGuard(pushPersona),
+            canClose: stepGuard(pushPersona, { escape: false }),
+            swipeToDismiss: false,
             content: body => fillHello(body, { language, openImport: pushImport }),
         });
     } catch (error) {

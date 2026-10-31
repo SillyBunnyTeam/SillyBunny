@@ -216,6 +216,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
         }
     };
     const showSection = (host, title) => rowByLabel(helpSidebar(host), title).click();
+    /** A point on the backdrop: above the sheet on a phone, left of the dialog on a desktop. */
+    const BACKDROP = sheet ? { x: 195, y: 40 } : { x: 40, y: 450 };
     const showSectionFromIndex = (host, title) => rowByLabel(helpView(host).getByRole('group', { name: 'All Sections' }), title).click();
 
     test.describe(`Home windows at ${name}`, () => {
@@ -237,14 +239,16 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host).toHaveAccessibleName(title);
             });
 
-            test(`${menuItem} closes with Escape and gives focus back to the main menu button`, async ({ page }) => {
-                await openFromMenu(page, menuItem);
+            if (menuItem !== 'Show Welcome') {
+                test(`${menuItem} closes with Escape and gives focus back to the main menu button`, async ({ page }) => {
+                    await openFromMenu(page, menuItem);
 
-                await page.keyboard.press('Escape');
+                    await page.keyboard.press('Escape');
 
-                await expectClosed(page);
-                await expect(menuButton(page)).toBeFocused();
-            });
+                    await expectClosed(page);
+                    await expect(menuButton(page)).toBeFocused();
+                });
+            }
         }
 
         for (const { menuItem } of WINDOWS.filter(entry => entry.menuItem !== 'Show Welcome')) {
@@ -315,8 +319,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
             });
 
             test('gives the language select back to its template when the dialog closes', async ({ page }) => {
-                await openFromMenu(page, 'Show Welcome');
-                await page.keyboard.press('Escape');
+                const host = await openFromMenu(page, 'Show Welcome');
+                await shownPage(host).getByRole('button', { name: 'Close', exact: true }).click();
                 await expectClosed(page);
 
                 const home = await page.evaluate(() => {
@@ -385,38 +389,183 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(shownPage(host).locator('[data-sb-art-placeholder]')).toHaveCount(0);
             });
 
-            test('page three lists the four steps, keeps Show at Startup unchecked, and Start closes', async ({ page }) => {
+            const openWhatsNext = async (page) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('What’s Next');
+                return host;
+            };
+            const glyphOf = node => [...node.classList].find(name => name.startsWith('fa-') && !['fa-solid', 'fa-fw'].includes(name));
+
+            test('What’s Next lists Getting Started, Help and Bundled Extras as rows that match the Home tiles, and no step rows', async ({ page }) => {
+                const host = await openWhatsNext(page);
                 const current = shownPage(host);
+                const rows = current.locator('[data-sb-welcome-destination]');
 
-                await expectSlots(current, ['WD-3-INTRO', 'WD-3-STEP-1', 'WD-3-STEP-2', 'WD-3-STEP-3', 'WD-3-STEP-4']);
+                await expect(rows).toHaveCount(3);
+                await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+                await expect(rows).toHaveText([/0 of 4/, /TODO\(copy\)/, /TODO\(copy\)/]);
+                await expect(rows.locator('.ds-row__chevron')).toHaveCount(3);
+                for (const [index, key] of ['getting-started', 'help', 'extras'].entries()) {
+                    const row = rows.nth(index);
+                    await expect(row).toHaveAttribute('data-sb-welcome-destination', key);
+                    const tileGlyph = await homeTile(page, key).locator('.sbHomeTileIcon i').evaluate(glyphOf);
+                    expect(await row.locator('.sbWelcomeRowIcon').evaluate(glyphOf), `the ${key} row has the icon of its tile`).toBe(tileGlyph);
+                    await expect(row.locator('.sbWelcomeRowIcon')).toHaveAttribute('aria-hidden', 'true');
+                    const tileSlot = await homeTile(page, key).locator('.sbHomeTileLine').getAttribute('data-sb-copy-slot');
+                    await expect(row.locator('[data-sb-copy-slot]'), `the ${key} row says the line of its tile`).toHaveAttribute('data-sb-copy-slot', tileSlot);
+                }
+                await expectSlots(current, ['WD-3-INTRO', 'HOME-ROW-GS-LINE', 'HOME-ROW-HELP', 'HOME-ROW-EXTRAS']);
                 await expectNoUnmarkedPlaceholder(current);
-                for (const stepTitle of STEP_TITLES) {
-                    await expect(current.locator('.ds-row', { hasText: stepTitle }).getByRole('button', { name: 'Show Me', exact: true })).toBeVisible();
-                }
+                await expect(current.locator('[data-sb-copy-slot^="WD-3-STEP"]')).toHaveCount(0);
+                await expect(current.locator('.sbHomeStepRow')).toHaveCount(0);
+                await expect(current.getByRole('button', { name: 'Show Me' })).toHaveCount(0);
                 await expect(current.getByRole('switch', { name: 'Show at Startup' })).not.toBeChecked();
-                await expect(current.getByRole('button', { name: 'Skip' }), 'the Welcome page only points at the steps').toHaveCount(0);
-                for (const stepTitle of STEP_TITLES) {
-                    await expect(current.locator('.ds-row', { hasText: stepTitle }).getByRole('button', { name: 'Show Me', exact: true })).toHaveAccessibleDescription(stepTitle);
-                }
+            });
 
-                await current.getByRole('button', { name: 'Start', exact: true }).click();
+            test('the Getting Started row follows the shared progress while What’s Next is open', async ({ page }) => {
+                const host = await openWhatsNext(page);
+                const progress = shownPage(host).locator('[data-sb-welcome-destination="getting-started"] .sbWelcomeRowProgress');
+                const setSkipped = (id, skipped) => page.evaluate(async ([step, value]) => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    getSharedGettingStartedState().setSkipped(step, value);
+                }, [id, skipped]);
 
+                await expect(progress).toHaveText('0 of 4');
+                await setSkipped('preset', true);
+                await expect(progress).toHaveText('1 of 4');
+                await setSkipped('chat', true);
+                await expect(progress).toHaveText('2 of 4');
+                await setSkipped('preset', false);
+                await setSkipped('chat', false);
+                await expect(progress).toHaveText('0 of 4');
+            });
+
+            /** Opens the dialog through its module, so the test can read how it closed. */
+            const openRecordingWelcome = async (page) => {
+                await menuButton(page).focus();
+                await page.evaluate(async () => {
+                    const { openWelcomeDialog } = await import('/scripts/sillybunny-welcome.js');
+                    const dialog = await openWelcomeDialog();
+                    window.__welcomeClosed = dialog.closed;
+                });
+                const host = hosts(page);
+                await expect(host).toBeVisible();
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('What’s Next');
+                return host;
+            };
+
+            test('Start finishes Welcome with the start response and lands on Home', async ({ page }) => {
+                const host = await openRecordingWelcome(page);
+
+                await shownPage(host).getByRole('button', { name: 'Start', exact: true }).click();
+
+                await expectClosed(page);
+                expect(await page.evaluate(() => window.__welcomeClosed)).toEqual({ response: 'start' });
+                await expectHome(page);
+                await expect(menuButton(page)).toBeFocused();
+            });
+
+            for (const { key, row, title } of [
+                { key: 'getting-started', row: 'Getting Started', title: 'Getting Started' },
+                { key: 'help', row: 'Help', title: 'Help' },
+                { key: 'extras', row: 'Bundled Extras', title: 'Bundled Extras' },
+            ]) {
+                test(`the ${row} row finishes Welcome as Start does, opens ${title}, and focus returns to its tile`, async ({ page }) => {
+                    const host = await openRecordingWelcome(page);
+
+                    await shownPage(host).locator(`[data-sb-welcome-destination="${key}"]`).click();
+
+                    const opened = hosts(page);
+                    await expect(opened).toHaveAccessibleName(title);
+                    await expect(opened).toHaveCount(1);
+                    expect(await page.evaluate(() => window.__welcomeClosed)).toEqual({ response: 'start' });
+                    await expect(page.locator('dialog.sb-dialog-host')).toHaveCount(1);
+
+                    await (await visiblePageClose(opened)).click();
+
+                    await expectClosed(page);
+                    await expect(homeTile(page, key)).toBeFocused();
+                });
+            }
+
+            test('a destination opens its window with the main menu button as the focus target when Home is not shown', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await page.evaluate(() => document.querySelector('#chat > .welcomePanel [data-sb-home-key="help"]').remove());
+
+                await shownPage(host).locator('[data-sb-welcome-destination="help"]').click();
+
+                const opened = hosts(page);
+                await expect(opened).toHaveAccessibleName('Help');
+                await (await visiblePageClose(opened)).click();
                 await expectClosed(page);
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            test('Show Me closes the dialog and opens the same place as Getting Started', async ({ page }) => {
+            test('the Getting Started row goes while every step is done or skipped, as its tile does, and comes back with it', async ({ page }) => {
+                const host = await openWhatsNext(page);
+                const current = shownPage(host);
+                const rows = current.locator('[data-sb-welcome-destination]');
+                const withState = (action) => page.evaluate(async (name) => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    const state = getSharedGettingStartedState();
+                    if (name === 'skip-all') ['connect', 'preset', 'character', 'chat'].forEach(id => state.setSkipped(id, true));
+                    if (name === 'unskip-one') state.setSkipped('chat', false);
+                    if (name === 'show') state.setHidden(false);
+                }, action);
+
+                await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+                await withState('skip-all');
+                await expect(homeTile(page, 'getting-started')).toHaveCount(0);
+                await expect(rows.locator('.ds-row-label')).toHaveText(['Help', 'Bundled Extras']);
+
+                await withState('unskip-one');
+                await withState('show');
+                await expect(homeTile(page, 'getting-started')).toHaveCount(1);
+                await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+                await expect(rows.first().locator('.sbWelcomeRowProgress')).toHaveText('3 of 4');
+            });
+
+            test('What’s Next opened while every step is resolved lists Help and Bundled Extras only', async ({ page }) => {
+                await page.evaluate(async () => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    ['connect', 'preset', 'character', 'chat'].forEach(id => getSharedGettingStartedState().setSkipped(id, true));
+                });
+
+                const host = await openWhatsNext(page);
+
+                await expect(shownPage(host).locator('[data-sb-welcome-destination] .ds-row-label')).toHaveText(['Help', 'Bundled Extras']);
+            });
+
+            test('leaving What’s Next stops following the progress', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
+                const title = shownPage(host).locator('.sb-dialog__title');
+                await page.evaluate(async () => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    const state = getSharedGettingStartedState();
+                    const subscribe = state.subscribe;
+                    let live = 0;
+                    state.subscribe = (listener) => {
+                        live++;
+                        const stop = subscribe(listener);
+                        return () => { live--; stop(); };
+                    };
+                    window.__liveListeners = () => live;
+                });
+
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(title).toHaveText('What’s Next');
+                expect(await page.evaluate(() => window.__liveListeners())).toBe(1);
 
-                await shownPage(host).locator('.ds-row', { hasText: 'Connect a Model' }).getByRole('button', { name: 'Show Me', exact: true }).click();
-
-                await expectClosed(page);
-                await expect(page.getByRole('tab', { name: 'Connections', selected: true })).toBeVisible();
+                await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+                await expect(title).toHaveText('Your Persona');
+                await expect.poll(() => page.evaluate(() => window.__liveListeners())).toBe(0);
             });
 
             test('Import From SillyTavern pushes a skeleton page whose buttons send nothing', async ({ page }) => {
@@ -447,7 +596,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Welcome');
             });
 
-            test('Escape pops the Import page first, then closes the dialog', async ({ page }) => {
+            test('Escape pops the Import page, and then does nothing on the first page', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 await host.getByRole('button', { name: 'Import From SillyTavern' }).click();
                 await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Import From SillyTavern');
@@ -457,8 +606,106 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(hosts(page)).toHaveCount(1);
 
                 await page.keyboard.press('Escape');
+                await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Welcome');
+                await expect(hosts(page)).toHaveCount(1);
+            });
+
+            test('Escape on the first page does nothing, and Close is still reached by Tab', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+
+                await page.keyboard.press('Escape');
+                await page.keyboard.press('Escape');
+
+                await expect(hosts(page)).toHaveCount(1);
+                await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Welcome');
+                const close = shownPage(host).getByRole('button', { name: 'Close', exact: true });
+                await expect(async () => {
+                    await page.keyboard.press('Tab');
+                    await expect(close).toBeFocused({ timeout: 500 });
+                }, 'Tab reaches Close').toPass({ timeout: 10_000 });
+                await page.keyboard.press('Enter');
                 await expectClosed(page);
-                await expect(menuButton(page)).toBeFocused();
+            });
+
+            test('a click on the backdrop leaves Welcome open on every page', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+                const title = shownPage(host).locator('.sb-dialog__title');
+                const clickBackdrop = () => page.mouse.click(BACKDROP.x, BACKDROP.y);
+
+                await clickBackdrop();
+                await expect(title).toHaveText('Welcome');
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(title).toHaveText('Your Persona');
+                await clickBackdrop();
+                await expect(title).toHaveText('Your Persona');
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(title).toHaveText('What’s Next');
+                await clickBackdrop();
+                await expect(title).toHaveText('What’s Next');
+                await expect(hosts(page)).toHaveCount(1);
+            });
+
+            test('a swipe down never closes Welcome, and the sheet has no grab handle to invite one', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+                const box = await surface(host).boundingBox();
+                const handle = host.locator('.sb-dialog__handle');
+
+                await expect(handle).toBeHidden();
+                const startX = box.x + box.width / 2;
+                const startY = box.y + 28;
+                await page.mouse.move(startX, startY);
+                await page.mouse.down();
+                for (let step = 1; step <= 10; step++) {
+                    await page.mouse.move(startX, startY + step * 60);
+                }
+                await page.mouse.up();
+
+                await expect(hosts(page)).toHaveCount(1);
+                await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Welcome');
+                expect((await surface(host).boundingBox()).y).toBeCloseTo(box.y, 0);
+            });
+
+            if (sheet) {
+                test('a swipe down on Your Persona and What’s Next neither closes Welcome nor goes back', async ({ page }) => {
+                    const host = await openFromMenu(page, 'Show Welcome');
+                    const title = shownPage(host).locator('.sb-dialog__title');
+                    const swipeDown = async () => {
+                        const box = await surface(host).boundingBox();
+                        const x = box.x + box.width / 2;
+                        const y = box.y + 28;
+                        await page.mouse.move(x, y);
+                        await page.mouse.down();
+                        for (let step = 1; step <= 10; step++) {
+                            await page.mouse.move(x, y + step * 60);
+                        }
+                        await page.mouse.up();
+                        return box;
+                    };
+
+                    await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                    await expect(title).toHaveText('Your Persona');
+                    const persona = await swipeDown();
+                    await expect(title).toHaveText('Your Persona');
+                    await expect(hosts(page)).toHaveCount(1);
+                    expect((await surface(host).boundingBox()).y).toBeCloseTo(persona.y, 0);
+
+                    await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                    await expect(title).toHaveText('What’s Next');
+                    const next = await swipeDown();
+                    await expect(title).toHaveText('What’s Next');
+                    await expect(hosts(page)).toHaveCount(1);
+                    expect((await surface(host).boundingBox()).y).toBeCloseTo(next.y, 0);
+                    await expect(host.locator('.sb-dialog__handle')).toBeHidden();
+                });
+            }
+
+            test('nothing in Welcome says that Escape closes it', async ({ page }) => {
+                const host = await openFromMenu(page, 'Show Welcome');
+
+                await expect(host.locator('[aria-keyshortcuts]')).toHaveCount(0);
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
+                await expect(host.locator('[aria-keyshortcuts]')).toHaveCount(0);
             });
 
             test('Escape on the Persona and What’s Next pages goes back one page each', async ({ page }) => {
@@ -1886,7 +2133,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const host = await openFromMenu(page, menuItem);
                 await expect(host).toBeVisible();
                 await expectNoUnmarkedPlaceholder(host);
-                await page.keyboard.press('Escape');
+                await shownPage(host).getByRole('button', { name: 'Close', exact: true }).click();
                 await expectClosed(page);
             }
             for (const key of ['getting-started', 'extras']) {

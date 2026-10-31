@@ -1,5 +1,6 @@
 import { t } from '../i18n.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
+import { getHomeDestination } from './destinations.js';
 import { parseDisplayMode } from './modes.js';
 
 /**
@@ -46,6 +47,8 @@ function commandItems(entries) {
  * @returns {import('../sillybunny-action-menu.js').ActionMenuSection[]}
  */
 export function buildHomeMenuSections({ displayMode, gettingStartedHidden = false }, actions) {
+    const gettingStarted = getHomeDestination('getting-started');
+    const help = getHomeDestination('help');
     // The Getting Started tile exists only in Full, so the item would do nothing anywhere else.
     const canShowGettingStarted = gettingStartedHidden && parseDisplayMode(displayMode) === 'full';
     const sections = [
@@ -54,13 +57,13 @@ export function buildHomeMenuSections({ displayMode, gettingStartedHidden = fals
             items: commandItems([
                 [actions.showWelcome, t`Show Welcome`, 'fa-solid fa-hand'],
                 [actions.openRecentChatsSettings, t`Recent Chats Settings`, 'fa-solid fa-sliders'],
-                [canShowGettingStarted ? actions.showGettingStarted : undefined, t`Show Getting Started`, 'fa-solid fa-list-check'],
+                [canShowGettingStarted ? actions.showGettingStarted : undefined, t`Show Getting Started`, gettingStarted.icon],
             ]),
         },
         {
             items: commandItems([
                 [actions.openKeyboardShortcuts, t`Keyboard Shortcuts`, 'fa-solid fa-keyboard'],
-                [actions.openHelp, t`Help`, 'fa-solid fa-circle-question'],
+                [actions.openHelp, help.getTitle(), help.icon],
                 [actions.openAbout, t`About SillyBunny`, 'fa-solid fa-circle-info'],
             ]),
         },

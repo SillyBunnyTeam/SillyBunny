@@ -530,10 +530,14 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * @param {() => HTMLElement|null} [o.initialFocus]
  * @param {string} [o.className] Added to the surface or, when pushed, to the page.
  * @param {'content'|'fill'} [o.size='fill'] Whether the Window body fills the frame.
+ * @param {boolean} [o.swipeToDismiss=true] Whether a phone sheet can be dragged down to close it, or to go back a
+ *     page. When false the sheet has no grab handle and a drag on the sheet or its header does nothing. A frame
+ *     that must not end on a swipe sets this; `canClose` can still refuse 'swipe' to make a drag spring back, but the
+ *     handle then still invites a drag. Only the call that opens the frame sets it, and a call that pushes a page ignores it.
  */
 export function openDialog({
     tier = 'dialog', title, subtitle = '', content = null, search = null, menu = null, menuLabel,
-    responses = null, canClose = null, initialFocus = null, className = '', size = 'fill',
+    responses = null, canClose = null, initialFocus = null, className = '', size = 'fill', swipeToDismiss = true,
 }) {
     const parentHost = getTopmostDialog();
     const parent = parentHost ? frames.get(/** @type {HTMLDialogElement} */ (parentHost)) : null;
@@ -544,6 +548,7 @@ export function openDialog({
     const isPage = Boolean(coveredSurface);
     const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className, size, page: isPage });
     const { host, scrim, surface, query, isSheet, syncPresentation } = frame;
+    frame.handle.hidden = !swipeToDismiss;
     const pagesNode = element('div', 'sb-dialog__pages');
     surface.append(pagesNode);
     const returnFocus = document.activeElement;
@@ -886,7 +891,7 @@ export function openDialog({
     const unbindGestures = bindSheetGestures({
         surface, scrim, targets: [surface], startSelector: '.sb-dialog__handle, .sb-dialog__header',
         // A page over a sheet keeps the sheet's grab handle, and a swipe goes back one level like Escape.
-        isActive: () => isSheet() || surface.hasAttribute('data-covers-sheet'),
+        isActive: () => swipeToDismiss && (isSheet() || surface.hasAttribute('data-covers-sheet')),
         requestClose: offset => requestDismiss('swipe', offset),
     });
     const unbindKeyboard = bindKeyboardInset(host, { onInsetChange: () => heightLock?.refresh() });

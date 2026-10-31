@@ -19,9 +19,8 @@ function createTag(text) {
 
 /**
  * One Getting Started step as a boxed-list row: the title, a placeholder for its text and a Show Me button.
- * The Getting Started window and the Welcome dialog list the same steps through this builder, so a step reads
- * the same in both. Only the window tracks progress: pass it a `state` and the row also offers Skip, marks an
- * optional step and shows a skipped one. The Welcome dialog only points at the steps.
+ * The Getting Started window lists its steps through this builder. Pass it a `state` and the row also offers
+ * Skip, marks an optional step and shows a skipped one. Without a state the row only points at the step.
  *
  * The notes (Optional, Skipped) have a line under the text, and the line exists only while the row has a note
  * to show: always on an optional step, and on any other step while it is skipped. A note that does not fit is cut

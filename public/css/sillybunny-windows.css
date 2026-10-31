@@ -260,7 +260,8 @@ kbd.sbKeys > kbd {
     display: none;
 }
 
-.sbHelpRowIcon {
+.sbHelpRowIcon,
+.sbWelcomeRowIcon {
     flex: none;
     inline-size: 1.25em;
     margin-inline-end: 12px;
@@ -483,6 +484,12 @@ body.reduced-motion .sbHomeFlatButton {
 
 .sbHomeTag + .sbHomeTag:not([hidden]) {
     margin-inline-start: 8px;
+}
+
+.sbWelcomeRowProgress {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    white-space: nowrap;
 }
 
 .sbHomeStepRow[data-sb-step-state='skipped'] .ds-row-label {
