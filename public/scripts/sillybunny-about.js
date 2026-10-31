@@ -2,6 +2,7 @@ import { displayVersion } from '../script.js';
 import { extension_settings, extensionNames } from './extensions.js';
 import { t } from './i18n.js';
 import { createArtPlaceholder } from './sillybunny-home/art.js';
+import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { markCopyPlaceholder } from './sillybunny-home/copy.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createPrefGroup, createPropertyRow, createRow } from './sillybunny-editor/rows.js';
@@ -252,9 +253,7 @@ function fillTroubleshooting(body, server) {
     const actions = document.createElement('div');
     actions.className = 'sbWindowActions';
     actions.append(copy, save, copied);
-    const art = createArtPlaceholder('troubleshooting-reisen');
-    art.classList.add('sbWindowArt');
-    body.append(art, block, actions);
+    body.append(createArtIntro({ art: 'troubleshooting-reisen', slot: 'TROUBLESHOOTING-INTRO' }).intro, block, actions);
 }
 
 /**

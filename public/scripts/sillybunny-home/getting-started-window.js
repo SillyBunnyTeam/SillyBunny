@@ -2,31 +2,10 @@ import { t } from '../i18n.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
 import { createPrefGroup } from '../sillybunny-editor/rows.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
-import { createArtPlaceholder } from './art.js';
-import { markCopyPlaceholder } from './copy.js';
-import { formatProgress, getGettingStartedSteps, getIntroArtName, getSharedGettingStartedState } from './getting-started.js';
+import { createArtIntro } from './art-intro.js';
+import { formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLineSlot, getSharedGettingStartedState } from './getting-started.js';
 import { openShellTarget } from './shell-targets.js';
 import { createStepRow } from './step-rows.js';
-
-/**
- * @param {string} artName The art the intro opens with.
- * @returns {{ intro: HTMLElement, showArt: (name: string) => void }} `showArt` swaps the art for the one named.
- */
-function createIntro(artName) {
-    const intro = document.createElement('div');
-    intro.className = 'sbHomeIntro';
-    let art = createArtPlaceholder(artName);
-    intro.append(art, markCopyPlaceholder(document.createElement('p'), 'GS-INTRO'));
-    const showArt = (name) => {
-        if (art.dataset.sbArtPlaceholder === name) {
-            return;
-        }
-        const next = createArtPlaceholder(name);
-        art.replaceWith(next);
-        art = next;
-    };
-    return { intro, showArt };
-}
 
 /**
  * Opens the Getting Started window: Reisen's intro and the four steps. It applies each change at once and has
@@ -55,8 +34,12 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
         state,
     }));
     const progress = () => formatProgress(state.getResolvedCount(), state.getTotal());
-    const artName = () => getIntroArtName(state.getResolvedCount(), state.getTotal());
-    const { intro, showArt } = createIntro(artName());
+    const pose = () => {
+        const resolved = state.getResolvedCount();
+        const total = state.getTotal();
+        return { art: getIntroArtName(resolved, total), slot: getIntroLineSlot(resolved, total) };
+    };
+    const { intro, show } = createArtIntro(pose());
 
     dialog = openDialog({
         tier: 'dialog',
@@ -68,7 +51,7 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
     const stopFollowing = state.subscribe(() => {
         steps.forEach(step => step.sync());
         dialog.setSubtitle(progress());
-        showArt(artName());
+        show(pose());
     });
     void dialog.closed.then(stopFollowing);
     return dialog;

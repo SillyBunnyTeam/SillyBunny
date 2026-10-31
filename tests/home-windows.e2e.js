@@ -126,6 +126,61 @@ async function expectArt(scope, id, size) {
     expect(await art.evaluate(node => [node.offsetWidth, node.offsetHeight])).toEqual(size);
 }
 
+/** The smallest text column beside art in an art-and-text intro, in the em of the line itself: 14em. */
+const INTRO_TEXT_MIN_EM = 14;
+const INTRO_GAP = 16;
+
+/**
+ * An art-and-text intro: the art at the inline start at its size, the line of the character beside it, centred on
+ * the art, or below it when the text column would be narrower than 14em of its own type size.
+ */
+async function expectIntro(scope, artName, { slot, size, rtl = false }) {
+    await expectArt(scope, artName, size);
+    const intro = scope.locator(`.sbArtIntro:has([data-sb-art-placeholder="${artName}"])`);
+    const line = intro.locator('[data-sb-copy-slot]');
+    await expect(line).toHaveCount(1);
+    await expect(line).toHaveAttribute('data-sb-copy-slot', slot);
+    await expect(line).toHaveAttribute('data-sb-copy-placeholder', 'true');
+    await expect(line).toHaveText(COPY_PLACEHOLDER);
+    const layout = await intro.evaluate((node) => {
+        const box = element => element.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        const art = box(node.querySelector('[data-sb-art-placeholder]'));
+        const line = node.querySelector('[data-sb-copy-slot]');
+        const text = box(line);
+        const frame = box(node);
+        return {
+            art: { left: art.left, right: art.right, top: art.top, bottom: art.bottom, middle: (art.top + art.bottom) / 2 },
+            text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom, middle: (text.top + text.bottom) / 2 },
+            frame: { left: frame.left, right: frame.right },
+            content: frame.width,
+            em: Number.parseFloat(getComputedStyle(line).fontSize),
+            rtl: style.direction === 'rtl',
+        };
+    });
+    expect(layout.rtl).toBe(rtl);
+    const artWidth = layout.art.right - layout.art.left;
+    const fitsBeside = layout.content >= artWidth + INTRO_GAP + INTRO_TEXT_MIN_EM * layout.em;
+    const beside = layout.rtl ? layout.text.right <= layout.art.left + 1 : layout.text.left >= layout.art.right - 1;
+    expect(beside, `the text is ${fitsBeside ? 'beside' : 'below'} the art in ${layout.content}px`).toBe(fitsBeside);
+    expect(layout.rtl ? layout.frame.right - layout.art.right : layout.art.left - layout.frame.left, 'the art is at the inline start edge').toBeLessThanOrEqual(1);
+    if (fitsBeside) {
+        expect(Math.abs(layout.text.middle - layout.art.middle), 'the text is centred on the art').toBeLessThanOrEqual(2);
+    } else {
+        expect(layout.text.top, 'the text is below the art').toBeGreaterThanOrEqual(layout.art.bottom - 1);
+    }
+    return layout;
+}
+
+/** How far the art of the intro starts from the first boxed list of the page, which it should share a content edge with. */
+async function readIntroOffsetFromList(scope) {
+    const [intro, list] = await Promise.all([
+        scope.locator('.sbArtIntro [data-sb-art-placeholder]').evaluate(node => node.getBoundingClientRect().left),
+        scope.locator('.ds-pref-group').first().evaluate(node => node.getBoundingClientRect().left),
+    ]);
+    return Math.abs(intro - list);
+}
+
 /** Boxes of the three pieces of art on the About page, relative to the page, plus the heading under them. */
 async function readMasthead(host) {
     return host.evaluate((root) => {
@@ -139,6 +194,7 @@ async function readMasthead(host) {
             logo: rect('[data-sb-art-placeholder="logo-64"]'),
             tewi: rect('[data-sb-art-placeholder="about-tewi"]'),
             name: rect('.sbAboutName'),
+            header: rect('.sbAboutHeader'),
             body: { left: body.left, right: body.right },
         };
     });
@@ -148,16 +204,18 @@ async function expectMastheadOnOneLine(host, { rtl = false } = {}) {
     await expectArt(host, 'about-reisen', [96, 96]);
     await expectArt(host, 'about-tewi', [96, 96]);
     await expectArt(host, 'logo-64', [64, 64]);
-    const { reisen, logo, tewi, name, body } = await readMasthead(host);
+    const { reisen, logo, tewi, name, header } = await readMasthead(host);
     const [first, last] = rtl ? [tewi, reisen] : [reisen, tewi];
 
     expect([reisen.middle, tewi.middle].map(middle => Math.abs(middle - logo.middle)).every(gap => gap <= 1), 'the three boxes are centred on one line').toBe(true);
     expect(first.right, 'the left piece ends before the logo').toBeLessThanOrEqual(logo.left);
     expect(logo.right, 'the logo ends before the right piece').toBeLessThanOrEqual(last.left);
+    expect(logo.left - first.right, 'clear space between the left piece and the logo').toBeGreaterThanOrEqual(16);
+    expect(last.left - logo.right, 'clear space between the logo and the right piece').toBeGreaterThanOrEqual(16);
     expect(Math.abs(logo.centre - (first.centre + last.centre) / 2), 'the logo is centred between them').toBeLessThanOrEqual(1);
     expect(Math.abs((logo.left - first.right) - (last.left - logo.right)), 'the gaps match').toBeLessThanOrEqual(1);
-    expect(first.left, 'inside the page on the left').toBeGreaterThanOrEqual(body.left);
-    expect(last.right, 'inside the page on the right').toBeLessThanOrEqual(body.right);
+    expect(Math.abs(first.left - header.left), 'the left piece touches the left edge of the masthead').toBeLessThanOrEqual(1);
+    expect(Math.abs(header.right - last.right), 'the right piece touches the right edge of the masthead').toBeLessThanOrEqual(1);
     expect(name.top, 'the name sits below the art').toBeGreaterThanOrEqual(Math.max(reisen.bottom, tewi.bottom));
 }
 
@@ -266,9 +324,24 @@ for (const { name, sheet, options } of VIEWPORTS) {
             test('page one greets with the duo art, copy placeholders, and the adopted language select', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
-                await expectArt(host, 'welcome-both', [192, 128]);
+                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING', size: [192, 128] });
                 await expectSlots(host, ['WD-1-GREETING', 'WD-1-ABOUT', 'WD-1-FORK', 'WD-1-FANWORK']);
                 await expectNoUnmarkedPlaceholder(host);
+                await expect(host.locator('.sbArtIntro [data-sb-copy-slot]'), 'only the greeting sits beside the art').toHaveCount(1);
+                const below = await host.evaluate((root) => {
+                    const intro = root.querySelector('.sbArtIntro').getBoundingClientRect();
+                    return ['WD-1-ABOUT', 'WD-1-FORK'].map(slot => root.querySelector(`[data-sb-copy-slot="${slot}"]`).getBoundingClientRect().top >= intro.bottom - 1);
+                });
+                expect(below, 'the about and fork lines stay below the intro').toEqual([true, true]);
+                const prose = await host.evaluate((root) => {
+                    const read = (slot) => {
+                        const style = getComputedStyle(root.querySelector(`[data-sb-copy-slot="${slot}"]`));
+                        return { size: style.fontSize, weight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
+                    };
+                    return { greeting: read('WD-1-GREETING'), about: read('WD-1-ABOUT'), fork: read('WD-1-FORK') };
+                });
+                expect(prose.greeting, 'the greeting has the type of the lines below it').toEqual(prose.about);
+                expect(prose.fork).toEqual(prose.about);
                 await expect(shownPage(host).getByText('Step 1 of 3')).toBeAttached();
                 await expect(host.locator('.sbWelcomeDots')).toHaveAttribute('aria-hidden', 'true');
                 await expect(host.getByRole('button', { name: 'Back', exact: true })).toHaveCount(0);
@@ -355,28 +428,30 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByText('Step 2 of 3')).toHaveCount(0);
             });
 
-            test('pages one to three keep one art position and height, page two and three at native size, and the Import page has no art', async ({ page }) => {
+            test('pages one to three open with an intro whose art area is 128px high, at the inline start, with the page line beside it', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 const current = shownPage(host);
-                const artTop = async () => current.evaluate((node) => {
-                    const art = node.querySelector('[data-sb-art-placeholder]');
-                    return { top: art.getBoundingClientRect().top - node.querySelector('.sb-dialog__body').getBoundingClientRect().top, height: art.offsetHeight, centred: Math.abs((art.getBoundingClientRect().left + art.getBoundingClientRect().right) / 2 - (node.querySelector('.sb-dialog__body').getBoundingClientRect().left + node.querySelector('.sb-dialog__body').getBoundingClientRect().right) / 2) };
+                const area = async () => current.evaluate((node) => {
+                    const art = node.querySelector('[data-sb-art-placeholder]').getBoundingClientRect();
+                    const body = node.querySelector('.sb-dialog__body').getBoundingClientRect();
+                    return { top: art.top - body.top, height: art.height, start: art.left - body.left };
                 });
 
-                await expectArt(host, 'welcome-both', [192, 128]);
-                const first = await artTop();
+                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING', size: [192, 128] });
+                const first = await area();
                 await current.getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Your Persona');
-                await expectArt(current, 'welcome-persona-tewi', [128, 128]);
-                const second = await artTop();
+                await expectIntro(current, 'welcome-persona-tewi', { slot: 'WD-2-PROMPT', size: [128, 128] });
+                expect(await readIntroOffsetFromList(current), 'the intro and the first list share a start edge').toBeLessThanOrEqual(1);
+                const second = await area();
                 await current.getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('What’s Next');
-                await expectArt(current, 'welcome-next-reisen', [128, 128]);
-                const third = await artTop();
+                await expectIntro(current, 'welcome-next-reisen', { slot: 'WD-3-INTRO', size: [128, 128] });
+                const third = await area();
 
-                expect([second.height, third.height]).toEqual([first.height, first.height]);
+                expect([first.height, second.height, third.height]).toEqual([128, 128, 128]);
                 expect([second.top, third.top]).toEqual([first.top, first.top]);
-                expect([first.centred, second.centred, third.centred].every(offset => offset <= 1), 'the art is centred on every page').toBe(true);
+                expect([second.start, third.start]).toEqual([first.start, first.start]);
                 await expect(host.locator('[data-sb-art-placeholder]:visible')).toHaveCount(1);
             });
 
@@ -741,25 +816,20 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByRole('group', { name: 'Formatting' }).locator('.ds-row')).toHaveCount(5);
             });
 
-            test('opens with Tewi\'s art alone at the top, centred, above the first group', async ({ page }) => {
+            test('opens with Tewi\'s art and her line beside it, above the first group', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-                await expectArt(host, 'shortcuts-tewi', [96, 96]);
+                await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO', size: [96, 96] });
+                await expectNoUnmarkedPlaceholder(host);
                 const layout = await host.evaluate((root) => {
                     const body = root.querySelector('.sb-dialog__body');
-                    const art = body.querySelector('[data-sb-art-placeholder="shortcuts-tewi"]');
-                    const first = body.querySelector('[role="group"]');
-                    const box = art.getBoundingClientRect();
-                    const column = body.getBoundingClientRect();
+                    const intro = body.querySelector('.sbArtIntro');
                     return {
-                        firstChild: body.firstElementChild === art,
-                        offCentre: Math.abs((box.left + box.right) / 2 - (column.left + column.right) / 2),
-                        above: box.bottom <= first.getBoundingClientRect().top,
-                        paragraphs: body.querySelectorAll('p').length,
+                        firstChild: body.firstElementChild === intro,
+                        above: intro.getBoundingClientRect().bottom <= body.querySelector('[role="group"]').getBoundingClientRect().top,
                     };
                 });
-                expect(layout).toEqual({ firstChild: true, offCentre: expect.any(Number), above: true, paragraphs: 0 });
-                expect(layout.offCentre).toBeLessThanOrEqual(1);
+                expect(layout).toEqual({ firstChild: true, above: true });
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
             });
 
@@ -780,7 +850,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const view = helpView(host);
 
                 await expect(view).toHaveAttribute('data-sb-help-view', 'index');
-                await expectArt(view, 'help-reisen', [96, 96]);
+                await expectIntro(view, 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
                 await expectSlots(view, ['HELP-INTRO', ...FEATURED_IDS.map(id => `HELP-TOPIC-${id}-DESC`), ...SECTION_IDS.map(id => `HELP-SECTION-${id}-DESC`)]);
                 await expect(view.getByRole('group', { name: 'Featured Topics' }).locator('.ds-row-label')).toHaveText(FEATURED_TITLES);
                 const sections = view.getByRole('group', { name: 'All Sections' });
@@ -867,7 +937,47 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await trail().getByRole('button', { name: 'Help', exact: true }).click();
 
                 await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
-                await expectArt(helpView(host), 'help-reisen', [96, 96]);
+                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+            });
+
+            test('the intro line has the type of a paragraph in the dialog body', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showIndex(host);
+
+                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+                const [line, body] = await page.evaluate(() => {
+                    const read = (node) => {
+                        const style = getComputedStyle(node);
+                        return { size: style.fontSize, weight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
+                    };
+                    const probe = document.createElement('p');
+                    document.querySelector('dialog.sb-dialog-host .sb-dialog__body').append(probe);
+                    const result = [read(document.querySelector('.sbArtIntro [data-sb-copy-slot="HELP-INTRO"]')), read(probe)];
+                    probe.remove();
+                    return result;
+                });
+
+                expect(line.size, 'the line is body text, not the smaller meta size').toBe(body.size);
+                expect(line.weight).toBe(body.weight);
+                expect(line.lineHeight).toBe(body.lineHeight);
+                expect(line.color).toBe(body.color);
+            });
+
+            test('the intro starts where the first list of the front page starts', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+                await showIndex(host);
+
+                expect(await readIntroOffsetFromList(helpView(host)), 'the intro and the first list share a start edge').toBeLessThanOrEqual(1);
+            });
+
+            test('the front page intro mirrors in a right-to-left page: the art at the start, which is the right', async ({ page }) => {
+                await page.evaluate(() => document.documentElement.setAttribute('dir', 'rtl'));
+                const host = await openFromMenu(page, 'Help');
+                await showIndex(host);
+
+                const layout = await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96], rtl: true });
+
+                expect(layout.art.left, 'Reisen is on the right of her line').toBeGreaterThan(layout.text.left);
             });
 
             test('More Information opens the section page', async ({ page }) => {
@@ -1575,21 +1685,16 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expectNoUnmarkedPlaceholder(current);
             });
 
-            test('Troubleshooting opens with Reisen\'s art above the debug text', async ({ page }) => {
+            test('Troubleshooting opens with Reisen\'s art and her line beside it, above the debug text', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
 
                 await host.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
 
                 const current = shownPage(host);
-                await expectArt(current, 'troubleshooting-reisen', [96, 96]);
-                const layout = await current.evaluate((node) => {
-                    const art = node.querySelector('[data-sb-art-placeholder="troubleshooting-reisen"]').getBoundingClientRect();
-                    const info = node.querySelector('.sbDebugInfo').getBoundingClientRect();
-                    const body = node.querySelector('.sb-dialog__body').getBoundingClientRect();
-                    return { above: art.bottom <= info.top, offCentre: Math.abs((art.left + art.right) / 2 - (body.left + body.right) / 2) };
-                });
-                expect(layout.above).toBe(true);
-                expect(layout.offCentre).toBeLessThanOrEqual(1);
+                await expectIntro(current, 'troubleshooting-reisen', { slot: 'TROUBLESHOOTING-INTRO', size: [96, 96] });
+                await expectNoUnmarkedPlaceholder(current);
+                const above = await current.evaluate(node => node.querySelector('.sbArtIntro').getBoundingClientRect().bottom <= node.querySelector('.sbDebugInfo').getBoundingClientRect().top);
+                expect(above).toBe(true);
             });
 
             test('Troubleshooting shows every line of the debug info without scrolling', async ({ page }) => {
@@ -1664,7 +1769,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
             test('shows Reisen\'s art and intro, then the four steps with their placeholders, Show Me and Skip', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
-                await expectArt(host, 'gs-reisen', [96, 96]);
+                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO', size: [96, 96] });
                 await expectSlots(host, ['GS-INTRO', 'GS-1-BODY', 'GS-2-BODY', 'GS-3-BODY', 'GS-4-BODY']);
                 await expectNoUnmarkedPlaceholder(host);
                 await expect(host.locator('.ds-row-label')).toHaveText([
@@ -1691,7 +1796,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
             test('Reisen shows her done pose once all four steps are skipped, live, and goes back when one is un-skipped', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
-                await expectArt(host, 'gs-reisen', [96, 96]);
+                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO', size: [96, 96] });
 
                 for (const title of STEP_TITLES) {
                     await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
@@ -1699,14 +1804,16 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 }
 
                 await expect(host.locator('.sb-dialog__subtitle')).toHaveText('4 of 4');
-                await expectArt(host, 'gs-reisen-done', [96, 96]);
+                await expectIntro(host, 'gs-reisen-done', { slot: 'GS-INTRO-DONE', size: [96, 96] });
                 await expect(host.locator('[data-sb-art-placeholder="gs-reisen"]')).toHaveCount(0);
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
+                await expect(host.locator('[data-sb-copy-slot="GS-INTRO"]')).toHaveCount(0);
 
                 await rowOf(host, 'Set Up a Preset').getByRole('button', { name: 'Skip', exact: true }).click();
 
-                await expectArt(host, 'gs-reisen', [96, 96]);
+                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO', size: [96, 96] });
                 await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
+                await expect(host.locator('[data-sb-copy-slot="GS-INTRO-DONE"]')).toHaveCount(0);
             });
 
             test('Skip marks the step, moves the progress in the window and on the tile, and a second press undoes it', async ({ page }) => {
@@ -2011,7 +2118,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 const host = await openFromTile(page, 'extras');
 
-                await expectArt(host, 'extras-tewi', [96, 96]);
+                await expectIntro(host, 'extras-tewi', { slot: 'BE-INTRO', size: [96, 96] });
                 await expectArt(host, 'row-nahida', [64, 64]);
                 expect(portraits).toEqual([]);
             });
@@ -2225,6 +2332,53 @@ test.describe('Home windows with motion on a phone', () => {
 
         await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Choose a Preset');
         await expect(host.locator('.sb-dialog__page')).toHaveCount(3);
+    });
+});
+
+test.describe('Intros on a 360px phone', () => {
+    test.use({ viewport: { width: 360, height: 640 }, isMobile: true, hasTouch: true });
+
+    test.beforeEach(async ({ page }) => {
+        await protectMaintainerServer(page);
+        await installFixtureChats(page);
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await expectHome(page);
+    });
+
+    test('a 96px window intro keeps its line beside the art at the default type size', async ({ page }) => {
+        const host = await openFromMenu(page, 'Keyboard Shortcuts');
+
+        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO', size: [96, 96] });
+
+        expect(layout.text.left, 'the line is beside the art').toBeGreaterThanOrEqual(layout.art.right);
+    });
+
+    test('with the Global Font Size at 20px the line drops under the art, because its column follows the type size', async ({ page }) => {
+        await page.evaluate(() => document.documentElement.style.setProperty('--fontScale', String(20 / 15)));
+        const host = await openFromMenu(page, 'Keyboard Shortcuts');
+
+        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO', size: [96, 96] });
+
+        expect(layout.em, 'the type is larger').toBeGreaterThan(18);
+        expect(layout.text.top, 'the line is under the art').toBeGreaterThanOrEqual(layout.art.bottom);
+    });
+});
+
+test.describe('Intros with a larger type size on a desktop', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('the Help line stays beside the art at 20px', async ({ page }) => {
+        await protectMaintainerServer(page);
+        await installFixtureChats(page);
+        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await expectHome(page);
+        await page.evaluate(() => document.documentElement.style.setProperty('--fontScale', String(20 / 15)));
+        const host = await openFromMenu(page, 'Help');
+
+        const layout = await expectIntro(host.locator('.sb-list-editor__detail .sbHelpPage'), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+
+        expect(layout.em, 'the type is larger').toBeGreaterThan(18);
+        expect(layout.text.left, 'the line is beside the art').toBeGreaterThanOrEqual(layout.art.right);
     });
 });
 

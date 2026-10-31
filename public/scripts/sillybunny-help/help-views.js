@@ -1,5 +1,5 @@
 import { t } from '../i18n.js';
-import { createArtPlaceholder } from '../sillybunny-home/art.js';
+import { createArtIntro } from '../sillybunny-home/art-intro.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from '../sillybunny-home/copy.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
@@ -138,10 +138,7 @@ function createGroup({ title, label, field, rows, headingLevel }) {
 
 function createIndexView({ sections, navigate }) {
     const root = createPage({ kind: 'index', title: t`Overview`, heading: false });
-    const intro = document.createElement('div');
-    intro.className = 'sbHomeIntro';
-    intro.append(createArtPlaceholder('help-reisen'), markCopyPlaceholder(document.createElement('p'), 'HELP-INTRO'));
-    root.append(intro);
+    root.append(createArtIntro({ art: 'help-reisen', slot: 'HELP-INTRO' }).intro);
 
     const featured = getFeaturedTopics(sections);
     if (featured.length > 0) {

@@ -4,7 +4,8 @@ import { openDialog } from '../sillybunny-editor/dialog.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
 import { createArtPlaceholder } from './art.js';
-import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from './copy.js';
+import { createArtIntro } from './art-intro.js';
+import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
 import { openShellTarget } from './shell-targets.js';
 import { stubAction } from './stubs.js';
 
@@ -17,13 +18,6 @@ function getGroupTitle(groupId) {
         case 'presets': return t`Presets`;
         default: throw new Error(`No title for the Bundled Extras group: ${groupId}`);
     }
-}
-
-function createIntro() {
-    const intro = document.createElement('div');
-    intro.className = 'sbHomeIntro';
-    intro.append(createArtPlaceholder('extras-tewi'), markCopyPlaceholder(document.createElement('p'), 'BE-INTRO'));
-    return intro;
 }
 
 /** An assistant installs on demand, so its row has an Add button that waits for the install flow. */
@@ -113,7 +107,7 @@ export async function openBundledExtrasWindow({ group = null, openTarget = openS
             return heading;
         },
         content: body => body.append(
-            createIntro(),
+            createArtIntro({ art: 'extras-tewi', slot: 'BE-INTRO' }).intro,
             ...itemGroups,
             createPrefGroup({ field: 'bundled-extras-ui-themes-group', rows: [uiThemes] }).section,
         ),

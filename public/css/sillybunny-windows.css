@@ -79,12 +79,26 @@
     white-space: nowrap;
 }
 
-/* ── Welcome ────────────────────────────────────────────────────────────── */
+/* ── Art and text intro ─────────────────────────────────────────────────── */
 
-/* Art that stands alone at the top of a page. */
-.sbWindowArt {
-    align-self: center;
+/* A character's art at the inline start, and the line they say beside it. The line's basis is the narrowest column
+   that still reads as a line, in its own em so it follows the text size. It is small enough that 96px window art
+   sits beside its line on the narrowest phone sheet at the default size. A container query cannot make the pair
+   stack, because it cannot read the width of the art. */
+.sbArtIntro {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
 }
+
+.sbArtIntro > p {
+    flex: 1 1 14em;
+    min-width: 0;
+    margin: 0;
+}
+
+/* ── Welcome ────────────────────────────────────────────────────────────── */
 
 .sbWelcomeIntro {
     display: flex;
@@ -144,12 +158,14 @@
     text-align: center;
 }
 
-/* Reisen, the logo and Tewi on one line. The row order follows the writing direction, so Reisen is on the start
-   side, and 96 + 64 + 96 plus two gaps fit the 328px of a 360px phone's sheet without wrapping. */
+/* Reisen at the inline start edge of the masthead, Tewi at the inline end edge and the logo between them. The row
+   order follows the writing direction. 96 + 64 + 96 plus two gaps of 16px fit the 328px of a 360px phone's sheet
+   on one line. A wider masthead puts its extra width between the pieces, so the art stays at the edges. */
 .sbAboutPortraits {
     display: flex;
     align-items: center;
-    justify-content: center;
+    align-self: stretch;
+    justify-content: space-between;
     gap: 16px;
 }
 
@@ -388,21 +404,6 @@ kbd.sbKeys > kbd {
 }
 
 /* ── Getting Started and Bundled Extras ─────────────────────────────────── */
-
-.sbHomeIntro {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding-inline: 4px;
-}
-
-.sbHomeIntro > p {
-    flex: 1 1 0;
-    min-width: 0;
-    margin: 0;
-    font-size: var(--sb-type-meta);
-    line-height: 1.5;
-}
 
 .sbHomeFlatButton {
     -webkit-appearance: none;

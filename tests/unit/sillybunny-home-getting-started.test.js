@@ -4,7 +4,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
-const { createGettingStartedState, formatProgress, getGettingStartedSteps, getIntroArtName, getSharedGettingStartedState } = await import('../../public/scripts/sillybunny-home/getting-started.js');
+const { createGettingStartedState, formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLineSlot, getSharedGettingStartedState } = await import('../../public/scripts/sillybunny-home/getting-started.js');
 
 describe('Getting Started steps', () => {
     test('lists the four steps in order with their titles', () => {
@@ -154,5 +154,29 @@ describe('the intro art of the Getting Started window', () => {
 
     test('a state with no steps is not done', () => {
         expect(getIntroArtName(0, 0)).toBe('gs-reisen');
+    });
+});
+
+describe('the intro line of the Getting Started window', () => {
+    const ids = getGettingStartedSteps().map(step => step.id);
+
+    test.each([
+        [0, 4, 'GS-INTRO'],
+        [3, 4, 'GS-INTRO'],
+        [4, 4, 'GS-INTRO-DONE'],
+        [0, 0, 'GS-INTRO'],
+    ])('%i of %i steps resolved says %s', (resolved, total, expected) => {
+        expect(getIntroLineSlot(resolved, total)).toBe(expected);
+    });
+
+    test('changes with the art, and back, as the state does', () => {
+        const state = createGettingStartedState(ids);
+        const pose = () => [getIntroArtName(state.getResolvedCount(), state.getTotal()), getIntroLineSlot(state.getResolvedCount(), state.getTotal())];
+
+        ids.forEach(id => state.setSkipped(id, true));
+        expect(pose()).toEqual(['gs-reisen-done', 'GS-INTRO-DONE']);
+
+        state.setSkipped('chat', false);
+        expect(pose()).toEqual(['gs-reisen', 'GS-INTRO']);
     });
 });

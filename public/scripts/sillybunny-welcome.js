@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-import { createArtPlaceholder } from './sillybunny-home/art.js';
+import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from './sillybunny-home/copy.js';
 import { HOME_DESTINATIONS } from './sillybunny-home/destinations.js';
 import { formatProgress, getSharedGettingStartedState } from './sillybunny-home/getting-started.js';
@@ -60,18 +60,12 @@ function createLanguageRow() {
     return createSelectRow({ select, label: t`Language`, field: 'welcome-language', searchLabel: t`Search` });
 }
 
-function createWindowArt(name) {
-    const art = createArtPlaceholder(name);
-    art.classList.add('sbWindowArt');
-    return art;
-}
-
 function fillHello(body, { language, openImport }) {
-    const art = createWindowArt('welcome-both');
+    const { intro: greeting } = createArtIntro({ art: 'welcome-both', slot: 'WD-1-GREETING' });
 
     const intro = document.createElement('div');
     intro.className = 'sbWelcomeIntro';
-    intro.append(createCopyBlock('WD-1-GREETING'), createCopyBlock('WD-1-ABOUT'), createCopyBlock('WD-1-FORK'));
+    intro.append(createCopyBlock('WD-1-ABOUT'), createCopyBlock('WD-1-FORK'));
 
     const importRow = createRow({
         label: t`Import From SillyTavern`,
@@ -85,7 +79,7 @@ function fillHello(body, { language, openImport }) {
 
     const fanWork = createCopyBlock('WD-1-FANWORK');
     fanWork.classList.add('sbWelcomeNote');
-    body.append(art, intro, createPrefGroup({ field: 'welcome-hello-group', rows }).section, fanWork, createPosition(1));
+    body.append(greeting, intro, createPrefGroup({ field: 'welcome-hello-group', rows }).section, fanWork, createPosition(1));
 }
 
 function fillImport(body) {
@@ -103,8 +97,7 @@ function fillImport(body) {
 function fillPersona(body) {
     const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true });
     body.append(
-        createWindowArt('welcome-persona-tewi'),
-        createCopyBlock('WD-2-PROMPT'),
+        createArtIntro({ art: 'welcome-persona-tewi', slot: 'WD-2-PROMPT' }).intro,
         createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section,
         createPosition(2),
     );
@@ -164,8 +157,7 @@ function fillWhatsNext(body, { openDestination }) {
 
     const showAtStartup = createSwitchRow({ label: t`Show at Startup`, field: 'welcome-show-at-startup', checked: false });
     body.append(
-        createWindowArt('welcome-next-reisen'),
-        createCopyBlock('WD-3-INTRO'),
+        createArtIntro({ art: 'welcome-next-reisen', slot: 'WD-3-INTRO' }).intro,
         group.section,
         createPrefGroup({ field: 'welcome-startup-group', rows: [showAtStartup] }).section,
         createPosition(3),

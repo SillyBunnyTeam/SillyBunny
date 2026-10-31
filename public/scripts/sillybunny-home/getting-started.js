@@ -39,6 +39,16 @@ export function getIntroArtName(resolved, total) {
 }
 
 /**
+ * Reisen's line in the Getting Started window: the done line once every step is resolved, done or skipped.
+ * @param {number} resolved
+ * @param {number} total
+ * @returns {'GS-INTRO' | 'GS-INTRO-DONE'}
+ */
+export function getIntroLineSlot(resolved, total) {
+    return total > 0 && resolved === total ? 'GS-INTRO-DONE' : 'GS-INTRO';
+}
+
+/**
  * The state behind the Getting Started tile. This one lives in memory only. Home reads the state only
  * through this interface, so a state that is stored and driven by real signals can take its place.
  * The state hides itself once every step is resolved; `setHidden(false)` shows it again.
