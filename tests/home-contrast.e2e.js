@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
+import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -40,7 +41,7 @@ async function stubTheme(page, themeName, { tint } = {}) {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
         const settings = JSON.parse(data.settings);
-        settings.firstRun = false;
+        applyGettingStartedSettings(settings, { firstRun: false });
         const palette = { ...data.themes.find(entry => entry.name === themeName) };
         delete palette.name;
         if (tint) {

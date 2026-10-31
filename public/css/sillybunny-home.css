@@ -1378,3 +1378,52 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
         outline-offset: -2px;
     }
 }
+
+/* ── Getting Started toast ──────────────────────────────────────────────── */
+
+/* The toast hangs off body, so these rules are not under .welcomePanel. Its button is flat and keeps the ink of the
+   toast layer, because the window styles that the step rows use are not loaded until a window opens. */
+.sbHomeToast {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.sbHomeToastAction {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-height: 32px;
+    margin: 4px 0 0;
+    margin-inline-start: -12px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sbHomeToastAction:active {
+    background: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.sbHomeToastAction:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+@media (hover: hover) {
+    .sbHomeToastAction:hover {
+        background: color-mix(in srgb, currentColor 14%, transparent);
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHomeToastAction {
+        min-height: 44px;
+    }
+}

@@ -1,9 +1,13 @@
-import { expect, test } from '@playwright/test';
+import { expect, test as base } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
+import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+
+// A describe whose tests assert how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
+const test = base.extend({ bundledCardsOnly: [false, { option: true }] });
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -252,6 +256,7 @@ async function useMotion(page) {
         const { response, body: data } = fetched;
         const settings = JSON.parse(data.settings);
         settings.power_user.reduced_motion = false;
+        applyGettingStartedSettings(settings);
         return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
     });
 }
@@ -281,9 +286,9 @@ for (const { name, sheet, options } of VIEWPORTS) {
     test.describe(`Home windows at ${name}`, () => {
         test.use(options);
 
-        test.beforeEach(async ({ page }) => {
+        test.beforeEach(async ({ page, bundledCardsOnly }) => {
             await protectMaintainerServer(page);
-            await installFixtureChats(page);
+            await installFixtureChats(page, { bundledCardsOnly });
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });
@@ -321,6 +326,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
         }
 
         test.describe('Welcome', () => {
+            test.use({ bundledCardsOnly: true });
+
             test('page one greets with the duo art, copy placeholders, and the adopted language select', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
@@ -1754,6 +1761,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('Getting Started', () => {
+            test.use({ bundledCardsOnly: true });
+
             const rowOf = (host, title) => host.locator('.ds-row', { hasText: title });
 
             test(`opens from its tile as a dialog${sheet ? ' sheet' : ''} with the progress in the header`, async ({ page }) => {

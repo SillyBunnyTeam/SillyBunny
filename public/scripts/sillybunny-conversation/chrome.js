@@ -1283,6 +1283,9 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
         return false;
     }
 
+    // Every way into a thread ends here, and Conversation opens no chat of the app, so Home hears about it from this event (Getting Started, step 3).
+    window.dispatchEvent(new CustomEvent('sb:conversation-thread-opened', { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
+
     if (branchId) {
         setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
     }

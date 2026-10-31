@@ -10,7 +10,7 @@ jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 const { createGettingStartedState, getGettingStartedSteps } = await import('../../public/scripts/sillybunny-home/getting-started.js');
 const { createStepRow } = await import('../../public/scripts/sillybunny-home/step-rows.js');
 
-const [connect, preset] = getGettingStartedSteps();
+const [connect, preset, character] = getGettingStartedSteps();
 
 function build(step, options = {}) {
     const onShowMe = jest.fn();
@@ -122,3 +122,87 @@ describe('the shared step row', () => {
         expect(row.querySelector('.sbHomeTag').hidden).toBe(true);
     });
 });
+
+describe('the shared step row, once the app has seen the step done', () => {
+    const newState = () => createGettingStartedState(getGettingStartedSteps().map(step => step.id));
+    const visibleTags = row => [...row.querySelectorAll('.sbHomeTag')].filter(tag => !tag.hidden).map(tag => tag.textContent);
+    const skipOf = row => [...row.querySelectorAll('button')].find(button => button.textContent === 'Skip');
+
+    test('shows Done on a line of its own, takes the row out of the open state and keeps Show Me', () => {
+        const state = newState();
+        const { row, sync } = build(connect, { state });
+        state.subscribe(sync);
+        const notes = row.querySelector('.sbHomeStepNotes');
+        expect(notes.hidden).toBe(true);
+
+        state.markDone('connect');
+
+        expect(visibleTags(row)).toEqual(['Done']);
+        expect(notes.hidden).toBe(false);
+        expect(row.dataset.sbStepState).toBe('done');
+        expect(buttonsOf(row).filter(label => label === 'Show Me')).toHaveLength(1);
+    });
+
+    test('offers no Skip for a step that is done', () => {
+        const state = newState();
+        const { row, sync } = build(connect, { state });
+        state.subscribe(sync);
+
+        state.markDone('connect');
+
+        expect(skipOf(row).hidden).toBe(true);
+    });
+
+    test('an optional step shows Optional and Done together', () => {
+        const state = newState();
+        const { row, sync } = build(preset, { state });
+        state.subscribe(sync);
+
+        state.markDone('preset');
+
+        expect(visibleTags(row)).toEqual(['Optional', 'Done']);
+    });
+
+    test('a skipped step that gets its signal swaps Skipped for Done', () => {
+        const state = newState();
+        const { row, sync } = build(connect, { state });
+        state.subscribe(sync);
+        state.setSkipped('connect', true);
+        expect(visibleTags(row)).toEqual(['Skipped']);
+
+        state.markDone('connect');
+
+        expect(visibleTags(row)).toEqual(['Done']);
+        expect(skipOf(row).hidden).toBe(true);
+        expect(skipOf(row).getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test.each([
+        ['reisen', 'GS-3-DONE-REISEN'],
+        ['tewi', 'GS-3-DONE-TEWI'],
+        ['other', 'GS-3-DONE-OTHER'],
+    ])('the done row of step 3 shows the line for %s', (variant, slot) => {
+        const state = newState();
+        const { row, sync } = build(character, { state });
+        state.subscribe(sync);
+        const subtitle = row.querySelector('.ds-row-subtitle');
+        expect(subtitle.dataset.sbCopySlot).toBe('GS-3-BODY');
+
+        state.markDone('character', { variant });
+
+        expect(subtitle.dataset.sbCopySlot).toBe(slot);
+        expect(subtitle.dataset.sbCopyPlaceholder).toBe('true');
+        expect(subtitle.textContent).toBe('TODO(copy)');
+    });
+
+    test('starts in the done state when the stored value says so', () => {
+        const state = newState();
+        state.markDone('character', { variant: 'tewi' });
+
+        const { row } = build(character, { state });
+
+        expect(row.dataset.sbStepState).toBe('done');
+        expect(row.querySelector('.ds-row-subtitle').dataset.sbCopySlot).toBe('GS-3-DONE-TEWI');
+    });
+});
+

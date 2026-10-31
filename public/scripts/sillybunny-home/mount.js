@@ -4,6 +4,8 @@ import { createArtPlaceholder } from './art.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
+// Listens for the Getting Started signals from the moment the app loads, not from the first render of Home.
+import './getting-started-boot.js';
 import { getSharedGettingStartedState } from './getting-started.js';
 import { fitHomeHeader } from './header-fit.js';
 import { chooseHeroArt } from './hero-art.js';

@@ -1,4 +1,5 @@
 import { t } from '../i18n.js';
+import { CHARACTER_VARIANTS } from './getting-started-storage.js';
 
 /**
  * @typedef {object} GettingStartedStep
@@ -49,16 +50,43 @@ export function getIntroLineSlot(resolved, total) {
 }
 
 /**
- * The state behind the Getting Started tile. This one lives in memory only. Home reads the state only
- * through this interface, so a state that is stored and driven by real signals can take its place.
- * The state hides itself once every step is resolved; `setHidden(false)` shows it again.
- * @param {readonly string[]} stepIds
+ * The slot of the line under a step in the Getting Started window. A finished step 3 has a line of its own, which
+ * follows the kind of card that finished it; every other row keeps the body of its step.
+ * @param {GettingStartedStep} step
+ * @param {Pick<ReturnType<typeof createGettingStartedState>, 'isDone' | 'getCharacterVariant'>} state
+ * @param {string} [bodySlot] The slot to use while the step is open.
+ * @returns {string}
  */
-export function createGettingStartedState(stepIds) {
+export function getStepLineSlot(step, state, bodySlot = step.slot) {
+    if (step.id === 'character' && state.isDone('character')) {
+        return `GS-3-DONE-${(state.getCharacterVariant() ?? 'other').toUpperCase()}`;
+    }
+    return bodySlot;
+}
+
+/**
+ * The state behind the Getting Started tile, the window and the What's Next row. Home reads the state only
+ * through this interface. Without `save` it lives in memory only; with it every change is written once.
+ *
+ * Each step is open, skipped or done, and done is never overwritten: a skipped step that gets its signal becomes
+ * done, and Skip does nothing to a done step. The state hides itself once every step is resolved, and remembers
+ * that it was the auto-hide, so un-skipping a step brings the tile back. A tile that an existing account starts
+ * without stays hidden until `setHidden(false)`, which is what Show Getting Started does.
+ * @param {readonly string[]} stepIds
+ * @param {object} [options]
+ * @param {import('./getting-started-storage.js').GettingStartedSnapshot} [options.snapshot] The stored value to start from.
+ * @param {(snapshot: import('./getting-started-storage.js').GettingStartedSnapshot) => void} [options.save]
+ */
+export function createGettingStartedState(stepIds, { snapshot, save } = {}) {
     const known = new Set(stepIds);
-    const skipped = new Set();
+    /** @type {Map<string, import('./getting-started-storage.js').StepStatus>} */
+    const statuses = new Map(stepIds.map(id => [id, snapshot?.steps?.[id] ?? null]));
     const listeners = new Set();
-    let hidden = false;
+    let hidden = snapshot?.hidden ?? false;
+    /** @type {'auto' | 'account' | null} */
+    let hiddenBy = snapshot?.hiddenBy ?? null;
+    /** @type {import('./getting-started-storage.js').CharacterVariant | null} */
+    let characterVariant = snapshot?.characterVariant ?? null;
 
     function requireKnown(id) {
         if (!known.has(id)) {
@@ -66,17 +94,39 @@ export function createGettingStartedState(stepIds) {
         }
     }
 
-    // Real signals will decide this later; until then no step finishes by itself.
-    function isDone(id) {
+    const isDone = (id) => {
         requireKnown(id);
-        return false;
-    }
+        return statuses.get(id) === 'done';
+    };
 
     function getResolvedCount() {
-        return [...known].filter(id => skipped.has(id) || isDone(id)).length;
+        return [...known].filter(id => statuses.get(id) !== null).length;
     }
 
-    function notify() {
+    function getSnapshot() {
+        return {
+            hidden,
+            hiddenBy,
+            steps: Object.fromEntries(stepIds.map(id => [id, statuses.get(id) ?? null])),
+            characterVariant,
+        };
+    }
+
+    /** Hides the tile when the last step is resolved, and shows it again when the auto-hide no longer holds. */
+    function followResolvedCount() {
+        const finished = getResolvedCount() === known.size;
+        if (finished && !hidden) {
+            hidden = true;
+            hiddenBy = 'auto';
+        } else if (!finished && hidden && hiddenBy === 'auto') {
+            hidden = false;
+            hiddenBy = null;
+        }
+    }
+
+    /** One change is one write and one notification, however many of the fields it moved. */
+    function commit() {
+        save?.(getSnapshot());
         listeners.forEach(listener => listener());
     }
 
@@ -85,29 +135,52 @@ export function createGettingStartedState(stepIds) {
         isDone,
         isSkipped(id) {
             requireKnown(id);
-            return skipped.has(id);
+            return statuses.get(id) === 'skipped';
+        },
+        /**
+         * Marks a step done, because the app saw what the step asks for. A skipped step becomes done as well.
+         * @param {string} id
+         * @param {{ variant?: string }} [details] The kind of card, for the character step.
+         * @returns {boolean} Whether the step was not done before.
+         */
+        markDone(id, { variant } = {}) {
+            requireKnown(id);
+            if (statuses.get(id) === 'done') {
+                return false;
+            }
+            statuses.set(id, 'done');
+            if (id === 'character') {
+                characterVariant = CHARACTER_VARIANTS.includes(/** @type {any} */ (variant)) ? /** @type {any} */ (variant) : 'other';
+            }
+            followResolvedCount();
+            commit();
+            return true;
         },
         setSkipped(id, isSkipped) {
             requireKnown(id);
-            if (skipped.has(id) === Boolean(isSkipped)) {
+            const status = statuses.get(id);
+            if (status === 'done' || (status === 'skipped') === Boolean(isSkipped)) {
                 return;
             }
-            if (isSkipped) {
-                skipped.add(id);
-            } else {
-                skipped.delete(id);
-            }
-            hidden ||= getResolvedCount() === known.size;
-            notify();
+            statuses.set(id, isSkipped ? 'skipped' : null);
+            followResolvedCount();
+            commit();
         },
         getResolvedCount,
+        getCharacterVariant: () => characterVariant,
         isHidden: () => hidden,
         setHidden(isHidden) {
             if (hidden === Boolean(isHidden)) {
                 return;
             }
             hidden = Boolean(isHidden);
-            notify();
+            hiddenBy = hidden ? 'account' : null;
+            commit();
+        },
+        getSnapshot,
+        /** Writes the current value, for one that was never stored. */
+        persist() {
+            save?.(getSnapshot());
         },
         /** @param {() => void} listener @returns {() => void} Stops the listener. */
         subscribe(listener) {
@@ -122,9 +195,17 @@ let sharedState = null;
 
 /**
  * Home renders its panel again after many actions. One state for the page's lifetime keeps the progress
- * across those renders, until a stored state replaces this one.
+ * across those renders. The boot code installs the stored state before Home first renders; a state that nothing
+ * installed lives in memory only.
  */
 export function getSharedGettingStartedState() {
     sharedState ??= createGettingStartedState(getGettingStartedSteps().map(step => step.id));
     return sharedState;
+}
+
+/**
+ * @param {ReturnType<typeof createGettingStartedState>} state The stored state for this account.
+ */
+export function setSharedGettingStartedState(state) {
+    sharedState = state;
 }

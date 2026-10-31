@@ -1,9 +1,10 @@
 import { gunzipSync } from 'node:zlib';
+import { stubGettingStarted } from './getting-started-state.js';
 
 /**
  * Chats that exist only in the browser, so a spec that opens a character's chat does not depend on what the
  * server has saved. Call `installFixtureChats` after `protectMaintainerServer`: a request for a chat that is
- * not a fixture falls through to the routes below it.
+ * not a fixture falls through to the routes below it. It also gives the account a shown Getting Started checklist.
  */
 
 const FIXTURE_EPOCH = Date.UTC(2026, 0, 1);
@@ -47,8 +48,10 @@ function buildChatRecords({ name }) {
  * file, the list of a character's chat files that the app reads before it opens one, and the note of the last
  * opened chat, which would otherwise be written next to the character on the server.
  * @param {import('@playwright/test').Page} page
+ * @param {{ bundledCardsOnly?: boolean }} [options] `bundledCardsOnly` limits the library to the cards that ship with
+ *   SillyBunny, for a spec that asserts a count of finished Getting Started steps (see `stubGettingStarted`).
  */
-export async function installFixtureChats(page) {
+export async function installFixtureChats(page, { bundledCardsOnly = false } = {}) {
     if (chatsByPage.has(page)) {
         return;
     }
@@ -64,6 +67,8 @@ export async function installFixtureChats(page) {
         return fixtures.length ? route.fulfill({ json: fixtures.map(describeChatFile) }) : route.fallback();
     });
     await page.route('**/api/characters/last-chat', route => route.fulfill({ json: {} }));
+    // The account of a spec has no stored checklist, so it would count as an old account whose checklist is hidden.
+    await stubGettingStarted(page, { bundledCardsOnly });
 }
 
 /**

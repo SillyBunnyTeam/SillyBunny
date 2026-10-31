@@ -7,6 +7,22 @@ import { formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLineSl
 import { openShellTarget } from './shell-targets.js';
 import { createStepRow } from './step-rows.js';
 
+/** @type {ReturnType<typeof openDialog> | null} */
+let openWindow = null;
+
+/**
+ * Closes the Getting Started window, if it is open, and settles once it has gone.
+ * @returns {Promise<unknown>}
+ */
+export async function closeGettingStartedWindow() {
+    const dialog = openWindow;
+    if (!dialog) {
+        return;
+    }
+    void dialog.close('show-me');
+    await dialog.closed;
+}
+
 /**
  * Opens the Getting Started window: Reisen's intro and the four steps. It applies each change at once and has
  * no responses, so it shows Close. The window follows the state while it is open, so a step skipped here, or
@@ -48,11 +64,17 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
         className: 'sbGettingStartedDialog',
         content: body => body.append(intro, createPrefGroup({ field: 'getting-started-group', rows: steps }).section),
     });
+    openWindow = dialog;
     const stopFollowing = state.subscribe(() => {
         steps.forEach(step => step.sync());
         dialog.setSubtitle(progress());
         show(pose());
     });
-    void dialog.closed.then(stopFollowing);
+    void dialog.closed.then(() => {
+        stopFollowing();
+        if (openWindow === dialog) {
+            openWindow = null;
+        }
+    });
     return dialog;
 }

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
+import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -23,6 +24,7 @@ async function useMotion(page) {
         const { response, body: data } = fetched;
         const settings = JSON.parse(data.settings);
         settings.power_user.reduced_motion = false;
+        applyGettingStartedSettings(settings);
         return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
     });
 }

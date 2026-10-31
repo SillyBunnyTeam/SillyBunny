@@ -1,10 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test as base } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
+import { applyGettingStartedSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+
+// A test that asserts how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
+const test = base.extend({ bundledCardsOnly: [false, { option: true }] });
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -331,9 +335,9 @@ for (const { name, options } of VIEWPORTS) {
     test.describe(`Home layout at ${name}`, () => {
         test.use(options);
 
-        test.beforeEach(async ({ page }) => {
+        test.beforeEach(async ({ page, bundledCardsOnly }) => {
             await protectMaintainerServer(page);
-            await installFixtureChats(page);
+            await installFixtureChats(page, { bundledCardsOnly });
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });
@@ -656,6 +660,7 @@ for (const { name, options } of VIEWPORTS) {
                 if (!data) return;
                 const settings = JSON.parse(data.settings);
                 settings.accountStorage = { ...settings.accountStorage, ...saved.accountStorage };
+                applyGettingStartedSettings(settings);
                 return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
             });
             await page.evaluate(key => localStorage.removeItem(key), MODE_KEY);
@@ -810,38 +815,6 @@ for (const { name, options } of VIEWPORTS) {
             expect(parseFloat(icon.radius)).toBeGreaterThanOrEqual(24);
         });
 
-        test('the Getting Started tile shows the progress in one string and opens its window', async ({ page }) => {
-            await chooseMode(page, 'full');
-            const started = tile(page, 'getting-started');
-
-            await expect(started.locator('.sbHomeTileSub')).toHaveText('0 of 4');
-            await expect(started.locator('.sbHomeTileSub')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
-            await expect(started).not.toHaveAttribute('data-sb-stub', /.*/);
-            await expect(started).not.toHaveAttribute('aria-expanded', /.*/);
-
-            await started.click();
-
-            await expect(page.locator('dialog.sb-dialog-host')).toHaveAccessibleName('Getting Started');
-            await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
-            await expect(page.locator('.welcomePanel details')).toHaveCount(0);
-        });
-
-        test('every tile carries a voiced line as a copy placeholder in its own slot, and only Getting Started has a progress', async ({ page }) => {
-            await chooseMode(page, 'full');
-
-            for (const [key, slot] of [['getting-started', 'HOME-ROW-GS-LINE'], ['help', 'HOME-ROW-HELP'], ['extras', 'HOME-ROW-EXTRAS']]) {
-                const line = tile(page, key).locator('.sbHomeTileLine');
-                await expect(line, key).toHaveText('TODO(copy)');
-                await expect(line, key).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                await expect(line, key).toHaveAttribute('data-sb-copy-slot', slot);
-            }
-            await expect(tile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('0 of 4');
-            await expect(tile(page, 'help').locator('.sbHomeTileSub')).toHaveCount(0);
-            await expect(tile(page, 'extras').locator('.sbHomeTileSub')).toHaveCount(0);
-            await expect(tile(page, 'help')).not.toHaveAttribute('data-sb-stub', /.*/);
-            await expect(tile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
-        });
-
         test('Compact shows the title of Help and Bundled Extras without the voiced line, and Full brings it back', async ({ page }) => {
             await chooseMode(page, 'compact');
 
@@ -854,25 +827,6 @@ for (const { name, options } of VIEWPORTS) {
             await expect(tiles(page).locator('.sbHomeTileLine')).toHaveCount(3);
             await expect(tiles(page).locator('.sbHomeTileLine').first()).toBeVisible();
             await expect(tiles(page).locator('.sbHomeTileLine').last()).toBeVisible();
-        });
-
-        test('a tile is named by its title and described by its voiced line and progress, and Compact leaves the line out of the description', async ({ page }) => {
-            await chooseMode(page, 'full');
-
-            await expect(tile(page, 'getting-started')).toHaveAccessibleName('Getting Started');
-            await expect(tile(page, 'getting-started')).toHaveAccessibleDescription('TODO(copy) 0 of 4');
-            await expect(tile(page, 'help')).toHaveAccessibleName('Help');
-            await expect(tile(page, 'help')).toHaveAccessibleDescription('TODO(copy)');
-            await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
-            await expect(tile(page, 'extras')).toHaveAccessibleDescription('TODO(copy)');
-
-            await chooseMode(page, 'compact');
-
-            await expect(tile(page, 'help')).toHaveAccessibleName('Help');
-            await expect(tile(page, 'help')).toHaveAccessibleDescription('');
-            await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
-            await expect(tile(page, 'extras')).toHaveAccessibleDescription('');
-            await expect(tile(page, 'getting-started'), 'only the progress is left in the description').toHaveAttribute('aria-describedby', 'sb-home-tile-getting-started-progress');
         });
 
         test('the ids that name and describe the tiles are unique and the same after Home renders again', async ({ page }) => {
@@ -1845,6 +1799,61 @@ for (const { name, options } of VIEWPORTS) {
 
             await expect(page.locator('dialog[open]')).toHaveCount(0);
             await expect(trigger).toBeFocused();
+        });
+
+        test.describe('Getting Started progress', () => {
+            test.use({ bundledCardsOnly: true });
+
+            test('the Getting Started tile shows the progress in one string and opens its window', async ({ page }) => {
+                await chooseMode(page, 'full');
+                const started = tile(page, 'getting-started');
+
+                await expect(started.locator('.sbHomeTileSub')).toHaveText('0 of 4');
+                await expect(started.locator('.sbHomeTileSub')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
+                await expect(started).not.toHaveAttribute('data-sb-stub', /.*/);
+                await expect(started).not.toHaveAttribute('aria-expanded', /.*/);
+
+                await started.click();
+
+                await expect(page.locator('dialog.sb-dialog-host')).toHaveAccessibleName('Getting Started');
+                await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
+                await expect(page.locator('.welcomePanel details')).toHaveCount(0);
+            });
+
+            test('every tile carries a voiced line as a copy placeholder in its own slot, and only Getting Started has a progress', async ({ page }) => {
+                await chooseMode(page, 'full');
+
+                for (const [key, slot] of [['getting-started', 'HOME-ROW-GS-LINE'], ['help', 'HOME-ROW-HELP'], ['extras', 'HOME-ROW-EXTRAS']]) {
+                    const line = tile(page, key).locator('.sbHomeTileLine');
+                    await expect(line, key).toHaveText('TODO(copy)');
+                    await expect(line, key).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                    await expect(line, key).toHaveAttribute('data-sb-copy-slot', slot);
+                }
+                await expect(tile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('0 of 4');
+                await expect(tile(page, 'help').locator('.sbHomeTileSub')).toHaveCount(0);
+                await expect(tile(page, 'extras').locator('.sbHomeTileSub')).toHaveCount(0);
+                await expect(tile(page, 'help')).not.toHaveAttribute('data-sb-stub', /.*/);
+                await expect(tile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
+            });
+
+            test('a tile is named by its title and described by its voiced line and progress, and Compact leaves the line out of the description', async ({ page }) => {
+                await chooseMode(page, 'full');
+
+                await expect(tile(page, 'getting-started')).toHaveAccessibleName('Getting Started');
+                await expect(tile(page, 'getting-started')).toHaveAccessibleDescription('TODO(copy) 0 of 4');
+                await expect(tile(page, 'help')).toHaveAccessibleName('Help');
+                await expect(tile(page, 'help')).toHaveAccessibleDescription('TODO(copy)');
+                await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
+                await expect(tile(page, 'extras')).toHaveAccessibleDescription('TODO(copy)');
+
+                await chooseMode(page, 'compact');
+
+                await expect(tile(page, 'help')).toHaveAccessibleName('Help');
+                await expect(tile(page, 'help')).toHaveAccessibleDescription('');
+                await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
+                await expect(tile(page, 'extras')).toHaveAccessibleDescription('');
+                await expect(tile(page, 'getting-started'), 'only the progress is left in the description').toHaveAttribute('aria-describedby', 'sb-home-tile-getting-started-progress');
+            });
         });
     });
 }

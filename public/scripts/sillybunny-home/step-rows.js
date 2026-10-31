@@ -1,6 +1,7 @@
 import { t } from '../i18n.js';
 import { createRow } from '../sillybunny-editor/rows.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
+import { getStepLineSlot } from './getting-started.js';
 
 function createFlatButton(label) {
     const button = document.createElement('button');
@@ -20,12 +21,14 @@ function createTag(text) {
 /**
  * One Getting Started step as a boxed-list row: the title, a placeholder for its text and a Show Me button.
  * The Getting Started window lists its steps through this builder. Pass it a `state` and the row also offers
- * Skip, marks an optional step and shows a skipped one. Without a state the row only points at the step.
+ * Skip, marks an optional step and shows a skipped or a finished one. Without a state the row only points at the step.
  *
- * The notes (Optional, Skipped) have a line under the text, and the line exists only while the row has a note
- * to show: always on an optional step, and on any other step while it is skipped. A note that does not fit is cut
- * short and never wraps the title. On an optional step Skipped joins Optional on its line, so that row keeps its
- * height when it is skipped. Another row grows by that one line while it is skipped, which answers its own toggle.
+ * The notes (Optional, and Skipped or Done) have a line under the text, and the line exists only while the row has a
+ * note to show: always on an optional step, and on any other step while it is skipped or done. A note that does not
+ * fit is cut short and never wraps the title. On an optional step the status joins Optional on its line, so that row
+ * keeps its height when it is skipped or done. Another row grows by that one line, which answers the state it follows.
+ * A finished step has nothing to skip, so its Skip button goes. A finished step 3 shows the line of the kind of
+ * card that finished it.
  * @param {object} options
  * @param {import('./getting-started.js').GettingStartedStep} options.step
  * @param {string} options.field Marks the row for tests and for the editor row styles.
@@ -60,19 +63,23 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, state }) {
 
     const notes = document.createElement('span');
     notes.className = 'sbHomeStepNotes';
-    const skippedTag = createTag(t`Skipped`);
+    const statusTag = createTag('');
     if (step.optional) {
         notes.append(createTag(t`Optional`));
     }
-    notes.append(skippedTag);
+    notes.append(statusTag);
     controller.row.querySelector('.ds-row-text').append(notes);
 
     function sync() {
         const skipped = state.isSkipped(step.id);
+        const done = state.isDone(step.id);
         skip.setAttribute('aria-pressed', String(skipped));
-        skippedTag.hidden = !skipped;
-        notes.hidden = !step.optional && !skipped;
-        controller.row.dataset.sbStepState = skipped ? 'skipped' : 'open';
+        skip.hidden = done;
+        statusTag.hidden = !skipped && !done;
+        statusTag.textContent = done ? t`Done` : t`Skipped`;
+        notes.hidden = !step.optional && !skipped && !done;
+        controller.row.dataset.sbStepState = done ? 'done' : (skipped ? 'skipped' : 'open');
+        markRowSubtitle(controller, getStepLineSlot(step, state, slot));
     }
     sync();
     return { row: controller.row, sync };
