@@ -212,6 +212,38 @@ test('a dialog opened from a dialog is pushed as a page with Back and Close', as
     await expect(page.locator('.sb-dialog-host[open]')).toHaveCount(0);
 });
 
+test('each Escape asks the dialog once, also the third, where Chromium closes the modal after the cancel was prevented', async ({ page }) => {
+    await prepare(page, { width: 1440, height: 900 });
+    await page.evaluate(async () => {
+        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+        window.qaEscapes = 0;
+        openDialog({
+            tier: 'dialog',
+            title: 'Guarded',
+            canClose: (reason) => {
+                if (reason === 'escape') window.qaEscapes += 1;
+                return false;
+            },
+            content: (body) => {
+                const poke = document.createElement('button');
+                poke.id = 'qa-poke';
+                poke.textContent = 'Poke';
+                body.append(poke);
+            },
+        });
+    });
+
+    for (let presses = 1; presses <= 4; presses++) {
+        // A click is the user activation that lets the next Escape be a cancel.
+        await page.locator('#qa-poke').click();
+        await page.keyboard.press('Escape');
+        await expect.poll(() => page.evaluate(() => window.qaEscapes)).toBe(presses);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        expect(await page.evaluate(() => window.qaEscapes)).toBe(presses);
+    }
+    await expect(page.locator('.sb-dialog-host[open]')).toHaveCount(1);
+});
+
 test.describe('while pages slide', () => {
     async function openWithStackedDivider(page) {
         await prepare(page, { width: 1440, height: 900 });

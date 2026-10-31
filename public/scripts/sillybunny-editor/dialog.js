@@ -1016,8 +1016,15 @@ export function openDialog({
     scrim.addEventListener('click', () => {
         if (!isSheet() && !isPage) void requestDismiss('scrim');
     });
+    // Chromium closes a modal again after a cancel that was prevented, from the third Escape on, so one key press can
+    // deliver both events and must ask only once.
+    let escapeAnswered = false;
+    host.addEventListener('keydown', event => {
+        if (event.key === 'Escape') escapeAnswered = false;
+    }, true);
     host.addEventListener('cancel', event => {
         event.preventDefault();
+        escapeAnswered = true;
         const view = topPage()?.view;
         if (view?.search?.isOpen) {
             view.search.close();
@@ -1029,6 +1036,7 @@ export function openDialog({
         // Some engines close a modal without a cancel event (repeated Escape); keep it open and ask instead.
         if (state !== 'open') return;
         host.showModal();
+        if (escapeAnswered) return;
         void requestDismiss('escape');
     });
     host.addEventListener('keydown', event => wrapTab(host, event));
