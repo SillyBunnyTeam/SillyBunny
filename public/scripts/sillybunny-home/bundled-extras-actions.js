@@ -21,10 +21,6 @@ import { getExtensionFolderName } from '../sillybunny-bundled-extras.js';
  * @property {(presetName: string) => boolean} has
  * @property {(presetName: string) => Promise<unknown>} restore
  *
- * @typedef {object} AssistantsAdapter
- * @property {(id: string) => boolean} has Whether the library has the card of the assistant.
- * @property {(id: string) => Promise<unknown>} install Imports the card of the assistant into the library.
- *
  * @typedef {object} ThemesAdapter
  * @property {(themeName: string) => boolean} has Whether the UI theme list has a theme of that name.
  * @property {(id: string) => Promise<{ name: string }>} install
@@ -32,9 +28,9 @@ import { getExtensionFolderName } from '../sillybunny-bundled-extras.js';
  */
 
 /**
- * @param {{ extensions: ExtensionsAdapter, presets: PresetsAdapter, themes: ThemesAdapter, assistants: AssistantsAdapter }} adapters
+ * @param {{ extensions: ExtensionsAdapter, presets: PresetsAdapter, themes: ThemesAdapter }} adapters
  */
-export function createBundledExtrasActions({ extensions, presets, themes, assistants }) {
+export function createBundledExtrasActions({ extensions, presets, themes }) {
     /** The names that the server gave to themes installed in this session, by item id. */
     const installedThemeNames = new Map();
 
@@ -59,11 +55,6 @@ export function createBundledExtrasActions({ extensions, presets, themes, assist
                 return presets.has(item.presetName)
                     ? { status: 'installed', actions: [] }
                     : { status: 'not-installed', actions: ['restore'] };
-            case 'assistant':
-                // Removing an assistant is deleting her character, which the app does for every card. So an installed row offers nothing.
-                return assistants.has(item.id)
-                    ? { status: 'installed', actions: [] }
-                    : { status: 'not-installed', actions: ['install'] };
             case 'theme-css':
                 return themes.has(themeNameOf(item))
                     ? { status: 'installed', actions: ['apply'] }
@@ -87,8 +78,6 @@ export function createBundledExtrasActions({ extensions, presets, themes, assist
             case 'install':
                 if (item.kind === 'theme-css') {
                     installedThemeNames.set(item.id, (await themes.install(item.id)).name);
-                } else if (item.kind === 'assistant') {
-                    await assistants.install(item.id);
                 } else {
                     await extensions.install(item.url);
                 }

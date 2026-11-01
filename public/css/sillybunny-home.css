@@ -405,7 +405,6 @@
 
 .sbHomeArt[data-sb-art-placeholder='row-reisen'],
 .sbHomeArt[data-sb-art-placeholder='row-tewi'],
-.sbHomeArt[data-sb-art-placeholder='row-nahida'],
 .sbHomeArt[data-sb-art-placeholder='row-pointer'] {
     width: 64px;
     height: 64px;
@@ -1258,7 +1257,6 @@ body.big-avatars .welcomeRecent .chatMessage {
 
     .sbHomeArt[data-sb-art-placeholder='row-reisen'],
     .sbHomeArt[data-sb-art-placeholder='row-tewi'],
-    .sbHomeArt[data-sb-art-placeholder='row-nahida'],
     .sbHomeArt[data-sb-art-placeholder='row-pointer'],
     .sbHomeChooseIcon {
         width: 128px;

@@ -447,7 +447,7 @@ describe('SillyBunny Chats Archive API', () => {
 describe('SillyBunny Chats Archive core', () => {
     const characters = [
         { avatar: 'Seraphina.png', name: 'Seraphina' },
-        { avatar: 'Nahida.png', name: 'Nahida' },
+        { avatar: 'Mira.png', name: 'Mira' },
     ];
     const groups = [
         { id: 'group-1', name: 'Tavern Night' },

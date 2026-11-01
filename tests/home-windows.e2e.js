@@ -51,8 +51,8 @@ const ACKNOWLEDGEMENTS = [
     { title: 'Other SillyTavern contributors', subtitle: null },
 ];
 const CONTRIBUTORS_URL = 'https://github.com/SillyTavern/SillyTavern/graphs/contributors';
-const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Nahida', 'Third-Party Software'];
-const EXTRAS_GROUPS = ['Assistants', 'First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
+const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Third-Party Software'];
+const EXTRAS_GROUPS = ['First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
 const EXTRAS_ITEMS = [
     'Alternate Descriptions', 'Bot Searcher', 'CSS Snippets', 'Deep Swipe', 'Macro Enhanced', 'Prompt Tags', 'Prompting Lab',
     'Regex Agent Themes', 'Time Machine', 'World Info Lab',
@@ -1724,7 +1724,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await host.getByRole('button', { name: 'Legal', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Legal');
                 await expect(current.getByRole('heading', { level: 3 })).toHaveText(LEGAL_GROUPS);
-                await expectSlots(current, ['AB-FANWORK', 'AB-ART-LICENCE', 'AB-NAHIDA', 'AB-THIRD-PARTY']);
+                await expectSlots(current, ['AB-FANWORK', 'AB-ART-LICENCE', 'AB-THIRD-PARTY']);
                 await expectNoUnmarkedPlaceholder(current);
             });
 
@@ -2136,72 +2136,51 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
             });
 
-            test('lists the Assistants group first, then every extension, theme and preset, then UI Themes', async ({ page }) => {
+            test('lists every extension, theme and preset, then UI Themes, with no Assistants group', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expect(host.getByRole('heading', { level: 3 })).toHaveText(EXTRAS_GROUPS);
-                await expect(labelsOf(host)).toHaveText(['Nahida', ...EXTRAS_ITEMS, 'UI Themes']);
+                await expect(labelsOf(host)).toHaveText([...EXTRAS_ITEMS, 'UI Themes']);
             });
 
-            test('keeps the intro, the Nahida subtitle and every item description as marked placeholders', async ({ page }) => {
+            test('keeps the intro and every item description as marked placeholders, with no assistant subtitle', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 const found = await readCopyPlaceholders(host);
                 const slots = found.map(entry => entry.slot);
 
                 expect(slots).toContain('BE-INTRO');
-                expect(slots).toContain('AS-NAHIDA-SUB');
                 expect(slots.filter(slot => slot.startsWith('BE-ITEM-'))).toHaveLength(EXTRAS_ITEMS.length);
+                expect(slots.filter(slot => slot.startsWith('AS-'))).toEqual([]);
                 expect(new Set(slots).size).toBe(slots.length);
-                await expectSlots(host, ['BE-INTRO', 'AS-NAHIDA-SUB']);
+                await expectSlots(host, ['BE-INTRO']);
                 await expectNoUnmarkedPlaceholder(host);
             });
 
-            test('shows the Tewi art at 96px and a 64px stand-in for Nahida, and loads no portrait', async ({ page }) => {
-                const portraits = [];
-                page.on('request', request => /nahida/i.test(request.url()) && /\.(?:png|jpe?g|webp)(?:\?|$)/i.test(request.url()) && portraits.push(request.url()));
-
+            test('shows the Tewi art at 96px, and no art beside a row', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expectIntro(host, 'extras-tewi', { slot: 'BE-INTRO', size: [96, 96] });
-                await expectArt(host, 'row-nahida', [64, 64]);
-                expect(portraits).toEqual([]);
+                await expect(host.locator('[data-sb-art-placeholder^="row-"]')).toHaveCount(0);
             });
 
-            /** Makes the library hold the card of Nahida or not, whatever the server holds, and loads it again. */
-            async function pinNahida(page, installed) {
+            test('gives a library that holds the card of Nahida no row for her, and loads no portrait of her', async ({ page }) => {
+                const portraits = [];
+                page.on('request', request => /nahida/i.test(request.url()) && /\.(?:png|jpe?g|webp)(?:\?|$)/i.test(request.url()) && request.url().includes('/img/') && portraits.push(request.url()));
                 await page.route('**/api/characters/all', async (route) => {
                     const real = await fetchJsonOrSkip(route);
                     if (!real) return;
-                    const others = real.filter(entry => entry.avatar !== 'default_AssistantNahida.png');
                     const data = { name: 'Assistant Nahida', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', creator_notes: '', creator: '', character_version: '', alternate_greetings: [], group_only_greetings: [], tags: [], extensions: {} };
                     const card = { ...data, avatar: 'default_AssistantNahida.png', data, shallow: false, chat: 'qa-nahida', create_date: 1, json_data: JSON.stringify({ data }) };
-                    return route.fulfill({ json: installed ? [...others, card] : others });
+                    return route.fulfill({ json: [...real.filter(entry => entry.avatar !== card.avatar), card] });
                 });
                 await page.evaluate(async () => (await import('/script.js')).getCharacters());
-            }
 
-            const nahidaRow = (host, page) => host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: /^Nahida$/ }) });
-
-            test('the Nahida row is not installed and offers Install, with no stub, while the library has no card for her', async ({ page }) => {
-                await pinNahida(page, false);
                 const host = await openFromTile(page, 'extras');
-                const row = nahidaRow(host, page);
 
-                await expect(row.locator('.sbBundledExtraState')).toHaveText('Not installed');
-                await expect(row.locator('.sbBundledExtraControls button')).toHaveText(['Install']);
-                await expect(host.getByRole('button', { name: 'Add', exact: true })).toHaveCount(0);
+                await expect(labelsOf(host)).toHaveText([...EXTRAS_ITEMS, 'UI Themes']);
                 await expect(host.locator('[data-sb-stub]')).toHaveCount(0);
-            });
-
-            test('the Nahida row is installed and offers no action while the library holds her card', async ({ page }) => {
-                await pinNahida(page, true);
-                const host = await openFromTile(page, 'extras');
-                const row = nahidaRow(host, page);
-
-                await expect(row.locator('.sbBundledExtraState')).toHaveText('Installed');
-                await expect(row.locator('.sbBundledExtraControls button')).toHaveCount(0);
-                await expect(host.locator('[data-sb-stub]')).toHaveCount(0);
+                expect(portraits).toEqual([]);
             });
 
             test('lists no link for an extension, a theme or a preset', async ({ page }) => {

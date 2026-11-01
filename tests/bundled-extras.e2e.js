@@ -18,7 +18,7 @@ const VIEWPORTS = [
     { name: 'phone 390x844', checksColours: false, options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
 ];
 
-const GROUPS = ['Assistants', 'First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
+const GROUPS = ['First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
 /** Every row of the window, in page order, and the folder an extension installs into. */
 const ITEMS = [
     { id: 'alternate-descriptions', label: 'Alternate Descriptions', folder: 'SillyBunny-AlternateDescriptions', url: 'https://github.com/SillyBunnyTeam/SillyBunny-AlternateDescriptions' },
@@ -42,12 +42,6 @@ const ITEMS = [
 ];
 const item = id => ITEMS.find(candidate => candidate.id === id);
 
-const NAHIDA_AVATAR = 'default_AssistantNahida.png';
-const nahidaCard = () => {
-    const data = { name: 'Assistant Nahida', description: '', personality: '', scenario: '', first_mes: 'QA greeting', mes_example: '', creator_notes: '', creator: '', character_version: '', alternate_greetings: [], group_only_greetings: [], tags: [], extensions: { fav: false, talkativeness: 0.5 } };
-    return { ...data, avatar: NAHIDA_AVATAR, data, shallow: false, chat: 'qa-nahida', create_date: 1, json_data: JSON.stringify({ data }) };
-};
-
 const GEECHAN_PRESET = 'Geechan - Universal Roleplay (Chat Completions) (v5.2)';
 const FIXTURE_THEME = { id: 'fixture-midnight', name: 'Fixture Midnight', group: 'themes', kind: 'theme-css', url: 'https://example.com/fixture-midnight', themeName: 'Fixture Midnight' };
 
@@ -66,15 +60,13 @@ const readPayload = (request) => {
 /**
  * Starts the app on Home with the extension, preset and theme routes answered by a small world that the test keeps in
  * memory: which extension folders are installed (and switched off), which bundled preset is missing from the list, and
- * which themes the server holds, and whether the library has the card of Nahida. The install, delete, restore, theme and
- * character import routes only record the call and update that world.
+ * which themes the server holds. The install, delete, restore and theme routes only record the call and update that world.
  */
-async function boot(page, { installed = {}, missingPresets = [], themeInstall = null, cleanHooks = [], nahidaInstalled = false, nahidaImportFails = false } = {}) {
+async function boot(page, { installed = {}, missingPresets = [], themeInstall = null, cleanHooks = [] } = {}) {
     const world = {
         folders: new Map(Object.entries(installed)),
         missingPresets: new Set(missingPresets),
         cleanHooks: new Set(cleanHooks),
-        nahidaInstalled,
         savedThemes: [],
         settingsReads: 0,
         calls: [],
@@ -87,7 +79,7 @@ async function boot(page, { installed = {}, missingPresets = [], themeInstall = 
             world.calls.push({ path: pathname, body: request.postDataJSON() });
         }
         if (request.method() === 'POST' && pathname === '/api/characters/import') {
-            world.calls.push({ path: pathname, body: request.postDataBuffer().toString() });
+            world.calls.push({ path: pathname });
         }
     });
 
@@ -132,19 +124,6 @@ async function boot(page, { installed = {}, missingPresets = [], themeInstall = 
         }
         world.savedThemes.push(FIXTURE_THEME.themeName);
         return route.fulfill({ status: 201, json: { name: FIXTURE_THEME.themeName, theme: { name: FIXTURE_THEME.themeName, custom_css: '' } } });
-    });
-    await page.route('**/api/characters/all', async (route) => {
-        const real = await fetchJsonOrSkip(route);
-        if (!real) return;
-        const others = real.filter(entry => entry.avatar !== NAHIDA_AVATAR);
-        return route.fulfill({ json: world.nahidaInstalled ? [...others, nahidaCard()] : others });
-    });
-    await page.route('**/api/characters/import', (route) => {
-        if (nahidaImportFails) {
-            return route.fulfill({ status: 400, json: { error: 'import_failed' } });
-        }
-        world.nahidaInstalled = true;
-        return route.fulfill({ json: { file_name: NAHIDA_AVATAR.replace(/\.png$/, '') } });
     });
     await page.route('**/api/settings/save', (route) => {
         world.settingsSaves.push(readPayload(route.request()));
@@ -219,7 +198,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
 
                 await expect(host.getByRole('heading', { level: 3 })).toHaveText(GROUPS);
                 await expect(host.getByRole('heading', { name: 'Third-Party Themes' })).toHaveCount(0);
-                await expect(host.locator('.ds-row-label')).toHaveText(['Nahida', ...ITEMS.map(entry => entry.label), 'UI Themes']);
+                await expect(host.locator('.ds-row-label')).toHaveText([...ITEMS.map(entry => entry.label), 'UI Themes']);
 
                 const slots = await host.locator('[data-sb-copy-placeholder="true"]').evaluateAll(nodes => nodes.map(node => [node.dataset.sbCopySlot, node.textContent.trim()]));
                 expect(slots.filter(([slot]) => slot.startsWith('BE-ITEM-')).map(([slot]) => slot).sort())
@@ -449,7 +428,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
 
                 const host = await openWithFixtureTheme(page);
 
-                await expect(host.getByRole('heading', { level: 3 })).toHaveText(['Assistants', 'First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Third-Party Themes', 'Presets']);
+                await expect(host.getByRole('heading', { level: 3 })).toHaveText(['First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Third-Party Themes', 'Presets']);
                 await expect(statusOf(rowOf(host, 'Fixture Midnight'))).toHaveText('Not installed');
                 await expect(host.locator('[data-sb-copy-slot="BE-ITEM-FIXTURE-MIDNIGHT"]')).toHaveText(COPY_PLACEHOLDER);
             });
@@ -473,98 +452,14 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await expect.poll(() => page.evaluate(async () => (await import('/scripts/power-user.js')).power_user.theme)).toBe(FIXTURE_THEME.themeName);
             });
 
-            test('the Nahida row is not installed while the library has no card for her, and offers Install and no stub', async ({ page }) => {
-                const host = await openFromTile(page);
-                const row = rowOf(host, 'Nahida');
-
-                await expect(statusOf(row)).toHaveText('Not installed');
-                await expect(buttonsOf(row)).toHaveText(['Install']);
-                await expect(row.locator('[data-sb-stub]')).toHaveCount(0);
-                expect(world.calls.filter(call => call.path === '/api/characters/import'), 'opening the window imports nothing').toEqual([]);
-            });
-
-            test('Install on Nahida imports her card from the app, and the row then shows Installed with no action', async ({ page }) => {
+            test('lists no assistant: no group, no row for Nahida, no art beside a row, and opening the window imports no card', async ({ page }) => {
                 const host = await openFromTile(page);
 
-                const imported = page.waitForRequest('**/api/characters/import');
-                await buttonsOf(rowOf(host, 'Nahida')).getByText('Install').click();
-                const body = (await imported).postDataBuffer().toString();
-
-                expect(body).toContain('filename="default_AssistantNahida.png"');
-                expect(body).toContain('default_AssistantNahida');
-                await expect(statusOf(rowOf(host, 'Nahida'))).toHaveText('Installed');
-                await expect(buttonsOf(rowOf(host, 'Nahida'))).toHaveCount(0);
-                expect(world.calls.filter(call => call.path === '/api/characters/import')).toHaveLength(1);
-                expect(await page.evaluate(async () => (await import('/script.js')).characters.map(entry => entry.avatar))).toContain(NAHIDA_AVATAR);
-            });
-
-            test('Install on Nahida leaves the assistant of the account as it was', async ({ page }) => {
-                const readPointer = () => page.evaluate(async () => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem('assistant'));
-                const host = await openFromTile(page);
-                const before = await readPointer();
-
-                await buttonsOf(rowOf(host, 'Nahida')).getByText('Install').click();
-                await expect(statusOf(rowOf(host, 'Nahida'))).toHaveText('Installed');
-
-                expect(await readPointer()).toBe(before);
-            });
-
-            test('Nahida offers Install again once her card is deleted, and installing clears the mark of the deletion', async ({ page }) => {
-                world.nahidaInstalled = true;
-                await page.evaluate(async () => (await import('/script.js')).getCharacters());
-                const host = await openFromTile(page);
-                await expect(statusOf(rowOf(host, 'Nahida'))).toHaveText('Installed');
-                await page.keyboard.press('Escape');
-                await expect(hosts(page)).toHaveCount(0);
-
-                world.nahidaInstalled = false;
-                await page.evaluate(async (avatar) => {
-                    const app = await import('/script.js');
-                    const { eventSource, event_types } = app;
-                    const character = app.characters.find(entry => entry.avatar === avatar);
-                    await app.getCharacters();
-                    await eventSource.emit(event_types.CHARACTER_DELETED, { character });
-                }, NAHIDA_AVATAR);
-                const reopened = await openFromTile(page);
-                await expect(statusOf(rowOf(reopened, 'Nahida'))).toHaveText('Not installed');
-                await expect(buttonsOf(rowOf(reopened, 'Nahida'))).toHaveText(['Install']);
-                const marked = () => page.evaluate(async () => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem('bundledAssistantNahidaDeleted'));
-                expect(await marked()).toBe('true');
-
-                await buttonsOf(rowOf(reopened, 'Nahida')).getByText('Install').click();
-
-                await expect(statusOf(rowOf(reopened, 'Nahida'))).toHaveText('Installed');
-                expect(await marked()).toBeNull();
-            });
-        });
-
-        test.describe('Nahida in the library already', () => {
-            test('shows Installed with no action, and imports nothing', async ({ page }) => {
-                const world = await boot(page, { nahidaInstalled: true });
-                const host = await openFromTile(page);
-
-                await expect(statusOf(rowOf(host, 'Nahida'))).toHaveText('Installed');
-                await expect(buttonsOf(rowOf(host, 'Nahida'))).toHaveCount(0);
+                await expect(host.getByRole('heading', { name: 'Assistants' })).toHaveCount(0);
+                await expect(host.locator('.ds-row-label', { hasText: 'Nahida' })).toHaveCount(0);
+                await expect(host.locator('[data-sb-art-placeholder^="row-"]')).toHaveCount(0);
+                await expect(host.locator('[data-sb-copy-slot^="AS-"]')).toHaveCount(0);
                 expect(world.calls.filter(call => call.path === '/api/characters/import')).toEqual([]);
-            });
-        });
-
-        test.describe('Nahida whose import fails', () => {
-            test('stays not installed, logs the error and toasts the marked placeholder', async ({ page }) => {
-                await boot(page, { nahidaImportFails: true });
-                await showToasts(page);
-                const errors = [];
-                page.on('console', message => message.type() === 'error' && errors.push(message.text()));
-                const host = await openFromTile(page);
-
-                await buttonsOf(rowOf(host, 'Nahida')).getByText('Install').click();
-
-                const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="BE-ACTION-ERROR"]');
-                await expect(toast).toHaveText(COPY_PLACEHOLDER);
-                await expect(statusOf(rowOf(host, 'Nahida'))).toHaveText('Not installed');
-                await expect(buttonsOf(rowOf(host, 'Nahida'))).toHaveText(['Install']);
-                await expect(buttonsOf(rowOf(host, 'Nahida'))).toBeEnabled();
-                expect(errors.some(line => line.includes('nahida'))).toBe(true);
             });
         });
 

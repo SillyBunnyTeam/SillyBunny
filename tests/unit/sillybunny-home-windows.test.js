@@ -67,10 +67,10 @@ describe('Home window openers', () => {
         const first = openWindow();
         openBundledExtrasWindow.mockResolvedValueOnce(first.handle);
 
-        openBundledExtras({ group: 'assistants' });
+        openBundledExtras({ group: 'themes' });
         await flush();
 
-        expect(openBundledExtrasWindow).toHaveBeenLastCalledWith({ group: 'assistants' });
+        expect(openBundledExtrasWindow).toHaveBeenLastCalledWith({ group: 'themes' });
         first.close();
         await flush();
         const second = openWindow();

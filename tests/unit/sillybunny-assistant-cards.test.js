@@ -63,7 +63,7 @@ describe('the order of the assistant cards', () => {
         expect(cards[2].kind).toBe('choose');
     });
 
-    test('lists a character that a card of this app does not own, such as Nahida, as a pointer card like any other', () => {
+    test('lists the card of a user who installed Nahida earlier, once the pointer names it, as a pointer card like any other', () => {
         const library = createLibrary({ characters: { ...BOTH, 'default_AssistantNahida.png': 'Assistant Nahida' } });
 
         const cards = getAssistantCards({ library, pointerAvatar: 'default_AssistantNahida.png' });
@@ -71,7 +71,7 @@ describe('the order of the assistant cards', () => {
         expect(cards[2]).toMatchObject({ kind: 'pointer', name: 'Assistant Nahida', art: { name: 'row-pointer', avatar: 'default_AssistantNahida.png' } });
     });
 
-    test('has no card for an installed optional assistant that the pointer does not name', () => {
+    test('gives the card of Nahida no card of her own while the pointer does not name her', () => {
         const library = createLibrary({ characters: { ...BOTH, 'default_AssistantNahida.png': 'Assistant Nahida' } });
 
         expect(keysOf(getAssistantCards({ library, pointerAvatar: null }))).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
@@ -169,6 +169,16 @@ describe('the characters that the picker offers', () => {
         const entries = getAssistantPickerEntries({ library: same, pointerAvatar: null });
 
         expect(entries.map(entry => entry.avatar)).toEqual(['ann.png', 'sam-a.png', 'sam-b.png', 'sam-c.png']);
+    });
+
+    test('list the card of Nahida like any other character, and mark it when the pointer names it', () => {
+        const withNahida = createLibrary({ characters: { ...BOTH, 'default_AssistantNahida.png': 'Assistant Nahida', 'bob.png': 'Bob' } });
+
+        const unchosen = getAssistantPickerEntries({ library: withNahida, pointerAvatar: null });
+        const chosen = getAssistantPickerEntries({ library: withNahida, pointerAvatar: 'default_AssistantNahida.png' });
+
+        expect(unchosen.map(entry => [entry.name, entry.selected])).toEqual([['Assistant Nahida', false], ['Bob', false]]);
+        expect(chosen.map(entry => [entry.name, entry.selected])).toEqual([['Assistant Nahida', true], ['Bob', false]]);
     });
 
     test('mark the character that the pointer names as selected', () => {

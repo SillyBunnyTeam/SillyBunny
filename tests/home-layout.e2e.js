@@ -772,7 +772,6 @@ for (const { name, options } of VIEWPORTS) {
                 'HOME-ROW-HELP',
                 'HOME-ROW-EXTRAS',
             ]));
-            expect(report.slots).not.toEqual(expect.arrayContaining(['AS-NAHIDA-SUB']));
         });
 
         for (const mode of ['full', 'compact']) {
@@ -1008,14 +1007,13 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
-        test('the Assistants section holds Reisen, Tewi and a Choose Assistant card, and no card for an optional assistant', async ({ page }) => {
+        test('the Assistants section holds Reisen, Tewi and a Choose Assistant card', async ({ page }) => {
             await chooseMode(page, 'full');
             const cards = page.locator('#chat > .welcomePanel .sbHomeCards > .sbHomeCard');
 
             await expect(cards).toHaveCount(3);
             await expect(assistantCards(page).locator('.sbHomeCardName')).toHaveText(ASSISTANT_NAMES);
             await expect(chooseCard(page).locator('.sbHomeCardName')).toHaveText('Choose Assistant');
-            await expect(page.locator('#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-nahida"]')).toHaveCount(0);
             await expect(page.locator('.welcomePanel [data-sb-home-region="assistants"] details')).toHaveCount(0);
             await expect(page.locator('.welcomePanel [data-sb-home-region="assistants"]').getByRole('heading', { level: 2, name: 'Assistants' })).toBeVisible();
         });

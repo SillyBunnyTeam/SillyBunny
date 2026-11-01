@@ -325,6 +325,21 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(rowOf(host, 'Get a Character Card').locator('[data-sb-copy-slot]')).toHaveAttribute('data-sb-copy-slot', 'GS-3-DONE-OTHER');
         });
 
+        test('the card of Nahida, which earlier versions let the user install, does not finish Get a Character Card', async ({ page }) => {
+            await bootHome(page);
+            await expect(progressOf(page)).toHaveText('0 of 4');
+
+            await page.evaluate(async () => {
+                const { characters } = await import('/script.js');
+                characters.push({ avatar: 'default_AssistantNahida.png', name: 'Assistant Nahida' });
+            });
+            await emit(page, 'CHARACTER_PAGE_LOADED');
+
+            await expect(progressOf(page)).toHaveText('0 of 4');
+            const host = await openWindow(page);
+            await expect(rowOf(host, 'Get a Character Card')).toHaveAttribute('data-sb-step-state', 'open');
+        });
+
         test('opening a chat finishes Get a Character Card', async ({ page }) => {
             await bootHome(page);
             await expect(progressOf(page)).toHaveText('0 of 4');

@@ -19,7 +19,7 @@ const POINTER_KEY = 'assistant';
 
 /** A library as a server holds it before the assistant cards of 5.5 ship: the default content only. */
 const TODAY = [SERAPHINA, GUIDE];
-/** A library that the server seeded with Reisen and Tewi, and where Nahida was never installed. */
+/** A library that the server seeded with Reisen and Tewi, and where Nahida was never installed. Nahida ships no more. */
 const SEEDED = [SERAPHINA, GUIDE, REISEN, TEWI];
 
 function card(avatar) {
@@ -101,6 +101,54 @@ test.describe('the bundled assistants at startup', () => {
         expect(world.imports).toEqual([]);
         expect(await libraryAvatars(page)).toContain(NAHIDA);
         expect(await stored(page, 'bundledAssistantNahidaDeleted')).toBeNull();
+    });
+
+    test.describe('a user who installed Nahida with an earlier version', () => {
+        const HER_KEYS = {
+            bundledAssistantNahidaAvatar: 'My Nahida.png',
+            bundledAssistantNahidaIdentityAvatar: 'My Nahida.png',
+            bundledAssistantNahidaDeleted: 'true',
+        };
+        const herKeys = page => Promise.all(Object.keys(HER_KEYS).map(key => stored(page, key)));
+
+        test('keeps the three account keys of her, and the startup reads and writes none of them', async ({ page }) => {
+            await boot(page, { library: [...SEEDED, NAHIDA], accountStorage: HER_KEYS });
+
+            expect(await herKeys(page)).toEqual(Object.values(HER_KEYS));
+        });
+
+        test('keeps them when her card is renamed or deleted, because no listener of the app knows her any more', async ({ page }) => {
+            await boot(page, { library: [...SEEDED, NAHIDA], accountStorage: { bundledAssistantNahidaAvatar: HER_KEYS.bundledAssistantNahidaAvatar, bundledAssistantNahidaIdentityAvatar: HER_KEYS.bundledAssistantNahidaIdentityAvatar } });
+
+            await page.evaluate(async ({ avatar }) => {
+                const { eventSource, event_types } = await import('/script.js');
+                await eventSource.emit(event_types.CHARACTER_RENAMED, avatar, 'Renamed Nahida.png');
+                await eventSource.emit(event_types.CHARACTER_DELETED, { character: { avatar: 'Renamed Nahida.png', name: 'Assistant Nahida' } });
+            }, { avatar: NAHIDA });
+
+            expect(await herKeys(page)).toEqual(['My Nahida.png', 'My Nahida.png', null]);
+        });
+
+        test('keeps them when the card that her keys name, under the name the user gave it, is renamed or deleted', async ({ page }) => {
+            const userAvatar = HER_KEYS.bundledAssistantNahidaAvatar;
+            await boot(page, { library: [...SEEDED, userAvatar], accountStorage: HER_KEYS });
+
+            await page.evaluate(async ({ avatar }) => {
+                const { eventSource, event_types } = await import('/script.js');
+                await eventSource.emit(event_types.CHARACTER_RENAMED, avatar, 'Renamed My Nahida.png');
+                await eventSource.emit(event_types.CHARACTER_DELETED, { character: { avatar: 'Renamed My Nahida.png', name: 'My Nahida' } });
+                await eventSource.emit(event_types.CHARACTER_DELETED, { character: { avatar, name: 'My Nahida' } });
+            }, { avatar: userAvatar });
+
+            expect(await herKeys(page)).toEqual(Object.values(HER_KEYS));
+        });
+
+        test('has her card in the library as an ordinary character that is not an assistant', async ({ page }) => {
+            await boot(page, { library: [...SEEDED, NAHIDA] });
+
+            expect(await libraryAvatars(page)).toContain(NAHIDA);
+            expect(await defaultAvatar(page)).toBe(REISEN);
+        });
     });
 
     test('looks for Reisen and Tewi without creating or importing them when their cards are missing', async ({ page }) => {
@@ -225,32 +273,6 @@ test.describe('the bundled assistants at startup', () => {
             expect(errors).toEqual([]);
             expect(await markersOf(page)).toEqual([null, 'true', null, null]);
         });
-    });
-
-    test.describe('installing an assistant by id', () => {
-        const install = (page, id) => page.evaluate(async (target) => {
-            try {
-                await (await import('/scripts/welcome-screen.js')).installBundledAssistant(target);
-                return 'resolved';
-            } catch (error) {
-                return error.message;
-            }
-        }, id);
-
-        for (const [id, message] of [
-            ['reisen', /no card that the app can import/],
-            ['tewi', /no card that the app can import/],
-            ['seraphina', /no bundled assistant/],
-        ]) {
-            test(`rejects ${id}, and sends nothing to the server`, async ({ page }) => {
-                const world = await boot(page, { library: TODAY });
-
-                expect(await install(page, id)).toMatch(message);
-
-                expect(world.imports).toEqual([]);
-                expect(world.creates).toEqual([]);
-            });
-        }
     });
 
     test('the deleted marker of Reisen and Tewi follows the deletion of their cards', async ({ page }) => {

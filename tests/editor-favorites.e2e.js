@@ -36,7 +36,7 @@ async function bootFixtures(page) {
         makeCharacter('qa-other-card.png', 'QA Other Card'),
         // Startup creates a missing bundled assistant, which would send a create or import request.
         makeCharacter('default_SillyBunnyGuide.png', 'QA Guide'),
-        makeCharacter('default_AssistantNahida.png', 'QA Nahida'),
+        makeCharacter('default_QaBundledExtra.png', 'QA Bundled Extra'),
     ];
     const groups = [{
         id: GROUP, name: GROUP_NAME, members: characters.slice(0, 2).map(character => character.avatar),

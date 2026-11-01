@@ -32,13 +32,6 @@
     height: 64px;
 }
 
-/* This sheet loads with the first window and then wins over the Home sheet for any rule of equal weight, so a size
-   for art that Home also draws stays inside the window that needs it. */
-.sbBundledExtrasDialog .sbHomeArt[data-sb-art-placeholder='row-nahida'] {
-    width: 64px;
-    height: 64px;
-}
-
 /* ── Shared page layout ─────────────────────────────────────────────────── */
 
 :is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body {
@@ -621,10 +614,6 @@ body.reduced-motion .sbHomeFlatButton {
 
 .sbBundledExtraState {
     margin-inline-end: 4px;
-}
-
-.sbBundledExtrasDialog .ds-row > .sbHomeArt {
-    margin-inline-end: 12px;
 }
 
 /* Opening at a group scrolls its heading to the top of the body, so it keeps a margin from the header. */

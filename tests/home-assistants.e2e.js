@@ -45,13 +45,12 @@ const card = avatar => makeCharacterCard(avatar, NAMES[avatar] ?? avatar);
  *   `exact` drops the characters that the data root holds, so the picker lists the library of the test and nothing else.
  */
 async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay', exact = false }) {
-    const world = { library: new Set(library), imports: [], chatSaves: [], lastChats: [] };
+    const world = { library: new Set(library), chatSaves: [], lastChats: [] };
     const bundled = [REISEN, TEWI, NAHIDA];
 
     page.on('request', (request) => {
         const { pathname } = new URL(request.url());
         if (request.method() !== 'POST') return;
-        if (pathname === '/api/characters/import') world.imports.push(request.url());
         if (pathname === '/api/chats/save') world.chatSaves.push(request.url());
         if (pathname === '/api/characters/last-chat') world.lastChats.push(request.postDataJSON());
     });
@@ -68,10 +67,6 @@ async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay',
         const real = await fetchJsonOrSkip(route);
         if (!real) return;
         return route.fulfill({ json: [...real.filter(entry => !bundled.includes(entry.avatar)), ...[...world.library].map(card)] });
-    });
-    await page.route('**/api/characters/import', (route) => {
-        world.library.add(NAHIDA);
-        return route.fulfill({ json: { file_name: NAHIDA.replace(/\.png$/, '') } });
     });
     await page.route('**/api/settings/get', async (route) => {
         const data = await fetchJsonOrSkip(route);
@@ -848,11 +843,42 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     expect(world.chatSaves).toEqual([]);
                 });
 
-                test('a character that is only in the library, such as Nahida, gets no card until the pointer names it', async ({ page }) => {
-                    await boot(page, { library: LIBRARY, exact: true });
+                test.describe('a user who installed Nahida with an earlier version', () => {
+                    test('has no card of her own while the pointer does not name her', async ({ page }) => {
+                        await boot(page, { library: LIBRARY, exact: true });
 
-                    await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
-                    await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
+                        await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
+                        await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
+                        await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+                    });
+
+                    test('sees her card in the third slot like any other character once the pointer names her', async ({ page }) => {
+                        await boot(page, { library: LIBRARY, accountStorage: { assistant: NAHIDA }, exact: true });
+
+                        await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
+                        await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Assistant Nahida');
+                        await expect(ownCard(page).locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-POINTER-SUB');
+                        await expect(ownCard(page).locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=default_AssistantNahida\.png/);
+                        await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
+                        await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
+                    });
+
+                    test('opens a new chat with her from Start New Chat, as with any character', async ({ page }) => {
+                        await boot(page, { library: LIBRARY, accountStorage: { assistant: NAHIDA }, exact: true });
+
+                        await startOf(ownCard(page)).click();
+
+                        await expect.poll(() => currentAvatar(page)).toBe(NAHIDA);
+                        await expect.poll(() => currentChat(page)).toMatch(/^Assistant Nahida - /);
+                    });
+
+                    test('finds her in the picker among the other characters', async ({ page }) => {
+                        await boot(page, { library: LIBRARY, exact: true });
+
+                        await chooseOf(page).click();
+
+                        await expect(hosts(page).locator('.ds-row-label')).toContainText(['Alice', 'Assistant Nahida', 'Bob']);
+                    });
                 });
             });
 

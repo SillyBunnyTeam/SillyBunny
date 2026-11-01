@@ -219,7 +219,6 @@ function fillLegal(body) {
     const groups = [
         [t`Fan Work`, 'AB-FANWORK'],
         [t`Art Licence`, 'AB-ART-LICENCE'],
-        [t`Nahida`, 'AB-NAHIDA'],
         [t`Third-Party Software`, 'AB-THIRD-PARTY'],
     ];
     body.append(...groups.map(([title, slot]) => createSection(title, createCopyBlock(slot))));

@@ -1,21 +1,34 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure functions. */
 import { describe, expect, jest, test } from '@jest/globals';
-import {
+import * as registry from '../../public/scripts/sillybunny-home/assistant-registry.js';
+
+const {
     ASSISTANTS,
     getAssistant,
     getAssistantAvatars,
     getCreationMethod,
     getHomeAssistants,
-    getOptionalAssistants,
     resolveDefaultAssistant,
-} from '../../public/scripts/sillybunny-home/assistant-registry.js';
-import { BUNDLED_EXTRAS } from '../../public/scripts/sillybunny-bundled-extras.js';
+} = registry;
 
 const ids = () => ASSISTANTS.map(assistant => assistant.id);
 
 describe('the assistant registry', () => {
-    test('lists Reisen, Tewi, Nahida and the Bunny Guide, each once, in that order', () => {
-        expect(ids()).toEqual(['reisen', 'tewi', 'nahida', 'guide']);
+    test('lists Reisen, Tewi and the Bunny Guide, each once, in that order', () => {
+        expect(ids()).toEqual(['reisen', 'tewi', 'guide']);
+    });
+
+    test('does not list Nahida, and names none of the account keys that earlier versions kept for her', () => {
+        const keys = ASSISTANTS.flatMap(assistant => [assistant.avatarStorageKey, assistant.identityStorageKey, assistant.deletedStorageKey]);
+
+        expect(ids()).not.toContain('nahida');
+        expect(keys.filter(key => /nahida/i.test(key))).toEqual([]);
+        expect(() => getAssistant('nahida')).toThrow(/nahida/);
+    });
+
+    test('has no mechanism for an assistant that is imported on request', () => {
+        expect(registry).not.toHaveProperty('getOptionalAssistants');
+        expect(ASSISTANTS.filter(assistant => 'autoEnsure' in assistant || 'cardAsset' in assistant)).toEqual([]);
     });
 
     test('is frozen, entries included', () => {
@@ -39,7 +52,6 @@ describe('the assistant registry', () => {
     test.each([
         ['reisen', 'default_AssistantReisen.png', 'default_AssistantReisen', 'assistant', 'bundledAssistantReisenIdentityAvatar', 'bundledAssistantReisenDeleted'],
         ['tewi', 'default_AssistantTewi.png', 'default_AssistantTewi', 'bundledAssistantTewiAvatar', 'bundledAssistantTewiIdentityAvatar', 'bundledAssistantTewiDeleted'],
-        ['nahida', 'default_AssistantNahida.png', 'default_AssistantNahida', 'bundledAssistantNahidaAvatar', 'bundledAssistantNahidaIdentityAvatar', 'bundledAssistantNahidaDeleted'],
         ['guide', 'default_SillyBunnyGuide.png', 'default_SillyBunnyGuide', 'assistant', 'bundledAssistantGuideAvatar', 'bundledAssistantGuideDeleted'],
     ])('keeps the files and keys of %s that accounts already hold', (id, defaultAvatar, fileName, avatarKey, identityKey, deletedKey) => {
         expect(getAssistant(id)).toMatchObject({
@@ -58,49 +70,24 @@ describe('the assistant registry', () => {
 });
 
 describe('how an assistant is brought into the library', () => {
-    test.each(['reisen', 'tewi'])('%s is resolve-only: no card asset and no card of her own to create', (id) => {
+    test.each(['reisen', 'tewi'])('%s is resolve-only: no portrait and no card of her own to create', (id) => {
         const assistant = getAssistant(id);
 
         expect(getCreationMethod(assistant)).toBeNull();
-        expect(assistant).not.toHaveProperty('cardAsset');
         expect(assistant).not.toHaveProperty('portrait');
         expect(assistant).not.toHaveProperty('description');
         expect(assistant).not.toHaveProperty('firstMessage');
-    });
-
-    test('Nahida is imported from her card asset, and only when the user asks', () => {
-        const nahida = getAssistant('nahida');
-
-        expect(getCreationMethod(nahida)).toBe('asset');
-        expect(nahida.cardAsset).toBe('img/assistant-nahida-portrait.png');
-        expect(nahida.autoEnsure).toBe(false);
     });
 
     test('the Bunny Guide still has the card that the app creates for it', () => {
         const guide = getAssistant('guide');
 
         expect(getCreationMethod(guide)).toBe('fallback');
-        expect(guide.autoEnsure).not.toBe(false);
     });
 
-    test.each(['reisen', 'tewi', 'guide'])('%s is looked for at startup', (id) => {
-        expect(getAssistant(id).autoEnsure).not.toBe(false);
-    });
-
-    test('an entry with a card asset wins over one with a fallback card', () => {
-        expect(getCreationMethod({ cardAsset: 'img/a.png', portrait: 'img/b.png' })).toBe('asset');
+    test('an entry with a portrait is created by the app, and one without is left to the server', () => {
         expect(getCreationMethod({ portrait: 'img/b.png' })).toBe('fallback');
         expect(getCreationMethod({})).toBeNull();
-    });
-
-    test('every assistant that Bundled Extras offers is one that the app can import, and none of them is looked for at startup', () => {
-        const offered = BUNDLED_EXTRAS.filter(item => item.kind === 'assistant');
-
-        expect(offered.length).toBeGreaterThan(0);
-        for (const item of offered) {
-            expect(getCreationMethod(getAssistant(item.id))).toBe('asset');
-            expect(getAssistant(item.id).autoEnsure).toBe(false);
-        }
     });
 });
 
@@ -110,18 +97,6 @@ describe('what Home and Getting Started read', () => {
             { id: 'reisen', name: 'Reisen', slot: 'AS-REISEN-SUB', art: 'row-reisen' },
             { id: 'tewi', name: 'Tewi', slot: 'AS-TEWI-SUB', art: 'row-tewi' },
         ]);
-    });
-
-    test('Home lists an optional assistant only once she is installed, with the slot and art she has in Bundled Extras', () => {
-        expect(getOptionalAssistants().map(({ id, name, slot, art }) => ({ id, name, slot, art }))).toEqual([
-            { id: 'nahida', name: 'Nahida', slot: 'AS-NAHIDA-SUB', art: 'row-nahida' },
-        ]);
-        expect(getHomeAssistants().some(assistant => assistant.autoEnsure === false)).toBe(false);
-    });
-
-    test('an optional assistant is exactly one that is not looked for at startup', () => {
-        expect(getOptionalAssistants().every(assistant => assistant.autoEnsure === false)).toBe(true);
-        expect(ASSISTANTS.filter(assistant => assistant.autoEnsure === false)).toEqual(getOptionalAssistants());
     });
 
     test('the avatars of an assistant are its default file', () => {
@@ -143,7 +118,7 @@ describe('the default assistant', () => {
         expect(resolveDefaultAssistant({ hasCard: () => false }).id).toBe('guide');
     });
 
-    test('does not depend on the cards of Tewi or Nahida', () => {
+    test('does not depend on the card of Tewi', () => {
         expect(resolveDefaultAssistant({ hasCard: assistant => assistant.id !== 'reisen' }).id).toBe('guide');
     });
 

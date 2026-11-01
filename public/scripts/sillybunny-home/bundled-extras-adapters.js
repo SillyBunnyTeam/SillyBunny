@@ -3,7 +3,6 @@ import { confirmAndDeleteExtension, disableExtension, enableExtension, findExten
 import { registerUiTheme, switchUiTheme } from '../power-user.js';
 import { getPresetManager } from '../preset-manager.js';
 import { isAdmin } from '../user.js';
-import { hasBundledAssistantCard, installBundledAssistant } from '../welcome-screen.js';
 import { createBundledExtrasActions } from './bundled-extras-actions.js';
 import { createPresetsAdapter } from './bundled-extras-presets.js';
 
@@ -59,13 +58,7 @@ const themes = {
     apply: themeName => switchUiTheme(themeName),
 };
 
-/** @type {import('./bundled-extras-actions.js').AssistantsAdapter} */
-const assistants = {
-    has: id => hasBundledAssistantCard(id),
-    install: id => installBundledAssistant(id),
-};
-
 /** The actions of the Bundled Extras window, over the app. */
 export function createAppBundledExtrasActions() {
-    return createBundledExtrasActions({ extensions, presets, themes, assistants });
+    return createBundledExtrasActions({ extensions, presets, themes });
 }

@@ -4,7 +4,7 @@ import { fetchJsonOrSkip } from './route-fetch.js';
 export const REISEN_AVATAR = 'default_AssistantReisen.png';
 export const TEWI_AVATAR = 'default_AssistantTewi.png';
 
-const BUNDLED_ASSISTANT_AVATARS = ['default_AssistantReisen.png', 'default_AssistantTewi.png', 'default_AssistantNahida.png'];
+const BUNDLED_ASSISTANT_AVATARS = ['default_AssistantReisen.png', 'default_AssistantTewi.png'];
 
 /**
  * A card as `/api/characters/all` lists it, made up for a spec.

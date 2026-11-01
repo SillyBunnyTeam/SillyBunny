@@ -3,8 +3,7 @@
  * Extras all read.
  *
  * - Reisen and Tewi come from the server: it seeds their cards, and the browser only looks for them. They have no
- *   card asset and no card of their own to create, so a missing card stays missing until the server puts it back.
- * - Nahida is imported from her card asset when the user installs her, and never at startup (`autoEnsure: false`).
+ *   portrait and no card of their own to create, so a missing card stays missing until the server puts it back.
  * - The Bunny Guide is the card the app creates for itself while Reisen has none.
  *
  * @typedef {object} AssistantEntry
@@ -18,9 +17,7 @@
  * @property {string} deletedStorageKey Account storage key that marks the card as deleted by the user.
  * @property {string} defaultAvatar The avatar file of the card as it is first named.
  * @property {string} fileName The name of the card file, without the extension.
- * @property {boolean} [autoEnsure] False for an assistant that is only imported when the user asks.
- * @property {string} [cardAsset] A card image of the app that is imported as the card.
- * @property {string} [portrait] The image of a card that the app creates when it has no card asset.
+ * @property {string} [portrait] The image of a card that the app creates.
  * @property {string} [characterName] The name on a card that the app creates.
  * @property {string} [title] The name by which a card of the assistant is recognised.
  * @property {string} [creator] The creator by which a card of the assistant is recognised, and the one a created card gets.
@@ -64,22 +61,6 @@ export const ASSISTANTS = Object.freeze([
         fileName: 'default_AssistantTewi',
     },
     {
-        id: 'nahida',
-        name: 'Nahida',
-        slot: 'AS-NAHIDA-SUB',
-        art: 'row-nahida',
-        autoEnsure: false,
-        avatarStorageKey: 'bundledAssistantNahidaAvatar',
-        identityStorageKey: 'bundledAssistantNahidaIdentityAvatar',
-        deletedStorageKey: 'bundledAssistantNahidaDeleted',
-        defaultAvatar: 'default_AssistantNahida.png',
-        fileName: 'default_AssistantNahida',
-        cardAsset: 'img/assistant-nahida-portrait.png',
-        characterName: 'Assistant Nahida',
-        title: 'Assistant Nahida',
-        creator: 'Geechan',
-    },
-    {
         id: 'guide',
         name: 'Bunny Guide',
         avatarStorageKey: ASSISTANT_POINTER_KEY,
@@ -117,11 +98,6 @@ export function getHomeAssistants() {
     return ASSISTANTS.filter(assistant => assistant.home === true);
 }
 
-/** @returns {AssistantEntry[]} The assistants that are imported on request. Home lists one once her card is installed. */
-export function getOptionalAssistants() {
-    return ASSISTANTS.filter(assistant => assistant.autoEnsure === false);
-}
-
 /**
  * @param {string} id
  * @returns {readonly string[]} The avatar files that count as the assistant's card.
@@ -132,13 +108,10 @@ export function getAssistantAvatars(id) {
 
 /**
  * How the app can bring the card of an assistant into the library by itself.
- * @param {Pick<AssistantEntry, 'cardAsset' | 'portrait'>} assistant
- * @returns {'asset' | 'fallback' | null} Null for an assistant whose card only the server provides.
+ * @param {Pick<AssistantEntry, 'portrait'>} assistant
+ * @returns {'fallback' | null} Null for an assistant whose card only the server provides.
  */
 export function getCreationMethod(assistant) {
-    if (assistant.cardAsset) {
-        return 'asset';
-    }
     return assistant.portrait ? 'fallback' : null;
 }
 

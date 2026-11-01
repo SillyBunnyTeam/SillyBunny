@@ -1,9 +1,8 @@
 import { t } from '../i18n.js';
-import { BUNDLED_EXTRAS, getBundledExtraSubtitleSlot, groupBundledExtras } from '../sillybunny-bundled-extras.js';
+import { BUNDLED_EXTRAS, getBundledExtraSlot, groupBundledExtras } from '../sillybunny-bundled-extras.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
-import { createArtPlaceholder } from './art.js';
 import { createArtIntro } from './art-intro.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
 import { openShellTarget } from './shell-targets.js';
@@ -11,7 +10,6 @@ import { createStatusChip } from './status-chip.js';
 
 function getGroupTitle(groupId) {
     switch (groupId) {
-        case 'assistants': return t`Assistants`;
         case 'first-party-extensions': return t`First-Party Extensions`;
         case 'third-party-extensions': return t`Third-Party Extensions`;
         case 'themes': return t`Themes`;
@@ -113,10 +111,9 @@ function createItemRow(item, actions) {
         label: item.name,
         subtitle: COPY_PLACEHOLDER,
         field: `bundled-extra-${item.id}`,
-        prefix: item.kind === 'assistant' ? createArtPlaceholder(`row-${item.id}`) : undefined,
         suffix: createItemControls(item, actions, labelId),
     });
-    markRowSubtitle(row, getBundledExtraSubtitleSlot(item));
+    markRowSubtitle(row, getBundledExtraSlot(item.id));
     row.row.querySelector('.ds-row-label').id = labelId;
     return row;
 }

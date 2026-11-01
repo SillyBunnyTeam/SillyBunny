@@ -47,7 +47,7 @@ describe('the splash character choices', () => {
         expect(parseSplashCharacter(choice)).toBe(choice);
     });
 
-    test.each([null, undefined, '', 'Reisen', 'nahida', 'true', 5, {}])('parse %j as Random', (value) => {
+    test.each([null, undefined, '', 'Reisen', 'someone-else', 'true', 5, {}])('parse %j as Random', (value) => {
         expect(parseSplashCharacter(value)).toBe('random');
     });
 });
@@ -62,7 +62,7 @@ describe('the splash character', () => {
     });
 
     test('is Random when this browser holds something else, or refuses to be read', () => {
-        expect(create({ local: { 'sb-splash-character': 'nahida' } }).preferences.getCharacter()).toBe('random');
+        expect(create({ local: { 'sb-splash-character': 'someone-else' } }).preferences.getCharacter()).toBe('random');
         expect(create({ localBlocked: true }).preferences.getCharacter()).toBe('random');
     });
 
@@ -88,7 +88,7 @@ describe('the splash character', () => {
     test('refuses a choice that is not one of the four, and stores nothing', () => {
         const { preferences, storage, accountStorage } = create();
 
-        expect(() => preferences.setCharacter('nahida')).toThrow(TypeError);
+        expect(() => preferences.setCharacter('someone-else')).toThrow(TypeError);
 
         expect(storage.setItem).not.toHaveBeenCalled();
         expect(accountStorage.setItem).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe('the splash character in a new browser', () => {
 
     test('leaves this browser alone when the account holds nothing, or something that is not a choice', () => {
         const empty = create({ local: { 'sb-splash-character': 'tewi' } });
-        const invalid = create({ local: { 'sb-splash-character': 'tewi' }, account: { WelcomePage_SplashCharacter: 'nahida' } });
+        const invalid = create({ local: { 'sb-splash-character': 'tewi' }, account: { WelcomePage_SplashCharacter: 'someone-else' } });
 
         empty.events.fire('settings_loaded');
         invalid.events.fire('settings_loaded');

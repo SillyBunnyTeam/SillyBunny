@@ -28,7 +28,7 @@ function payload(request) {
 /** All cards, books, groups and imported files exist in browser/request memory only. */
 export async function protectImportFixtures(page) {
     await protectMaintainerServer(page);
-    const characters = [card('QA existing', 'qa-existing.png'), card('Assistant Nahida', 'default_AssistantNahida.png')];
+    const characters = [card('QA existing', 'qa-existing.png'), card('QA bundled extra', 'default_QaBundledExtra.png')];
     const books = [];
     const imports = [];
     await page.route('**/thumbnail?*', route => {

@@ -1573,55 +1573,10 @@ export async function openPermanentAssistantChat({ tryCreate = true, created = f
     }
 }
 
+// SillyBunny: the Bunny Guide is the only assistant the app creates, from its portrait.
 async function createBundledAssistant(config) {
     if (is_group_generating || is_send_press) {
         throw new Error(t`Cannot create while generating.`);
-    }
-
-    if (config.cardAsset) {
-        const formData = new FormData();
-        formData.append('file_type', 'png');
-        formData.append('preserved_name', config.fileName);
-
-        const cardResponse = await fetch(config.cardAsset, { cache: 'no-store' });
-        if (!cardResponse.ok) {
-            throw new Error(`Failed to fetch bundled assistant card for "${config.id}".`);
-        }
-
-        const cardBlob = await cardResponse.blob();
-        formData.append('avatar', cardBlob, config.defaultAvatar);
-
-        const importResult = await fetch('/api/characters/import', {
-            method: 'POST',
-            headers: getRequestHeaders({ omitContentType: true }),
-            body: formData,
-            cache: 'no-cache',
-        });
-
-        if (!importResult.ok) {
-            throw new Error(t`Import request did not succeed.`);
-        }
-
-        const importPayload = await importResult.json();
-        if (importPayload?.error) {
-            throw new Error(`Assistant card import failed for "${config.id}".`);
-        }
-
-        const importedAvatar = typeof importPayload?.file_name === 'string' && importPayload.file_name.trim()
-            ? `${importPayload.file_name.trim()}.png`
-            : config.defaultAvatar;
-
-        await getCharacters();
-        const createdCharacterId = findBundledAssistantCharacterId(config, importedAvatar);
-
-        if (createdCharacterId === -1) {
-            throw new Error(`Assistant character ${importedAvatar} was not registered after import.`);
-        }
-
-        const resolvedAvatar = characters[createdCharacterId]?.avatar;
-        setBundledAssistantStoredAvatar(config, resolvedAvatar || '');
-        setBundledAssistantIdentityAvatar(config, resolvedAvatar || config.defaultAvatar);
-        return;
     }
 
     const formData = new FormData();
@@ -1684,37 +1639,6 @@ export async function openPermanentAssistantCard() {
     await openBundledAssistantCard(getDefaultAssistantConfig().id);
 }
 
-// SillyBunny: Bundled Extras installs an optional assistant on request, and shows whether her card is in the library.
-export function hasBundledAssistantCard(assistantId) {
-    return findBundledAssistantCharacterId(getStrictBundledAssistantConfig(assistantId)) !== -1;
-}
-
-/**
- * Imports the card of an optional assistant into the library. It throws when the import fails, so the caller reports it.
- * @param {string} assistantId
- */
-export async function installBundledAssistant(assistantId) {
-    const config = getStrictBundledAssistantConfig(assistantId);
-    if (getCreationMethod(config) === null) {
-        throw new Error(`The assistant "${assistantId}" has no card that the app can import.`);
-    }
-    if (findBundledAssistantCharacterId(config) === -1) {
-        await createBundledAssistant(config);
-        // SillyBunny: Home lists an installed optional assistant, and reads the library only when it renders.
-        if (getHomePanel()) {
-            await refreshWelcomeScreen();
-        }
-    }
-}
-
-function getStrictBundledAssistantConfig(assistantId) {
-    const config = WELCOME_BUNDLED_ASSISTANTS.find(item => item.id === assistantId);
-    if (!config) {
-        throw new Error(`There is no bundled assistant "${assistantId}".`);
-    }
-    return config;
-}
-
 // SillyBunny: the third assistant card of Home and the Set as assistant action both write the pointer here, so Home shows a change at once.
 /**
  * Sets the account's assistant pointer, or clears it, and renders Home again when it is shown.
@@ -1775,10 +1699,6 @@ export function initWelcomeScreen() {
     // Ensure all bundled assistants exist in the character list on startup
     eventSource.on(event_types.APP_READY, async () => {
         for (const assistant of WELCOME_BUNDLED_ASSISTANTS) {
-            // SillyBunny: an assistant that is only imported on request is not looked for at startup.
-            if (assistant.autoEnsure === false) {
-                continue;
-            }
             await ensureBundledAssistantCharacter(assistant, { tryCreate: true });
         }
         // SillyBunny: waits until Reisen's card is in the library, so the pointer never names a card that is not there.

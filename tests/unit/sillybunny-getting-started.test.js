@@ -287,9 +287,14 @@ describe('the line of a step in the Getting Started window', () => {
 });
 
 describe('which cards are bundled', () => {
-    test('knows the cards of the default content and the optional assistant', () => {
+    test('knows the cards of the default content and the card that earlier versions let the user install', () => {
         expect(BUNDLED_CARD_AVATARS).toEqual(['default_Seraphina.png', 'default_SillyBunnyGuide.png', 'default_AssistantNahida.png']);
         expect(BUNDLED_CARD_AVATARS.every(isBundledCard)).toBe(true);
+    });
+
+    test('still takes the card of Nahida for a bundled one, so a user who installed her has not got a card of their own', () => {
+        expect(isBundledCard('default_AssistantNahida.png')).toBe(true);
+        expect(pickCharacterVariant('default_AssistantNahida.png')).toBe('other');
     });
 
     test('a card of the user is not bundled', () => {
@@ -506,6 +511,17 @@ describe('the signals', () => {
         expect(state.isDone('character')).toBe(true);
         expect(state.getCharacterVariant()).toBe('other');
         expect(completed).toEqual(['character']);
+    });
+
+    test('character: the card of Nahida in the library does not finish the step, with or without the other bundled cards', () => {
+        const { state, signals } = setup();
+        signals.appReady();
+
+        signals.libraryChanged(() => ['default_AssistantNahida.png']);
+        signals.libraryChanged(() => ['default_Reisen.png', 'default_Tewi.png', 'default_AssistantNahida.png', 'default_Seraphina.png']);
+
+        expect(state.isDone('character')).toBe(false);
+        expect(completed).toEqual([]);
     });
 
     test('character: once the step is done the library is not read again', () => {
