@@ -826,6 +826,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
 | Owner | TODO(copy) |
 
+### `src/transformers.js` - caption image decoding
+| Field | Value |
+| --- | --- |
+| File | `src/transformers.js`. |
+| Area | Image captioning (`POST /api/extra/caption`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/transformers-image.js`. |
+| Adapter shape | `getRawImage()` decodes the base64 string into a `Buffer` and returns `decodeRawImage(buffer)`, or `null` when that throws. `decodeRawImage()` throws for bytes that do not start with a PNG, JPEG, GIF, BMP, TIFF, WebP or AVIF signature, so jimp's file-type check never sees them. It decodes the rest with the server's jimp (`src/jimp.js`) instead of calling `RawImage.fromBlob()`, and returns an RGBA `JimpRawImage`, a `RawImage` subclass whose `resize()` also uses jimp instead of `OffscreenCanvas`. `crop()` and `center_crop()` stay upstream; the default captioning model does not call them. |
+| Protecting tests | `tests/transformers-image.test.js`. The test defines `self` before sillytavern-transformers loads, so the library takes the code path that it takes under Bun. |
+| Validation | `npm run test:unit --prefix tests -- transformers-image.test.js` (on the base commit, the ASF test fails when its child process reaches the 30 s deadline, the PNG test gets `null`, and the preprocessing test fails with `OffscreenCanvas not supported by this browser.`), `npm run lint`. |
+| Rollback path | Restore the upstream `getRawImage()` body (`RawImage.fromBlob()` on a `Blob` of the decoded bytes) and the `RawImage` import, then delete `src/transformers-image.js` and `tests/transformers-image.test.js`. No stored data or settings change. The rollback brings back the server hang on a malformed ASF header and the 400 for every image under Bun. |
+| Last reviewed | 2026-11-02 caption image signature check (GHSA-5v7r-6r5c-r473). |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
@@ -890,6 +904,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert the fork metadata branches while retaining upstream archive validation. |
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Account and release integrator. |
+
+### `src/electron/` - Electron launcher removal
+| Field | Value |
+| --- | --- |
+| File | `src/electron/Start.bat`, `src/electron/package.json` and `src/electron/package-lock.json`, removed. SillyTavern also ships `src/electron/index.js` and `src/electron/start.sh`, which SillyBunny never adopted. |
+| Area | Packaging and launchers. |
+| Divergence reason | TODO(copy) |
+| Target seam | None. The root launchers start `server.js`, and SillyBunny ships no Electron entry point. |
+| Adapter shape | None. A SillyTavern sync that changes `src/electron/**` leaves those changes out. |
+| Protecting tests | None. |
+| Validation | `git grep -n -i "src/electron"` finds no code, test or workflow reference. `.github/pr-auto-labels-by-files.yml` parses as YAML. |
+| Rollback path | Revert the commit that removed the package (`git log --diff-filter=D -- src/electron/package.json`), which restores the three files at electron 41.1.1. The launcher still does not start until `src/electron/index.js` comes from SillyTavern, because `package.json` names it as `main`, and until the Electron binary is installed, because `Start.bat` installs with `--ignore-scripts` and the electron package downloads its binary only in its `postinstall` script. |
+| Last reviewed | 2026-11-02, package removal. |
+| Owner | TODO(copy) |
 
 ### World Info files - shell integration and safe persistence
 | Field | Value |
