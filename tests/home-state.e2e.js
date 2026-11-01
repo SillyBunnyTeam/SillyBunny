@@ -206,3 +206,133 @@ test.describe('Home state on a phone', () => {
         await expect(page.locator('#sb-mobile-chat-tools.sb-chat-tools-open')).toHaveCount(0);
     });
 });
+
+const TOP_BAR_VIEWPORTS = [
+    { name: 'desktop 1440x900', options: { viewport: { width: 1440, height: 900 } } },
+    { name: 'wide 1744x1000', options: { viewport: { width: 1744, height: 1000 } } },
+    { name: 'phone 390x844', options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+];
+const TOP_BAR_TOLERANCE = 0.5;
+
+/** The box of every visible element in the top bar, by id or by its tag and classes with a running count. */
+function readTopBar(page) {
+    return page.evaluate(() => {
+        const boxes = {};
+        const counts = {};
+        for (const node of document.querySelectorAll('#top-bar, #top-bar *')) {
+            const rect = node.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            const base = node.id ? `#${node.id}` : `${node.tagName.toLowerCase()}.${[...node.classList].join('.')}`;
+            counts[base] = (counts[base] ?? 0) + 1;
+            boxes[`${base}[${counts[base]}]`] = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }
+        return boxes;
+    });
+}
+
+/** Names every item that moved or changed size by more than the tolerance, or that only one of the two states has. */
+function describeTopBarChanges(before, after) {
+    const changes = [];
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        const [a, b] = [before[key], after[key]];
+        if (!a || !b) {
+            changes.push(`${key} only in ${a ? 'Home' : 'the chat'}`);
+            continue;
+        }
+        const moved = ['x', 'y', 'width', 'height'].filter(side => Math.abs(a[side] - b[side]) > TOP_BAR_TOLERANCE);
+        if (moved.length) changes.push(`${key} ${moved.map(side => `${side} ${a[side].toFixed(1)} -> ${b[side].toFixed(1)}`).join(', ')}`);
+    }
+    return changes;
+}
+
+for (const { name, options } of TOP_BAR_VIEWPORTS) {
+    test.describe(`Top bar position at ${name}`, () => {
+        test.use(options);
+
+        test.beforeEach(async ({ page }) => {
+            await protectMaintainerServer(page);
+            await openQuietChatForSmoke(page, { selectCharacter: false });
+            await expectHome(page);
+        });
+
+        test('every item of the top bar is where it is in a chat', async ({ page }) => {
+            const onHome = await readTopBar(page);
+
+            await selectSampleCharacter(page);
+            await expectChat(page);
+            await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).length)).toBe(0);
+            const inChat = await readTopBar(page);
+
+            expect(Object.keys(onHome).length).toBeGreaterThan(5);
+            // The title names the page, so its width differs by design. The two groups of buttons share the room it leaves,
+            // so their own boxes change while the buttons in them stay put.
+            const skipped = key => /^#sb-topbar-title|^#sb-topbar-chat|^div\.sb-topbar-(brand|group)/.test(key);
+            const changes = describeTopBarChanges(onHome, inChat).filter(change => !skipped(change));
+            expect(changes).toEqual([]);
+        });
+
+        test('the top bar stays put in every frame while the shell narrows from the Home width to the chat width', async ({ page }) => {
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            await page.evaluate(() => document.body.classList.remove('reduced-motion'));
+            const onHome = await readTopBar(page);
+            await page.evaluate(() => {
+                window.qaFrames = [];
+                const sample = () => {
+                    const stack = document.getElementById('sb-topbar-stack').getBoundingClientRect();
+                    const buttons = [...document.querySelectorAll('#top-bar button')].map(button => button.getBoundingClientRect().x);
+                    window.qaFrames.push({ shell: document.getElementById('sheld').getBoundingClientRect().width, stack: [stack.x, stack.width], buttons });
+                    if (window.qaFrames.length < 90) requestAnimationFrame(sample);
+                };
+                requestAnimationFrame(sample);
+            });
+
+            await selectSampleCharacter(page);
+            await expectChat(page);
+            await expect.poll(() => page.evaluate(() => window.qaFrames.length)).toBe(90);
+
+            const frames = await page.evaluate(() => window.qaFrames);
+            const shellWidths = new Set(frames.map(frame => Math.round(frame.shell)));
+            const stack = onHome['#sb-topbar-stack[1]'];
+            const first = frames[0];
+            if (name.startsWith('phone')) {
+                expect(shellWidths.size).toBe(1);
+            } else {
+                // Without the shell animating, the check below would pass whatever the top bar does.
+                expect(shellWidths.size, 'the shell width animates between the two states').toBeGreaterThan(2);
+            }
+            for (const frame of frames) {
+                expect(Math.abs(frame.stack[0] - stack.x)).toBeLessThanOrEqual(TOP_BAR_TOLERANCE);
+                expect(Math.abs(frame.stack[1] - stack.width)).toBeLessThanOrEqual(TOP_BAR_TOLERANCE);
+                expect(frame.buttons.length).toBe(first.buttons.length);
+                frame.buttons.forEach((x, index) => expect(Math.abs(x - first.buttons[index])).toBeLessThanOrEqual(TOP_BAR_TOLERANCE));
+            }
+        });
+    });
+}
+
+test.describe('Home column width at desktop', () => {
+    for (const width of [1440, 1744]) {
+        test(`the column is the Home width and wider than the chat column at ${width}`, async ({ page }) => {
+            await page.setViewportSize({ width, height: 1000 });
+            await protectMaintainerServer(page);
+            await openQuietChatForSmoke(page, { selectCharacter: false });
+            await expectHome(page);
+
+            const home = await page.evaluate(() => {
+                const probe = document.createElement('div');
+                probe.style.cssText = 'position: absolute; visibility: hidden; width: var(--sb-home-width);';
+                document.body.append(probe);
+                const expected = probe.getBoundingClientRect().width;
+                probe.remove();
+                return { expected, column: document.getElementById('chat').getBoundingClientRect().width, shell: document.getElementById('sheld').getBoundingClientRect().width };
+            });
+            await selectSampleCharacter(page);
+            await expectChat(page);
+            await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).length)).toBe(0);
+            const chatWidth = await page.evaluate(() => document.getElementById('chat').getBoundingClientRect().width);
+
+            expect(Math.abs(home.shell - home.expected)).toBeLessThanOrEqual(1);
+            expect(home.column).toBeGreaterThan(chatWidth);
+        });
+    }
+});

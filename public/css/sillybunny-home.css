@@ -10,18 +10,13 @@
 /* Home takes a wider shell than the user's chat width. Below 769px, and on tablets up to 1180px, the shell
    is already edge to edge. A MovingUI shell the user moved or resized keeps its own geometry: MovingUI
    always saves `margin: unset` with it, and its inline `!important` values outrank this rule anyway.
-   --sb-home-widened tells the docked side panels to lay out against --sb-home-width. The top bar takes the
-   same value, so its edges line up with the column, and the same MovingUI exception. */
+   --sb-home-widened tells the docked side panels to lay out against --sb-home-width. The top bar keeps the width
+   it has in a chat, so its buttons stay where the user's hand expects them when Home and a chat swap. */
 @media (min-width: 769px) {
     body:not(.movingUI) #sheld[data-sb-home='on'],
     body.movingUI #sheld[data-sb-home='on']:not([style*='margin: unset']) {
         --sb-home-widened: 1;
         width: var(--sb-home-width);
-    }
-
-    body:not(.movingUI):has(#sheld[data-sb-home='on']) #top-bar,
-    body.movingUI:has(#sheld[data-sb-home='on']:not([style*='margin: unset'])) #top-bar {
-        --sb-topbar-max-width: var(--sb-home-width);
     }
 
     /* Roleplay ends its column one composer gap above the window bottom (the padding of #form_sheld). Home has

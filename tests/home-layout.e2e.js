@@ -2010,7 +2010,7 @@ for (const { name, options } of WIDE_VIEWPORTS) {
         });
 
         for (const percent of [25, 55, 100]) {
-            test(`Page Width ${percent} sets the Home width, and the top bar takes the same edges`, async ({ page }) => {
+            test(`Page Width ${percent} sets the Home width, and the panel fills the shell`, async ({ page }) => {
                 const windowWidth = page.viewportSize().width;
                 const expected = Math.round(Math.min(Math.max(HOME_SHELL_WIDTH, windowWidth * percent / 100), windowWidth - 32));
 
@@ -2019,27 +2019,11 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                 await expect.poll(async () => Math.round((await measure(page, '#sheld')).width)).toBe(expected);
                 const edges = await page.evaluate(() => {
                     const rect = selector => document.querySelector(selector).getBoundingClientRect();
-                    return { shell: rect('#sheld'), topBar: rect('#sb-topbar-stack'), panel: rect('#chat > .welcomePanel') };
+                    return { shell: rect('#sheld'), panel: rect('#chat > .welcomePanel') };
                 });
-                expect(Math.abs(edges.topBar.left - edges.shell.left), 'top bar start').toBeLessThanOrEqual(1);
-                expect(Math.abs(edges.topBar.right - edges.shell.right), 'top bar end').toBeLessThanOrEqual(1);
                 expect(Math.abs(edges.panel.width - edges.shell.width), 'panel fills the shell').toBeLessThanOrEqual(20);
             });
         }
-
-        test('the top bar goes back to its own width once a chat opens', async ({ page }) => {
-            const characters = await pickFixtureCharacters(page, 1);
-            expect(characters).toHaveLength(1);
-            await page.evaluate(() => document.documentElement.style.setProperty('--sheldWidth', '25vw'));
-            const onHome = await measure(page, '#sb-topbar-stack');
-            await renderHome(page, recentChatEntries(characters, 1));
-
-            await page.locator('.welcomePanel .recentChat button.recentChatOpen').first().click();
-            await dismissOpenDialogIfPresent(page);
-            await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', /.*/, { timeout: STARTUP_TIMEOUT });
-
-            await expect.poll(async () => Math.round((await measure(page, '#sb-topbar-stack')).width)).not.toBe(Math.round(onHome.width));
-        });
 
         for (const [target, narrow] of [[TWO_CARDS_MAX, true], [TWO_CARDS_MAX + 1, false]]) {
             test(`a Home content width of exactly ${target}px has ${narrow ? 'two assistant cards per line' : 'the assistant cards in one row'}`, async ({ page }) => {
