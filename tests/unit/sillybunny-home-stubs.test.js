@@ -8,7 +8,6 @@ describe('Home stubs', () => {
             'assistant.new-chat',
             'assistant.temporary-chat',
             'assistant.new-chat-in-mode',
-            'bundled-extras.add-assistant',
         ]);
     });
 

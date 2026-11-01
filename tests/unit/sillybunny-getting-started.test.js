@@ -308,8 +308,12 @@ describe('which cards are bundled', () => {
         expect(pickCharacterVariant(undefined, assistants)).toBe('other');
     });
 
-    test('no assistant card exists yet, so nothing is Reisen or Tewi', () => {
-        expect(ASSISTANT_AVATARS).toEqual({ reisen: [], tewi: [] });
+    test('the files of Reisen and Tewi are the ones of the assistant registry', () => {
+        expect(ASSISTANT_AVATARS).toEqual({ reisen: ['default_AssistantReisen.png'], tewi: ['default_AssistantTewi.png'] });
+        expect(isBundledCard('default_AssistantReisen.png')).toBe(true);
+        expect(isBundledCard('default_AssistantTewi.png')).toBe(true);
+        expect(pickCharacterVariant('default_AssistantReisen.png')).toBe('reisen');
+        expect(pickCharacterVariant('default_AssistantTewi.png')).toBe('tewi');
         expect(pickCharacterVariant('default_SillyBunnyGuide.png')).toBe('other');
     });
 });

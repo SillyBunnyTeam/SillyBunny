@@ -7,7 +7,6 @@ import { createArtPlaceholder } from './art.js';
 import { createArtIntro } from './art-intro.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
 import { openShellTarget } from './shell-targets.js';
-import { stubAction } from './stubs.js';
 
 function getGroupTitle(groupId) {
     switch (groupId) {
@@ -19,29 +18,6 @@ function getGroupTitle(groupId) {
         case 'presets': return t`Presets`;
         default: throw new Error(`No title for the Bundled Extras group: ${groupId}`);
     }
-}
-
-/** An assistant installs on demand, so its row has an Add button that waits for the install flow. */
-function createAssistantRow(item) {
-    const labelId = `sb-bundled-extra-${item.id}-title`;
-    const add = document.createElement('button');
-    add.type = 'button';
-    add.className = 'sbHomeFlatButton';
-    add.textContent = t`Add`;
-    add.dataset.sbStub = 'true';
-    add.setAttribute('aria-describedby', labelId);
-    add.addEventListener('click', stubAction('bundled-extras.add-assistant'));
-
-    const row = createRow({
-        label: item.name,
-        subtitle: COPY_PLACEHOLDER,
-        field: `bundled-extra-${item.id}`,
-        prefix: createArtPlaceholder(`row-${item.id}`),
-        suffix: add,
-    });
-    markRowSubtitle(row, getBundledExtraSubtitleSlot(item));
-    row.row.querySelector('.ds-row-label').id = labelId;
-    return row;
 }
 
 const ACTION_SLOT_ERROR = 'BE-ACTION-ERROR';
@@ -123,14 +99,12 @@ function createItemControls(item, actions, labelId) {
 }
 
 function createItemRow(item, actions) {
-    if (item.kind === 'assistant') {
-        return createAssistantRow(item);
-    }
     const labelId = `sb-bundled-extra-${item.id}-title`;
     const row = createRow({
         label: item.name,
         subtitle: COPY_PLACEHOLDER,
         field: `bundled-extra-${item.id}`,
+        prefix: item.kind === 'assistant' ? createArtPlaceholder(`row-${item.id}`) : undefined,
         suffix: createItemControls(item, actions, labelId),
     });
     markRowSubtitle(row, getBundledExtraSubtitleSlot(item));

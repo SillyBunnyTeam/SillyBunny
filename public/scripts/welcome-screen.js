@@ -38,79 +38,24 @@ import { openChatMenu } from './sillybunny-home/menu.js';
 import { resolveRecentChatTarget } from './sillybunny-home/recent-chat.js';
 // SillyBunny: declining to leave a temporary chat is not a failure to open a recent chat.
 import { leaveTemporaryChat } from './sillybunny-temporary-chat.js';
+// SillyBunny: the bundled assistants are one registry that Home, Getting Started and Bundled Extras read as well.
+import { ASSISTANT_POINTER_KEY, ASSISTANTS, getCreationMethod, resolveDefaultAssistant } from './sillybunny-home/assistant-registry.js';
+// SillyBunny: the Welcome Page Assistant moves to Reisen once, when her card exists.
+import { migrateAssistantPointer } from './sillybunny-home/assistant-pointer-migration.js';
+// SillyBunny: finding the default assistant scans every character, so the answer is remembered.
+import { createDefaultAssistantResolver } from './sillybunny-home/default-assistant-resolver.js';
 
-const assistantAvatarKey = 'assistant';
+// SillyBunny: the pointer key is the registry's.
+const assistantAvatarKey = ASSISTANT_POINTER_KEY;
 const pinnedChatsKey = 'pinnedChats';
 
 const welcomePanelModeKey = 'WelcomePage_PanelMode';
-const DEFAULT_BUNDLED_ASSISTANT_ID = 'guide';
-const bundledAssistantNahidaAvatarKey = 'bundledAssistantNahidaAvatar';
-const DEFAULT_NEUTRAL_ASSISTANT_NAME = 'Assistant';
 
 const AGENT_MESSAGE_EXTRA_KEY = 'inChatAgents';
 const AGENT_PROMPT_TRANSFORM_HISTORY_KEY = 'inChatAgentTransformHistory';
 
-const WELCOME_BUNDLED_ASSISTANTS = Object.freeze([
-    Object.freeze({
-        id: 'guide',
-        avatarStorageKey: assistantAvatarKey,
-        identityStorageKey: 'bundledAssistantGuideAvatar',
-        deletedStorageKey: 'bundledAssistantGuideDeleted',
-        defaultAvatar: 'default_SillyBunnyGuide.png',
-        fileName: 'default_SillyBunnyGuide',
-        portrait: 'img/sillybunny-guide-assistant-portrait.png',
-        portraitAlt: 'Pixel-art bunny guide portrait',
-        characterName: DEFAULT_NEUTRAL_ASSISTANT_NAME,
-        title: 'Bunny Guide',
-        body: 'Our bundled bunny assistant. It can explain what an LLM is, what providers and models mean, how SillyBunny differs from stock SillyTavern, and where presets, personas, and world info reside in the context of your RP or story.',
-        credit: 'Created by purachina.',
-        creator: 'purachina',
-        creatorNotes: 'Automatically created bundled Bunny Guide character. Feel free to edit.',
-        description: 'A calm built-in bunny assistant for explaining SillyBunny, SillyTavern, model providers, presets, personas, and related basics in plain English.',
-        personality: 'Patient, beginner-friendly, calm, and practical.',
-        scenario: 'You are the built-in Bunny Guide for SillyBunny. Help the user understand the interface, APIs, presets, prompt settings, personas, and world info in plain, approachable language.',
-        firstMessage: 'Hi. I\'m the Bunny Guide. If anything in SillyBunny feels confusing, ask in plain English and I\'ll walk through it with you step by step.',
-        questions: Object.freeze([
-            'What is an LLM, in plain English?',
-            'What is a character card?',
-            'What does a preset actually change?',
-            'How is SillyBunny different from base SillyTavern?',
-        ]),
-        actionLabel: 'Open Bunny Guide',
-        actionIcon: 'fa-user-graduate',
-        cardIcon: 'fa-user-graduate',
-    }),
-    Object.freeze({
-        id: 'nahida',
-        avatarStorageKey: bundledAssistantNahidaAvatarKey,
-        identityStorageKey: 'bundledAssistantNahidaIdentityAvatar',
-        deletedStorageKey: 'bundledAssistantNahidaDeleted',
-        defaultAvatar: 'default_AssistantNahida.png',
-        fileName: 'default_AssistantNahida',
-        cardAsset: 'img/assistant-nahida-portrait.png',
-        portrait: 'img/assistant-nahida-portrait.png',
-        portraitAlt: 'Assistant Nahida portrait',
-        characterName: 'Assistant Nahida',
-        title: 'Assistant Nahida',
-        body: 'Assistant Nahida is one of our bundled assistants: with a gentle, metaphor-laden demeanour for all kinds of queries. She has the same capabilities as our Bunny Assistant, but with a more philosophical lens.',
-        credit: 'Created by Geechan.',
-        creator: 'Geechan',
-        creatorNotes: 'Bundled with SillyBunny. Created by Geechan. Feel free to edit.',
-        description: 'Assistant Nahida is one of our bundled SillyBunny helpers. She can help explain prompts, token budgeting, presets, context setup, and workflow choices in calm, beginner-friendly language.',
-        personality: 'Patient, observant, encouraging, thoughtful, and concise.',
-        scenario: 'You are Assistant Nahida, a bundled helper for SillyBunny. Guide the user through prompts, token budgeting, presets, reasoning settings, context size, and general workflow questions with calm clarity.',
-        firstMessage: 'Hello. I\'m Assistant Nahida, a bundled helper made by Geechan. If you want, we can sort out prompts, presets, context size, or any confusing settings together.',
-        questions: Object.freeze([
-            'Can you help me make sense of my current system prompt?',
-            'What should I tune first: model, preset, or prompt settings?',
-            'Do large language models feel emotions?',
-            'Are larger parameter models better for roleplaying?',
-        ]),
-        actionLabel: 'Open Assistant Nahida',
-        actionIcon: 'fa-leaf',
-        cardIcon: 'fa-book-open',
-    }),
-]);
+// SillyBunny: the registry holds the bundled assistants and says how each one is brought in, so Home and Bundled Extras agree with this code.
+const WELCOME_BUNDLED_ASSISTANTS = ASSISTANTS;
 
 const recentChatsSettingsKey = 'recentChatsSettings';
 
@@ -325,8 +270,24 @@ class PinnedChatsManager {
     }
 }
 
-function getBundledAssistantConfig(assistantId = DEFAULT_BUNDLED_ASSISTANT_ID) {
-    return WELCOME_BUNDLED_ASSISTANTS.find(item => item.id === assistantId) ?? WELCOME_BUNDLED_ASSISTANTS[0];
+// SillyBunny: the default assistant is Reisen once her card exists and the Bunny Guide until then, and everything that needs it asks here. A list renders one item at a time and each asks, so the scan is remembered until the characters change.
+const defaultAssistant = createDefaultAssistantResolver({
+    getCharacters: () => characters,
+    resolve: () => resolveDefaultAssistant({
+        hasCard: (config) => {
+            const identityAvatar = getBundledAssistantIdentityAvatar(config);
+            return characters.some(character => character.avatar === identityAvatar);
+        },
+    }),
+});
+
+function getDefaultAssistantConfig() {
+    return defaultAssistant.get();
+}
+
+// SillyBunny: an id that no entry has means the default assistant, which the registry resolves.
+function getBundledAssistantConfig(assistantId) {
+    return WELCOME_BUNDLED_ASSISTANTS.find(item => item.id === assistantId) ?? getDefaultAssistantConfig();
 }
 
 function isBundledAssistantMarkedDeleted(config) {
@@ -360,10 +321,17 @@ function setBundledAssistantIdentityAvatar(config, avatar) {
         accountStorage.setItem(config.identityStorageKey, avatar);
     }
 
+    // SillyBunny: the identity avatar decides which card counts as the assistant's.
+    defaultAssistant.invalidate();
     clearBundledAssistantDeleted(config);
 }
 
 function hasBundledAssistantFingerprint(config, character) {
+    // SillyBunny: an assistant that only the server provides has no title, creator or character name to match, so it matches by avatar alone.
+    if (getCreationMethod(config) === null) {
+        return false;
+    }
+
     const creator = typeof character?.creator === 'string' ? character.creator.toLowerCase() : '';
     const creatorNotes = typeof character?.creator_notes === 'string' ? character.creator_notes.toLowerCase() : '';
     const name = typeof character?.name === 'string' ? character.name.toLowerCase() : '';
@@ -414,7 +382,8 @@ function getBundledAssistantAvatar(config = getBundledAssistantConfig()) {
 }
 
 export function getPermanentAssistantAvatar() {
-    return getBundledAssistantAvatar(getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID));
+    // SillyBunny: the default assistant is resolved by the registry.
+    return getBundledAssistantAvatar(getDefaultAssistantConfig());
 }
 
 /**
@@ -457,6 +426,11 @@ async function ensureBundledAssistantCharacter(config, { tryCreate = true, creat
             clearBundledAssistantDeleted(config);
         }
         return { avatar, characterId, created };
+    }
+
+    // SillyBunny: the server seeds Reisen and Tewi. The browser only looks for their cards, so a missing card stays missing.
+    if (getCreationMethod(config) === null) {
+        return null;
     }
 
     if (!tryCreate) {
@@ -1536,7 +1510,8 @@ async function getRecentChats() {
 
 export async function openPermanentAssistantChat({ tryCreate = true, created = false } = {}) {
     try {
-        const assistantConfig = getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID);
+        // SillyBunny: the default assistant is resolved by the registry.
+        const assistantConfig = getDefaultAssistantConfig();
         const assistant = await ensureBundledAssistantCharacter(assistantConfig, { tryCreate, created, forceCreate: tryCreate });
         if (!assistant) {
             return;
@@ -1648,7 +1623,8 @@ async function createBundledAssistant(config) {
     setBundledAssistantIdentityAvatar(config, resolvedAvatar || config.defaultAvatar);
 }
 
-async function openBundledAssistantCard(assistantId = DEFAULT_BUNDLED_ASSISTANT_ID) {
+// SillyBunny: no assistant id means the default assistant, which the registry resolves.
+async function openBundledAssistantCard(assistantId) {
     const assistantConfig = getBundledAssistantConfig(assistantId);
     const assistant = await ensureBundledAssistantCharacter(assistantConfig, { forceCreate: true });
     if (!assistant) {
@@ -1659,8 +1635,36 @@ async function openBundledAssistantCard(assistantId = DEFAULT_BUNDLED_ASSISTANT_
     await selectCharacterById(assistant.characterId);
 }
 
+// SillyBunny: the card that opens is the default assistant's, which the registry resolves.
 export async function openPermanentAssistantCard() {
-    await openBundledAssistantCard(DEFAULT_BUNDLED_ASSISTANT_ID);
+    await openBundledAssistantCard(getDefaultAssistantConfig().id);
+}
+
+// SillyBunny: Bundled Extras installs an optional assistant on request, and shows whether her card is in the library.
+export function hasBundledAssistantCard(assistantId) {
+    return findBundledAssistantCharacterId(getStrictBundledAssistantConfig(assistantId)) !== -1;
+}
+
+/**
+ * Imports the card of an optional assistant into the library. It throws when the import fails, so the caller reports it.
+ * @param {string} assistantId
+ */
+export async function installBundledAssistant(assistantId) {
+    const config = getStrictBundledAssistantConfig(assistantId);
+    if (getCreationMethod(config) === null) {
+        throw new Error(`The assistant "${assistantId}" has no card that the app can import.`);
+    }
+    if (findBundledAssistantCharacterId(config) === -1) {
+        await createBundledAssistant(config);
+    }
+}
+
+function getStrictBundledAssistantConfig(assistantId) {
+    const config = WELCOME_BUNDLED_ASSISTANTS.find(item => item.id === assistantId);
+    if (!config) {
+        throw new Error(`There is no bundled assistant "${assistantId}".`);
+    }
+    return config;
 }
 
 /**
@@ -1679,7 +1683,8 @@ export function assignCharacterAsAssistant(characterId) {
 
     const currentAssistantAvatar = getPermanentAssistantAvatar();
     if (currentAssistantAvatar === character.avatar) {
-        if (character.avatar === getBundledAssistantConfig(DEFAULT_BUNDLED_ASSISTANT_ID).defaultAvatar) {
+        // SillyBunny: the system assistant is the default one from the registry.
+        if (character.avatar === getDefaultAssistantConfig().defaultAvatar) {
             toastr.info(t`${character.name} is a system assistant. Choose another character.`);
             return;
         }
@@ -1700,8 +1705,20 @@ export function initWelcomeScreen() {
     // Ensure all bundled assistants exist in the character list on startup
     eventSource.on(event_types.APP_READY, async () => {
         for (const assistant of WELCOME_BUNDLED_ASSISTANTS) {
+            // SillyBunny: an assistant that is only imported on request is not looked for at startup.
+            if (assistant.autoEnsure === false) {
+                continue;
+            }
             await ensureBundledAssistantCharacter(assistant, { tryCreate: true });
         }
+        // SillyBunny: waits until Reisen's card is in the library, so the pointer never names a card that is not there.
+        migrateAssistantPointer({
+            storage: accountStorage,
+            findAvatar: (assistant) => {
+                const avatar = getBundledAssistantIdentityAvatar(assistant);
+                return characters.some(character => character.avatar === avatar) ? avatar : null;
+            },
+        });
 
         if (getCurrentChatId() === undefined && chat.length === 0) {
             await openWelcomeScreen({ force: true });
@@ -1739,6 +1756,11 @@ export function initWelcomeScreen() {
             }
         }
     });
+
+    // SillyBunny: these run after the handlers above, which change the identity and the deletion marks the default assistant depends on.
+    for (const eventName of [event_types.CHARACTER_PAGE_LOADED, event_types.CHARACTER_EDITED, event_types.CHARACTER_DUPLICATED, event_types.CHARACTER_RENAMED, event_types.CHARACTER_DELETED]) {
+        eventSource.on(eventName, () => defaultAssistant.invalidate());
+    }
 
     eventSource.on(event_types.CHAT_RENAMED, async ({ avatarId, groupId, oldFileName, newFileName }) => {
         PinnedChatsManager.rename({ avatar: avatarId, group: groupId, file_name: oldFileName }, newFileName);

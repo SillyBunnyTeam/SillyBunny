@@ -3,7 +3,7 @@ import { getLastChatMode } from '../sillybunny-chat-mode-memory.js';
 import { createArtPlaceholder } from './art.js';
 import { markCopyPlaceholder } from './copy.js';
 import { openAssistantMenu } from './menu.js';
-import { PLACEHOLDER_ASSISTANTS } from './placeholder-assistants.js';
+import { getHomeAssistants } from './assistant-registry.js';
 import { stubAction } from './stubs.js';
 
 const STUB_MARKER = 'true';
@@ -181,5 +181,5 @@ export function mountAssistants(panel, { openMoreAssistants }) {
         return;
     }
 
-    grid.replaceChildren(...PLACEHOLDER_ASSISTANTS.map(assistant => createAssistantCard(assistant, panel)), createMoreCard(openMoreAssistants));
+    grid.replaceChildren(...getHomeAssistants().map(assistant => createAssistantCard(assistant, panel)), createMoreCard(openMoreAssistants));
 }

@@ -4,7 +4,7 @@ import { visiblePageClose } from './helpers/dialog-pages.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
-import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 // A describe whose tests assert how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
 const test = base.extend({ bundledCardsOnly: [false, { option: true }] });
@@ -2137,18 +2137,40 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(portraits).toEqual([]);
             });
 
-            test('the Add button of Nahida is a stub that does nothing and sends nothing', async ({ page }) => {
-                const installs = [];
-                page.on('request', request => request.method() !== 'GET' && /install|extensions|characters/i.test(new URL(request.url()).pathname) && installs.push(request.url()));
+            /** Makes the library hold the card of Nahida or not, whatever the server holds, and loads it again. */
+            async function pinNahida(page, installed) {
+                await page.route('**/api/characters/all', async (route) => {
+                    const real = await fetchJsonOrSkip(route);
+                    if (!real) return;
+                    const others = real.filter(entry => entry.avatar !== 'default_AssistantNahida.png');
+                    const data = { name: 'Assistant Nahida', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', creator_notes: '', creator: '', character_version: '', alternate_greetings: [], group_only_greetings: [], tags: [], extensions: {} };
+                    const card = { ...data, avatar: 'default_AssistantNahida.png', data, shallow: false, chat: 'qa-nahida', create_date: 1, json_data: JSON.stringify({ data }) };
+                    return route.fulfill({ json: installed ? [...others, card] : others });
+                });
+                await page.evaluate(async () => (await import('/script.js')).getCharacters());
+            }
+
+            const nahidaRow = (host, page) => host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: /^Nahida$/ }) });
+
+            test('the Nahida row is not installed and offers Install, with no stub, while the library has no card for her', async ({ page }) => {
+                await pinNahida(page, false);
                 const host = await openFromTile(page, 'extras');
-                const add = host.getByRole('button', { name: 'Add', exact: true });
+                const row = nahidaRow(host, page);
 
-                await expect(add).toHaveAttribute('data-sb-stub', 'true');
-                await expect(add).toHaveAccessibleDescription('Nahida');
-                await add.click();
+                await expect(row.locator('.sbBundledExtraState')).toHaveText('Not installed');
+                await expect(row.locator('.sbBundledExtraControls button')).toHaveText(['Install']);
+                await expect(host.getByRole('button', { name: 'Add', exact: true })).toHaveCount(0);
+                await expect(host.locator('[data-sb-stub]')).toHaveCount(0);
+            });
 
-                await expect(host).toBeVisible();
-                expect(installs).toEqual([]);
+            test('the Nahida row is installed and offers no action while the library holds her card', async ({ page }) => {
+                await pinNahida(page, true);
+                const host = await openFromTile(page, 'extras');
+                const row = nahidaRow(host, page);
+
+                await expect(row.locator('.sbBundledExtraState')).toHaveText('Installed');
+                await expect(row.locator('.sbBundledExtraControls button')).toHaveCount(0);
+                await expect(host.locator('[data-sb-stub]')).toHaveCount(0);
             });
 
             test('lists no link for an extension, a theme or a preset', async ({ page }) => {

@@ -1,0 +1,148 @@
+/**
+ * The assistants that SillyBunny ships, in one list that Home, the Welcome Screen code, Getting Started and Bundled
+ * Extras all read.
+ *
+ * - Reisen and Tewi come from the server: it seeds their cards, and the browser only looks for them. They have no
+ *   card asset and no card of their own to create, so a missing card stays missing until the server puts it back.
+ * - Nahida is imported from her card asset when the user installs her, and never at startup (`autoEnsure: false`).
+ * - The Bunny Guide is the card the app creates for itself while Reisen has none.
+ *
+ * @typedef {object} AssistantEntry
+ * @property {string} id
+ * @property {string} name The name that Home and Bundled Extras show.
+ * @property {boolean} [home] Whether Home lists the assistant.
+ * @property {string} [slot] Copy slot of the subtitle on Home.
+ * @property {string} [art] Name of the art placeholder on Home.
+ * @property {string} avatarStorageKey Account storage key of the avatar that the user chose for this assistant.
+ * @property {string} identityStorageKey Account storage key of the avatar that this assistant's card has now.
+ * @property {string} deletedStorageKey Account storage key that marks the card as deleted by the user.
+ * @property {string} defaultAvatar The avatar file of the card as it is first named.
+ * @property {string} fileName The name of the card file, without the extension.
+ * @property {boolean} [autoEnsure] False for an assistant that is only imported when the user asks.
+ * @property {string} [cardAsset] A card image of the app that is imported as the card.
+ * @property {string} [portrait] The image of a card that the app creates when it has no card asset.
+ * @property {string} [characterName] The name on a card that the app creates.
+ * @property {string} [title] The name by which a card of the assistant is recognised.
+ * @property {string} [creator] The creator by which a card of the assistant is recognised, and the one a created card gets.
+ * @property {string} [creatorNotes] The notes of a card that the app creates.
+ * @property {string} [description] The description of a card that the app creates.
+ * @property {string} [personality] The personality of a card that the app creates.
+ * @property {string} [scenario] The scenario of a card that the app creates.
+ * @property {string} [firstMessage] The greeting of a card that the app creates.
+ *
+ * `title`, `creator` and `characterName` are what the card of an assistant is recognised by. Reisen and Tewi, whose cards
+ * only the server provides, have none of them, so code that reads them first asks `getCreationMethod`.
+ */
+
+/** The account storage key of the Welcome Page Assistant, which is the default assistant unless the user chose another. */
+export const ASSISTANT_POINTER_KEY = 'assistant';
+
+/** @type {readonly AssistantEntry[]} */
+export const ASSISTANTS = Object.freeze([
+    {
+        id: 'reisen',
+        name: 'Reisen',
+        home: true,
+        slot: 'AS-REISEN-SUB',
+        art: 'row-reisen',
+        avatarStorageKey: ASSISTANT_POINTER_KEY,
+        identityStorageKey: 'bundledAssistantReisenIdentityAvatar',
+        deletedStorageKey: 'bundledAssistantReisenDeleted',
+        defaultAvatar: 'default_AssistantReisen.png',
+        fileName: 'default_AssistantReisen',
+    },
+    {
+        id: 'tewi',
+        name: 'Tewi',
+        home: true,
+        slot: 'AS-TEWI-SUB',
+        art: 'row-tewi',
+        avatarStorageKey: 'bundledAssistantTewiAvatar',
+        identityStorageKey: 'bundledAssistantTewiIdentityAvatar',
+        deletedStorageKey: 'bundledAssistantTewiDeleted',
+        defaultAvatar: 'default_AssistantTewi.png',
+        fileName: 'default_AssistantTewi',
+    },
+    {
+        id: 'nahida',
+        name: 'Nahida',
+        autoEnsure: false,
+        avatarStorageKey: 'bundledAssistantNahidaAvatar',
+        identityStorageKey: 'bundledAssistantNahidaIdentityAvatar',
+        deletedStorageKey: 'bundledAssistantNahidaDeleted',
+        defaultAvatar: 'default_AssistantNahida.png',
+        fileName: 'default_AssistantNahida',
+        cardAsset: 'img/assistant-nahida-portrait.png',
+        characterName: 'Assistant Nahida',
+        title: 'Assistant Nahida',
+        creator: 'Geechan',
+    },
+    {
+        id: 'guide',
+        name: 'Bunny Guide',
+        avatarStorageKey: ASSISTANT_POINTER_KEY,
+        identityStorageKey: 'bundledAssistantGuideAvatar',
+        deletedStorageKey: 'bundledAssistantGuideDeleted',
+        defaultAvatar: 'default_SillyBunnyGuide.png',
+        fileName: 'default_SillyBunnyGuide',
+        portrait: 'img/sillybunny-guide-assistant-portrait.png',
+        characterName: 'Assistant',
+        title: 'Bunny Guide',
+        creator: 'purachina',
+        creatorNotes: 'Automatically created bundled Bunny Guide character. Feel free to edit.',
+        description: 'A calm built-in bunny assistant for explaining SillyBunny, SillyTavern, model providers, presets, personas, and related basics in plain English.',
+        personality: 'Patient, beginner-friendly, calm, and practical.',
+        scenario: 'You are the built-in Bunny Guide for SillyBunny. Help the user understand the interface, APIs, presets, prompt settings, personas, and world info in plain, approachable language.',
+        firstMessage: 'Hi. I\'m the Bunny Guide. If anything in SillyBunny feels confusing, ask in plain English and I\'ll walk through it with you step by step.',
+    },
+].map(assistant => Object.freeze(assistant)));
+
+/**
+ * @param {string} id
+ * @returns {AssistantEntry}
+ * @throws {Error} When the registry does not list the assistant.
+ */
+export function getAssistant(id) {
+    const assistant = ASSISTANTS.find(candidate => candidate.id === id);
+    if (!assistant) {
+        throw new Error(`The assistant registry has no assistant "${id}".`);
+    }
+    return assistant;
+}
+
+/** @returns {AssistantEntry[]} The assistants that Home lists, in order. */
+export function getHomeAssistants() {
+    return ASSISTANTS.filter(assistant => assistant.home === true);
+}
+
+/**
+ * @param {string} id
+ * @returns {readonly string[]} The avatar files that count as the assistant's card.
+ */
+export function getAssistantAvatars(id) {
+    return Object.freeze([getAssistant(id).defaultAvatar]);
+}
+
+/**
+ * How the app can bring the card of an assistant into the library by itself.
+ * @param {Pick<AssistantEntry, 'cardAsset' | 'portrait'>} assistant
+ * @returns {'asset' | 'fallback' | null} Null for an assistant whose card only the server provides.
+ */
+export function getCreationMethod(assistant) {
+    if (assistant.cardAsset) {
+        return 'asset';
+    }
+    return assistant.portrait ? 'fallback' : null;
+}
+
+/**
+ * The default assistant: Reisen once her card exists, and the Bunny Guide until then. Every caller that needs "the
+ * assistant" asks here, so none of them decides it on its own.
+ * @param {object} options
+ * @param {(assistant: AssistantEntry) => boolean} options.hasCard Whether the library has the card of the assistant.
+ * @returns {AssistantEntry}
+ */
+export function resolveDefaultAssistant({ hasCard }) {
+    const reisen = getAssistant('reisen');
+    return hasCard(reisen) ? reisen : getAssistant('guide');
+}

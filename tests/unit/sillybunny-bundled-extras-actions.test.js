@@ -9,8 +9,8 @@ const cssTheme = { id: 'midnight', name: 'Midnight', group: 'themes', kind: 'the
 const assistant = { id: 'nahida', name: 'Nahida', group: 'assistants', kind: 'assistant', url: null };
 
 /** Adapters over a small fake world: the extension names that are installed, which of them are enabled, and so on. */
-function createWorld({ installed = {}, presets = [], themes = [], canRemove = true } = {}) {
-    const world = { installed: { ...installed }, presets: new Set(presets), themes: new Set(themes) };
+function createWorld({ installed = {}, presets = [], themes = [], assistants = [], canRemove = true } = {}) {
+    const world = { installed: { ...installed }, presets: new Set(presets), themes: new Set(themes), assistants: new Set(assistants) };
     const adapters = {
         extensions: {
             find: jest.fn(folder => (folder in world.installed ? { name: `third-party/${folder}`, enabled: world.installed[folder] } : null)),
@@ -23,6 +23,10 @@ function createWorld({ installed = {}, presets = [], themes = [], canRemove = tr
         presets: {
             has: jest.fn(name => world.presets.has(name)),
             restore: jest.fn(async (name) => { world.presets.add(name); }),
+        },
+        assistants: {
+            has: jest.fn(id => world.assistants.has(id)),
+            install: jest.fn(async (id) => { world.assistants.add(id); }),
         },
         themes: {
             has: jest.fn(name => world.themes.has(name)),
@@ -165,10 +169,66 @@ describe('the state of a third-party CSS theme row', () => {
     });
 });
 
-describe('an assistant row', () => {
-    test('is not managed here, because the Add button waits for the assistant install flow', () => {
-        const { actions } = createWorld();
+describe('the state of an assistant row', () => {
+    test('is not installed, and offers to install, while the library has no card for the assistant', () => {
+        const { actions, adapters } = createWorld();
 
-        expect(() => actions.getState(assistant)).toThrow(/assistant/i);
+        expect(actions.getState(assistant)).toEqual({ status: 'not-installed', actions: ['install'] });
+        expect(adapters.assistants.has).toHaveBeenCalledWith('nahida');
+    });
+
+    test('is installed, and offers nothing, once the library has her card, so removing her is deleting a character', () => {
+        const { actions } = createWorld({ assistants: ['nahida'] });
+
+        expect(actions.getState(assistant)).toEqual({ status: 'installed', actions: [] });
+    });
+
+    test('offers to install again after her card is deleted', () => {
+        const { actions, world } = createWorld({ assistants: ['nahida'] });
+        world.assistants.delete('nahida');
+
+        expect(actions.getState(assistant)).toEqual({ status: 'not-installed', actions: ['install'] });
+    });
+});
+
+describe('running an action on an assistant row', () => {
+    test('installs the assistant by its id, and then reports her as installed', async () => {
+        const { actions, adapters } = createWorld();
+
+        const state = await actions.run(assistant, 'install');
+
+        expect(adapters.assistants.install).toHaveBeenCalledTimes(1);
+        expect(adapters.assistants.install).toHaveBeenCalledWith('nahida');
+        expect(state).toEqual({ status: 'installed', actions: [] });
+    });
+
+    test('refuses an action that the state does not offer, and installs nothing', async () => {
+        const { actions, adapters } = createWorld({ assistants: ['nahida'] });
+
+        await expect(actions.run(assistant, 'install')).rejects.toThrow(/not offered/);
+        await expect(actions.run(assistant, 'remove')).rejects.toThrow(/not offered/);
+
+        expect(adapters.assistants.install).not.toHaveBeenCalled();
+    });
+
+    test('keeps the row not installed, and passes the error on, when the install fails', async () => {
+        const { actions, adapters } = createWorld();
+        adapters.assistants.install.mockRejectedValueOnce(new Error('import failed'));
+
+        await expect(actions.run(assistant, 'install')).rejects.toThrow('import failed');
+
+        expect(actions.getState(assistant).status).toBe('not-installed');
+    });
+
+    test('never touches the extension, preset or theme adapters', async () => {
+        const { actions, adapters } = createWorld();
+
+        await actions.run(assistant, 'install');
+
+        for (const adapter of [adapters.extensions, adapters.presets, adapters.themes]) {
+            for (const method of Object.values(adapter)) {
+                expect(method).not.toHaveBeenCalled();
+            }
+        }
     });
 });
