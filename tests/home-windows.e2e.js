@@ -40,7 +40,16 @@ const SECTION_IDS = [
 const FEATURED_IDS = ['connect-to-a-model', 'choose-a-preset', 'add-a-character', 'start-a-chat'];
 const FEATURED_TITLES = ['Connect to a Model', 'Choose a Preset', 'Add a Character', 'Start a Chat'];
 const STEP_TITLES = ['Connect a Model', 'Set Up a Preset', 'Get a Character Card', 'Start Chatting'];
-const CREDIT_GROUPS = ['Developers', 'Designers', 'Artists', 'Documenters', 'Translators', 'Acknowledgements'];
+// Artists and Translators have no names, so the page leaves them out.
+const CREDIT_GROUPS = ['Developers', 'Designers', 'Documenters', 'Acknowledgements'];
+const CREDIT_NAMES = ['Geechan', 'TheLonelyDevil', 'voldomero'];
+const ACKNOWLEDGEMENTS = [
+    { title: 'purachina', subtitle: 'For initially creating and contributing to the program' },
+    { title: 'ZUN', subtitle: 'For the Touhou Project' },
+    { title: 'Cohee, Wolfsblvt and RossAscends', subtitle: 'For their work on SillyTavern, without which SillyBunny wouldn\'t be possible' },
+    { title: 'Other SillyTavern contributors', subtitle: null },
+];
+const CONTRIBUTORS_URL = 'https://github.com/SillyTavern/SillyTavern/graphs/contributors';
 const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Nahida', 'Third-Party Software'];
 const EXTRAS_GROUPS = ['Assistants', 'First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
 const EXTRAS_ITEMS = [
@@ -1585,15 +1594,15 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('About SillyBunny', () => {
-            test('shows the logo, the name, the developer placeholder and the real version, branch and commit', async ({ page }) => {
+            test('shows the logo, the name, the developer name and the real version, branch and commit', async ({ page }) => {
                 const version = await readVersion(page);
                 const host = await openFromMenu(page, 'About SillyBunny');
 
                 await expectArt(host, 'logo-64', [64, 64]);
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(3);
                 await expect(host.getByRole('heading', { name: 'SillyBunny', exact: true })).toBeVisible();
-                await expectSlots(host, ['AB-DEVELOPER']);
-                await expectNoUnmarkedPlaceholder(host);
+                await expect(host.locator('.sbAboutDeveloper')).toHaveText('SillyBunnyTeam');
+                expect(await readCopyPlaceholders(host), 'the main page has no copy placeholder left').toEqual([]);
                 await expect(host.getByText(version.pkgVersion, { exact: false }).first()).toBeVisible();
                 await expect(host.getByText(version.gitBranch, { exact: true })).toBeVisible();
                 await expect(host.getByText(version.gitRevision, { exact: true })).toBeVisible();
@@ -1679,15 +1688,35 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByRole('button', { name: 'What’s New', exact: true })).toBeFocused();
             });
 
-            test('Credits and Legal push pages of labelled groups with placeholder bodies', async ({ page }) => {
+            test('Credits lists its names and the acknowledgements, and Legal pushes labelled groups with placeholder bodies', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
                 const current = shownPage(host);
 
                 await host.getByRole('button', { name: 'Credits', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Credits');
                 await expect(current.getByRole('heading', { level: 3 })).toHaveText(CREDIT_GROUPS);
-                await expectSlots(current, CREDIT_GROUPS.map(group => `AB-CREDITS-${group.toUpperCase()}`));
-                await expectNoUnmarkedPlaceholder(current);
+                await expect(current.getByRole('heading', { name: /^(Artists|Translators)$/ })).toHaveCount(0);
+                const section = title => current.locator('.sbWindowSection').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+
+                for (const title of ['Developers', 'Designers', 'Documenters']) {
+                    await expect(section(title).locator('.ds-row-label'), `${title} lists each name as a row, in order`).toHaveText(CREDIT_NAMES);
+                    await expect(section(title).getByRole('button'), `${title} rows are not activatable`).toHaveCount(0);
+                }
+
+                const acknowledgements = section('Acknowledgements').locator('.ds-row');
+                await expect(acknowledgements).toHaveCount(ACKNOWLEDGEMENTS.length);
+                for (const [index, { title, subtitle }] of ACKNOWLEDGEMENTS.entries()) {
+                    const row = acknowledgements.nth(index);
+                    await expect(row.locator('.ds-row-label')).toHaveText(title);
+                    await expect(row.locator('.ds-row-subtitle')).toHaveText(subtitle ?? []);
+                }
+                const contributors = section('Acknowledgements').getByRole('link', { name: 'Other SillyTavern contributors', exact: true });
+                await expect(contributors).toHaveAttribute('href', CONTRIBUTORS_URL);
+                await expect(contributors).toHaveAttribute('target', '_blank');
+                await expect(contributors).toHaveAttribute('rel', 'noopener noreferrer');
+                await expect(section('Acknowledgements').getByRole('button')).toHaveCount(0);
+
+                expect(await readCopyPlaceholders(current), 'Credits has no copy placeholder left').toEqual([]);
                 await current.getByRole('button', { name: 'Back', exact: true }).click();
 
                 await host.getByRole('button', { name: 'Legal', exact: true }).click();

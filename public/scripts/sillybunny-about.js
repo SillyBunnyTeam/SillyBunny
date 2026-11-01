@@ -11,6 +11,7 @@ import { ensureWindowStyles } from './sillybunny-window-styles.js';
 import { copyText, download } from './utils.js';
 
 const WEBSITE_URL = 'https://github.com/SillyBunnyTeam/SillyBunny';
+const CONTRIBUTORS_URL = 'https://github.com/SillyTavern/SillyTavern/graphs/contributors';
 const ISSUES_URL = 'https://github.com/SillyBunnyTeam/SillyBunny/issues';
 const VERSION_TIMEOUT_MS = 3000;
 const DEBUG_INFO_FILE_NAME = 'sillybunny-debug-info.txt';
@@ -132,7 +133,10 @@ function createMainContent(server, pages) {
     const portraits = document.createElement('div');
     portraits.className = 'sbAboutPortraits';
     portraits.append(createArtPlaceholder('about-reisen'), createArtPlaceholder('logo-64'), createArtPlaceholder('about-tewi'));
-    header.append(portraits, name, createCopyBlock('AB-DEVELOPER'));
+    const developer = document.createElement('p');
+    developer.className = 'sbAboutDeveloper';
+    developer.textContent = 'SillyBunnyTeam';
+    header.append(portraits, name, developer);
 
     const branch = createPropertyRow({ label: t`Branch`, value: server.details.branch, field: 'about-branch' });
     const commit = createPropertyRow({ label: t`Commit`, value: server.details.commit, field: 'about-commit' });
@@ -173,16 +177,42 @@ function fillWhatsNew(body) {
     body.append(createCopyBlock('AB-RELEASE-NOTES'));
 }
 
+const CREDITED_NAMES = ['Geechan', 'TheLonelyDevil', 'voldomero'];
+
+const slugOf = text => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/** One non-activatable row per name, in the order given, which is how the GNOME About dialog lists credits. */
+function createNameGroup(role, names) {
+    return createPrefGroup({
+        field: `about-credits-${role}`,
+        rows: names.map(name => createRow({ label: name, field: `about-credits-${role}-${slugOf(name)}` })),
+    });
+}
+
+function createAcknowledgements() {
+    const people = [
+        { name: 'purachina', note: t`For initially creating and contributing to the program` },
+        { name: 'ZUN', note: t`For the Touhou Project` },
+        { name: 'Cohee, Wolfsblvt and RossAscends', note: t`For their work on SillyTavern, without which SillyBunny wouldn't be possible` },
+    ];
+    return createPrefGroup({
+        field: 'about-credits-acknowledgements',
+        rows: [
+            ...people.map(({ name, note }) => createRow({ label: name, subtitle: note, field: `about-credits-acknowledgements-${slugOf(name)}` })),
+            createLinkRow({ label: t`Other SillyTavern contributors`, href: CONTRIBUTORS_URL, field: 'about-credits-acknowledgements-contributors' }),
+        ],
+    });
+}
+
+// A role with no names is left out, as AdwAboutDialog does.
 function fillCredits(body) {
     const groups = [
-        [t`Developers`, 'AB-CREDITS-DEVELOPERS'],
-        [t`Designers`, 'AB-CREDITS-DESIGNERS'],
-        [t`Artists`, 'AB-CREDITS-ARTISTS'],
-        [t`Documenters`, 'AB-CREDITS-DOCUMENTERS'],
-        [t`Translators`, 'AB-CREDITS-TRANSLATORS'],
-        [t`Acknowledgements`, 'AB-CREDITS-ACKNOWLEDGEMENTS'],
+        [t`Developers`, createNameGroup('developers', CREDITED_NAMES)],
+        [t`Designers`, createNameGroup('designers', CREDITED_NAMES)],
+        [t`Documenters`, createNameGroup('documenters', CREDITED_NAMES)],
+        [t`Acknowledgements`, createAcknowledgements()],
     ];
-    body.append(...groups.map(([title, slot]) => createSection(title, createCopyBlock(slot))));
+    body.append(...groups.map(([title, group]) => createSection(title, group.section)));
 }
 
 function fillLegal(body) {
