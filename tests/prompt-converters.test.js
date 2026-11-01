@@ -276,6 +276,20 @@ describe('calculateGoogleBudgetTokens', () => {
         expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.7-flash')).toBe('max');
     });
 
+    test('Gemini 3.8 Flash uses Gemini 3 thinking levels without minimal', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.8-flash')).toBeNull();
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.8-flash')).toBe('low');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-3.8-flash')).toBe('medium');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.8-flash')).toBe('max');
+    });
+
+    test('Gemini 4 Argon uses thinking levels without minimal', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-4-argon')).toBeNull();
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-4-argon')).toBe('low');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-4-argon')).toBe('medium');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-4-argon')).toBe('max');
+    });
+
     test('Gemini 3.6 Flash uses Gemini 3 thinking levels', () => {
         expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-3.6-flash')).toBeNull();
         expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3.6-flash')).toBe('minimal');
@@ -301,6 +315,12 @@ describe('calculateGoogleBudgetTokens', () => {
         expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3.1-flash-image')).toBe('max');
         expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-3-pro-image')).toBe('minimal');
         expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-3-pro-image')).toBe('max');
+    });
+
+    test('Nano Banana 2.1 uses Gemini 3 thinking levels', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-nano-banana-2.1')).toBeNull();
+        expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-nano-banana-2.1')).toBe('minimal');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-nano-banana-2.1')).toBe('max');
     });
 
     describe('gemini-3 pro', () => {
@@ -1193,7 +1213,7 @@ describe('convertGooglePrompt', () => {
         expect(result.contents.filter(c => c.role === 'user')).toHaveLength(1);
     });
 
-    for (const model of ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite']) {
+    for (const model of ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-nano-banana-2.1']) {
         test(`merges a trailing prefill into the user turn on ${model}`, () => {
             const messages = [
                 { role: 'user', content: 'Hi' },
@@ -1261,6 +1281,30 @@ describe('convertGooglePrompt', () => {
         const funcResp = userParts.find(p => p.functionResponse);
         expect(funcResp).toBeDefined();
         expect(funcResp.functionResponse.name).toBe('search');
+    });
+
+    test('adds the thought signature bypass to Gemini 4 function calls', () => {
+        const messages = [
+            { role: 'user', content: 'search cats' },
+            { role: 'assistant', tool_calls: [
+                { id: 'tc1', function: { name: 'search', arguments: '{"q":"cats"}' } },
+            ] },
+            { role: 'tool', content: 'Results here', tool_call_id: 'tc1' },
+        ];
+        const result = mod.convertGooglePrompt(messages, 'gemini-4-argon', false, names);
+        const funcCall = result.contents.find(c => c.role === 'model')?.parts.find(p => p.functionCall);
+        expect(funcCall.thoughtSignature).toBe('skip_thought_signature_validator');
+    });
+
+    test('adds the thought signature bypass to Nano Banana model turns', () => {
+        const messages = [
+            { role: 'user', content: 'Draw a cat' },
+            { role: 'assistant', content: 'Here is a cat' },
+            { role: 'user', content: 'Make it orange' },
+        ];
+        const result = mod.convertGooglePrompt(messages, 'gemini-nano-banana-2.1', false, names);
+        const modelTurn = result.contents.find(c => c.role === 'model');
+        expect(modelTurn.parts[0].thoughtSignature).toBe('skip_thought_signature_validator');
     });
 
     test('prepends example names when useSysPrompt is true', () => {
