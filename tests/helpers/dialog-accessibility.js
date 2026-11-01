@@ -10,16 +10,25 @@ export async function a11yShot(page, name) {
     await page.screenshot({ path: `${SHOT_DIRECTORY}/${name}.png` });
 }
 
+const SETTLE_LIMIT_MS = 1000;
+
 /**
  * Computed styles read right after a focus or media change can still be the start value of a CSS
  * transition. Wait for the transitions that are running, so the values are the resting ones.
+ *
+ * A transition on an element that is not painted, such as a tab button behind a modal, can reach its end
+ * without its `finished` promise ever resolving. A finished transition has nothing left to wait for, and a
+ * running one is waited for only up to `SETTLE_LIMIT_MS`, which is longer than a dialog transition.
  */
 export async function settleTransitions(page) {
-    await page.evaluate(() => Promise.all(
+    await page.evaluate(limit => Promise.all(
         document.getAnimations()
-            .filter(animation => animation instanceof window.CSSTransition)
-            .map(animation => animation.finished.catch(() => {})),
-    ));
+            .filter(animation => animation instanceof window.CSSTransition && animation.playState === 'running')
+            .map(animation => Promise.race([
+                animation.finished.catch(() => {}),
+                new Promise(resolve => setTimeout(resolve, limit)),
+            ])),
+    ), SETTLE_LIMIT_MS);
 }
 
 /**

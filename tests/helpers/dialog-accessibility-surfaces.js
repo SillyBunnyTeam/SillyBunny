@@ -17,7 +17,10 @@ import {
     waitForDetail,
 } from './chats-archive.js';
 import { installProbes, settleTransitions } from './dialog-accessibility.js';
+import { applyHomeTestSettings } from './getting-started-state.js';
+import { protectMaintainerServer } from './maintainer-server.js';
 import { bootMiscDialogs, openMiscFixtureChat } from './misc-dialogs.js';
+import { fetchJsonOrSkip } from './route-fetch.js';
 
 export const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 390, height: 844 };
@@ -55,9 +58,12 @@ async function guardWrites(page, baseURL) {
     await page.route('**/api/quick-replies/save', route => route.fulfill({ body: 'ok' }));
 }
 
-/** The intercepted settings for a boot. `motion` turns animations on; `fontScale` is the app's own text scale. */
-async function prepareBoot(page, baseURL, { motion = false, fontScale = 1 } = {}) {
-    await guardWrites(page, baseURL);
+/**
+ * The intercepted settings for a boot. `motion` turns animations on; `fontScale` is the app's own text scale. `guard` is off
+ * for a boot that reads the account the way Home does, which the guard of the misc fixture would cut off.
+ */
+async function prepareBoot(page, baseURL, { motion = false, fontScale = 1, guard = true } = {}) {
+    if (guard) await guardWrites(page, baseURL);
     const context = { destructiveRequests: [] };
     await page.route('**/api/cookies/clear', route => {
         context.destructiveRequests.push(route.request().url());
@@ -103,6 +109,44 @@ async function bootArchiveApp(page, baseURL, viewport, options) {
     await installProbes(page);
     return context;
 }
+
+const HOME_READY_TIMEOUT = 30_000;
+const OPEN_DIALOG = 'dialog[open]:not([closing])';
+/** The shown page of the open dialog: not the pages under it, and not one that is leaving. */
+const SHOWN_PAGE = 'dialog.sb-dialog-host:not([closing]) .sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving)';
+
+/**
+ * Boots the app on Home with the account of a spec about Home, and Welcome shut. `firstRun` boots an account that has never
+ * met Welcome instead: its dialog is the first thing on the page, and the app is not ready until the persona has a name.
+ */
+async function bootHome(page, baseURL, viewport, options, { firstRun = false } = {}) {
+    const { context, configureSettings, reducedMotion } = await prepareBoot(page, baseURL, { ...options, guard: false });
+    await protectMaintainerServer(page);
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion });
+    await page.route('**/api/settings/get', async (route) => {
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
+        const settings = JSON.parse(data.settings);
+        // A first run has no stored checklist, which is how Getting Started tells it from an old account.
+        applyHomeTestSettings(settings, firstRun ? { firstRun: true, value: null, welcome: 'never-seen' } : {});
+        configureSettings(settings);
+        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+    });
+    await page.goto('/');
+    if (firstRun) {
+        await expect(page.locator(OPEN_DIALOG)).toBeVisible({ timeout: HOME_READY_TIMEOUT });
+    } else {
+        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: HOME_READY_TIMEOUT });
+        await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on', { timeout: HOME_READY_TIMEOUT });
+        await expect(page.locator('#chat > .welcomePanel .sbHomeTile').first()).toBeVisible();
+    }
+    await installProbes(page);
+    context.firstRun = firstRun;
+    return context;
+}
+
+const bootHomeFirstRun = (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { firstRun: true });
 
 async function waitForSettled(page) {
     await page.waitForFunction(() => !document.querySelector('dialog[open][opening], dialog[open][closing]'));
@@ -186,6 +230,111 @@ async function pushTagMembersPage(page) {
     await settleTransitions(page);
 }
 
+// --- Setup of the windows that Home opens --------------------------------------------------------------
+
+const homeTile = (page, key) => page.locator(`#chat > .welcomePanel .sbHomeTile[data-sb-home-key="${key}"]`);
+const shown = page => page.locator(SHOWN_PAGE);
+const homeMenuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
+
+/** A tile is a button, so the keyboard user reaches the window with Enter and the window returns focus to the tile. */
+async function openFromTile(page, key) {
+    const opener = homeTile(page, key);
+    await opener.focus();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.locator(OPEN_DIALOG));
+    return opener;
+}
+
+/** The main menu opens with Enter on its button, and an item is chosen with Enter once it has focus. */
+async function openFromMenu(page, label) {
+    const opener = homeMenuButton(page);
+    await opener.focus();
+    await pressKey(page, 'Enter');
+    const item = page.getByRole('menuitem', { name: label, exact: true });
+    await expect(item).toBeVisible();
+    await item.focus();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.locator(OPEN_DIALOG));
+    return opener;
+}
+
+/** Remembers the control that has the focus, so a step can name it after a page above it closes. */
+async function markFocusedControl(page, context) {
+    await page.evaluate(() => {
+        document.querySelectorAll('[data-qa-return-focus]').forEach(node => node.removeAttribute('data-qa-return-focus'));
+        document.activeElement?.setAttribute('data-qa-return-focus', '');
+    });
+    context.returnFocus = page.locator('[data-qa-return-focus]');
+}
+
+async function pushShortcutsOverHelp(page, context) {
+    await markFocusedControl(page, context);
+    await pressKey(page, 'Control+?');
+    await expect(page.locator(`${OPEN_DIALOG} .sbShortcutsDialog`)).toBeVisible();
+    await settleTransitions(page);
+}
+
+/** A topic is two steps from the front page: a section of the list, then its first topic. */
+async function openFirstTopic(page) {
+    await page.locator('dialog[open] button[data-sb-editor-field^="help-nav-"]:not([data-sb-editor-field="help-nav-overview"])').first().focus();
+    await pressKey(page, 'Enter');
+    await expect(page.locator('dialog[open] .sbHelpPage[data-sb-help-view="section"]')).toBeVisible();
+    await settleTransitions(page);
+    await page.locator('dialog[open] button[data-sb-editor-field^="help-section-topic-"]').first().focus();
+    await pressKey(page, 'Enter');
+    await expect(page.locator('dialog[open] .sbHelpPage[data-sb-help-view="topic"]')).toBeVisible();
+    await settleTransitions(page);
+}
+
+/** The pages of About open from its main page, so a state that follows another page goes back first. */
+async function backToAbout(page) {
+    const title = shown(page).locator('.sb-dialog__title');
+    if ((await title.innerText()) === 'About SillyBunny') return;
+    await pressKey(page, 'Escape');
+    await expect(title).toHaveText('About SillyBunny');
+    await settleTransitions(page);
+}
+
+async function pushAboutPage(page, context, rowField, title) {
+    await backToAbout(page);
+    const row = page.locator(`dialog[open] [data-sb-editor-field="${rowField}"]`);
+    await row.focus();
+    await markFocusedControl(page, context);
+    await pressKey(page, 'Enter');
+    await expect(shown(page).locator('.sb-dialog__title')).toHaveText(title);
+    await settleTransitions(page);
+}
+
+const pushTroubleshooting = (page, context) => pushAboutPage(page, context, 'about-troubleshooting-row', 'Troubleshooting');
+const pushCredits = (page, context) => pushAboutPage(page, context, 'about-credits', 'Credits');
+
+const welcomeNext = page => shown(page).getByRole('button', { name: 'Next', exact: true });
+
+/** Next on the first page pushes the persona page; a first run keeps Next off until the name is typed. */
+async function pushWelcomePersona(page, context) {
+    await welcomeNext(page).focus();
+    await markFocusedControl(page, context);
+    await pressKey(page, 'Enter');
+    await expect(shown(page).locator('.sb-dialog__title')).toHaveText('Your Persona');
+    await settleTransitions(page);
+}
+
+async function typeFirstRunName(page) {
+    const name = shown(page).getByRole('textbox', { name: 'Your Name' });
+    await name.fill('Test User');
+    await expect(welcomeNext(page)).toBeEnabled();
+}
+
+/** From the persona page to What's Next. A first run needs its name first, which the page asks for. */
+async function pushWhatsNext(page, context) {
+    if (context.firstRun) await typeFirstRunName(page);
+    await welcomeNext(page).focus();
+    await markFocusedControl(page, context);
+    await pressKey(page, 'Enter');
+    await expect(shown(page).locator('.sb-dialog__title')).toHaveText('What’s Next');
+    await settleTransitions(page);
+}
+
 // --- Surfaces -------------------------------------------------------------------------------------------
 
 /**
@@ -199,6 +348,7 @@ async function pushTagMembersPage(page) {
 export const SURFACES = [
     {
         id: 'popup-alert',
+        structure: { name: 'Delete this prompt?', role: 'alertdialog' },
         title: 'Popup Alert (destructive confirm)',
         viewports: [DESKTOP, PHONE],
         modal: true,
@@ -235,6 +385,7 @@ export const SURFACES = [
     },
     {
         id: 'open-alert',
+        structure: { name: 'Clear cookies & cache?', role: 'alertdialog' },
         title: 'openAlert (destructive confirm)',
         viewports: [DESKTOP, PHONE],
         modal: true,
@@ -265,6 +416,7 @@ export const SURFACES = [
     },
     {
         id: 'popup-dialog',
+        structure: { name: 'Change Password' },
         title: 'Popup Dialog (form) over its parent',
         viewports: [DESKTOP, PHONE],
         modal: true,
@@ -298,6 +450,7 @@ export const SURFACES = [
     },
     {
         id: 'tag-manager',
+        structure: { name: 'Tag Management' },
         title: 'Window with a pushed page (Tag Manager)',
         viewports: [DESKTOP, PHONE],
         modal: true,
@@ -330,7 +483,7 @@ export const SURFACES = [
         pushPage: pushTagMembersPage,
         states: [
             { name: 'list', async enter() {} },
-            { name: 'member page', enter: pushTagMembersPage },
+            { name: 'member page', title: 'QA Alpha', enter: pushTagMembersPage },
         ],
     },
     {
@@ -380,6 +533,7 @@ export const SURFACES = [
     },
     {
         id: 'chat-archive',
+        structure: { name: 'Chat Archive' },
         title: 'Chat Archive',
         viewports: [DESKTOP, PHONE],
         modal: true,
@@ -401,9 +555,11 @@ export const SURFACES = [
         escapes: [{ closes: true, async check() {} }],
         states: [
             { name: 'sidebar', async enter() {} },
-            { name: 'list', async enter(page) { await openArchiveList(page); } },
+            // A phone shows the list as a page of its own, so the window takes that page's name.
+            { name: 'list', title: (page, viewport) => viewport.width < 600 ? 'All Chats' : 'Chat Archive', async enter(page) { await openArchiveList(page); } },
             {
                 name: 'selection',
+                title: '1 selected',
                 async enter(page) {
                     await openMenuItem(page, 'Select Chats');
                     await rows(page).first().click();
@@ -413,6 +569,7 @@ export const SURFACES = [
             },
             {
                 name: 'detail',
+                title: 'Alice - First chat',
                 async enter(page) {
                     await pressKey(page, 'Escape');
                     await expect(page.locator('.sbca-row .sb-selection-check')).toHaveCount(0);
@@ -425,3 +582,181 @@ export const SURFACES = [
         ],
     },
 ];
+
+// Defects the walk found in the product. A test named here is expected to fail, so the run stays green, and it turns red
+// as soon as the defect is fixed, which is the cue to delete the entry. Locations are the CSS that causes each one.
+const ROW_HAS_NO_EDGE = {
+    check: 'forced-controls',
+    why: 'button.ds-row has no border or fill in forced colours: .ds-row--activatable is missing from the outlined controls at sillybunny-theme.css:8215 and sillybunny-editor-shell.css:232 gives it none',
+};
+const CHECKED_SWITCH_RING = {
+    check: 'forced-controls',
+    why: 'A focused, checked switch draws its Highlight ring on its Highlight fill (sillybunny-theme.css:8221 and :8247)',
+};
+const HELP_SIDEBAR_NARROW = {
+    check: 'clipped-labels',
+    why: 'The Help sidebar is 220px to 360px (sillybunny-help/help-window.js:312-314) whatever the text size, so a section title breaks mid-word at 200%',
+};
+const NARROW_ROW_LABEL = {
+    check: 'clipped-labels',
+    widths: [PHONE.width],
+    why: 'On a phone at 200% the row label shares its line with an icon, keys or a badge and breaks a word (.ds-row-label in sillybunny-windows.css)',
+};
+
+// --- The windows that Home opens ------------------------------------------------------------------------
+// Each is reached the way a keyboard user reaches it: a tile or a main menu item, pressed with Enter. Home is on screen,
+// and the opener is the control that the window must give the focus back to.
+
+const HOME_WINDOW = {
+    viewports: [DESKTOP, PHONE],
+    modal: true,
+    rootSelector: 'dialog[open]',
+    frameSelector: 'dialog[open] .sb-dialog, dialog[open].sb-dialog',
+    isOpen: page => page.locator(OPEN_DIALOG),
+    boot: bootHome,
+};
+
+const stayOnFirstPage = {
+    // Escape on the first page does nothing, so the window stays and the focus stays where it was.
+    stays: true,
+    focus: (page, context) => context.returnFocus,
+    async check(page) {
+        await expect(page.locator(OPEN_DIALOG)).toHaveCount(1);
+        await expect(shown(page).locator('.sb-dialog__title')).toHaveText('Welcome');
+    },
+};
+
+const popToFirstWelcomePage = {
+    focus: (page, context) => context.returnFocus,
+    async check(page) {
+        await expect(shown(page).locator('.sb-dialog__title')).toHaveText('Welcome');
+    },
+};
+
+const welcomeStates = [
+    { name: 'hello', title: 'Welcome', async enter() {} },
+    { name: 'persona', title: 'Your Persona', enter: pushWelcomePersona },
+    { name: 'whats-next', title: 'What’s Next', enter: pushWhatsNext },
+];
+
+SURFACES.push(
+    {
+        ...HOME_WINDOW,
+        id: 'help',
+        knownBugs: [ROW_HAS_NO_EDGE, HELP_SIDEBAR_NARROW],
+        title: 'Help window (a topic page, Keyboard Shortcuts pushed over it)',
+        structure: { name: 'Help' },
+        open: page => openFromTile(page, 'help'),
+        pushPage: pushShortcutsOverHelp,
+        escapes: [
+            { focus: (page, context) => context.returnFocus, async check(page) {
+                await expect(page.locator(`${OPEN_DIALOG} .sbShortcutsDialog`)).toBeHidden();
+                await expect(page.locator(`${OPEN_DIALOG} .sbHelpDialog`)).toBeVisible();
+            } },
+            { closes: true, async check() {} },
+        ],
+        states: [
+            { name: 'overview', title: 'Help', async enter() {} },
+            // Help lists a topic beside its sections on a desktop, so the window keeps its name. A phone pushes the topic as a page.
+            { name: 'topic', enter: page => openFirstTopic(page), title: (page, viewport) => viewport.width < 600 ? shown(page).locator('.sb-dialog__title').innerText() : 'Help' },
+            { name: 'shortcuts page', title: 'Keyboard Shortcuts', enter: pushShortcutsOverHelp },
+        ],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'about',
+        knownBugs: [ROW_HAS_NO_EDGE],
+        title: 'About window (Troubleshooting pushed)',
+        structure: { name: 'About SillyBunny' },
+        open: page => openFromMenu(page, 'About SillyBunny'),
+        pushPage: pushTroubleshooting,
+        escapes: [
+            { focus: (page, context) => context.returnFocus, async check(page) {
+                await expect(page.locator('dialog[open] textarea.sbDebugInfo')).toHaveCount(0);
+            } },
+            { closes: true, async check() {} },
+        ],
+        states: [
+            { name: 'about', title: 'About SillyBunny', async enter() {} },
+            { name: 'credits', title: 'Credits', enter: pushCredits },
+            { name: 'troubleshooting', title: 'Troubleshooting', enter: pushTroubleshooting },
+        ],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'shortcuts',
+        knownBugs: [NARROW_ROW_LABEL],
+        title: 'Keyboard Shortcuts window',
+        structure: { name: 'Keyboard Shortcuts' },
+        open: page => openFromMenu(page, 'Keyboard Shortcuts'),
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'shortcuts', title: 'Keyboard Shortcuts', async enter() {} }],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'welcome-reopen',
+        knownBugs: [ROW_HAS_NO_EDGE, CHECKED_SWITCH_RING],
+        title: 'Welcome (reopened from the main menu)',
+        structure: { name: 'Welcome' },
+        open: page => openFromMenu(page, 'Show Welcome'),
+        pushPage: pushWelcomePersona,
+        escapes: [
+            popToFirstWelcomePage,
+            stayOnFirstPage,
+            // The reopened dialog has a Close button on its first page, and it is the only way out of that page.
+            { closes: true, async act(page) {
+                const close = shown(page).getByRole('button', { name: 'Close', exact: true });
+                await close.focus();
+                await pressKey(page, 'Enter');
+            }, async check() {} },
+        ],
+        states: welcomeStates,
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'welcome-first-run',
+        knownBugs: [ROW_HAS_NO_EDGE, CHECKED_SWITCH_RING],
+        title: 'Welcome (first run)',
+        boot: bootHomeFirstRun,
+        structure: { name: 'Welcome' },
+        // The dialog is on the page at boot, so there is no control that opened it, and the focus ends in the document.
+        async open(page) {
+            await waitForSurface(page, page.locator(OPEN_DIALOG));
+            return page.locator('body');
+        },
+        pushPage: pushWelcomePersona,
+        escapes: [
+            popToFirstWelcomePage,
+            stayOnFirstPage,
+            // A first run ends only once the persona has a name, and it ends on Start of the last page.
+            { closes: true, async act(page, context) {
+                await pushWelcomePersona(page, context);
+                await pushWhatsNext(page, context);
+                const start = shown(page).getByRole('button', { name: 'Start', exact: true });
+                await start.focus();
+                await pressKey(page, 'Enter');
+            }, async check() {} },
+        ],
+        states: welcomeStates,
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'getting-started',
+        knownBugs: [ROW_HAS_NO_EDGE, NARROW_ROW_LABEL],
+        title: 'Getting Started window',
+        structure: { name: 'Getting Started' },
+        open: page => openFromTile(page, 'getting-started'),
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'steps', title: 'Getting Started', async enter() {} }],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'bundled-extras',
+        knownBugs: [ROW_HAS_NO_EDGE, NARROW_ROW_LABEL],
+        title: 'Bundled Extras window',
+        structure: { name: 'Bundled Extras' },
+        open: page => openFromTile(page, 'extras'),
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'extras', title: 'Bundled Extras', async enter() {} }],
+    },
+);

@@ -26,6 +26,9 @@ import { DESKTOP, SURFACES, TEXT_SCALE, bootMisc, bootMiscWithChat, openArchiveL
 // Everything else must show its full label.
 const ELLIPSIZING = ['.sb-dialog__title', '.sb-dialog__subtitle', '.ds-select-row__trigger'];
 
+// A control that the browser gives no name shows in the accessibility snapshot as its role alone, with at most its states after it.
+const UNNAMED_CONTROL = /^\s*- (?:button|link|textbox|searchbox|switch|checkbox|radio|combobox|slider|spinbutton|tab|menuitem|option)(?: \[[^\]]+\])*:?\s*$/;
+
 // --- Checks ---------------------------------------------------------------------------------------------
 
 /** The alpha of a computed colour string such as `rgb(0, 0, 0)` or `color(srgb 0 0 0 / 0.5)`. */
@@ -73,15 +76,22 @@ async function expectTabStaysInside(page, surface) {
 }
 
 async function pressEscapeSteps(page, surface, context, opener) {
-    if (surface.pushPage) await surface.pushPage(page);
+    if (surface.pushPage) await surface.pushPage(page, context);
     for (const step of surface.escapes) {
-        await pressKey(page, 'Escape');
+        // A step names its own way out where Escape cannot be it, as on the last page of a first run.
+        await (step.act ? step.act(page, context) : pressKey(page, 'Escape'));
         if (step.closes) await expect(surface.isOpen(page)).toHaveCount(0);
         await step.check(page, context);
-        const target = step.closes ? opener : step.focus(page);
+        const target = step.closes ? opener : step.focus(page, context);
         const active = await page.evaluate(() => window.sbA11y.focusState('body'));
         await expect(target, `focus after Escape is on ${active.label ?? 'the document'}`).toBeFocused();
     }
+}
+
+/** Marks the test as an expected failure when the surface lists the defect for this check and width. */
+function expectKnownBugs(surface, check, viewport) {
+    const known = (surface.knownBugs ?? []).filter(bug => bug.check === check && (!bug.widths || bug.widths.includes(viewport.width)));
+    test.fail(known.length > 0, known.map(bug => bug.why).join('; '));
 }
 
 for (const surface of SURFACES) {
@@ -104,7 +114,7 @@ for (const surface of SURFACES) {
                     }
                     await expectTabStaysInside(page, surface);
                     if (surface.pushPage) {
-                        await surface.pushPage(page);
+                        await surface.pushPage(page, context);
                         const onPage = await focusStateOf(page, surface);
                         expect.soft(onPage.inside, `focus after the page is pushed is ${onPage.label ?? 'the document'}`).toBe(true);
                         await expectTabStaysInside(page, surface);
@@ -125,6 +135,24 @@ for (const surface of SURFACES) {
                     await pressEscapeSteps(page, surface, context, opener);
                     await expect(surface.isOpen(page)).toHaveCount(0);
                 });
+
+                if (surface.structure) {
+                    test('structure: the dialog has a role and a name that follows its page, is modal, and every control in it has a name', async ({ page, baseURL }) => {
+                        const context = await surface.boot(page, baseURL, viewport, { motion: false });
+                        await surface.open(page, context);
+                        for (const state of surface.states) {
+                            await state.enter(page, context);
+                            await settleTransitions(page);
+                            const dialog = page.locator(surface.rootSelector).last();
+                            await expect(dialog, `${state.name}: role`).toHaveRole(surface.structure.role ?? 'dialog');
+                            const expectedName = typeof state.title === 'function' ? await state.title(page, viewport) : state.title ?? surface.structure.name;
+                            await expect(dialog, `${state.name}: name`).toHaveAccessibleName(expectedName);
+                            expect(await dialog.evaluate(node => node.matches(':modal')), `${state.name}: modal`).toBe(true);
+                            const unnamed = (await dialog.ariaSnapshot()).split('\n').filter(line => UNNAMED_CONTROL.test(line)).map(line => line.trim());
+                            expect.soft(unnamed, `${state.name}: controls without a name`).toEqual([]);
+                        }
+                    });
+                }
 
                 test('keyboard with motion: Escape closes through the closing animation and focus returns', async ({ page, baseURL }) => {
                     const context = await surface.boot(page, baseURL, viewport, { motion: true });
@@ -170,6 +198,7 @@ for (const surface of SURFACES) {
                 });
 
                 test('forced colours: buttons, switches and the focus ring stay visible', async ({ page, baseURL }) => {
+                    expectKnownBugs(surface, 'forced-controls', viewport);
                     const context = await surface.boot(page, baseURL, viewport, { motion: false });
                     await page.emulateMedia({ forcedColors: 'active' });
                     await surface.open(page, context);
@@ -185,6 +214,7 @@ for (const surface of SURFACES) {
                 });
 
                 test('200% text: no label is clipped', async ({ page, baseURL }) => {
+                    expectKnownBugs(surface, 'clipped-labels', viewport);
                     const context = await surface.boot(page, baseURL, viewport, { motion: false, fontScale: TEXT_SCALE });
                     expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fontScale').trim()), 'the app applied the text scale').toBe(String(TEXT_SCALE));
                     await surface.open(page, context);
