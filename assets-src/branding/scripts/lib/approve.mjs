@@ -1,20 +1,48 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { approvedName, sha256 } from './log.mjs';
 
 const MIN_HASH_PREFIX = 8;
 
 const toLogPath = (rootDir, path) => relative(rootDir, path).split(sep).join('/');
 
+const PIXEL_SNAP = 'pixel-snap';
+
+/** A snapped still, or a scene composed on the pixel grid: art that is kept apart from the smooth masters, under approved/pixel/. */
+const isPixelArt = (entry) => entry.template === PIXEL_SNAP || (entry.template === 'compose-scene' && entry.vars?.grid !== undefined);
+
 /**
- * Finds the single logged output a target names. A target is a file path (from the working
- * directory or the package root) or a sha256, in full or as a prefix of at least 8 hex digits.
+ * Where an output's approved copy goes. Pixel art is kept under approved/pixel/, a snap by the id of the picture it came from and a grid
+ * scene by its own file name, so it can never take the name of a smooth master and both stay approved side by side.
+ */
+function approvalName(entry, output) {
+    if (output.approvedAs || !isPixelArt(entry)) {
+        return approvedName(output);
+    }
+    if (entry.template === PIXEL_SNAP) {
+        if (typeof entry.vars?.id !== 'string' || !/^[\w-]+$/.test(entry.vars.id)) {
+            throw new Error(`${output.file} is a pixel snap without a usable id in its log entry, so the name it is approved under is unknown.`);
+        }
+        return `pixel/${entry.vars.id}.png`;
+    }
+    return `pixel/${basename(output.file)}`;
+}
+
+/**
+ * Finds the one logged output a target names. A target is a file path (from the working directory or the package root) or a sha256, in
+ * full or as a prefix of at least 8 hex digits.
+ *
+ * A file that was written again under the same path (a re-run) is logged more than once. For a path, the entries whose sha256 is the file's
+ * current one are the candidates: an older entry of the same path with a different sha is the old picture and is never picked. For a
+ * sha256, the candidates are the entries with that sha256. When several candidates are left, they are identical re-runs of one file and the
+ * latest is taken; the earlier entries are not touched. Candidates that are different files, or a prefix that starts more than one
+ * sha256, are ambiguous.
  */
 function findOutput(entries, rootDir, target) {
-    const matches = [];
     const absolute = isAbsolute(target) || existsSync(target) ? resolve(target) : resolve(rootDir, target);
     const asPath = target ? toLogPath(rootDir, absolute) : '';
     const isHash = new RegExp(`^[0-9a-f]{${MIN_HASH_PREFIX},64}$`, 'i').test(target);
+    const matches = [];
     for (const entry of entries) {
         for (const output of entry.outputs ?? []) {
             if (output.file === asPath || (isHash && output.sha256.startsWith(target.toLowerCase()))) {
@@ -25,10 +53,39 @@ function findOutput(entries, rootDir, target) {
     if (matches.length === 0) {
         throw new Error(`"${target}" is not in the log.`);
     }
-    if (matches.length > 1) {
-        throw new Error(`"${target}" matches more than one logged file (${matches.map((m) => m.output.file).join(', ')}). Use the file path.`);
+    const byPath = matches.some(({ output }) => output.file === asPath);
+    const candidates = byPath ? currentFileEntries(matches, rootDir, target, asPath) : matches;
+
+    const hashes = [...new Set(candidates.map(({ output }) => output.sha256))];
+    if (hashes.length > 1) {
+        throw new Error(`"${target}" is the start of more than one sha256 (${hashes.map((hash) => hash.slice(0, 16)).join(', ')}). Give more digits, or the file path.`);
     }
-    return matches[0];
+    const files = [...new Set(candidates.map(({ output }) => output.file))];
+    if (files.length > 1) {
+        throw new Error(`"${target}" matches more than one logged file (${files.join(', ')}). Use the file path of the one you mean.`);
+    }
+    return candidates.at(-1);
+}
+
+/**
+ * The entries of a path that logged the file as it is now. With one entry it is returned as it is, so the usual checks name what is
+ * wrong with it; with several, a file that is missing or is none of them cannot be told from the rest, and that is said.
+ */
+function currentFileEntries(matches, rootDir, target, asPath) {
+    const logged = matches.filter(({ output }) => output.file === asPath);
+    if (logged.length === 1) {
+        return logged;
+    }
+    const source = resolve(rootDir, asPath);
+    if (!existsSync(source)) {
+        throw new Error(`"${target}" is logged ${logged.length} times and the file is missing on disk, so the entry to approve cannot be told.`);
+    }
+    const current = sha256(readFileSync(source));
+    const same = logged.filter(({ output }) => output.sha256 === current);
+    if (same.length === 0) {
+        throw new Error(`"${target}" is logged ${logged.length} times, and the file on disk (sha256 ${current.slice(0, 16)}) is none of them (${[...new Set(logged.map(({ output }) => output.sha256.slice(0, 16)))].join(', ')}): it was changed after it was logged. Refusing to approve a file that is not one that was generated.`);
+    }
+    return same;
 }
 
 function readLogLines(logPath) {
@@ -84,13 +141,14 @@ export function approveOutputs({ rootDir, targets, ref, dryRun = false }) {
     const plan = targets.map((target) => {
         const { entry, output } = findOutput(log.entries, rootDir, target);
         const source = approvableSource(rootDir, output);
-        const destinations = ['approved', ...(ref ? ['refs'] : [])].map((folder) => join(rootDir, folder, approvedName(output)));
+        const name = approvalName(entry, output);
+        const destinations = ['approved', ...(ref ? ['refs'] : [])].map((folder) => join(rootDir, folder, name));
         for (const destination of destinations) {
             if (existsSync(destination) && sha256(readFileSync(destination)) !== output.sha256) {
-                throw new Error(`${toLogPath(rootDir, destination)} already exists with different content.`);
+                throw new Error(`${toLogPath(rootDir, destination)} already exists with different content.${isPixelArt(entry) ? ' To replace approved pixel art, use --supersede <old> --by <new> --in-place.' : ''}`);
             }
         }
-        return { entry, output, source, destinations };
+        return { entry, output, source, destinations, name };
     });
 
     const summary = plan.map(({ output, destinations }) => ({
@@ -102,10 +160,13 @@ export function approveOutputs({ rootDir, targets, ref, dryRun = false }) {
         return summary;
     }
 
-    for (const { entry, output, source, destinations } of plan) {
+    for (const { entry, output, source, destinations, name } of plan) {
         for (const destination of destinations) {
             mkdirSync(join(destination, '..'), { recursive: true });
             copyFileSync(source, destination);
+        }
+        if (name !== approvedName(output)) {
+            output.approvedAs = name;
         }
         output.approved = true;
         entry.approved = true;
@@ -140,6 +201,9 @@ export function supersedeOutput({ rootDir, oldTarget, newTarget, inPlace = false
     }
     if (replacement.output.superseded) {
         throw new Error(`${replacement.output.file} is superseded and cannot replace anything.`);
+    }
+    if (isPixelArt(replacement.entry) && !isPixelArt(old.entry)) {
+        throw new Error(`${replacement.output.file} is pixel art and ${old.output.file} is not. A snap never replaces approved art; both stay approved.`);
     }
     if (!inPlace && !replacement.output.approved) {
         throw new Error(`${replacement.output.file} is not approved yet. Approve it first, then supersede the old one, or pass --in-place to do both.`);

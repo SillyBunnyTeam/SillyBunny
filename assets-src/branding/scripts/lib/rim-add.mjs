@@ -88,7 +88,7 @@ function distanceLine(values, length) {
 }
 
 /** The distance in pixels from each pixel centre to the nearest pixel centre of the mask (0 inside it). */
-function distanceToMask(mask, width, height) {
+export function distanceToMask(mask, width, height) {
     const squared = new Float64Array(width * height);
     for (let at = 0; at < squared.length; at++) {
         squared[at] = mask[at] === 1 ? 0 : INFINITE;

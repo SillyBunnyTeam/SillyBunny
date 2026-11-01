@@ -1,9 +1,13 @@
 import sharp from 'sharp';
 import { srgbToOklab } from './pixel-colour.mjs';
-import { createRaster, crop, opaqueBox, paste } from './raster.mjs';
+import { createRaster, crop, hasBinaryAlpha, opaqueBox, paste } from './raster.mjs';
 
 const SPEC_KEYS = new Set(['margin', 'alphaThreshold', 'assets']);
-const ASSET_KEYS = new Set(['character', 'master', 'css', 'fit', 'crop', 'margin', 'square', 'webp', 'focus', 'src']);
+const ASSET_KEYS = new Set(['character', 'master', 'css', 'fit', 'crop', 'margin', 'square', 'webp', 'focus', 'src', 'pixel']);
+// What a pixel placement is shipped at is fixed by the picture itself, so the keys that choose sizes and encoders do not apply to it.
+const SMOOTH_ONLY_KEYS = ['css', 'fit', 'src', 'webp'];
+// A pixel placement's margin is in art pixels of the snapped picture, not in source pixels.
+const DEFAULT_PIXEL_MARGIN = 2;
 const FITS = ['contain', 'width', 'height'];
 export const DENSITIES = [1, 2, 3];
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -33,6 +37,8 @@ const isWholeAtLeast1 = (value) => Number.isInteger(value) && value >= 1;
  * Parses the export spec: `{ margin, alphaThreshold, assets: { "<id>": { character, master, css: [128, 64], fit, crop, margin, square, webp, focus, src } } }`.
  * `css` lists the CSS sizes the asset is placed at, `fit` says what that size measures (`contain`: the longer side, as in a square box;
  * `width`; `height`). `webp` is `auto` (measure and choose), `lossless`, or `{ mode: "near-lossless" | "lossy", quality }`.
+ * An asset with `"pixel": true` has a snapped still as its master and is shipped at that picture's own size: it takes no `css`, `fit`, `src` or
+ * `webp`, and its `margin` and `crop` are in art pixels (the margin defaults to 2).
  * @param {any} raw
  */
 export function parseExportSpec(raw) {
@@ -71,6 +77,12 @@ function parseAsset(id, asset, defaultMargin) {
     if (typeof asset.master !== 'string' || !asset.master) {
         fail('master must be the path of the approved picture.');
     }
+    if (asset.pixel !== undefined && typeof asset.pixel !== 'boolean') {
+        fail('pixel must be true or false.');
+    }
+    if (asset.pixel) {
+        return parsePixelAsset(id, asset, fail);
+    }
     if (!Array.isArray(asset.css) || asset.css.length === 0 || !asset.css.every(isWholeAtLeast1)) {
         fail('css must be a list of whole CSS sizes, such as [128, 64].');
     }
@@ -102,6 +114,34 @@ function parseAsset(id, asset, defaultMargin) {
         fail('margin must be a whole number of 0 or more (source pixels).');
     }
     return { id, character: asset.character ?? id, master: asset.master, css: asset.css, fit, crop: asset.crop, margin, square: asset.square ?? false, webp, focus: asset.focus ?? [0.5, 0.3], src };
+}
+
+/** A pixel placement: the snapped still at its own size, so there are no sizes, fits or encoders to choose. */
+function parsePixelAsset(id, asset, fail) {
+    for (const key of SMOOTH_ONLY_KEYS) {
+        if (asset[key] !== undefined) {
+            fail(`${key} does not apply to a pixel placement, which ships at the snapped picture's own size. Remove it, or drop "pixel".`);
+        }
+    }
+    const isBox = Array.isArray(asset.crop) && asset.crop.length === 4 && asset.crop.every(Number.isInteger) && asset.crop[2] > 0 && asset.crop[3] > 0;
+    if (asset.crop !== undefined && asset.crop !== 'canvas' && !isBox) {
+        fail('crop must be [x, y, width, height] in whole art pixels, or "canvas" for the whole picture.');
+    }
+    if (asset.focus !== undefined && !(Array.isArray(asset.focus) && asset.focus.length === 2 && asset.focus.every((value) => value >= 0 && value <= 1))) {
+        fail('focus must be [x, y] as shares of the frame from 0 to 1.');
+    }
+    const margin = asset.margin ?? DEFAULT_PIXEL_MARGIN;
+    if (!Number.isInteger(margin) || margin < 0) {
+        fail('margin must be a whole number of 0 or more (art pixels).');
+    }
+    return { id, character: asset.character ?? id, master: asset.master, pixel: true, crop: asset.crop, margin, square: asset.square ?? false, focus: asset.focus ?? [0.5, 0.3] };
+}
+
+/** Refuses a picture that is not a snapped still: a pixel placement ships its pixels as they are, so a soft edge would ship as a soft edge. */
+export function assertSnapped(raster, name) {
+    if (!hasBinaryAlpha(raster)) {
+        throw new Error(`${name} has translucent pixels, so it is not a snapped still. A pixel placement ships a snapped picture as it is; snap the master first with snap.mjs, or drop "pixel" for a smooth export.`);
+    }
 }
 
 /**
@@ -283,4 +323,18 @@ export async function chooseEncoding(rasters, { webp }) {
         files,
         totals: Object.fromEntries(Object.entries(candidates).map(([name, list]) => [name, totalBytes(list)])),
     };
+}
+
+/**
+ * Stores a snapped picture exactly as it is, as lossless PNG and as lossless WebP, and keeps the smaller (the PNG when they are the same size,
+ * since every browser reads it). No pixel changes in either, so there is no quality to choose.
+ * @param {import('./raster.mjs').Raster} raster
+ */
+export async function encodeNative(raster) {
+    const input = sharp(raster.data, rawInput(raster));
+    const png = await input.clone().png({ compressionLevel: 9 }).toBuffer();
+    const webp = await ENCODERS.lossless(raster);
+    const candidates = { png: { bytes: png.length, mean: 0, p99: 0, passes: true }, webp: { bytes: webp.length, mean: 0, p99: 0, passes: true } };
+    const useWebp = webp.length < png.length;
+    return { format: useWebp ? 'webp' : 'png', buffer: useWebp ? webp : png, candidates };
 }

@@ -14,9 +14,9 @@ export const STICKER = 6;
 /**
  * A standing sticker figure on a transparent canvas: tall white ears with pink insides that rise above a lavender head, one thin
  * strand of hair above the head, a body, legs and feet, and a white outline and lavender rim around the whole silhouette.
- * The head's top is at y = 100 and the feet are at y = 460 before the sticker adds STICKER * 2 around it.
+ * `sticker` is the width of each of the two rings in pixels. The head's top is at y = 100 and the feet are at y = 460 before the sticker adds STICKER * 2 around it.
  */
-export function figure({ width = 300, height = 520, shiftX = 0 } = {}) {
+export function figure({ width = 300, height = 520, shiftX = 0, sticker = STICKER } = {}) {
     const raster = createRaster(width, height);
     const solid = new Uint8Array(width * height);
     const paint = (inside, colour) => {
@@ -39,8 +39,8 @@ export function figure({ width = 300, height = 520, shiftX = 0 } = {}) {
     paint(rect(110, 195, 190, 380), DRESS);
     paint(rect(125, 380, 145, 460), SKIN);
     paint(rect(155, 380, 175, 460), SKIN);
-    const outer = dilateMask(solid, width, height, STICKER * 2);
-    const inner = dilateMask(solid, width, height, STICKER);
+    const outer = dilateMask(solid, width, height, sticker * 2);
+    const inner = dilateMask(solid, width, height, sticker);
     for (let at = 0; at < solid.length; at++) {
         if (solid[at] === 0 && inner[at] === 1) {
             raster.data.set([...OUTLINE, 255], at * 4);

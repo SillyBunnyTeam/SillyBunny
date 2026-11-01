@@ -1,5 +1,5 @@
 import { detectGrid } from './pixel-grid.mjs';
-import { formatHex, paletteIndexFinder } from './pixel-colour.mjs';
+import { formatHex, paletteIndexFinder, srgbToOklab } from './pixel-colour.mjs';
 import { createRaster, opaqueBox } from './raster.mjs';
 
 const SAMPLES = ['mode', 'centre'];
@@ -63,11 +63,25 @@ function sampleCell(raster, findIndex, { x0, y0, cell, sample, alphaThreshold })
 /**
  * Orphans: an opaque pixel with no neighbour of its colour among its 8 neighbours, and a transparent pixel with all 8
  * neighbours opaque. Real details can look like orphans (a one-pixel eye highlight), which is why they are reported and not removed.
+ * Colours match exactly by default, which is right for a picture on a palette. A picture sampled without a palette has a slightly
+ * different colour in nearly every cell, so `tolerance` counts colours as the same when they are within that OKLab distance.
+ * @param {import('./raster.mjs').Raster} raster
+ * @param {{ tolerance?: number }} [options]
  * @returns {Array<{ x: number, y: number, kind: 'pixel' | 'hole', colour: string, suggest: string }>}
  */
-export function findOrphans(raster) {
+export function findOrphans(raster, { tolerance = 0 } = {}) {
     const { width, height, data } = raster;
     const orphans = [];
+    const lab = new Map();
+    const labOf = (at) => {
+        if (!lab.has(at)) {
+            lab.set(at, srgbToOklab([data[at], data[at + 1], data[at + 2]]));
+        }
+        return lab.get(at);
+    };
+    const matches = tolerance === 0
+        ? (a, b) => sameColour(data, a, b)
+        : (a, b) => Math.hypot(...labOf(a).map((value, channel) => value - labOf(b)[channel])) <= tolerance;
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const at = (y * width + x) * 4;
@@ -89,7 +103,7 @@ export function findOrphans(raster) {
                 }
             }
             const opaqueNeighbours = neighbours.filter((n) => data[n + 3] > 0);
-            const isLone = opaque && !opaqueNeighbours.some((n) => sameColour(data, n, at));
+            const isLone = opaque && !opaqueNeighbours.some((n) => matches(n, at));
             const isHole = !opaque && !outside && opaqueNeighbours.length === 8;
             if (!isLone && !isHole) {
                 continue;

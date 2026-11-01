@@ -43,6 +43,9 @@ export function opaqueBox(raster, minAlpha = 1) {
     return right < 0 ? undefined : { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
 }
 
+/** True when every pixel is either fully transparent or fully opaque, which is what a snapped still is. */
+export const hasBinaryAlpha = (raster) => raster.data.every((value, at) => at % 4 !== 3 || value === 0 || value === 255);
+
 export function crop(raster, box) {
     const out = createRaster(box.width, box.height);
     for (let y = 0; y < box.height; y++) {

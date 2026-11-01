@@ -8,6 +8,7 @@ import { runComposeScene } from './lib/scene-run.mjs';
 
 const USAGE = [
     'Usage: compose-scene.mjs --layout layouts/<name>.json --out raw/<stage>/masters/<name>.png [--stage s5] [--set <layer>=<picture>]...',
+    '       compose-scene.mjs --layout layouts/<name>.json --grid --out raw/<stage>/pixel/<name>.png [--stage s5] [--set <layer>=<snapped still>]...    on the layout\'s pixel grid',
     '       compose-scene.mjs --layout layouts/<name>.json --preview --out out/<stage>/<name>.png [--set <layer>=<picture>]...',
     '       compose-scene.mjs --measure <picture.png>[:<first column>-<last column>]...',
 ].join('\n');
@@ -37,6 +38,7 @@ try {
             stage: { type: 'string' },
             set: { type: 'string', multiple: true, default: [] },
             preview: { type: 'boolean', default: false },
+            grid: { type: 'boolean', default: false },
             measure: { type: 'boolean', default: false },
         },
         allowPositionals: true,
@@ -65,10 +67,16 @@ try {
             stage,
             overrides: parseOverrides(values.set),
             preview: values.preview,
+            grid: values.grid,
             now: () => new Date(),
         });
-        say(`${result.file}  ${result.size.width} x ${result.size.height}${values.preview ? '  (preview, not logged)' : ''}`);
+        say(`${result.file}  ${result.size.width} x ${result.size.height}${result.grid ? ` art pixels (the layout's canvas / ${result.grid.cell})` : ''}${values.preview ? '  (preview, not logged)' : ''}`);
         for (const placement of result.placements) {
+            if (result.grid) {
+                const ratioNote = placement.ratio ? `; ${placement.ratio.actual} of ${placement.ratio.of} (wanted ${placement.ratio.wanted})` : '';
+                say(`  ${placement.id}${result.placements.filter(({ id }) => id === placement.id).length > 1 ? ` #${placement.point + 1}` : ''}: ${placement.width} x ${placement.height} art px at ${placement.left},${placement.top}; ${placement.measure === 'figure' ? `figure ${placement.figureHeight} art px (${placement.method === 'head' ? 'head top to feet' : 'whole box'})` : `height ${placement.figureHeight} art px`}, layout wanted ${placement.targetHeight}${ratioNote}${placement.rings ? `; rings rim ${placement.rings.rimWidth} + band ${placement.rings.bandWidth}` : ''}`);
+                continue;
+            }
             const heightNote = placement.measure === 'figure' ? ` figure ${placement.targetHeight} px, ${placement.method === 'head' ? 'head top to feet' : 'whole box (head not found)'}` : ` height ${placement.targetHeight} px`;
             say(`  ${placement.id}${placement.point > 0 || result.placements.filter(({ id }) => id === placement.id).length > 1 ? ` #${placement.point + 1}` : ''}: ${placement.width} x ${placement.height} at ${placement.left},${placement.top}  scale ${placement.scale}${heightNote}`);
         }

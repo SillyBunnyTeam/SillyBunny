@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRaster, opaqueBox } from '../scripts/lib/raster.mjs';
-import { isEarColour, measureFigure } from '../scripts/lib/scene-measure.mjs';
+import { figureProblems, isEarColour, measureFigure, measureFigureScaled } from '../scripts/lib/scene-measure.mjs';
 import { STICKER, figure } from '../test-support/figure.mjs';
-import { setPixel } from '../test-support/synthetic.mjs';
+import { createRaster as createFilled, setPixel } from '../test-support/synthetic.mjs';
 
 // The sticker is 2 * STICKER wide here, and two more pixels are cut as a margin.
 const OPTIONS = { stickerWidth: STICKER * 2 + 2 };
@@ -62,4 +62,15 @@ test('a picture with nothing but ear coloured pixels falls back to the whole box
     assert.equal(metrics.method, 'box');
     assert.equal(metrics.figureHeight, 160);
     assert.equal(metrics.headTop, 20);
+});
+
+test('figureProblems finds a missing head top, a head top made of skin (a raised hand), and feet at the bottom edge, and nothing in a clean figure', () => {
+    const clean = figure();
+    assert.deepEqual(figureProblems(clean, measureFigureScaled(clean)), []);
+    const fur = createFilled(200, 400, [252, 250, 252, 255]);
+    assert.match(figureProblems(fur, measureFigureScaled(fur)).join(' '), /head top was not found/);
+    const hand = createFilled(200, 400, [250, 215, 190, 255]);
+    assert.match(figureProblems(hand, measureFigureScaled(hand)).join(' '), /skin coloured: a hand or arm/);
+    const cut = figure({ height: 472 });
+    assert.match(figureProblems(cut, measureFigureScaled(cut)).join(' '), /feet reach the bottom edge/);
 });

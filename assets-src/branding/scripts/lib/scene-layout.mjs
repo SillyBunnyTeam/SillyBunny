@@ -84,7 +84,18 @@ function parseLayer(value, index) {
     if (!MEASURES.includes(measure)) {
         throw new Error(`${where} has measure "${measure}"; use ${MEASURES.join(' or ')}.`);
     }
-    const common = { id: value.id, image: value.image, z: value.z, at, measure, ...(value.grade === undefined ? {} : { grade: parseGrade(value.grade, where) }) };
+    if (value.pixel !== undefined && (typeof value.pixel !== 'string' || value.pixel === '')) {
+        throw new Error(`${where} pixel must be the path of the snapped still, such as "approved/pixel/help-reisen.png".`);
+    }
+    const common = {
+        id: value.id,
+        image: value.image,
+        z: value.z,
+        at,
+        measure,
+        ...(value.pixel === undefined ? {} : { pixel: value.pixel }),
+        ...(value.grade === undefined ? {} : { grade: parseGrade(value.grade, where) }),
+    };
     if (value.repeat !== undefined) {
         if (!Array.isArray(value.repeat) || value.repeat.length === 0) {
             throw new Error(`${where} repeat must be a list of { x, y, height } points.`);
@@ -96,8 +107,46 @@ function parseLayer(value, index) {
 }
 
 /**
+ * The pixel grid of a scene, in one of two forms. `{ cell }` is a whole number of canvas pixels per art pixel, and both sides of the canvas
+ * must divide by it. `{ width, height }` is the size of the native picture in art pixels, so the cell is the canvas divided by it and may be
+ * fractional; it must keep the canvas's proportions, or the cell would differ between the two axes.
+ */
+function parseGrid(value, canvas) {
+    const form = 'A layout grid must be { "cell": <whole number of canvas pixels per art pixel> } or { "width": <art pixels>, "height": <art pixels> }, such as { "cell": 4 }.';
+    if (!isPlainObject(value)) {
+        throw new Error(form);
+    }
+    for (const key of Object.keys(value)) {
+        if (!['cell', 'width', 'height'].includes(key)) {
+            throw new Error(`The layout grid has an unknown key "${key}". It takes cell, or width and height.`);
+        }
+    }
+    const byCell = value.cell !== undefined;
+    const bySize = value.width !== undefined || value.height !== undefined;
+    if (byCell === bySize) {
+        throw new Error(form);
+    }
+    if (byCell) {
+        if (!Number.isInteger(value.cell) || value.cell < 1) {
+            throw new Error(form);
+        }
+        if (canvas.width % value.cell !== 0 || canvas.height % value.cell !== 0) {
+            throw new Error(`The ${canvas.width} x ${canvas.height} canvas is not a whole number of ${value.cell} pixel cells, so the grid would not cover it.`);
+        }
+        return { cell: value.cell, width: canvas.width / value.cell, height: canvas.height / value.cell };
+    }
+    if (!Number.isInteger(value.width) || !Number.isInteger(value.height) || value.width < 1 || value.height < 1) {
+        throw new Error(form);
+    }
+    if (canvas.width * value.height !== canvas.height * value.width) {
+        throw new Error(`A ${value.width} x ${value.height} grid does not keep the proportions of the ${canvas.width} x ${canvas.height} canvas, so its cell would differ between the two axes.`);
+    }
+    return { cell: canvas.width / value.width, width: value.width, height: value.height };
+}
+
+/**
  * @param {unknown} value the parsed JSON
- * @returns {{ canvas: { width: number, height: number }, layers: Array<{ id: string, image: string, z: number, at: string, measure: string, grade?: { toward: string, amount: number, lightness: number, keepSticker: boolean }, anchor?: { x: number, y: number }, height?: number | { ratio: number, of: string }, repeat?: Array<{ x: number, y: number, height: number | { ratio: number, of: string } }> }> }}
+ * @returns {{ canvas: { width: number, height: number }, grid?: { cell: number, width: number, height: number }, layers: Array<{ id: string, image: string, z: number, at: string, measure: string, pixel?: string, grade?: { toward: string, amount: number, lightness: number, keepSticker: boolean }, anchor?: { x: number, y: number }, height?: number | { ratio: number, of: string }, repeat?: Array<{ x: number, y: number, height: number | { ratio: number, of: string } }> }> }}
  */
 export function parseLayout(value) {
     if (!isPlainObject(value) || !isPlainObject(value.canvas) || !isPositive(value.canvas.width) || !isPositive(value.canvas.height)) {
@@ -124,5 +173,6 @@ export function parseLayout(value) {
             }
         }
     }
-    return { canvas: { width: value.canvas.width, height: value.canvas.height }, layers };
+    const canvas = { width: value.canvas.width, height: value.canvas.height };
+    return { canvas, ...(value.grid === undefined ? {} : { grid: parseGrid(value.grid, canvas) }), layers };
 }

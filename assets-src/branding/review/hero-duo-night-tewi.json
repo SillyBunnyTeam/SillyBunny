@@ -1,0 +1,39 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 403,
+                "y": 180,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 547,
+                "y": 180,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "hand at the mouth",
+            "box": {
+                "x": 440,
+                "y": 230,
+                "width": 120,
+                "height": 110
+            }
+        },
+        {
+            "name": "fist at the eye",
+            "box": {
+                "x": 520,
+                "y": 200,
+                "width": 100,
+                "height": 90
+            }
+        }
+    ]
+}

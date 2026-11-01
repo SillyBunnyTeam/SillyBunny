@@ -1,8 +1,10 @@
 import sharp from 'sharp';
-import { createRaster, crop, opaqueBox } from './raster.mjs';
+import { measureRings, STICKER_BAND, STICKER_RIM } from './pixel-snap.mjs';
+import { distanceToMask } from './rim-add.mjs';
+import { createRaster, crop, hasBinaryAlpha, opaqueBox } from './raster.mjs';
 import { parseHexColour } from './rim-recolour.mjs';
 import { gradeRaster } from './scene-grade.mjs';
-import { measureFigure } from './scene-measure.mjs';
+import { measureFigure, measureFigureScaled } from './scene-measure.mjs';
 
 // Pixels fainter than this are noise left by the model, not part of a picture, so they do not count when trimming.
 export const TRIM_ALPHA = 8;
@@ -132,4 +134,98 @@ export async function composeScene(layout, pictures) {
         }
     }
     return { raster: canvas, placements };
+}
+
+/**
+ * Grades a snapped still. With `keepSticker` the pixels of both rings are put back as they were, by the rings' own definition (every
+ * pixel within the rim and band widths of transparent space) rather than by the detection that suits smooth art, which in a ring only
+ * a few art pixels wide leaves some band pixels at the diagonals to be tinted.
+ */
+function gradeSnappedStill(picture, grade) {
+    const graded = gradeRaster(picture, { ...grade, toward: parseHexColour(grade.toward) });
+    if (!grade.keepSticker) {
+        return graded;
+    }
+    const { rimWidth, bandWidth } = measureRings(picture, { rim: STICKER_RIM, band: STICKER_BAND });
+    const clear = Uint8Array.from({ length: picture.width * picture.height }, (_, at) => (picture.data[at * 4 + 3] === 0 ? 1 : 0));
+    const depth = distanceToMask(clear, picture.width, picture.height);
+    for (let at = 0; at < clear.length; at++) {
+        if (clear[at] === 0 && depth[at] <= rimWidth + bandWidth + 1e-6) {
+            picture.data.copy(graded.data, at * 4, at * 4, at * 4 + 4);
+        }
+    }
+    return graded;
+}
+
+/**
+ * Composes a scene on the native pixel grid: the canvas divided by `layout.grid.cell` (which may be fractional when the grid is given as a native size), with each layer's snapped still placed as it is, at a
+ * whole art pixel, and nothing resized. A layout's anchors are in canvas pixels and become `round(anchor / cell)`; its heights say how tall
+ * a figure should come out, but the figure's height is the one it was snapped at, so they are only reported: the height wanted (the
+ * canvas height divided by the cell), the height the still has, and, for a layer sized as a ratio of another, the ratio wanted and
+ * the ratio the stills give. A grade is applied to the still before it is placed.
+ * @param {ReturnType<import('./scene-layout.mjs').parseLayout>} layout a layout with a `grid`
+ * @param {Map<string, import('./raster.mjs').Raster>} pictures layer id to its snapped still
+ * @returns {{ raster: import('./raster.mjs').Raster, placements: object[], grid: { cell: number, width: number, height: number } }}
+ */
+export function composeGridScene(layout, pictures) {
+    if (!layout.grid) {
+        throw new Error('The layout has no "grid", so it cannot be composed on the pixel grid. Add { "cell": 4 } (canvas pixels per art pixel) or { "width": 760, "height": 380 } (art pixels) to it.');
+    }
+    const { cell, width, height } = layout.grid;
+    const heights = resolveHeights(layout);
+    const native = { width, height };
+    const canvas = createRaster(native.width, native.height);
+
+    const stills = new Map();
+    for (const layer of layout.layers) {
+        const picture = pictures.get(layer.id);
+        if (!picture) {
+            throw new Error(`There is no picture for layer "${layer.id}".`);
+        }
+        if (!hasBinaryAlpha(picture)) {
+            throw new Error(`The picture for layer "${layer.id}" has translucent pixels, so it is not a snapped still. Grid mode places pixel art only; snap it first with snap.mjs.`);
+        }
+        const box = opaqueBox(picture, 1);
+        if (!box) {
+            throw new Error(`The picture for layer "${layer.id}" is empty.`);
+        }
+        const trimmed = crop(picture, box);
+        const measured = layer.measure === 'figure' ? measureFigureScaled(trimmed) : undefined;
+        // The grade is applied to the whole still, then cut to the same box, so the rings read off it are the ones that get placed. They are
+        // measured on the still's own canvas, not the trimmed box, which has no transparent pixels beyond its edge.
+        const gradedStill = layer.grade ? gradeSnappedStill(picture, layer.grade) : picture;
+        const placed = crop(gradedStill, box);
+        const rings = layer.measure === 'figure' ? measureRings(gradedStill, { rim: STICKER_RIM, band: STICKER_BAND }) : undefined;
+        stills.set(layer.id, { trimmed, placed, measured, artHeight: measured ? measured.figureHeight : trimmed.height, rings });
+    }
+
+    const placements = [];
+    const ordered = layout.layers.map((layer, index) => ({ layer, index })).sort((a, b) => a.layer.z - b.layer.z || a.index - b.index);
+    for (const { layer } of ordered) {
+        const { trimmed, placed, measured, artHeight, rings } = stills.get(layer.id);
+        const points = layer.repeat ?? [{ x: layer.anchor.x, y: layer.anchor.y, height: layer.height }];
+        for (const [pointIndex, point] of points.entries()) {
+            const wanted = (typeof point.height === 'number' ? point.height : heights.get(point.height.of) * point.height.ratio) / cell;
+            const anchor = { x: Math.round(point.x / cell), y: Math.round(point.y / cell) };
+            const [left, top] = topLeftOf(anchor, layer.at, trimmed.width, trimmed.height);
+            over(canvas, placed, left, top);
+            const ratio = typeof point.height === 'object' ? { of: point.height.of, wanted: point.height.ratio, actual: Math.round((artHeight / stills.get(point.height.of).artHeight) * 1e4) / 1e4 } : undefined;
+            placements.push({
+                id: layer.id,
+                point: pointIndex,
+                left,
+                top,
+                width: trimmed.width,
+                height: trimmed.height,
+                scale: 1,
+                measure: layer.measure,
+                method: measured?.method ?? 'box',
+                targetHeight: Math.round(wanted * 100) / 100,
+                figureHeight: artHeight,
+                ...(rings ? { rings } : {}),
+                ...(ratio ? { ratio } : {}),
+            });
+        }
+    }
+    return { raster: canvas, placements, grid: { cell, ...native } };
 }

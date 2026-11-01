@@ -556,3 +556,73 @@ test('NOTICE.md lists the original as current after a --to revert, with a histor
     assert.match(text, new RegExp(`${sha256(BYTES.b).slice(0, 8)} -> ${sha256(BYTES.a).slice(0, 8)}`));
     assert.match(text, new RegExp(`${sha256(BYTES.c).slice(0, 8)} -> ${sha256(BYTES.b).slice(0, 8)}`));
 });
+
+/** A project whose log has one entry per `[bytes name]`, all for the file raw/s1/x.png, which holds `current` on disk. */
+function rerunProject(logged, current) {
+    const root = mkdtempSync(join(tmpdir(), 'sb-approve-rerun-'));
+    mkdirSync(join(root, 'log'));
+    mkdirSync(join(root, 'raw', 's1'), { recursive: true });
+    if (current) {
+        writeFileSync(join(root, 'raw', 's1', 'x.png'), BYTES[current]);
+    }
+    const entries = logged.map((name, index) => ({ time: `2026-11-01T1${index}:00:00.000Z`, stage: 's1', model: 'm', outputs: [{ file: 'raw/s1/x.png', sha256: sha256(BYTES[name]) }], estimatedUsd: 0, approved: false }));
+    writeFileSync(join(root, 'log', 'generations.jsonl'), `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`);
+    return root;
+}
+
+const approvedFlags = (root) => readEntries(root).map((entry) => entry.outputs[0].approved === true);
+
+test('a path logged again by a re-run is approved through the entry that logged the file as it is now, never an older picture of the same path', () => {
+    const forward = rerunProject(['a', 'b'], 'b');
+    approveOutputs({ rootDir: forward, targets: ['raw/s1/x.png'], ref: false });
+    assert.deepEqual(approvedFlags(forward), [false, true]);
+    assert.deepEqual(readFileSync(join(forward, 'approved', 'x.png')), BYTES.b);
+
+    const reverted = rerunProject(['a', 'b'], 'a');
+    approveOutputs({ rootDir: reverted, targets: ['raw/s1/x.png'], ref: false });
+    assert.deepEqual(approvedFlags(reverted), [true, false], 'the file is the first picture again, so the first entry is the one');
+});
+
+test('identical re-runs of a path approve the latest entry and leave the earlier ones as they were', () => {
+    const root = rerunProject(['a', 'a', 'a'], 'a');
+    const before = readFileSync(join(root, 'log', 'generations.jsonl'), 'utf8').split('\n');
+    approveOutputs({ rootDir: root, targets: ['raw/s1/x.png'], ref: false });
+    assert.deepEqual(approvedFlags(root), [false, false, true]);
+    const after = readFileSync(join(root, 'log', 'generations.jsonl'), 'utf8').split('\n');
+    assert.deepEqual(after.slice(0, 2), before.slice(0, 2), 'the earlier lines are byte for byte as they were');
+    assert.equal(readEntries(root)[2].approved, true);
+});
+
+test('a path with several entries, none of them the file on disk, or no file on disk, is refused and writes nothing', () => {
+    const changed = rerunProject(['a', 'b'], 'c');
+    const log = readFileSync(join(changed, 'log', 'generations.jsonl'), 'utf8');
+    assert.throws(() => approveOutputs({ rootDir: changed, targets: ['raw/s1/x.png'], ref: false }), /logged 2 times, and the file on disk \(sha256 \w+\) is none of them/);
+    const missing = rerunProject(['a', 'a'], undefined);
+    assert.throws(() => approveOutputs({ rootDir: missing, targets: ['raw/s1/x.png'], ref: false }), /logged 2 times and the file is missing on disk/);
+    assert.ok(!existsSync(join(changed, 'approved')));
+    assert.equal(readFileSync(join(changed, 'log', 'generations.jsonl'), 'utf8'), log);
+});
+
+test('a sha256 follows the same rule: identical re-runs of one file take the latest, a sha on two different files or a prefix of two shas is ambiguous', () => {
+    const root = rerunProject(['a', 'b', 'a'], 'a');
+    approveOutputs({ rootDir: root, targets: [sha256(BYTES.a)], ref: false });
+    assert.deepEqual(approvedFlags(root), [false, false, true], 'the first entry has the same sha but is not the latest');
+
+    const shared = rerunProject(['a'], 'a');
+    writeFileSync(join(shared, 'raw', 's1', 'y.png'), BYTES.a);
+    appendFileSync(join(shared, 'log', 'generations.jsonl'), `${JSON.stringify({ time: 't', outputs: [{ file: 'raw/s1/y.png', sha256: sha256(BYTES.a) }], estimatedUsd: 0, approved: false })}\n`);
+    assert.throws(() => approveOutputs({ rootDir: shared, targets: [sha256(BYTES.a)], ref: false }), /matches more than one logged file \(raw\/s1\/x.png, raw\/s1\/y.png\)\. Use the file path of the one you mean\./);
+
+    const prefixed = rerunProject([], undefined);
+    const entry = (hash) => JSON.stringify({ time: 't', outputs: [{ file: 'raw/s1/x.png', sha256: hash }], estimatedUsd: 0, approved: false });
+    writeFileSync(join(prefixed, 'log', 'generations.jsonl'), `${entry(`abcdef12${'0'.repeat(56)}`)}\n${entry(`abcdef12${'1'.repeat(56)}`)}\n`);
+    assert.throws(() => approveOutputs({ rootDir: prefixed, targets: ['abcdef12'], ref: false }), /start of more than one sha256 .* Give more digits, or the file path\./);
+});
+
+test('a dry run of a re-run path names the entry it would approve and writes nothing', () => {
+    const root = rerunProject(['a', 'b', 'b'], 'b');
+    const summary = approveOutputs({ rootDir: root, targets: ['raw/s1/x.png'], ref: false, dryRun: true });
+    assert.deepEqual(summary.map((item) => [item.file, item.sha256]), [['raw/s1/x.png', sha256(BYTES.b)]]);
+    assert.deepEqual(approvedFlags(root), [false, false, false]);
+    assert.ok(!existsSync(join(root, 'approved')));
+});

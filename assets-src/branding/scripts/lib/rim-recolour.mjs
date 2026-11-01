@@ -119,7 +119,7 @@ function outsideDistances(opaque, width, height, limit) {
  * The rim is found by walking inward from the silhouette through pixels that are not white, no deeper than the white band
  * starts, so lavender hair behind the white band, and pixels along a canvas border (a cut, not an edge), are not part of it.
  */
-function locateSticker(raster) {
+export function locateSticker(raster) {
     const { width, height } = raster;
     const count = width * height;
     const opaque = Uint8Array.from({ length: count }, (_, at) => (raster.data[at * 4 + 3] >= OPAQUE ? 1 : 0));

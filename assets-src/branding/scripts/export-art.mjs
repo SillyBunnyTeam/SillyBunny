@@ -30,7 +30,8 @@ try {
     for (const asset of assets) {
         const { totals, mode, quality } = asset.encoding;
         const totalText = Object.entries(totals).map(([name, bytes]) => `${name} ${kilobytes(bytes)}`).join(', ');
-        say(`${asset.id}  frame ${asset.frame.width}x${asset.frame.height} from ${asset.master}  stored ${mode}${quality ? ` q${quality}` : ''}  (all sizes together: ${totalText})`);
+        const stored = asset.pixel ? `native ${asset.native.width}x${asset.native.height}, lossless ${asset.encoding.format}` : `${mode}${quality ? ` q${quality}` : ''}`;
+        say(`${asset.id}  frame ${asset.frame.width}x${asset.frame.height} from ${asset.master}  stored ${stored}  (${asset.pixel ? 'both encodings' : 'all sizes together'}: ${totalText})`);
         for (const variant of asset.variants) {
             const others = Object.entries(variant.candidates)
                 .map(([name, figures]) => `${name} ${kilobytes(figures.bytes)}${figures.mean === 0 ? '' : ` dE ${figures.mean.toFixed(2)}/${figures.p99.toFixed(2)}${figures.passes ? '' : ' over'}`}`)

@@ -118,6 +118,19 @@ function orphanPicture() {
     return picture;
 }
 
+test('with a colour tolerance, a pixel a shade off its neighbours is not an orphan, and a pixel of another colour still is', () => {
+    const picture = createRaster(10, 10);
+    for (let y = 2; y < 8; y++) {
+        for (let x = 2; x < 8; x++) {
+            setPixel(picture, x, y, [200, 30 + y * 6 + x, 50]);
+        }
+    }
+    setPixel(picture, 4, 4, [40, 60, 200]);
+    assert.ok(findOrphans(picture).length > 1, 'by exact colour, a speckled area is full of orphans');
+    assert.deepEqual(findOrphans(picture, { tolerance: 0.03 }).map(({ x, y }) => [x, y]), [[4, 4]]);
+    assert.deepEqual(findOrphans(picture, { tolerance: 0 }), findOrphans(picture));
+});
+
 test('orphans are found and described: a lone colour pixel, a one-pixel hole and a speck away from the sprite', () => {
     const found = findOrphans(orphanPicture());
     assert.deepEqual(found.map(({ x, y, kind }) => [x, y, kind]), [[4, 4, 'pixel'], [6, 5, 'hole'], [9, 9, 'pixel']]);
