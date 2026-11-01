@@ -198,7 +198,7 @@ export function normalizeBackendSettingsRows(scope, { fields = true } = {}) {
     bindSettingsSwitchKeyboard(scope);
     if (!fields) return;
     for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {
-        if (!(control instanceof HTMLElement) || control.closest('.ds-row, #completion_prompt_manager, form, .sb-preset-toolbar-row, .sb-non-chat-preset-row')) continue;
+        if (!(control instanceof HTMLElement) || control.closest('.ds-row, #completion_prompt_manager, form, .sb-non-chat-preset-row')) continue;
         let row = control.parentElement;
         for (let depth = 0; depth < 3 && row && !row.querySelector(':scope > label, :scope > small, :scope > span, :scope > .range-block-title, :scope > h4'); depth++) {
             if (!row.parentElement || row.parentElement.matches('.ds-pref-group, .sb-sampling-control-card')) break;

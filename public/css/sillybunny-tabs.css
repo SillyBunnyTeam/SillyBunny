@@ -5648,28 +5648,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     .sb-shell-tab-copy small {
         display: none;
     }
-
-    #openai_api-presets :is(
-        #import_oai_preset,
-        #export_oai_preset,
-        #delete_oai_preset,
-        #update_oai_preset,
-        #new_oai_preset,
-        [data-preset-manager-rename='openai'],
-        [data-preset-manager-delete-all='openai']
-    ):not(.sb-action-btn) {
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-        max-width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        max-height: var(--sb-mobile-touch-target, 44px);
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-    }
 }
 
 @supports (-webkit-touch-callout: none) {
@@ -7419,7 +7397,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     max-width: 100%;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-pref-group.sb-prompting-group-body > :not(.ds-row, .ds-row-expander, .sb-settings-flat-header, .sb-preset-toolbar-row, .sb-non-chat-preset-row) {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-pref-group.sb-prompting-group-body > :not(.ds-row, .ds-row-expander, .sb-settings-flat-header, .sb-non-chat-preset-row) {
     padding-inline: 0;
     border-top: 0;
 }
@@ -7478,15 +7456,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding-inline: 16px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.sb-preset-toolbar-row, .sb-non-chat-preset-row)) {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.ds-row, .sb-non-chat-preset-row)) {
     padding-inline: 0;
-}
-
-.sb-action-btn-group {
-    display: inline-flex;
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
-    gap: 6px;
 }
 
 #sb-settings-page .sb-action-btn {
@@ -7515,12 +7486,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     -webkit-user-select: none;
 }
 
-#sb-settings-page .sb-action-btn > .sb-action-btn-label {
-    flex: 0 0 auto;
-    overflow: visible;
-    text-overflow: clip;
-}
-
 #sb-settings-page .sb-action-btn:hover {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
     border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
@@ -7536,43 +7501,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     box-shadow: none;
 }
 
-#sb-settings-page .sb-action-btn--danger {
-    color: var(--color-danger, #fb7185);
-    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 30%, transparent);
-}
-
-#sb-settings-page .sb-action-btn--danger:hover {
-    background: color-mix(in srgb, var(--color-danger, #fb7185) 12%, transparent);
-    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 55%, transparent);
-}
-
-#sb-settings-page #openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5 {
-    width: 100%;
-    height: auto;
-    min-width: 0;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 6px;
-}
-
-#sb-settings-page #openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5 > .sb-action-btn-group {
-    max-width: 100%;
-}
-
 @media screen and (max-width: 450px) {
     #sb-settings-page .sb-action-btn {
         flex: 1 1 auto;
         min-width: 90px;
         padding: 5px 8px;
         font-size: calc(var(--mainFontSize) * 0.76);
-    }
-
-    #sb-settings-page :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) .sb-action-btn-group {
-        display: flex;
-        flex: 1 1 100%;
-        flex-wrap: wrap;
-        width: 100%;
     }
 }
 
@@ -7680,47 +7614,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-prompting-panel #pro-settings-block > [id^='streaming_'] {
     width: 100%;
     margin: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    width: 100%;
-    gap: 12px;
-    padding: 10px 16px;
-    border-top: 0;
-}
-
-#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > select {
-    flex: 1 1 240px;
-    width: 100%;
-    min-width: 0;
-}
-
-#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > .flex-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0;
-    width: auto;
-    height: auto;
-    justify-content: flex-start;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-preset-toolbar-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-}
-
-#sb-settings-page .sb-prompting-panel .sb-preset-toolbar-row > .flex-container {
-    grid-column: 1 / -1;
-}
-
-@media screen and (max-width: 620px) {
-    #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-preset-toolbar-row {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 /* The order pass also marks a wrapper it emptied with `hidden`, but `.flex-container` and

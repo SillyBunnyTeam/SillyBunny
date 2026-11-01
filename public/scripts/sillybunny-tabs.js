@@ -19,6 +19,7 @@ import { openActionMenu } from './sillybunny-action-menu.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
+import { createProfileRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
     animateIn,
@@ -47,7 +48,7 @@ import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
 import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
-import { addLanguagesToDropdown, t } from './i18n.js';
+import { addLanguagesToDropdown, t, translate } from './i18n.js';
 import { syncUserControls } from './user.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
@@ -289,23 +290,6 @@ function installSettingsSubpage(shellKey, tabId) {
     }
 }
 
-/** Marks the merged Chat Completion presets row and the chrome card it replaces. */
-const SB_PRESET_TOOLBAR_ROW_CLASS = 'sb-preset-toolbar-row';
-const SB_PRESET_TOOLBAR_CARD_CLASS = 'sb-preset-toolbar-card';
-const SB_PRESET_ACTION_GROUP_CLASS = 'sb-action-btn-group';
-
-const SB_PRESET_ACTION_LABELS = Object.freeze({
-    import: 'Import',
-    export: 'Export',
-    update: 'Update current preset',
-    rename: 'Rename',
-    new: 'Save preset as',
-    restore: 'Restore',
-    restoreDefaults: 'Restore default presets',
-    delete: 'Delete',
-    deleteAll: 'Delete presets in bulk',
-});
-
 function getPresetActionKind(button) {
     if (!(button instanceof HTMLElement)) return null;
     for (const kind of ['import', 'export', 'update', 'rename', 'new', 'restore', 'delete']) {
@@ -323,59 +307,6 @@ function getPresetActionKind(button) {
     return null;
 }
 
-function groupPresetActions(actionContainer) {
-    const actions = [...actionContainer.querySelectorAll('.menu_button, .menu_button_icon')].filter(child => getPresetActionKind(child));
-    if (actions.length === 0) return;
-
-    const groups = new Map([
-        ['file', ['import', 'export']],
-        ['save', ['update', 'rename', 'new']],
-        ['restore', ['restore', 'restoreDefaults']],
-        ['destructive', ['delete', 'deleteAll']],
-    ]);
-    for (const [groupName, kinds] of groups) {
-        const wrapper = actionContainer.querySelector(`:scope > .${SB_PRESET_ACTION_GROUP_CLASS}--${groupName}`)
-            ?? createElement('span', { className: `${SB_PRESET_ACTION_GROUP_CLASS} ${SB_PRESET_ACTION_GROUP_CLASS}--${groupName}` });
-        for (const kind of kinds) {
-            const action = actions.find(button => getPresetActionKind(button) === kind);
-            if (action && action.parentElement !== wrapper) wrapper.append(action);
-        }
-        if (wrapper.childElementCount > 0 && wrapper.parentElement !== actionContainer) actionContainer.append(wrapper);
-    }
-}
-
-function enhancePresetActionButtons(root) {
-    if (!(root instanceof HTMLElement)) return;
-
-    const actionContainers = [
-        ...root.querySelectorAll('.sb-non-chat-preset-actions'),
-        ...root.querySelectorAll('#openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5'),
-    ];
-    for (const actionContainer of actionContainers) {
-        if (!(actionContainer instanceof HTMLElement)) continue;
-        for (const button of actionContainer.querySelectorAll('.menu_button, .menu_button_icon')) {
-            const kind = getPresetActionKind(button);
-            if (!kind) continue;
-            const label = SB_PRESET_ACTION_LABELS[kind];
-            // `toggle` with a force argument is a no-op when the state already matches; `add` always queues a
-            // class mutation, which wakes the keyboard-interactable observer on every Prompting activation.
-            button.classList.toggle('sb-action-btn', true);
-            button.classList.toggle('sb-action-btn--danger', kind === 'delete' || kind === 'deleteAll');
-            if (!button.querySelector(':scope > .sb-action-btn-label')) {
-                const labelId = `sb-preset-action-${actionContainer.closest('[id]')?.id}-${kind}-label`;
-                const attrs = ['restoreDefaults', 'deleteAll'].includes(kind) ? {} : { 'data-i18n': label };
-                const labelNode = createElement('span', { id: labelId, className: 'sb-action-btn-label', text: label, attrs });
-                button.append(labelNode);
-                button.setAttribute('aria-labelledby', labelId);
-            }
-            for (const icon of button.querySelectorAll(':scope > i')) {
-                if (icon.getAttribute('aria-hidden') !== 'true') icon.setAttribute('aria-hidden', 'true');
-            }
-        }
-        groupPresetActions(actionContainer);
-    }
-}
-
 const SB_PRESET_BLOCK_BY_API = Object.freeze({
     kobold: 'kobold_api-presets',
     koboldhorde: 'kobold_api-presets',
@@ -384,51 +315,119 @@ const SB_PRESET_BLOCK_BY_API = Object.freeze({
     openai: 'openai_api-presets',
 });
 
+/** Picker and menu titles reuse each backend's preset heading key, which the locales already translate. */
+const SB_PRESET_ROW_TITLES = Object.freeze({
+    'kobold_api-presets': ['Kobold Presets', 'kobldpresets'],
+    'novel_api-presets': ['NovelAI Presets', 'novelaipresets'],
+    'textgenerationwebui_api-presets': ['Text Completion Presets', 'Text Completion presets'],
+    'openai_api-presets': ['Chat Completion Presets', 'openaipresets'],
+});
+
+const SB_PRESET_MENU_SECTIONS = Object.freeze([
+    ['update', 'rename', 'new'],
+    ['import', 'export', 'masterImport', 'masterExport'],
+    ['restore', 'restoreDefaults'],
+    ['delete', 'deleteAll'],
+]);
+
+const sbPresetRows = [];
+
 /**
- * Moves the shared preset controls next to the active backend's preset toolbar: Master Import/Export
- * joins its action buttons (Text Completion backends only, as upstream), and the autosave switch sits
- * directly below the toolbar row.
+ * An ellipsis marks an action that asks for more input or a confirmation. PresetManager confirms
+ * Update and downloads Export at once. Chat Completions saves Update at once and asks before it exports.
+ */
+function getPresetActionLabels(isChatCompletion) {
+    return {
+        update: isChatCompletion ? t`Update` : t`Update…`,
+        rename: t`Rename…`,
+        new: t`Save As…`,
+        import: t`Import…`,
+        export: isChatCompletion ? t`Export…` : t`Export`,
+        masterImport: t`Master Import…`,
+        masterExport: t`Master Export…`,
+        restore: t`Restore…`,
+        restoreDefaults: t`Restore Default Presets…`,
+        delete: t`Delete…`,
+        deleteAll: t`Delete in Bulk…`,
+    };
+}
+
+/** Reads the live originals, so call it on every open: PresetManager adds its restore-defaults button late, and autosave marks Update read-only per preset. */
+function getPresetMenuSections(block, isChatCompletion) {
+    const originals = new Map();
+    for (const button of block.querySelectorAll('.menu_button, .menu_button_icon')) {
+        const kind = getPresetActionKind(button);
+        if (kind && !originals.has(kind)) originals.set(kind, button);
+    }
+    if (!isChatCompletion) {
+        originals.set('masterImport', document.getElementById('af_master_import'));
+        originals.set('masterExport', document.getElementById('af_master_export'));
+    }
+    const labels = getPresetActionLabels(isChatCompletion);
+    const toItem = kind => {
+        const original = originals.get(kind);
+        if (!(original instanceof HTMLElement)) return null;
+        const disabled = original.classList.contains('disabled')
+            || original.hasAttribute('disabled')
+            || original.getAttribute('aria-disabled') === 'true';
+        return {
+            label: labels[kind],
+            icon: original.querySelector('i')?.className,
+            ...(disabled || kind.startsWith('master') ? { title: original.title } : {}),
+            disabled,
+            danger: kind === 'delete' || kind === 'deleteAll',
+            onSelect: () => original.click(),
+        };
+    };
+    return SB_PRESET_MENU_SECTIONS.map(kinds => ({ items: kinds.map(toItem).filter(Boolean) }));
+}
+
+/**
+ * Each backend's original preset select row, its buttons, the Chat Completions title card and Master
+ * Import/Export stay in the document, hidden, because upstream binds every action to them and the
+ * Preset Menu clicks them.
+ */
+function mountPresetRows(root) {
+    for (const blockId of new Set(Object.values(SB_PRESET_BLOCK_BY_API))) {
+        const block = root.querySelector(`#${blockId}`);
+        const select = block?.querySelector('select[data-preset-manager-for]');
+        if (!(select instanceof HTMLSelectElement) || select.closest('[data-sb-preset-row]')) continue;
+        // Read before createProfileRow adopts the select into the new row.
+        const source = select.parentElement;
+        const isChatCompletion = blockId === SB_PRESET_BLOCK_BY_API.openai;
+        const title = translate(...SB_PRESET_ROW_TITLES[blockId]);
+        const preset = createProfileRow({
+            select,
+            label: t`Preset`,
+            field: `preset-${blockId}`,
+            title,
+            searchLabel: t`Search Presets`,
+            menuLabel: t`Preset Menu`,
+            onMenu: trigger => openActionMenu({ trigger, title, sections: getPresetMenuSections(block, isChatCompletion) }),
+        });
+        preset.row.dataset.sbPresetRow = '';
+        source.before(preset.row);
+        source.hidden = true;
+        sbPresetRows.push(preset);
+    }
+    for (const hidden of [
+        root.querySelector('#openai_api-presets > div > .standoutHeader'),
+        document.getElementById('af_master_import')?.parentElement,
+    ]) {
+        if (hidden instanceof HTMLElement && !hidden.hidden) hidden.hidden = true;
+    }
+}
+
+/**
+ * Keeps the autosave switch under the active backend's preset row. On Chat Completions it sits inside
+ * the block, ahead of the linking drawer. Elsewhere it follows the block.
  */
 function placeSharedPresetControls(root, activeApi) {
     const block = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
     if (!(block instanceof HTMLElement) || !root.contains(block)) return;
-    const isChatCompletion = activeApi === 'openai';
-
-    const masterImport = document.getElementById('af_master_import');
-    const masterExport = document.getElementById('af_master_export');
-    const masterFile = document.getElementById('af_master_import_file');
-    if (masterImport instanceof HTMLElement && masterExport instanceof HTMLElement) {
-        let masterGroup = masterImport.closest(`.${SB_PRESET_ACTION_GROUP_CLASS}--master`);
-        if (!(masterGroup instanceof HTMLElement)) {
-            // The emptied upstream container stays mounted (hidden) so the group always has a home in the
-            // document, even while Chat Completions is active and no Text Completion toolbar is shown.
-            const originalContainer = masterImport.parentElement;
-            masterGroup = createElement('span', { className: `${SB_PRESET_ACTION_GROUP_CLASS} ${SB_PRESET_ACTION_GROUP_CLASS}--master` });
-            for (const button of [masterImport, masterExport]) {
-                button.classList.add('margin0', 'sb-action-btn');
-                const label = button.querySelector(':scope > span');
-                if (label instanceof HTMLElement) {
-                    label.classList.add('sb-action-btn-label');
-                    label.id ||= `${button.id}-label`;
-                    button.setAttribute('aria-labelledby', label.id);
-                }
-                for (const icon of button.querySelectorAll(':scope > i')) icon.setAttribute('aria-hidden', 'true');
-            }
-            masterGroup.append(...[masterFile, masterImport, masterExport].filter(Boolean));
-            originalContainer?.append(masterGroup);
-            if (originalContainer instanceof HTMLElement) originalContainer.hidden = true;
-        }
-        const actions = block.querySelector('.sb-non-chat-preset-actions');
-        if (!isChatCompletion && actions instanceof HTMLElement && masterGroup.parentElement !== actions) {
-            const fileGroup = actions.querySelector(`:scope > .${SB_PRESET_ACTION_GROUP_CLASS}--file`);
-            if (fileGroup) fileGroup.after(masterGroup);
-            else actions.prepend(masterGroup);
-        }
-        if (masterGroup.hidden !== isChatCompletion) masterGroup.hidden = isChatCompletion;
-    }
-
     const autosaveRow = root.querySelector('[data-sb-preset-autosave]');
-    const anchor = isChatCompletion ? block.querySelector(`.${SB_PRESET_TOOLBAR_ROW_CLASS}`) : block;
+    const anchor = activeApi === 'openai' ? block.querySelector('[data-sb-preset-row]') : block;
+    // Moving a row that is already in place still queues a mutation, and the drawer observer re-runs this.
     if (autosaveRow instanceof HTMLElement && anchor instanceof HTMLElement && anchor.nextElementSibling !== autosaveRow) {
         anchor.after(autosaveRow);
     }
@@ -1120,7 +1119,7 @@ const SB_SHELLS = Object.freeze({
                 descriptionI18n: 'Manage presets, templates, and generation settings.',
                 searchPlaceholder: 'Search presets, instruct mode, markdown, or decorators',
                 searchExamples: ['presets', 'instruct', 'markdown', 'decorators'],
-                searchAliases: ['Prompting', 'Presets'],
+                searchAliases: ['Prompting', 'Presets', 'Update Preset', 'Save Preset As', 'Rename Preset', 'Import Preset', 'Export Preset', 'Delete Preset'],
             },
             {
                 id: 'editor',
@@ -9900,13 +9899,6 @@ function preparePromptingPanel(root) {
     });
     configuration.prepend(header);
     const presetsContainer = configuration.querySelector('#respective-presets-block');
-    if (presetsContainer instanceof HTMLElement) {
-        // PresetManager injects restore-default actions after the shell's first toolbar pass.
-        const actionsObserver = new MutationObserver(mutations => {
-            if (mutations.some(mutation => [...mutation.addedNodes].some(node => getPresetActionKind(node)))) enhancePresetActionButtons(root);
-        });
-        actionsObserver.observe(presetsContainer, { childList: true, subtree: true });
-    }
 
     for (const [id, title, description] of [
         ['respective-presets-block', 'Presets', 'Choose and manage presets for the current backend.'],
@@ -9956,7 +9948,7 @@ function preparePromptingPanel(root) {
     const range = configuration.querySelector('#range_block_openai');
     const advanced = configuration.querySelector('#advanced-ai-config-block');
     if (range instanceof HTMLElement && advanced instanceof HTMLElement) advanced.prepend(range);
-    mergeOpenAIPresetToolbarRow(root);
+    mountPresetRows(root);
 }
 
 function updatePromptingPanel(panel) {
@@ -10064,6 +10056,9 @@ function updatePromptingPanel(panel) {
     if (presetsBody instanceof HTMLElement && !presetsBody.querySelector('[data-sb-preset-autosave]')) {
         presetsBody.append(createPresetAutosaveToggle());
     }
+    placeSharedPresetControls(root, activeApi);
+    // Upstream sets some preset selects without a change event, for example when it restores the selection after a source change.
+    for (const preset of sbPresetRows) preset.sync();
     if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
     const common = root.querySelector('#common-gen-settings-block');
     if (common instanceof HTMLElement) {
@@ -10074,9 +10069,6 @@ function updatePromptingPanel(panel) {
     }
     normalizeBackendSettingsRows(root, { fields: false });
     hideEmptyGroupedSettingsDrawers();
-    mergeOpenAIPresetToolbarRow(root);
-    enhancePresetActionButtons(root);
-    placeSharedPresetControls(root, activeApi);
     groupPromptingRowHelpers(root);
     // Batch writes and reads: interleaving `hidden` writes with checkVisibility() forces a style and
     // layout flush per group, which is what made opening Prompting drop frames on slower devices.
@@ -12995,59 +12987,6 @@ function closeShell(shellKey) {
     if (isSettingsPageHosting(shellKey)) {
         closeSettingsPage();
     }
-}
-
-/**
- * Merges the Chat Completion presets title card (label plus four icon buttons) and the select row
- * (select plus three icon buttons) into one row: label, select, then all seven actions. A separate
- * title card would repeat the tab's own header and stack two rows of unlabeled icons above the
- * first real setting.
- *
- * Nodes are moved rather than rebuilt. Every action binds by id at init or through a delegated
- * `data-preset-manager-*` handler, so position is irrelevant; the label keeps its `data-i18n`
- * span and stays in the search index. The emptied card is hidden instead of removed so the
- * `#openai_api-presets > div` insertion point the ChatCompletionTabs extension anchors its tab bar
- * to is still the container's first child.
- */
-function mergeOpenAIPresetToolbarRow(root) {
-    if (!(root instanceof HTMLElement)) {
-        return;
-    }
-
-    const container = root.querySelector('#openai_api-presets > div');
-    const card = container?.querySelector(':scope > .standoutHeader');
-    const row = container?.querySelector(`:scope > .${SB_PRESET_TOOLBAR_ROW_CLASS}, :scope > .flex-container.flexNoGap`);
-
-    if (!(card instanceof HTMLElement) || !(row instanceof HTMLElement)) {
-        return;
-    }
-
-    row.classList.remove('flexNoGap');
-    if (row.classList.contains(SB_PRESET_TOOLBAR_ROW_CLASS)) {
-        return;
-    }
-
-    const label = card.querySelector(':scope > strong');
-    const cardActions = card.querySelector(':scope > .flex-container');
-    const rowActions = row.querySelector(':scope > .flex-container.marginLeft5');
-
-    if (!(rowActions instanceof HTMLElement)) {
-        return;
-    }
-
-    if (cardActions instanceof HTMLElement) {
-        while (cardActions.firstChild) {
-            rowActions.appendChild(cardActions.firstChild);
-        }
-        cardActions.remove();
-    }
-
-    if (label instanceof HTMLElement) {
-        row.insertBefore(label, row.firstChild);
-    }
-
-    row.classList.add(SB_PRESET_TOOLBAR_ROW_CLASS);
-    card.classList.add(SB_PRESET_TOOLBAR_CARD_CLASS);
 }
 
 function buildShell(shellKey) {

@@ -102,6 +102,10 @@ This is the largest class by a wide margin.
 - **Guard:** record source parents, sibling positions, child order and hidden state before adoption; restore the source before removing the page and use a connected mobile chat-chip fallback when the sheet opener is disposed. Keep backup visibility driven by the list-page parent state.
 - **Tests:** `tests/unit/sillybunny-chat-dialogs.test.js`; `tests/sillybunny-overlays.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/mobile-character-toggle-and-panels.e2e.js`.
 - **Adopted search inputs:** restore a caller's input to its original parent and sibling on page teardown, remove only frame-added classes and attributes, and unbind frame listeners. Reuse must retain one input callback and the shared Ctrl/Cmd+F and type-to-search behavior; Escape clears before closing only when `escapeClearsFirst` is opted in. Destroying active header-slot selection must restore the real title and controls without stealing focus from a closing dialog. Tests: `tests/unit/sillybunny-dialog.test.js`; `tests/sillybunny-overlays.e2e.js`.
+- **Preset Menu:** the Presets page hides each backend's original preset select row and action buttons, the Chat Completions title card and Master Import/Export, and the row's Preset Menu clicks those hidden originals, because upstream and PresetManager bind every action to them (`mountPresetRows()` in `public/scripts/sillybunny-tabs.js`).
+  - The menu is built on every open, so PresetManager's late restore-defaults button and the read-only Update of a bundled preset are current.
+  - **Pitfall:** the menu's clicks are untrusted, and preset autosave saves a pending edit only on a trusted press of a control in `FLUSH_CONTROL_SELECTOR` (`public/scripts/sillybunny-preset-autosave.js`). That list names `[data-sb-preset-row]`, so the press on the row's ⋮ or picker saves first. Without it, a menu action such as Delete… or Rename… starts while the edit is still pending.
+  - **Tests:** `tests/sillybunny-backend-settings.e2e.js` (menu sections, Import… opens a file chooser), `tests/sillybunny-preset-autosave.e2e.js` (read-only Update, the press saves at once, autosave placement).
 
 ### Cache, boot and reload
 
@@ -193,7 +197,7 @@ This is the largest class by a wide margin.
 - **Generated hover mirror:** `public/scripts/dynamic-styles.js` copies each `:hover` rule onto `:focus-visible`, unless a focus rule with the same base selector already exists.
   - **Breaks:** the `.menu_button` hover rule sets `box-shadow: none`, so its copy erased the inset focus ring on every enabled `.menu_button`. Keyboard focus showed no ring on dialog responses, extension actions and header icon buttons.
   - **Guard:** give such a hover rule a same-base `:focus-visible` counterpart inside the same `@media (hover: hover)` block (`public/css/sillybunny-theme.css`, the `.menu_button` hover block). A `.menu_button` rule that draws its own outline then sets `box-shadow: none`, or it shows two rings.
-  - **Tests:** `tests/dialogs-accessibility.e2e.js` (every Tab stop shows one focus indicator; the Presets action button shows one ring), `tests/sillybunny-chats-archive.e2e.js` (the drawer button shows one ring).
+  - **Tests:** `tests/dialogs-accessibility.e2e.js` (every Tab stop shows one focus indicator; the Editor's Presets button shows one ring), `tests/sillybunny-chats-archive.e2e.js` (the drawer button shows one ring).
 - **Focus under forced colours:** forced colours remove `box-shadow`, so a ring drawn only as a shadow disappears.
   - **Guard:** the theme's forced-colours block draws a `Highlight` outline on every `:focus-visible` element.
   - **Pitfall:** a rule with `outline: none !important` defeats that outline. Use `outline: 2px solid transparent !important` instead: forced colours repaint it, and it draws nothing in normal mode.

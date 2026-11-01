@@ -115,49 +115,60 @@ async function expectPromptingFlow(prompting, api) {
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
 }
 
-async function expectPresetActionLabels(prompting, width) {
-    const actions = prompting.locator(':is(.sb-preset-toolbar-row, .sb-non-chat-preset-row):visible .menu_button:visible');
-    for (const action of await actions.all()) {
-        const label = action.locator(':scope > .sb-action-btn-label');
-        await expect(label).toHaveCount(1);
-        const text = (await label.textContent()).trim();
-        expect(text).not.toBe('');
-        await expect(action).toHaveAccessibleName(text);
-        await expect.poll(() => label.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
-    }
-    for (const toolbar of await prompting.locator(':is(.sb-preset-toolbar-row, .sb-non-chat-preset-row):visible').all()) {
-        const destructive = toolbar.locator('.sb-action-btn--danger');
-        if (await destructive.count() === 2) {
-            const deleteLabel = await destructive.nth(0).locator('.sb-action-btn-label').textContent();
-            await expect(destructive.nth(1).locator('.sb-action-btn-label')).not.toHaveText(deleteLabel);
-        }
-        if (width !== 390) {
-            expect(await toolbar.locator('.sb-action-btn-group').evaluateAll(groups => groups.flatMap(group => {
-                const buttons = [...group.querySelectorAll('.sb-action-btn')].filter(button => button.getBoundingClientRect().width > 0);
-                if (buttons.length < 2) return [];
-                const first = buttons[0].getBoundingClientRect().top;
-                return buttons.some(button => Math.abs(button.getBoundingClientRect().top - first) > 1) ? [group.className] : [];
-            }))).toEqual([]);
-        }
-        if (width !== 390) continue;
-        expect(await toolbar.evaluate(element => {
-            const style = getComputedStyle(element);
-            const contentWidth = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-            const buttons = [...element.querySelectorAll('.sb-action-btn')].filter(button => button.getClientRects().length > 0);
-            const lines = [];
-            for (const button of buttons) {
-                const rect = button.getBoundingClientRect();
-                let offsetTop = button.offsetTop;
-                for (let parent = button.offsetParent; parent && element.contains(parent) && parent !== element; parent = parent.offsetParent) {
-                    offsetTop += parent.offsetTop;
-                }
-                const line = lines.find(candidate => Math.abs(candidate.offsetTop - offsetTop) <= 1);
-                if (line) line.buttons.push(rect.width);
-                else lines.push({ offsetTop, buttons: [rect.width] });
-            }
-            return lines.flatMap(line => line.buttons.length === 1 && line.buttons[0] < contentWidth * 0.9 ? [line] : []);
-        })).toEqual([]);
-    }
+const PRESET_ACTION_ORIGINALS = [
+    '[data-preset-manager-import]', '[data-preset-manager-export]', '[data-preset-manager-update]',
+    '[data-preset-manager-rename]', '[data-preset-manager-new]', '[data-preset-manager-restore]',
+    '[data-preset-manager-restore-defaults]', '[data-preset-manager-delete]', '[data-preset-manager-delete-all]',
+    '#import_oai_preset', '#export_oai_preset', '#update_oai_preset', '#new_oai_preset', '#delete_oai_preset',
+    '#af_master_import', '#af_master_export',
+].join(', ');
+
+const PRESET_MENU_LABELS = {
+    openai: [['Update', 'Rename…', 'Save As…'], ['Import…', 'Export…'], ['Delete…', 'Delete in Bulk…']],
+    textgenerationwebui: [
+        ['Update…', 'Rename…', 'Save As…'], ['Import…', 'Export', 'Master Import…', 'Master Export…'],
+        ['Restore…', 'Restore Default Presets…'], ['Delete…', 'Delete in Bulk…'],
+    ],
+    kobold: [
+        ['Update…', 'Rename…', 'Save As…'], ['Import…', 'Export', 'Master Import…', 'Master Export…'],
+        ['Restore…', 'Restore Default Presets…'], ['Delete…'],
+    ],
+};
+
+async function choosePresetAction(page, prompting, label) {
+    await prompting.locator('[data-sb-preset-row]:visible').getByRole('button', { name: 'Preset Menu', exact: true }).click();
+    await page.locator('.sb-action-menu[role="menu"]').getByRole('menuitem', { name: label, exact: true }).click();
+}
+
+async function expectPresetRow(page, prompting, api) {
+    // The template groups below keep their own preset buttons, so only the Presets group is checked.
+    await expect(prompting.locator(`#respective-presets-block :is(${PRESET_ACTION_ORIGINALS}):visible`)).toHaveCount(0);
+    const row = prompting.locator('[data-sb-preset-row]:visible');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('.ds-row-label')).toHaveText('Preset');
+    const selected = await row.locator('select').evaluate(select => select.selectedOptions[0]?.textContent.replace(/\s+/g, ' ').trim() ?? '');
+    await expect(row.locator('.ds-select-row__value')).toHaveText(selected);
+
+    const menuButton = row.getByRole('button', { name: 'Preset Menu', exact: true });
+    await menuButton.click();
+    const menu = page.locator('.sb-action-menu[role="menu"]');
+    await expect(menu).toBeVisible();
+    const sections = await menu.evaluate(element => [...element.children].reduce((result, child) => {
+        if (child.matches('[role="separator"]')) result.push([]);
+        else if (child.matches('.sb-action-menu-item')) result.at(-1).push({
+            label: child.querySelector('.sb-action-menu-label')?.textContent.trim(),
+            icon: Boolean(child.querySelector('i')),
+            danger: child.classList.contains('is-danger'),
+        });
+        return result;
+    }, [[]]));
+    const expected = PRESET_MENU_LABELS[api] ?? PRESET_MENU_LABELS.kobold;
+    expect(sections.map(section => section.map(item => item.label))).toEqual(expected);
+    expect(sections.flat().filter(item => !item.icon)).toEqual([]);
+    expect(sections.map(section => section.map(item => item.danger))).toEqual(expected.map((section, index) => section.map(() => index === expected.length - 1)));
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(menuButton).toBeFocused();
 }
 
 async function expectPromptingInsets(prompting) {
@@ -270,7 +281,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                     return Math.abs(box.left - container.left) <= 1 && Math.abs(box.right - container.right) <= 1;
                 })).toBe(true);
                 await expectPromptingFlow(prompting, api);
-                await expectPresetActionLabels(prompting, width);
+                await expectPresetRow(page, prompting, api);
                 await expectPromptingInsets(prompting);
                 const promptingHeaderMetrics = await readBackendHeaderMetrics(promptingHeader);
                 await expect(prompting.locator('#sb-openai-sampling')).toBeHidden();
@@ -472,7 +483,7 @@ test('Backend tabs, aliases and Presets/Editor links are stable in every mode', 
         await selectBackend(page, api);
         const presets = await openPanel(page, 'prompting');
         await expect(page.locator('#sb-settings-tab-list button')).toHaveText(['Connections', 'Sampling', 'Presets', 'Editor', 'Formatting', 'Agents']);
-        await expect(page.locator('[data-sb-settings-tab="prompting"]')).toHaveAttribute('data-sb-search-aliases', 'Prompting|Presets');
+        await expect(page.locator('[data-sb-settings-tab="prompting"]')).toHaveAttribute('data-sb-search-aliases', 'Prompting|Presets|Update Preset|Save Preset As|Rename Preset|Import Preset|Export Preset|Delete Preset');
         await expect(page.locator('[data-sb-settings-tab="editor"]')).toHaveAttribute('data-sb-search-aliases', 'Prompt Manager|Prompts');
         const edit = presets.getByRole('button', { name: 'Edit prompts', exact: true });
         expect(await edit.evaluate(button => button.previousElementSibling?.id)).toBe('respective-presets-block');
@@ -487,9 +498,21 @@ test('Backend tabs, aliases and Presets/Editor links are stable in every mode', 
     }
     await page.locator('#sb-settings-search-toggle').click();
     const search = page.locator('#sb-settings-search-input');
-    for (const [query, tab] of [['Prompting', 'prompting'], ['Prompt Manager', 'editor'], ['Prompts', 'editor']]) {
+    for (const [query, tab] of [['Prompting', 'prompting'], ['Import Preset', 'prompting'], ['Prompt Manager', 'editor'], ['Prompts', 'editor']]) {
         await search.fill(query);
         await expect(page.locator(`[data-sb-settings-tab="${tab}"]`)).not.toHaveClass(/sb-settings-tab--filtered/);
+    }
+});
+
+test('Preset Menu Import opens the file picker of the active backend', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    for (const api of ['openai', 'textgenerationwebui', 'kobold', 'novel']) {
+        await selectBackend(page, api);
+        const prompting = await openPanel(page, 'prompting');
+        const chooser = page.waitForEvent('filechooser');
+        await choosePresetAction(page, prompting, 'Import…');
+        expect((await chooser).isMultiple()).toBe(false);
+        await expect(page.locator('.sb-action-menu[role="menu"]')).toBeHidden();
     }
 });
 
@@ -943,7 +966,7 @@ for (const api of ['openai', 'textgenerationwebui']) {
         await expect(samplingPanel.locator(api === 'openai' ? '#top_p_openai' : '#top_p_textgenerationwebui')).toHaveValue('0.87');
         await openPanel(page, 'prompting');
         const downloadPromise = page.waitForEvent('download');
-        await prompting.locator(api === 'openai' ? '#export_oai_preset' : '[data-preset-manager-export="textgenerationwebui"]').click();
+        await choosePresetAction(page, prompting, api === 'openai' ? 'Export…' : 'Export');
         await confirmPresetExport(page, api);
         const exported = await readPresetDownload(await downloadPromise);
         expectPresetMetadata(exported, preset, api);

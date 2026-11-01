@@ -39,7 +39,9 @@ const FLUSH_CONTROL_SELECTOR = [
     '#update_oai_preset', '#new_oai_preset', '#delete_oai_preset', '#export_oai_preset', '#import_oai_preset',
     '#openai_preset_import_file', '#af_master_import', '#af_master_import_file', '#af_master_export',
     '#connection_profiles', '#main_api', '#bind_model_templates', '#sb_preset_autosave',
-    'input[type="file"]', '.sb-action-btn-group',
+    'input[type="file"]',
+    // The Preset Menu clicks the original buttons with untrusted events, so a press on its row saves first.
+    '[data-sb-preset-row]',
 ].join(', ');
 const DIALOG_SELECTOR = 'dialog[open], .popup[open], .popup.active';
 

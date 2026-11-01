@@ -104,6 +104,15 @@ async function nudgeTemperature(page, steps = 1) {
 
 const waitPastDebounce = page => page.waitForTimeout(AUTOSAVE_DELAY_MS + 700);
 
+const presetMenuButton = panel => panel.locator('[data-sb-preset-row]:visible').getByRole('button', { name: 'Preset Menu', exact: true });
+
+async function openPresetMenu(page) {
+    await presetMenuButton(await openPanel(page, 'prompting')).click();
+    const menu = page.locator('.sb-action-menu[role="menu"]');
+    await expect(menu).toBeVisible();
+    return menu;
+}
+
 const readAutosave = page => page.evaluate(async () => (await import('/scripts/power-user.js')).power_user.sb_preset_autosave);
 
 test('autosave defaults on for new installs', async ({ page }) => {
@@ -239,16 +248,20 @@ test('editing a bundled preset forks it once and keeps saving the copy', async (
 
 test('Update is disabled for bundled presets only and saves the same shape as autosave', async ({ page }) => {
     const saves = await loadApp(page, { autosave: false });
-    await openPanel(page, 'prompting');
     const update = page.locator('#update_oai_preset');
 
     await selectPreset(page, 'openai', 'Default');
     await expect(update).toHaveAttribute('aria-disabled', 'true');
-    await expect(update).toHaveAttribute('title', 'Bundled presets are read-only. Use Save as to keep your changes.');
-    await update.click({ force: true });
+    let menu = await openPresetMenu(page);
+    const readOnlyUpdate = menu.getByRole('menuitem', { name: 'Update', exact: true });
+    await expect(readOnlyUpdate).toHaveAttribute('aria-disabled', 'true');
+    await expect(readOnlyUpdate).toHaveAttribute('title', 'Bundled presets are read-only. Use Save as to keep your changes.');
+    await readOnlyUpdate.click({ force: true });
     await page.waitForTimeout(500);
     expect(saves).toHaveLength(0);
-    await expect(page.locator('#new_oai_preset')).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(menu.getByRole('menuitem', { name: 'Save As…', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
 
     await selectPreset(page, 'openai', USER_PRESET);
     await expect(update).not.toHaveAttribute('aria-disabled', 'true');
@@ -258,8 +271,10 @@ test('Update is disabled for bundled presets only and saves the same shape as au
     await waitPastDebounce(page);
     expect(saves, 'autosave off never writes').toHaveLength(0);
 
-    await openPanel(page, 'prompting');
-    await update.click();
+    menu = await openPresetMenu(page);
+    await expect(menu.getByRole('menuitem', { name: 'Update', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await menu.getByRole('menuitem', { name: 'Update', exact: true }).click();
+    await expect(menu).toBeHidden();
     await expect.poll(() => saves.length).toBe(1);
     const updateBody = saves[0];
 
@@ -332,29 +347,51 @@ test('Editor header shows autosave and read-only state', async ({ page }) => {
     await expect(editor.locator('[data-sb-editor-read-only]')).toBeHidden();
 });
 
-test('autosave sits below the preset toolbar and Master Import/Export joins Text Completion actions', async ({ page }) => {
+test('pressing the Preset Menu saves a pending edit before an action can run', async ({ page }) => {
+    const saves = await loadApp(page);
+    await selectPreset(page, 'openai', USER_PRESET);
+    const presets = await openPanel(page, 'prompting');
+    const maxTokens = presets.locator('#openai_max_tokens');
+    await maxTokens.scrollIntoViewIfNeeded();
+    await maxTokens.fill('778');
+    const editedAt = Date.now();
+    await presetMenuButton(presets).click();
+    await expect.poll(() => saves.length, { intervals: [25] }).toBe(1);
+    expect(Date.now() - editedAt, 'the press saves at once instead of after the debounce').toBeLessThan(AUTOSAVE_DELAY_MS);
+    expect(saves[0]).toMatchObject({ apiId: 'openai', name: USER_PRESET, preset: { openai_max_tokens: 778 } });
+    await expect(page.locator('.sb-action-menu[role="menu"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await waitPastDebounce(page);
+    expect(saves).toHaveLength(1);
+});
+
+test('autosave sits below the preset row and Master Import/Export moves into the Text Completion Preset Menus', async ({ page }) => {
     await loadApp(page);
     const prompting = await openPanel(page, 'prompting');
     const placement = () => prompting.evaluate(panel => {
         const autosave = panel.querySelector('[data-sb-preset-autosave]');
-        const toolbar = [...panel.querySelectorAll('.sb-preset-toolbar-row, .sb-non-chat-preset-row')].find(row => row.checkVisibility());
-        const block = toolbar?.closest('[id$="_api-presets"]');
-        const below = toolbar?.classList.contains('sb-preset-toolbar-row') ? toolbar.nextElementSibling : block?.nextElementSibling;
-        const master = document.getElementById('af_master_import');
-        return {
-            autosaveBelowToolbar: below === autosave,
-            masterVisible: master.checkVisibility(),
-            masterInToolbar: toolbar?.contains(master) ?? false,
-            masterAfterFileGroup: master.closest('.sb-action-btn-group')?.previousElementSibling?.matches('.sb-action-btn-group--file') ?? false,
-        };
+        const row = [...panel.querySelectorAll('[data-sb-preset-row]')].find(candidate => candidate.checkVisibility());
+        const block = row?.closest('[id$="_api-presets"]');
+        const below = block?.id === 'openai_api-presets' ? row.nextElementSibling : block?.nextElementSibling;
+        return { autosaveBelowPreset: Boolean(autosave) && below === autosave, masterVisible: document.getElementById('af_master_import').checkVisibility() };
     });
+    const masterItems = async () => {
+        await presetMenuButton(prompting).click();
+        const menu = page.locator('.sb-action-menu[role="menu"]');
+        await expect(menu).toBeVisible();
+        const labels = await menu.locator('.sb-action-menu-label').allTextContents();
+        await page.keyboard.press('Escape');
+        await expect(menu).toBeHidden();
+        return labels.filter(label => label.startsWith('Master'));
+    };
 
-    expect(await placement()).toEqual({ autosaveBelowToolbar: true, masterVisible: false, masterInToolbar: false, masterAfterFileGroup: false });
+    expect(await placement()).toEqual({ autosaveBelowPreset: true, masterVisible: false });
+    expect(await masterItems()).toEqual([]);
     for (const api of ['textgenerationwebui', 'kobold', 'novel']) {
         await page.evaluate(api => window.$('#main_api').val(api).trigger('change'), api);
-        await expect.poll(placement).toEqual({ autosaveBelowToolbar: true, masterVisible: true, masterInToolbar: true, masterAfterFileGroup: true });
+        await expect.poll(placement).toEqual({ autosaveBelowPreset: true, masterVisible: false });
+        expect(await masterItems()).toEqual(['Master Import…', 'Master Export…']);
     }
-    await expect(prompting.locator('#af_master_import')).toHaveAccessibleName('Master Import');
     await page.evaluate(() => window.$('#main_api').val('openai').trigger('change'));
-    await expect.poll(placement).toEqual({ autosaveBelowToolbar: true, masterVisible: false, masterInToolbar: false, masterAfterFileGroup: true });
+    await expect.poll(placement).toEqual({ autosaveBelowPreset: true, masterVisible: false });
 });

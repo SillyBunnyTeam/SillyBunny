@@ -13,14 +13,11 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
 
     const defaultAllowlist = [
         { selector: '#completion_prompt_manager', rule: '*', reason: 'Prompt Manager redesigned in Phase 5' },
-        { selector: '.sb-prompting-group:has(#respective-presets-block)', rule: 'row-geometry', reason: 'Preset toolbar uses bespoke row anatomy; reviewed in Phase 3.6' },
     ];
     const effectiveAllowlist = allowlist ?? defaultAllowlist;
     const contentInsetSelector = [
         '.ds-row > .ds-row-text',
         '.sb-settings-flat-header b',
-        '.sb-preset-toolbar-row > strong',
-        '.sb-non-chat-preset-row > strong',
         '.toggle-description:not(.ds-row-subtitle)',
         '.sb-prompting-row-with-help > :is(.notes, p, small)',
         '.range-block:not(.ds-row) > .justifyLeft',
@@ -33,8 +30,6 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
         '.ds-row',
         '.ds-row-expander',
         '.sb-settings-flat-header',
-        '.sb-preset-toolbar-row',
-        '.sb-non-chat-preset-row',
         '.sb-settings-flat-section',
         '.sb-settings-row-wrapper',
         '.sb-sampling-control-card',
@@ -149,22 +144,12 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
         }
 
         const contentElements = new Set(group.querySelectorAll(contentInsetSelector));
-        for (const toolbar of group.querySelectorAll('.sb-preset-toolbar-row, .sb-non-chat-preset-row')) {
-            const leadingLines = [];
-            for (const element of toolbar.querySelectorAll(':scope > strong, :scope > select, .sb-action-btn-group')) {
-                if (!isVisible(element)) continue;
-                const rect = element.getBoundingClientRect();
-                if (leadingLines.some(line => rect.top < line.bottom - 1 && rect.bottom > line.top + 1)) continue;
-                contentElements.add(element);
-                leadingLines.push(rect);
-            }
-        }
 
         for (const element of contentElements) {
             if (!isVisible(element)) continue;
             if (element.closest('.ds-row-suffix, #completion_prompt_manager') && !element.matches('.ds-row-text')) continue;
             const style = getComputedStyle(element);
-            const isControl = element.matches('input, select, textarea, .sb-action-btn-group');
+            const isControl = element.matches('input, select, textarea');
             const contentPadding = isControl ? 0 : parseFloat(style.paddingLeft || '0') + parseFloat(style.borderLeftWidth || '0');
             const inset = element.getBoundingClientRect().left + contentPadding - groupLeft;
             addRecord(element, 'content-inset', { inset, expected: 16 }, Math.abs(inset - 16) <= 1);
@@ -406,7 +391,6 @@ export { auditPromptingLayout };
 
 export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#completion_prompt_manager', rule: '*', reason: 'Prompt Manager redesigned in Phase 5' },
-    { selector: '.sb-prompting-group:has(#respective-presets-block)', rule: 'row-geometry', reason: 'Preset toolbar uses bespoke row anatomy; reviewed in Phase 3.6' },
     // SillyBunny: bespoke grid layouts — inset and edge rules require full-width .ds-row anatomy which these sections intentionally do not use.
     { selector: '#sb-af-reasoning', rule: 'content-inset', reason: 'Reasoning uses a multi-column toggle grid; horizontal inset check does not apply to grid-placed items' },
     { selector: '#sb-af-reasoning', rule: 'row-edges', reason: 'Reasoning uses a multi-column toggle grid; row-edge check does not apply to grid-placed items' },

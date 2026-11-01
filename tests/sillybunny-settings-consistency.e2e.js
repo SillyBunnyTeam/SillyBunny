@@ -1240,7 +1240,9 @@ test.describe('Preset persistence regression', () => {
         currentValue);
         expect(selectedValue, 'a second Chat Completions preset is required to verify persistence').not.toBeNull();
         await preset.selectOption(selectedValue);
-        await prompting.locator('#update_oai_preset').click();
+        await prompting.locator('[data-sb-preset-row]:visible').getByRole('button', { name: 'Preset Menu', exact: true }).click();
+        // A bundled preset disables Update, and a press on it then does nothing, like the original button.
+        await page.locator('.sb-action-menu[role="menu"]').getByRole('menuitem', { name: 'Update', exact: true }).click({ force: true });
         await page.evaluate(async () => {
             const { saveSettings } = await import('/script.js');
             await saveSettings();
