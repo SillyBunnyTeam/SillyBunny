@@ -34,14 +34,15 @@ TODO(copy): note on how to read the tables below.
 |---|---|---|---|---|---|---|---|
 | gemini | gemini-3-pro-image-preview | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.35 | - |
 | gemini | gemini-nano-banana-2.1 | 5 | 2026-11-01 | 2026-11-01 | 0 | $0.90 | - |
+| local | rim-recolour | 4 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 52 | 2026-11-01 | 2026-11-01 | 3 | $9.40 | $0.00 |
+| openai | gpt-image-2.5-sunburst-h | 65 | 2026-11-01 | 2026-11-01 | 3 | $12.20 | $0.00 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 44 |
-| Total charged | $11.05 |
+| Reference images attached | 62 |
+| Total charged | $13.85 |
 | Total estimated, not yet measured | $0.00 |
 
 ### Current approvals
@@ -51,6 +52,10 @@ TODO(copy): note on how to read the tables below.
 | 20261101T055439Z-gpt-image-2.5-sunburst-h-patch-1.png | gpt-image-2.5-sunburst-h | 2795ed6618a6f01c |
 | 20261101T063110Z-gpt-image-2.5-sunburst-h-patch-1.png | gpt-image-2.5-sunburst-h | 865ebf9fa6dad039 |
 | 20261101T063642Z-gpt-image-2.5-sunburst-h-patch-1.png | gpt-image-2.5-sunburst-h | 92924be1ce51cf6a |
+| reisen-portrait.png | rim-recolour | ed20db74173ae85e |
+| reisen-sprite.png | rim-recolour | 758fd49afd46c46a |
+| tewi-portrait.png | rim-recolour | 2d7bfa967ed663cd |
+| tewi-sprite.png | rim-recolour | 94eea2d69248e864 |
 
 Superseded approvals (history): 3 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66).
 
