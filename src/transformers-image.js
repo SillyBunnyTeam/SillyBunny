@@ -17,6 +17,25 @@ const IMAGE_SIGNATURES = [
 ].map(parts => parts.map(([offset, hex]) => ({ offset, bytes: Buffer.from(hex, 'hex') })));
 
 /**
+ * RawImage that resizes with the server's jimp. On the browser code path, which sillytavern-transformers
+ * takes under Bun, RawImage.resize() needs OffscreenCanvas, which Bun lacks.
+ */
+class JimpRawImage extends RawImage {
+    /**
+     * @param {number} width New width
+     * @param {number} height New height
+     * @returns {Promise<RawImage>} Resized image with the same number of channels
+     */
+    async resize(width, height) {
+        const rgba = this.channels === 4 ? this : this.clone().rgba();
+        const image = new Jimp({ data: Buffer.from(rgba.data), width: this.width, height: this.height });
+        image.resize({ w: width, h: height });
+        const { data, width: newWidth, height: newHeight } = image.bitmap;
+        return new JimpRawImage(new Uint8ClampedArray(data), newWidth, newHeight, 4).convert(this.channels);
+    }
+}
+
+/**
  * Checks that a buffer starts with the signature of a supported image format.
  * jimp finds the format with file-type, and file-type before 21.3.1 loops forever
  * on a malformed ASF header (GHSA-5v7r-6r5c-r473), so other input must not reach jimp.
@@ -42,5 +61,5 @@ export async function decodeRawImage(buffer) {
 
     const image = await Jimp.fromBuffer(buffer);
     const { data, width, height } = image.bitmap;
-    return new RawImage(new Uint8ClampedArray(data), width, height, 4);
+    return new JimpRawImage(new Uint8ClampedArray(data), width, height, 4);
 }

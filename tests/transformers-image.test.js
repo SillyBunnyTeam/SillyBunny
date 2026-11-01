@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // Define it before the library loads so that these tests also cover that path under Node.js.
 global.self = global;
 await import('../src/fetch-patch.js');
-const { RawImage } = await import('sillytavern-transformers');
+const { RawImage, ViTFeatureExtractor } = await import('sillytavern-transformers');
 const { getRawImage } = await import('../src/transformers.js');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,6 +22,18 @@ const PNG_3X2_PIXELS = [
     255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
     255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 255, 128,
 ];
+
+// preprocessor_config.json of Xenova/vit-gpt2-image-captioning, the default captioning model.
+const CAPTION_PREPROCESSOR_CONFIG = {
+    do_normalize: true,
+    do_rescale: true,
+    do_resize: true,
+    image_mean: [0.5, 0.5, 0.5],
+    image_std: [0.5, 0.5, 0.5],
+    resample: 2,
+    rescale_factor: 0.00392156862745098,
+    size: { height: 224, width: 224 },
+};
 
 /**
  * Runs an ES module script in a separate Node.js process and parses the last line it prints as JSON.
@@ -61,5 +73,17 @@ describe('getRawImage', () => {
         expect(image).toBeInstanceOf(RawImage);
         expect([image.width, image.height, image.channels]).toEqual([3, 2, 4]);
         expect(Array.from(image.data)).toEqual(PNG_3X2_PIXELS);
+    });
+
+    test('gives the default captioning model a 224x224 RGB input', async () => {
+        const image = await getRawImage(PNG_3X2);
+        const { pixel_values: pixelValues } = await new ViTFeatureExtractor(CAPTION_PREPROCESSOR_CONFIG)(image);
+
+        expect(pixelValues.dims).toEqual([1, 3, 224, 224]);
+        // The top-left pixel stays red: normalized R is 1, and G and B are -1.
+        const [red, green, blue] = [0, 1, 2].map(channel => pixelValues.data[channel * 224 * 224]);
+        expect(red).toBeCloseTo(1);
+        expect(green).toBeCloseTo(-1);
+        expect(blue).toBeCloseTo(-1);
     });
 });
