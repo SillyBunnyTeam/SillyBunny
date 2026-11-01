@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
@@ -14,6 +14,7 @@ import { opaqueBox, readRaster, writeRaster } from './raster.mjs';
 import { resolveOutDir } from './run.mjs';
 import { dilateMask, dropThinParts } from './shape-ops.mjs';
 import { findTones, pinTone, snapToTones } from './tone-snap.mjs';
+import { findTool } from './tool-lookup.mjs';
 import { parsePath, readVtracerPaths, serialisePath, translatePath } from './vector-path.mjs';
 
 export const CENTRINGS = ['base', 'bbox'];
@@ -39,10 +40,9 @@ const TRACE_ARGUMENTS = ['--colormode', 'color', '--hierarchical', 'stacked', '-
 
 const toLogPath = (rootDir, path) => relative(rootDir, path).split(sep).join('/');
 
-/** The vtracer binary: $VTRACER, else cargo's install directory, else the PATH. */
+/** The vtracer binary: $VTRACER, else cargo's install directory, else the PATH (see tool-lookup.mjs). */
 export function findVtracer(env = process.env) {
-    const candidates = [env.VTRACER, join(env.HOME ?? homedir(), '.cargo', 'bin', 'vtracer'), 'vtracer'].filter(Boolean);
-    const found = candidates.find((candidate) => spawnSync(candidate, ['--version'], { encoding: 'utf8' }).status === 0);
+    const found = findTool('vtracer', env);
     if (!found) {
         throw new Error('vtracer was not found. Install it with `cargo install vtracer` or set VTRACER to its path.');
     }

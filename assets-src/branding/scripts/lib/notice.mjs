@@ -1,4 +1,5 @@
 import { approvedName } from './log.mjs';
+import { toolCandidates } from './tool-lookup.mjs';
 
 const BEGIN = '<!-- generated:begin -->';
 const END = '<!-- generated:end -->';
@@ -15,19 +16,26 @@ const TOOL_PROBES = [
     { label: 'python3', command: 'python3', args: ['--version'], pattern: /Python\s+(\S+)/ },
 ];
 
+/** The version of one tool: the first of the commands the scripts would try (tool-lookup.mjs) that runs. */
+function probeTool({ command, args, pattern }, run, env) {
+    for (const candidate of toolCandidates(command, env)) {
+        try {
+            const match = pattern.exec(run(candidate, args).trim());
+            return match ? match[1] : 'unknown';
+        } catch {
+            // This candidate is not there or does not run; the next one may.
+        }
+    }
+    return 'not installed';
+}
+
 /**
  * @param {(command: string, args: string[]) => string} run Returns stdout or throws when the tool is missing.
  * @param {{ sharp: string, node: string }} runtimes
+ * @param {Record<string, string | undefined>} [env] where the lookup reads $VTRACER, $POTRACE and the home folder from
  */
-export function detectTools(run, runtimes) {
-    const found = TOOL_PROBES.map(({ label, command, args, pattern }) => {
-        try {
-            const match = pattern.exec(run(command, args).trim());
-            return { label, version: match ? match[1] : 'unknown' };
-        } catch {
-            return { label, version: 'not installed' };
-        }
-    });
+export function detectTools(run, runtimes, env = process.env) {
+    const found = TOOL_PROBES.map((probe) => ({ label: probe.label, version: probeTool(probe, run, env) }));
     return [...found, { label: 'sharp', version: runtimes.sharp }, { label: 'Node.js', version: runtimes.node }];
 }
 

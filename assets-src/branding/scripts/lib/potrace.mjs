@@ -1,13 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { findTool } from './tool-lookup.mjs';
 
 /** @typedef {import('./geometry.mjs').PathCommand} PathCommand */
 
-/** The potrace binary: $POTRACE, else the PATH. */
+/** The potrace binary: $POTRACE, else the PATH (see tool-lookup.mjs). */
 export function findPotrace(env = process.env) {
-    const candidates = [env.POTRACE, 'potrace'].filter(Boolean);
-    const found = candidates.find((candidate) => spawnSync(candidate, ['--version'], { encoding: 'utf8' }).status === 0);
+    const found = findTool('potrace', env);
     if (!found) {
         throw new Error('potrace was not found. Install it (for example `brew install potrace`) or set POTRACE to its path.');
     }
