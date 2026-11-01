@@ -409,10 +409,21 @@
 }
 
 .sbHomeArt[data-sb-art-placeholder='row-reisen'],
-.sbHomeArt[data-sb-art-placeholder='row-tewi'] {
+.sbHomeArt[data-sb-art-placeholder='row-tewi'],
+.sbHomeArt[data-sb-art-placeholder='row-nahida'],
+.sbHomeArt[data-sb-art-placeholder='row-pointer'] {
     width: 64px;
     height: 64px;
     image-rendering: pixelated;
+}
+
+/* The thumbnail of a card fills the box that the placeholder art has. It is a picture, so it is not drawn as pixel art. */
+.sbHomeArt > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: auto;
 }
 
 .sbHomeArt[data-sb-art-placeholder='logo-32'] {
@@ -1288,6 +1299,8 @@ body.big-avatars .welcomeRecent .chatMessage {
 
     .sbHomeArt[data-sb-art-placeholder='row-reisen'],
     .sbHomeArt[data-sb-art-placeholder='row-tewi'],
+    .sbHomeArt[data-sb-art-placeholder='row-nahida'],
+    .sbHomeArt[data-sb-art-placeholder='row-pointer'],
     .sbHomeMoreIcon {
         width: 128px;
         height: 128px;

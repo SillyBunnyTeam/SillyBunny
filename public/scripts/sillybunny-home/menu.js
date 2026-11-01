@@ -109,9 +109,6 @@ export function openChatMenu(trigger, actions, { keyboard = false, bounds = null
     });
 }
 
-/** Marks an item whose action is not wired yet. The same marker sits on the stubbed rows. */
-const STUB_MARKER = Object.freeze({ sbStub: 'true' });
-
 /**
  * @typedef {object} AssistantMenuActions
  * @property {(mode: 'roleplay' | 'conversation') => void} newChatInMode
@@ -126,33 +123,38 @@ export function getOtherChatMode(lastMode) {
 }
 
 /**
- * The card's own actions open a chat in the remembered mode, so the menu offers the other one.
+ * The card's own actions open a chat in the remembered mode, so the menu offers the other one. A card without a file
+ * has no chat to open, so its menu has no items and the card shows no menu button.
  * @param {object} options
  * @param {unknown} options.lastMode
  * @param {AssistantMenuActions} options.actions
+ * @param {import('./assistant-cards.js').AssistantCardState} [options.state='available']
  * @returns {import('../sillybunny-action-menu.js').ActionMenuSection[]}
  */
-export function buildAssistantMenuSections({ lastMode, actions }) {
+export function buildAssistantMenuSections({ lastMode, actions, state = 'available' }) {
+    if (state !== 'available') {
+        return [];
+    }
     const otherMode = getOtherChatMode(lastMode);
     const inOtherMode = otherMode === 'conversation'
         ? { label: t`New Chat in Conversation`, icon: 'fa-solid fa-comments sbHomeMenuIconFit' }
         : { label: t`New Chat in Roleplay`, icon: 'fa-solid fa-masks-theater sbHomeMenuIconFit' };
-    return [{ items: [{ ...inOtherMode, data: STUB_MARKER, onSelect: () => actions.newChatInMode(otherMode) }] }];
+    return [{ items: [{ ...inOtherMode, onSelect: () => actions.newChatInMode(otherMode) }] }];
 }
 
 /**
  * Opens the menu of one assistant card below its button, or closes it when it is already open.
  * @param {HTMLElement} trigger
- * @param {{ lastMode: unknown, actions: AssistantMenuActions }} menu
+ * @param {{ lastMode: unknown, actions: AssistantMenuActions, state?: import('./assistant-cards.js').AssistantCardState }} menu
  * @param {object} [options]
  * @param {boolean} [options.keyboard=false] Focus the first item, for a keyboard activation.
  * @param {Element|null} [options.bounds=null] The popover stays inside this element.
  */
-export function openAssistantMenu(trigger, { lastMode, actions }, { keyboard = false, bounds = null } = {}) {
+export function openAssistantMenu(trigger, { lastMode, actions, state }, { keyboard = false, bounds = null } = {}) {
     openActionMenu({
         trigger,
         title: t`Assistant Menu`,
-        sections: buildAssistantMenuSections({ lastMode, actions }),
+        sections: buildAssistantMenuSections({ lastMode, actions, state }),
         keyboard,
         bounds,
         // The button ends the card footer, and the bounds are the whole Home panel, so a card in its start half

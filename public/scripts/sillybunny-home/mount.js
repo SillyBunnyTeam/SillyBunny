@@ -22,6 +22,7 @@ import { openAbout, openBundledExtras, openGettingStarted, openHelp, openKeyboar
  * @property {() => string} getDisplayMode Reads the stored display mode.
  * @property {(mode: string) => void} setDisplayMode Applies and stores a display mode.
  * @property {() => unknown} openRecentChatsSettings
+ * @property {Pick<Parameters<typeof mountAssistants>[1], 'getCards' | 'actions' | 'getThumbnailUrl'>} assistants What the assistant cards show and do.
  */
 
 /**
@@ -125,7 +126,7 @@ export function mountHome(panel, context) {
         openBundledExtras,
         openHelp,
     });
-    mountAssistants(panel, { openMoreAssistants: () => openBundledExtras({ group: 'assistants' }) });
+    mountAssistants(panel, { ...context.assistants, openMoreAssistants: () => openBundledExtras({ group: 'assistants' }) });
     fitCardFooters(panel);
     fitHomeHeader(panel);
     applyDisplayMode(panel, context.getDisplayMode());

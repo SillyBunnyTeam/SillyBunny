@@ -27,8 +27,14 @@
     height: 96px;
 }
 
-.sbHomeArt[data-sb-art-placeholder='row-nahida'],
 .sbHomeArt[data-sb-art-placeholder='logo-64'] {
+    width: 64px;
+    height: 64px;
+}
+
+/* This sheet loads with the first window and then wins over the Home sheet for any rule of equal weight, so a size
+   for art that Home also draws stays inside the window that needs it. */
+.sbBundledExtrasDialog .sbHomeArt[data-sb-art-placeholder='row-nahida'] {
     width: 64px;
     height: 64px;
 }

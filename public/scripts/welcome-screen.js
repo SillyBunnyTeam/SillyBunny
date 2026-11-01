@@ -44,6 +44,9 @@ import { ASSISTANT_POINTER_KEY, ASSISTANTS, getCreationMethod, resolveDefaultAss
 import { migrateAssistantPointer } from './sillybunny-home/assistant-pointer-migration.js';
 // SillyBunny: finding the default assistant scans every character, so the answer is remembered.
 import { createDefaultAssistantResolver } from './sillybunny-home/default-assistant-resolver.js';
+// SillyBunny: the assistant cards of Home read the library through the cards model, and their actions are built outside this file.
+import { getAssistantCards } from './sillybunny-home/assistant-cards.js';
+import { createAppAssistantActions } from './sillybunny-home/assistant-chat.js';
 
 // SillyBunny: the pointer key is the registry's.
 const assistantAvatarKey = ASSISTANT_POINTER_KEY;
@@ -687,6 +690,24 @@ function setWelcomePanelMode(root, mode, { persist = true } = {}) {
 /** @type {import('./sillybunny-home/focus.js').HomeFocusTarget|null} */
 let rememberedHomeFocus = null;
 
+// SillyBunny: what the assistant cards of Home ask of the library, from the loaded characters and the account's deletion marks.
+function getAssistantLibrary() {
+    const findAvatar = (avatar) => {
+        const character = characters.find(candidate => candidate.avatar === avatar);
+        return character ? { avatar: character.avatar, name: character.name } : null;
+    };
+    return {
+        findCard: config => findAvatar(getBundledAssistantIdentityAvatar(config)),
+        findAvatar,
+        isDeleted: config => isBundledAssistantMarkedDeleted(config),
+    };
+}
+
+// SillyBunny: one set of card actions for every render of Home, so a double click is dropped across a re-render.
+const assistantActions = createAppAssistantActions({
+    openConversation: (avatar, { branchId, groupId, enable }) => openRecentConversationChat(avatar, groupId, branchId, { enable }),
+});
+
 function getHomePanel() {
     const panel = document.querySelector('#chat > .welcomePanel');
     return panel instanceof HTMLElement ? panel : null;
@@ -767,6 +788,12 @@ async function sendWelcomePanel(chats, expand = false) {
                 openRecentChatsSettings: () => {
                     rememberHomeFocus(root.querySelector('.sbHomeMenuButton'));
                     return openRecentChatsSettingsPopup();
+                },
+                // SillyBunny: the cards are read from the library on every render, and their actions are the app's.
+                assistants: {
+                    getCards: () => getAssistantCards({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
+                    actions: assistantActions,
+                    getThumbnailUrl: avatar => getThumbnailUrl('avatar', avatar),
                 },
             });
         });
@@ -953,13 +980,16 @@ async function openRecentCharacterChat(avatarId, fileName) {
     }
 }
 
+// SillyBunny: the assistant cards open a fresh Conversation with a character that may not have Conversation Mode on yet.
 /**
  * Opens a character in Conversation Mode from the welcome page.
  * @param {string} avatarId Avatar file name
  * @param {string} groupId Group ID, when opening a group-scoped Conversation
  * @param {string} branchId Conversation branch ID
+ * @param {object} [options]
+ * @param {boolean} [options.enable=false] Turn Conversation Mode on for the character, which lists the thread in Recent Chats.
  */
-async function openRecentConversationChat(avatarId, groupId = '', branchId = '') {
+async function openRecentConversationChat(avatarId, groupId = '', branchId = '', { enable = false } = {}) {
     const characterId = characters.findIndex(x => x.avatar === avatarId);
     if (characterId === -1) {
         console.error(`Character not found for avatar ID: ${avatarId}`);
@@ -973,6 +1003,7 @@ async function openRecentConversationChat(avatarId, groupId = '', branchId = '')
             branchId,
             groupId: groupId || null,
             showToast: false,
+            enable,
         });
         if (!opened) {
             setConversationWelcomeOpeningSuppressed(false);
@@ -1656,6 +1687,10 @@ export async function installBundledAssistant(assistantId) {
     }
     if (findBundledAssistantCharacterId(config) === -1) {
         await createBundledAssistant(config);
+        // SillyBunny: Home lists an installed optional assistant, and reads the library only when it renders.
+        if (getHomePanel()) {
+            await refreshWelcomeScreen();
+        }
     }
 }
 

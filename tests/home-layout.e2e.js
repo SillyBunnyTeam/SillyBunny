@@ -2,6 +2,7 @@ import { expect, test as base } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
+import { PINNED_ASSISTANT_ACCOUNT, REISEN_AVATAR, stubAssistantCards, TEWI_AVATAR } from './helpers/assistant-library.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
@@ -337,7 +338,9 @@ for (const { name, options } of VIEWPORTS) {
 
         test.beforeEach(async ({ page, bundledCardsOnly }) => {
             await protectMaintainerServer(page);
-            await installFixtureChats(page, { bundledCardsOnly });
+            await installFixtureChats(page, { bundledCardsOnly, accountStorage: PINNED_ASSISTANT_ACCOUNT });
+            // The cards of Home depend on the library, so it holds Reisen and Tewi and no other assistant, whatever the data root holds.
+            await stubAssistantCards(page, [REISEN_AVATAR, TEWI_AVATAR], { bundledOnly: bundledCardsOnly });
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });
@@ -1189,14 +1192,17 @@ for (const { name, options } of VIEWPORTS) {
             await chooseMode(page, 'full');
             await page.evaluate(() => {
                 window.qaCardActions = {};
+                window.qaFooterClicks = [0, 0];
                 document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--more)').forEach((card) => {
                     const key = card.dataset.sbHomeKey;
                     window.qaCardActions[key] = 0;
-                    card.querySelector('.sbHomeCardOpen').addEventListener('click', () => { window.qaCardActions[key]++; });
-                });
-                window.qaFooterClicks = [0, 0];
-                document.querySelectorAll('.welcomePanel .sbHomeCard[data-sb-home-key="assistant-reisen"] .sbHomeFootButton').forEach((button, index) => {
-                    button.addEventListener('click', () => { window.qaFooterClicks[index]++; });
+                    // The capture phase sees the click before the control does, and stopping it keeps the real chat actions from leaving Home.
+                    card.addEventListener('click', (event) => {
+                        const footer = event.target.closest('.sbHomeFootButton');
+                        if (footer && key === 'assistant-reisen') window.qaFooterClicks[[...card.querySelectorAll('.sbHomeFootButton')].indexOf(footer)]++;
+                        if (event.target.closest('.sbHomeCardOpen')) window.qaCardActions[key]++;
+                        if (footer || event.target.closest('.sbHomeCardOpen')) event.stopPropagation();
+                    }, true);
                 });
             });
             const card = assistantCard(page, 'Reisen');
@@ -1264,22 +1270,18 @@ for (const { name, options } of VIEWPORTS) {
             expect(pressedMenu).toBe(resting);
         });
 
-        test('activating a card, Start New Chat or Temporary Chat does nothing yet', async ({ page }) => {
+        test('the card, Start New Chat and Temporary Chat of a card with a file are enabled controls and no stubs', async ({ page }) => {
             await chooseMode(page, 'full');
             const card = assistantCard(page, 'Reisen');
-            const mode = await page.locator('#chat > .welcomePanel').getAttribute('data-home-panel-mode');
 
             for (const control of [card.locator('.sbHomeCardOpen'), card.locator('.sbHomeFootButton').nth(0), card.locator('.sbHomeFootButton').nth(1)]) {
-                await expect(control).toHaveAttribute('data-sb-stub', 'true');
-                await control.click();
+                await expect(control).toBeEnabled();
+                await expect(control).not.toHaveAttribute('data-sb-stub', /.*/);
             }
-
-            await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
-            await expect(page.locator('dialog[open]')).toHaveCount(0);
-            await expect(page.locator('#chat > .welcomePanel')).toHaveAttribute('data-home-panel-mode', mode);
+            await expect(card).not.toHaveAttribute('data-sb-stub', /.*/);
         });
 
-        test('the Assistant Menu offers the chat mode other than the last one, then closes without acting', async ({ page }) => {
+        test('the Assistant Menu offers the chat mode other than the last one, and Escape closes it', async ({ page }) => {
             await chooseMode(page, 'full');
             const card = assistantCard(page, 'Reisen');
             const trigger = card.getByRole('button', { name: 'Assistant Menu' });
@@ -1290,13 +1292,13 @@ for (const { name, options } of VIEWPORTS) {
             await expect(trigger).toHaveAttribute('aria-expanded', 'true');
             await expect(menu.getByRole('menuitem')).toHaveText(['New Chat in Conversation']);
             await expect(menu.getByRole('menuitem').locator('i')).toHaveCount(1);
-            await expect(menu.getByRole('menuitem')).toHaveAttribute('data-sb-stub', 'true');
+            await expect(menu.getByRole('menuitem')).not.toHaveAttribute('data-sb-stub', /.*/);
             const menuBox = await menu.boundingBox();
             const panelBox = await measure(page, '#chat > .welcomePanel');
             expect(menuBox.x).toBeGreaterThanOrEqual(Math.max(0, panelBox.left) - 1);
             expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(Math.min(page.viewportSize().width, panelBox.right) + 1);
 
-            await menu.getByRole('menuitem', { name: 'New Chat in Conversation' }).click();
+            await escapeOpenMenu(page);
             await expect(menu).toHaveCount(0);
             await expect(trigger).toBeFocused();
             await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
@@ -1864,7 +1866,8 @@ for (const { name, options } of WIDE_VIEWPORTS) {
 
         test.beforeEach(async ({ page }) => {
             await protectMaintainerServer(page);
-            await installFixtureChats(page);
+            await installFixtureChats(page, { accountStorage: PINNED_ASSISTANT_ACCOUNT });
+            await stubAssistantCards(page, [REISEN_AVATAR, TEWI_AVATAR]);
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });

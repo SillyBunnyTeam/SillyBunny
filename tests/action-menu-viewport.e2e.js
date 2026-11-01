@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { PINNED_ASSISTANT_ACCOUNT, REISEN_AVATAR, stubAssistantCards, TEWI_AVATAR, withoutAssistantAccount } from './helpers/assistant-library.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
+import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -26,13 +28,18 @@ async function allowMotion(page) {
         const { response, body: data } = fetched;
         const settings = JSON.parse(data.settings);
         settings.power_user.reduced_motion = false;
+        // This route answers instead of the one of the fixtures, so it applies the Home settings and pins the assistant pointer itself.
+        applyHomeTestSettings(settings);
+        settings.accountStorage = { ...withoutAssistantAccount(settings.accountStorage), WelcomePage_AssistantPointerMigrated: 'true' };
         return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
     });
 }
 
 async function bootHome(page, { motion = false } = {}) {
     await protectMaintainerServer(page);
-    await installFixtureChats(page);
+    await installFixtureChats(page, { accountStorage: PINNED_ASSISTANT_ACCOUNT });
+    // A card without a file has no Assistant Menu, so the specs below need cards that have one whatever the data root holds.
+    await stubAssistantCards(page, [REISEN_AVATAR, TEWI_AVATAR]);
     if (motion) await allowMotion(page);
     await page.goto('/');
     await page.waitForFunction('document.getElementById("preloader") === null', undefined, { timeout: 60_000 });

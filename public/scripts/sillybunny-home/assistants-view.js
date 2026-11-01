@@ -2,11 +2,8 @@ import { t } from '../i18n.js';
 import { getLastChatMode } from '../sillybunny-chat-mode-memory.js';
 import { createArtPlaceholder } from './art.js';
 import { markCopyPlaceholder } from './copy.js';
-import { openAssistantMenu } from './menu.js';
-import { getHomeAssistants } from './assistant-registry.js';
-import { stubAction } from './stubs.js';
+import { buildAssistantMenuSections, openAssistantMenu } from './menu.js';
 
-const STUB_MARKER = 'true';
 const MORE_SUBTITLE_SLOT = 'AS-MORE-SUB';
 
 function createElement(tag, className, text) {
@@ -29,16 +26,14 @@ function createIcon(classes) {
  * The accessible name is a sentence. The `title` is the tooltip, which is header-capitalised, so each one is a
  * translatable string of its own with the assistant's name in it.
  */
-function createActionButton(className, { name, title, stub, onActivate }) {
+function createActionButton(className, { name, title, disabled = false, onActivate }) {
     const button = createElement('button', className);
     button.type = 'button';
     button.setAttribute('aria-label', name);
     if (title) {
         button.title = title;
     }
-    if (stub) {
-        button.dataset.sbStub = STUB_MARKER;
-    }
+    button.disabled = disabled;
     button.addEventListener('click', onActivate);
     return button;
 }
@@ -47,8 +42,8 @@ function createActionButton(className, { name, title, stub, onActivate }) {
  * A footer control shows its icon always and its label when the footer has room for both labels. The tooltip
  * carries the full name for the icon-only form and for a label that is cut short.
  */
-function createFootButton({ icon, label, name, title, onActivate }) {
-    const button = createActionButton('sbHomeFootButton', { name, title, stub: true, onActivate });
+function createFootButton({ icon, label, name, title, disabled, onActivate }) {
+    const button = createActionButton('sbHomeFootButton', { name, title, disabled, onActivate });
     button.append(createIcon(`${icon} fa-fw`), createElement('span', 'sbHomeFootLabel', label));
     return button;
 }
@@ -69,8 +64,8 @@ function createMenuButton(id) {
  * The card is the activation target, and buttons cannot nest, so an overlay button covers the card behind
  * the footer, as in a Recent Chats row. The card's own text describes it.
  */
-function createCardAction({ name, title, stub, subtitleId, onActivate }) {
-    const button = createActionButton('sbHomeCardOpen', { name, title, stub, onActivate });
+function createCardAction({ name, title, disabled, subtitleId, onActivate }) {
+    const button = createActionButton('sbHomeCardOpen', { name, title, disabled, onActivate });
     button.setAttribute('aria-describedby', subtitleId);
     return button;
 }
@@ -85,59 +80,80 @@ function createCardText({ name, titleId, subtitleId, slot }) {
     return text;
 }
 
-function createAssistantCard(assistant, panel) {
-    const titleId = `sb-home-assistant-${assistant.id}-title`;
-    const subtitleId = `sb-home-assistant-${assistant.id}-sub`;
-    const startNewChat = stubAction('assistant.new-chat');
-    const temporaryChat = stubAction('assistant.temporary-chat');
-    const menuActions = { newChatInMode: stubAction('assistant.new-chat-in-mode') };
+/**
+ * The art is a box that stands where artwork will go, unless the card of the character is the art: then the box holds
+ * its thumbnail.
+ */
+function createCardArt({ art }, getThumbnailUrl) {
+    const box = createElement('div', 'sbHomeCardArt');
+    box.dataset.sbHomeRegion = 'assistant-art';
+    const picture = createArtPlaceholder(art.name);
+    if (art.avatar) {
+        const image = document.createElement('img');
+        image.src = getThumbnailUrl(art.avatar);
+        image.alt = '';
+        image.decoding = 'async';
+        picture.replaceChildren(image);
+    }
+    box.append(picture);
+    return box;
+}
 
-    const card = createElement('article', 'sbHomeCard');
-    card.dataset.sbHomeKey = `assistant-${assistant.id}`;
+/**
+ * A card whose file is missing or deleted has nothing to open, so its controls are disabled and it shows no menu.
+ */
+function createAssistantCard(card, panel, { actions, getThumbnailUrl }) {
+    const titleId = `sb-home-${card.key}-title`;
+    const subtitleId = `sb-home-${card.key}-sub`;
+    const disabled = card.state !== 'available';
+    const menuActions = { newChatInMode: mode => void actions.newChatInMode(card, mode) };
 
-    const art = createElement('div', 'sbHomeCardArt');
-    art.dataset.sbHomeRegion = 'assistant-art';
-    art.append(createArtPlaceholder(assistant.art));
-
-    const menuButton = createMenuButton(`sb-home-assistant-${assistant.id}-menu`);
-    // Reads as "Assistant Menu Reisen": the button's own name, then the card's title.
-    menuButton.setAttribute('aria-labelledby', `${menuButton.id} ${titleId}`);
-    menuButton.addEventListener('click', (event) => {
-        openAssistantMenu(menuButton, { lastMode: getLastChatMode(), actions: menuActions }, { keyboard: event.detail === 0, bounds: panel });
-    });
+    const element = createElement('article', 'sbHomeCard');
+    element.dataset.sbHomeKey = card.key;
 
     const footer = createElement('div', 'sbHomeCardFooter');
     footer.append(
         createFootButton({
             icon: 'fa-solid fa-plus',
             label: t`Start New Chat`,
-            name: t`Start new chat with ${assistant.name}`,
-            title: t`Start New Chat With ${assistant.name}`,
-            onActivate: startNewChat,
+            name: t`Start new chat with ${card.name}`,
+            title: t`Start New Chat With ${card.name}`,
+            disabled,
+            onActivate: () => void actions.newChat(card),
         }),
         createFootButton({
             icon: 'fa-solid fa-hourglass-half',
             label: t`Temporary Chat`,
-            name: t`Temporary Chat with ${assistant.name}`,
-            title: t`Temporary Chat With ${assistant.name}`,
-            onActivate: temporaryChat,
+            name: t`Temporary Chat with ${card.name}`,
+            title: t`Temporary Chat With ${card.name}`,
+            disabled,
+            onActivate: () => void actions.temporaryChat(card),
         }),
-        menuButton,
     );
 
-    card.append(
+    if (buildAssistantMenuSections({ lastMode: getLastChatMode(), actions: menuActions, state: card.state }).length > 0) {
+        const menuButton = createMenuButton(`sb-home-${card.key}-menu`);
+        // Reads as "Assistant Menu Reisen": the button's own name, then the card's title.
+        menuButton.setAttribute('aria-labelledby', `${menuButton.id} ${titleId}`);
+        menuButton.addEventListener('click', (event) => {
+            openAssistantMenu(menuButton, { lastMode: getLastChatMode(), actions: menuActions, state: card.state }, { keyboard: event.detail === 0, bounds: panel });
+        });
+        footer.append(menuButton);
+    }
+
+    element.append(
         createCardAction({
-            name: t`New chat with ${assistant.name}`,
-            title: t`New Chat With ${assistant.name}`,
-            stub: true,
+            name: t`New chat with ${card.name}`,
+            title: t`New Chat With ${card.name}`,
+            disabled,
             subtitleId,
-            onActivate: startNewChat,
+            onActivate: () => void actions.newChat(card),
         }),
-        art,
-        createCardText({ name: assistant.name, titleId, subtitleId, slot: assistant.slot }),
+        createCardArt(card, getThumbnailUrl),
+        createCardText({ name: card.name, titleId, subtitleId, slot: card.slot }),
         footer,
     );
-    return card;
+    return element;
 }
 
 /** A card without a footer. In a narrow grid it is a short row, and the chevron shows that it opens something. */
@@ -170,16 +186,20 @@ function createMoreCard(openMoreAssistants) {
 }
 
 /**
- * Fills the Assistants section: a grid with a card for each assistant and a More Assistants card.
+ * Fills the Assistants section: a grid with a card for each assistant and a More Assistants card. The cards are read
+ * again on every call, so a render of Home shows the library as it is.
  * @param {HTMLElement} panel The `.welcomePanel` root.
  * @param {object} options
  * @param {() => void} options.openMoreAssistants Opens the Bundled Extras window at its Assistants group.
+ * @param {() => import('./assistant-cards.js').AssistantCard[]} options.getCards
+ * @param {ReturnType<typeof import('./assistant-actions.js').createAssistantActions>} options.actions
+ * @param {(avatar: string) => string} options.getThumbnailUrl The URL of the thumbnail of a character's card.
  */
-export function mountAssistants(panel, { openMoreAssistants }) {
+export function mountAssistants(panel, { openMoreAssistants, getCards, actions, getThumbnailUrl }) {
     const grid = panel.querySelector('[data-sb-home-list="assistants"]');
     if (!grid) {
         return;
     }
 
-    grid.replaceChildren(...getHomeAssistants().map(assistant => createAssistantCard(assistant, panel)), createMoreCard(openMoreAssistants));
+    grid.replaceChildren(...getCards().map(card => createAssistantCard(card, panel, { actions, getThumbnailUrl })), createMoreCard(openMoreAssistants));
 }

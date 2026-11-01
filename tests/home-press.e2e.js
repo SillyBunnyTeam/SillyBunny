@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { PINNED_ASSISTANT_ACCOUNT, REISEN_AVATAR, stubAssistantCards, TEWI_AVATAR } from './helpers/assistant-library.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
@@ -81,7 +82,9 @@ async function pressAndHold(page, element, target, during) {
 test.describe('Pressing a surface of Home', () => {
     test.beforeEach(async ({ page }) => {
         await protectMaintainerServer(page);
-        await installFixtureChats(page);
+        await installFixtureChats(page, { accountStorage: PINNED_ASSISTANT_ACCOUNT });
+        // A card without a file has no menu button, so the surfaces below need cards that have one whatever the data root holds.
+        await stubAssistantCards(page, [REISEN_AVATAR, TEWI_AVATAR]);
         await openQuietChatForSmoke(page, { selectCharacter: false });
         const characters = await pickFixtureCharacters(page, 3);
         await page.route('**/api/chats/recent', route => route.fulfill({ json: recentChatEntries(characters) }));

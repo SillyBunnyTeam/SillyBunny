@@ -61,18 +61,24 @@ export function applyHomeTestSettings(settings, { welcome, ...gettingStarted } =
  * - the saved connection, which is neutralised (see `applyGettingStartedSettings`), and its status request fails;
  * - the library of cards, only with `bundledCardsOnly`: it then holds only the cards that ship with SillyBunny, so a card
  *   of the maintainer does not finish Get a Character Card. A spec that asserts a count of finished steps needs it; a test
- *   that needs another card adds it in the page.
+ *   that needs another card adds it in the page;
+ * - the account storage keys that the spec pins (`null` removes a key), for a spec whose Home must not depend on what the
+ *   account of the maintainer holds, such as the character that the assistant pointer names.
  * Call it after `protectMaintainerServer` and after any other route that reads `/api/settings/get` itself: the last
  * route registered answers first, and a route that fetches the real response does not pass through the others.
  * @param {import('@playwright/test').Page} page
- * @param {{ value?: string | null, firstRun?: boolean, bundledCardsOnly?: boolean }} [options]
+ * @param {{ value?: string | null, firstRun?: boolean, bundledCardsOnly?: boolean, accountStorage?: Record<string, string | null> }} [options]
  */
-export async function stubGettingStarted(page, { value = gettingStartedValue(), firstRun, bundledCardsOnly = false } = {}) {
+export async function stubGettingStarted(page, { value = gettingStartedValue(), firstRun, bundledCardsOnly = false, accountStorage = {} } = {}) {
     await page.route('**/api/settings/get', async (route) => {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
         const settings = JSON.parse(data.settings);
         applyHomeTestSettings(settings, { value, firstRun });
+        for (const [key, pinned] of Object.entries(accountStorage)) {
+            if (pinned === null) delete settings.accountStorage[key];
+            else settings.accountStorage[key] = pinned;
+        }
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.route('**/api/backends/chat-completions/status', route => route.fulfill({ json: { error: true } }));

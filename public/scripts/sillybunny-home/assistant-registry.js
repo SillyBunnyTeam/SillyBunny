@@ -10,9 +10,9 @@
  * @typedef {object} AssistantEntry
  * @property {string} id
  * @property {string} name The name that Home and Bundled Extras show.
- * @property {boolean} [home] Whether Home lists the assistant.
+ * @property {boolean} [home] Whether Home always lists the assistant, even before her card exists.
  * @property {string} [slot] Copy slot of the subtitle on Home.
- * @property {string} [art] Name of the art placeholder on Home.
+ * @property {string} [art] Name of the art on Home, and its size key.
  * @property {string} avatarStorageKey Account storage key of the avatar that the user chose for this assistant.
  * @property {string} identityStorageKey Account storage key of the avatar that this assistant's card has now.
  * @property {string} deletedStorageKey Account storage key that marks the card as deleted by the user.
@@ -66,6 +66,8 @@ export const ASSISTANTS = Object.freeze([
     {
         id: 'nahida',
         name: 'Nahida',
+        slot: 'AS-NAHIDA-SUB',
+        art: 'row-nahida',
         autoEnsure: false,
         avatarStorageKey: 'bundledAssistantNahidaAvatar',
         identityStorageKey: 'bundledAssistantNahidaIdentityAvatar',
@@ -113,6 +115,11 @@ export function getAssistant(id) {
 /** @returns {AssistantEntry[]} The assistants that Home lists, in order. */
 export function getHomeAssistants() {
     return ASSISTANTS.filter(assistant => assistant.home === true);
+}
+
+/** @returns {AssistantEntry[]} The assistants that are imported on request. Home lists one once her card is installed. */
+export function getOptionalAssistants() {
+    return ASSISTANTS.filter(assistant => assistant.autoEnsure === false);
 }
 
 /**

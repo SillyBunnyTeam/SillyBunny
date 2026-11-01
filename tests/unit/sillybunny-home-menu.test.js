@@ -195,11 +195,19 @@ describe('Assistant menu', () => {
     test.each([
         ['roleplay', 'fa-solid fa-comments sbHomeMenuIconFit'],
         ['conversation', 'fa-solid fa-masks-theater sbHomeMenuIconFit'],
-    ])('gives the item after %s an explicit icon that fits the icon box, and the stub marker', (lastMode, icon) => {
+    ])('gives the item after %s an explicit icon that fits the icon box, and no stub marker', (lastMode, icon) => {
         const [section] = buildAssistantMenuSections({ lastMode, actions: assistantActions() });
 
         expect(section.items[0].icon).toBe(icon);
-        expect(section.items[0].data).toEqual({ sbStub: 'true' });
+        expect(section.items[0].data).toBeUndefined();
+    });
+
+    test.each(['missing', 'deleted'])('offers nothing for a card whose file is %s, so the card shows no menu', (state) => {
+        expect(buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions(), state })).toEqual([]);
+    });
+
+    test('offers the item for an available card', () => {
+        expect(labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions(), state: 'available' }))).toEqual([['New Chat in Conversation']]);
     });
 
     test('runs the action with the mode the item opens', () => {

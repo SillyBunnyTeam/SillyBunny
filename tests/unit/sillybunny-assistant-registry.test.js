@@ -6,6 +6,7 @@ import {
     getAssistantAvatars,
     getCreationMethod,
     getHomeAssistants,
+    getOptionalAssistants,
     resolveDefaultAssistant,
 } from '../../public/scripts/sillybunny-home/assistant-registry.js';
 import { BUNDLED_EXTRAS } from '../../public/scripts/sillybunny-bundled-extras.js';
@@ -109,6 +110,18 @@ describe('what Home and Getting Started read', () => {
             { id: 'reisen', name: 'Reisen', slot: 'AS-REISEN-SUB', art: 'row-reisen' },
             { id: 'tewi', name: 'Tewi', slot: 'AS-TEWI-SUB', art: 'row-tewi' },
         ]);
+    });
+
+    test('Home lists an optional assistant only once she is installed, with the slot and art she has in Bundled Extras', () => {
+        expect(getOptionalAssistants().map(({ id, name, slot, art }) => ({ id, name, slot, art }))).toEqual([
+            { id: 'nahida', name: 'Nahida', slot: 'AS-NAHIDA-SUB', art: 'row-nahida' },
+        ]);
+        expect(getHomeAssistants().some(assistant => assistant.autoEnsure === false)).toBe(false);
+    });
+
+    test('an optional assistant is exactly one that is not looked for at startup', () => {
+        expect(getOptionalAssistants().every(assistant => assistant.autoEnsure === false)).toBe(true);
+        expect(ASSISTANTS.filter(assistant => assistant.autoEnsure === false)).toEqual(getOptionalAssistants());
     });
 
     test('the avatars of an assistant are its default file', () => {

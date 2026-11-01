@@ -48,10 +48,11 @@ function buildChatRecords({ name }) {
  * file, the list of a character's chat files that the app reads before it opens one, and the note of the last
  * opened chat, which would otherwise be written next to the character on the server.
  * @param {import('@playwright/test').Page} page
- * @param {{ bundledCardsOnly?: boolean }} [options] `bundledCardsOnly` limits the library to the cards that ship with
- *   SillyBunny, for a spec that asserts a count of finished Getting Started steps (see `stubGettingStarted`).
+ * @param {{ bundledCardsOnly?: boolean, accountStorage?: Record<string, string | null> }} [options] `bundledCardsOnly`
+ *   limits the library to the cards that ship with SillyBunny, for a spec that asserts a count of finished Getting
+ *   Started steps. `accountStorage` pins account storage keys (see `stubGettingStarted`).
  */
-export async function installFixtureChats(page, { bundledCardsOnly = false } = {}) {
+export async function installFixtureChats(page, { bundledCardsOnly = false, accountStorage } = {}) {
     if (chatsByPage.has(page)) {
         return;
     }
@@ -68,7 +69,7 @@ export async function installFixtureChats(page, { bundledCardsOnly = false } = {
     });
     await page.route('**/api/characters/last-chat', route => route.fulfill({ json: {} }));
     // The account of a spec has no stored checklist, so it would count as an old account whose checklist is hidden.
-    await stubGettingStarted(page, { bundledCardsOnly });
+    await stubGettingStarted(page, { bundledCardsOnly, accountStorage });
 }
 
 /**
