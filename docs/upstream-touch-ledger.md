@@ -432,6 +432,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-02 caption image signature check (GHSA-5v7r-6r5c-r473). |
 | Owner | TODO(copy) |
 
+### `src/endpoints/characters.js` - character file names
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Character import, create and rename file names. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. |
+| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. |
+| Validation | `npm run test:unit --prefix tests` (on Windows, the same 10 suites and 33 tests fail as on the base commit), `npm run lint`. |
+| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks. No stored data or settings change. |
+| Last reviewed | 2026-11-02 character file names sanitised on every platform. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
