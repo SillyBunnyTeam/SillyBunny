@@ -2,6 +2,7 @@ import { t } from '../i18n.js';
 import { createRow } from '../sillybunny-editor/rows.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
 import { getStepLineSlot } from './getting-started.js';
+import { createStatusChip } from './status-chip.js';
 
 function createFlatButton(label) {
     const button = document.createElement('button');
@@ -19,6 +20,31 @@ function createTag(text) {
 }
 
 /**
+ * The check at the start of a row whose step is done. Every row of a checklist keeps its place, so the titles line up
+ * whether the step is done or not, and the stylesheet shows the check only on a done row. Success Green only tints it:
+ * the Done chip states the same in words.
+ */
+function createDoneMark() {
+    const mark = document.createElement('i');
+    mark.className = 'fa-solid fa-circle-check sbHomeStepDone';
+    mark.setAttribute('aria-hidden', 'true');
+    return mark;
+}
+
+/**
+ * The status of a step that is not open, as a chip: Done is Success Green, Skipped is neutral. The `sbHomeTag` class
+ * keeps it among the notes of the row, where the Optional label and the margin between the notes are.
+ * @param {'done' | 'skipped'} status
+ */
+function createStatusTag(status) {
+    const done = status === 'done';
+    const chip = createStatusChip({ label: done ? t`Done` : t`Skipped`, tone: done ? 'success' : 'neutral' });
+    chip.classList.add('sbHomeTag');
+    chip.dataset.sbStatus = status;
+    return chip;
+}
+
+/**
  * One Getting Started step as a boxed-list row: the title, a placeholder for its text and a Show Me button.
  * The Getting Started window lists its steps through this builder. Pass it a `state` and the row also offers
  * Skip, marks an optional step and shows a skipped or a finished one. Without a state the row only points at the step.
@@ -27,8 +53,9 @@ function createTag(text) {
  * note to show: always on an optional step, and on any other step while it is skipped or done. A note that does not
  * fit is cut short and never wraps the title. On an optional step the status joins Optional on its line, so that row
  * keeps its height when it is skipped or done. Another row grows by that one line, which answers the state it follows.
- * A finished step has nothing to skip, so its Skip button goes. A finished step 3 shows the line of the kind of
- * card that finished it.
+ * A finished step has nothing to skip, so its Skip button goes, and it starts with a check in Success Green and carries
+ * a Done chip. A skipped step carries a neutral Skipped chip. A finished step 3 shows the line of the kind of card that
+ * finished it.
  * @param {object} options
  * @param {import('./getting-started.js').GettingStartedStep} options.step
  * @param {string} options.field Marks the row for tests and for the editor row styles.
@@ -54,7 +81,8 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMor
         buttons.push(skip);
     }
 
-    const controller = createRow({ label: step.title, subtitle: COPY_PLACEHOLDER, field, suffix: buttons });
+    const doneMark = state ? createDoneMark() : null;
+    const controller = createRow({ label: step.title, subtitle: COPY_PLACEHOLDER, field, prefix: doneMark ?? undefined, suffix: buttons });
     markRowSubtitle(controller, slot);
     controller.row.classList.add('sbHomeStepRow');
     controller.row.querySelector('.ds-row-label').id = labelId;
@@ -75,7 +103,8 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMor
 
     const notes = document.createElement('span');
     notes.className = 'sbHomeStepNotes';
-    const statusTag = createTag('');
+    let statusTag = createStatusTag('skipped');
+    statusTag.hidden = true;
     if (step.optional) {
         notes.append(createTag(t`Optional`));
     }
@@ -87,8 +116,13 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMor
         const done = state.isDone(step.id);
         skip.setAttribute('aria-pressed', String(skipped));
         skip.hidden = done;
+        const status = done ? 'done' : 'skipped';
+        if (statusTag.dataset.sbStatus !== status) {
+            const replacement = createStatusTag(status);
+            statusTag.replaceWith(replacement);
+            statusTag = replacement;
+        }
         statusTag.hidden = !skipped && !done;
-        statusTag.textContent = done ? t`Done` : t`Skipped`;
         notes.hidden = !step.optional && !skipped && !done;
         controller.row.dataset.sbStepState = done ? 'done' : (skipped ? 'skipped' : 'open');
         markRowSubtitle(controller, getStepLineSlot(step, state, slot));

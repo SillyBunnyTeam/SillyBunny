@@ -4,6 +4,7 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { captureAccountStorageSaves, gettingStartedValue, savedGettingStarted, stubGettingStarted } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { BUNDLED_THEME_NAMES, GLYPH_CONTRAST, readChipContrast, resolveColor, selectTheme } from './helpers/page-contrast.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -12,8 +13,8 @@ const STARTUP_TIMEOUT = 30_000;
 const SAVE_TIMEOUT = 15_000;
 
 const VIEWPORTS = [
-    { name: 'desktop 1440x900', options: { viewport: { width: 1440, height: 900 } } },
-    { name: 'phone 390x844', options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'desktop 1440x900', checksColours: true, options: { viewport: { width: 1440, height: 900 } } },
+    { name: 'phone 390x844', checksColours: false, options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
 ];
 
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
@@ -94,7 +95,7 @@ async function bootHome(page, { value, firstRun } = {}) {
     return captured;
 }
 
-for (const { name, options } of VIEWPORTS) {
+for (const { name, options, checksColours } of VIEWPORTS) {
     test.describe(`Getting Started signals at ${name}`, () => {
         test.use(options);
 
@@ -128,6 +129,86 @@ for (const { name, options } of VIEWPORTS) {
             await expect(rowOf(host, 'Set Up a Preset')).toHaveAttribute('data-sb-step-state', 'skipped');
             await expect(rowOf(host, 'Set Up a Preset').locator('.sbHomeTag:visible')).toHaveText(['Optional', 'Skipped']);
             await expect(rowOf(host, 'Get a Character Card')).toHaveAttribute('data-sb-step-state', 'open');
+        });
+
+        test.describe('a step that is done', () => {
+            const STATES = { steps: { connect: 'done', preset: 'skipped' } };
+            const markOf = row => row.locator('.sbHomeStepDone');
+            const chipOf = row => row.locator('.sbStatusChip:visible');
+
+            test('starts with a check in Success Green and carries a Done chip with a check, while a skipped step keeps a neutral chip', async ({ page }) => {
+                await bootHome(page, { value: gettingStartedValue({ steps: STATES.steps }) });
+                const host = await openWindow(page);
+                const done = rowOf(host, 'Connect a Model');
+                const skipped = rowOf(host, 'Set Up a Preset');
+                const open = rowOf(host, 'Get a Character Card');
+
+                await expect(markOf(done)).toBeVisible();
+                await expect(markOf(done)).toHaveAttribute('aria-hidden', 'true');
+                await expect(chipOf(done)).toHaveText('Done');
+                await expect(chipOf(done)).toHaveAttribute('data-sb-tone', 'success');
+                await expect(chipOf(done).locator('i')).toHaveCount(1);
+                await expect(markOf(skipped)).toBeHidden();
+                await expect(chipOf(skipped)).toHaveText('Skipped');
+                await expect(chipOf(skipped)).toHaveAttribute('data-sb-tone', 'neutral');
+                await expect(chipOf(skipped).locator('i')).toHaveCount(0);
+                await expect(markOf(open)).toBeHidden();
+                await expect(chipOf(open)).toHaveCount(0);
+                const titleStarts = await Promise.all([done, skipped, open].map(row => row.locator('.ds-row-label').evaluate(node => Math.round(node.getBoundingClientRect().left))));
+                expect(new Set(titleStarts).size, `the titles of a done, a skipped and an open row start in line: ${titleStarts}`).toBe(1);
+
+                const [success, check, tint, quiet] = await Promise.all([
+                    resolveColor(page, await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sb-color-success'))),
+                    markOf(done).evaluate(node => getComputedStyle(node).color).then(color => resolveColor(page, color)),
+                    chipOf(done).evaluate(node => getComputedStyle(node).backgroundColor).then(color => resolveColor(page, color)),
+                    chipOf(skipped).evaluate(node => getComputedStyle(node).backgroundColor).then(color => resolveColor(page, color)),
+                ]);
+                expect(check).toEqual(success);
+                expect([tint.g > tint.r, quiet.g > quiet.r || quiet.a > 0], 'the Done tint is green, the Skipped tint is a neutral wash').toEqual([true, true]);
+                expect(tint.a).toBeGreaterThan(quiet.a);
+            });
+
+            test('follows a step that is finished while the window is open, and the check keeps its place in the row', async ({ page }) => {
+                await bootHome(page);
+                const host = await openWindow(page);
+                const row = rowOf(host, 'Connect a Model');
+                await expect(markOf(row)).toBeHidden();
+                await expect(chipOf(row)).toHaveCount(0);
+                const titleBefore = await row.locator('.ds-row-label').evaluate(node => node.getBoundingClientRect().left);
+
+                await page.evaluate(async () => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    getSharedGettingStartedState().markDone('connect');
+                });
+
+                await expect(markOf(row)).toBeVisible();
+                await expect(chipOf(row)).toHaveText('Done');
+                expect(await row.locator('.ds-row-label').evaluate(node => node.getBoundingClientRect().left), 'the title does not move when the step is done').toBe(titleBefore);
+                const box = await Promise.all([markOf(row), row.locator('.ds-row-label')].map(node => node.boundingBox()));
+                expect(box[0].x + box[0].width, 'the check is before the title').toBeLessThanOrEqual(box[1].x);
+            });
+
+            if (checksColours) {
+                test('keeps the Done chip, the Skipped chip and the check readable in the dark theme, the light theme and every bundled theme', async ({ page }) => {
+                    await bootHome(page, { value: gettingStartedValue({ steps: STATES.steps }) });
+                    const host = await openWindow(page);
+                    const readings = [];
+
+                    for (const theme of BUNDLED_THEME_NAMES) {
+                        await selectTheme(page, theme);
+                        const done = rowOf(host, 'Connect a Model');
+                        readings.push(...await readChipContrast(page, chipOf(done), `${theme}, Done chip`));
+                        readings.push(...await readChipContrast(page, chipOf(rowOf(host, 'Set Up a Preset')), `${theme}, Skipped chip`));
+                        readings.push(...await readChipContrast(page, markOf(done), `${theme}, check of the row`));
+                    }
+
+                    // The text of a chip needs 4.5:1. The check of the row is a glyph, which needs 3:1 (DESIGN.md Contrast Rule), and the Done chip says the same in words.
+                    const floorOf = reading => (reading.where.endsWith('check of the row') ? GLYPH_CONTRAST : reading.floor);
+                    const below = readings.filter(reading => reading.ratio < floorOf(reading));
+                    expect([...new Set(below.map(reading => `${reading.where}: ${reading.part} ${reading.ratio.toFixed(2)} < ${floorOf(reading)}`))]).toEqual([]);
+                    expect(readings.filter(reading => reading.where.endsWith('Done chip') && reading.part === 'check')).toHaveLength(BUNDLED_THEME_NAMES.length * 2);
+                });
+            }
         });
 
         test('a damaged stored checklist falls back to the defaults of the account without breaking Home', async ({ page }) => {

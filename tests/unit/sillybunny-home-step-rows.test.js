@@ -206,3 +206,84 @@ describe('the shared step row, once the app has seen the step done', () => {
     });
 });
 
+
+describe('the shared step row, the check and the chip of a state', () => {
+    const newState = () => createGettingStartedState(getGettingStartedSteps().map(step => step.id));
+    const mark = row => row.querySelector('.sbHomeStepDone');
+    const markShown = row => row.dataset.sbStepState === 'done';
+    const chip = row => row.querySelector('.sbStatusChip');
+
+    test('a row without a state has no check and no chip', () => {
+        const { row } = build(connect);
+
+        expect(mark(row)).toBeNull();
+        expect(chip(row)).toBeNull();
+    });
+
+    test('an open step has the room of the check but does not show it, and no visible chip', () => {
+        const { row } = build(connect, { state: newState() });
+
+        expect(mark(row)).not.toBeNull();
+        expect(markShown(row)).toBe(false);
+        expect(chip(row).hidden).toBe(true);
+    });
+
+    test('a done step starts with a check that is hidden from assistive technology, and a Done chip in the Success tone', () => {
+        const state = newState();
+        const { row, sync } = build(connect, { state });
+        state.subscribe(sync);
+
+        state.markDone('connect');
+
+        expect(markShown(row)).toBe(true);
+        expect(mark(row).getAttribute('aria-hidden')).toBe('true');
+        expect(mark(row).parentElement).toBe(row);
+        expect(row.firstElementChild).toBe(mark(row));
+        expect(chip(row).hidden).toBe(false);
+        expect(chip(row).dataset.sbTone).toBe('success');
+        expect(chip(row).textContent).toBe('Done');
+        expect(chip(row).querySelector('i[aria-hidden="true"]')).not.toBeNull();
+    });
+
+    test('a skipped step keeps a neutral chip with no icon and no check', () => {
+        const state = newState();
+        const { row, sync } = build(connect, { state });
+        state.subscribe(sync);
+
+        state.setSkipped('connect', true);
+
+        expect(markShown(row)).toBe(false);
+        expect(chip(row).hidden).toBe(false);
+        expect(chip(row).dataset.sbTone).toBe('neutral');
+        expect(chip(row).textContent).toBe('Skipped');
+        expect(chip(row).querySelector('i')).toBeNull();
+    });
+
+    test('the chip follows the step between skipped, done and open, and stays one chip among the notes', () => {
+        const state = newState();
+        const { row, sync } = build(preset, { state });
+        state.subscribe(sync);
+        const tones = () => [...row.querySelectorAll('.sbStatusChip')].filter(node => !node.hidden).map(node => `${node.dataset.sbTone}:${node.textContent}`);
+
+        state.setSkipped('preset', true);
+        expect(tones()).toEqual(['neutral:Skipped']);
+        state.markDone('preset');
+        expect(tones()).toEqual(['success:Done']);
+        expect(row.querySelectorAll('.sbStatusChip')).toHaveLength(1);
+        expect(row.querySelector('.sbHomeStepNotes').lastElementChild).toBe(chip(row));
+
+        state.setSkipped('preset', true);
+        expect(markShown(row)).toBe(true);
+        expect(tones()).toEqual(['success:Done']);
+    });
+
+    test('a step that starts done shows the check and the chip at once', () => {
+        const state = newState();
+        state.markDone('connect');
+
+        const { row } = build(connect, { state });
+
+        expect(markShown(row)).toBe(true);
+        expect(chip(row).dataset.sbTone).toBe('success');
+    });
+});

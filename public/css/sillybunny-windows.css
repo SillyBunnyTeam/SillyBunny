@@ -532,6 +532,25 @@ body.reduced-motion .sbHomeFlatButton {
     color: var(--sb-muted-fg);
 }
 
+/* In the note line a chip is as tall as the line, so a state never makes the line, and with it the row, taller. */
+.sbHomeStepNotes .sbStatusChip {
+    padding-block: 0;
+    vertical-align: top;
+}
+
+/* The check of a finished step is the prefix of its row, in the Success Green that the Done chip tints. Every row keeps
+   the room of the check, so the titles stay in line. */
+.sbHomeStepDone {
+    flex: none;
+    margin-inline-end: 12px;
+    color: var(--sb-color-success);
+    visibility: hidden;
+}
+
+.sbHomeStepRow[data-sb-step-state='done'] .sbHomeStepDone {
+    visibility: visible;
+}
+
 .sbHomeStepRow .ds-row-suffix {
     flex-wrap: wrap;
     justify-content: flex-end;
