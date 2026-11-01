@@ -418,6 +418,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
 | Owner | TODO(copy) |
 
+### `src/transformers.js` - caption image decoding
+| Field | Value |
+| --- | --- |
+| File | `src/transformers.js`. |
+| Area | Image captioning (`POST /api/extra/caption`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/transformers-image.js`. |
+| Adapter shape | `getRawImage()` decodes the base64 string into a `Buffer` and returns `decodeRawImage(buffer)`, or `null` when that throws. `decodeRawImage()` throws for bytes that do not start with a PNG, JPEG, GIF, BMP, TIFF, WebP or AVIF signature, so `RawImage.fromBlob()` and its file-type check never see them. |
+| Protecting tests | `tests/transformers-image.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- transformers-image.test.js` (on the base commit, the ASF test fails when its child process reaches the 30 s deadline), `npm run lint`. |
+| Rollback path | Restore the upstream `getRawImage()` body (`RawImage.fromBlob()` on a `Blob` of the decoded bytes) and the `RawImage` import, then delete `src/transformers-image.js` and `tests/transformers-image.test.js`. No stored data or settings change. The rollback brings back the server hang on a malformed ASF header. |
+| Last reviewed | 2026-11-02 caption image signature check (GHSA-5v7r-6r5c-r473). |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
