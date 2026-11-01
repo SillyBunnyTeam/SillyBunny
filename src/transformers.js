@@ -58,7 +58,7 @@ const tasks = {
 export async function getRawImage(image) {
     try {
         const buffer = Buffer.from(image, 'base64');
-        // SillyBunny: RawImage.fromBlob() can loop forever on malformed non-image input, so unsupported formats are rejected first.
+        // SillyBunny: RawImage.fromBlob() can loop forever on malformed non-image input, and it fails for every image under Bun.
         return await decodeRawImage(buffer);
     } catch {
         return null;

@@ -2,7 +2,9 @@ import { Buffer } from 'node:buffer';
 
 import { RawImage } from 'sillytavern-transformers';
 
-// Leading bytes of each image format that the server decodes, as [offset, hex] pairs.
+import { Jimp } from './jimp.js';
+
+// Leading bytes of each image format that the server's jimp decodes, as [offset, hex] pairs.
 const IMAGE_SIGNATURES = [
     [[0, '89504e470d0a1a0a']], // PNG and APNG
     [[0, 'ffd8ff']], // JPEG
@@ -16,8 +18,8 @@ const IMAGE_SIGNATURES = [
 
 /**
  * Checks that a buffer starts with the signature of a supported image format.
- * The decoders find the format with file-type, and file-type before 21.3.1 loops forever
- * on a malformed ASF header (GHSA-5v7r-6r5c-r473), so other input must not reach them.
+ * jimp finds the format with file-type, and file-type before 21.3.1 loops forever
+ * on a malformed ASF header (GHSA-5v7r-6r5c-r473), so other input must not reach jimp.
  * @param {Buffer} buffer Encoded image
  * @returns {boolean} True if the buffer has a supported image signature
  */
@@ -27,8 +29,10 @@ function hasImageSignature(buffer) {
 
 /**
  * Decodes an encoded image for a transformers.js pipeline.
+ * RawImage.fromBlob() is not used because sillytavern-transformers takes its browser code path
+ * when `self` is defined, as it is under Bun, and that path needs createImageBitmap(), which Bun lacks.
  * @param {Buffer} buffer Encoded image
- * @returns {Promise<RawImage>} Decoded image
+ * @returns {Promise<RawImage>} Decoded RGBA image
  * @throws {Error} If the buffer is not a supported image or cannot be decoded
  */
 export async function decodeRawImage(buffer) {
@@ -36,5 +40,7 @@ export async function decodeRawImage(buffer) {
         throw new Error('Unsupported image format');
     }
 
-    return await RawImage.fromBlob(new Blob([new Uint8Array(buffer)]));
+    const image = await Jimp.fromBuffer(buffer);
+    const { data, width, height } = image.bitmap;
+    return new RawImage(new Uint8ClampedArray(data), width, height, 4);
 }

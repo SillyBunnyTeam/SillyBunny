@@ -4,10 +4,12 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { RawImage } from 'sillytavern-transformers';
-
-import '../src/fetch-patch.js';
-import { getRawImage } from '../src/transformers.js';
+// sillytavern-transformers takes its browser code path when `self` is defined, as it is under Bun.
+// Define it before the library loads so that these tests also cover that path under Node.js.
+global.self = global;
+await import('../src/fetch-patch.js');
+const { RawImage } = await import('sillytavern-transformers');
+const { getRawImage } = await import('../src/transformers.js');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
