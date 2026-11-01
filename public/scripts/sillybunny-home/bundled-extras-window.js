@@ -7,6 +7,7 @@ import { createArtPlaceholder } from './art.js';
 import { createArtIntro } from './art-intro.js';
 import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
 import { openShellTarget } from './shell-targets.js';
+import { createStatusChip } from './status-chip.js';
 
 function getGroupTitle(groupId) {
     switch (groupId) {
@@ -28,6 +29,15 @@ function getStatusLabel(status) {
         case 'installed': return t`Installed`;
         case 'enabled': return t`Enabled`;
         default: throw new Error(`No label for the status: ${status}`);
+    }
+}
+
+function getStatusTone(status) {
+    switch (status) {
+        case 'not-installed': return 'neutral';
+        case 'installed':
+        case 'enabled': return 'success';
+        default: throw new Error(`No tone for the status: ${status}`);
     }
 }
 
@@ -63,10 +73,9 @@ function createItemControls(item, actions, labelId) {
 
     const draw = ({ busy = false } = {}) => {
         const state = actions.getState(item);
-        const status = document.createElement('span');
-        status.className = 'sbBundledExtraState';
+        const status = createStatusChip({ label: getStatusLabel(state.status), tone: getStatusTone(state.status) });
+        status.classList.add('sbBundledExtraState');
         status.dataset.sbStatus = state.status;
-        status.textContent = getStatusLabel(state.status);
         const buttons = state.actions.map((action) => {
             const button = document.createElement('button');
             button.type = 'button';

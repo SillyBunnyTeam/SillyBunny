@@ -540,10 +540,31 @@ body.reduced-motion .sbHomeFlatButton {
     white-space: nowrap;
 }
 
+/* A status chip (DESIGN.md Chips) states a condition: a neutral tint, or a Success Green tint with a check. The text
+   takes the contrast ink of the surface, because a tint under the body colour can fall below 4.5:1 in a theme whose
+   body colour is close to the tint. */
+.sbStatusChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--sb-radius-md);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-meta);
+}
+
+.sbStatusChip[data-sb-tone='success'] {
+    background: color-mix(in srgb, var(--sb-color-success) 16%, transparent);
+}
+
+.sbStatusChip > i {
+    color: var(--sb-color-success);
+    font-size: 0.85em;
+}
+
 .sbBundledExtraState {
     margin-inline-end: 4px;
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
 }
 
 .sbBundledExtrasDialog .ds-row > .sbHomeArt {

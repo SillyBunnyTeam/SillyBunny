@@ -1,6 +1,6 @@
 import { loadListEditorStyles } from './sillybunny-editor/list-shell.js';
 
-const WINDOWS_STYLESHEET = { href: 'css/sillybunny-windows.css?v=20261101a', id: 'deferred-windows-css' };
+const WINDOWS_STYLESHEET = { href: 'css/sillybunny-windows.css?v=20261101b', id: 'deferred-windows-css' };
 
 /**
  * The Welcome, Help, About and Keyboard Shortcuts windows take their row styles from the deferred

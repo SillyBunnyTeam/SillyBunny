@@ -4,6 +4,7 @@ import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { BUNDLED_THEME_NAMES, readChipContrast, selectTheme } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -13,8 +14,8 @@ const STARTUP_TIMEOUT = 30_000;
 const COPY_PLACEHOLDER = 'TODO(copy)';
 
 const VIEWPORTS = [
-    { name: 'desktop 1440x900', options: { viewport: { width: 1440, height: 900 } } },
-    { name: 'phone 390x844', options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'desktop 1440x900', checksColours: true, options: { viewport: { width: 1440, height: 900 } } },
+    { name: 'phone 390x844', checksColours: false, options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
 ];
 
 const GROUPS = ['Assistants', 'First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Presets'];
@@ -198,7 +199,7 @@ async function openWithFixtureTheme(page) {
 
 const popupButton = (page, name) => page.locator(`dialog.popup[open] .popup-button-${name}`);
 
-for (const { name, options } of VIEWPORTS) {
+for (const { name, checksColours, options } of VIEWPORTS) {
     test.describe(`Bundled Extras at ${name}`, () => {
         test.use(options);
 
@@ -241,6 +242,69 @@ for (const { name, options } of VIEWPORTS) {
                     await expect(buttonsOf(row), id).toHaveText(buttons);
                 }
             });
+
+            test('shows the state as a chip with its text always, a check on an item that is there, and keeps the row inside the window', async ({ page }) => {
+                const host = await openFromTile(page);
+                const chips = {};
+
+                for (const [label, status, tone] of [['Deep Swipe', 'enabled', 'success'], ['Bot Searcher', 'installed', 'success'], ['Alternate Descriptions', 'not-installed', 'neutral']]) {
+                    const row = host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: new RegExp(`^${label}$`) }) });
+                    const look = await row.evaluate((node) => {
+                        const state = node.querySelector('.sbBundledExtraState');
+                        const button = node.querySelector('.sbBundledExtraControls button');
+                        const controls = node.querySelector('.sbBundledExtraControls');
+                        const box = node.getBoundingClientRect();
+                        const stateBox = state.getBoundingClientRect();
+                        const style = getComputedStyle(state);
+                        return {
+                            status: state.dataset.sbStatus,
+                            tone: state.dataset.sbTone,
+                            shared: state.classList.contains('sbStatusChip'),
+                            text: state.textContent.trim(),
+                            checks: state.querySelectorAll('i.fa-check[aria-hidden="true"]').length,
+                            background: style.backgroundColor,
+                            radius: style.borderTopLeftRadius,
+                            display: getComputedStyle(controls).display,
+                            gap: stateBox.right - button.getBoundingClientRect().left,
+                            inside: controls.getBoundingClientRect().right <= box.right + 1,
+                            overflows: node.scrollWidth > node.clientWidth + 1,
+                        };
+                    });
+                    chips[status] = look;
+                    expect(look.status, label).toBe(status);
+                    expect(look.text, `${label}: the state is written out`).not.toBe('');
+                    expect([look.shared, look.tone], `${label}: the shared chip, in the tone of the state`).toEqual([true, tone]);
+                    expect(look.checks, `${label}: a check on an item that is there, and none on one that is not`).toBe(tone === 'success' ? 1 : 0);
+                    expect(look.background, `${label}: the chip has a tint`).not.toBe('rgba(0, 0, 0, 0)');
+                    expect(parseFloat(look.radius), `${label}: the chip is rounded`).toBeGreaterThan(8);
+                    expect(look.display, label).toBe('flex');
+                    expect(look.gap, `${label}: the state ends before the first button starts`).toBeLessThanOrEqual(-4);
+                    expect(look.inside, label).toBe(true);
+                    expect(look.overflows, label).toBe(false);
+                }
+                expect(chips.enabled.background, 'Enabled and Installed share the success tint').toBe(chips.installed.background);
+                expect(chips['not-installed'].background, 'Not installed has the neutral tint').not.toBe(chips.installed.background);
+            });
+
+            if (checksColours) {
+                test('keeps the text of every chip at 4.5:1 and its check at 3:1 against what is painted behind it, in every bundled theme', async ({ page }) => {
+                    test.setTimeout(300_000);
+                    const host = await openFromTile(page);
+                    const readings = [];
+
+                    for (const theme of BUNDLED_THEME_NAMES) {
+                        await selectTheme(page, theme);
+
+                        for (const label of ['Deep Swipe', 'Bot Searcher', 'Alternate Descriptions']) {
+                            readings.push(...await readChipContrast(page, statusOf(rowOf(host, label)), `${theme}, ${label}`));
+                        }
+                    }
+
+                    const below = readings.filter(reading => reading.ratio < reading.floor);
+                    expect([...new Set(below.map(reading => `${reading.where}: ${reading.part} ${reading.ratio.toFixed(2)} < ${reading.floor}`))]).toEqual([]);
+                    expect(readings.map(reading => reading.part).filter(part => part === 'check')).toHaveLength(BUNDLED_THEME_NAMES.length * 2 * 2);
+                });
+            }
 
             test('Install on a first-party extension asks the install route for its repository, without a third-party warning, and the row then shows it installed', async ({ page }) => {
                 const host = await openFromTile(page);

@@ -523,7 +523,8 @@ Patterns follow the HIG pattern groups. Sizes and corners come from Layout and S
 #### Chips
 - **Style:** Compact rounded controls at `14px`, `6px 8px` padding, readable text, and a tonal background.
 - **State:** Enabled or selected chips use a 16% Accent tint and a status icon. Inactive chips remain legible and low emphasis.
-- **Use:** In-chat agent controls and metadata only; do not turn the bottom bar into a chip collection.
+- **Status chips:** A non-interactive chip that names a row's state in words, placed before the row's buttons. A positive or finished state (Installed, Enabled, Done) takes a 16% Success Green tint and a leading check in Success Green; any other state (Not installed, Skipped) takes an 8% body-colour tint and no icon. The text uses the strong contrast ink rather than the body colour, so it reaches 4.5:1 on the tint in every bundled theme, and the check reaches 3:1. The words always carry the state; colour and the check only reinforce it.
+- **Use:** In-chat agent controls and metadata, and status chips in list rows; do not turn the bottom bar into a chip collection.
 
 ### Feedback
 
