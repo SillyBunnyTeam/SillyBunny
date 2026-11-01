@@ -585,9 +585,9 @@ export const SURFACES = [
 
 // Defects the walk found in the product. A test named here is expected to fail, so the run stays green, and it turns red
 // as soon as the defect is fixed, which is the cue to delete the entry. Locations are the CSS that causes each one.
-const HELP_SIDEBAR_NARROW = {
+const HELP_ROW_LABEL = {
     check: 'clipped-labels',
-    why: 'The Help sidebar is 220px to 360px (sillybunny-help/help-window.js:312-314) whatever the text size, so a section title breaks mid-word at 200%',
+    why: 'At 200% the Help content column is narrow, so a row with a suffix breaks its label inside a word (.ds-row-text in sillybunny-tabs.css)',
 };
 const NARROW_ROW_LABEL = {
     check: 'clipped-labels',
@@ -635,7 +635,7 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'help',
-        knownBugs: [HELP_SIDEBAR_NARROW],
+        knownBugs: [HELP_ROW_LABEL],
         title: 'Help window (a topic page, Keyboard Shortcuts pushed over it)',
         structure: { name: 'Help' },
         open: page => openFromTile(page, 'help'),

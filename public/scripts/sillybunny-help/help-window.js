@@ -26,6 +26,14 @@ import { filterHelpSections, findHelpTopic, getHelpSections, validateHelpSection
 
 /** Below this width of the window body, the sections and the page stack as pages. */
 const COLLAPSE_AT = 600;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 360;
+
+/**
+ * The sidebar widths above hold text at 100%. Row labels are not allowed to break inside a word, so the sidebar grows with
+ * the text size that the app applies through `--fontScale`.
+ */
+const readTextScale = () => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fontScale')) || 1;
 const OVERVIEW_ICON = 'book-open';
 
 const countTopics = sections => sections.reduce((sum, section) => sum + section.topics.length, 0);
@@ -306,12 +314,13 @@ export async function openHelpWindow({ getSections = getHelpSections, topicId = 
         }
     }
 
+    const textScale = readTextScale();
     editor = createListEditor({
         container: dialog.body,
         storageKey: 'sb-help-sidebar-width',
         defaultWidth: 0.32,
-        minWidth: 220,
-        maxWidth: 360,
+        minWidth: SIDEBAR_MIN_WIDTH * textScale,
+        maxWidth: SIDEBAR_MAX_WIDTH * textScale,
         collapseAt: COLLAPSE_AT,
         escapeCloses: false,
         label: t`Help Sections`,
