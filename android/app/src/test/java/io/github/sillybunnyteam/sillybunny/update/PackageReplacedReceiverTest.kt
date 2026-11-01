@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import io.github.sillybunnyteam.sillybunny.MainActivity
 import io.github.sillybunnyteam.sillybunny.PackageReplacedReceiver
+import io.github.sillybunnyteam.sillybunny.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -38,9 +39,9 @@ class PackageReplacedReceiverTest {
         PackageReplacedReceiver().onReceive(context, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
 
         val notification = notifications.activeNotifications.single().notification
-        assertEquals("TODO(copy)", notification.extras.getCharSequence(Notification.EXTRA_TITLE))
-        assertEquals("TODO(copy)", notification.extras.getCharSequence(Notification.EXTRA_TEXT))
-        assertEquals("TODO(copy)", notifications.getNotificationChannel(notification.channelId).name)
+        assertEquals(context.getString(R.string.update_replaced_title), notification.extras.getCharSequence(Notification.EXTRA_TITLE))
+        assertEquals(context.getString(R.string.update_replaced_body), notification.extras.getCharSequence(Notification.EXTRA_TEXT))
+        assertEquals(context.getString(R.string.update_notification_channel), notifications.getNotificationChannel(notification.channelId).name)
         val pending = shadowOf(notification.contentIntent)
         assertTrue(pending.isActivity)
         assertTrue(pending.isImmutable)

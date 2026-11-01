@@ -14,9 +14,9 @@
     <string name="update_error">TODO(copy)</string>
     <string name="update_up_to_date">TODO(copy)</string>
     <string name="update_updated">TODO(copy)</string>
-    <string name="update_notification_channel">TODO(copy)</string>
-    <string name="update_replaced_title">TODO(copy)</string>
-    <string name="update_replaced_body">TODO(copy)</string>
-    <string name="update_install_title">TODO(copy)</string>
-    <string name="update_install_body">TODO(copy)</string>
+    <string name="update_notification_channel">App updates</string>
+    <string name="update_replaced_title">SillyBunny updated</string>
+    <string name="update_replaced_body">Tap to start the server.</string>
+    <string name="update_install_title">Finish your update</string>
+    <string name="update_install_body">Android needs your OK. Tap to continue.</string>
 </resources>

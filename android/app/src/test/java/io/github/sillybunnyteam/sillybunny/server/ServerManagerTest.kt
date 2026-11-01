@@ -8,6 +8,7 @@ import android.os.CancellationSignal
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.sun.net.httpserver.HttpServer
+import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.ServerService
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import org.junit.After
@@ -319,10 +320,10 @@ class ServerManagerTest {
         assertEquals(ServerNotifications.CHANNEL_ID, notification.channelId)
         assertEquals(ServerNotifications.NOTIFICATION_ID, shadowService().lastForegroundNotificationId)
         assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
-        assertEquals("TODO(copy)", notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-        assertEquals("TODO(copy)", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertEquals(context.getString(R.string.server_notification_title), notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals(context.getString(R.string.server_notification_running), notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
         val action = notification.actions.single()
-        assertEquals("TODO(copy)", action.title.toString())
+        assertEquals(context.getString(R.string.server_notification_stop), action.title.toString())
         val stop = shadowOf(action.actionIntent)
         assertTrue(stop.isService)
         assertTrue(stop.isImmutable)
