@@ -76,3 +76,18 @@ export function parseSize(text, flag) {
     }
     return { width: Number(match[1]), height: Number(match[2]) };
 }
+
+/** A whole-number enlargement by copying pixels, so no colour is made up. */
+export function upscaleNearest(raster, factor) {
+    if (!Number.isInteger(factor) || factor < 1) {
+        throw new Error(`The enlargement must be a whole number of 1 or more, got ${factor}.`);
+    }
+    const out = createRaster(raster.width * factor, raster.height * factor);
+    for (let y = 0; y < out.height; y++) {
+        for (let x = 0; x < out.width; x++) {
+            const from = (Math.floor(y / factor) * raster.width + Math.floor(x / factor)) * 4;
+            out.data.set(raster.data.subarray(from, from + 4), (y * out.width + x) * 4);
+        }
+    }
+    return out;
+}

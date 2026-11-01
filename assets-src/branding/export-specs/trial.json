@@ -1,0 +1,59 @@
+{
+    "margin": 24,
+    "assets": {
+        "row-reisen": {
+            "character": "reisen",
+            "master": "raw/s3/masters/reisen-portrait.png",
+            "css": [
+                128,
+                64
+            ],
+            "fit": "contain",
+            "focus": [
+                0.5,
+                0.5
+            ],
+            "square": true
+        },
+        "row-tewi": {
+            "character": "tewi",
+            "master": "raw/s3/masters/tewi-portrait.png",
+            "css": [
+                128,
+                64
+            ],
+            "fit": "contain",
+            "focus": [
+                0.5,
+                0.5
+            ],
+            "square": true
+        },
+        "welcome-next-reisen": {
+            "character": "reisen",
+            "master": "raw/s3/masters/reisen-sprite.png",
+            "css": [
+                128
+            ],
+            "fit": "contain",
+            "focus": [
+                0.5,
+                0.2
+            ],
+            "square": true
+        },
+        "welcome-persona-tewi": {
+            "character": "tewi",
+            "master": "raw/s3/masters/tewi-sprite.png",
+            "css": [
+                128
+            ],
+            "fit": "contain",
+            "focus": [
+                0.5,
+                0.2
+            ],
+            "square": true
+        }
+    }
+}
