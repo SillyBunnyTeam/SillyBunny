@@ -34,17 +34,17 @@ TODO(copy): note on how to read the tables below.
 |---|---|---|---|---|---|---|---|
 | gemini | gemini-3-pro-image-preview | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.35 | - |
 | gemini | gemini-nano-banana-2.1 | 5 | 2026-11-01 | 2026-11-01 | 0 | $0.90 | - |
-| local | compose-scene | 1 | 2026-11-01 | 2026-11-01 | 1 | - | $0.00 |
-| local | rim-recolour | 27 | 2026-11-01 | 2026-11-01 | 18 | - | $0.00 |
-| local | vectorize | 10 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
+| local | compose-scene | 5 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
+| local | rim-recolour | 48 | 2026-11-01 | 2026-11-01 | 17 | - | $0.00 |
+| local | vectorize | 14 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 200 | 2026-11-01 | 2026-11-01 | 6 | $26.20 | $7.20 |
+| openai | gpt-image-2.5-sunburst-h | 278 | 2026-11-01 | 2026-11-01 | 4 | $37.60 | $7.20 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 241 |
-| Total charged | $27.85 |
+| Reference images attached | 375 |
+| Total charged | $39.25 |
 | Total estimated, not yet measured | $7.20 |
 
 ### Current approvals
@@ -57,31 +57,31 @@ TODO(copy): note on how to read the tables below.
 | tewi-sprite.png | rim-recolour | 94eea2d69248e864 |
 | reisen-portrait-a.png | rim-recolour | 877b98dabf1a8064 |
 | reisen-sprite-a.png | rim-recolour | 29409083a40339c4 |
-| splash-reisen.png | rim-recolour | d3b60b7b93a17af7 |
-| splash-tewi.png | rim-recolour | e0b718ef40e0361b |
-| splash-both.png | rim-recolour | 04fb74772906ced1 |
-| welcome-both.png | rim-recolour | 4494ac9b44e8d5d9 |
-| welcome-persona-tewi.png | rim-recolour | c1a53329c3a4c178 |
-| welcome-next-reisen.png | rim-recolour | e6492c50aca4d976 |
-| hero-duo.png | rim-recolour | 9329c6de33868bee |
-| gs-reisen.png | rim-recolour | a5c1d826794adfde |
-| extras-tewi.png | rim-recolour | d253f22f0581f4f1 |
-| about-reisen.png | rim-recolour | ad4625dab51b14cd |
-| about-tewi.png | rim-recolour | d75c6a838d15df70 |
-| troubleshooting-reisen.png | rim-recolour | 8599431765430ab6 |
-| empty-tewi.png | rim-recolour | 6d393ee87a88b3f8 |
-| shortcuts-tewi.png | rim-recolour | ba01225ca88c673e |
 | 20261101T120037Z-gpt-image-2.5-sunburst-h-edit-1.png | gpt-image-2.5-sunburst-h | 833b90518f669e6b |
-| gs-reisen-done.png | gpt-image-2.5-sunburst-h | 54523c9573bd5e12 |
 | 20261101T131025Z-gpt-image-2.5-sunburst-h-patch-2.png | gpt-image-2.5-sunburst-h | 6063c87e079abc70 |
-| help-reisen.png | gpt-image-2.5-sunburst-h | 5a8c66852c4d86dc |
-| hero-duo-night.png | compose-scene | 6077d32501622f78 |
-| logo-emblem.svg | vectorize | 61ae5f93337fd415 |
-| logo-emblem-nolines.svg | vectorize | d47af0f96444d8d8 |
-| logo-plate.svg | vectorize | 7857a7d9c65cbf0c |
-| logo-plate-nolines.svg | vectorize | 468ab45d87b9d208 |
+| hero-duo-night.png | compose-scene | 40b991bb7e748c01 |
+| hero-duo.png | compose-scene | a7e8510d685cb996 |
+| welcome-both.png | compose-scene | 6f721a0b09cc019f |
+| logo-emblem.svg | vectorize | 01467705ea1c51ea |
+| logo-emblem-nolines.svg | vectorize | 65c9acf5c3247ec5 |
+| logo-plate.svg | vectorize | f05d898d244f54b1 |
+| logo-plate-nolines.svg | vectorize | b72395bda0d99b79 |
+| splash-reisen.png | rim-recolour | 15a30c6fe515e04f |
+| splash-tewi.png | rim-recolour | 95b33a9edc102f15 |
+| welcome-persona-tewi.png | rim-recolour | a91a7e2a6ba8200b |
+| welcome-next-reisen.png | rim-recolour | 8dfe73c3f1e5aabc |
+| gs-reisen.png | rim-recolour | bc8ea8dbd9af4b52 |
+| gs-reisen-done.png | rim-recolour | ac8f6a1e0b592bd7 |
+| help-reisen.png | rim-recolour | 0791c10bcdb26374 |
+| extras-tewi.png | rim-recolour | 353f37ba24c5ddcd |
+| shortcuts-tewi.png | rim-recolour | 63facca504f6574c |
+| about-reisen.png | rim-recolour | 8e8d51b9d40dfc21 |
+| about-tewi.png | rim-recolour | d78003782426030d |
+| troubleshooting-reisen.png | rim-recolour | 9be6ceec290336ae |
+| empty-tewi.png | rim-recolour | 9ea402f66b3d92de |
+| splash-both.png | compose-scene | 9b293839c362552c |
 
-Superseded approvals (history): 11 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66, 92924be1 -> 6063c87e, ed20db74 -> 877b98da, 758fd49a -> 29409083, 8e9a6171 -> 6077d325, e1245726 -> 54523c95, deaa1915 -> 5a8c6685, 804aeaba -> 833b9051, 0eca4383 -> e6492c50).
+Superseded approvals (history): 36 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66, 92924be1 -> 6063c87e, ed20db74 -> 877b98da, 758fd49a -> 29409083, d3b60b7b -> 15a30c6f, e0b718ef -> 95b33a9e, 04fb7477 -> 9b293839, 4494ac9b -> 6f721a0b, c1a53329 -> a91a7e2a, e6492c50 -> 9c23bd36, 9329c6de -> a7e8510d, 8e9a6171 -> 6077d325, a5c1d826 -> ef9b5594, e1245726 -> 54523c95, deaa1915 -> 0791c10b, d253f22f -> 353f37ba, ad4625da -> 8e8d51b9, d75c6a83 -> d7800378, 85994317 -> 2c572d22, 6d393ee8 -> 9ea402f6, ba01225c -> 63facca5, 804aeaba -> 833b9051, 54523c95 -> ac8f6a1e, 0eca4383 -> e6492c50, 5a8c6685 -> deaa1915, 6077d325 -> 40b991bb, 61ae5f93 -> 01467705, d47af0f9 -> 65c9acf5, 7857a7d9 -> f05d898d, 468ab45d -> b72395bd, 9c23bd36 -> 8dfe73c3, ef9b5594 -> bc8ea8db, afd7869b -> 5a8c6685, 2c572d22 -> 9be6ceec).
 
 ### Tools (checked 2026-11-01)
 
