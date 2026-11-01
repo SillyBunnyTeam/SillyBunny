@@ -277,7 +277,7 @@ jobs:
             echo
             echo "The lock's new hash is also written into the \`android/runtime/sources.lock\` file."
             echo
-            echo "This needs to be merged before tagging any release candidate for the APK, and APK builds won't be able to fetch Node at all."
+            echo "This needs to be merged before tagging any release candidate for the APK; until then APK builds won't be able to fetch Node at all."
             echo
             echo "Here's an AI summary:"
             echo
