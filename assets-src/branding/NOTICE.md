@@ -1,31 +1,30 @@
 # Branding assets: provenance and licences
 
-TODO(copy): what this folder holds and how the art in it was made.
+SillyBunny comes included with various art assets to enhance the program and inject personality. Listed in this document are the relevant disclosures and statements regarding the use of the assets in this folder in relation to the program.
 
 ## AI-assisted disclosure
 
-TODO(copy): disclosure that the art is AI-assisted, which kinds of tools were used, and what a person did.
+All custom artwork designed for SillyBunny, including the logo, is **AI-generated**, and we make no attempt to hide this fact. The images used in the program were generated with OpenAI's GPT Image 2.5 Sunburst; other models were tried during testing, but none of their images are used. The project owner directed the designs, chose every final image and asked for fixes; scripts then combined, recoloured and vectorised the chosen images, as recorded below. AI-generated artwork is carefully used to enhance the program's aesthetic while minimising labour for our small team.
 
 ## Fan-work statement
 
-TODO(copy): the Touhou fan-work statement. The project owner writes it.
+Reisen Udongein Inaba and Tewi Inaba are characters from Touhou Project by Team Shanghai Alice. SillyBunny's artwork of them is unofficial fan work based on Touhou Project, and SillyBunny is not affiliated with or endorsed by Team Shanghai Alice. SillyBunny follows the Guidelines for Touhou Project Fan Creators: it is free and non-commercial, and its Touhou Project content is a love letter to Touhou's expression of freedom. For more information, read the full guidelines here: https://touhou-project.news/guidelines_en/
 
 ## Third-party input
 
-TODO(copy): statement about which images were and were not given to the models as input.
+No third-party art was given to the image models: no official Touhou Project art, and no work by other artists or fans. Every image started from detailed written prompts. The only images attached as references were SillyBunny's own earlier generated artwork, such as the character design sheets, to keep the characters consistent; edits also attached the image being edited.
 
 ## Art licences
 
 | Assets covered | Licence | Link |
 |---|---|---|
-| Every image of Reisen or Tewi: illustrated and pixel art, design sheets, card art, expression sprites, animation strips, banners | CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike 4.0 International) | https://creativecommons.org/licenses/by-nc-sa/4.0/ |
-| The SillyBunny logo (SVG and PNG), favicons and app icons | CC BY-SA 4.0 (Attribution-ShareAlike 4.0 International) | https://creativecommons.org/licenses/by-sa/4.0/ |
+| All artwork in this folder: every image of Reisen or Tewi (illustrated and pixel art, design sheets, card art, expression sprites, animation strips, banners), the SillyBunny logo (SVG and PNG), favicons and app icons | CC BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike 4.0 International) | https://creativecommons.org/licenses/by-nc-sa/4.0/ |
 
-TODO(copy): plain-language explanation of how each licence applies and how to credit the art.
+Under this licence, you are free to share and adapt the artwork, as long as you credit SillyBunny, use it for non-commercial purposes **only**, and share anything you make from it under the same licence. Artwork of Reisen and Tewi must also follow the Guidelines for Touhou Project Fan Creators. To credit the art, you can write: "Artwork from SillyBunny (https://github.com/SillyBunnyTeam/SillyBunny), licensed under CC BY-NC-SA 4.0."
 
 ## Generated record
 
-TODO(copy): note on how to read the tables below.
+The tables below are generated from the generation log. They list each model's image counts, dates, cost and approvals (only models with approved images made art used in the program), how many reference images were attached, every approved file with the first 16 characters of its SHA-256 hash, and the versions of the tools used to process the images.
 
 <!-- generated:begin -->
 ### Generations
@@ -38,13 +37,13 @@ TODO(copy): note on how to read the tables below.
 | local | rim-recolour | 48 | 2026-11-01 | 2026-11-01 | 17 | - | $0.00 |
 | local | vectorize | 14 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 278 | 2026-11-01 | 2026-11-01 | 4 | $37.60 | $7.20 |
+| openai | gpt-image-2.5-sunburst-h | 280 | 2026-11-01 | 2026-11-01 | 4 | $38.00 | $7.20 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 375 |
-| Total charged | $39.25 |
+| Reference images attached | 379 |
+| Total charged | $39.65 |
 | Total estimated, not yet measured | $7.20 |
 
 ### Current approvals
@@ -90,7 +89,7 @@ Superseded approvals (history): 36 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 
 | ImageMagick | 7.1.2-34 |
 | cwebp | 1.6.0 |
 | potrace | 1.16 |
-| vtracer | not installed |
+| vtracer | 0.6.5 |
 | python3 | 3.14.8 |
 | sharp | 0.35.5 |
 | Node.js | v26.10.0 |
