@@ -62,11 +62,11 @@
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261016a" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261101a">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261101b">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261026a" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261101b">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261101c">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
     <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261018a" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
@@ -285,6 +285,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <!-- SillyBunny: mountPresetLinkingGroup() in sillybunny-tabs.js moves these blocks into their own group. The labels use header capitalisation and the profile buttons carry text only, as DESIGN.md asks. -->
                                     <div class="inline-drawer marginTop10 wide100p">
                                         <div class="inline-drawer-toggle inline-drawer-header">
                                             <b data-i18n="Preset API/Sampler Linking">Preset API/Sampler Linking</b>
@@ -294,7 +295,7 @@
                                             <div class="sb-setting-inline-copy sb-setting-inline-copy-center">
                                                 <label for="bind_preset_to_connection" title="Bind presets to API connections" data-i18n="[title]Bind presets to API connections" class="checkbox_label widthFreeExpand">
                                                     <input id="bind_preset_to_connection" type="checkbox" />
-                                                    <span data-i18n="Keep API/model linked to preset">Keep API/model linked to preset</span>
+                                                    <span data-i18n="Keep API/Model Linked to Preset">Keep API/Model Linked to Preset</span>
                                                 </label>
                                                 <div id="bind_preset_to_connection_copy" class="toggle-description justifyLeft marginBot5">
                                                     Independent mode keeps your current provider and model, so one preset can be reused across multiple connections.
@@ -306,7 +307,7 @@
                                             <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
                                                 <label for="bind_preset_to_sampling" title="Bind presets to Sampling settings" data-i18n="[title]Bind presets to Sampling settings" class="checkbox_label widthFreeExpand">
                                                     <input id="bind_preset_to_sampling" type="checkbox" checked />
-                                                    <span data-i18n="Keep sampling settings linked to preset">Keep sampling settings linked to preset</span>
+                                                    <span data-i18n="Keep Sampling Settings Linked to Preset">Keep Sampling Settings Linked to Preset</span>
                                                 </label>
                                                 <div id="bind_preset_to_sampling_copy" class="toggle-description justifyLeft marginBot5">
                                                     Linked mode updates temperature, penalties, and other sampling sliders when switching presets.
@@ -318,7 +319,7 @@
                                             <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
                                                 <label for="model_sampling_profiles_enabled" title="Enable per-model sampling profiles" data-i18n="[title]Enable per-model sampling profiles" class="checkbox_label widthFreeExpand">
                                                     <input id="model_sampling_profiles_enabled" type="checkbox" />
-                                                    <span data-i18n="Remember sampling settings per model">Remember sampling settings per model</span>
+                                                    <span data-i18n="Remember Sampling Settings per Model">Remember Sampling Settings per Model</span>
                                                 </label>
                                                 <div id="model_sampling_profiles_container">
                                                     <div class="toggle-description justifyLeft marginBot5">
@@ -326,10 +327,10 @@
                                                     </div>
                                                     <div class="flex-container gap3px">
                                                         <button id="model_sampling_profile_save" class="menu_button" title="Save current sampling for this model" data-i18n="[title]Save current sampling for this model">
-                                                            <i class="fa-fw fa-solid fa-floppy-disk"></i> <span data-i18n="Save Profile">Save Profile</span>
+                                                            <span data-i18n="Save Profile">Save Profile</span>
                                                         </button>
                                                         <button id="model_sampling_profile_clear" class="menu_button" title="Clear saved profile for this model" data-i18n="[title]Clear saved profile for this model">
-                                                            <i class="fa-fw fa-solid fa-trash"></i> <span data-i18n="Clear Profile">Clear Profile</span>
+                                                            <span data-i18n="Clear Profile">Clear Profile</span>
                                                         </button>
                                                     </div>
                                                 </div>

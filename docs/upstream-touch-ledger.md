@@ -1143,6 +1143,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-28, PR #870 (marker and unit tests checked). |
 | Owner | UI overhaul integrator. |
 
+### `public/index.html` and `public/scripts/openai.js` - Preset API/Sampler Linking group
+
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/openai.js` |
+| Area | Presets page, Chat Completions preset linking settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `mountPresetLinkingGroup()` in `public/scripts/sillybunny-tabs.js` moves the three linking blocks into the `#sb-preset-linking` group, and the `#sb-preset-linking` rules in `public/css/sillybunny-tabs.css` style them. |
+| Adapter shape | The drawer markup, IDs and inputs stay where upstream puts them. Only the three switch labels and their `data-i18n` keys change to header capitalisation, and the Save Profile and Clear Profile buttons lose their icons. The toast in `maybeShowPresetConnectionBindingReminder()` quotes the first label, so its text changes with it. A `<!-- SillyBunny: -->` marker sits above the drawer and a `// SillyBunny:` marker above the toast. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js` (the Preset API/Sampler Linking group test and the Backend group flow); `tests/sillybunny-settings-consistency.e2e.js` (Prompting group titles); `tests/openai-sampling-profiles-wiring.test.js` (text-only profile buttons). |
+| Validation | 2026-11-01: root and tests lint with no errors; `tests/openai-sampling-profiles-wiring.test.js` 6/6; Chromium E2E on port 8231 over `sillybunny-backend-settings`, `sillybunny-preset-autosave`, the Prompting flow test in `sillybunny-settings-consistency` and the `dialogs-accessibility` one-ring test: 47 of 48 passed, and the one failure (the Text Completions template discard prompt) also fails on the base commit; `npm run check:frontend-budgets` at 1013.4 KiB blocking CSS. Screens checked at 1440×900 and 390×844, with per-model profiles off and on. |
+| Rollback path | Restore the three labels and keys, the two button icons and the toast text, and delete both markers. In `public/scripts/sillybunny-tabs.js`, remove the `mountPresetLinkingGroup()` call and function and the `sb-preset-linking` hide condition, and anchor Chat Completions on its preset row again in `placeSharedPresetControls()` so that Edit Prompts stays above the drawer. In `public/css/sillybunny-tabs.css`, remove the `#sb-preset-linking` rules and the Autosave border rule, and restore the `.sb-settings-flat-section > .sb-setting-inline-copy-center` rule. In `public/css/sillybunny-theme.css`, restore the `#openai_api-presets` linking rules. The switches then go back to a drawer inside Presets, and no saved data changes. Then drop the group test and the group title from both title lists. |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

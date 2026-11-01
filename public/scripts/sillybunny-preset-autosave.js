@@ -417,8 +417,8 @@ export function createPresetAutosaveToggle() {
     });
 
     const title = document.createElement('small');
-    title.dataset.i18n = 'Autosave presets';
-    title.textContent = t`Autosave presets`;
+    title.dataset.i18n = 'Autosave Presets';
+    title.textContent = t`Autosave Presets`;
     const subtitle = document.createElement('small');
     subtitle.dataset.i18n = 'Enables auto-saving functionality for presets.';
     subtitle.textContent = t`Enables auto-saving functionality for presets.`;

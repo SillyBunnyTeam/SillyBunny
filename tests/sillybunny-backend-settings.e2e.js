@@ -109,7 +109,8 @@ async function expectPromptingFlow(prompting, api) {
         return;
     }
     await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-        'Presets', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Reasoning Template',
+        'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill',
+        'Request Options', 'Reasoning Template',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
@@ -528,6 +529,36 @@ test('Preset Menu Import opens the file picker of the active backend', async ({ 
         expect((await chooser).isMultiple()).toBe(false);
         await expect(page.locator('.sb-action-menu[role="menu"]')).toBeHidden();
     }
+});
+
+test('Preset API/Sampler Linking is a Chat Completions group of its own after Presets', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'openai', 'openrouter');
+    const prompting = await openPanel(page, 'prompting');
+    const linking = prompting.locator('#sb-preset-linking');
+    await expect(linking).toBeVisible();
+    expect(await linking.evaluate(group => group.previousElementSibling?.id)).toBe('respective-presets-block');
+    await expect(linking.locator('.ds-row-label')).toHaveText([
+        'Keep API/Model Linked to Preset', 'Keep Sampling Settings Linked to Preset', 'Remember Sampling Settings per Model',
+    ]);
+    await expect(prompting.locator('#openai_api-presets :is(.inline-drawer, .sb-settings-flat-section)')).toHaveCount(0);
+    // The copy blocks' `flex: 1 1 320px` basis was written for a row parent and becomes a height floor in a column.
+    expect(await linking.locator('.sb-setting-inline-copy').evaluateAll(blocks => blocks.map(block => block.getBoundingClientRect().height < 150))).toEqual([true, true, true]);
+    const tips = linking.locator('strong.toggle-description');
+    await expect(tips).toHaveCount(2);
+    for (const tip of await tips.all()) await expect(tip).toHaveCSS('font-weight', '400');
+
+    await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
+    await page.locator('#sb-universal-search input').fill('Preset API/Sampler Linking');
+    const result = page.getByRole('group', { name: 'Backend · Presets', exact: true })
+        .getByRole('option', { name: 'Preset API/Sampler Linking Jump to setting', exact: true });
+    await expect(result).toHaveCount(1);
+    await result.click();
+    await expect(linking.locator('.sb-settings-category-title')).toBeInViewport();
+
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    await openPanel(page, 'prompting');
+    await expect(linking).toBeHidden();
 });
 
 test('Backend category search returns one title and retains subtitle matches', async ({ page, baseURL }) => {

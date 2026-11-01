@@ -7582,6 +7582,43 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-top: 0;
 }
 
+/* Bind Model to Templates follows the autosave switch and is hidden on Chat Completions, where the switch then ends the group. */
+#sb-settings-page .sb-prompting-panel .sb-prompting-group-body:has(> [name='bindModelPresetBlock'][hidden]) > [data-sb-preset-autosave] {
+    border-bottom: 0;
+}
+
+/* The linking copy blocks' `flex: 1 1 320px` basis was written for a row parent. In this column
+   group it would be a 320px height floor, and .marginTop10 sets its margin with !important. */
+#sb-settings-page .sb-prompting-panel #sb-preset-linking .sb-setting-inline-copy-center {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin-top: 0 !important;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel #sb-preset-linking :is(.sb-prompting-row-with-help > strong.toggle-description, #model_sampling_profiles_container > .toggle-description) {
+    font-size: var(--sb-type-meta);
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--sb-input-placeholder);
+}
+
+/* The profiles container already insets its content to the row text. */
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel #sb-preset-linking #model_sampling_profiles_container > .toggle-description {
+    padding-inline: 0;
+}
+
+/* With profiles off, the third switch row ends the group. */
+#sb-settings-page .sb-prompting-panel #sb-preset-linking label[for='model_sampling_profiles_enabled']:not(:has(input:checked)) {
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-prompting-panel #sb-preset-linking #model_sampling_profiles_container > .flex-container {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 #sb-settings-page .sb-prompting-panel .sb-prompting-group-body .range-block:not(.ds-row) {
     width: 100%;
     min-height: 0;
@@ -8055,17 +8092,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .checkbox_label,
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .flex-container {
     border-top: 1px solid var(--sb-shell-border);
-}
-
-/* A copy block lifted out of a flattened drawer becomes a direct child of the section, and the
-   section is a column. Its `flex: 1 1 320px` was authored for a row parent, where the basis reads
-   as a width -- the one copy block still inside a `.flex-container` measures 57px. In a column the
-   same basis becomes a height floor, so three blocks holding ~80px of text each were rendering at
-   320px and Preset API/Sampler Linking spent 1041px on five controls. In column flow the block
-   takes its content height under the same 10px/16px inset as the rows beside it. */
-.sb-settings-mounted-shell .sb-settings-flat-section > .sb-setting-inline-copy-center {
-    flex: 0 0 auto;
-    padding: 10px 16px;
 }
 
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label small,

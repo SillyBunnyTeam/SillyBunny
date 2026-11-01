@@ -107,6 +107,9 @@ This is the largest class by a wide margin.
   - **Pitfall:** the menu's clicks are untrusted, and preset autosave saves a pending edit only on a trusted press of a control in `FLUSH_CONTROL_SELECTOR` (`public/scripts/sillybunny-preset-autosave.js`). That list names `[data-sb-preset-row]`, so the press on the row's ⋮ or picker saves first. Without it, a menu action such as Delete… or Rename… starts while the edit is still pending.
   - **Pitfall:** Edit Prompts is an activatable `createRow()` row, but the activatable-row and chevron rules live in the deferred `public/css/sillybunny-editor-shell.css`, which the Presets page does not load. On desktop the Characters list usually loads it first, which hides the gap. The page keeps its own copy of those rules in `public/css/sillybunny-tabs.css`.
   - **Tests:** `tests/sillybunny-backend-settings.e2e.js` (menu sections, Import… opens a file chooser, Edit Prompts styled with the Editor stylesheet off), `tests/sillybunny-preset-autosave.e2e.js` (read-only Update, the press saves at once, Edit Prompts and autosave placement).
+- **Preset API/Sampler Linking:** `mountPresetLinkingGroup()` in `public/scripts/sillybunny-tabs.js` moves the three Chat Completions linking blocks out of their drawer into a group after Presets. It removes the emptied drawer, because the flatten pass would turn it into an empty headed section inside Presets.
+  - **Pitfall:** `preparePromptingPanel()` runs while the Prompting content is still detached from the document, so `document.getElementById()` returns `null` there. Look nodes up from the container instead.
+  - **Tests:** `tests/sillybunny-backend-settings.e2e.js` (the Preset API/Sampler Linking group test).
 
 ### Cache, boot and reload
 

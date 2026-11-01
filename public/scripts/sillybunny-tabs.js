@@ -419,21 +419,37 @@ function mountPresetRows(root) {
     }
 }
 
-/**
- * Keeps Edit Prompts and then the autosave switch under the active backend's preset row. On Chat
- * Completions they sit inside the block, ahead of the linking drawer. Elsewhere they follow the block.
- */
+/** Keeps Edit Prompts and then the autosave switch directly below the active backend's preset block. */
 function placeSharedPresetControls(root, activeApi) {
-    const block = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
-    if (!(block instanceof HTMLElement) || !root.contains(block)) return;
-    let anchor = activeApi === 'openai' ? block.querySelector('[data-sb-preset-row]') : block;
-    if (!(anchor instanceof HTMLElement)) return;
+    let anchor = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
+    if (!(anchor instanceof HTMLElement) || !root.contains(anchor)) return;
     for (const row of [root.querySelector('[data-sb-edit-prompts]'), root.querySelector('[data-sb-preset-autosave]')]) {
         if (!(row instanceof HTMLElement)) continue;
         // Moving a row that is already in place still queues a mutation, and the drawer observer re-runs this.
         if (anchor.nextElementSibling !== row) anchor.after(row);
         anchor = row;
     }
+}
+
+/**
+ * Moves the Chat Completions linking switches out of their drawer in Presets into a group after it.
+ * Each copy block moves whole: its copy line becomes the row subtitle only while it follows the label,
+ * and toggle-dependent.css shows the profile buttons only while their container follows the label.
+ */
+function mountPresetLinkingGroup(presetsContainer) {
+    if (!(presetsContainer instanceof HTMLElement)) return;
+    // The Prompting content is still detached from the document here, so document.getElementById() finds nothing.
+    const blocks = ['bind_preset_to_connection', 'bind_preset_to_sampling', 'model_sampling_profiles_enabled']
+        .map(id => presetsContainer.querySelector(`#${id}`)?.closest('.sb-setting-inline-copy'))
+        .filter(block => block instanceof HTMLElement);
+    const drawer = blocks[0]?.closest('.inline-drawer');
+    if (!(drawer instanceof HTMLElement)) return;
+    const group = createBackendPromptGroup('sb-preset-linking', 'Preset API/Sampler Linking');
+    group.firstElementChild.replaceWith(createBackendGroupHeader('Preset API/Sampler Linking'));
+    group.querySelector(':scope > .sb-prompting-group-body').append(...blocks);
+    // The flatten pass would turn the emptied drawer into a headed section inside Presets.
+    drawer.remove();
+    presetsContainer.after(group);
 }
 
 function groupPromptingRowHelpers(root) {
@@ -9923,6 +9939,7 @@ function preparePromptingPanel(root) {
     });
     editPrompts.row.dataset.sbEditPrompts = '';
     presetsContainer?.querySelector(':scope > .sb-prompting-group-body')?.append(editPrompts.row);
+    mountPresetLinkingGroup(presetsContainer);
     const generation = configuration.querySelector('#pro-settings-block');
     if (generation instanceof HTMLElement) {
         for (const id of ['streaming_textgenerationwebui_block', 'streaming_kobold_block', 'streaming_novel_block']) {
@@ -10081,7 +10098,8 @@ function updatePromptingPanel(panel) {
         if (!(group instanceof HTMLElement)) continue;
         const shouldHideByMode = ['sb-openai-sampling', 'sb-openai-prompts'].includes(group.id)
             || (group.id.startsWith('sb-openai-') && !isChatCompletion)
-            || (group.id.startsWith('sb-tc-') && isChatCompletion);
+            || (group.id.startsWith('sb-tc-') && isChatCompletion)
+            || (group.id === 'sb-preset-linking' && !isChatCompletion);
         // The text-generation sampling sections are source containers for the separate Sampling tab,
         // not Prompting content; only their live controls belong in the sampling cards.
         const isSamplingSourceGroup = group.matches('.sb-textgen-drawers > .sb-settings-flat-section');

@@ -7597,8 +7597,9 @@ function maybeShowPresetConnectionBindingReminder(previousPresetName, nextPreset
     }
 
     hasShownPresetConnectionBindingReminder = true;
+    // SillyBunny: the reminder quotes the #bind_preset_to_connection label in index.html, so keep the two in step.
     toastr.info(
-        t`This preset is linked to your API and model settings. Turn off "Keep API/model linked to preset" if you want one preset to stay reusable across multiple connections.`,
+        t`This preset is linked to your API and model settings. Turn off "Keep API/Model Linked to Preset" if you want one preset to stay reusable across multiple connections.`,
         t`Preset switch also changes the connection setup`,
         { timeOut: 9000 },
     );

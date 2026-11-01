@@ -4182,50 +4182,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     text-align: left;
 }
 
-#openai_api-presets .sb-setting-inline-copy-center {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    white-space: normal;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label:not(.ds-row) {
-    align-items: center;
-    justify-content: flex-start;
-    gap: 10px;
-    width: 100%;
-    min-width: 0;
-    margin-bottom: 6px;
-    white-space: normal;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > input[type="checkbox"] {
-    flex: 0 0 auto;
-    align-self: center;
-    margin: 0;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span:not(.ds-row-text, .ds-row-suffix),
-#openai_api-presets .sb-setting-inline-copy-center .toggle-description,
-#openai_api-presets .sb-setting-inline-copy-center strong.toggle-description {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    line-height: 1.45;
-    overflow-wrap: anywhere;
-    white-space: normal;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span:not(.ds-row-text, .ds-row-suffix) {
-    flex: 1 1 auto;
-    width: auto;
-    line-height: 1.35;
-}
-
-/* The Save/Clear profile buttons sit in a centered, full-width flex row inside
-   #openai_api-presets on mobile. .menu_button defaults to flex-shrink:1 with a
-   small square min-width, so they collapse below their nowrap label width and
-   the text overlaps. Pin them to content width so the row wraps instead. */
+/* .menu_button defaults to flex-shrink:1 with a small square min-width, so the
+   Save/Clear Profile buttons collapse below their nowrap label width and the
+   text overlaps. Pin them to content width so the row wraps instead. */
 #model_sampling_profiles_container .flex-container.gap3px > .menu_button {
     flex: 0 0 auto;
     min-width: fit-content;
@@ -4384,7 +4343,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #openai_api .flex-container,
 #openai_settings .flex-container,
-#openai_api-presets .flex-container,
 #openai_api .range-block,
 #openai_settings .range-block,
 #range_block_openai .range-block {
@@ -4392,8 +4350,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 #openai_api .flex-container,
-#openai_settings .flex-container,
-#openai_api-presets .flex-container {
+#openai_settings .flex-container {
     flex-wrap: wrap;
     align-items: stretch;
     gap: 8px;
@@ -4767,11 +4724,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     #range_block_openai .oneline-dropdown select {
         width: 100%;
         min-width: 0;
-    }
-
-    #openai_api-presets .flex-container.gap3px {
-        width: 100%;
-        justify-content: center;
     }
 
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 {

@@ -370,8 +370,7 @@ test('Edit Prompts and autosave sit below the preset row and Master Import/Expor
     const prompting = await openPanel(page, 'prompting');
     const placement = () => prompting.evaluate(panel => {
         const row = [...panel.querySelectorAll('[data-sb-preset-row]')].find(candidate => candidate.checkVisibility());
-        const block = row?.closest('[id$="_api-presets"]');
-        const first = (block?.id === 'openai_api-presets' ? row : block)?.nextElementSibling;
+        const first = row?.closest('[id$="_api-presets"]')?.nextElementSibling;
         const rowName = element => ['data-sb-edit-prompts', 'data-sb-preset-autosave'].find(name => element?.hasAttribute(name)) ?? null;
         return { belowPreset: [rowName(first), rowName(first?.nextElementSibling)], masterVisible: document.getElementById('af_master_import').checkVisibility() };
     });
