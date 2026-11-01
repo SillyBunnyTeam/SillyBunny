@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 const persistenceRequests = new WeakMap();
 const groupDefinitionKeys = [
@@ -19,6 +21,16 @@ test.beforeEach(async ({ page }) => {
         const body = request.headers()['content-encoding'] === 'gzip'
             ? gunzipSync(request.postDataBuffer()) : request.postDataBuffer();
         requests.push({ ...JSON.parse(body.toString()), sbQaCreate: pathname.endsWith('/create') });
+    });
+    // Opening a bundled character asks to import its lorebook, and the prompt covers the editor. The save that would
+    // record the answer is stubbed below, so the prompt is turned off in the settings the page reads.
+    await page.route('**/api/settings/get', async (route) => {
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
+        const settings = JSON.parse(data.settings);
+        settings.power_user.world_import_dialog = false;
+        applyWelcomeSettings(settings);
+        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     // Keep all browser QA changes local to the editor draft.
     await page.route('**/api/settings/save', route => {

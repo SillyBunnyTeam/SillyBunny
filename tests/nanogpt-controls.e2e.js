@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { APP_URL, dismissOpenDialogIfPresent, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { keepSavesInPage } from './helpers/saves-in-page.js';
 import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 test.describe.configure({ mode: 'default' });
@@ -38,6 +40,9 @@ async function installRoutes(page, baseURL) {
     ]);
     const held = [];
     const catalogue = { json: [{ id: 'chutes', label: 'Chutes' }, { id: 'cerebras', label: 'Cerebras' }] };
+    // The spec saves settings, presets and a key, then reloads and reads them back, so they stay in the page and never reach the server.
+    await protectMaintainerServer(page);
+    await keepSavesInPage(page);
     await page.context().route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();
