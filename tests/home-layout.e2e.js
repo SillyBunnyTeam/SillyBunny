@@ -59,7 +59,7 @@ const HERO_SELECTOR = ':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-pl
 function artSelector(id) {
     return id === 'hero-duo' ? HERO_SELECTOR : `[data-sb-art-placeholder="${id}"]`;
 }
-// The container width at and below which the hero art, the assistant grid and More Assistants switch to their narrow form.
+// The container width at and below which the hero art, the assistant grid switches to two cards per line.
 const HERO_ONE_X_MAX = 740;
 const TWO_CARDS_MAX = 716;
 const VISIBLE_TILES = { full: ['Getting Started', 'Help', 'Bundled Extras'], compact: ['Getting Started', 'Help', 'Bundled Extras'], list: [] };
@@ -76,9 +76,9 @@ const ASSISTANT_NAMES = ['Reisen', 'Tewi'];
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
 const tiles = page => page.locator('#chat > .welcomePanel .sbHomeTile');
 const tile = (page, key) => page.locator(`#chat > .welcomePanel .sbHomeTile[data-sb-home-key="${key}"]`);
-const assistantCards = page => page.locator('#chat > .welcomePanel .sbHomeCard:not(.sbHomeCard--more)');
+const assistantCards = page => page.locator('#chat > .welcomePanel .sbHomeCard:not(.sbHomeCard--choose)');
 const assistantCard = (page, name) => page.locator(`#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-${name.toLowerCase()}"]`);
-const moreCard = page => page.locator('#chat > .welcomePanel .sbHomeCard--more');
+const chooseCard = page => page.locator('#chat > .welcomePanel .sbHomeCard--choose');
 const regionSelector = id => `.welcomePanel [data-sb-home-region="${id}"]`;
 
 async function expectHome(page) {
@@ -189,27 +189,26 @@ async function setVersionText(page, text) {
 const VERSION_BELOW = 'data-sb-version-below';
 const SHORT_VERSION = 'v2';
 
-async function measureMoreAssistants(page) {
+async function measureChooseCard(page) {
     return page.evaluate(() => {
         const rect = selector => document.querySelector(`.welcomePanel ${selector}`).getBoundingClientRect();
-        const more = document.querySelector('.welcomePanel .sbHomeCard--more');
+        const choose = document.querySelector('.welcomePanel .sbHomeCard--choose');
         const grid = rect('.sbHomeCards');
         const reisen = rect('.sbHomeCard[data-sb-home-key="assistant-reisen"]');
         const tewi = rect('.sbHomeCard[data-sb-home-key="assistant-tewi"]');
-        const box = more.getBoundingClientRect();
-        const chevron = more.querySelector('.sbHomeMoreChevron');
+        const box = choose.getBoundingClientRect();
         return {
             panelWidth: document.querySelector('.welcomePanel').clientWidth,
             grid: { left: grid.left, right: grid.right },
             reisen: { top: Math.round(reisen.top), left: reisen.left, width: reisen.width, height: reisen.height },
             tewi: { top: Math.round(tewi.top), right: tewi.right },
-            more: { top: Math.round(box.top), left: box.left, right: box.right, width: box.width, height: box.height },
-            chevronShown: Boolean(chevron) && getComputedStyle(chevron).display !== 'none',
-            footers: more.querySelectorAll('.sbHomeCardFooter').length,
-            icon: more.querySelectorAll('i.fa-user-plus').length,
-            key: more.dataset.sbHomeKey,
-            stub: more.querySelector('.sbHomeCardOpen')?.dataset.sbStub,
-            label: more.querySelector('.sbHomeCardOpen')?.getAttribute('aria-label'),
+            choose: { top: Math.round(box.top), left: box.left, width: box.width, height: box.height },
+            footers: choose.querySelectorAll('.sbHomeCardFooter').length,
+            icon: choose.querySelectorAll('i.fa-user-plus').length,
+            chevrons: choose.querySelectorAll('.fa-chevron-right').length,
+            key: choose.dataset.sbHomeKey,
+            stub: choose.querySelector('.sbHomeCardOpen')?.dataset.sbStub,
+            label: choose.querySelector('.sbHomeCardOpen')?.getAttribute('aria-label'),
         };
     });
 }
@@ -258,7 +257,7 @@ async function setFontSize(page, pixels) {
 }
 
 async function readFooters(page) {
-    return page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--more)')].map((card) => {
+    return page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)')].map((card) => {
         const footer = card.querySelector('.sbHomeCardFooter');
         const labels = [...footer.querySelectorAll('.sbHomeFootLabel')];
         const shown = labels.map(label => getComputedStyle(label).display !== 'none');
@@ -304,7 +303,7 @@ async function expectLabelsShown(page, shown) {
 async function useLongFooterLabels(page) {
     // The card does not resize when its text changes, so a 1px margin makes the observer look again.
     await page.evaluate((labels) => {
-        document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--more)').forEach((card) => {
+        document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)').forEach((card) => {
             card.querySelectorAll('.sbHomeFootLabel').forEach((label, index) => { label.textContent = labels[index]; });
             card.style.marginInlineEnd = '1px';
         });
@@ -406,7 +405,7 @@ for (const { name, options } of VIEWPORTS) {
             // Past Recent Chats, focus leaves Home and wraps around, so only the first lap counts.
             const firstLap = inHome.slice(0, inHome.indexOf('recent-chats') + 1);
 
-            expect(order.inDom, 'DOM order').toEqual(['hero', 'getting-started', 'help', 'extras', 'assistant-reisen', 'assistant-tewi', 'assistants-more', 'recent-chats']);
+            expect(order.inDom, 'DOM order').toEqual(['hero', 'getting-started', 'help', 'extras', 'assistant-reisen', 'assistant-tewi', 'assistant-own', 'recent-chats']);
             expect(order.onScreen, 'screen order').toEqual(order.inDom);
             expect(firstLap, 'Tab order').toEqual(order.inDom);
         });
@@ -768,7 +767,7 @@ for (const { name, options } of VIEWPORTS) {
                 'RC-FILTER-EMPTY-BODY',
                 'AS-REISEN-SUB',
                 'AS-TEWI-SUB',
-                'AS-MORE-SUB',
+                'AS-CHOOSE-SUB',
                 'HOME-ROW-GS-LINE',
                 'HOME-ROW-HELP',
                 'HOME-ROW-EXTRAS',
@@ -1009,13 +1008,13 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
-        test('the Assistants section holds one card per assistant and a More Assistants card last', async ({ page }) => {
+        test('the Assistants section holds Reisen, Tewi and a Choose Assistant card, and no card for an optional assistant', async ({ page }) => {
             await chooseMode(page, 'full');
             const cards = page.locator('#chat > .welcomePanel .sbHomeCards > .sbHomeCard');
 
             await expect(cards).toHaveCount(3);
             await expect(assistantCards(page).locator('.sbHomeCardName')).toHaveText(ASSISTANT_NAMES);
-            await expect(moreCard(page).locator('.sbHomeCardName')).toHaveText('More Assistants');
+            await expect(chooseCard(page).locator('.sbHomeCardName')).toHaveText('Choose Assistant');
             await expect(page.locator('#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-nahida"]')).toHaveCount(0);
             await expect(page.locator('.welcomePanel [data-sb-home-region="assistants"] details')).toHaveCount(0);
             await expect(page.locator('.welcomePanel [data-sb-home-region="assistants"]').getByRole('heading', { level: 2, name: 'Assistants' })).toBeVisible();
@@ -1107,10 +1106,10 @@ for (const { name, options } of VIEWPORTS) {
                 await expectLabelsShown(page, true);
 
                 const footers = await page.evaluate((labels) => {
-                    document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--more)').forEach((card) => {
+                    document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)').forEach((card) => {
                         card.querySelectorAll('.sbHomeFootLabel').forEach((label, index) => { label.textContent = labels[index]; });
                     });
-                    return [...document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--more)')].map((card) => {
+                    return [...document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)')].map((card) => {
                         const footer = card.querySelector('.sbHomeCardFooter');
                         return {
                             overflow: footer.scrollWidth - footer.clientWidth,
@@ -1192,7 +1191,7 @@ for (const { name, options } of VIEWPORTS) {
             await page.evaluate(() => {
                 window.qaCardActions = {};
                 window.qaFooterClicks = [0, 0];
-                document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--more)').forEach((card) => {
+                document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)').forEach((card) => {
                     const key = card.dataset.sbHomeKey;
                     window.qaCardActions[key] = 0;
                     // The capture phase sees the click before the control does, and stopping it keeps the real chat actions from leaving Home.
@@ -1323,32 +1322,35 @@ for (const { name, options } of VIEWPORTS) {
             await expect(trigger).toBeFocused();
         });
 
+        test('Choose Assistant is a card without a footer, the size of the card of Reisen', async ({ page }) => {
+            await chooseMode(page, 'full');
+
+            const layout = await measureChooseCard(page);
+
+            expect(layout).toMatchObject({ footers: 0, icon: 1, chevrons: 0, key: 'assistant-own', stub: undefined, label: 'Choose Assistant' });
+            expect(Math.abs(layout.choose.width - layout.reisen.width), 'width').toBeLessThanOrEqual(1);
+            expect(Math.abs(layout.choose.height - layout.reisen.height), 'height').toBeLessThanOrEqual(1);
+        });
+
         if (options.viewport.width > TWO_CARDS_MAX) {
-            test('More Assistants is a card without a footer, in the row of the other cards', async ({ page }) => {
+            test('Choose Assistant is in the line of Reisen and Tewi', async ({ page }) => {
                 await chooseMode(page, 'full');
 
-                const layout = await measureMoreAssistants(page);
+                const layout = await measureChooseCard(page);
 
-                expect(layout).toMatchObject({ footers: 0, icon: 1, key: 'assistants-more', stub: undefined, label: 'More Assistants', chevronShown: false });
                 expect(layout.panelWidth).toBeGreaterThan(TWO_CARDS_MAX);
-                expect(layout.more.top, 'in the same row').toBe(layout.reisen.top);
-                expect(Math.abs(layout.more.width - layout.reisen.width)).toBeLessThanOrEqual(1);
+                expect(layout.choose.top, 'in the same line').toBe(layout.reisen.top);
             });
         } else {
-            test('More Assistants is a short full-width row with a trailing chevron under two cards per line', async ({ page }) => {
+            test('Choose Assistant is alone in the first column of the second line under two cards per line', async ({ page }) => {
                 await chooseMode(page, 'full');
 
-                const layout = await measureMoreAssistants(page);
+                const layout = await measureChooseCard(page);
 
-                expect(layout).toMatchObject({ footers: 0, icon: 1, key: 'assistants-more', stub: undefined, label: 'More Assistants', chevronShown: true });
                 expect(layout.panelWidth).toBeLessThanOrEqual(TWO_CARDS_MAX);
                 expect(layout.reisen.top).toBe(layout.tewi.top);
-                expect(layout.more.top, 'under the cards').toBeGreaterThan(layout.reisen.top + layout.reisen.height - 1);
-                expect(Math.abs(layout.more.left - layout.grid.left)).toBeLessThanOrEqual(1);
-                expect(Math.abs(layout.more.right - layout.grid.right)).toBeLessThanOrEqual(1);
-                expect(Math.abs(layout.tewi.right - layout.grid.right)).toBeLessThanOrEqual(1);
-                expect(layout.more.height).toBeGreaterThanOrEqual(44);
-                expect(layout.more.height).toBeLessThanOrEqual(72);
+                expect(layout.choose.top, 'under the cards').toBeGreaterThan(layout.reisen.top + layout.reisen.height - 1);
+                expect(Math.abs(layout.choose.left - layout.reisen.left), 'first column').toBeLessThanOrEqual(1);
             });
         }
 
@@ -1357,7 +1359,7 @@ for (const { name, options } of VIEWPORTS) {
 
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder^="row-"]:visible')).toHaveCount(0);
             await expect(page.locator('.welcomePanel .sbHomeFootButton:visible')).toHaveCount(4);
-            await expect(moreCard(page)).toBeVisible();
+            await expect(chooseCard(page)).toBeVisible();
             const heights = await page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeCard')].map(card => Math.round(card.getBoundingClientRect().height)));
             expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
         });
@@ -2072,7 +2074,7 @@ for (const { name, options } of WIDE_VIEWPORTS) {
         }
 
         for (const [target, scale] of [[HERO_ONE_X_MAX, 1], [HERO_ONE_X_MAX + 1, 2]]) {
-            test(`a Home content width of exactly ${target}px draws the hero, the assistant portraits and the More Assistants icon at ${scale}x`, async ({ page }) => {
+            test(`a Home content width of exactly ${target}px draws the hero, the assistant portraits and the Choose Assistant icon at ${scale}x`, async ({ page }) => {
                 await chooseMode(page, 'full');
 
                 await setHomeContentWidth(page, target);
@@ -2082,7 +2084,7 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                     'hero-duo': artSelector('hero-duo'),
                     'row-reisen': '[data-sb-art-placeholder="row-reisen"]',
                     'row-tewi': '[data-sb-art-placeholder="row-tewi"]',
-                    'more-icon': '.sbHomeCard--more .sbHomeMoreIcon',
+                    'choose-icon': '.sbHomeCard--choose .sbHomeChooseIcon',
                 })) {
                     const box = await measure(page, `.welcomePanel ${selector}`);
                     sizes[id] = [Math.round(box.width), Math.round(box.height)];
@@ -2091,7 +2093,7 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                     'hero-duo': [320 * scale, 160 * scale],
                     'row-reisen': [64 * scale, 64 * scale],
                     'row-tewi': [64 * scale, 64 * scale],
-                    'more-icon': [64 * scale, 64 * scale],
+                    'choose-icon': [64 * scale, 64 * scale],
                 });
                 expect(await page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
             });

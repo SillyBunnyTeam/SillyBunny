@@ -631,3 +631,28 @@ body.reduced-motion .sbHomeFlatButton {
 .sbBundledExtrasDialog .ds-pref-group-heading {
     scroll-margin-block-start: 12px;
 }
+
+/* ── Choose Assistant ───────────────────────────────────────────────────── */
+
+/* A row chooses a character and opens nothing, so it has no chevron. */
+.sbAssistantPickerDialog .ds-row__chevron {
+    display: none;
+}
+
+.sbAssistantPickerThumb {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--sb-radius-md);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    object-fit: cover;
+}
+
+/* The current choice has a check and a tint. The check is what remains when forced colours take the tint away. */
+.sbAssistantPickerDialog .ds-row[aria-current='true'] {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.sbAssistantPickerSelected {
+    color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
+}

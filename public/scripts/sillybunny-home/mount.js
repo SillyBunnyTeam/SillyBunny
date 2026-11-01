@@ -14,7 +14,7 @@ import { getVisibleRegions, parseDisplayMode } from './modes.js';
 import { describeTiles, mountTiles } from './tiles-view.js';
 // The APP_READY listener that opens Welcome has to exist before that event fires, so it is imported here, at load, and not on the first render of Home.
 import './welcome-boot.js';
-import { openAbout, openBundledExtras, openGettingStarted, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
+import { openAbout, openAssistantPicker, openBundledExtras, openGettingStarted, openHelp, openKeyboardShortcuts, showWelcome } from './windows.js';
 
 /**
  * @typedef {object} HomeContext
@@ -22,7 +22,12 @@ import { openAbout, openBundledExtras, openGettingStarted, openHelp, openKeyboar
  * @property {() => string} getDisplayMode Reads the stored display mode.
  * @property {(mode: string) => void} setDisplayMode Applies and stores a display mode.
  * @property {() => unknown} openRecentChatsSettings
- * @property {Pick<Parameters<typeof mountAssistants>[1], 'getCards' | 'actions' | 'getThumbnailUrl'>} assistants What the assistant cards show and do.
+ * @property {AssistantsContext} assistants What the assistant cards show and do.
+ *
+ * @typedef {Pick<Parameters<typeof mountAssistants>[1], 'getCards' | 'actions' | 'getThumbnailUrl'> & {
+ *   getPickerEntries: () => import('./assistant-cards.js').PickerEntry[],
+ *   setPointer: (avatar: string | null) => Promise<void>,
+ * }} AssistantsContext `setPointer` writes the account's assistant pointer, `null` clears it, and it never rejects.
  */
 
 /**
@@ -126,7 +131,12 @@ export function mountHome(panel, context) {
         openBundledExtras,
         openHelp,
     });
-    mountAssistants(panel, { ...context.assistants, openMoreAssistants: () => openBundledExtras({ group: 'assistants' }) });
+    const { getPickerEntries, getThumbnailUrl, setPointer } = context.assistants;
+    mountAssistants(panel, {
+        ...context.assistants,
+        openPicker: () => openAssistantPicker({ getEntries: getPickerEntries, getThumbnailUrl, choose: setPointer }),
+        removeAssistant: () => setPointer(null),
+    });
     fitCardFooters(panel);
     fitHomeHeader(panel);
     applyDisplayMode(panel, context.getDisplayMode());

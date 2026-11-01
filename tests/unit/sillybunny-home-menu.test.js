@@ -225,6 +225,36 @@ describe('Assistant menu', () => {
         expect(actions.newChatInMode.mock.calls.map(([mode]) => mode)).toEqual(['conversation', 'roleplay']);
     });
 
+    test('offers Choose Another Assistant and Remove Assistant after the chat item, in a section of their own, when the card has the actions', () => {
+        const actions = { ...assistantActions(), chooseAnother: jest.fn(), remove: jest.fn() };
+
+        const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions });
+
+        expect(labelsOf(sections)).toEqual([['New Chat in Conversation'], ['Choose Another Assistant\u2026', 'Remove Assistant']]);
+        sections[1].items[0].onSelect();
+        expect(actions.chooseAnother).toHaveBeenCalledTimes(1);
+        expect(actions.remove).not.toHaveBeenCalled();
+        sections[1].items[1].onSelect();
+        expect(actions.remove).toHaveBeenCalledTimes(1);
+    });
+
+    test('leaves out the item of an action that the card does not have, so Reisen and Tewi keep their one item', () => {
+        expect(labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions() }))).toEqual([['New Chat in Conversation']]);
+        expect(labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: { ...assistantActions(), chooseAnother: jest.fn() } }))).toEqual([['New Chat in Conversation'], ['Choose Another Assistant\u2026']]);
+    });
+
+    test('gives Remove Assistant no danger look, because it clears the choice and deletes no character', () => {
+        const [, section] = buildAssistantMenuSections({ lastMode: 'roleplay', actions: { ...assistantActions(), remove: jest.fn() } });
+
+        expect(section.items[0].danger).toBeUndefined();
+    });
+
+    test('offers neither of them for a card whose file is missing', () => {
+        const actions = { ...assistantActions(), chooseAnother: jest.fn(), remove: jest.fn() };
+
+        expect(buildAssistantMenuSections({ lastMode: 'roleplay', actions, state: 'missing' })).toEqual([]);
+    });
+
     test('opens the shared action menu named Assistant Menu, kept inside the given bounds', () => {
         const trigger = {};
         const bounds = {};

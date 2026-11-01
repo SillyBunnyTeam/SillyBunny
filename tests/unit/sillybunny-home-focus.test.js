@@ -206,6 +206,17 @@ describe('tile and card controls', () => {
         expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector('.sbHomeMenuButton'));
     });
 
+    test('falls back to the first control of the same card when the card is there and the control is not', () => {
+        const oldPanel = mount(renderSections());
+        const target = captureHomeFocus(oldPanel, oldPanel.querySelector('[data-sb-home-key="assistant-reisen"] .sbHomeRowMenu'));
+        oldPanel.remove();
+        const newPanel = mount(renderSections());
+        newPanel.querySelector('[data-sb-home-key="assistant-reisen"] .sbHomeRowMenu').remove();
+        newPanel.querySelector('[data-sb-home-key="assistant-reisen"] .sbHomeFootButton').remove();
+
+        expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector('[data-sb-home-key="assistant-reisen"] .sbHomeCardOpen'));
+    });
+
     test('a control outside any keyed tile or card is still the main menu', () => {
         const panel = mount(renderSections());
 

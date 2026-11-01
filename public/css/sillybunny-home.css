@@ -526,6 +526,8 @@
 .sbHomeCards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    /* Every line is as tall as the tallest, so the card to choose from on a line of its own is as tall as a card with a footer. */
+    grid-auto-rows: 1fr;
     gap: 12px;
 }
 
@@ -715,13 +717,15 @@
     }
 }
 
-/* ── More Assistants ────────────────────────────────────────────────────── */
+/* ── Choose Assistant ───────────────────────────────────────────────────── */
 
-.sbHomeCard--more {
+/* The third slot with no character is a card of the same size as the others, so it has the padding that the footer
+   gives them at the bottom. */
+.sbHomeCard--choose {
     padding-block-end: 16px;
 }
 
-.sbHomeMoreIcon {
+.sbHomeChooseIcon {
     display: grid;
     flex: none;
     place-items: center;
@@ -734,66 +738,26 @@
     font-size: 24px;
 }
 
-.sbHomeMoreChevron {
-    display: none;
-}
-
-/* Compact has no mascot art: the portraits are gone, so the More card's icon shrinks to its row size and centres. */
-.welcomePanel[data-home-panel-mode='compact'] .sbHomeMoreIcon {
+/* Compact has no mascot art: the portraits are gone, so the icon of the card shrinks to its row size and centres. */
+.welcomePanel[data-home-panel-mode='compact'] .sbHomeChooseIcon {
     width: 32px;
     height: 32px;
     font-size: 16px;
 }
 
-.welcomePanel[data-home-panel-mode='compact'] .sbHomeCard--more {
+/* Stacked above the text, even the small icon makes this card taller than a card with a footer, and the cards of the
+   line would grow when the slot is empty. Beside the text it adds no height, so the footers set the line. */
+.welcomePanel[data-home-panel-mode='compact'] .sbHomeCard--choose {
+    flex-direction: row;
+    align-items: center;
     justify-content: center;
 }
 
-/* Two cards per line is the narrow case: More Assistants becomes a short row under them. 716px is the container
-   width below which three 220px cards no longer fit in one line, so the grid and the row change together. */
+/* Two cards per line is the narrow case. 716px is the container width below which three 220px cards no longer fit in
+   one line. */
 @container welcome-home (max-width: 716px) {
     .sbHomeCards {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .sbHomeCard.sbHomeCard--more {
-        grid-column: 1 / -1;
-        flex-direction: row;
-        align-items: center;
-        gap: 12px;
-        min-height: 52px;
-        padding: 10px 16px;
-    }
-
-    .sbHomeCard--more .sbHomeMoreIcon {
-        width: 32px;
-        height: 32px;
-        font-size: 16px;
-    }
-
-    /* The subtitle sits beside the name when it fits. When it wraps, the line it wraps to falls outside the
-       one-line height and is clipped. */
-    .sbHomeCard--more .sbHomeCardText {
-        flex: 1 1 auto;
-        flex-flow: row wrap;
-        align-items: baseline;
-        justify-content: flex-start;
-        gap: 0 8px;
-        max-height: calc(var(--sb-type-title) * 1.18);
-        overflow: hidden;
-        text-align: start;
-    }
-
-    .sbHomeCard--more .sbHomeCardName {
-        display: block;
-        white-space: nowrap;
-    }
-
-    .sbHomeCard--more .sbHomeMoreChevron {
-        display: inline-block;
-        flex: none;
-        color: var(--sb-muted-fg);
-        font-size: var(--sb-type-meta);
     }
 }
 
@@ -1284,7 +1248,7 @@ body.big-avatars .welcomeRecent .chatMessage {
 /* ── Narrow content and touch ───────────────────────────────────────────── */
 
 /* The pixel art goes to 2x above this container width, all of it at once: the hero, the assistant portraits and
-   the icon of More Assistants. 740px is the container width at which the 2x hero plus the band padding and the
+   the icon of the Choose Assistant card. 740px is the container width at which the 2x hero plus the band padding and the
    column padding no longer fit, and the portraits follow it so one screen has one pixel scale. */
 @container welcome-home (width > 740px) {
     .sbHomeBand > .sbHomeArt:is([data-sb-art-placeholder='hero-duo'], [data-sb-art-placeholder='hero-duo-night']) {
@@ -1296,12 +1260,12 @@ body.big-avatars .welcomeRecent .chatMessage {
     .sbHomeArt[data-sb-art-placeholder='row-tewi'],
     .sbHomeArt[data-sb-art-placeholder='row-nahida'],
     .sbHomeArt[data-sb-art-placeholder='row-pointer'],
-    .sbHomeMoreIcon {
+    .sbHomeChooseIcon {
         width: 128px;
         height: 128px;
     }
 
-    .sbHomeMoreIcon {
+    .sbHomeChooseIcon {
         font-size: 32px;
     }
 }

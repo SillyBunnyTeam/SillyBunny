@@ -1,10 +1,9 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure functions. */
 import { describe, expect, jest, test } from '@jest/globals';
-import { getAssistantCards } from '../../public/scripts/sillybunny-home/assistant-cards.js';
+import { getAssistantCards, getAssistantPickerEntries } from '../../public/scripts/sillybunny-home/assistant-cards.js';
 
 const REISEN = 'default_AssistantReisen.png';
 const TEWI = 'default_AssistantTewi.png';
-const NAHIDA = 'default_AssistantNahida.png';
 
 /**
  * A library over a map of avatar to character name, and a set of the assistants whose deletion the account recorded.
@@ -16,6 +15,7 @@ function createLibrary({ characters = {}, deleted = [], renamed = {} } = {}) {
         findCard: jest.fn(assistant => find(renamed[assistant.id] ?? assistant.defaultAvatar)),
         findAvatar: jest.fn(find),
         isDeleted: jest.fn(assistant => deleted.includes(assistant.id)),
+        listCharacters: jest.fn(() => Object.entries(characters).map(([avatar, name]) => ({ avatar, name }))),
     };
 }
 
@@ -24,67 +24,57 @@ const keysOf = cards => cards.map(card => card.key);
 const stateOf = (cards, id) => cards.find(card => card.id === id)?.state;
 
 describe('the order of the assistant cards', () => {
-    test('is Reisen, then Tewi, when the account points at neither a card of its own nor Nahida', () => {
-        const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null });
+    test.each([
+        ['there is no pointer', null],
+        ['the pointer names Reisen', REISEN],
+        ['the pointer names Tewi', TEWI],
+        ['the pointer names a character that is not in the library', 'Gone.png'],
+        ['the pointer is empty', ''],
+    ])('is Reisen, Tewi, then the card to choose from, when %s', (_case, pointerAvatar) => {
+        const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar });
 
-        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi']);
+        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
+        expect(cards[2]).toMatchObject({ kind: 'choose', slot: 'AS-CHOOSE-SUB' });
     });
 
-    test('starts with the character that the pointer names when it is neither Reisen nor Tewi', () => {
+    test('is Reisen, Tewi, then the character that the pointer names, which does not take the first place', () => {
         const library = createLibrary({ characters: { ...BOTH, 'Alice.png': 'Alice' } });
 
         const cards = getAssistantCards({ library, pointerAvatar: 'Alice.png' });
 
-        expect(keysOf(cards)).toEqual(['assistant-pointer', 'assistant-reisen', 'assistant-tewi']);
-        expect(cards[0]).toMatchObject({ id: 'pointer', name: 'Alice', avatar: 'Alice.png', state: 'available', slot: 'AS-POINTER-SUB' });
+        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
+        expect(cards[2]).toMatchObject({ kind: 'pointer', id: 'pointer', name: 'Alice', avatar: 'Alice.png', state: 'available', slot: 'AS-POINTER-SUB' });
     });
 
-    test.each([
-        ['Reisen', REISEN],
-        ['Tewi', TEWI],
-    ])('has no card for the pointer when it names %s, because she has her own', (_name, avatar) => {
-        const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: avatar });
+    test('has the same three cards when Reisen and Tewi have no card in the library', () => {
+        const cards = getAssistantCards({ library: createLibrary({ characters: { 'Alice.png': 'Alice' } }), pointerAvatar: 'Alice.png' });
 
-        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi']);
+        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
+        expect(cards.map(card => card.kind)).toEqual(['bundled', 'bundled', 'pointer']);
     });
 
-    test('knows Reisen by the avatar her card has now, so a renamed card is still not shown twice', () => {
+    test('knows Reisen by the avatar her card has now, so a renamed card is not offered as the third one', () => {
         const library = createLibrary({ characters: { 'My Reisen.png': 'My Reisen', [TEWI]: 'Tewi' }, renamed: { reisen: 'My Reisen.png' } });
 
         const cards = getAssistantCards({ library, pointerAvatar: 'My Reisen.png' });
 
-        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi']);
+        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
         expect(stateOf(cards, 'reisen')).toBe('available');
+        expect(cards[2].kind).toBe('choose');
     });
 
-    test('has no card for a pointer whose character is not in the library', () => {
-        const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: 'Gone.png' });
+    test('lists a character that a card of this app does not own, such as Nahida, as a pointer card like any other', () => {
+        const library = createLibrary({ characters: { ...BOTH, 'default_AssistantNahida.png': 'Assistant Nahida' } });
 
-        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi']);
+        const cards = getAssistantCards({ library, pointerAvatar: 'default_AssistantNahida.png' });
+
+        expect(cards[2]).toMatchObject({ kind: 'pointer', name: 'Assistant Nahida', art: { name: 'row-pointer', avatar: 'default_AssistantNahida.png' } });
     });
 
-    test('ends with the optional assistants that are installed', () => {
-        const library = createLibrary({ characters: { ...BOTH, [NAHIDA]: 'Assistant Nahida' } });
+    test('has no card for an installed optional assistant that the pointer does not name', () => {
+        const library = createLibrary({ characters: { ...BOTH, 'default_AssistantNahida.png': 'Assistant Nahida' } });
 
-        const cards = getAssistantCards({ library, pointerAvatar: null });
-
-        expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-nahida']);
-    });
-
-    test('puts the pointer first, then Reisen, Tewi and Nahida', () => {
-        const library = createLibrary({ characters: { ...BOTH, [NAHIDA]: 'Assistant Nahida', 'Alice.png': 'Alice' } });
-
-        const cards = getAssistantCards({ library, pointerAvatar: 'Alice.png' });
-
-        expect(keysOf(cards)).toEqual(['assistant-pointer', 'assistant-reisen', 'assistant-tewi', 'assistant-nahida']);
-    });
-
-    test('shows Nahida once, first, when the pointer names her', () => {
-        const library = createLibrary({ characters: { ...BOTH, [NAHIDA]: 'Assistant Nahida' } });
-
-        const cards = getAssistantCards({ library, pointerAvatar: NAHIDA });
-
-        expect(keysOf(cards)).toEqual(['assistant-nahida', 'assistant-reisen', 'assistant-tewi']);
+        expect(keysOf(getAssistantCards({ library, pointerAvatar: null }))).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
     });
 });
 
@@ -92,13 +82,13 @@ describe('the state of an assistant card', () => {
     test('is available while the library has the card of the assistant', () => {
         const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null });
 
-        expect(cards.map(card => card.state)).toEqual(['available', 'available']);
+        expect(cards.slice(0, 2).map(card => card.state)).toEqual(['available', 'available']);
     });
 
     test('is missing when the library has no card and the account did not delete it', () => {
         const cards = getAssistantCards({ library: createLibrary(), pointerAvatar: null });
 
-        expect(cards.map(card => [card.id, card.state])).toEqual([['reisen', 'missing'], ['tewi', 'missing']]);
+        expect(cards.slice(0, 2).map(card => [card.id, card.state])).toEqual([['reisen', 'missing'], ['tewi', 'missing']]);
     });
 
     test('is deleted when the library has no card and the account recorded its deletion', () => {
@@ -117,7 +107,7 @@ describe('the state of an assistant card', () => {
     test('has no avatar for a card the library does not hold', () => {
         const cards = getAssistantCards({ library: createLibrary({ characters: { [TEWI]: 'Tewi' } }), pointerAvatar: null });
 
-        expect(cards.map(card => card.avatar)).toEqual([null, TEWI]);
+        expect(cards.slice(0, 2).map(card => card.avatar)).toEqual([null, TEWI]);
     });
 
     test('is read from the library each time, not remembered', () => {
@@ -134,31 +124,81 @@ describe('what a card shows', () => {
     test('keeps the names, subtitle slots and placeholder art that Reisen and Tewi had', () => {
         const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null });
 
-        expect(cards.map(({ name, slot, art }) => ({ name, slot, art }))).toEqual([
+        expect(cards.slice(0, 2).map(({ name, slot, art }) => ({ name, slot, art }))).toEqual([
             { name: 'Reisen', slot: 'AS-REISEN-SUB', art: { name: 'row-reisen', avatar: null } },
             { name: 'Tewi', slot: 'AS-TEWI-SUB', art: { name: 'row-tewi', avatar: null } },
         ]);
     });
 
-    test('shows Nahida with her own name, her slot and her card as the art', () => {
-        const library = createLibrary({ characters: { [NAHIDA]: 'Assistant Nahida' } });
-
-        const nahida = getAssistantCards({ library, pointerAvatar: null }).find(card => card.id === 'nahida');
-
-        expect(nahida).toMatchObject({ name: 'Nahida', slot: 'AS-NAHIDA-SUB', avatar: NAHIDA, state: 'available', art: { name: 'row-nahida', avatar: NAHIDA } });
-    });
-
     test('shows the pointer character with its card as the art', () => {
         const library = createLibrary({ characters: { 'Alice.png': 'Alice' } });
 
-        const [pointer] = getAssistantCards({ library, pointerAvatar: 'Alice.png' });
+        const pointer = getAssistantCards({ library, pointerAvatar: 'Alice.png' })[2];
 
         expect(pointer.art).toEqual({ name: 'row-pointer', avatar: 'Alice.png' });
     });
 
-    test('does not list Nahida when her card is not installed, even though the account recorded a deletion', () => {
-        const library = createLibrary({ deleted: ['nahida'] });
+    test('has no name, art or avatar for the card to choose from, which the view labels', () => {
+        const choose = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null })[2];
 
-        expect(keysOf(getAssistantCards({ library, pointerAvatar: null }))).toEqual(['assistant-reisen', 'assistant-tewi']);
+        expect(choose).toEqual({ key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available' });
+    });
+
+    test('has the same key for the card of the third slot in both of its states, so focus finds it after the pointer changes', () => {
+        const library = createLibrary({ characters: { ...BOTH, 'Alice.png': 'Alice' } });
+
+        const keys = [null, 'Alice.png'].map(pointerAvatar => getAssistantCards({ library, pointerAvatar })[2].key);
+
+        expect(keys).toEqual(['assistant-own', 'assistant-own']);
+    });
+});
+
+describe('the characters that the picker offers', () => {
+    const library = () => createLibrary({ characters: { ...BOTH, 'bob.png': 'Bob', 'alice.png': 'alice', 'Zed.png': 'Zed' } });
+
+    test('are the characters of the library by name, without Reisen and Tewi', () => {
+        const entries = getAssistantPickerEntries({ library: library(), pointerAvatar: null });
+
+        expect(entries.map(entry => entry.name)).toEqual(['alice', 'Bob', 'Zed']);
+        expect(entries.map(entry => entry.avatar)).toEqual(['alice.png', 'bob.png', 'Zed.png']);
+    });
+
+    test('put characters of one name, however it is cased, in the order of their avatars, whatever the order of the library', () => {
+        const same = createLibrary({ characters: { 'sam-c.png': 'sam', 'sam-b.png': 'Sam', 'sam-a.png': 'SAM', 'ann.png': 'Ann' } });
+
+        const entries = getAssistantPickerEntries({ library: same, pointerAvatar: null });
+
+        expect(entries.map(entry => entry.avatar)).toEqual(['ann.png', 'sam-a.png', 'sam-b.png', 'sam-c.png']);
+    });
+
+    test('mark the character that the pointer names as selected', () => {
+        const entries = getAssistantPickerEntries({ library: library(), pointerAvatar: 'bob.png' });
+
+        expect(entries.map(entry => [entry.name, entry.selected])).toEqual([['alice', false], ['Bob', true], ['Zed', false]]);
+    });
+
+    test('mark nothing when the pointer names Reisen, who is left out, or a character that is not there', () => {
+        const selections = [REISEN, 'Gone.png', null]
+            .map(pointerAvatar => getAssistantPickerEntries({ library: library(), pointerAvatar }).filter(entry => entry.selected));
+
+        expect(selections).toEqual([[], [], []]);
+    });
+
+    test('leave Reisen out by the avatar her card has now, not by her default file name', () => {
+        const renamed = createLibrary({ characters: { 'My Reisen.png': 'My Reisen', [TEWI]: 'Tewi', 'bob.png': 'Bob' }, renamed: { reisen: 'My Reisen.png' } });
+
+        expect(getAssistantPickerEntries({ library: renamed, pointerAvatar: null }).map(entry => entry.name)).toEqual(['Bob']);
+    });
+
+    test('are empty when the library holds nothing but Reisen and Tewi', () => {
+        expect(getAssistantPickerEntries({ library: createLibrary({ characters: BOTH }), pointerAvatar: null })).toEqual([]);
+    });
+
+    test('are read from the library each time', () => {
+        const source = library();
+        getAssistantPickerEntries({ library: source, pointerAvatar: null });
+        getAssistantPickerEntries({ library: source, pointerAvatar: null });
+
+        expect(source.listCharacters).toHaveBeenCalledTimes(2);
     });
 });

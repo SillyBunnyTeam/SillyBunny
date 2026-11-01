@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 
 const openGettingStartedWindow = jest.fn();
 const openBundledExtrasWindow = jest.fn();
+const openAssistantPickerWindow = jest.fn();
 jest.unstable_mockModule('../../public/scripts/sillybunny-home/getting-started-window.js', () => ({ openGettingStartedWindow }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-home/bundled-extras-window.js', () => ({ openBundledExtrasWindow }));
-const { openBundledExtras, openGettingStarted } = await import('../../public/scripts/sillybunny-home/windows.js');
+jest.unstable_mockModule('../../public/scripts/sillybunny-home/assistant-picker.js', () => ({ openAssistantPickerWindow }));
+const { openAssistantPicker, openBundledExtras, openGettingStarted } = await import('../../public/scripts/sillybunny-home/windows.js');
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -34,6 +36,7 @@ afterEach(() => {
     jest.restoreAllMocks();
     openGettingStartedWindow.mockReset();
     openBundledExtrasWindow.mockReset();
+    openAssistantPickerWindow.mockReset();
     delete window.toastr;
 });
 
@@ -81,6 +84,38 @@ describe('Home window openers', () => {
         await flush();
     });
 
+    test('the picker receives what it was asked to use, opens once at a time, and opens again after it closed', async () => {
+        const options = { getEntries: jest.fn(), getThumbnailUrl: jest.fn(), choose: jest.fn() };
+        const first = openWindow();
+        openAssistantPickerWindow.mockResolvedValueOnce(first.handle);
+
+        openAssistantPicker(options);
+        openAssistantPicker(options);
+        await flush();
+
+        expect(openAssistantPickerWindow).toHaveBeenCalledTimes(1);
+        expect(openAssistantPickerWindow).toHaveBeenCalledWith(options);
+        first.close();
+        await flush();
+        const second = openWindow();
+        openAssistantPickerWindow.mockResolvedValueOnce(second.handle);
+        openAssistantPicker(options);
+        await flush();
+
+        expect(openAssistantPickerWindow).toHaveBeenCalledTimes(2);
+        second.close();
+        await flush();
+    });
+
+    test('the picker that fails to load is named in the error, so the log says which window it was', async () => {
+        openAssistantPickerWindow.mockRejectedValueOnce(new Error('load failed'));
+
+        openAssistantPicker({});
+        await flush();
+
+        expect(console.error).toHaveBeenCalledWith('Could not open the Choose Assistant window.', expect.any(Error));
+    });
+
     test('a window that fails to load logs the error, toasts a marked placeholder, and can be tried again', async () => {
         openGettingStartedWindow.mockRejectedValueOnce(new Error('load failed'));
 
@@ -106,7 +141,7 @@ describe('Home window openers', () => {
             document.body.innerHTML = `<div id="chat"><div class="welcomePanel">
                 <button class="sbHomeMenuButton">Menu</button>
                 <button class="sbHomeTile" data-sb-home-key="getting-started">Getting Started</button>
-                <article class="sbHomeCard" data-sb-home-key="assistants-more"><button class="sbHomeCardOpen">More</button></article>
+                <article class="sbHomeCard" data-sb-home-key="assistant-own"><button class="sbHomeCardOpen">Choose</button></article>
             </div></div>`;
             return document.querySelector('.welcomePanel');
         }

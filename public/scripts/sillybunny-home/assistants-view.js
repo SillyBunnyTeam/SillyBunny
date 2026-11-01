@@ -4,8 +4,6 @@ import { createArtPlaceholder } from './art.js';
 import { markCopyPlaceholder } from './copy.js';
 import { buildAssistantMenuSections, openAssistantMenu } from './menu.js';
 
-const MORE_SUBTITLE_SLOT = 'AS-MORE-SUB';
-
 function createElement(tag, className, text) {
     const element = document.createElement(tag);
     element.className = className;
@@ -100,9 +98,10 @@ function createCardArt({ art }, getThumbnailUrl) {
 }
 
 /**
- * A card whose file is missing or deleted has nothing to open, so its controls are disabled and it shows no menu.
+ * A card whose file is missing or deleted has nothing to open, so its controls are disabled and it shows no menu. The
+ * card of the third slot has two more menu items, which change which character it is.
  */
-function createAssistantCard(card, panel, { actions, getThumbnailUrl }) {
+function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker, removeAssistant }) {
     const titleId = `sb-home-${card.key}-title`;
     const subtitleId = `sb-home-${card.key}-sub`;
     const disabled = card.state !== 'available';
@@ -110,6 +109,7 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl }) {
 
     const element = createElement('article', 'sbHomeCard');
     element.dataset.sbHomeKey = card.key;
+    element.dataset.sbAssistantKind = card.kind;
 
     const footer = createElement('div', 'sbHomeCardFooter');
     footer.append(
@@ -133,6 +133,14 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl }) {
 
     if (buildAssistantMenuSections({ lastMode: getLastChatMode(), actions: menuActions, state: card.state }).length > 0) {
         const menuButton = createMenuButton(`sb-home-${card.key}-menu`);
+        if (card.kind === 'pointer') {
+            menuActions.chooseAnother = () => {
+                // The window returns focus to the control that had it, and the menu has just closed.
+                menuButton.focus({ preventScroll: true });
+                openPicker();
+            };
+            menuActions.remove = () => removeAssistant();
+        }
         // Reads as "Assistant Menu Reisen": the button's own name, then the card's title.
         menuButton.setAttribute('aria-labelledby', `${menuButton.id} ${titleId}`);
         menuButton.addEventListener('click', (event) => {
@@ -156,50 +164,51 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl }) {
     return element;
 }
 
-/** A card without a footer. In a narrow grid it is a short row, and the chevron shows that it opens something. */
-function createMoreCard(openMoreAssistants) {
-    const titleId = 'sb-home-assistants-more-title';
-    const subtitleId = 'sb-home-assistants-more-sub';
-    const card = createElement('article', 'sbHomeCard sbHomeCard--more');
-    card.dataset.sbHomeKey = 'assistants-more';
+/** The third slot while it holds no character: a card without a footer that opens the picker. */
+function createChooseCard(card, { openPicker }) {
+    const titleId = `sb-home-${card.key}-title`;
+    const subtitleId = `sb-home-${card.key}-sub`;
+    const element = createElement('article', 'sbHomeCard sbHomeCard--choose');
+    element.dataset.sbHomeKey = card.key;
+    element.dataset.sbAssistantKind = card.kind;
 
-    const icon = createElement('div', 'sbHomeMoreIcon');
+    const icon = createElement('div', 'sbHomeChooseIcon');
     icon.setAttribute('aria-hidden', 'true');
     icon.append(createIcon('fa-solid fa-user-plus'));
 
     // Safari does not focus a button on click, and the window returns focus to the element that had it.
     const action = createCardAction({
-        name: t`More Assistants`,
+        name: t`Choose Assistant`,
         subtitleId,
         onActivate: () => {
             action.focus({ preventScroll: true });
-            openMoreAssistants();
+            openPicker();
         },
     });
-    card.append(
-        action,
-        icon,
-        createCardText({ name: t`More Assistants`, titleId, subtitleId, slot: MORE_SUBTITLE_SLOT }),
-        createIcon('fa-solid fa-chevron-right sbHomeMoreChevron'),
-    );
-    return card;
+    action.setAttribute('aria-haspopup', 'dialog');
+    element.append(action, icon, createCardText({ name: t`Choose Assistant`, titleId, subtitleId, slot: card.slot }));
+    return element;
 }
 
 /**
- * Fills the Assistants section: a grid with a card for each assistant and a More Assistants card. The cards are read
- * again on every call, so a render of Home shows the library as it is.
+ * Fills the Assistants section: a grid with the cards of Reisen, Tewi and the third slot, which is a card to choose
+ * from until the account has chosen a character. The cards are read again on every call, so a render of Home shows the
+ * library as it is.
  * @param {HTMLElement} panel The `.welcomePanel` root.
  * @param {object} options
- * @param {() => void} options.openMoreAssistants Opens the Bundled Extras window at its Assistants group.
- * @param {() => import('./assistant-cards.js').AssistantCard[]} options.getCards
+ * @param {() => (import('./assistant-cards.js').AssistantCard | import('./assistant-cards.js').ChooseCard)[]} options.getCards
  * @param {ReturnType<typeof import('./assistant-actions.js').createAssistantActions>} options.actions
  * @param {(avatar: string) => string} options.getThumbnailUrl The URL of the thumbnail of a character's card.
+ * @param {() => void} options.openPicker Opens the window that chooses the character of the third slot.
+ * @param {() => unknown} options.removeAssistant Clears the choice, which returns the third slot to its card to choose from.
  */
-export function mountAssistants(panel, { openMoreAssistants, getCards, actions, getThumbnailUrl }) {
+export function mountAssistants(panel, { getCards, actions, getThumbnailUrl, openPicker, removeAssistant }) {
     const grid = panel.querySelector('[data-sb-home-list="assistants"]');
     if (!grid) {
         return;
     }
 
-    grid.replaceChildren(...getCards().map(card => createAssistantCard(card, panel, { actions, getThumbnailUrl })), createMoreCard(openMoreAssistants));
+    grid.replaceChildren(...getCards().map(card => (card.kind === 'choose'
+        ? createChooseCard(card, { openPicker })
+        : createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker, removeAssistant }))));
 }

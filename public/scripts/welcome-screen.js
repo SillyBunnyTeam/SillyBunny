@@ -45,8 +45,8 @@ import { migrateAssistantPointer } from './sillybunny-home/assistant-pointer-mig
 // SillyBunny: finding the default assistant scans every character, so the answer is remembered.
 import { createDefaultAssistantResolver } from './sillybunny-home/default-assistant-resolver.js';
 // SillyBunny: the assistant cards of Home read the library through the cards model, and their actions are built outside this file.
-import { getAssistantCards } from './sillybunny-home/assistant-cards.js';
-import { createAppAssistantActions } from './sillybunny-home/assistant-chat.js';
+import { getAssistantCards, getAssistantPickerEntries } from './sillybunny-home/assistant-cards.js';
+import { createAppAssistantActions, reportFailure as reportAssistantFailure } from './sillybunny-home/assistant-chat.js';
 
 // SillyBunny: the pointer key is the registry's.
 const assistantAvatarKey = ASSISTANT_POINTER_KEY;
@@ -700,7 +700,18 @@ function getAssistantLibrary() {
         findCard: config => findAvatar(getBundledAssistantIdentityAvatar(config)),
         findAvatar,
         isDeleted: config => isBundledAssistantMarkedDeleted(config),
+        listCharacters: () => characters.map(character => ({ avatar: character.avatar, name: character.name })),
     };
+}
+
+// SillyBunny: the third assistant card and the Set as assistant action change the pointer through setAssistantPointer, and a failure is told to the user, never thrown into the window that asked.
+async function chooseHomeAssistant(avatar) {
+    try {
+        await setAssistantPointer(avatar);
+    } catch (error) {
+        console.error('Could not change the assistant of Home.', error);
+        reportAssistantFailure();
+    }
 }
 
 // SillyBunny: one set of card actions for every render of Home, so a double click is dropped across a re-render.
@@ -792,6 +803,8 @@ async function sendWelcomePanel(chats, expand = false) {
                 // SillyBunny: the cards are read from the library on every render, and their actions are the app's.
                 assistants: {
                     getCards: () => getAssistantCards({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
+                    getPickerEntries: () => getAssistantPickerEntries({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
+                    setPointer: chooseHomeAssistant,
                     actions: assistantActions,
                     getThumbnailUrl: avatar => getThumbnailUrl('avatar', avatar),
                 },
@@ -1702,6 +1715,27 @@ function getStrictBundledAssistantConfig(assistantId) {
     return config;
 }
 
+// SillyBunny: the third assistant card of Home and the Set as assistant action both write the pointer here, so Home shows a change at once.
+/**
+ * Sets the account's assistant pointer, or clears it, and renders Home again when it is shown.
+ * @param {string|null} avatar The avatar of a character in the library, or null to clear the pointer.
+ * @returns {Promise<void>}
+ */
+export async function setAssistantPointer(avatar) {
+    if (avatar === null) {
+        accountStorage.removeItem(assistantAvatarKey);
+    } else {
+        if (!characters.some(character => character.avatar === avatar)) {
+            throw new Error(`The library has no character with the avatar "${avatar}".`);
+        }
+        accountStorage.setItem(assistantAvatarKey, avatar);
+    }
+    printCharactersDebounced();
+    if (getHomePanel()) {
+        await refreshWelcomeScreen();
+    }
+}
+
 /**
  * Assigns a character as the assistant.
  * @param {string?} characterId Character ID
@@ -1725,12 +1759,13 @@ export function assignCharacterAsAssistant(characterId) {
         }
 
         toastr.info(t`${character.name} is no longer your assistant.`);
-        accountStorage.removeItem(assistantAvatarKey);
+        // SillyBunny: the pointer is written through the seam, so Home renders the change. Nothing awaits the render here, so a failure of it is told to the user instead of going unhandled.
+        void chooseHomeAssistant(null);
         return;
     }
 
-    accountStorage.setItem(assistantAvatarKey, character.avatar);
-    printCharactersDebounced();
+    // SillyBunny: the pointer is written through the seam, so Home renders the change. Nothing awaits the render here, so a failure of it is told to the user instead of going unhandled.
+    void chooseHomeAssistant(character.avatar);
     toastr.success(t`Set ${character.name} as your assistant.`);
 }
 

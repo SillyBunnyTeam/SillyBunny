@@ -1,6 +1,7 @@
 import { expect, test as base } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
+import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -70,7 +71,7 @@ const STEP_TARGETS = [
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
 const helpTile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="help"]');
 const homeTile = (page, key) => page.locator(`#chat > .welcomePanel .sbHomeTile[data-sb-home-key="${key}"]`);
-const moreAssistants = page => page.locator('#chat > .welcomePanel .sbHomeCard--more .sbHomeCardOpen');
+const chooseAssistant = page => page.locator('#chat > .welcomePanel .sbHomeCard--choose .sbHomeCardOpen');
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const surface = host => host.locator('section.sb-dialog');
 // A push marks the covered page and a pop marks the leaving page at once, so exactly one page is left while pages slide.
@@ -297,7 +298,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
         test.beforeEach(async ({ page, bundledCardsOnly }) => {
             await protectMaintainerServer(page);
-            await installFixtureChats(page, { bundledCardsOnly });
+            // The third assistant card is Choose Assistant only while the account has no assistant of its own.
+            await installFixtureChats(page, { bundledCardsOnly, accountStorage: PINNED_ASSISTANT_ACCOUNT });
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expectHome(page);
         });
@@ -2096,15 +2098,15 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            test('Escape on the More Assistants window gives focus to the More Assistants card of the new panel', async ({ page }) => {
-                await moreAssistants(page).click();
+            test('Escape on the Choose Assistant window gives focus to the Choose Assistant card of the new panel', async ({ page }) => {
+                await chooseAssistant(page).click();
                 await expect(hosts(page)).toBeVisible();
 
                 await renderHomeAgain(page);
                 await page.keyboard.press('Escape');
 
                 await expectClosed(page);
-                await expect(moreAssistants(page)).toBeFocused();
+                await expect(chooseAssistant(page)).toBeFocused();
             });
 
             test('Escape gives focus to the main menu button when the tile is gone from the new panel', async ({ page }) => {
@@ -2236,49 +2238,11 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'extras')).toBeFocused();
             });
 
-            test('More Assistants opens the window at the Assistants group, with focus on its heading', async ({ page }) => {
-                await moreAssistants(page).click();
-
-                const host = hosts(page);
-                await expect(host).toBeVisible();
-                await expect(host).toHaveAccessibleName('Bundled Extras');
-                const heading = host.getByRole('heading', { level: 3, name: 'Assistants' });
-                await expect(heading).toBeFocused();
-                // Assistants is the first group, so the heading is in view without a scroll. Only a scroll puts it at the top of the body.
-                const position = await heading.evaluate((node) => {
-                    const body = node.closest('.sb-dialog__body');
-                    return { fromTop: node.getBoundingClientRect().top - body.getBoundingClientRect().top, scrolled: body.scrollTop };
-                });
-                expect(position.scrolled, 'the body scrolled past the intro').toBeGreaterThan(0);
-                expect(position.fromTop, 'the heading sits at the top of the body').toBeLessThan(40);
-            });
-
             test('opened from the tile, the window does not take focus to a heading', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expect(host.locator('h3:focus')).toHaveCount(0);
                 await expect(host.locator(':focus')).toHaveCount(1);
-            });
-
-            test('More Assistants gets focus back after Escape and after Close, and opens one window when pressed twice', async ({ page }) => {
-                await moreAssistants(page).evaluate((button) => {
-                    button.click();
-                    button.click();
-                });
-                await expect(hosts(page)).toHaveCount(1);
-
-                await page.keyboard.press('Escape');
-                await expectClosed(page);
-                await expect(moreAssistants(page)).toBeFocused();
-
-                await moreAssistants(page).click();
-                await (await visiblePageClose(hosts(page))).click();
-                await expectClosed(page);
-                await expect(moreAssistants(page)).toBeFocused();
-            });
-
-            test('More Assistants is not a stub any more', async ({ page }) => {
-                await expect(moreAssistants(page)).not.toHaveAttribute('data-sb-stub', /.*/);
             });
 
             test('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
@@ -2287,7 +2251,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await showToasts(page);
                 await page.route('**/sillybunny-home/bundled-extras-window.js*', route => route.abort());
 
-                await moreAssistants(page).click();
+                await homeTile(page, 'extras').click();
 
                 await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
@@ -2296,6 +2260,56 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await page.unroute('**/sillybunny-home/bundled-extras-window.js*');
                 await homeTile(page, 'extras').click();
                 await expect(hosts(page)).toHaveAccessibleName('Bundled Extras');
+            });
+        });
+
+        test.describe('Choose Assistant', () => {
+            test(`opens from its card as a window${sheet ? ' sheet' : ''} named Choose Assistant, not Bundled Extras`, async ({ page }) => {
+                await chooseAssistant(page).click();
+
+                const host = hosts(page);
+                await expect(host).toBeVisible();
+                await expect(surface(host)).toHaveClass(/\bsb-dialog--window\b/);
+                await expect(host).toHaveAttribute('data-presentation', sheet ? 'sheet' : 'floating');
+                await expect(host).toHaveAccessibleName('Choose Assistant');
+            });
+
+            test('is not a stub', async ({ page }) => {
+                await expect(chooseAssistant(page)).not.toHaveAttribute('data-sb-stub', /.*/);
+            });
+
+            test('gets focus back on its card after Escape and after Close, and opens one window when pressed twice', async ({ page }) => {
+                await chooseAssistant(page).evaluate((button) => {
+                    button.click();
+                    button.click();
+                });
+                await expect(hosts(page)).toHaveCount(1);
+
+                await page.keyboard.press('Escape');
+                await expectClosed(page);
+                await expect(chooseAssistant(page)).toBeFocused();
+
+                await chooseAssistant(page).click();
+                await (await visiblePageClose(hosts(page))).click();
+                await expectClosed(page);
+                await expect(chooseAssistant(page)).toBeFocused();
+            });
+
+            test('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
+                const errors = [];
+                page.on('console', message => message.type() === 'error' && errors.push(message.text()));
+                await showToasts(page);
+                await page.route('**/sillybunny-home/assistant-picker.js*', route => route.abort());
+
+                await chooseAssistant(page).click();
+
+                await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toBeVisible();
+                await expect(hosts(page)).toHaveCount(0);
+                expect(errors.some(line => line.includes('Could not open the Choose Assistant window'))).toBe(true);
+
+                await page.unroute('**/sillybunny-home/assistant-picker.js*');
+                await chooseAssistant(page).click();
+                await expect(hosts(page)).toHaveAccessibleName('Choose Assistant');
             });
         });
 

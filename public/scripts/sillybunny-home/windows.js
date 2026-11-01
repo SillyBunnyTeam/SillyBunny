@@ -99,3 +99,5 @@ export const openAbout = openOnce('About', async () => (await import('../sillybu
 export const openGettingStarted = openOnce('Getting Started', async () => (await import('./getting-started-window.js')).openGettingStartedWindow());
 /** Takes `{ group }`, a group id to open the window at. */
 export const openBundledExtras = openOnce('Bundled Extras', async options => (await import('./bundled-extras-window.js')).openBundledExtrasWindow(options));
+/** Takes what the picker needs: `{ getEntries, getThumbnailUrl, choose }`. */
+export const openAssistantPicker = openOnce('Choose Assistant', async options => (await import('./assistant-picker.js')).openAssistantPickerWindow(options));

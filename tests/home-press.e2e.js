@@ -17,8 +17,8 @@ const RECENT_COUNT = 8;
  */
 const SURFACES = [
     { name: 'a tile', surface: '.sbHomeTile', hover: '--sb-home-tint-hover' },
-    { name: 'an assistant card', surface: '.sbHomeCard:not(.sbHomeCard--more)', target: '.sbHomeCardOpen', hover: '--sb-home-tint-hover' },
-    { name: 'More Assistants', surface: '.sbHomeCard--more', target: '.sbHomeCardOpen', hover: '--sb-home-tint-hover' },
+    { name: 'an assistant card', surface: '.sbHomeCard:not(.sbHomeCard--choose)', target: '.sbHomeCardOpen', hover: '--sb-home-tint-hover' },
+    { name: 'Choose Assistant', surface: '.sbHomeCard--choose', target: '.sbHomeCardOpen', hover: '--sb-home-tint-hover' },
     { name: 'a footer button of a card', surface: '.sbHomeFootButton', hover: '--sb-flat-hover-bg' },
     { name: 'the menu button of a card', surface: '.sbHomeCardFooter .sbHomeRowMenu', hover: '--sb-flat-hover-bg' },
     { name: 'the main menu button', surface: '.sbHomeMenuButton', hover: '--sb-flat-hover-bg' },

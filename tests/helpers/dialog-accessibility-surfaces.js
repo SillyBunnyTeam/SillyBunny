@@ -3,8 +3,10 @@
  * spec holds only the checks. Where a step before a trigger is programmatic, the surface says why.
  */
 
+import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 import { OPEN_ACTION_SHEET } from './action-sheet.js';
+import { makeCharacterCard, withoutAssistantAccount } from './assistant-library.js';
 import {
     bootArchive,
     dialog as archiveDialog,
@@ -115,15 +117,42 @@ const OPEN_DIALOG = 'dialog[open]:not([closing])';
 /** The shown page of the open dialog: not the pages under it, and not one that is leaving. */
 const SHOWN_PAGE = 'dialog.sb-dialog-host:not([closing]) .sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving)';
 
+const ASSISTANT_LIBRARY = [
+    ['default_AssistantReisen.png', 'Assistant Reisen'],
+    ['default_AssistantTewi.png', 'Assistant Tewi'],
+    ['Alice.png', 'Alice'],
+    ['Bob.png', 'Bob'],
+    ['Carol.png', 'Carol'],
+];
+const ASSISTANT_THUMBNAIL = readFileSync(new URL('../../public/img/ai4.png', import.meta.url));
+
+/**
+ * Makes the assistant cards of Home the same on every data root: the library is the one above, the pointer is the one the
+ * surface names, and the migration of the pointer counts as done, so the third card is the same on every run.
+ */
+async function pinAssistants(page, pointer) {
+    await page.route('**/thumbnail?*', route => route.fulfill({ contentType: 'image/png', body: ASSISTANT_THUMBNAIL }));
+    await page.route('**/api/characters/all', route => route.fulfill({ json: ASSISTANT_LIBRARY.map(([avatar, name]) => makeCharacterCard(avatar, name)) }));
+    return (settings) => {
+        settings.accountStorage = {
+            ...withoutAssistantAccount(settings.accountStorage),
+            WelcomePage_AssistantPointerMigrated: 'true',
+            ...(pointer === null ? {} : { assistant: pointer }),
+        };
+    };
+}
+
 /**
  * Boots the app on Home with the account of a spec about Home, and Welcome shut. `firstRun` boots an account that has never
  * met Welcome instead: its dialog is the first thing on the page, and the app is not ready until the persona has a name.
+ * `assistants` pins the library and the assistant pointer (`null` for none), so the third assistant card is known.
  */
-async function bootHome(page, baseURL, viewport, options, { firstRun = false } = {}) {
+async function bootHome(page, baseURL, viewport, options, { firstRun = false, assistants = null } = {}) {
     const { context, configureSettings, reducedMotion } = await prepareBoot(page, baseURL, { ...options, guard: false });
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion });
+    const pinAccount = assistants ? await pinAssistants(page, assistants.pointer) : () => {};
     await page.route('**/api/settings/get', async (route) => {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
@@ -131,6 +160,7 @@ async function bootHome(page, baseURL, viewport, options, { firstRun = false } =
         // A first run has no stored checklist, which is how Getting Started tells it from an old account.
         applyHomeTestSettings(settings, firstRun ? { firstRun: true, value: null, welcome: 'never-seen' } : {});
         configureSettings(settings);
+        pinAccount(settings);
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.goto('/');
@@ -147,6 +177,7 @@ async function bootHome(page, baseURL, viewport, options, { firstRun = false } =
 }
 
 const bootHomeFirstRun = (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { firstRun: true });
+const bootHomeWithAssistants = pointer => (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { assistants: { pointer } });
 
 async function waitForSettled(page) {
     await page.waitForFunction(() => !document.querySelector('dialog[open][opening], dialog[open][closing]'));
@@ -251,6 +282,31 @@ async function openFromMenu(page, label) {
     await opener.focus();
     await pressKey(page, 'Enter');
     const item = page.getByRole('menuitem', { name: label, exact: true });
+    await expect(item).toBeVisible();
+    await item.focus();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.locator(OPEN_DIALOG));
+    return opener;
+}
+
+const assistantCardPart = (page, selector) => page.locator(`#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-own"] ${selector}`);
+const assistantMenuButton = page => assistantCardPart(page, '.sbHomeRowMenu');
+
+/** The card that chooses is a button, so it opens the picker with Enter, and the window gives the focus back to it. */
+async function openPickerFromChooseCard(page) {
+    const opener = assistantCardPart(page, '.sbHomeCardOpen');
+    await opener.focus();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.locator(OPEN_DIALOG));
+    return opener;
+}
+
+/** The menu button of the chosen card holds the focus when the picker opens, so it is where the window returns the focus. */
+async function openPickerFromCardMenu(page) {
+    const opener = assistantMenuButton(page);
+    await opener.focus();
+    await pressKey(page, 'Enter');
+    const item = page.getByRole('menuitem', { name: 'Choose Another Assistant…', exact: true });
     await expect(item).toBeVisible();
     await item.focus();
     await pressKey(page, 'Enter');
@@ -731,5 +787,44 @@ SURFACES.push(
         open: page => openFromTile(page, 'extras'),
         escapes: [{ closes: true, async check() {} }],
         states: [{ name: 'extras', title: 'Bundled Extras', async enter() {} }],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'assistant-picker',
+        title: 'Choose Assistant window (opened from the Choose Assistant card)',
+        boot: bootHomeWithAssistants(null),
+        structure: { name: 'Choose Assistant' },
+        open: openPickerFromChooseCard,
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'characters', title: 'Choose Assistant', async enter() {} }],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'assistant-picker-from-menu',
+        title: 'Choose Assistant window (opened from Choose Another Assistant in the menu of the chosen card)',
+        boot: bootHomeWithAssistants('Alice.png'),
+        structure: { name: 'Choose Assistant' },
+        open: openPickerFromCardMenu,
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'characters', title: 'Choose Assistant', async enter() {} }],
+    },
+    {
+        id: 'assistant-menu-sheet',
+        title: 'Assistant menu sheet (the chosen assistant card)',
+        viewports: [PHONE],
+        modal: true,
+        rootSelector: '.sb-action-sheet',
+        frameSelector: '.sb-action-sheet',
+        isOpen: page => page.locator(OPEN_ACTION_SHEET),
+        boot: bootHomeWithAssistants('Alice.png'),
+        async open(page) {
+            const opener = assistantMenuButton(page);
+            await opener.focus();
+            await pressKey(page, 'Enter');
+            await waitForSurface(page, page.locator(OPEN_ACTION_SHEET));
+            return opener;
+        },
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'sheet', async enter() {} }],
     },
 );

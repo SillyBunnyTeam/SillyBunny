@@ -8,7 +8,7 @@ import { COPY_PLACEHOLDER } from './copy.js';
 const ACTION_ERROR_SLOT = 'AS-ACTION-ERROR';
 
 /** The toast has no copy yet, and it carries the placeholder marks like the text of a page. */
-function reportFailure() {
+export function reportFailure() {
     const toast = globalThis.toastr?.error(COPY_PLACEHOLDER);
     toast?.find('.toast-message').attr({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': ACTION_ERROR_SLOT });
 }

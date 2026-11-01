@@ -22,7 +22,7 @@ const VIEWPORTS = [
 const REISEN = 'default_AssistantReisen.png';
 const TEWI = 'default_AssistantTewi.png';
 const NAHIDA = 'default_AssistantNahida.png';
-const NAMES = { [REISEN]: 'Assistant Reisen', [TEWI]: 'Assistant Tewi', [NAHIDA]: 'Assistant Nahida', 'Alice.png': 'Alice' };
+const NAMES = { [REISEN]: 'Assistant Reisen', [TEWI]: 'Assistant Tewi', [NAHIDA]: 'Assistant Nahida', 'Alice.png': 'Alice', 'Bob.png': 'Bob' };
 const MODE_KEY = 'WelcomePage_LastMode';
 // An account that was migrated keeps the pointer it has; the startup would otherwise move it to Reisen.
 const MIGRATED = { WelcomePage_AssistantPointerMigrated: 'true' };
@@ -41,9 +41,10 @@ const card = avatar => makeCharacterCard(avatar, NAMES[avatar] ?? avatar);
  * Starts the app on Home with a library that the test names, in memory, and an account storage that it seeds. The
  * cards of the library are made up, and every write the app makes is recorded and answered without reaching the server.
  * @param {import('@playwright/test').Page} page
- * @param {{ library: string[], accountStorage?: Record<string, string>, lastMode?: 'roleplay' | 'conversation' }} options
+ * @param {{ library: string[], accountStorage?: Record<string, string>, lastMode?: 'roleplay' | 'conversation', exact?: boolean }} options
+ *   `exact` drops the characters that the data root holds, so the picker lists the library of the test and nothing else.
  */
-async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay' }) {
+async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay', exact = false }) {
     const world = { library: new Set(library), imports: [], chatSaves: [], lastChats: [] };
     const bundled = [REISEN, TEWI, NAHIDA];
 
@@ -63,6 +64,7 @@ async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay' 
     }
     await page.route('**/thumbnail?*', route => route.fulfill({ contentType: 'image/png', body: THUMBNAIL }));
     await page.route('**/api/characters/all', async (route) => {
+        if (exact) return route.fulfill({ json: [...world.library].map(card) });
         const real = await fetchJsonOrSkip(route);
         if (!real) return;
         return route.fulfill({ json: [...real.filter(entry => !bundled.includes(entry.avatar)), ...[...world.library].map(card)] });
@@ -122,13 +124,13 @@ for (const { name, portrait, options } of VIEWPORTS) {
         test.use(options);
 
         test.describe('the cards', () => {
-            test('are the character of the pointer, then Reisen, Tewi and an installed Nahida, each with its subtitle slot', async ({ page }) => {
+            test('are Reisen, Tewi and the character of the pointer, each with its subtitle slot', async ({ page }) => {
                 await boot(page, { library: [...BOTH, NAHIDA, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
 
                 const keys = await page.locator(`${HOME} .sbHomeCards > .sbHomeCard`).evaluateAll(nodes => nodes.map(node => node.dataset.sbHomeKey));
-                expect(keys).toEqual(['assistant-pointer', 'assistant-reisen', 'assistant-tewi', 'assistant-nahida', 'assistants-more']);
-                await expect(page.locator(`${HOME} .sbHomeCardName`)).toHaveText(['Alice', 'Reisen', 'Tewi', 'Nahida', 'More Assistants']);
-                for (const [key, slot] of [['assistant-pointer', 'AS-POINTER-SUB'], ['assistant-reisen', 'AS-REISEN-SUB'], ['assistant-tewi', 'AS-TEWI-SUB'], ['assistant-nahida', 'AS-NAHIDA-SUB']]) {
+                expect(keys).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
+                await expect(page.locator(`${HOME} .sbHomeCardName`)).toHaveText(['Reisen', 'Tewi', 'Alice']);
+                for (const [key, slot] of [['assistant-reisen', 'AS-REISEN-SUB'], ['assistant-tewi', 'AS-TEWI-SUB'], ['assistant-own', 'AS-POINTER-SUB']]) {
                     const subtitle = cardOf(page, key).locator('.sbHomeCardSub');
                     await expect(subtitle, key).toHaveAttribute('data-sb-copy-slot', slot);
                     await expect(subtitle, key).toHaveAttribute('data-sb-copy-placeholder', 'true');
@@ -136,19 +138,16 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 }
             });
 
-            test('show the thumbnail of the card for the pointer character and for Nahida, and a placeholder box for Reisen and Tewi', async ({ page }) => {
-                await boot(page, { library: [...BOTH, NAHIDA, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+            test('show the thumbnail of the card for the pointer character, and a placeholder box for Reisen and Tewi', async ({ page }) => {
+                await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
 
-                await expect(cardOf(page, 'assistant-nahida').locator('.sbHomeArt[data-sb-art-placeholder="row-nahida"] img')).toHaveAttribute('src', /file=default_AssistantNahida\.png/);
-                await expect(cardOf(page, 'assistant-pointer').locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=Alice\.png/);
-                for (const key of ['assistant-nahida', 'assistant-pointer']) {
-                    await expect.poll(() => cardOf(page, key).locator('.sbHomeArt img').evaluate(image => image.complete && image.naturalWidth), key).toBeGreaterThan(0);
-                }
+                await expect(cardOf(page, 'assistant-own').locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=Alice\.png/);
+                await expect.poll(() => cardOf(page, 'assistant-own').locator('.sbHomeArt img').evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
                 await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeArt[data-sb-art-placeholder="row-reisen"]')).toBeVisible();
                 await expect(cardOf(page, 'assistant-reisen').locator('img')).toHaveCount(0);
 
                 // Every portrait has the box of the placeholder of Reisen: the one pixel scale of the screen, the same corners, and a thumbnail that covers it.
-                const boxes = await page.locator(`${HOME} .sbHomeCard:not(.sbHomeCard--more) .sbHomeArt`).evaluateAll(nodes => nodes.map((node) => {
+                const boxes = await page.locator(`${HOME} .sbHomeCard:not(.sbHomeCard--choose) .sbHomeArt`).evaluateAll(nodes => nodes.map((node) => {
                     const box = node.getBoundingClientRect();
                     const image = node.querySelector('img');
                     const imageBox = image?.getBoundingClientRect();
@@ -166,18 +165,18 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     expect(box.radius, `${box.art} corners`).toBe(reisen.radius);
                 }
                 const pictures = boxes.filter(box => box.image);
-                expect(pictures.map(box => box.art)).toEqual(['row-pointer', 'row-nahida']);
-                expect(pictures.map(box => box.image)).toEqual(Array(2).fill({ size: reisen.size, fit: 'cover' }));
+                expect(pictures.map(box => box.art)).toEqual(['row-pointer']);
+                expect(pictures.map(box => box.image)).toEqual([{ size: reisen.size, fit: 'cover' }]);
             });
 
             test('keep the box of their art once a window has opened, because the art rules of a window stay inside the window', async ({ page }) => {
-                await boot(page, { library: [...BOTH, NAHIDA, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
-                const boxes = () => page.locator(`${HOME} .sbHomeCard:not(.sbHomeCard--more) .sbHomeArt`).evaluateAll(nodes => nodes.map((node) => {
+                await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+                const boxes = () => page.locator(`${HOME} .sbHomeCard:not(.sbHomeCard--choose) .sbHomeArt`).evaluateAll(nodes => nodes.map((node) => {
                     const box = node.getBoundingClientRect();
                     return { art: node.dataset.sbArtPlaceholder, size: [Math.round(box.width), Math.round(box.height)] };
                 }));
                 const before = await boxes();
-                expect(before.map(box => box.size)).toEqual(Array(4).fill([portrait, portrait]));
+                expect(before.map(box => box.size)).toEqual(Array(3).fill([portrait, portrait]));
 
                 await page.locator(`${HOME} .sbHomeTile[data-sb-home-key="extras"]`).click();
                 await expect(hosts(page)).toBeVisible();
@@ -186,14 +185,6 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(hosts(page)).toHaveCount(0);
 
                 expect(await boxes()).toEqual(before);
-            });
-
-            test('list Reisen and Tewi alone, with no card for Nahida, while the pointer names one of them or nothing', async ({ page }) => {
-                await boot(page, { library: BOTH, accountStorage: { assistant: REISEN } });
-
-                await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
-                await expect(cardOf(page, 'assistant-pointer')).toHaveCount(0);
-                await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
             });
 
             test('are sensitive when the library has the card: the card button, both footer buttons and the menu button are enabled', async ({ page }) => {
@@ -289,15 +280,6 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                 await expect.poll(() => currentAvatar(page)).toBe(TEWI);
                 await expect.poll(() => currentChat(page)).toMatch(/^Assistant Tewi - /);
-            });
-
-            test('opens a chat with Nahida from her card', async ({ page }) => {
-                await boot(page, { library: [...BOTH, NAHIDA, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
-
-                await startOf(cardOf(page, 'assistant-nahida')).click();
-
-                await expect.poll(() => currentAvatar(page)).toBe(NAHIDA);
-                await expect.poll(() => currentChat(page)).toMatch(/^Assistant Nahida - /);
             });
 
             test('opens one chat when the button is pressed twice in a row', async ({ page }) => {
@@ -465,34 +447,488 @@ for (const { name, portrait, options } of VIEWPORTS) {
             });
         });
 
-        test.describe('Nahida after Install', () => {
-            test('has no card until she is installed, and Install in Bundled Extras adds her card to Home', async ({ page }) => {
-                const world = await boot(page, { library: BOTH });
-                await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
+        test.describe('the third slot', () => {
+            const ownCard = page => cardOf(page, 'assistant-own');
+            const chooseOf = page => overlayOf(ownCard(page));
+            const LIBRARY = [...BOTH, NAHIDA, 'Alice.png', 'Bob.png'];
+            const expectChooseCard = async (page) => {
+                const own = ownCard(page);
 
-                await page.locator(`${HOME} .sbHomeTile[data-sb-home-key="extras"]`).click();
-                const host = hosts(page);
-                await expect(host).toBeVisible();
-                const row = host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: /^Nahida$/ }) });
-                await row.locator('.sbBundledExtraControls button', { hasText: 'Install' }).click();
+                await expect(own.locator('.sbHomeCardName')).toHaveText('Choose Assistant');
+                await expect(own.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-CHOOSE-SUB');
+                await expect(own.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(own.locator('.sbHomeCardSub')).toHaveText(COPY_PLACEHOLDER);
+                await expect(own.locator('.sbHomeCardFooter')).toHaveCount(0);
+                await expect(menuOf(own)).toHaveCount(0);
+                await expect(own.locator('button')).toHaveCount(1);
+                await expect(chooseOf(page)).toHaveAccessibleName('Choose Assistant');
+                await expect(chooseOf(page)).toHaveAttribute('aria-haspopup', 'dialog');
+                await expect(own.locator('.sbHomeChooseIcon i.fa-user-plus')).toHaveCount(1);
+            };
+            const expectPointerCard = async (page) => {
+                const own = ownCard(page);
 
-                await expect(row.locator('.sbBundledExtraState')).toHaveText('Installed');
-                expect(world.imports).toHaveLength(1);
-                const nahida = cardOf(page, 'assistant-nahida');
-                await expect(nahida).toHaveCount(1);
-                await expect(nahida.locator('.sbHomeCardName')).toHaveText('Nahida');
-                await expect(nahida.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-NAHIDA-SUB');
-                await expect(nahida.locator('.sbHomeArt img')).toHaveAttribute('src', /file=default_AssistantNahida\.png/);
-                await expect(overlayOf(nahida)).toBeEnabled();
-                await expect(startOf(nahida)).toBeEnabled();
-                await expect(menuOf(nahida)).toHaveCount(1);
+                await expect(own.locator('.sbHomeCardName')).toHaveText('Alice');
+                await expect(own.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-POINTER-SUB');
+                await expect(own.locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=Alice\.png/);
+                await expect(own.locator('button')).toHaveCount(4);
+                await expect(own.locator('.sbHomeFootLabel')).toHaveText(['Start New Chat', 'Temporary Chat']);
+                await expect(menuOf(own)).toHaveCount(1);
+                await expect(own.locator('.sbHomeChooseIcon')).toHaveCount(0);
+                const art = await sizeOf(own.locator('.sbHomeArt'));
+                expect([art.width, art.height]).toEqual([portrait, portrait]);
+            };
+            const openFromChooseCard = page => chooseOf(page).click();
+            const openFromMenu = async (page) => {
+                await menuOf(ownCard(page)).click();
+                await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
+            };
+            const ROOTS = [
+                { name: 'no pointer', accountStorage: {}, kind: 'choose', expectCard: expectChooseCard, openPicker: openFromChooseCard },
+                { name: 'a pointer to a user card', accountStorage: { assistant: 'Alice.png' }, kind: 'pointer', expectCard: expectPointerCard, openPicker: openFromMenu },
+                { name: 'a pointer to Reisen', accountStorage: { assistant: REISEN }, kind: 'choose', expectCard: expectChooseCard, openPicker: openFromChooseCard },
+                { name: 'a pointer to a missing avatar', accountStorage: { assistant: 'Gone.png' }, kind: 'choose', expectCard: expectChooseCard, openPicker: openFromChooseCard },
+            ];
+            const sizeOf = locator => locator.evaluate((node) => {
+                const box = node.getBoundingClientRect();
+                return { width: box.width, height: box.height };
             });
 
-            test('her card is last of the assistant cards, before More Assistants', async ({ page }) => {
-                await boot(page, { library: [...BOTH, NAHIDA] });
+            const MODE_LABELS = { full: 'Full', compact: 'Compact' };
+            for (const mode of Object.keys(MODE_LABELS)) {
+                test(`keeps the height of every card the same whether the third slot is empty or chosen, in ${MODE_LABELS[mode]} mode`, async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    await page.locator(`${HOME} .sbHomeMenuButton`).click();
+                    await page.getByRole('menuitemradio', { name: MODE_LABELS[mode], exact: true }).click();
+                    await expect(page.locator(HOME)).toHaveAttribute('data-home-panel-mode', mode);
+                    const heights = () => page.locator(`${HOME} .sbHomeCards > .sbHomeCard`).evaluateAll(cards => cards.map(card => card.getBoundingClientRect().height));
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+                    const empty = await heights();
 
-                const keys = await page.locator(`${HOME} .sbHomeCards > .sbHomeCard`).evaluateAll(nodes => nodes.map(node => node.dataset.sbHomeKey));
-                expect(keys).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-nahida', 'assistants-more']);
+                    await page.evaluate(async () => (await import('/scripts/welcome-screen.js')).setAssistantPointer('Alice.png'));
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
+                    const chosen = await heights();
+
+                    expect(empty).toHaveLength(3);
+                    expect(chosen).toHaveLength(3);
+                    expect(Math.max(...empty) - Math.min(...empty), 'the cards of one state are as tall as each other').toBeLessThanOrEqual(1);
+                    expect(Math.max(...chosen) - Math.min(...chosen)).toBeLessThanOrEqual(1);
+                    expect(Math.abs(empty[0] - chosen[0]), `Reisen is ${empty[0]}px tall with the slot empty and ${chosen[0]}px with it chosen`).toBeLessThanOrEqual(1);
+                });
+            }
+
+            for (const { name: rootName, accountStorage, kind, expectCard, openPicker } of ROOTS) {
+                test.describe(`with ${rootName}`, () => {
+                    test(`is ${kind === 'choose' ? 'the Choose Assistant card' : 'the card of the chosen character'}, third of three, the size of the card of Reisen`, async ({ page }) => {
+                        await boot(page, { library: LIBRARY, accountStorage, exact: true });
+
+                        await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
+                        await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`).nth(2)).toHaveAttribute('data-sb-home-key', 'assistant-own');
+                        await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', kind);
+                        await expect(cardOf(page, 'assistant-reisen')).toHaveAttribute('data-sb-assistant-kind', 'bundled');
+                        const own = await sizeOf(ownCard(page));
+                        const reisen = await sizeOf(cardOf(page, 'assistant-reisen'));
+                        expect(Math.abs(own.width - reisen.width), 'width').toBeLessThanOrEqual(1);
+                        expect(Math.abs(own.height - reisen.height), 'height').toBeLessThanOrEqual(1);
+                    });
+
+                    // eslint-disable-next-line playwright/expect-expect -- The state of the card has its assertions in `expectCard`.
+                    test('has the controls and the text of its state', async ({ page }) => {
+                        await boot(page, { library: LIBRARY, accountStorage, exact: true });
+
+                        await expectCard(page);
+                    });
+
+                    test('lists Reisen and Tewi once each, and the same characters in the picker whatever the pointer names', async ({ page }) => {
+                        await boot(page, { library: LIBRARY, accountStorage, exact: true });
+
+                        await expect(cardOf(page, 'assistant-reisen')).toHaveCount(1);
+                        await expect(cardOf(page, 'assistant-tewi')).toHaveCount(1);
+                        await openPicker(page);
+
+                        const host = hosts(page);
+                        await expect(host).toBeVisible();
+                        await expect(host).toHaveAccessibleName('Choose Assistant');
+                        await expect(host.locator('.ds-row-label')).toHaveText(['Alice', 'Assistant Nahida', 'Bob']);
+                    });
+                });
+            }
+
+            test.describe('the picker', () => {
+                const openPicker = async (page) => {
+                    await chooseOf(page).click();
+                    const host = hosts(page);
+                    await expect(host).toBeVisible();
+                    return host;
+                };
+                const rowOf = (host, page, label) => host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: new RegExp(`^${label}$`) }) });
+                const searchInputOf = host => host.locator('.sb-dialog__search input');
+
+                test('has a thumbnail of the card for each character, and leaves Reisen and Tewi out', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+
+                    const host = await openPicker(page);
+
+                    await expect(host.locator('.ds-row-label')).not.toContainText(['Assistant Reisen', 'Assistant Tewi']);
+                    for (const [label, avatar] of [['Alice', 'Alice.png'], ['Bob', 'Bob.png'], ['Assistant Nahida', NAHIDA]]) {
+                        const image = rowOf(host, page, label).locator('img.sbAssistantPickerThumb');
+                        await expect(image, label).toHaveAttribute('src', new RegExp(`file=${avatar.replace('.', '\\.')}`));
+                        await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth), label).toBeGreaterThan(0);
+                        // A row chooses a character and opens nothing, so it has no chevron.
+                        await expect(rowOf(host, page, label).locator('.ds-row__chevron'), label).toBeHidden();
+                    }
+                });
+
+                test('applies the first row pressed when a second one is pressed before the window has closed', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    await openPicker(page);
+
+                    await page.evaluate(() => {
+                        const rowOf = avatar => document.querySelector(`dialog.sb-dialog-host .ds-row[data-sb-assistant-avatar="${avatar}"]`);
+                        // The window may leave the page at once, so both rows are found before the first one is pressed.
+                        const [alice, bob] = [rowOf('Alice.png'), rowOf('Bob.png')];
+                        alice.click();
+                        bob.click();
+                    });
+
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
+                    await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Alice');
+                    expect(await stored(page, 'assistant')).toBe('Alice.png');
+                });
+
+                test.describe('with a long library', () => {
+                    const CHARACTERS = Array.from({ length: 400 }, (_, index) => `Char${String(index).padStart(3, '0')}.png`);
+                    const LONG = [...BOTH, ...CHARACTERS];
+                    const builtRows = page => page.locator('dialog.sb-dialog-host .ds-row[data-sb-assistant-avatar]');
+
+                    test('builds the first rows at once and the rest in chunks, always in the order of the list', async ({ page }) => {
+                        await boot(page, { library: LONG, exact: true });
+                        await page.evaluate(() => {
+                            window.qaRowCounts = [];
+                            new MutationObserver(() => {
+                                window.qaRowCounts.push(document.querySelectorAll('dialog.sb-dialog-host .ds-row[data-sb-assistant-avatar]').length);
+                            }).observe(document.body, { childList: true, subtree: true });
+                        });
+
+                        await openPicker(page);
+
+                        await expect(builtRows(page)).toHaveCount(CHARACTERS.length);
+                        const counts = await page.evaluate(() => window.qaRowCounts);
+                        const afterOpening = counts.filter(count => count > 0);
+                        expect(afterOpening[0], 'rows in the first paint').toBeLessThan(CHARACTERS.length);
+                        expect(afterOpening.length, 'steps from the first paint to the whole list').toBeGreaterThan(2);
+                        expect(afterOpening).toEqual([...afterOpening].sort((a, b) => a - b));
+                        expect(await builtRows(page).evaluateAll(rows => rows.map(row => row.dataset.sbAssistantAvatar))).toEqual(CHARACTERS);
+                    });
+
+                    test('searches the whole library at once, also the rows that are still to come', async ({ page }) => {
+                        await boot(page, { library: LONG, exact: true });
+                        const host = await openPicker(page);
+
+                        await host.getByRole('button', { name: 'Search Characters' }).click();
+                        await searchInputOf(host).fill('char39');
+
+                        await expect(builtRows(page)).toHaveCount(CHARACTERS.length);
+                        await expect(host.locator('.ds-row[data-sb-assistant-avatar]:not([hidden]) .ds-row-label')).toHaveText(CHARACTERS.slice(390));
+                    });
+
+                    test('puts the focus on the selected row far down the list, and keeps it there while the rest arrives', async ({ page }) => {
+                        await boot(page, { library: LONG, accountStorage: { assistant: 'Char350.png' }, exact: true });
+                        await menuOf(ownCard(page)).click();
+                        await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
+
+                        await expect(builtRows(page).filter({ hasText: 'Char350.png' })).toBeFocused();
+                        await expect(builtRows(page)).toHaveCount(CHARACTERS.length);
+                        await expect(builtRows(page).filter({ hasText: 'Char350.png' })).toBeFocused();
+                        await expect(builtRows(page).filter({ hasText: 'Char350.png' })).toHaveAttribute('aria-current', 'true');
+                        await expect(page.locator('dialog.sb-dialog-host .sbAssistantPickerSelected')).toHaveCount(1);
+                    });
+                });
+
+                test('marks the character of the pointer as selected, and puts focus on its row', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, accountStorage: { assistant: 'Bob.png' }, exact: true });
+                    await menuOf(ownCard(page)).click();
+                    await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
+
+                    const host = hosts(page);
+                    await expect(host).toBeVisible();
+                    await expect(host.locator('.ds-row[aria-current="true"]')).toHaveCount(1);
+                    await expect(rowOf(host, page, 'Bob')).toHaveAttribute('aria-current', 'true');
+                    await expect(rowOf(host, page, 'Bob').locator('.sbAssistantPickerSelected')).toBeVisible();
+                    await expect(host.locator('.sbAssistantPickerSelected')).toHaveCount(1);
+                    await expect(rowOf(host, page, 'Bob')).toBeFocused();
+                });
+
+                test('marks no row while the pointer names nobody of the list', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, accountStorage: { assistant: REISEN }, exact: true });
+
+                    const host = await openPicker(page);
+
+                    await expect(host.locator('.ds-row[aria-current]')).toHaveCount(0);
+                    await expect(host.locator('.sbAssistantPickerSelected')).toHaveCount(0);
+                });
+
+                test('searches by name, says No results, and takes one Escape to clear the search, one to close it and one to close the window', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    const host = await openPicker(page);
+
+                    await host.getByRole('button', { name: 'Search Characters' }).click();
+                    await searchInputOf(host).fill('bo');
+                    await expect(host.locator('.ds-row:not([hidden]) .ds-row-label')).toHaveText(['Bob']);
+                    await expect(rowOf(host, page, 'Alice')).toBeHidden();
+                    await expect(rowOf(host, page, 'Bob')).toBeVisible();
+
+                    await searchInputOf(host).fill('zzz');
+                    await expect(host.locator('.ds-row:not([hidden])')).toHaveCount(0);
+                    await expect(host.locator('.sb-status-page__title', { hasText: 'No results' })).toBeVisible();
+
+                    await page.keyboard.press('Escape');
+                    await expect(searchInputOf(host)).toHaveValue('');
+                    await expect(host.locator('.ds-row:not([hidden])')).toHaveCount(3);
+                    await expect(hosts(page)).toBeVisible();
+                    await expect(searchInputOf(host)).toBeVisible();
+                    await page.keyboard.press('Escape');
+                    await expect(searchInputOf(host)).toBeHidden();
+                    await expect(hosts(page)).toBeVisible();
+                    await page.keyboard.press('Escape');
+                    await expect(hosts(page)).toHaveCount(0);
+                    await expect(chooseOf(page)).toBeFocused();
+                });
+
+                test('shows a marked placeholder status and no rows while the library holds only Reisen and Tewi', async ({ page }) => {
+                    await boot(page, { library: BOTH, exact: true });
+
+                    const host = await openPicker(page);
+
+                    await expect(host.locator('.ds-row')).toHaveCount(0);
+                    const title = host.locator('.sb-status-page__title[data-sb-copy-slot="AS-PICKER-EMPTY-HEAD"]');
+                    await expect(title).toBeVisible();
+                    await expect(title).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                    await expect(title).toHaveText(COPY_PLACEHOLDER);
+                });
+
+                test('Escape closes it without a change and returns focus to the Choose Assistant card', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    await openPicker(page);
+
+                    await page.keyboard.press('Escape');
+
+                    await expect(hosts(page)).toHaveCount(0);
+                    await expect(chooseOf(page)).toBeFocused();
+                    expect(await stored(page, 'assistant')).toBeNull();
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+                });
+
+                test('choosing a character writes the pointer and turns the card into the card of that character', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    const host = await openPicker(page);
+
+                    await rowOf(host, page, 'Bob').click();
+
+                    await expect(hosts(page)).toHaveCount(0);
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
+                    await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Bob');
+                    await expect(ownCard(page).locator('.sbHomeArt img')).toHaveAttribute('src', /file=Bob\.png/);
+                    expect(await stored(page, 'assistant')).toBe('Bob.png');
+                    await expect(ownCard(page).locator(':focus')).toHaveCount(1);
+                });
+
+                test('choosing the character that is already chosen changes nothing', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, accountStorage: { assistant: 'Alice.png' }, exact: true });
+                    await menuOf(ownCard(page)).click();
+                    await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
+                    const host = hosts(page);
+
+                    await rowOf(host, page, 'Alice').click();
+
+                    await expect(hosts(page)).toHaveCount(0);
+                    expect(await stored(page, 'assistant')).toBe('Alice.png');
+                    await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Alice');
+                });
+
+                test('a character that left the library before the choice is told with the placeholder toast, and the pointer stays', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    await showToasts(page);
+                    const host = await openPicker(page);
+                    await page.evaluate(async () => {
+                        const { characters } = await import('/script.js');
+                        characters.splice(characters.findIndex(character => character.avatar === 'Bob.png'), 1);
+                    });
+
+                    await rowOf(host, page, 'Bob').click();
+
+                    const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="AS-ACTION-ERROR"]');
+                    await expect(toast).toBeVisible();
+                    await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                    expect(await stored(page, 'assistant')).toBeNull();
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+                });
+            });
+
+            test.describe('the card of the chosen character', () => {
+                const chosen = { library: LIBRARY, accountStorage: { assistant: 'Alice.png' }, exact: true };
+
+                test('has the chat item in the other mode, Choose Another Assistant and Remove Assistant, and Reisen keeps one item', async ({ page }) => {
+                    await boot(page, chosen);
+
+                    await menuOf(ownCard(page)).click();
+                    await expect(page.getByRole('menu', { name: 'Assistant Menu' }).getByRole('menuitem')).toHaveText(['New Chat in Conversation', 'Choose Another Assistant…', 'Remove Assistant']);
+                    await page.keyboard.press('Escape');
+                    await expect(page.locator('.sb-action-popover, .sb-action-sheet')).toHaveCount(0);
+
+                    await menuOf(cardOf(page, 'assistant-reisen')).click();
+                    await expect(page.getByRole('menu', { name: 'Assistant Menu' }).getByRole('menuitem')).toHaveText(['New Chat in Conversation']);
+                });
+
+                test('Choose Another Assistant opens the picker, and Escape returns focus to the menu button of the card', async ({ page }) => {
+                    await boot(page, chosen);
+                    await menuOf(ownCard(page)).click();
+
+                    await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
+                    await expect(hosts(page)).toHaveAccessibleName('Choose Assistant');
+                    await page.keyboard.press('Escape');
+
+                    await expect(hosts(page)).toHaveCount(0);
+                    await expect(menuOf(ownCard(page))).toBeFocused();
+                });
+
+                test('Choose Another Assistant changes the character of the card', async ({ page }) => {
+                    await boot(page, chosen);
+                    await menuOf(ownCard(page)).click();
+                    await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
+
+                    await hosts(page).locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: /^Bob$/ }) }).click();
+
+                    await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Bob');
+                    expect(await stored(page, 'assistant')).toBe('Bob.png');
+                });
+
+                test('Remove Assistant clears the pointer and returns the slot to the Choose Assistant card, with focus kept on the slot', async ({ page }) => {
+                    await boot(page, chosen);
+                    await menuOf(ownCard(page)).click();
+
+                    await page.getByRole('menuitem', { name: 'Remove Assistant' }).click();
+
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+                    await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Choose Assistant');
+                    expect(await stored(page, 'assistant')).toBeNull();
+                    await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
+                    await expect(ownCard(page).locator(':focus')).toHaveCount(1);
+                });
+
+                test('Remove Assistant deletes no character', async ({ page }) => {
+                    await boot(page, chosen);
+                    const requests = [];
+                    page.on('request', request => request.method() === 'POST' && /\/api\/characters\/delete/.test(request.url()) && requests.push(request.url()));
+                    await menuOf(ownCard(page)).click();
+
+                    await page.getByRole('menuitem', { name: 'Remove Assistant' }).click();
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+
+                    expect(requests).toEqual([]);
+                    await expect(page.locator(`${HOME} .sbHomeCards`)).toBeVisible();
+                });
+
+                test('Start New Chat opens a new chat of the character', async ({ page }) => {
+                    await boot(page, chosen);
+
+                    await startOf(ownCard(page)).click();
+
+                    await expect.poll(() => currentAvatar(page)).toBe('Alice.png');
+                    await expect.poll(() => currentChat(page)).toMatch(/^Alice - /);
+                });
+
+                test('Temporary Chat opens a temporary chat with the character', async ({ page }) => {
+                    const world = await boot(page, chosen);
+
+                    await temporaryOf(ownCard(page)).click();
+
+                    await expect(page.locator('#sb-temporary-chat-banner')).toBeVisible();
+                    expect(await currentAvatar(page)).toBe('Alice.png');
+                    expect(world.chatSaves).toEqual([]);
+                });
+
+                test('a character that is only in the library, such as Nahida, gets no card until the pointer names it', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+
+                    await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
+                    await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
+                });
+            });
+
+            test.describe('the pointer written elsewhere', () => {
+                const setAsAssistant = (page, avatar) => page.evaluate(async (target) => {
+                    const { characters } = await import('/script.js');
+                    const { assignCharacterAsAssistant } = await import('/scripts/welcome-screen.js');
+                    assignCharacterAsAssistant(String(characters.findIndex(character => character.avatar === target)));
+                }, avatar);
+
+                test('Set as assistant on a character shows it in the third slot, and again on the same character brings the Choose Assistant card back', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+
+                    await setAsAssistant(page, 'Bob.png');
+
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
+                    await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Bob');
+                    expect(await stored(page, 'assistant')).toBe('Bob.png');
+
+                    await setAsAssistant(page, 'Bob.png');
+
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
+                    expect(await stored(page, 'assistant')).toBeNull();
+                });
+
+                test('Set as assistant shows the badge in the character list on the new assistant and takes it from the old one, again when toggled off', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, accountStorage: { assistant: 'Alice.png' }, exact: true });
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
+                    await expect(page.locator('.sb-character-list[data-mounted="true"]')).toBeVisible();
+                    const badged = () => page.locator('.sb-character-list .character_select', { has: page.locator('.ch_assistant') }).locator('.ch_name');
+                    await expect(badged()).toHaveText(['Alice']);
+
+                    await setAsAssistant(page, 'Bob.png');
+
+                    await expect(badged()).toHaveText(['Bob']);
+
+                    await setAsAssistant(page, 'Bob.png');
+
+                    await expect(badged()).toHaveText(['Assistant Reisen']);
+                });
+
+                for (const { name: action, accountStorage, after } of [
+                    { name: 'Set as assistant', accountStorage: {}, after: 'Bob.png' },
+                    { name: 'Set as assistant on the assistant again', accountStorage: { assistant: 'Bob.png' }, after: null },
+                ]) {
+                    test(`${action} tells a render of Home that fails with the placeholder toast, and leaves no rejection unhandled`, async ({ page }) => {
+                        await boot(page, { library: LIBRARY, accountStorage, exact: true });
+                        await showToasts(page);
+                        const unhandled = [];
+                        page.on('pageerror', error => unhandled.push(error.message));
+                        // Home reads the scroll position of #chat before it renders again, so the render fails after the pointer is written.
+                        await page.evaluate(() => {
+                            Object.defineProperty(document.getElementById('chat'), 'scrollTop', { configurable: true, get() { throw new Error('QA render failure'); } });
+                        });
+
+                        await setAsAssistant(page, 'Bob.png');
+
+                        const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="AS-ACTION-ERROR"]');
+                        await expect(toast).toBeVisible();
+                        await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                        expect(await stored(page, 'assistant')).toBe(after);
+                        expect(unhandled).toEqual([]);
+                    });
+                }
+
+                test('the character that the picker chose is the one a new assistant chat opens', async ({ page }) => {
+                    await boot(page, { library: LIBRARY, exact: true });
+                    await chooseOf(page).click();
+                    await hosts(page).locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: /^Bob$/ }) }).click();
+                    await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
+
+                    await page.evaluate(async () => (await import('/script.js')).newAssistantChat({ temporary: false }));
+
+                    await expect.poll(() => currentAvatar(page)).toBe('Bob.png');
+                });
             });
         });
     });

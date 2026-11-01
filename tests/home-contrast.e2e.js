@@ -227,7 +227,7 @@ const channelGap = (a, b) => Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), 
 
 const TARGETS = {
     tile: '.sbHomeTile',
-    'assistant card': '.sbHomeCard:not(.sbHomeCard--more)',
+    'assistant card': '.sbHomeCard:not(.sbHomeCard--choose)',
 };
 
 for (const { name, options, narrow } of VIEWPORTS) {

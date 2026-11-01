@@ -110,8 +110,11 @@ export function openChatMenu(trigger, actions, { keyboard = false, bounds = null
 }
 
 /**
+ * `chooseAnother` and `remove` belong to the card of the third slot; a card without them has no such items.
  * @typedef {object} AssistantMenuActions
  * @property {(mode: 'roleplay' | 'conversation') => void} newChatInMode
+ * @property {() => void} [chooseAnother] Opens the picker.
+ * @property {() => void} [remove] Clears the assistant pointer.
  */
 
 /**
@@ -123,8 +126,9 @@ export function getOtherChatMode(lastMode) {
 }
 
 /**
- * The card's own actions open a chat in the remembered mode, so the menu offers the other one. A card without a file
- * has no chat to open, so its menu has no items and the card shows no menu button.
+ * The card's own actions open a chat in the remembered mode, so the menu offers the other one. The card of the third
+ * slot adds the two items that change which character it is. A card without a file has no chat to open, so its menu
+ * has no items and the card shows no menu button.
  * @param {object} options
  * @param {unknown} options.lastMode
  * @param {AssistantMenuActions} options.actions
@@ -139,7 +143,12 @@ export function buildAssistantMenuSections({ lastMode, actions, state = 'availab
     const inOtherMode = otherMode === 'conversation'
         ? { label: t`New Chat in Conversation`, icon: 'fa-solid fa-comments sbHomeMenuIconFit' }
         : { label: t`New Chat in Roleplay`, icon: 'fa-solid fa-masks-theater sbHomeMenuIconFit' };
-    return [{ items: [{ ...inOtherMode, onSelect: () => actions.newChatInMode(otherMode) }] }];
+    const chatSection = { items: [{ ...inOtherMode, onSelect: () => actions.newChatInMode(otherMode) }] };
+    const choiceSection = commandItems([
+        [actions.chooseAnother, t`Choose Another Assistant…`, 'fa-solid fa-user-plus sbHomeMenuIconFit'],
+        [actions.remove, t`Remove Assistant`, 'fa-solid fa-user-minus sbHomeMenuIconFit'],
+    ]);
+    return choiceSection.length === 0 ? [chatSection] : [chatSection, { items: choiceSection }];
 }
 
 /**

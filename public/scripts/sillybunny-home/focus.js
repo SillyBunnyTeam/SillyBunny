@@ -62,7 +62,12 @@ function captureSectionControl(active) {
 function findSectionControl(panel, { key, part }) {
     const keyed = Array.from(panel.querySelectorAll(KEYED_SELECTOR))
         .find(candidate => candidate instanceof HTMLElement && candidate.dataset.sbHomeKey === key);
-    return part === 'self' ? keyed : keyed?.querySelectorAll(KEYED_CONTROLS_SELECTOR)[part];
+    if (part === 'self') {
+        return keyed;
+    }
+    // A card can come back with fewer controls, such as the third assistant card after Remove Assistant.
+    const controls = keyed?.querySelectorAll(KEYED_CONTROLS_SELECTOR);
+    return controls?.[part] ?? controls?.[0];
 }
 
 function focusFirstTaking(candidates) {
@@ -77,8 +82,9 @@ function focusFirstTaking(candidates) {
 
 /**
  * Focuses the same control in the same row of the new panel. When the row is gone, focus goes to the
- * open control of the row that took its position, and last to the main menu button. A tile or card control
- * that is gone, for example the Getting Started tile after it was hidden, falls back to the main menu button.
+ * open control of the row that took its position, and last to the main menu button. A card control that is gone
+ * falls back to the first control of the card, and a tile or card that is gone, for example the Getting Started tile
+ * after it was hidden, falls back to the main menu button.
  * @param {HTMLElement} panel The Home panel that replaced the old one.
  * @param {HomeFocusTarget|null} target
  * @returns {HTMLElement|null} The control that took focus.
