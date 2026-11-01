@@ -301,13 +301,13 @@
         ]
     },
     "node": {
-        "version": "26.12.1",
+        "version": "26.13.0",
         "source": {
             "repository": "https://github.com/nodejs/node.git",
-            "tag": "v26.12.1",
-            "commit": "bc2e01dcf6acd5cf7d169b5f26cf89abaaeb41f1",
-            "tarball": "node-v26.12.1.tar.xz",
-            "tarballSha256": "053e3b296859b6d8d93f99ef97fa9cec1c4ee171c72968100c649978c1dbd38c"
+            "tag": "v26.13.0",
+            "commit": "18b32a3b1552e199a01f1a8d9fd64aa756d3b75b",
+            "tarball": "node-v26.13.0.tar.xz",
+            "tarballSha256": "263f639ecfa7a17b49438d76cdbf9aff73179e3c7cb789da69b900718427fa2e"
         },
         "ndk": {
             "revision": "30.0.16248370",
@@ -330,21 +330,21 @@
         "binaries": {
             "arm64-v8a": {
                 "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime",
-                "tag": "node-26.12.1-06a14ab3ed10-arm64-v8a",
+                "tag": "node-26.13.0-06a14ab3ed10-arm64-v8a",
                 "digest": null,
                 "sha256": null,
                 "size": null
             },
             "armeabi-v7a": {
                 "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime",
-                "tag": "node-26.12.1-06a14ab3ed10-armeabi-v7a",
+                "tag": "node-26.13.0-06a14ab3ed10-armeabi-v7a",
                 "digest": null,
                 "sha256": null,
                 "size": null
             },
             "x86_64": {
                 "repository": "ghcr.io/sillybunnyteam/sillybunny-android-runtime",
-                "tag": "node-26.12.1-06a14ab3ed10-x86_64",
+                "tag": "node-26.13.0-06a14ab3ed10-x86_64",
                 "digest": null,
                 "sha256": null,
                 "size": null

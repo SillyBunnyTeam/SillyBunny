@@ -62,7 +62,7 @@ Termux stays supported. Its docs visibility is reduced **only once the APK is pr
 APK (applicationId io.github.sillybunnyteam.sillybunny, label "SillyBunny")
 ├── Kotlin + Jetpack Compose shell (minimal native UI)
 ├── jniLibs/<abi>/   (extracted to nativeLibraryDir for bundled executables; system executables remain allowed)
-│   ├── libnode.so       Node.js (pin: v26.12.1, §9; built from upstream source with the NDK)
+│   ├── libnode.so       Node.js (pin: v26.13.0, §9; built from upstream source with the NDK)
 │   ├── libgit.so        git (repackaged pinned Termux package)
 │   ├── libgit-remote-http.so (and any other helpers git execs by name)
 │   ├── libbash.so       bash (repackaged pinned Termux package)
@@ -430,7 +430,7 @@ Schema 1 and its portable test are committed in `55243cab1`: three ABIs, authent
 ### 5.2 Node runtime build workflow (new, e.g. `.github/workflows/android-runtime.yml`)
 
 - **Triggers:** `workflow_dispatch`, plus changes to the Node pin or patch files.
-- **Build:** upstream Node (pin **v26.12.1**, built without the `Temporal` global) with `./android-configure <NDK> <API> <arch>` (https://github.com/nodejs/node/blob/main/BUILDING.md#android) for arm64, armv7 and x86_64, 16 KB aligned. Node 24.x entered Maintenance LTS on 2026-10-20; 26.x becomes Active LTS on 2026-10-28. The first release ships Node 26, moved to the newest 26.x before its build (§9). Expect hours; **this cost is CI-only, never per user**.
+- **Build:** upstream Node (pin **v26.13.0**, built without the `Temporal` global) with `./android-configure <NDK> <API> <arch>` (https://github.com/nodejs/node/blob/main/BUILDING.md#android) for arm64, armv7 and x86_64, 16 KB aligned. Node 24.x entered Maintenance LTS on 2026-10-20; 26.x becomes Active LTS on 2026-10-28. The first release ships Node 26, moved to the newest 26.x before its build (§9). Expect hours; **this cost is CI-only, never per user**.
 - **Patches:** keep any needed Android patches in `android/runtime/patches/node/`. ST-android (AGPL-3.0, Node submodule + minimal patches) is the reference.
 - **Publishing:** push to **GHCR** as an OCI artifact (e.g. `ghcr.io/sillybunnyteam/sillybunny-android-runtime:node-<ver>-<patchhash>-<abi>`, via `oras`), with build-provenance attestation. Then open a PR updating the digests in `runtime.lock`.
 - **Termux packages:** `android/runtime/fetch-termux.sh` + `package-termux.py` verify pinned SHA256, extract/patch the Git/Bash/HTTPS ELF closure and emit runtime assets, licenses and per-ABI `runtime-files.json`. Lock refresh authenticates InRelease/index/deb metadata with the pinned Termux key; ordinary builds use the lock, not a fresh index. Clean/offline byte-identical builds pass; toybox gap-fillers await task 2.5 (P4-T, §§3–5).
