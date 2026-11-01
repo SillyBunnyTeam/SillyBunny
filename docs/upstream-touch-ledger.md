@@ -497,6 +497,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Account and release integrator. |
 
+### `src/electron/` - Electron launcher removal
+| Field | Value |
+| --- | --- |
+| File | `src/electron/Start.bat`, `src/electron/package.json` and `src/electron/package-lock.json`, removed. SillyTavern also ships `src/electron/index.js` and `src/electron/start.sh`, which SillyBunny never adopted. |
+| Area | Packaging and launchers. |
+| Divergence reason | TODO(copy) |
+| Target seam | None. The root launchers start `server.js`, and SillyBunny ships no Electron entry point. |
+| Adapter shape | None. A SillyTavern sync that changes `src/electron/**` leaves those changes out. |
+| Protecting tests | None. |
+| Validation | `git grep -n -i "src/electron"` finds no code, test or workflow reference. `.github/pr-auto-labels-by-files.yml` parses as YAML. |
+| Rollback path | Revert the commit that removed the package (`git log --diff-filter=D -- src/electron/package.json`), which restores the three files at electron 41.1.1. The launcher still does not start until `src/electron/index.js` comes from SillyTavern, because `package.json` names it as `main`, and until the Electron binary is installed, because `Start.bat` installs with `--ignore-scripts` and the electron package downloads its binary only in its `postinstall` script. |
+| Last reviewed | 2026-11-02, package removal. |
+| Owner | TODO(copy) |
+
 ### World Info files - shell integration and safe persistence
 | Field | Value |
 | --- | --- |
