@@ -34,16 +34,16 @@ TODO(copy): note on how to read the tables below.
 |---|---|---|---|---|---|---|---|
 | gemini | gemini-3-pro-image-preview | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.35 | - |
 | gemini | gemini-nano-banana-2.1 | 5 | 2026-11-01 | 2026-11-01 | 0 | $0.90 | - |
-| local | rim-recolour | 6 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
+| local | rim-recolour | 23 | 2026-11-01 | 2026-11-01 | 21 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 69 | 2026-11-01 | 2026-11-01 | 3 | $13.00 | $0.00 |
+| openai | gpt-image-2.5-sunburst-h | 134 | 2026-11-01 | 2026-11-01 | 3 | $19.20 | $6.80 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 68 |
-| Total charged | $14.65 |
-| Total estimated, not yet measured | $0.00 |
+| Reference images attached | 151 |
+| Total charged | $20.85 |
+| Total estimated, not yet measured | $6.80 |
 
 ### Current approvals
 
@@ -56,6 +56,23 @@ TODO(copy): note on how to read the tables below.
 | tewi-sprite.png | rim-recolour | 94eea2d69248e864 |
 | reisen-portrait-a.png | rim-recolour | 877b98dabf1a8064 |
 | reisen-sprite-a.png | rim-recolour | 29409083a40339c4 |
+| splash-reisen.png | rim-recolour | d3b60b7b93a17af7 |
+| splash-tewi.png | rim-recolour | e0b718ef40e0361b |
+| splash-both.png | rim-recolour | 04fb74772906ced1 |
+| welcome-both.png | rim-recolour | 4494ac9b44e8d5d9 |
+| welcome-persona-tewi.png | rim-recolour | c1a53329c3a4c178 |
+| welcome-next-reisen.png | rim-recolour | e6492c50aca4d976 |
+| hero-duo.png | rim-recolour | 9329c6de33868bee |
+| hero-duo-night.png | rim-recolour | 8e9a6171610eee10 |
+| gs-reisen.png | rim-recolour | a5c1d826794adfde |
+| gs-reisen-done.png | rim-recolour | e124572675bed53f |
+| help-reisen.png | rim-recolour | deaa191587e9b166 |
+| extras-tewi.png | rim-recolour | d253f22f0581f4f1 |
+| about-reisen.png | rim-recolour | ad4625dab51b14cd |
+| about-tewi.png | rim-recolour | d75c6a838d15df70 |
+| troubleshooting-reisen.png | rim-recolour | 8599431765430ab6 |
+| empty-tewi.png | rim-recolour | 6d393ee87a88b3f8 |
+| shortcuts-tewi.png | rim-recolour | ba01225ca88c673e |
 
 Superseded approvals (history): 5 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66, ed20db74 -> 877b98da, 758fd49a -> 29409083).
 
