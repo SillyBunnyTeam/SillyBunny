@@ -2,7 +2,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 const { IMPORT_PENDING_KEY, SEEN_VERSION_KEY, SHOW_AT_STARTUP_KEY, createWelcomeStartup } = await import('../../public/scripts/sillybunny-welcome-startup.js');
-const { savePersonaName } = await import('../../public/scripts/sillybunny-welcome-persona.js');
+const { DEFAULT_USER_NAME, UNNAMED_PERSONA_NAME, isUntouchedDefaultPersona, savePersonaName } = await import('../../public/scripts/sillybunny-welcome-persona.js');
 const { createSillyTavernImport } = await import('../../public/scripts/sillybunny-welcome-import.js');
 
 const VERSION = '9.9.9';
@@ -200,6 +200,73 @@ describe('the persona that Welcome writes', () => {
         expect(deps.setUserName).not.toHaveBeenCalled();
         expect(deps.powerUser.personas).toEqual({});
         expect(deps.powerUser.persona_descriptions).toEqual({});
+    });
+});
+
+describe('the untouched default persona', () => {
+    const AVATAR = 'user-default.png';
+    /** The persona the app binds on boot to an avatar that has none: the default name and empty fields. */
+    const bound = (overrides = {}) => ({
+        description: '', position: 0, depth: 2, role: 0, lorebook: '', title: '', appendices: [], activeAppendices: {}, ...overrides,
+    });
+    const powerUserWith = ({ name = DEFAULT_USER_NAME, descriptor = bound(), defaultPersona = null } = {}) => ({
+        personas: name === undefined ? {} : { [AVATAR]: name },
+        persona_descriptions: descriptor === undefined ? {} : { [AVATAR]: descriptor },
+        default_persona: defaultPersona,
+    });
+    const untouched = (powerUser, userName = DEFAULT_USER_NAME) => isUntouchedDefaultPersona({ avatarId: AVATAR, userName }, { powerUser });
+
+    test('is the default name on the persona that the app bound on boot', () => {
+        expect(DEFAULT_USER_NAME).toBe('User');
+        expect(untouched(powerUserWith())).toBe(true);
+    });
+
+    test('is also the unnamed persona that the app binds to an avatar that has none', () => {
+        expect(untouched(powerUserWith({ name: UNNAMED_PERSONA_NAME }))).toBe(true);
+    });
+
+    test('is also an avatar that has no persona entry yet', () => {
+        expect(untouched(powerUserWith({ name: undefined, descriptor: undefined }))).toBe(true);
+    });
+
+    test('is not any other user name', () => {
+        expect(untouched(powerUserWith({ name: 'Ada' }), 'Ada')).toBe(false);
+        expect(untouched(powerUserWith(), 'user')).toBe(false);
+    });
+
+    test('is not a persona whose bound name differs from the user name, whatever the user name says', () => {
+        expect(untouched(powerUserWith({ name: 'Ada' }))).toBe(false);
+    });
+
+    test.each([
+        ['a description', { description: 'Tall.' }],
+        ['a title', { title: 'Captain' }],
+        ['a lorebook', { lorebook: 'World' }],
+        ['a chat connection', { connections: [{ type: 'chat', id: 'a' }] }],
+        ['an appendix', { appendices: [{ id: 'x' }] }],
+    ])('is not a persona with %s', (_label, change) => {
+        expect(untouched(powerUserWith({ descriptor: bound(change) }))).toBe(false);
+    });
+
+    test('ignores white space in a description or a title', () => {
+        expect(untouched(powerUserWith({ descriptor: bound({ description: '  \n ', title: ' ' }) }))).toBe(true);
+    });
+
+    test('is not the persona that the account set as its default', () => {
+        expect(untouched(powerUserWith({ defaultPersona: AVATAR }))).toBe(false);
+    });
+
+    test('is still untouched when the account has other personas', () => {
+        const powerUser = powerUserWith();
+        powerUser.personas['other.png'] = 'Ada';
+        powerUser.persona_descriptions['other.png'] = bound({ description: 'Tall.' });
+        expect(untouched(powerUser)).toBe(true);
+    });
+
+    test('is what savePersonaName turns into a touched persona', () => {
+        const powerUser = powerUserWith();
+        savePersonaName({ avatarId: AVATAR, name: 'Ada' }, { setUserName: jest.fn(), powerUser, positions: { IN_PROMPT: 0 } });
+        expect(untouched(powerUser, 'Ada')).toBe(false);
     });
 });
 

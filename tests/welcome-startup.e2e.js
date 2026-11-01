@@ -24,9 +24,11 @@ const next = host => shownPage(host).getByRole('button', { name: 'Next', exact: 
  * `seen: false` leaves the account that never met Welcome. Once the app has saved, a reload is served what it saved, as
  * the server would, so a test can tell what a later boot of the same account does.
  * @param {import('@playwright/test').Page} page
- * @param {{ firstRun?: boolean, showAtStartup?: 'true' | 'false' | null, seen?: boolean, importPending?: boolean, withoutQuickImageGenSettings?: boolean }} [account]
+ * @param {{ firstRun?: boolean, showAtStartup?: 'true' | 'false' | null, seen?: boolean, importPending?: boolean, withoutQuickImageGenSettings?: boolean, defaultPersona?: boolean | { description: string } }} [account]
+ *   `defaultPersona` boots the account with the user name the app gives until the user chooses one and no persona entry
+ *   for the avatar, which the app then binds with empty fields. A description makes that persona the user's own.
  */
-async function boot(page, { firstRun = false, showAtStartup = null, seen = true, importPending = false, withoutQuickImageGenSettings = false } = {}) {
+async function boot(page, { firstRun = false, showAtStartup = null, seen = true, importPending = false, withoutQuickImageGenSettings = false, defaultPersona = false } = {}) {
     await protectMaintainerServer(page);
     /** @type {Awaited<ReturnType<typeof captureAccountStorageSaves>>} */
     let captured;
@@ -42,6 +44,11 @@ async function boot(page, { firstRun = false, showAtStartup = null, seen = true,
         if (showAtStartup !== null) settings.accountStorage[SHOW_AT_STARTUP] = showAtStartup;
         if (seen) settings.accountStorage[SEEN_VERSION] = '1.0.0';
         if (withoutQuickImageGenSettings) delete settings.extension_settings['quick-image-gen'];
+        if (defaultPersona) {
+            settings.username = 'User';
+            settings.power_user.personas = defaultPersona === true ? {} : { [settings.user_avatar]: 'User' };
+            settings.power_user.persona_descriptions = defaultPersona === true ? {} : { [settings.user_avatar]: { description: defaultPersona.description, position: 0 } };
+        }
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     captured = await captureAccountStorageSaves(page);
@@ -350,6 +357,133 @@ test.describe('an existing account', () => {
 
         await expect(hosts(page)).toHaveCount(0);
         await expect(page.locator('#PersonaManagement')).toBeVisible({ timeout: STARTUP_TIMEOUT });
+    });
+});
+
+test.describe('an existing account whose persona is still the default', () => {
+    const nameField = host => shownPage(host).getByRole('textbox', { name: 'Your Name' });
+    const stored = page => page.evaluate(async () => {
+        const { power_user } = await import('/scripts/power-user.js');
+        const { user_avatar } = await import('/scripts/personas.js');
+        const { name1 } = await import('/script.js');
+        return { name1, persona: power_user.personas[user_avatar], description: power_user.persona_descriptions[user_avatar] };
+    });
+
+    /** Opens Welcome at startup and goes to the persona page. */
+    async function openPersonaPage(page, account = { defaultPersona: true }) {
+        const captured = await boot(page, { showAtStartup: 'true', ...account });
+        const host = hosts(page);
+        await expect(host).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await waitForReady(page);
+        await next(host).click();
+        await expect(titleOf(host)).toHaveText('Your Persona');
+        return { host, captured };
+    }
+
+    test('shows an empty name field with the default name as its hint, and Manage Personas beside it', async ({ page }) => {
+        const { host } = await openPersonaPage(page);
+
+        await expect(nameField(host)).toHaveValue('');
+        await expect(nameField(host)).toHaveAttribute('placeholder', 'User');
+        await expect(shownPage(host).getByRole('button', { name: 'Manage Personas' })).toBeVisible();
+        await expect(shownPage(host).locator('[data-sb-editor-field="welcome-persona-current"]')).toHaveCount(0);
+        await expect(next(host)).toBeEnabled();
+    });
+
+    test('shows the hint in a readable colour below the raised title, also when the field has no focus', async ({ page }) => {
+        const { host } = await openPersonaPage(page);
+
+        await nameField(host).blur();
+
+        await expect(nameField(host)).not.toBeFocused();
+        await expect.poll(() => nameField(host).evaluate((input) => {
+            const title = input.closest('.ds-row-entry__field').querySelector('.ds-row-entry__title');
+            return Math.round(input.getBoundingClientRect().top + parseFloat(getComputedStyle(input).paddingTop) - title.getBoundingClientRect().bottom);
+        }), 'the title clears the first line of the field').toBeGreaterThanOrEqual(-1);
+        const hint = await nameField(host).evaluate(input => getComputedStyle(input, '::placeholder').color);
+        expect(hint).not.toBe('rgba(0, 0, 0, 0)');
+    });
+
+    test('Next works without a name and leaves the persona as it was', async ({ page }) => {
+        const { host } = await openPersonaPage(page);
+        const before = await stored(page);
+
+        await next(host).click();
+        await expect(titleOf(host)).toHaveText('What’s Next');
+
+        expect(await stored(page)).toEqual(before);
+        expect(before.name1).toBe('User');
+    });
+
+    test('Next with only spaces in the field writes nothing', async ({ page }) => {
+        const { host } = await openPersonaPage(page);
+        const before = await stored(page);
+
+        await nameField(host).fill('   ');
+        await next(host).click();
+
+        await expect(titleOf(host)).toHaveText('What’s Next');
+        expect(await stored(page)).toEqual(before);
+    });
+
+    test('saves a typed name the way the first run does, and keeps it across a reload', async ({ page }) => {
+        const { host, captured } = await openPersonaPage(page);
+
+        await nameField(host).fill('Ada Lovelace');
+        await next(host).click();
+
+        await expect(titleOf(host)).toHaveText('What’s Next');
+        expect(await stored(page)).toEqual({ name1: 'Ada Lovelace', persona: 'Ada Lovelace', description: { description: '', position: 0 } });
+        await expect.poll(() => captured.payload?.username, { timeout: 15_000 }).toBe('Ada Lovelace');
+        expect(Object.values(captured.payload.power_user.personas)).toContain('Ada Lovelace');
+
+        await page.reload();
+        await expect(host).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await next(host).click();
+        await expect(nameField(host)).toHaveCount(0);
+        await expect(shownPage(host).getByText('Ada Lovelace', { exact: true })).toBeVisible();
+    });
+
+    test('keeps the typed name in the field when Back returns to the page, and Next saves it once more without harm', async ({ page }) => {
+        const { host } = await openPersonaPage(page);
+
+        await nameField(host).fill('Ada');
+        await next(host).click();
+        await shownPage(host).getByRole('button', { name: 'Back', exact: true }).click();
+
+        await expect(titleOf(host)).toHaveText('Your Persona');
+        await expect(nameField(host)).toHaveValue('Ada');
+        await next(host).click();
+        await expect(titleOf(host)).toHaveText('What’s Next');
+        expect(await stored(page)).toEqual({ name1: 'Ada', persona: 'Ada', description: { description: '', position: 0 } });
+    });
+
+    test('Manage Personas still closes Welcome and opens Characters, Personas', async ({ page }) => {
+        const { host } = await openPersonaPage(page);
+
+        await shownPage(host).getByRole('button', { name: 'Manage Personas' }).click();
+
+        await expect(hosts(page)).toHaveCount(0);
+        await expect(page.locator('#PersonaManagement')).toBeVisible({ timeout: STARTUP_TIMEOUT });
+    });
+
+    test('keeps the reopen form for a persona named User that holds a description', async ({ page }) => {
+        const { host } = await openPersonaPage(page, { defaultPersona: { description: 'Tall.' } });
+
+        await expect(nameField(host)).toHaveCount(0);
+        await expect(shownPage(host).getByText('User', { exact: true })).toBeVisible();
+        await expect(shownPage(host).getByRole('button', { name: 'Manage Personas' })).toBeVisible();
+    });
+
+    test('is untouched by a first run, which still requires a name and has no Manage Personas', async ({ page }) => {
+        await boot(page, { firstRun: true, seen: false });
+        const host = hosts(page);
+        await expect(host).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await next(host).click();
+
+        await expect(nameField(host)).toHaveAttribute('placeholder', ' ');
+        await expect(next(host)).toBeDisabled();
+        await expect(shownPage(host).getByRole('button', { name: 'Manage Personas' })).toHaveCount(0);
     });
 });
 

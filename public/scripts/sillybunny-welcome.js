@@ -15,7 +15,7 @@ import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
 import { createEntryRow, createPrefGroup, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createSillyTavernImport } from './sillybunny-welcome-import.js';
-import { savePersonaName } from './sillybunny-welcome-persona.js';
+import { DEFAULT_USER_NAME, isUntouchedDefaultPersona, savePersonaName } from './sillybunny-welcome-persona.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
 const PAGE_COUNT = 3;
@@ -201,20 +201,37 @@ function fillImport(body, { importer }) {
 }
 
 /**
- * Fills the persona page. The first run has an empty name field, and the page asks for nothing else. After that the
- * page shows the persona the account has, and sends the user to Characters, Personas to change it.
+ * How the persona page asks for the name. A first run requires one. A reopen of an account whose persona is still the
+ * untouched default offers the field, with the default name as its hint, and Next works without a name. Any other
+ * reopen shows the persona the account has.
+ * @typedef {'required' | 'optional' | 'none'} NameMode
+ */
+
+/**
+ * Fills the persona page. Where it has a name field, the page asks for nothing else but the persona's name. After that
+ * it shows the persona the account has, and sends the user to Characters, Personas to change it. An untouched default
+ * persona gets both the field and that way to Characters, Personas.
  * @param {HTMLElement} body
  * @param {object} options
- * @param {boolean} options.nameRequired
- * @param {(name: string) => void} options.onNameInput Called while the user types, on a first run.
+ * @param {NameMode} options.nameMode
+ * @param {(name: string) => void} options.onNameInput Called while the user types, when the name is required.
  * @param {() => void} options.managePersonas
  * @returns {{ getName: () => string }}
  */
-function fillPersona(body, { nameRequired, onNameInput, managePersonas }) {
+function fillPersona(body, { nameMode, onNameInput, managePersonas }) {
     const intro = createArtIntro({ art: 'welcome-persona-tewi', slot: 'WD-2-PROMPT' }).intro;
-    if (nameRequired) {
+    if (nameMode === 'required') {
         const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true, onInput: onNameInput });
         body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section, createPosition(2));
+        return { getName: () => name.control.value };
+    }
+    const manage = createRow({ label: t`Manage Personas`, field: 'welcome-persona-manage', activatable: true, onActivate: managePersonas });
+    if (nameMode === 'optional') {
+        const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true });
+        // A floating row keeps its placeholder blank, so the hint is set after the row is built and the row raises its title to make room.
+        name.control.placeholder = name1;
+        name.row.classList.add('sbWelcomeNameHint');
+        body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [name, manage] }).section, createPosition(2));
         return { getName: () => name.control.value };
     }
     const avatar = document.createElement('img');
@@ -222,7 +239,6 @@ function fillPersona(body, { nameRequired, onNameInput, managePersonas }) {
     avatar.alt = '';
     avatar.src = getUserAvatar(user_avatar);
     const current = createRow({ label: name1, field: 'welcome-persona-current', prefix: avatar });
-    const manage = createRow({ label: t`Manage Personas`, field: 'welcome-persona-manage', activatable: true, onActivate: managePersonas });
     body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [current, manage] }).section, createPosition(2));
     return { getName: () => name1 };
 }
@@ -365,16 +381,27 @@ export async function openWelcomeDialog({ firstRun = false, avatarId = user_avat
     };
     const pushPersona = () => {
         let persona;
+        const personaDeps = { setUserName, powerUser: power_user, positions: persona_description_positions };
+        /** @type {NameMode} */
+        let nameMode = 'none';
+        if (firstRun) {
+            nameMode = 'required';
+        } else if (isUntouchedDefaultPersona({ avatarId, userName: name1 }, { powerUser: power_user })) {
+            nameMode = 'optional';
+        }
         const page = dialog.push({
             title: t`Your Persona`,
-            content: (body) => { persona = fillPersona(body, { nameRequired: firstRun, onNameInput, managePersonas }); },
+            content: (body) => { persona = fillPersona(body, { nameMode, onNameInput, managePersonas }); },
             responses: { affirmative: { id: 'next', label: t`Next` }, cancel: { label: t`Back` } },
             canClose: stepGuard(() => {
+                const saved = nameMode !== 'none' && savePersonaName({ avatarId, name: persona.getName() }, personaDeps);
                 if (!firstRun) {
+                    // The persona editor follows renames by event, and the first run ends before it exists.
+                    if (saved) void eventSource.emit(event_types.PERSONA_RENAMED, { avatarId, oldName: DEFAULT_USER_NAME, newName: name1 });
                     pushWhatsNext();
                     return;
                 }
-                if (savePersonaName({ avatarId, name: persona.getName() }, { setUserName, powerUser: power_user, positions: persona_description_positions })) {
+                if (saved) {
                     startup.completeFirstRun();
                     onNamed?.();
                     pushWhatsNext();

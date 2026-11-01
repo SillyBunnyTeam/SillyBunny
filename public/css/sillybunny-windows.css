@@ -127,6 +127,18 @@
     object-fit: cover;
 }
 
+/* The empty name field of an untouched persona shows the default name as its hint, so its title stays raised above it. */
+.ds-row-entry--floating.sbWelcomeNameHint .ds-row-entry__field > .ds-row-entry__title {
+    top: 0.45em;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    transform: none;
+}
+
+.ds-row-entry--floating.sbWelcomeNameHint .ds-row-entry__field > input::placeholder {
+    color: var(--sb-input-placeholder) !important;
+}
+
 .sbWelcomeImportStatus {
     margin: 0;
     color: var(--sb-color-danger);
