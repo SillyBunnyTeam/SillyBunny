@@ -151,6 +151,7 @@ This is the largest class by a wide margin.
 - **Guards:** the version map clamps a SillyBunny version with no mapping to the highest synced SillyTavern version for its major.
 - **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
+- **Partial adoption:** `7b6db61d1` took SillyTavern's `src/electron/` package files (`Start.bat`, `package.json`, `package-lock.json`) but not `index.js`, which `package.json` names as `main` for `electron .`. `Start.bat` also installs with `--ignore-scripts`, and the electron package downloads its binary only in its `postinstall` script, so the launcher could not start. npm audit still reported 30 advisories against its lockfile (electron 41.1.1 and extract-zip 2.0.1). SillyBunny removed `src/electron/`. SillyTavern still ships it, so a sync leaves `src/electron/**` out (`docs/upstream-touch-ledger.md`).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
 
 ### Dependencies and lockfiles
@@ -168,6 +169,16 @@ This is the largest class by a wide margin.
   - `tests/` and `src/electron/` have their own `package.json` and do not read the root `.npmrc`. In `tests/`, `npm config get` reports `min-release-age=null`, `ignore-scripts=false` and `allow-git=all`, so pass `--min-release-age=7 --ignore-scripts` there.
 - **Fixes:** the v1.2.8 release commit `221de633c` replaced `"version": "1.2.7"` with `"1.2.8"` throughout `package-lock.json`, which also changed `@types/range-parser` and `is-callable`. Their `resolved` and `integrity` still pointed at 1.2.7 and no 1.2.8 exists, so `npm ci` installed 1.2.7, but `bun pm migrate` built 1.2.8 tarball URLs that returned 404. `scripts/bump-version.js` now edits only `version` and `packages[""].version`.
 - **Limit:** a name@version comparison of the two lockfiles always lists the npm aliases `string-width-cjs`, `strip-ansi-cjs` and `wrap-ansi-cjs`, and `@jimp/plugin-blur`. npm satisfies the `@jimp/plugin-blur` peer of `@jimp/plugin-shadow@0.22.12` with a top-level 1.6.x copy, and Bun reuses 0.22.12.
+
+### Macro whitespace
+
+- **Breaks:** a trim in the macro engine removes whitespace that a template asks for with `{{newline}}`, `{{space}}` or `{{noop}}` (SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674).
+- **Cause:** the engine trims text after it resolves the macros in it. `{{if}}` trims its resolved branch, scoped macros trim their content, and variable shorthand values (`{{.x = ...}}`) are trimmed. The legacy `{{trim}}` post-processor runs after `{{noop}}` is already an empty string, so `{{noop}}` does not stop it as it did in the legacy engine (`public/scripts/macros.js`).
+- **Files:** `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/definitions/core-macros.js`.
+- **Guards:** `public/scripts/macros/sillybunny-whitespace-markers.js`. The walker wraps `{{newline}}` and `{{space}}` output in U+FDD0 and `{{noop}}` output in U+FDD1, and removes them after each trim. `MacroEngine.evaluate()` removes them before it returns, except for the `{{if}}` branch, which `resolve(text, { keepWhitespaceMarkers: true })` returns with markers for the trim in the `{{if}}` handler. Only the `core:` post-processors see the markers.
+- **Tests:** `tests/sillybunny-macro-whitespace.test.js` (runs the real engine in Jest), `tests/frontend/sillybunny-macro-whitespace.e2e.js`.
+- **Limit:** `{{trim}}` still removes `{{newline}}` output next to it, as the legacy engine did. Put `{{noop}}` between them to keep the newline.
+- **Limit:** prompt text that already contains U+FDD0 or U+FDD1 loses those characters.
 
 ## Reverts and release problems
 
