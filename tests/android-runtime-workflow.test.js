@@ -217,7 +217,8 @@ describe('Android runtime workflow', () => {
         expect(step.env).toEqual({ GH_TOKEN: '${{ steps.app.outputs.token }}', PUBLISHED: '${{ needs.publish.outputs.published }}' });
         expect(step.run).toMatch(/update-node-digests\.py --published/);
         expect(step.run).toMatch(/git add android\/runtime\.lock android\/runtime\/sources\.lock\n/);
-        expect(step.run).toMatch(/gh pr create --base "\$GITHUB_REF_NAME" --head "\$branch" --title 'TODO\(copy\)' --body 'TODO\(copy\)'/);
+        expect(step.run).toMatch(/gh pr create --base "\$GITHUB_REF_NAME" --head "\$branch" --title 'chore\(android\): Pinning published Node runtime digests for the APK' --body-file "\$body_file"/);
+        expect(step.run).toMatch(/this workflow run \(\$GITHUB_SERVER_URL\/\$GITHUB_REPOSITORY\/actions\/runs\/\$GITHUB_RUN_ID\) built/);
     });
 
     test('lets a re-run of the digest PR job replace its branch and open the PR only once', () => {

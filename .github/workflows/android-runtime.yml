@@ -271,9 +271,21 @@ jobs:
           git add android/runtime.lock android/runtime/sources.lock
           git commit --message 'chore(android): pin published Node runtime digests'
           git push --force origin "$branch"
+          body_file="$RUNNER_TEMP/digest-pr-body.md"
+          {
+            echo "This PR pins the Node runtime that this workflow run ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) built, and published to Github CR for the 3 processor types (ARM64/ARMEABI/x86_64). It writes each build's digest, the SHA-256 hash, and size into the runtime lock file."
+            echo
+            echo "The lock's new hash is also written into the \`android/runtime/sources.lock\` file."
+            echo
+            echo "This needs to be merged before tagging any release candidate for the APK, and APK builds won't be able to fetch Node at all."
+            echo
+            echo "Here's an AI summary:"
+            echo
+            echo "The Android app carries its own copy of Node, which runs the SillyBunny server on the phone. CI builds that copy for each processor type, uploads it, and opens this PR to record each build's fingerprint. Once this is merged, every APK build downloads exactly those files and stops if any of them differ. A new PR like this one opens whenever CI publishes a new Node build."
+          } > "$body_file"
           open=$(gh pr list --head "$branch" --state open --json number --jq length)
           if [ "$open" = 0 ]; then
-            gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title 'TODO(copy)' --body 'TODO(copy)'
+            gh pr create --base "$GITHUB_REF_NAME" --head "$branch" --title 'chore(android): Pinning published Node runtime digests for the APK' --body-file "$body_file"
           fi
 
   mirror:
