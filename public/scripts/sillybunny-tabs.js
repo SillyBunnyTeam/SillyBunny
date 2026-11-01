@@ -83,6 +83,7 @@ import {
 import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
 import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
+import { watchStrayExtensionDrawers } from './sillybunny-settings-stray-drawers.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { initializePromptEditor } from './sillybunny-prompt-editor.js';
@@ -13174,6 +13175,10 @@ function buildShell(shellKey) {
         // third-party drawers and for the drawer-state code that looks the emptied section up.
         originalContent.classList.add('sb-legacy-settings-remainder');
         shellRoot.appendChild(originalContent);
+        watchStrayExtensionDrawers(
+            document.getElementById('user-settings-block-content'),
+            () => document.getElementById('extensions_settings2'),
+        );
 
         // Backgrounds is its own top-level drawer outside the settings block, so it is appended
         // separately rather than being part of the split.
