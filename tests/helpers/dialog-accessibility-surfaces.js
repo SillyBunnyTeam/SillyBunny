@@ -585,10 +585,6 @@ export const SURFACES = [
 
 // Defects the walk found in the product. A test named here is expected to fail, so the run stays green, and it turns red
 // as soon as the defect is fixed, which is the cue to delete the entry. Locations are the CSS that causes each one.
-const ROW_HAS_NO_EDGE = {
-    check: 'forced-controls',
-    why: 'button.ds-row has no border or fill in forced colours: .ds-row--activatable is missing from the outlined controls at sillybunny-theme.css:8215 and sillybunny-editor-shell.css:232 gives it none',
-};
 const CHECKED_SWITCH_RING = {
     check: 'forced-controls',
     why: 'A focused, checked switch draws its Highlight ring on its Highlight fill (sillybunny-theme.css:8221 and :8247)',
@@ -643,7 +639,7 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'help',
-        knownBugs: [ROW_HAS_NO_EDGE, HELP_SIDEBAR_NARROW],
+        knownBugs: [HELP_SIDEBAR_NARROW],
         title: 'Help window (a topic page, Keyboard Shortcuts pushed over it)',
         structure: { name: 'Help' },
         open: page => openFromTile(page, 'help'),
@@ -665,7 +661,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'about',
-        knownBugs: [ROW_HAS_NO_EDGE],
         title: 'About window (Troubleshooting pushed)',
         structure: { name: 'About SillyBunny' },
         open: page => openFromMenu(page, 'About SillyBunny'),
@@ -695,7 +690,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'welcome-reopen',
-        knownBugs: [ROW_HAS_NO_EDGE, CHECKED_SWITCH_RING],
         title: 'Welcome (reopened from the main menu)',
         structure: { name: 'Welcome' },
         open: page => openFromMenu(page, 'Show Welcome'),
@@ -715,7 +709,7 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'welcome-first-run',
-        knownBugs: [ROW_HAS_NO_EDGE, CHECKED_SWITCH_RING],
+        knownBugs: [CHECKED_SWITCH_RING],
         title: 'Welcome (first run)',
         boot: bootHomeFirstRun,
         structure: { name: 'Welcome' },
@@ -742,7 +736,7 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'getting-started',
-        knownBugs: [ROW_HAS_NO_EDGE, NARROW_ROW_LABEL],
+        knownBugs: [NARROW_ROW_LABEL],
         title: 'Getting Started window',
         structure: { name: 'Getting Started' },
         open: page => openFromTile(page, 'getting-started'),
@@ -752,7 +746,7 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'bundled-extras',
-        knownBugs: [ROW_HAS_NO_EDGE, NARROW_ROW_LABEL],
+        knownBugs: [NARROW_ROW_LABEL],
         title: 'Bundled Extras window',
         structure: { name: 'Bundled Extras' },
         open: page => openFromTile(page, 'extras'),

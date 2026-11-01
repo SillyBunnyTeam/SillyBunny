@@ -427,8 +427,10 @@ kbd.sbKeys > kbd {
 }
 
 @media (forced-colors: active) {
+    /* A link with no fill or border is told apart by its underline once the accent colour is gone. */
     .sbHelpTrailLink {
         color: LinkText;
+        text-decoration: underline;
     }
 
     .sbHelpNavRow[aria-current='page'] {
@@ -496,6 +498,12 @@ body.reduced-motion .sbHomeFlatButton {
 }
 
 @media (forced-colors: active) {
+    /* The fill that a flat button lacks is its only edge, so forced colours leave it with none. */
+    .sbHomeFlatButton {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+
     .sbHomeFlatButton[aria-pressed='true'] {
         outline: 2px solid Highlight;
         outline-offset: -2px;

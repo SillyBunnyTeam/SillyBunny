@@ -55,10 +55,24 @@ export async function installProbes(page) {
         };
         const topVisible = selector => [...document.querySelectorAll(selector)].filter(isVisible).at(-1) ?? null;
         const outlineShown = style => style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0 && alphaOf(style.outlineColor) > 0;
-        const borderShown = style => ['Top', 'Right', 'Bottom', 'Left'].some(side => {
+        const sideShown = (style, side) => {
             const borderStyle = style[`border${side}Style`];
             return borderStyle !== 'none' && borderStyle !== 'hidden' && parseFloat(style[`border${side}Width`]) > 0 && alphaOf(style[`border${side}Color`]) > 0;
-        });
+        };
+        const borderShown = style => ['Top', 'Right', 'Bottom', 'Left'].some(side => sideShown(style, side));
+        // A link-styled button has no edge either. Its underline is what marks it, once forced colours drop the accent colour.
+        const isUnderlinedLink = control => getComputedStyle(control).textDecorationLine.includes('underline');
+        // A row of a boxed list has no edge of its own. The list's outline and the separator between neighbours bound it,
+        // as they do in libadwaita's high contrast. Each neighbour needs a line between it and the row, and the list needs an outline.
+        const isBoundedByList = row => {
+            if (!row.matches('.ds-row') || !row.parentElement) return false;
+            const listStyle = getComputedStyle(row.parentElement);
+            if (!borderShown(listStyle) && !outlineShown(listStyle)) return false;
+            const rows = [...row.parentElement.children].filter(sibling => sibling.matches('.ds-row') && isVisible(sibling));
+            const index = rows.indexOf(row);
+            const lineBetween = (upper, lower) => sideShown(getComputedStyle(upper), 'Bottom') || sideShown(getComputedStyle(lower), 'Top');
+            return (index === 0 || lineBetween(rows[index - 1], row)) && (index === rows.length - 1 || lineBetween(row, rows[index + 1]));
+        };
         const backdropOf = element => {
             for (let node = element.parentElement; node; node = node.parentElement) {
                 const colour = getComputedStyle(node).backgroundColor;
@@ -129,7 +143,7 @@ export async function installProbes(page) {
                     if (!control) continue;
                     const style = getComputedStyle(control);
                     const filled = alphaOf(style.backgroundColor) > 0 && style.backgroundColor !== backdropOf(control);
-                    if (!outlineShown(style) && !borderShown(style) && !filled) {
+                    if (!outlineShown(style) && !borderShown(style) && !filled && !isBoundedByList(control) && !isUnderlinedLink(control)) {
                         report.controls.push(`${nameOf(control)} bg ${style.backgroundColor} border ${style.borderTopStyle} ${style.borderTopWidth}`);
                     }
                 }
