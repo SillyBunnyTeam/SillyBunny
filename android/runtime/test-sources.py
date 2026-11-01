@@ -2211,6 +2211,36 @@ class HistoryTests(ScratchTestCase):
                         name = 'git' if expected == 'packages/git' else 'libcurl'
                         self.assertEqual(sources.find_recipe('fixture-history', HISTORY_TIP, name), expected)
 
+    def test_missing_blobs_are_fetched_without_offering_the_clone_commits_as_haves(self):
+        blobs = {hashlib.sha1(b'blob %d\0' % len(contents) + contents).hexdigest(): contents
+                 for contents in (b'TERMUX_PKG_VERSION=1.2.3\n', b'fixture patch\n')}
+        present, missing = list(blobs)
+        fetches = []
+
+        def git(arguments, **kwargs):
+            values = [str(item) for item in arguments]
+            if 'ls-tree' in values:
+                rows = [f'100644 blob {present}\tpackages/git/build.sh', f'100644 blob {missing}\tpackages/git/fix.patch']
+                return subprocess.CompletedProcess(values, 0, stdout=('\0'.join(rows) + '\0').encode('ascii'))
+            if '--batch-all-objects' in values:
+                return subprocess.CompletedProcess(values, 0, stdout=(present + '\n').encode('ascii'))
+            if 'fetch' in values:
+                fetches.append((values, kwargs['input']))
+                return subprocess.CompletedProcess(values, 0, stdout=b'', stderr=b'')
+            if '--batch' in values:
+                output = b''.join(f'{oid} blob {len(blobs[oid])}\n'.encode('ascii') + blobs[oid] + b'\n' for oid in sorted(blobs))
+                return subprocess.CompletedProcess(values, 0, stdout=output)
+            raise AssertionError(values)
+
+        cache = sources.Cache(self.directory / 'objects', offline=True)
+        with mock.patch.object(sources.subprocess, 'run', side_effect=git):
+            files = sources.pin_tree('fixture-history', COMMIT, ['packages/git'], cache)
+        self.assertEqual([pin['gitBlob'] for pin in files], [present, missing])
+        (values, requested), = fetches
+        self.assertEqual(requested, (missing + '\n').encode('ascii'))
+        command = values.index('fetch')
+        self.assertEqual(values[command - 2:command], ['-c', 'fetch.negotiationAlgorithm=noop'])
+
 
 class NodeFixture(SourceFixture):
     def setUp(self):

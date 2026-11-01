@@ -1475,7 +1475,11 @@ def pin_tree(repository, commit, paths, cache, available=None, include_size=Fals
                             stdout=subprocess.PIPE).stdout.decode('ascii').splitlines())
     missing = sorted(set(objects) - available)
     if missing:
-        git(repository, 'fetch', '--no-tags', '--no-write-fetch-head', '--filter=blob:none', '--stdin', 'origin',
+        # The clone has the commits that reach these blobs but not the blobs. Default negotiation offers those commits
+        # as haves, and the server then leaves out each wanted blob that they reach. Git's own lazy fetch sends no
+        # haves for the same reason.
+        git(repository, '-c', 'fetch.negotiationAlgorithm=noop', 'fetch', '--no-tags', '--no-write-fetch-head',
+            '--filter=blob:none', '--stdin', 'origin',
             input=('\n'.join(missing) + '\n').encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         available.update(missing)
     output = git(repository, 'cat-file', '--batch', input=('\n'.join(objects) + '\n').encode(), stdout=subprocess.PIPE).stdout
