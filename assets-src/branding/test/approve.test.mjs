@@ -428,7 +428,7 @@ const REVERT_REFUSALS = [
         const entries = readEntries(root);
         entries[1].outputs[0].superseded = sha256(BYTES.b);
         writeFileSync(join(root, 'log', 'generations.jsonl'), entries.map((entry) => `${JSON.stringify(entry)}\n`).join(''));
-    }, /2 outputs were superseded by raw\/s1\/b\.png \(raw\/s1\/a\.png, raw\/s1\/c\.png\)/],
+    }, /2 outputs were superseded by raw\/s1\/b\.png \(raw\/s1\/a\.png, raw\/s1\/c\.png\)\. Pass --to <file-or-sha256> with one of them/],
     ['an old file that is gone', (root) => rmSync(join(root, 'raw', 's1', 'a.png')), /raw\/s1\/a\.png is missing on disk/],
     ['an old file that is not the logged one', (root) => writeFileSync(join(root, 'raw', 's1', 'a.png'), 'changed'), /raw\/s1\/a\.png: sha256 does not match the log\. Refusing to restore/],
     ['an approved copy that is not the new output', (root) => writeFileSync(join(root, 'approved', 'a.png'), 'edited by hand'), /approved\/a\.png is not the approved file raw\/s1\/b\.png, so it will not be overwritten/],
@@ -468,4 +468,91 @@ test('NOTICE.md lists the old output as current again, the new one as history, a
     assert.ok(!after.includes('| b.png |'));
     assert.match(after, /Superseded approvals \(history\): 1/);
     assert.match(after, new RegExp(`\\(${sha256(BYTES.b).slice(0, 8)} -> ${sha256(BYTES.a).slice(0, 8)}\\)`));
+});
+
+/** a was superseded in place by b, b in place by c, and then c was reverted: b is current again and both a and c point at it. */
+function afterChainAndRevertOfLast({ ref = true } = {}) {
+    const project = projectWithSlot({ ref });
+    inPlace(project.root);
+    supersedeOutput({ rootDir: project.root, oldTarget: 'raw/s1/b.png', newTarget: 'raw/s1/c.png', inPlace: true });
+    revert(project.root, { newTarget: 'raw/s1/c.png' });
+    return project;
+}
+
+test('--to picks which of several superseded outputs a revert restores, and the others keep their history', () => {
+    const { root } = afterChainAndRevertOfLast();
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.b);
+    const before = readLogText(root).split('\n');
+    const done = revert(root, { toTarget: 'raw/s1/a.png' });
+    assert.deepEqual([done.old.file, done.new.file, done.restored, done.removed], ['raw/s1/a.png', 'raw/s1/b.png', ['approved/a.png', 'refs/a.png'], []]);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.a);
+    assert.deepEqual(readFileSync(join(root, 'refs', 'a.png')), BYTES.a);
+    const [first, second, third] = ['a', 'b', 'c'].map((name) => outputOf(root, `raw/s1/${name}.png`));
+    assert.deepEqual([first.approved, first.superseded], [true, undefined]);
+    assert.equal(second.superseded, sha256(BYTES.a));
+    assert.equal(third.superseded, sha256(BYTES.b), 'c stays superseded by b, as history');
+    assert.equal(readLogText(root).split('\n').length, before.length);
+    assert.deepEqual([second.approvedAs, third.approvedAs], ['a.png', 'a.png']);
+});
+
+test('--to takes a sha256 prefix, and without a refs copy restores only approved/', () => {
+    const { root } = afterChainAndRevertOfLast({ ref: false });
+    const done = revert(root, { toTarget: sha256(BYTES.a).slice(0, 12) });
+    assert.deepEqual(done.restored, ['approved/a.png']);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.a);
+    assert.ok(!existsSync(join(root, 'refs')));
+});
+
+test('after a --to revert a normal check passes on the restored slot, and the outputs that were replaced cannot be approved', () => {
+    const { root } = afterChainAndRevertOfLast();
+    revert(root, { toTarget: 'raw/s1/a.png' });
+    const done = approveOutputs({ rootDir: root, targets: ['raw/s1/a.png'], ref: true });
+    assert.deepEqual(done[0].copiedTo, ['approved/a.png', 'refs/a.png']);
+    for (const name of ['b', 'c']) {
+        assert.throws(() => approveOutputs({ rootDir: root, targets: [`raw/s1/${name}.png`], ref: true }), /was superseded by/);
+    }
+});
+
+test('a --to that is not one of the outputs superseded by the new one is refused with the candidates listed, and nothing changes', () => {
+    const { root } = afterChainAndRevertOfLast();
+    const state = snapshot(root);
+    for (const target of ['raw/s1/b.png', sha256(BYTES.b).slice(0, 12)]) {
+        assert.throws(() => revert(root, { toTarget: target }), new RegExp(`${target.replace(/[./]/g, '\\$&')} is not one of the outputs superseded by raw/s1/b\\.png\\. Candidates: raw/s1/a\\.png, raw/s1/c\\.png\\.`));
+    }
+    assert.throws(() => revert(root, { toTarget: 'raw/s1/zzz.png' }), /not in the log/);
+    assert.deepEqual(snapshot(root), state);
+    const single = afterInPlace();
+    const singleState = snapshot(single.root);
+    assert.throws(() => revert(single.root, { toTarget: 'raw/s1/c.png' }), /raw\/s1\/c\.png is not one of the outputs superseded by raw\/s1\/b\.png\. Candidates: raw\/s1\/a\.png\./);
+    assert.deepEqual(snapshot(single.root), singleState);
+});
+
+test('without --to several candidates are still refused, and the message says to pass --to; one candidate still needs nothing', () => {
+    const { root } = afterChainAndRevertOfLast();
+    const state = snapshot(root);
+    assert.throws(() => revert(root), /2 outputs were superseded by raw\/s1\/b\.png \(raw\/s1\/a\.png, raw\/s1\/c\.png\)\. Pass --to <file-or-sha256> with one of them to say which to restore/);
+    assert.deepEqual(snapshot(root), state);
+    const single = afterInPlace();
+    assert.equal(revert(single.root).old.file, 'raw/s1/a.png');
+});
+
+test('a --to revert dry run runs the checks, reports the chosen output and writes nothing', () => {
+    const { root } = afterChainAndRevertOfLast();
+    const state = snapshot(root);
+    const done = revert(root, { toTarget: 'raw/s1/a.png', dryRun: true });
+    assert.deepEqual([done.old.file, done.restored], ['raw/s1/a.png', ['approved/a.png', 'refs/a.png']]);
+    assert.deepEqual(snapshot(root), state);
+    rmSync(join(root, 'raw', 's1', 'a.png'));
+    assert.throws(() => revert(root, { toTarget: 'raw/s1/a.png', dryRun: true }), /raw\/s1\/a\.png is missing on disk/);
+});
+
+test('NOTICE.md lists the original as current after a --to revert, with a history line for each replaced output', () => {
+    const { root } = afterChainAndRevertOfLast();
+    revert(root, { toTarget: 'raw/s1/a.png' });
+    const text = renderGeneratedRegion({ entries: readEntries(root).map((entry) => ({ provider: 'p', refs: [], ...entry })), tools: [], checkedOn: '2026-11-01' });
+    assert.match(text, new RegExp(`\\| a\\.png \\| m \\| ${sha256(BYTES.a).slice(0, 16)} \\|`));
+    assert.equal(text.match(/\| a\.png \|/g).length, 1);
+    assert.match(text, /Superseded approvals \(history\): 2/);
+    assert.match(text, new RegExp(`${sha256(BYTES.b).slice(0, 8)} -> ${sha256(BYTES.a).slice(0, 8)}`));
+    assert.match(text, new RegExp(`${sha256(BYTES.c).slice(0, 8)} -> ${sha256(BYTES.b).slice(0, 8)}`));
 });

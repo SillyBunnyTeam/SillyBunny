@@ -207,10 +207,11 @@ function copyOver(destination, bytes) {
  * Undoes a supersede: the output that `<new>` superseded is approved again and `<new>` is superseded by it, which keeps `<new>`
  * in the log as history. The old bytes go back under the approved name in every folder where `<new>` has a copy. When `<new>`
  * took over the old name (`--in-place`) they replace its bytes there; when it lived under its own name, its copies are removed.
- * Every check runs before anything is changed.
- * @param {{ rootDir: string, newTarget: string, dryRun?: boolean }} request
+ * When several outputs were superseded by `<new>` (a chain of supersedes on one slot, reverted step by step), `toTarget` picks the one
+ * to restore; the others keep their `superseded` as history. Every check runs before anything is changed.
+ * @param {{ rootDir: string, newTarget: string, toTarget?: string, dryRun?: boolean }} request
  */
-export function revertSupersede({ rootDir, newTarget, dryRun = false }) {
+export function revertSupersede({ rootDir, newTarget, toTarget, dryRun = false }) {
     const logPath = join(rootDir, 'log', 'generations.jsonl');
     const log = readLogLines(logPath);
     const replacement = findOutput(log.entries, rootDir, newTarget);
@@ -225,10 +226,14 @@ export function revertSupersede({ rootDir, newTarget, dryRun = false }) {
     if (replaced.length === 0) {
         throw new Error(`Nothing was superseded by ${replacement.output.file}, so there is nothing to revert.`);
     }
-    if (replaced.length > 1) {
-        throw new Error(`${replaced.length} outputs were superseded by ${replacement.output.file} (${replaced.map(({ output }) => output.file).join(', ')}). Revert is only for one.`);
+    const candidates = replaced.map(({ output }) => output.file).join(', ');
+    if (toTarget === undefined && replaced.length > 1) {
+        throw new Error(`${replaced.length} outputs were superseded by ${replacement.output.file} (${candidates}). Pass --to <file-or-sha256> with one of them to say which to restore.`);
     }
-    const [old] = replaced;
+    const old = toTarget === undefined ? replaced[0] : replaced.find(({ output }) => output === findOutput(log.entries, rootDir, toTarget).output);
+    if (!old) {
+        throw new Error(`${toTarget} is not one of the outputs superseded by ${replacement.output.file}. Candidates: ${candidates}.`);
+    }
     const oldSource = loggedFile(rootDir, old.output, 'restore');
 
     const newName = approvedName(replacement.output);

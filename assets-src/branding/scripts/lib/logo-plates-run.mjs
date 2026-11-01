@@ -2,21 +2,26 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import sharp from 'sharp';
-import { orientSubpaths, outerRunsClockwise } from './geometry.mjs';
+import { traceBody } from './body-trace.mjs';
+import { BAND_OVERHANG, FIELD_ALPHAMAX, FIELD_SIGMA, FIELD_TOLERANCE, LETTER_ALPHAMAX, REFIT_TOLERANCE, TONE_SIGMA } from './field-trace.mjs';
+import { OUTLINE_FACTOR } from './outline-fit.mjs';
+import { orientSubpaths } from './geometry.mjs';
 import { sniffImage } from './images.mjs';
-import { edgeAt, fitLines } from './line-fit.mjs';
+import { DOME_DEGREE } from './dome-edge.mjs';
+import { edgeAt, fitLines, withDomeEdge } from './line-fit.mjs';
 import { buildLineShapes } from './line-geometry.mjs';
-import { THIN_SHARE, isolateLines, lineThickness, rasterFromTones, toneRoles } from './line-shading.mjs';
+import { THIN_SHARE, isolateLines, lineThickness, toneRoles } from './line-shading.mjs';
 import { appendLogEntry, makeLogEntry, sha256 } from './log.mjs';
 import { findBase, frameEmblem } from './logo-frame.mjs';
 import { SQUIRCLE_EXPONENT, plateColours, placeEmblem, plateSvg } from './plate.mjs';
 import { buildPlateSheet } from './plate-sheet.mjs';
+import { findPotrace } from './potrace.mjs';
 import { opaqueBox, readRaster } from './raster.mjs';
 import { resolveOutDir } from './run.mjs';
 import { dilateMask } from './shape-ops.mjs';
 import { checkFinalSvg } from './svg-checks.mjs';
 import { findTones, pinTone, snapToTones } from './tone-snap.mjs';
-import { SEGMENT_LENGTH, buildSvg, compareTrace, findVtracer, traceLayer } from './vectorize-run.mjs';
+import { buildSvg, compareTrace } from './vectorize-run.mjs';
 
 export const SHAPES = [{ id: 'S', shape: 'square', name: 'squircle' }, { id: 'C', shape: 'circle', name: 'circle' }];
 export const STYLES = [{ id: 'L', name: 'light' }, { id: 'D', name: 'dark' }];
@@ -85,9 +90,9 @@ const boundaryCorners = (mask, side) => {
  * `shape` ('squircle' or 'circle') and `colour` ('light' or 'dark') keep only that choice; with a single plate left the files are named
  * logo-emblem.svg, logo-emblem-nolines.svg, logo-plate.svg and logo-plate-nolines.svg. Without a `sheetPath` no contact sheet is written.
  * Every SVG must pass `checkFinalSvg`. `preview` writes under out/ only and writes nothing to the log.
- * @param {{ rootDir: string, inPath: string, outDir: string, sheetPath?: string, baseHex: string, shape?: 'squircle' | 'circle', colour?: 'light' | 'dark', segmentLength?: number, kDark?: number, kLight?: number, maxBytes?: number, vtracer?: string, preview?: boolean, now: () => Date }} request
+ * @param {{ rootDir: string, inPath: string, outDir: string, sheetPath?: string, baseHex: string, shape?: 'squircle' | 'circle', colour?: 'light' | 'dark', kDark?: number, kLight?: number, maxBytes?: number, potrace?: string, preview?: boolean, now: () => Date }} request
  */
-export async function runLogoPlates({ rootDir, inPath, outDir, sheetPath, baseHex, shape: chosenShape, colour: chosenColour, segmentLength = SEGMENT_LENGTH, kDark, kLight, maxBytes, vtracer = findVtracer(), preview = false, now }) {
+export async function runLogoPlates({ rootDir, inPath, outDir, sheetPath, baseHex, shape: chosenShape, colour: chosenColour, kDark, kLight, maxBytes, potrace = findPotrace(), preview = false, now }) {
     const shapes = SHAPES.filter(({ name }) => chosenShape === undefined || name === chosenShape);
     const styles = STYLES.filter(({ name }) => chosenColour === undefined || name === chosenColour);
     if (shapes.length === 0 || styles.length === 0) {
@@ -146,27 +151,24 @@ export async function runLogoPlates({ rootDir, inPath, outDir, sheetPath, baseHe
             }
         }
     });
-    const bodyRaster = rasterFromTones(bodyIndex, width, height, tones);
-    const toneOrder = [roles.base, roles.dark, roles.light];
     const directory = mkdtempSync(join(tmpdir(), 'sb-plates-'));
-    let bodyLayers;
+    let body;
     try {
-        bodyLayers = [];
-        for (const index of toneOrder) {
-            const commands = await traceLayer({ raster: bodyRaster, toneIndex: bodyIndex, belongs: index === roles.base ? () => true : (tone) => tone === index }, { vtracer, segmentLength, directory });
-            bodyLayers.push({ fill: tones[index].hex, commands });
-        }
+        body = await traceBody({ index: bodyIndex, source, tones, roles, base, potrace, directory });
     } finally {
         rmSync(directory, { recursive: true, force: true });
     }
-    const bodyCheck = await compareTrace(buildSvg({ width, height, layers: bodyLayers }), bodyRaster, tones, bodyIndex);
+    const bodyLayers = body.layers;
+    // The lines meet the dome where it was redrawn, so their bands stop on its new edge.
+    const lineFits = fits.map((fit) => withDomeEdge(fit, body.curves[fit.towards === 1 ? 'left' : 'right']));
+    const bodyCheck = await compareTrace(buildSvg({ width, height, layers: bodyLayers }), body.raster, tones, body.index);
     if (bodyCheck.wrongShape > MAX_SHAPE_MISMATCH) {
         throw new Error(`The trace of the ears and dome differs from the picture on ${(bodyCheck.wrongShape * 100).toFixed(1)}% of the shape, so it is broken; nothing was written.`);
     }
 
     // Subpaths of the line shapes run the way the traced outline does, so where they overlap the dome they add up instead of cancelling.
-    const clockwise = outerRunsClockwise(bodyLayers[0].commands);
-    const lineShapes = fits.map((fit) => buildLineShapes(fit, { kDark: bands.dark, kLight: bands.light }));
+    const clockwise = body.outsideClockwise;
+    const lineShapes = lineFits.map((fit) => buildLineShapes(fit, { kDark: bands.dark, kLight: bands.light }));
     const withLines = bodyLayers.map(({ fill, commands }, at) => ({ fill, commands: [...commands, ...orientSubpaths(lineShapes.flatMap((lineShape) => lineShape[['base', 'dark', 'light'][at]]), clockwise)] }));
     const withoutLines = bodyLayers;
 
@@ -267,6 +269,8 @@ export async function runLogoPlates({ rootDir, inPath, outDir, sheetPath, baseHe
                 kLight: bands.light,
                 lineWidth,
                 dotRadius: Math.round(fits[0].dot.r * 100) / 100,
+                domeEdge: { degree: DOME_DEGREE, rows: body.dome.rows },
+                tracing: { tracer: 'potrace', factor: OUTLINE_FACTOR, sigma: FIELD_SIGMA, toneSigma: TONE_SIGMA, alphamax: FIELD_ALPHAMAX, letterAlphamax: LETTER_ALPHAMAX, opttolerance: FIELD_TOLERANCE, refitTolerance: REFIT_TOLERANCE, bandOverhang: BAND_OVERHANG },
             },
             refHashes: [sha256(sourceBytes)],
             size: `${frame.side}x${frame.side}`,
@@ -285,7 +289,9 @@ export async function runLogoPlates({ rootDir, inPath, outDir, sheetPath, baseHe
         lineWidth,
         bands,
         dotRadius: fits[0].dot.r,
-        fits: fits.map((fit, at) => ({ towards: fit.towards, vertices: fit.vertices, dot: fit.dot, edge: fit.edge, measured: fit.measured, deviation: deviations[at] })),
+        dome: body.dome,
+        letters: body.letters,
+        fits: lineFits.map((fit, at) => ({ towards: fit.towards, vertices: fit.vertices, dot: fit.dot, edge: fit.edge, measured: fit.measured, deviation: deviations[at] })),
         bodyCheck,
         colours,
         placements,

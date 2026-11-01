@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { test } from 'node:test';
-import { buildPatchRequest, chooseRequestSize, compositeOnto, differenceReport, extractPatchResult, parsePatchSpec, sampleBorderColour } from '../scripts/lib/patch.mjs';
+import { buildPatchRequest, chooseRequestSize, compositeOnto, countNewlyOpaque, differenceReport, extractPatchResult, parsePatchSpec, sampleBorderColour } from '../scripts/lib/patch.mjs';
 import { createRaster, getPixel, setPixel } from '../test-support/synthetic.mjs';
 
 const BACKGROUND = [240, 236, 250];
@@ -189,4 +189,90 @@ test('the spec is checked: crops inside the image, composite rects inside their 
     ]) {
         assert.throws(() => parsePatchSpec(bad, size), message);
     }
+});
+
+/** What compositeOnto did before it knew about alpha: every channel, alpha included, blended by the feather weight. */
+function blendEveryChannel(target, patchRaster, box, rect, feather) {
+    for (let y = rect.y; y < rect.y + rect.height; y++) {
+        for (let x = rect.x; x < rect.x + rect.width; x++) {
+            const depth = Math.min(x - rect.x, rect.x + rect.width - 1 - x, y - rect.y, rect.y + rect.height - 1 - y);
+            const weight = feather === 0 ? 1 : Math.min(1, (depth + 1) / (feather + 1));
+            const from = ((y - box.y) * patchRaster.width + (x - box.x)) * 4;
+            for (let c = 0; c < 4; c++) {
+                const at = (y * target.width + x) * 4 + c;
+                target.data[at] = weight >= 1 ? patchRaster.data[from + c] : Math.round(target.data[at] * (1 - weight) + patchRaster.data[from + c] * weight);
+            }
+        }
+    }
+}
+
+const noisy = (width, height, alpha, seed) => {
+    const raster = createRaster(width, height);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            setPixel(raster, x, y, [(x * 7 + y * 13 + seed) % 256, (x * 3 + y * 5 + seed * 2) % 256, (x * 11 + y + seed * 3) % 256, alpha]);
+        }
+    }
+    return raster;
+};
+
+test('on an opaque source, and an opaque result, the blend is the same bytes as before for every feather, with and without keepAlpha', () => {
+    const crop = { x: 10, y: 10, width: 60, height: 50 };
+    const rect = { x: 15, y: 14, width: 40, height: 30 };
+    for (const feather of [0, 3, 6]) {
+        const expected = noisy(100, 80, 255, 1);
+        blendEveryChannel(expected, noisy(60, 50, 255, 9), crop, rect, feather);
+        for (const options of [undefined, { keepAlpha: false }, { keepAlpha: true }]) {
+            const target = compositeOnto(noisy(100, 80, 255, 1), noisy(60, 50, 255, 9), crop, [rect], feather, options);
+            assert.deepEqual(target.data, expected.data, `feather ${feather} ${JSON.stringify(options)}`);
+        }
+    }
+});
+
+test('the feathered edge never fades a solid source pixel, even where the result is see-through; the middle still takes the result as before', () => {
+    const crop = { x: 0, y: 0, width: 40, height: 40 };
+    const rect = { x: 5, y: 5, width: 30, height: 30 };
+    const target = compositeOnto(noisy(40, 40, 255, 1), noisy(40, 40, 0, 4), crop, [rect], 4);
+    assert.equal(getPixel(target, 5, 20)[3], 255, 'edge pixel');
+    assert.equal(getPixel(target, 7, 20)[3], 255, 'inside the feather');
+    assert.equal(getPixel(target, 20, 20)[3], 0, 'the middle is the result, as it was');
+    assert.equal(getPixel(target, 2, 20)[3], 255, 'outside the rect');
+});
+
+test('keepAlpha leaves every pixel that is not opaque as it was, and keeps an opaque pixel opaque whatever the result says', () => {
+    const crop = { x: 0, y: 0, width: 20, height: 20 };
+    const source = createRaster(20, 20);
+    setPixel(source, 10, 10, [1, 2, 3, 255]);
+    setPixel(source, 11, 10, [9, 8, 7, 90]);
+    const result = noisy(20, 20, 128, 5);
+    const target = compositeOnto(source, result, crop, [crop], 0, { keepAlpha: true });
+    assert.deepEqual(getPixel(target, 5, 5), [0, 0, 0, 0]);
+    assert.deepEqual(getPixel(target, 11, 10), [9, 8, 7, 90]);
+    assert.deepEqual(getPixel(target, 10, 10), [...getPixel(result, 10, 10).slice(0, 3), 255]);
+    const without = compositeOnto(createRaster(20, 20), result, crop, [crop], 0);
+    assert.deepEqual(getPixel(without, 5, 5), getPixel(result, 5, 5), 'without the flag the transparent pixel takes the result');
+});
+
+test('newly visible pixels are counted once even where rects overlap, and only where the source was fully transparent', () => {
+    const before = createRaster(10, 10);
+    setPixel(before, 1, 1, [5, 5, 5, 255]);
+    setPixel(before, 2, 1, [5, 5, 5, 40]);
+    const after = noisy(10, 10, 255, 2);
+    const rects = [[{ x: 0, y: 0, width: 4, height: 2 }], [{ x: 2, y: 0, width: 4, height: 2 }]];
+    assert.equal(countNewlyOpaque(before, after, rects), 6 * 2 - 2, 'twelve pixels, minus the opaque one and the faint one');
+    assert.equal(countNewlyOpaque(before, before, rects), 0);
+});
+
+test('a master whose solid pixels are 253, not 255, still takes the result under keepAlpha, keeps its 253, and its antialiased edge is left alone', () => {
+    const crop = { x: 0, y: 0, width: 20, height: 20 };
+    const source = createRaster(20, 20, [10, 20, 30, 253]);
+    setPixel(source, 4, 4, [10, 20, 30, 200]);
+    setPixel(source, 5, 4, [10, 20, 30, 0]);
+    const result = noisy(20, 20, 255, 3);
+    const target = compositeOnto(source, result, crop, [crop], 0, { keepAlpha: true });
+    assert.deepEqual(getPixel(target, 10, 10), [...getPixel(result, 10, 10).slice(0, 3), 253]);
+    assert.deepEqual(getPixel(target, 4, 4), [10, 20, 30, 200]);
+    assert.deepEqual(getPixel(target, 5, 4), [10, 20, 30, 0]);
+    const feathered = compositeOnto(createRaster(20, 20, [10, 20, 30, 253]), noisy(20, 20, 0, 3), crop, [crop], 3);
+    assert.equal(getPixel(feathered, 0, 10)[3], 253, 'the feathered edge does not fade it');
 });

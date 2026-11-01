@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import { approveOutputs, revertSupersede, supersedeOutput } from './lib/approve.mjs';
 import { ROOT_DIR } from './lib/cli.mjs';
 
-const USAGE = 'Usage: approve.mjs [--ref] [--dry-run] <file-or-sha256> [<file-or-sha256> ...]\n       approve.mjs --supersede <old-file-or-sha256> --by <new-file-or-sha256> [--in-place] [--dry-run]\n       approve.mjs --revert <new-file-or-sha256> [--dry-run]';
+const USAGE = 'Usage: approve.mjs [--ref] [--dry-run] <file-or-sha256> [<file-or-sha256> ...]\n       approve.mjs --supersede <old-file-or-sha256> --by <new-file-or-sha256> [--in-place] [--dry-run]\n       approve.mjs --revert <new-file-or-sha256> [--to <old-file-or-sha256>] [--dry-run]';
 
 try {
     const { values, positionals } = parseArgs({
@@ -14,6 +14,7 @@ try {
             by: { type: 'string' },
             'in-place': { type: 'boolean', default: false },
             revert: { type: 'string' },
+            to: { type: 'string' },
         },
         allowPositionals: true,
     });
@@ -21,11 +22,14 @@ try {
     if (values['in-place'] && values.supersede === undefined) {
         throw new Error(USAGE);
     }
+    if (values.to !== undefined && values.revert === undefined) {
+        throw new Error(USAGE);
+    }
     if (values.revert !== undefined) {
-        if (!values.revert || values.supersede !== undefined || values.by !== undefined || values['in-place'] || values.ref || positionals.length > 0) {
+        if (!values.revert || values.to === '' || values.supersede !== undefined || values.by !== undefined || values['in-place'] || values.ref || positionals.length > 0) {
             throw new Error(USAGE);
         }
-        const done = revertSupersede({ rootDir: ROOT_DIR, newTarget: values.revert, dryRun });
+        const done = revertSupersede({ rootDir: ROOT_DIR, newTarget: values.revert, toTarget: values.to, dryRun });
         process.stdout.write(`${dryRun ? 'would revert' : 'reverted'} ${done.new.file} (sha256 ${done.new.sha256.slice(0, 16)}) to ${done.old.file} (sha256 ${done.old.sha256.slice(0, 16)})\n`);
         process.stdout.write(`${dryRun ? 'would write' : 'wrote'} the old file to: ${done.restored.join(', ')}\n`);
         if (done.removed.length > 0) {

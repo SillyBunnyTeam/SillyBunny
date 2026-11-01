@@ -10,6 +10,9 @@ const REQUEST_SIZES = [
 const TOO_SMALL_SCALE = 12;
 const SHAPE_TOLERANCE = 0.02;
 const SPEC_KEYS = new Set(['crop', 'composite', 'instruction']);
+// A pixel with at least this alpha counts as solid. The approved masters are not drawn at 255 (their solid pixels sit around 253),
+// and anything fainter is the antialiased edge of the sticker, whose colour is a mix with the transparent side.
+export const SOLID_ALPHA = 250;
 
 const isWhole = (value) => Number.isInteger(value);
 
@@ -163,13 +166,17 @@ function rectWeight(rect, x, y, feather) {
 /**
  * Blends the patch result into `target` in place, only inside the composite rects (source-image pixels).
  * A pixel outside every rect is not touched, so it stays byte-identical to the source.
+ * A feathered edge only mixes colour into a solid pixel (alpha of SOLID_ALPHA or more): it never fades it, whatever alpha the result has there.
+ * With `keepAlpha` the alpha channel is never changed anywhere: a pixel that is not solid keeps all four bytes, and a solid
+ * one takes the result's colour and keeps its alpha, so nothing the model drew in transparent space shows.
  * @param {{ width: number, data: Uint8Array }} target
  * @param {{ width: number, height: number, data: Uint8Array }} patchRaster the result, at the crop's size
  * @param {{ x: number, y: number, width: number, height: number }} box the crop in source pixels
  * @param {Array<{ x: number, y: number, width: number, height: number }>} rects
  * @param {number} feather
+ * @param {{ keepAlpha?: boolean }} [options]
  */
-export function compositeOnto(target, patchRaster, box, rects, feather) {
+export function compositeOnto(target, patchRaster, box, rects, feather, { keepAlpha = false } = {}) {
     const weights = new Map();
     for (const rect of rects) {
         for (let y = rect.y; y < rect.y + rect.height; y++) {
@@ -180,15 +187,44 @@ export function compositeOnto(target, patchRaster, box, rects, feather) {
         }
     }
     for (const [key, weight] of weights) {
+        const isSolid = target.data[key * 4 + 3] >= SOLID_ALPHA;
+        if (keepAlpha && !isSolid) {
+            continue;
+        }
         const x = key % target.width;
         const y = Math.floor(key / target.width);
         const from = ((y - box.y) * patchRaster.width + (x - box.x)) * 4;
-        for (let c = 0; c < 4; c++) {
+        const channels = isSolid && (keepAlpha || weight < 1) ? 3 : 4;
+        for (let c = 0; c < channels; c++) {
             const at = key * 4 + c;
             target.data[at] = weight >= 1 ? patchRaster.data[from + c] : Math.round(target.data[at] * (1 - weight) + patchRaster.data[from + c] * weight);
         }
     }
     return target;
+}
+
+/**
+ * How many pixels inside the composite rects (of every patch, each counted once) were fully transparent in `before` and are not in `after`:
+ * what the model drew in transparent space and the composite let through.
+ * @param {{ width: number, data: Uint8Array }} before
+ * @param {{ width: number, data: Uint8Array }} after
+ * @param {Array<Array<{ x: number, y: number, width: number, height: number }>>} rectLists one list of rects per patch
+ */
+export function countNewlyOpaque(before, after, rectLists) {
+    const seen = new Set();
+    let count = 0;
+    for (const rect of rectLists.flat()) {
+        for (let y = rect.y; y < rect.y + rect.height; y++) {
+            for (let x = rect.x; x < rect.x + rect.width; x++) {
+                const key = y * before.width + x;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    count += before.data[key * 4 + 3] === 0 && after.data[key * 4 + 3] > 0 ? 1 : 0;
+                }
+            }
+        }
+    }
+    return count;
 }
 
 /**

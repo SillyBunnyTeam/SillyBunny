@@ -19,8 +19,8 @@ const config = loadConfig(join(BRANDING, 'config.json'));
 const kit = loadPromptKit(join(BRANDING, 'prompts'));
 const RULE = 'No human ears: the only ears are the rabbit ears on top of the head; the sides of the head where human ears would be are covered by hair.';
 
-function page() {
-    const raster = createRaster(300, 200, [240, 236, 250, 255]);
+function page(background = [240, 236, 250, 255]) {
+    const raster = createRaster(300, 200, background);
     for (let y = 40; y < 160; y++) {
         for (let x = 90; x < 210; x++) {
             setPixel(raster, x, y, (x + y) % 11 < 5 ? [250, 220, 200] : [60, 40, 90]);
@@ -34,10 +34,10 @@ function page() {
     return raster;
 }
 
-async function makeRoot({ logLines = [] } = {}) {
+async function makeRoot({ logLines = [], background } = {}) {
     const root = mkdtempSync(join(tmpdir(), 'sb-patch-'));
     mkdirSync(join(root, 'refs'));
-    const source = page();
+    const source = page(background);
     const imagePath = join(root, 'refs', 'page.png');
     await sharp(source.data, { raw: { width: 300, height: 200, channels: 4 } }).png().toFile(imagePath);
     if (logLines.length > 0) {
@@ -76,6 +76,9 @@ function makeDeps(root, { mode = 'recolour', failOnCall, usage = [] } = {}) {
                         data[at] = 255 - data[at];
                         data[at + 1] = 255 - data[at + 1];
                         data[at + 2] = 255 - data[at + 2];
+                    } else if (mode === 'opaque' && (data[at + 3] < 200 || data[at] + data[at + 1] + data[at + 2] < 30)) {
+                        // A model that does not know about transparency fills it with a background of its own.
+                        data.set([240, 170, 200, 255], at);
                     } else if (data[at] > 180 && data[at + 1] < 90 && data[at + 2] < 90) {
                         data.set([30, 220, 30], at);
                     }
@@ -406,3 +409,109 @@ for (const [name, { mutate, prepare }, overrides, message] of REFUSALS) {
         assert.equal(readLogText(made.root), log);
     });
 }
+
+const CLEAR = [0, 0, 0, 0];
+const FLOATING = [{ crop: [60, 20, 180, 160], composite: [[70, 30, 160, 140]] }];
+// The rect holds the 120 x 120 subject and the transparent margin around it.
+const MARGIN_PIXELS = 160 * 140 - 120 * 120;
+const compositeOf = (root, variant = 1) => logOf(root).filter((entry) => entry.template === 'patch-composite')[variant - 1];
+
+async function floatingRun(overrides = {}) {
+    const made = await makeRoot({ background: CLEAR });
+    const played = makeDeps(made.root, { mode: 'opaque' });
+    await runPatches(request(made.imagePath, { patches: FLOATING, ...overrides }), played.deps);
+    return { ...made, ...played, picture: await readRaster(join(made.root, 'raw', 's2', readdirSync(join(made.root, 'raw', 's2')).find((name) => /patch-1\.png$/.test(name)))) };
+}
+
+const alphaDifferences = (picture, source) => Array.from({ length: source.width * source.height }, (_, at) => at).filter((at) => picture.data[at * 4 + 3] !== source.data[at * 4 + 3]).length;
+
+test('a model that fills transparent space makes it visible by default: the count is printed, warned about and logged', async () => {
+    const { root, source, picture, lines } = await floatingRun();
+    const visible = Array.from({ length: source.width * source.height }, (_, at) => at).filter((at) => source.data[at * 4 + 3] === 0 && picture.data[at * 4 + 3] > 0);
+    assert.equal(visible.length, MARGIN_PIXELS);
+    assert.deepEqual(getPixel(picture, 80, 100).slice(0, 3), [240, 170, 200], 'the margin shows the model\'s background');
+    assert.match(lines.join('\n'), new RegExp(`variant 1: ${MARGIN_PIXELS} pixels inside the composite rects were transparent in the source and are not now`));
+    assert.match(lines.join('\n'), new RegExp(`WARNING: variant 1: ${MARGIN_PIXELS} transparent pixels .*Pass --keep-alpha`));
+    const entry = compositeOf(root);
+    assert.equal(entry.vars.newlyOpaque, MARGIN_PIXELS);
+    assert.ok(!('keepAlpha' in entry.vars));
+});
+
+test('--keep-alpha keeps the source alpha everywhere: transparent and faint pixels stay byte for byte, opaque ones take the result, and nothing is warned about', async () => {
+    const { root, source, picture, lines } = await floatingRun({ keepAlpha: true });
+    assert.equal(alphaDifferences(picture, source), 0);
+    for (let at = 0; at < source.width * source.height; at++) {
+        if (source.data[at * 4 + 3] === 0) {
+            assert.deepEqual(picture.data.subarray(at * 4, at * 4 + 4), source.data.subarray(at * 4, at * 4 + 4), `transparent pixel ${at} changed`);
+        }
+    }
+    assert.ok(isGreenish(getPixel(picture, 104, 94)), 'the opaque subject still takes the result');
+    assert.match(lines.join('\n'), /variant 1: 0 pixels inside the composite rects were transparent/);
+    assert.ok(!lines.join('\n').includes('--keep-alpha'), 'no hint to pass a flag that is already set');
+    const entry = compositeOf(root);
+    assert.deepEqual([entry.vars.newlyOpaque, entry.vars.keepAlpha], [0, true]);
+});
+
+test('a faint source pixel keeps all four bytes under --keep-alpha, and an opaque pixel next to it still takes the result', async () => {
+    const made = await makeRoot({ background: CLEAR });
+    const source = await readRaster(made.imagePath);
+    setPixel(source, 80, 100, [200, 100, 50, 90]);
+    await sharp(source.data, { raw: { width: 300, height: 200, channels: 4 } }).png().toFile(made.imagePath);
+    const { deps } = makeDeps(made.root, { mode: 'opaque' });
+    await runPatches(request(made.imagePath, { patches: FLOATING, keepAlpha: true }), deps);
+    const picture = await readRaster(join(made.root, 'raw', 's2', readdirSync(join(made.root, 'raw', 's2')).find((name) => /patch-1\.png$/.test(name))));
+    assert.deepEqual(getPixel(picture, 80, 100), [200, 100, 50, 90]);
+    assert.equal(alphaDifferences(picture, source), 0);
+});
+
+test('on a fully opaque source --keep-alpha changes nothing: the same pictures, a count of 0 and no warning', async () => {
+    const plain = await makeRoot();
+    const kept = await makeRoot();
+    const first = makeDeps(plain.root);
+    const second = makeDeps(kept.root);
+    await runPatches(request(plain.imagePath, { patches: TWO, n: 2 }), first.deps);
+    await runPatches(request(kept.imagePath, { patches: TWO, n: 2, keepAlpha: true }), second.deps);
+    const names = readdirSync(join(plain.root, 'raw', 's2')).filter((name) => /patch-\d\.png$/.test(name));
+    assert.equal(names.length, 2);
+    for (const name of names) {
+        assert.deepEqual(readFileSync(join(kept.root, 'raw', 's2', name)), readFileSync(join(plain.root, 'raw', 's2', name)));
+    }
+    assert.ok(!first.lines.join('\n').includes('WARNING') && !second.lines.join('\n').includes('WARNING'));
+    assert.deepEqual([compositeOf(plain.root).vars.newlyOpaque, compositeOf(kept.root).vars.newlyOpaque], [0, 0]);
+});
+
+test('--reuse with --keep-alpha re-composites the saved results without the box, and without it the same results show the count again', async () => {
+    const { root, source, imagePath } = await floatingRun();
+    const prefix = `raw/s2/${FIRST_STAMP}-gpt-image-2.5-sunburst-h-patch`;
+    const before = logOf(root).length;
+    const fixed = reuseDeps(root);
+    await runPatches(request(imagePath, { patches: FLOATING, reuse: prefix, keepAlpha: true, outDir: 'raw/s2/fix', instruction: undefined }), fixed.deps);
+    const picture = await readRaster(join(root, 'raw', 's2', 'fix', readdirSync(join(root, 'raw', 's2', 'fix')).find((name) => /-1\.png$/.test(name) && !/compare/.test(name))));
+    assert.equal(alphaDifferences(picture, source), 0);
+    const entry = logOf(root)[before];
+    assert.deepEqual([entry.template, entry.vars.newlyOpaque, entry.vars.keepAlpha, entry.vars.reused], ['patch-composite', 0, true, prefix]);
+    assert.ok(!fixed.lines.join('\n').includes('--keep-alpha'));
+
+    const again = reuseDeps(root);
+    await runPatches(request(imagePath, { patches: FLOATING, reuse: prefix, dryRun: true, outDir: 'raw/s2/other', instruction: undefined }), again.deps);
+    assert.match(again.lines.join('\n'), new RegExp(`WARNING: variant 1: ${MARGIN_PIXELS} transparent pixels`));
+    assert.ok(!existsSync(join(root, 'raw', 's2', 'other')), 'a dry run writes nothing');
+    assert.equal(logOf(root).length, before + 1);
+});
+
+test('--keep-alpha works on a master whose solid pixels are 253, as the approved masters are: the subject still takes the result', async () => {
+    const made = await makeRoot({ background: CLEAR });
+    const source = await readRaster(made.imagePath);
+    for (let at = 0; at < source.width * source.height; at++) {
+        if (source.data[at * 4 + 3] === 255) {
+            source.data[at * 4 + 3] = 253;
+        }
+    }
+    await sharp(source.data, { raw: { width: 300, height: 200, channels: 4 } }).png().toFile(made.imagePath);
+    const { deps } = makeDeps(made.root, { mode: 'opaque' });
+    await runPatches(request(made.imagePath, { patches: FLOATING, keepAlpha: true }), deps);
+    const picture = await readRaster(join(made.root, 'raw', 's2', readdirSync(join(made.root, 'raw', 's2')).find((name) => /patch-1\.png$/.test(name))));
+    assert.equal(alphaDifferences(picture, source), 0);
+    assert.ok(isGreenish(getPixel(picture, 104, 94)), 'the subject changed');
+    assert.equal(compositeOf(made.root).vars.newlyOpaque, 0);
+});

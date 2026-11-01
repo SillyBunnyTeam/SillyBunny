@@ -20,18 +20,18 @@ function paint(raster, inside, colour) {
 
 /**
  * A logo of three flat tones the way the real one is built, small enough for tests: a dome with the letters cut out of it and a dark
- * lower band, two ears standing on it, and two lines that each end in a round dot. The one on the left turns twice (a horizontal piece,
+ * lower band, two ears that narrow where they meet its tall, rounded sides, and two lines that each end in a round dot. The one on the left turns twice (a horizontal piece,
  * a vertical one and a horizontal one that meets the dome) and the one on the right is straight. The lines are 7 pixels wide and the dots
  * 28, and every edge of a line is on a whole pixel.
  */
 export function logoWithLines() {
     const raster = createRaster(SIZE, SIZE);
-    const dome = (x, y) => ellipse(200, 340, 110, 90)(x, y) && y <= 340;
-    paint(raster, ellipse(150, 170, 22, 100), MID);
-    paint(raster, ellipse(250, 190, 20, 80), MID);
+    const dome = (x, y) => ellipse(200, 300, 110, 100)(x, y) && y <= 340;
+    paint(raster, ellipse(150, 120, 22, 100), MID);
+    paint(raster, ellipse(250, 140, 20, 80), MID);
     paint(raster, dome, MID);
     paint(raster, (x, y) => dome(x, y) && y > 330, DARK);
-    paint(raster, ellipse(150, 170, 8, 60), LIGHT);
+    paint(raster, ellipse(150, 120, 8, 60), LIGHT);
     for (const hole of [rect(160, 295, 190, 325), rect(210, 295, 240, 325)]) {
         for (let y = 0; y < SIZE; y++) {
             for (let x = 0; x < SIZE; x++) {

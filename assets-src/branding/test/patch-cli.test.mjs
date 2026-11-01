@@ -58,3 +58,12 @@ test('--reuse refuses the flags that only steer a model call', () => {
         assert.throws(() => parsePatchRequest([...base, ...extra], root), new RegExp(`--reuse makes no model call, so ${extra[0]} has no effect`));
     }
 });
+
+test('--keep-alpha is off unless given, and is allowed with --reuse', () => {
+    const root = makeRoot();
+    const base = ['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s5/fix/'];
+    assert.equal(parsePatchRequest(base, root).keepAlpha, false);
+    assert.equal(parsePatchRequest([...base, '--keep-alpha'], root).keepAlpha, true);
+    const reused = parsePatchRequest([...base, '--keep-alpha', '--reuse', 'raw/s5/x-patch'], root);
+    assert.deepEqual([reused.keepAlpha, reused.reuse], [true, 'raw/s5/x-patch']);
+});

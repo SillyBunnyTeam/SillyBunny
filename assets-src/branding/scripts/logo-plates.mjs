@@ -3,9 +3,8 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ROOT_DIR } from './lib/cli.mjs';
 import { runLogoPlates } from './lib/logo-plates-run.mjs';
-import { SEGMENT_LENGTH } from './lib/vectorize-run.mjs';
 
-const USAGE = 'Usage: logo-plates.mjs --in <approved logo master.png> [--out-dir raw/s4/logo-plates] [--sheet out/s4/logo-plates.png] [--shape squircle|circle] [--colour light|dark] [--base #8b64aa] [--segment-length 8] [--k-dark px] [--k-light px] [--preview]';
+const USAGE = 'Usage: logo-plates.mjs --in <approved logo master.png> [--out-dir raw/s4/logo-plates] [--sheet out/s4/logo-plates.png] [--shape squircle|circle] [--colour light|dark] [--base #8b64aa] [--k-dark px] [--k-light px] [--preview]';
 const say = (line) => process.stdout.write(`${line}\n`);
 const percent = (share) => `${(share * 100).toFixed(1)}%`;
 
@@ -18,7 +17,6 @@ try {
             shape: { type: 'string' },
             colour: { type: 'string' },
             base: { type: 'string', default: '#8b64aa' },
-            'segment-length': { type: 'string', default: String(SEGMENT_LENGTH) },
             'k-dark': { type: 'string' },
             'k-light': { type: 'string' },
             preview: { type: 'boolean', default: false },
@@ -29,11 +27,6 @@ try {
     }
     // A run for one chosen plate has nothing to compare, so it writes a contact sheet only when asked to.
     const sheetPath = values.sheet ?? (values.shape && values.colour ? undefined : 'out/s4/logo-plates.png');
-    const segmentLength = Number(values['segment-length']);
-    // vtracer accepts 3.5 to 10 and panics outside it, so the range is checked here with a message.
-    if (!Number.isFinite(segmentLength) || segmentLength < 3.5 || segmentLength > 10) {
-        throw new Error(`--segment-length must be from 3.5 to 10, got "${values['segment-length']}".`);
-    }
     const band = (name) => {
         const text = values[name];
         if (text === undefined) {
@@ -53,7 +46,6 @@ try {
         shape: values.shape,
         colour: values.colour,
         baseHex: values.base,
-        segmentLength,
         kDark: band('k-dark'),
         kLight: band('k-light'),
         preview: values.preview,

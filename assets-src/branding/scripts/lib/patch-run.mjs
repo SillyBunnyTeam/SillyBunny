@@ -6,7 +6,7 @@ import { buildContactSheet } from './contact-sheet.mjs';
 import { requireKey } from './env.mjs';
 import { sniffImage } from './images.mjs';
 import { appendLogEntry, makeLogEntry, readLog, runningTotalUsd, sha256 } from './log.mjs';
-import { buildPatchRequest, compositeOnto, differenceReport, extractPatchResult, parsePatchSpec } from './patch.mjs';
+import { buildPatchRequest, compositeOnto, countNewlyOpaque, differenceReport, extractPatchResult, parsePatchSpec } from './patch.mjs';
 import { loadReusedRun } from './patch-reuse.mjs';
 import { composePrompt } from './prompt-kit.mjs';
 import { createProvider, describePlan } from './providers.mjs';
@@ -35,6 +35,7 @@ const toPng = (raster) => sharp(raster.data, { raw: { width: raster.width, heigh
  * @property {string} outDir Must resolve inside raw/ or out/.
  * @property {string} stage
  * @property {number} feather Width in pixels of the soft edge of each composite rect.
+ * @property {boolean} [keepAlpha] Keep the source's alpha inside the composite rects: only solid source pixels (alpha 250 or more) take the result's colour.
  * @property {boolean} allowUnlocked
  * @property {boolean} dryRun
  * @property {boolean} yes
@@ -104,7 +105,7 @@ export async function runPatches(request, deps) {
     say(`source: ${sourceLabel}  ${source.width}x${source.height}  sha256 ${sourceHash.slice(0, 16)}`);
     say(`patches: ${prepared.length}   calls: ${callCount} (${request.n} per patch)   references: 1 (the crop of each patch)`);
     for (const item of prepared) {
-        say(`patch ${item.number}: crop ${rectText(item.crop)} -> ${item.picture.size} (${item.picture.scale.toFixed(2)}x)  padding ${hexOf(item.picture.background)}  composite ${rectList(item.composite)}  feather ${request.feather}`);
+        say(`patch ${item.number}: crop ${rectText(item.crop)} -> ${item.picture.size} (${item.picture.scale.toFixed(2)}x)  padding ${hexOf(item.picture.background)}  composite ${rectList(item.composite)}  feather ${request.feather}${request.keepAlpha ? '  keep-alpha' : ''}`);
         say(`  instruction: ${item.instruction}`);
         if (item.picture.tooSmall) {
             say(`  WARNING: the crop is small, so the model sees it magnified ${item.picture.scale.toFixed(0)}x and mostly smoothed pixels. A larger crop may work better.`);
@@ -256,7 +257,7 @@ async function reusePatches(request, deps) {
 
     const results = new Map();
     for (const item of prepared) {
-        say(`patch ${item.number}: crop ${rectText(item.crop)}  composite ${rectList(item.composite)}  feather ${request.feather}`);
+        say(`patch ${item.number}: crop ${rectText(item.crop)}  composite ${rectList(item.composite)}  feather ${request.feather}${request.keepAlpha ? '  keep-alpha' : ''}`);
         const before = cropRaster(source, item.crop);
         for (let variant = 1; variant <= reused.variants; variant++) {
             const key = `${item.number}:${variant}`;
@@ -275,6 +276,9 @@ async function reusePatches(request, deps) {
     }
 
     if (request.dryRun) {
+        for (let variant = 1; variant <= reused.variants; variant++) {
+            compositeVariant({ say, request, source, prepared, results, variant });
+        }
         say('dry run: nothing was saved or logged.');
         return { dryRun: true, totalUsd: 0, callCount: 0 };
     }
@@ -328,10 +332,7 @@ async function writeComposites(run, { prepared, results, variants, refHashesFor,
         if (!prepared.every((item) => results.has(`${item.number}:${variant}`))) {
             continue;
         }
-        const merged = { ...source, data: Buffer.from(source.data) };
-        for (const item of prepared) {
-            compositeOnto(merged, results.get(`${item.number}:${variant}`), item.crop, item.composite, request.feather);
-        }
+        const { merged, newlyOpaque } = compositeVariant({ say, request, source, prepared, results, variant });
         const png = await toPng(merged);
         const path = join(outDir, `${stem}-${variant}.png`);
         writeFileSync(path, png, { flag: 'wx' });
@@ -353,6 +354,8 @@ async function writeComposites(run, { prepared, results, variants, refHashesFor,
                 source: sourceLabel,
                 variant,
                 feather: request.feather,
+                ...(request.keepAlpha ? { keepAlpha: true } : {}),
+                newlyOpaque,
                 ...extraVars,
                 patches: prepared.map((item) => ({ crop: rectArray(item.crop), composite: item.composite.map(rectArray), instruction: item.instruction })),
             },
@@ -364,6 +367,24 @@ async function writeComposites(run, { prepared, results, variants, refHashesFor,
         say(`saved ${fileEntryOf(rootDir, path, png).file}`);
         say(`before and after at 2x: ${fileEntryOf(rootDir, sheetPath, sheet).file}`);
     }
+}
+
+/**
+ * Builds the full-size picture of one variant from its results, and says how many pixels the model made visible in what was
+ * transparent space in the source (`newlyOpaque`). That count is printed whether or not `--keep-alpha` is set; without it a count
+ * above 0 is also a warning, because it is what shows as a coloured box around a sticker.
+ */
+function compositeVariant({ say, request, source, prepared, results, variant }) {
+    const merged = { ...source, data: Buffer.from(source.data) };
+    for (const item of prepared) {
+        compositeOnto(merged, results.get(`${item.number}:${variant}`), item.crop, item.composite, request.feather, { keepAlpha: Boolean(request.keepAlpha) });
+    }
+    const newlyOpaque = countNewlyOpaque(source, merged, prepared.map((item) => item.composite));
+    say(`variant ${variant}: ${newlyOpaque} pixels inside the composite rects were transparent in the source and are not now`);
+    if (newlyOpaque > 0 && !request.keepAlpha) {
+        say(`WARNING: variant ${variant}: ${newlyOpaque} transparent pixels of the source became visible, which shows as a box of the model's background around the sticker. Pass --keep-alpha to keep the source's transparency inside the rects.`);
+    }
+    return { merged, newlyOpaque };
 }
 
 function reportDifference({ say, label, before, after, item }) {

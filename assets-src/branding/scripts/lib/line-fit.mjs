@@ -1,3 +1,4 @@
+import { curveAt, slopeAt } from './dome-edge.mjs';
 import { dilateMask, labelComponents, runLengths } from './shape-ops.mjs';
 
 // A dot is found among pixels this far from the biggest inscribed circle's edge, so the line that leaves it barely counts.
@@ -324,6 +325,19 @@ function buildFit({ dot, towards, piece, line }, chain, { silhouette, zone, widt
         },
         piece,
     };
+}
+
+/**
+ * The line with the dome's edge beside it taken from the dome's fitted side curve instead of the few rows around the line, so the bands
+ * stop where the redrawn dome edge is, and the line runs on into the dome from there.
+ * @param {ReturnType<typeof fitLines>[number]} fit
+ * @param {import('./dome-edge.mjs').EdgeCurve} curve the side of the dome that the line meets
+ */
+export function withDomeEdge(fit, curve) {
+    const row = fit.vertices[fit.vertices.length - 1][1];
+    const at = curveAt(curve, row);
+    const edge = { at, slope: slopeAt(curve, row), bend: (curveAt(curve, row + 1) + curveAt(curve, row - 1) - 2 * at) / 2, y0: row };
+    return { ...fit, edge, vertices: [...fit.vertices.slice(0, -1), [Math.round(at + fit.towards * DOME_OVERLAP), row]] };
 }
 
 /** The column where the line reaches furthest towards the dome. */

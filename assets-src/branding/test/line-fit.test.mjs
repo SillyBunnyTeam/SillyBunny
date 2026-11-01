@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { edgeAt, fitDomeEdge, fitDot, fitLines, leastSquaresCircle } from '../scripts/lib/line-fit.mjs';
+import { DOME_OVERLAP, edgeAt, fitDomeEdge, fitDot, fitLines, leastSquaresCircle, withDomeEdge } from '../scripts/lib/line-fit.mjs';
 import { THIN_SHARE, isolateLines, lineThickness } from '../scripts/lib/line-shading.mjs';
 import { opaqueBox } from '../scripts/lib/raster.mjs';
 import { findTones, pinTone, snapToTones } from '../scripts/lib/tone-snap.mjs';
@@ -145,4 +145,22 @@ test('a line that does not end on the dome with a horizontal piece is refused', 
         silhouette[at] = silhouette[at] | value;
     });
     assert.throws(() => fitLines({ silhouette, lines, zone: lines, width, height, thickness: 7 }), /horizontal piece/);
+});
+
+test('a line takes the dome edge from the dome\'s fitted side, and runs on into the dome from there', () => {
+    const fits = fitLines(pictureOf(logoWithLines()));
+    const [left, right] = [...fits].sort((a, b) => a.dot.cx - b.dot.cx);
+    // A left side that leans and bends: x = 50 + 0.5 y - 0.001 y^2, with y taken from 0 (centre 0 and scale 1 make the polynomial's variable y itself).
+    const leftCurve = { coefficients: [50, 0.5, -0.001], centre: 0, scale: 1 };
+    const row = left.vertices.at(-1)[1];
+    const placed = withDomeEdge(left, leftCurve);
+    const wanted = leftCurve.coefficients[0] + leftCurve.coefficients[1] * row + leftCurve.coefficients[2] * row ** 2;
+    assert.ok(Math.abs(placed.edge.at - wanted) < 1e-6 && placed.edge.y0 === row);
+    assert.ok(Math.abs(edgeAt(placed.edge, Math.floor(row)) - wanted) < 1e-6, 'the edge at the line\'s own row is the curve');
+    assert.equal(placed.vertices.at(-1)[0], Math.round(wanted + DOME_OVERLAP));
+    assert.equal(placed.vertices.at(-1)[1], row);
+    assert.deepEqual(placed.vertices.slice(0, -1), left.vertices.slice(0, -1), 'the rest of the line stays');
+    assert.equal(left.edge.at !== placed.edge.at, true, 'and the fit it was given is not changed');
+    const mirrored = withDomeEdge(right, { coefficients: [300, 0, 0], centre: 0, scale: 1 });
+    assert.equal(mirrored.vertices.at(-1)[0], Math.round(300 - DOME_OVERLAP), 'a line from the right runs on towards the left');
 });

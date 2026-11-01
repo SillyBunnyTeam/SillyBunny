@@ -10,18 +10,18 @@ import { readLog, sha256 } from '../scripts/lib/log.mjs';
 import { SHAPES, STYLES, runLogoPlates } from '../scripts/lib/logo-plates-run.mjs';
 import { plateColours } from '../scripts/lib/plate.mjs';
 import { writeRaster } from '../scripts/lib/raster.mjs';
-import { findVtracer } from '../scripts/lib/vectorize-run.mjs';
+import { findPotrace } from '../scripts/lib/potrace.mjs';
 import { DARK, LIGHT, MID } from '../test-support/emblem.mjs';
 import { LEFT_DOT, logoWithLines } from '../test-support/logo-lines.mjs';
 import { createRaster, setPixel } from '../test-support/synthetic.mjs';
 
-let vtracer;
+let potrace;
 try {
-    vtracer = findVtracer();
+    potrace = findPotrace();
 } catch {
-    vtracer = undefined;
+    potrace = undefined;
 }
-const needsVtracer = { skip: vtracer ? false : 'vtracer is not installed' };
+const needsPotrace = { skip: potrace ? false : 'potrace is not installed' };
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'logo-plates.mjs');
 const NOW = () => new Date('2026-11-02T12:00:00.000Z');
 const DRIFTED = [136, 99, 158];
@@ -39,7 +39,7 @@ async function workspace(picture = logoWithLines()) {
     return { rootDir, inPath };
 }
 
-const request = (rootDir, inPath, extra = {}) => ({ rootDir, inPath, outDir: join(rootDir, 'out', 's4', 'plates'), sheetPath: join(rootDir, 'out', 's4', 'plates.png'), baseHex: '#8b64aa', vtracer, preview: true, now: NOW, ...extra });
+const request = (rootDir, inPath, extra = {}) => ({ rootDir, inPath, outDir: join(rootDir, 'out', 's4', 'plates'), sheetPath: join(rootDir, 'out', 's4', 'plates.png'), baseHex: '#8b64aa', potrace, preview: true, now: NOW, ...extra });
 const fills = (svg) => [...svg.matchAll(/<(?:path|use) [^>]*?fill="(#[0-9a-f]{6})"/g)].map((match) => match[1]);
 const render = async (path, side) => ({ side, data: await sharp(readFileSync(path), { density: 72 }).resize(side, side).ensureAlpha().raw().toBuffer() });
 const pixelOf = ({ side, data }, x, y) => [...data.subarray((Math.floor(y) * side + Math.floor(x)) * 4, (Math.floor(y) * side + Math.floor(x)) * 4 + 4)];
@@ -47,7 +47,7 @@ const OUTPUTS = ['logo-emblem.svg', 'logo-emblem-nolines.svg', ...SHAPES.flatMap
 const FINAL_OUTPUTS = ['logo-emblem.svg', 'logo-emblem-nolines.svg', 'logo-plate.svg', 'logo-plate-nolines.svg'];
 const CHOICE = { shape: 'squircle', colour: 'light' };
 
-test('a preview writes the clean emblem and every plate under out/, with a sheet, and nothing to the log', needsVtracer, async () => {
+test('a preview writes the clean emblem and every plate under out/, with a sheet, and nothing to the log', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath));
     for (const name of OUTPUTS) {
@@ -61,7 +61,7 @@ test('a preview writes the clean emblem and every plate under out/, with a sheet
     assert.equal(result.outputs.length, 10, 'the hashes are still reported');
 });
 
-test('the clean emblem is three paths in the logo\'s own tones, with the lines drawn as geometry on the right of the dome and the letters still cut out', needsVtracer, async () => {
+test('the clean emblem is three paths in the logo\'s own tones, with the lines drawn as geometry on the right of the dome and the letters still cut out', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath, { kDark: 3, kLight: 2 }));
     const out = join(rootDir, 'out', 's4', 'plates');
@@ -86,7 +86,7 @@ test('the clean emblem is three paths in the logo\'s own tones, with the lines d
     assert.equal(at(emblem, 175, 310)[3], 0, 'a letter stays cut out');
 });
 
-test('the lines are redrawn within a pixel or two of the picture, with one width and one dot size, and the numbers are reported', needsVtracer, async () => {
+test('the lines are redrawn within a pixel or two of the picture, with one width and one dot size, and the numbers are reported', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath));
     assert.equal(result.fits.length, 2);
@@ -101,7 +101,19 @@ test('the lines are redrawn within a pixel or two of the picture, with one width
     assert.ok(result.bodyCheck.wrongShape < 0.03);
 });
 
-test('the plate colours, the emblem scales and the files are reported: the lines make the emblem smaller on the circle', needsVtracer, async () => {
+test('the dome sides are redrawn on one curve each, and the letters are traced within a pixel or two of the picture', needsPotrace, async () => {
+    const { rootDir, inPath } = await workspace();
+    const { dome, letters } = await runLogoPlates(request(rootDir, inPath));
+    for (const side of [dome.left, dome.right]) {
+        assert.ok(side.used >= side.rows * 0.5, `${side.used} of ${side.rows} rows fit the curve`);
+        assert.ok(side.maxResidual < 1, `${side.maxResidual} px`);
+    }
+    assert.ok(dome.farthest < 8);
+    assert.equal(letters.subpaths, 2);
+    assert.ok(letters.deviation.toRaster < 1.5 && letters.deviation.fromRaster < 1.5, JSON.stringify(letters.deviation));
+});
+
+test('the plate colours, the emblem scales and the files are reported: the lines make the emblem smaller on the circle', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath));
     assert.deepEqual(result.colours, plateColours('#8b64aa'));
@@ -114,7 +126,7 @@ test('the plate colours, the emblem scales and the files are reported: the lines
     assert.ok(result.files.every(({ bytes, gzipBytes }) => bytes > gzipBytes && gzipBytes > 0));
 });
 
-test('a real run logs the files as one derived output with the source hash and every file hash', needsVtracer, async () => {
+test('a real run logs the files as one derived output with the source hash and every file hash', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath, { preview: false, outDir: join(rootDir, 'raw', 's4', 'plates') }));
     const [entry, ...rest] = readLog(join(rootDir, 'log', 'generations.jsonl'));
@@ -123,6 +135,8 @@ test('a real run logs the files as one derived output with the source hash and e
     assert.deepEqual(entry.refs, [sha256(readFileSync(inPath))]);
     assert.equal(entry.vars.source, 'approved/logo.png');
     assert.equal(entry.vars.shading, 'b');
+    assert.equal(entry.vars.tracing.tracer, 'potrace');
+    assert.equal(entry.vars.domeEdge.degree, 4);
     assert.equal(entry.outputs.length, 10);
     for (const { file, sha256: hash } of entry.outputs) {
         assert.equal(sha256(readFileSync(join(rootDir, file))), hash, file);
@@ -130,13 +144,13 @@ test('a real run logs the files as one derived output with the source hash and e
     assert.equal(result.outputs.length, 10);
 });
 
-test('the band widths can be set', needsVtracer, async () => {
+test('the band widths can be set', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath, { kDark: 3, kLight: 2 }));
     assert.deepEqual(result.bands, { dark: 3, light: 2 });
 });
 
-test('a preview outside out/ is refused, and a second run into the same folder is refused before anything is written', needsVtracer, async () => {
+test('a preview outside out/ is refused, and a second run into the same folder is refused before anything is written', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     await assert.rejects(runLogoPlates(request(rootDir, inPath, { outDir: join(rootDir, 'raw', 's4', 'plates') })), /under out\//);
     assert.ok(!existsSync(join(rootDir, 'raw', 's4', 'plates')));
@@ -146,15 +160,16 @@ test('a preview outside out/ is refused, and a second run into the same folder i
 
 test('a trace that is far from the picture is refused as broken, and nothing is written or logged', async () => {
     const { rootDir, inPath } = await workspace();
-    const fake = join(rootDir, 'fake-vtracer');
-    writeFileSync(fake, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo fake; exit 0; fi\nwhile [ "$1" != "-o" ]; do shift; done\necho \'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"></svg>\' > "$2"\n');
+    // A tracer that answers every bitmap with the same small square.
+    const fake = join(rootDir, 'fake-potrace');
+    writeFileSync(fake, '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho \'<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(0,400) scale(0.01,-0.01)"><path d="M0 0 l1000 0 l0 1000 l-1000 0 z"/></g></svg>\' > "$2"\n');
     chmodSync(fake, 0o755);
-    await assert.rejects(runLogoPlates(request(rootDir, inPath, { vtracer: fake, preview: false, outDir: join(rootDir, 'raw', 's4', 'plates') })), /is broken; nothing was written/);
+    await assert.rejects(runLogoPlates(request(rootDir, inPath, { potrace: fake, preview: false, outDir: join(rootDir, 'raw', 's4', 'plates') })), /is broken; nothing was written/);
     assert.ok(!existsSync(join(rootDir, 'raw', 's4', 'plates')));
     assert.ok(!existsSync(join(rootDir, 'log')));
 });
 
-test('a logo with no lines in it is refused rather than drawn without them', needsVtracer, async () => {
+test('a logo with no lines in it is refused rather than drawn without them', needsPotrace, async () => {
     const dome = createRaster(120, 120);
     for (let y = 40; y < 100; y++) {
         for (let x = 20; x < 100; x++) {
@@ -176,7 +191,7 @@ test('a logo with no lines in it is refused rather than drawn without them', nee
     assert.ok(!existsSync(join(rootDir, 'out', 's4', 'plates')));
 });
 
-test('a run for one chosen plate writes the four final files under their plain names, no sheet unless asked, and logs the choice', needsVtracer, async () => {
+test('a run for one chosen plate writes the four final files under their plain names, no sheet unless asked, and logs the choice', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const outDir = join(rootDir, 'raw', 's4', 'final');
     const result = await runLogoPlates(request(rootDir, inPath, { ...CHOICE, preview: false, outDir, sheetPath: undefined, kDark: 3, kLight: 2 }));
@@ -201,7 +216,7 @@ test('a run for one chosen plate writes the four final files under their plain n
     assert.equal(entry.vars.shading, 'b');
 });
 
-test('a chosen plate keeps the S-L plate colours, and the circle and dark choices are written under the same names', needsVtracer, async () => {
+test('a chosen plate keeps the S-L plate colours, and the circle and dark choices are written under the same names', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const outDir = join(rootDir, 'out', 's4', 'dark-circle');
     const result = await runLogoPlates(request(rootDir, inPath, { shape: 'circle', colour: 'dark', outDir, sheetPath: undefined }));
@@ -210,7 +225,7 @@ test('a chosen plate keeps the S-L plate colours, and the circle and dark choice
     assert.deepEqual(fills(readFileSync(join(outDir, 'logo-plate-nolines.svg'), 'utf8')).slice(0, 2), [result.colours.D.lip, result.colours.D.plate]);
 });
 
-test('only one of the shape and the colour narrows the run to that column of plates, which then carry the id in their names', needsVtracer, async () => {
+test('only one of the shape and the colour narrows the run to that column of plates, which then carry the id in their names', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const result = await runLogoPlates(request(rootDir, inPath, { colour: 'light', sheetPath: undefined }));
     assert.deepEqual(result.files.map(({ file }) => file.split('/').pop()).sort(), ['logo-emblem-nolines.svg', 'logo-emblem.svg', 'logo-plate-C-L-nolines.svg', 'logo-plate-C-L.svg', 'logo-plate-S-L-nolines.svg', 'logo-plate-S-L.svg']);
@@ -223,7 +238,7 @@ test('a shape or a colour that does not exist is refused before anything is read
     assert.ok(!existsSync(join(rootDir, 'out')));
 });
 
-test('a file over the size limit stops the run before anything is written or logged', needsVtracer, async () => {
+test('a file over the size limit stops the run before anything is written or logged', needsPotrace, async () => {
     const { rootDir, inPath } = await workspace();
     const outDir = join(rootDir, 'raw', 's4', 'final');
     await assert.rejects(runLogoPlates(request(rootDir, inPath, { ...CHOICE, preview: false, outDir, sheetPath: undefined, maxBytes: 1000 })), /bytes, which is not under 1000/);
@@ -239,6 +254,5 @@ test('the command refuses band widths that are not whole pixels and a missing pi
         assert.match(outcome.stderr, new RegExp(`${flag} must be a whole number of pixels, 1 or more`));
     }
     assert.match(run(['--in', 'missing.png', '--shape', 'hexagon', '--preview']).stderr, /shape must be squircle or circle/);
-    assert.match(run(['--in', 'missing.png', '--segment-length', '20']).stderr, /--segment-length must be from 3\.5 to 10/);
     assert.match(run([]).stderr, /Usage: logo-plates\.mjs/);
 });
