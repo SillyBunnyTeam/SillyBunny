@@ -1,7 +1,7 @@
 {
     "refs": {
         "sheet-reisen": "refs/20261101T063110Z-gpt-image-2.5-sunburst-h-patch-1.png",
-        "sheet-tewi": "refs/20261101T063642Z-gpt-image-2.5-sunburst-h-patch-1.png",
+        "sheet-tewi": "refs/20261101T131025Z-gpt-image-2.5-sunburst-h-patch-2.png",
         "lineup": "refs/20261101T055439Z-gpt-image-2.5-sunburst-h-patch-1.png",
         "sprite-reisen": "refs/reisen-sprite-a.png",
         "sprite-tewi": "refs/tewi-sprite.png"
@@ -169,10 +169,10 @@
                 ]
             ],
             "facing": "viewer",
-            "pose": "Character 1 stands on the left and character 2 on the right, side by side and both full body at the true relative height of the line-up, their feet near the bottom margin. Each extends the arm nearer the other character out and down with an open palm pointing toward the bottom edge of the picture, as if presenting what lies below them, and tilts her head slightly down toward it.",
-            "expression": "Soft and calm, character 1 with a gentle smile and character 2 with a relaxed, sly smile, both glancing down toward the bottom edge.",
+            "pose": "Character 1 stands on the left and character 2 on the right, side by side and both full body at the true relative height of the line-up, their feet near the bottom margin. Character 1 looks up at the moon behind them, one hand resting lightly on her chest. Character 2 covers a small yawn with one hand.",
+            "expression": "Character 1 looks wistful as she gazes at the moon. Character 2 looks sleepy, eyes half closed.",
             "props": "A large, pale full moon, a flat disc with a few soft craters, drawn in the same pixel style behind and between the two characters, rising a little above their heads and centred on the pair, with its own unbroken white sticker edge and lavender rim; no stars and nothing else in the sky.",
-            "ears": "Character 1's ears are half raised with the upper halves bent forward and down toward the bottom edge; character 2's ears are perked, both tilted a little down toward the same place.",
+            "ears": "Character 1's ears droop back in a soft curve; character 2's ears flop down to the sides.",
             "composition": "A wide 2:1 canvas: the pair stands in the middle third of the width and fills the canvas height with a small even margin, feet near the bottom margin, and the moon sits behind them in the upper middle; the left and right thirds stay empty.",
             "animated": true,
             "refs": [

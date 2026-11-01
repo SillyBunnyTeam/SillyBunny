@@ -34,16 +34,18 @@ TODO(copy): note on how to read the tables below.
 |---|---|---|---|---|---|---|---|
 | gemini | gemini-3-pro-image-preview | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.35 | - |
 | gemini | gemini-nano-banana-2.1 | 5 | 2026-11-01 | 2026-11-01 | 0 | $0.90 | - |
-| local | rim-recolour | 23 | 2026-11-01 | 2026-11-01 | 21 | - | $0.00 |
+| local | compose-scene | 1 | 2026-11-01 | 2026-11-01 | 1 | - | $0.00 |
+| local | rim-recolour | 27 | 2026-11-01 | 2026-11-01 | 18 | - | $0.00 |
+| local | vectorize | 10 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 134 | 2026-11-01 | 2026-11-01 | 3 | $19.20 | $6.80 |
+| openai | gpt-image-2.5-sunburst-h | 200 | 2026-11-01 | 2026-11-01 | 6 | $26.20 | $7.20 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 151 |
-| Total charged | $20.85 |
-| Total estimated, not yet measured | $6.80 |
+| Reference images attached | 241 |
+| Total charged | $27.85 |
+| Total estimated, not yet measured | $7.20 |
 
 ### Current approvals
 
@@ -51,7 +53,6 @@ TODO(copy): note on how to read the tables below.
 |---|---|---|
 | 20261101T055439Z-gpt-image-2.5-sunburst-h-patch-1.png | gpt-image-2.5-sunburst-h | 2795ed6618a6f01c |
 | 20261101T063110Z-gpt-image-2.5-sunburst-h-patch-1.png | gpt-image-2.5-sunburst-h | 865ebf9fa6dad039 |
-| 20261101T063642Z-gpt-image-2.5-sunburst-h-patch-1.png | gpt-image-2.5-sunburst-h | 92924be1ce51cf6a |
 | tewi-portrait.png | rim-recolour | 2d7bfa967ed663cd |
 | tewi-sprite.png | rim-recolour | 94eea2d69248e864 |
 | reisen-portrait-a.png | rim-recolour | 877b98dabf1a8064 |
@@ -63,18 +64,24 @@ TODO(copy): note on how to read the tables below.
 | welcome-persona-tewi.png | rim-recolour | c1a53329c3a4c178 |
 | welcome-next-reisen.png | rim-recolour | e6492c50aca4d976 |
 | hero-duo.png | rim-recolour | 9329c6de33868bee |
-| hero-duo-night.png | rim-recolour | 8e9a6171610eee10 |
 | gs-reisen.png | rim-recolour | a5c1d826794adfde |
-| gs-reisen-done.png | rim-recolour | e124572675bed53f |
-| help-reisen.png | rim-recolour | deaa191587e9b166 |
 | extras-tewi.png | rim-recolour | d253f22f0581f4f1 |
 | about-reisen.png | rim-recolour | ad4625dab51b14cd |
 | about-tewi.png | rim-recolour | d75c6a838d15df70 |
 | troubleshooting-reisen.png | rim-recolour | 8599431765430ab6 |
 | empty-tewi.png | rim-recolour | 6d393ee87a88b3f8 |
 | shortcuts-tewi.png | rim-recolour | ba01225ca88c673e |
+| 20261101T120037Z-gpt-image-2.5-sunburst-h-edit-1.png | gpt-image-2.5-sunburst-h | 833b90518f669e6b |
+| gs-reisen-done.png | gpt-image-2.5-sunburst-h | 54523c9573bd5e12 |
+| 20261101T131025Z-gpt-image-2.5-sunburst-h-patch-2.png | gpt-image-2.5-sunburst-h | 6063c87e079abc70 |
+| help-reisen.png | gpt-image-2.5-sunburst-h | 5a8c66852c4d86dc |
+| hero-duo-night.png | compose-scene | 6077d32501622f78 |
+| logo-emblem.svg | vectorize | 61ae5f93337fd415 |
+| logo-emblem-nolines.svg | vectorize | d47af0f96444d8d8 |
+| logo-plate.svg | vectorize | 7857a7d9c65cbf0c |
+| logo-plate-nolines.svg | vectorize | 468ab45d87b9d208 |
 
-Superseded approvals (history): 5 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66, ed20db74 -> 877b98da, 758fd49a -> 29409083).
+Superseded approvals (history): 11 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66, 92924be1 -> 6063c87e, ed20db74 -> 877b98da, 758fd49a -> 29409083, 8e9a6171 -> 6077d325, e1245726 -> 54523c95, deaa1915 -> 5a8c6685, 804aeaba -> 833b9051, 0eca4383 -> e6492c50).
 
 ### Tools (checked 2026-11-01)
 
