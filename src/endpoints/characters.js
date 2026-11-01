@@ -272,6 +272,10 @@ async function readCharacterData(inputFile, inputFormat = 'png') {
 async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined, { preserveDateAdded = false, preserveFileIdentity = false } = {}) {
     try {
         const outputImageName = getPngFileName(outputFile);
+        // SillyBunny: callers can pass names that come from imported card data, so write only a PNG file directly inside the characters folder.
+        if (!resolveCharacterAvatarPath(request.user.directories.characters, outputImageName)) {
+            throw new Error(`Invalid character file name: ${outputImageName}`);
+        }
         const outputImagePath = path.join(request.user.directories.characters, outputImageName);
         const fileExists = fs.existsSync(outputImagePath);
         let expectedFileIdentity;
@@ -1112,9 +1116,13 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         console.info(`Importing from ${jsonData.spec} json`);
         importRisuSprites(request.user.directories, jsonData);
         unsetPrivateFields(jsonData);
+        if (jsonData.data?.name) {
+            jsonData.data.name = sanitize(jsonData.data.name);
+        }
+        jsonData.name = sanitize(jsonData.data?.name || jsonData.name);
         jsonData = readFromV2(jsonData);
         jsonData.create_date = new Date().toISOString();
-        const pngName = preservedFileName || getPngName(jsonData.data?.name || jsonData.name, request.user.directories);
+        const pngName = preservedFileName || getPngName(jsonData.name, request.user.directories);
         const char = JSON.stringify(jsonData);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, char, pngName, request);
         return result ? pngName : '';
@@ -1931,8 +1939,12 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
  * @returns {string} - The name for the uploaded PNG file
  */
 function getPngName(file, directories) {
-    // SillyBunny: Windows forbids <>:"/\|?* in file names, so sanitise imports there. POSIX keeps pipes.
-    file = sanitiseFilenameForWindows(file);
+    // SillyBunny: sanitise on every platform, so that a caller that skips sanitising still gets a single file name.
+    file = sanitize(file, { replacement: sanitizeSafeCharacterReplacements }) || 'character';
+    // SillyBunny: a name that ends in .png is written without a second extension, so drop it before the existence check.
+    while (path.extname(file).toLowerCase() === '.png') {
+        file = file.slice(0, -'.png'.length);
+    }
     let i = 1;
     const baseName = file;
     while (fs.existsSync(path.join(directories.characters, `${file}.png`))) {
