@@ -67,7 +67,8 @@ async function installTransitionProbe(page) {
                 record(sample());
             }
         };
-        const pinnedNodes = nodes => nodes.filter(node => node.style.height !== '' || node.style.flexShrink !== '').length;
+        // A pin holds the height and flex-shrink of a page with an animation, not with an inline style.
+        const pinnedNodes = nodes => nodes.filter(node => node.getAnimations().some(animation => animation.effect.getKeyframes().some(frame => frame.flexShrink !== undefined))).length;
         window.__transition = async (trigger) => {
             const before = sample();
             trigger();
@@ -101,7 +102,8 @@ async function installTransitionProbe(page) {
             secondAnimations.forEach(animation => animation.pause());
             const frames = [];
             await step(secondAnimations, endOf(secondAnimations), 12, frame => frames.push(frame));
-            [...firstAnimations, ...secondAnimations].forEach(animation => animation.finish());
+            // finish() on an animation that was cancelled brings it back, and the held pins of the first slide were cancelled.
+            [...firstAnimations, ...secondAnimations].filter(animation => animation.playState !== 'idle').forEach(animation => animation.finish());
             await settle();
             await settle();
             return { before, middle, frames, after: sample() };
@@ -124,7 +126,10 @@ async function installTransitionProbe(page) {
                             cls: [...page.classList].filter(name => name.startsWith('is-')).join(' '),
                             height: page.getBoundingClientRect().height,
                             bodyHeight: body.getBoundingClientRect().height,
-                            shadow: getComputedStyle(page).boxShadow,
+                            sliding: page.classList.contains('is-sliding'),
+                            edge: getComputedStyle(page).boxShadow,
+                            dimOpacity: Number.parseFloat(getComputedStyle(page, '::before').opacity),
+                            dimColour: getComputedStyle(page, '::before').backgroundColor,
                         };
                     }),
                 };
@@ -237,7 +242,9 @@ function expectSteadyTransition({ before, frames, after, targets }, { rtl = fals
 const IDLE_ANIMATIONS = () => document.getAnimations().filter(animation => animation.effect?.target?.closest?.('dialog.sb-dialog-host')
     && Number.isFinite(animation.effect.getComputedTiming().endTime)).length;
 const NEXT = `${HOST} .sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving) .sb-dialog__affirmative`;
-const PINNED = `${HOST} .sb-dialog__page[style*="height"], ${HOST} .sb-dialog__pages[style*="height"], ${HOST} .sb-dialog__page[style*="flex-shrink"]`;
+/** How many pages of the dialog hold a pinned height now. */
+const PINNED_PAGES = () => [...document.querySelectorAll('dialog.sb-dialog-host .sb-dialog__page')]
+    .filter(node => node.getAnimations().some(animation => animation.effect.getKeyframes().some(frame => frame.flexShrink !== undefined))).length;
 
 async function openFromMenu(page, item, title) {
     await protectMaintainerServer(page);
@@ -268,20 +275,21 @@ async function runLive(page, selector, { keyboard = false } = {}) {
 
 /** The page that slides in a painted sample: the one that leaves, or the one that enters over a covered page. */
 function findSliding(sample) {
-    return sample.pages.find(page => page.cls.includes('is-leaving'))
-        ?? sample.pages.find(page => !page.cls.includes('is-underlay') && sample.pages.some(other => other.cls.includes('is-underlay')));
+    return sample.pages.find(page => page.sliding);
+}
+
+/** The same colour with alpha 1, from a computed colour such as `rgba(80, 0, 0, 0.5)` or `oklab(0.3 0.1 0.05 / 0.5)`. */
+function opaqueColour(css) {
+    return css.replace(/\/\s*[\d.]+\s*\)$/, ')').replace(/^rgba\((.*),\s*[\d.]+\)$/, 'rgb($1)');
 }
 
 /**
  * Reads the colours of a computed box-shadow in the order they are painted. A theme colour that goes through relative
  * colour syntax or an interpolation computes to a colour function such as oklab(), so each colour is kept as text
- * with its alpha, and `opaque` is the same colour at alpha 1 for a browser to convert.
+ * with `opaque`, the same colour at alpha 1 for a browser to convert.
  */
 function parseShadowColours(shadow) {
-    return [...shadow.matchAll(/(?:rgba?|color|oklab|oklch|lab|lch)\([^)]*\)/g)].map(([css]) => {
-        const alpha = css.match(/\/\s*([\d.]+)\s*\)$/);
-        return { css, a: alpha ? Number(alpha[1]) : 1, opaque: css.replace(/\/\s*[\d.]+\s*\)$/, ')') };
-    });
+    return [...shadow.matchAll(/(?:rgba?|color|oklab|oklch|lab|lch)\([^)]*\)/g)].map(([css]) => ({ css, opaque: opaqueColour(css) }));
 }
 
 /** The sRGB channels of a CSS colour, as a browser paints it. */
@@ -295,13 +303,24 @@ function paintedChannels(page, colour) {
     }, colour);
 }
 
+/** The alpha of a computed colour, from `rgba(0, 0, 6, 0.5)` or `color(srgb 0 0 0.02 / 0.5)`. */
+function colourAlpha(css) {
+    const alpha = css.match(/(?:\/|,)\s*([\d.]+)\s*\)$/);
+    return alpha ? Number(alpha[1]) : 1;
+}
+
+/** What the dim layer of a sliding page paints over the page it covers: its opacity times the alpha of its colour. */
+function dimAlpha(page) {
+    return page.dimOpacity * colourAlpha(page.dimColour);
+}
+
 /**
  * The dim the sliding page casts on the page it covers: it rises across a push to half the Dialog Backdrop alpha,
  * which is libadwaita's dimming, and falls across a pop. Nothing casts a shadow once the slide is over.
  */
 function expectDim({ samples, backdropAlpha }, { rising }) {
     const half = backdropAlpha / 2;
-    const dims = samples.filter(sample => sample.animating).map(sample => parseShadowColours(findSliding(sample).shadow)[1].a);
+    const dims = samples.filter(sample => sample.animating).map(sample => dimAlpha(findSliding(sample)));
     const direction = rising ? 1 : -1;
     for (let index = 1; index < dims.length; index++) {
         expect((dims[index] - dims[index - 1]) * direction, `the dim ${rising ? 'rises' : 'falls'}. dims: ${dims.join(', ')}`).toBeGreaterThanOrEqual(-0.005);
@@ -309,7 +328,7 @@ function expectDim({ samples, backdropAlpha }, { rising }) {
     const [start, end] = rising ? [dims[0], dims.at(-1)] : [dims.at(-1), dims[0]];
     expect(Math.abs(end - half), `the slide ends with half the backdrop alpha (${half}) on the page. dims: ${dims.join(', ')}`).toBeLessThanOrEqual(rising ? 0.03 : half * 0.6);
     expect(start, `the slide starts without it. dims: ${dims.join(', ')}`).toBeLessThanOrEqual(rising ? half * 0.6 : 0.03);
-    expect(samples.at(-1).pages.map(shown => shown.shadow), 'nothing casts a shadow at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
+    expect(samples.at(-1).pages.map(shown => shown.edge), 'nothing casts a shadow at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
 }
 
 /** The length of the Navigation spring in sillybunny-motion.js, in ms. */
@@ -350,10 +369,10 @@ function expectLiveSlide({ before, samples }, { contentChanges = false, minFrame
 
     for (const [index, sample] of animated.entries()) {
         const sliding = findSliding(sample);
-        expect(sliding?.shadow, `frame ${index}: the sliding page casts a shadow over the page it covers`).not.toBe('none');
-        expect(sample.pages.filter(page => page !== sliding).map(page => page.shadow), `frame ${index}: the page that stays does not cast one`).toEqual(sample.pages.filter(page => page !== sliding).map(() => 'none'));
+        expect(sliding?.edge, `frame ${index}: the sliding page casts a shadow over the page it covers`).not.toBe('none');
+        expect(sample.pages.filter(page => page !== sliding).map(page => page.edge), `frame ${index}: the page that stays does not cast one`).toEqual(sample.pages.filter(page => page !== sliding).map(() => 'none'));
     }
-    expect(samples.at(-1).pages.map(page => page.shadow), 'no shadow stays at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
+    expect(samples.at(-1).pages.map(page => page.edge), 'no shadow stays at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
 }
 
 /** Opens a plain dialog whose root page is 160px high; `window.__block(n)` makes content of any height. */
@@ -394,7 +413,7 @@ for (const { name, options } of VIEWPORTS) {
                     const result = await test.step(label, () => runTransition(page, selector, { keyboard }));
                     expect.soft(result.end, `${label} animates`).toBeGreaterThan(0);
                     await test.step(`${label}: heights`, () => expectSteadyTransition(result));
-                    await expect(page.locator(PINNED), `${label} leaves no pinned height`).toHaveCount(0);
+                    expect(await page.evaluate(PINNED_PAGES), `${label} leaves no pinned height`).toBe(0);
                 }
             });
         }
@@ -415,7 +434,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(Math.abs(welcome.height - welcomeHeight), `frame ${index}: the Welcome page is ${welcome.height}px, and it was ${welcomeHeight}px`).toBeLessThanOrEqual(TOLERANCE);
             }
             expect(result.after.pages.map(candidate => candidate.title)).toEqual(['What\u2019s Next']);
-            await expect(page.locator(PINNED)).toHaveCount(0);
+            expect(await page.evaluate(PINNED_PAGES)).toBe(0);
         });
     });
 }
@@ -502,10 +521,11 @@ test.describe('Page transition shade', () => {
 
         const animated = push.samples.filter(sample => sample.animating);
         expect(animated.length).toBeGreaterThan(5);
-        const [edge, dim] = parseShadowColours(findSliding(animated[Math.floor(animated.length / 2)]).shadow);
-        for (const colour of [edge, dim]) {
-            const { r, g, b } = await paintedChannels(page, colour.opaque);
-            expect(r, `the shade keeps the red of the theme colour: ${colour.css}`).toBeGreaterThan(70);
+        const sliding = findSliding(animated[Math.floor(animated.length / 2)]);
+        const [edge] = parseShadowColours(sliding.edge);
+        for (const css of [edge.opaque, opaqueColour(sliding.dimColour)]) {
+            const { r, g, b } = await paintedChannels(page, css);
+            expect(r, `the shade keeps the red of the theme colour: ${css}`).toBeGreaterThan(70);
             expect(r).toBeLessThan(90);
             expect(Math.max(g, b)).toBeLessThan(10);
         }
@@ -636,6 +656,6 @@ test.describe('Shared page chain', () => {
                 expect(Math.abs(shown.height - rest[shown.title]), `frame ${index}: ${shown.title} is ${shown.height}px, and it rests at ${rest[shown.title]}px`).toBeLessThanOrEqual(TOLERANCE);
             }
         }
-        await expect(page.locator(PINNED)).toHaveCount(0);
+        expect(await page.evaluate(PINNED_PAGES)).toBe(0);
     });
 });

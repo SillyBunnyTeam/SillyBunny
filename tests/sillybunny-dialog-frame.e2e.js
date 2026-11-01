@@ -275,7 +275,10 @@ test.describe('while pages slide', () => {
             await new Promise(resolve => setTimeout(resolve, 1000));
             child.close();
         }
-        const slides = document.getAnimations().filter(animation => animation.effect?.target?.classList.contains('sb-dialog__page'));
+        // The page targets also carry the shade animation on ::before and the height pin holds, so keep only the transform slide.
+        const slides = document.getAnimations().filter(animation => animation.effect?.target?.classList.contains('sb-dialog__page')
+            && !animation.effect.pseudoElement
+            && animation.effect.getKeyframes().some(keyframe => 'transform' in keyframe));
         const surface = document.querySelector('.sb-dialog-host[open] .sb-dialog').getBoundingClientRect();
         // The spring is front-loaded, so find the moment the moving page has covered half of the surface.
         let best = Infinity;
