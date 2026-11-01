@@ -3,8 +3,9 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { approveOutputs, supersedeOutput } from '../scripts/lib/approve.mjs';
+import { approveOutputs, revertSupersede, supersedeOutput } from '../scripts/lib/approve.mjs';
 import { sha256 } from '../scripts/lib/log.mjs';
+import { renderGeneratedRegion } from '../scripts/lib/notice.mjs';
 
 const BYTES = { a: Buffer.from('image a'), b: Buffer.from('image b'), c: Buffer.from('image c') };
 
@@ -211,4 +212,260 @@ test('a superseded output cannot be approved again', () => {
     supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/a.png', newTarget: 'raw/s1/c.png' });
     assert.throws(() => approveOutputs({ rootDir: root, targets: ['raw/s1/a.png'], ref: true }), /superseded/);
     assert.ok(!existsSync(join(root, 'approved', 'a.png')));
+});
+
+const inPlace = (root, overrides = {}) => supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/a.png', newTarget: 'raw/s1/b.png', inPlace: true, ...overrides });
+const outputOf = (root, file) => readEntries(root).flatMap((entry) => entry.outputs).find((output) => output.file === file);
+
+/** a is approved in approved/ and refs/; b is logged but not approved. */
+function projectWithSlot({ ref = true } = {}) {
+    const project = makeProject();
+    approveOutputs({ rootDir: project.root, targets: ['raw/s1/a.png'], ref });
+    return project;
+}
+
+test('--in-place approves the new output, writes its bytes under the old names in approved/ and refs/, and records the name', () => {
+    const { root } = projectWithSlot();
+    const report = inPlace(root);
+    assert.deepEqual([report.written, report.removed, report.approvedNew], [['approved/a.png', 'refs/a.png'], [], true]);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.b);
+    assert.deepEqual(readFileSync(join(root, 'refs', 'a.png')), BYTES.b);
+    assert.ok(!existsSync(join(root, 'approved', 'b.png')) && !existsSync(join(root, 'refs', 'b.png')), 'nothing lands under the new name');
+    assert.ok(!existsSync(join(root, 'approved', 'a.png.tmp')));
+    const old = outputOf(root, 'raw/s1/a.png');
+    const replacement = outputOf(root, 'raw/s1/b.png');
+    assert.equal(old.superseded, sha256(BYTES.b));
+    assert.deepEqual([replacement.approved, replacement.approvedAs, replacement.superseded], [true, 'a.png', undefined]);
+    assert.deepEqual(readFileSync(join(root, 'raw', 's1', 'a.png')), BYTES.a, 'the old raw file stays');
+    assert.equal(readEntries(root)[0].approved, true);
+});
+
+test('--in-place without a copy in refs/ writes none there', () => {
+    const { root } = projectWithSlot({ ref: false });
+    const report = inPlace(root);
+    assert.deepEqual(report.written, ['approved/a.png']);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.b);
+    assert.ok(!existsSync(join(root, 'refs')));
+});
+
+test('--in-place keeps the other log lines as they were', () => {
+    const { root } = projectWithSlot();
+    const before = readLogText(root).split('\n');
+    inPlace(root);
+    assert.equal(readLogText(root).split('\n')[1], before[1]);
+});
+
+test('a later normal approval and a later supersede use the in-place name', () => {
+    const { root } = projectWithSlot();
+    inPlace(root);
+    const done = approveOutputs({ rootDir: root, targets: ['raw/s1/b.png'], ref: true });
+    assert.deepEqual(done[0].copiedTo, ['approved/a.png', 'refs/a.png'], 'the check runs against the in-place name');
+    assert.ok(!existsSync(join(root, 'approved', 'b.png')));
+
+    approveOutputs({ rootDir: root, targets: ['raw/s1/c.png'], ref: false });
+    writeFileSync(join(root, 'approved', 'a.png'), 'edited by hand');
+    assert.throws(() => approveOutputs({ rootDir: root, targets: ['raw/s1/b.png'], ref: false }), /approved\/a\.png already exists with different content/);
+    assert.throws(() => supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/b.png', newTarget: 'raw/s1/c.png', dryRun: true }), /approved\/a\.png is not the approved file raw\/s1\/b\.png/);
+    writeFileSync(join(root, 'approved', 'a.png'), BYTES.b);
+
+    const later = supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/b.png', newTarget: 'raw/s1/c.png' });
+    assert.deepEqual(later.removed, ['approved/a.png', 'refs/a.png']);
+});
+
+test('--in-place can be repeated: the next replacement takes over the same name', () => {
+    const { root } = projectWithSlot();
+    inPlace(root);
+    const extra = Buffer.from('image d');
+    writeFileSync(join(root, 'raw', 's1', 'd.png'), extra);
+    appendFileSync(join(root, 'log', 'generations.jsonl'), `${JSON.stringify({ time: 't', outputs: [{ file: 'raw/s1/d.png', sha256: sha256(extra) }], estimatedUsd: 0, approved: false })}\n`);
+    supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/b.png', newTarget: 'raw/s1/d.png', inPlace: true });
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), extra);
+    assert.equal(outputOf(root, 'raw/s1/d.png').approvedAs, 'a.png');
+    assert.equal(outputOf(root, 'raw/s1/b.png').superseded, sha256(extra));
+});
+
+test('a --in-place dry run runs every check, reports the plan and writes nothing', () => {
+    const { root } = projectWithSlot();
+    const log = readLogText(root);
+    const report = inPlace(root, { dryRun: true });
+    assert.deepEqual([report.written, report.approvedNew, report.new.file], [['approved/a.png', 'refs/a.png'], true, 'raw/s1/b.png']);
+    assert.equal(readLogText(root), log);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.a);
+    writeFileSync(join(root, 'raw', 's1', 'b.png'), 'changed');
+    assert.throws(() => inPlace(root, { dryRun: true }), /sha256 does not match/);
+});
+
+const IN_PLACE_REFUSALS = [
+    ['an old output that is not approved', { prepare() {}, overrides: { oldTarget: 'raw/s1/b.png', newTarget: 'raw/s1/c.png' } }, /raw\/s1\/b\.png is not approved, so there is nothing to supersede/],
+    ['a new output that is already approved under another name', { prepare(root) {
+        approveOutputs({ rootDir: root, targets: ['raw/s1/c.png'], ref: false });
+    }, overrides: { newTarget: 'raw/s1/c.png' } }, /raw\/s1\/c\.png is already approved as c\.png, so it cannot also take over a\.png/],
+    ['an approved copy that is not the logged old file', { prepare(root) {
+        writeFileSync(join(root, 'approved', 'a.png'), 'a different file under the same name');
+    } }, /approved\/a\.png is not the approved file raw\/s1\/a\.png, so it will not be overwritten/],
+    ['a refs copy that is not the logged old file', { prepare(root) {
+        writeFileSync(join(root, 'refs', 'a.png'), 'a different file under the same name');
+    } }, /refs\/a\.png is not the approved file raw\/s1\/a\.png, so it will not be overwritten/],
+    ['an approved copy that is missing', { prepare(root) {
+        rmSync(join(root, 'approved', 'a.png'));
+    } }, /approved\/a\.png is missing/],
+    ['a new file that differs from the log', { prepare(root) {
+        writeFileSync(join(root, 'raw', 's1', 'b.png'), 'tampered or re-saved');
+    } }, /raw\/s1\/b\.png: sha256 does not match the log/],
+    ['a new output that is superseded', { prepare(root) {
+        approveOutputs({ rootDir: root, targets: ['raw/s1/c.png'], ref: false });
+        supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/c.png', newTarget: 'raw/s1/a.png' });
+    }, overrides: { newTarget: 'raw/s1/c.png' } }, /raw\/s1\/c\.png is superseded/],
+    ['the same image on both sides', { prepare() {}, overrides: { newTarget: 'raw/s1/a.png' } }, /replace itself/],
+];
+
+for (const [name, { prepare, overrides }, message] of IN_PLACE_REFUSALS) {
+    test(`--in-place refuses ${name}, and changes nothing`, () => {
+        const { root } = projectWithSlot();
+        prepare(root);
+        const log = readLogText(root);
+        const files = ['approved/a.png', 'refs/a.png', 'raw/s1/b.png'].map((file) => (existsSync(join(root, file)) ? readFileSync(join(root, file), 'utf8') : undefined));
+        assert.throws(() => inPlace(root, overrides), message);
+        assert.equal(readLogText(root), log);
+        assert.deepEqual(['approved/a.png', 'refs/a.png', 'raw/s1/b.png'].map((file) => (existsSync(join(root, file)) ? readFileSync(join(root, file), 'utf8') : undefined)), files);
+        assert.ok(!existsSync(join(root, 'approved', 'b.png')));
+    });
+}
+
+test('without --in-place an unapproved replacement is still refused, and the message points at the flag', () => {
+    const { root } = projectWithSlot();
+    assert.throws(() => supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/a.png', newTarget: 'raw/s1/b.png' }), /raw\/s1\/b\.png is not approved yet.*--in-place/);
+});
+
+const revert = (root, overrides = {}) => revertSupersede({ rootDir: root, newTarget: 'raw/s1/b.png', ...overrides });
+const copyText = (root, file) => (existsSync(join(root, file)) ? readFileSync(join(root, file), 'utf8') : undefined);
+const snapshot = (root) => [readLogText(root), ...['approved/a.png', 'refs/a.png', 'approved/b.png', 'approved/c.png', 'refs/c.png', 'raw/s1/a.png'].map((file) => copyText(root, file))];
+
+/** a was approved, then superseded in place by b, so approved/a.png holds b. */
+function afterInPlace({ ref = true } = {}) {
+    const project = projectWithSlot({ ref });
+    inPlace(project.root);
+    return project;
+}
+
+test('reverting an in-place supersede puts the old bytes back under the same names and approves the old output again', () => {
+    const { root } = afterInPlace();
+    const before = readLogText(root).split('\n');
+    const done = revert(root);
+    assert.deepEqual([done.restored, done.removed], [['approved/a.png', 'refs/a.png'], []]);
+    assert.deepEqual([done.old.file, done.new.file], ['raw/s1/a.png', 'raw/s1/b.png']);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.a);
+    assert.deepEqual(readFileSync(join(root, 'refs', 'a.png')), BYTES.a);
+    assert.ok(!existsSync(join(root, 'approved', 'b.png')) && !existsSync(join(root, 'approved', 'a.png.tmp')));
+    const old = outputOf(root, 'raw/s1/a.png');
+    const replacement = outputOf(root, 'raw/s1/b.png');
+    assert.deepEqual([old.approved, old.superseded], [true, undefined]);
+    assert.deepEqual([replacement.approved, replacement.superseded, replacement.approvedAs], [true, sha256(BYTES.a), 'a.png'], 'b stays in the log as history');
+    assert.equal(readLogText(root).split('\n')[1], before[1], 'other lines are as they were');
+    assert.deepEqual(readFileSync(join(root, 'raw', 's1', 'b.png')), BYTES.b);
+});
+
+test('reverting without a copy in refs/ restores none there', () => {
+    const { root } = afterInPlace({ ref: false });
+    const done = revert(root);
+    assert.deepEqual(done.restored, ['approved/a.png']);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.a);
+    assert.ok(!existsSync(join(root, 'refs')));
+});
+
+test('reverting a plain supersede removes the new copies and puts the old output back under its own name', () => {
+    const { root } = projectWithTwoApproved();
+    supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/a.png', newTarget: 'raw/s1/c.png' });
+    const done = revert(root, { newTarget: 'raw/s1/c.png' });
+    assert.deepEqual([done.restored, done.removed], [['approved/a.png', 'refs/a.png'], ['approved/c.png', 'refs/c.png']]);
+    assert.deepEqual(readFileSync(join(root, 'approved', 'a.png')), BYTES.a);
+    assert.deepEqual(readFileSync(join(root, 'refs', 'a.png')), BYTES.a);
+    assert.ok(!existsSync(join(root, 'approved', 'c.png')) && !existsSync(join(root, 'refs', 'c.png')));
+    assert.equal(outputOf(root, 'raw/s1/a.png').superseded, undefined);
+    assert.equal(outputOf(root, 'raw/s1/c.png').superseded, sha256(BYTES.a));
+    assert.deepEqual(readFileSync(join(root, 'raw', 's1', 'c.png')), BYTES.c);
+});
+
+test('reverting a plain supersede whose new output has no copy in refs/ restores only approved/', () => {
+    const { root } = makeProject();
+    approveOutputs({ rootDir: root, targets: ['raw/s1/a.png'], ref: true });
+    approveOutputs({ rootDir: root, targets: ['raw/s1/c.png'], ref: false });
+    supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/a.png', newTarget: 'raw/s1/c.png' });
+    const done = revert(root, { newTarget: 'raw/s1/c.png' });
+    assert.deepEqual([done.restored, done.removed], [['approved/a.png'], ['approved/c.png']]);
+    assert.ok(!existsSync(join(root, 'refs', 'a.png')));
+});
+
+test('a later normal approval of the old output passes on the restored copies, and the new output cannot be approved or reverted again', () => {
+    const { root } = afterInPlace();
+    revert(root);
+    const done = approveOutputs({ rootDir: root, targets: ['raw/s1/a.png'], ref: true });
+    assert.deepEqual(done[0].copiedTo, ['approved/a.png', 'refs/a.png']);
+    assert.throws(() => approveOutputs({ rootDir: root, targets: ['raw/s1/b.png'], ref: true }), /raw\/s1\/b\.png was superseded by .* and cannot be approved again/);
+    const log = readLogText(root);
+    assert.throws(() => revert(root), /raw\/s1\/b\.png is superseded by .*, so it is not a current approval and cannot be reverted/);
+    assert.equal(readLogText(root), log);
+});
+
+test('a revert dry run runs every check, reports the plan and writes nothing', () => {
+    const { root } = afterInPlace();
+    const state = snapshot(root);
+    const done = revert(root, { dryRun: true });
+    assert.deepEqual([done.restored, done.removed], [['approved/a.png', 'refs/a.png'], []]);
+    assert.deepEqual(snapshot(root), state);
+    rmSync(join(root, 'raw', 's1', 'a.png'));
+    assert.throws(() => revert(root, { dryRun: true }), /raw\/s1\/a\.png is missing on disk/);
+});
+
+const REVERT_REFUSALS = [
+    ['an output that is not approved', () => ({ target: 'raw/s1/c.png' }), /raw\/s1\/c\.png is not approved, so there is nothing to revert/],
+    ['an approved output that superseded nothing', (root) => {
+        approveOutputs({ rootDir: root, targets: ['raw/s1/c.png'], ref: false });
+        return { target: 'raw/s1/c.png' };
+    }, /Nothing was superseded by raw\/s1\/c\.png/],
+    ['an output that superseded two', (root) => {
+        approveOutputs({ rootDir: root, targets: ['raw/s1/c.png'], ref: false });
+        const entries = readEntries(root);
+        entries[1].outputs[0].superseded = sha256(BYTES.b);
+        writeFileSync(join(root, 'log', 'generations.jsonl'), entries.map((entry) => `${JSON.stringify(entry)}\n`).join(''));
+    }, /2 outputs were superseded by raw\/s1\/b\.png \(raw\/s1\/a\.png, raw\/s1\/c\.png\)/],
+    ['an old file that is gone', (root) => rmSync(join(root, 'raw', 's1', 'a.png')), /raw\/s1\/a\.png is missing on disk/],
+    ['an old file that is not the logged one', (root) => writeFileSync(join(root, 'raw', 's1', 'a.png'), 'changed'), /raw\/s1\/a\.png: sha256 does not match the log\. Refusing to restore/],
+    ['an approved copy that is not the new output', (root) => writeFileSync(join(root, 'approved', 'a.png'), 'edited by hand'), /approved\/a\.png is not the approved file raw\/s1\/b\.png, so it will not be overwritten/],
+    ['a refs copy that is not the new output', (root) => writeFileSync(join(root, 'refs', 'a.png'), 'edited by hand'), /refs\/a\.png is not the approved file raw\/s1\/b\.png/],
+    ['an approved copy that is gone', (root) => rmSync(join(root, 'approved', 'a.png')), /approved\/a\.png is missing/],
+];
+
+for (const [name, prepare, message] of REVERT_REFUSALS) {
+    test(`a revert refuses ${name}, and changes nothing`, () => {
+        const { root } = afterInPlace();
+        const { target = 'raw/s1/b.png' } = prepare(root) ?? {};
+        const state = snapshot(root);
+        assert.throws(() => revert(root, { newTarget: target }), message);
+        assert.deepEqual(snapshot(root), state);
+    });
+}
+
+test('a revert after a plain supersede refuses a different file already under the old name', () => {
+    const { root } = projectWithTwoApproved();
+    supersedeOutput({ rootDir: root, oldTarget: 'raw/s1/a.png', newTarget: 'raw/s1/c.png' });
+    writeFileSync(join(root, 'approved', 'a.png'), 'someone else');
+    const state = snapshot(root);
+    assert.throws(() => revert(root, { newTarget: 'raw/s1/c.png' }), /approved\/a\.png already exists with different content/);
+    assert.deepEqual(snapshot(root), state);
+});
+
+test('NOTICE.md lists the old output as current again, the new one as history, and the history line shows the revert', () => {
+    const { root } = afterInPlace();
+    const render = () => renderGeneratedRegion({ entries: readEntries(root).map((entry) => ({ provider: 'p', refs: [], ...entry })), tools: [], checkedOn: '2026-11-01' });
+    const before = render();
+    assert.match(before, new RegExp(`\\| a\\.png \\| m \\| ${sha256(BYTES.b).slice(0, 16)} \\|`));
+    assert.match(before, new RegExp(`\\(${sha256(BYTES.a).slice(0, 8)} -> ${sha256(BYTES.b).slice(0, 8)}\\)`));
+    revert(root);
+    const after = render();
+    assert.match(after, new RegExp(`\\| a\\.png \\| m \\| ${sha256(BYTES.a).slice(0, 16)} \\|`));
+    assert.equal(after.match(/\| a\.png \|/g).length, 1, 'a.png is listed once');
+    assert.ok(!after.includes('| b.png |'));
+    assert.match(after, /Superseded approvals \(history\): 1/);
+    assert.match(after, new RegExp(`\\(${sha256(BYTES.b).slice(0, 8)} -> ${sha256(BYTES.a).slice(0, 8)}\\)`));
 });

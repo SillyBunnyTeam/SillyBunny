@@ -40,6 +40,9 @@ The first attached image is the character's approved illustrated design sheet. A
 ## master-reference
 The third attached image is the character's approved pixel-art master in front view. Match its pixel size, outline colours, palette, shading and sticker edge exactly, so the new picture looks like the same artist drew it; do not copy its pose, which is replaced by the pose described above.
 
+## prop-framing
+The object is centred and fills most of the canvas with only a small even margin; nothing is cropped by the canvas edge; it is drawn straight on, with no scenery, no ground and no cast shadow.
+
 ## scene-framing
 Both characters are drawn together as one group on one canvas, each complete from the tips of the ears to the feet, with nothing cropped by the canvas edge. The camera is level, and the group is centred unless the composition line says otherwise. Character 1 is clearly taller than character 2, as in the line-up.
 

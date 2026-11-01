@@ -7,6 +7,7 @@ import { requireKey } from './env.mjs';
 import { sniffImage } from './images.mjs';
 import { appendLogEntry, makeLogEntry, readLog, runningTotalUsd, sha256 } from './log.mjs';
 import { buildPatchRequest, compositeOnto, differenceReport, extractPatchResult, parsePatchSpec } from './patch.mjs';
+import { loadReusedRun } from './patch-reuse.mjs';
 import { composePrompt } from './prompt-kit.mjs';
 import { createProvider, describePlan } from './providers.mjs';
 import { crop as cropRaster, readRaster } from './raster.mjs';
@@ -29,7 +30,8 @@ const toPng = (raster) => sharp(raster.data, { raw: { width: raster.width, heigh
  * @property {any} patches The parsed patches.json.
  * @property {string} [instruction] Default instruction for patches that have none of their own.
  * @property {string} [model]
- * @property {number} n Variants per patch.
+ * @property {number} n Variants per patch. Not used with `reuse`, where the reused run decides.
+ * @property {string} [reuse] Run prefix of an earlier run (its raw/.../<stamp>-<model>-patch) whose model results are composited again instead of calling the model.
  * @property {string} outDir Must resolve inside raw/ or out/.
  * @property {string} stage
  * @property {number} feather Width in pixels of the soft edge of each composite rect.
@@ -46,20 +48,18 @@ const toPng = (raster) => sharp(raster.data, { raw: { width: raster.width, heigh
  * @param {import('./run.mjs').RunDeps} deps
  */
 export async function runPatches(request, deps) {
+    if (request.reuse) {
+        return reusePatches(request, deps);
+    }
     const { rootDir, config, kit, env, fetchImpl, confirm, now } = deps;
-    const knownSecrets = Object.values(env).map((settings) => settings.apiKey);
-    const say = (line) => deps.print(redactText(line, knownSecrets));
+    const say = sayFor(deps);
 
     const { model, provider: providerName, warning } = resolveModel(config, request);
     if (providerName !== 'openai') {
         throw new Error(`patch.mjs sends /images/edits, which only the OpenAI provider supports here; "${model}" belongs to ${providerName}.`);
     }
     const outDir = resolveOutDir(rootDir, request.outDir);
-    const sourceBytes = readFileSync(request.imagePath);
-    sniffImage(sourceBytes);
-    const sourceHash = sha256(sourceBytes);
-    const source = await readRaster(request.imagePath);
-    const patches = parsePatchSpec(request.patches, source);
+    const { sourceHash, source, patches, sourceLabel } = await readSource(rootDir, request);
 
     const prepared = [];
     for (const [index, patch] of patches.entries()) {
@@ -96,7 +96,6 @@ export async function runPatches(request, deps) {
     const totalUsd = Math.round(perCallUsd.reduce((sum, value) => sum + value, 0) * request.n * 1e6) / 1e6;
     const logPath = join(rootDir, 'log', 'generations.jsonl');
     const runningUsd = runningTotalUsd(readLog(logPath));
-    const sourceLabel = relative(rootDir, request.imagePath).startsWith('..') ? basename(request.imagePath) : relative(rootDir, request.imagePath).split(sep).join('/');
 
     if (warning) {
         say(warning);
@@ -135,10 +134,9 @@ export async function runPatches(request, deps) {
         throw new Error('Cancelled. Nothing was sent.');
     }
 
-    const stamp = now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-    const stem = `${stamp}-${model}-patch`;
+    const stem = runStem(now, model);
     mkdirSync(outDir, { recursive: true });
-    const fileEntry = (path, bytes) => ({ file: relative(rootDir, path).split(sep).join('/'), sha256: sha256(bytes) });
+    const fileEntry = (path, bytes) => fileEntryOf(rootDir, path, bytes);
 
     const tokenRun = startRun({ rootDir, provider: providerName, now });
     let balanceBefore = request.balance ? await tryBalance({ say, env, providerName, config, fetchImpl }) : undefined;
@@ -219,7 +217,114 @@ export async function runPatches(request, deps) {
         endRun(tokenRun, { now });
     }
 
-    for (let variant = 1; variant <= request.n; variant++) {
+    await writeComposites(
+        { say, rootDir, logPath, outDir, stem, request, providerName, model, now, source, sourceLabel },
+        { prepared, results, variants: request.n, refHashesFor: () => [sourceHash], extraVars: {} },
+    );
+
+    if (stopped) {
+        if (calls === 0) {
+            throw new Error(`No images were made: ${stopped}`);
+        }
+        say(`STOPPED after ${calls} of ${callCount} calls: ${stopped}`);
+    }
+    return { dryRun: false, partial: Boolean(stopped), calls };
+}
+
+/**
+ * Composites the saved model results of an earlier run again with this spec's composite rects and --feather.
+ * The crops must be the ones the results were made for, so the request pictures (and with them the way each result
+ * is scaled back) come out the same. No model call is made and nothing is charged.
+ * @param {PatchRequest} request
+ * @param {import('./run.mjs').RunDeps} deps
+ */
+async function reusePatches(request, deps) {
+    const { rootDir, now } = deps;
+    const say = sayFor(deps);
+    const outDir = resolveOutDir(rootDir, request.outDir);
+    const { sourceHash, source, patches, sourceLabel } = await readSource(rootDir, request);
+    const logPath = join(rootDir, 'log', 'generations.jsonl');
+    const reused = loadReusedRun({ rootDir, logPath, prefix: request.reuse, sourceHash, crops: patches.map((patch) => rectArray(patch.crop)) });
+
+    const prepared = [];
+    for (const [index, patch] of patches.entries()) {
+        prepared.push({ ...patch, number: index + 1, instruction: reused.instructions[index], picture: await buildPatchRequest(source, patch.crop) });
+    }
+    say(`reusing ${reused.prefix}   ${reused.provider} / ${reused.model}   template: patch-composite   stage: ${request.stage}`);
+    say(`source: ${sourceLabel}  ${source.width}x${source.height}  sha256 ${sourceHash.slice(0, 16)}`);
+    say(`patches: ${prepared.length}   variants: ${reused.variants}   model calls: 0   cost: ${usd(0)}`);
+
+    const results = new Map();
+    for (const item of prepared) {
+        say(`patch ${item.number}: crop ${rectText(item.crop)}  composite ${rectList(item.composite)}  feather ${request.feather}`);
+        const before = cropRaster(source, item.crop);
+        for (let variant = 1; variant <= reused.variants; variant++) {
+            const key = `${item.number}:${variant}`;
+            const label = `patch ${item.number} variant ${variant}`;
+            const saved = reused.results.get(key);
+            say(`  variant ${variant}: ${saved.file}  sha256 ${saved.sha256.slice(0, 16)}`);
+            try {
+                const extracted = await extractPatchResult(saved.bytes, item.picture, item.crop);
+                extracted.warnings.forEach((text) => say(`WARNING: ${label}: ${text}`));
+                results.set(key, extracted.raster);
+                reportDifference({ say, label, before, after: extracted.raster, item });
+            } catch (error) {
+                throw new Error(`${label}: ${error.message}`);
+            }
+        }
+    }
+
+    if (request.dryRun) {
+        say('dry run: nothing was saved or logged.');
+        return { dryRun: true, totalUsd: 0, callCount: 0 };
+    }
+
+    mkdirSync(outDir, { recursive: true });
+    await writeComposites(
+        { say, rootDir, logPath, outDir, stem: runStem(now, reused.model), request, providerName: reused.provider, model: reused.model, now, source, sourceLabel },
+        {
+            prepared,
+            results,
+            variants: reused.variants,
+            refHashesFor: (variant) => [sourceHash, ...prepared.map((item) => reused.results.get(`${item.number}:${variant}`).sha256)],
+            extraVars: { reused: reused.prefix },
+        },
+    );
+    return { dryRun: false, partial: false, calls: 0 };
+}
+
+const sayFor = (deps) => {
+    const knownSecrets = Object.values(deps.env).map((settings) => settings.apiKey);
+    return (line) => deps.print(redactText(line, knownSecrets));
+};
+
+/** Reads and parses the inputs every run starts from: the picture, its hash, the trusted patches and the name the log uses for the picture. */
+async function readSource(rootDir, request) {
+    const sourceBytes = readFileSync(request.imagePath);
+    sniffImage(sourceBytes);
+    const source = await readRaster(request.imagePath);
+    const patches = parsePatchSpec(request.patches, source);
+    const inRoot = relative(rootDir, request.imagePath);
+    const sourceLabel = inRoot.startsWith('..') ? basename(request.imagePath) : inRoot.split(sep).join('/');
+    return { sourceHash: sha256(sourceBytes), source, patches, sourceLabel };
+}
+
+/** The file-name stem shared by everything one run writes. */
+function runStem(now, model) {
+    const stamp = now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+    return `${stamp}-${model}-patch`;
+}
+
+const fileEntryOf = (rootDir, path, bytes) => ({ file: relative(rootDir, path).split(sep).join('/'), sha256: sha256(bytes) });
+
+/**
+ * Writes, for every variant that has a result for every patch, the full-size picture and its before and after sheet,
+ * and logs the picture as a `patch-composite` at no cost so `approve.mjs` can approve it.
+ * `refHashesFor(variant)` gives the log line's `refs`; `extraVars` is added to its `vars`.
+ */
+async function writeComposites(run, { prepared, results, variants, refHashesFor, extraVars }) {
+    const { say, rootDir, logPath, outDir, stem, request, providerName, model, now, source, sourceLabel } = run;
+    for (let variant = 1; variant <= variants; variant++) {
         if (!prepared.every((item) => results.has(`${item.number}:${variant}`))) {
             continue;
         }
@@ -236,7 +341,8 @@ export async function runPatches(request, deps) {
             panels.push({ image: await toPng(cropRaster(merged, item.crop)), label: `p${item.number} after` });
         }
         const sheet = await buildContactSheet(panels, { cols: 2, cellWidth: 0, cellHeight: 0, gap: 12, labelHeight: 24, nearest: true, scales: [2] });
-        writeFileSync(join(outDir, `${stem}-${variant}-compare.png`), sheet, { flag: 'wx' });
+        const sheetPath = join(outDir, `${stem}-${variant}-compare.png`);
+        writeFileSync(sheetPath, sheet, { flag: 'wx' });
         appendLogEntry(logPath, makeLogEntry({
             time: now().toISOString(),
             stage: request.stage,
@@ -247,24 +353,17 @@ export async function runPatches(request, deps) {
                 source: sourceLabel,
                 variant,
                 feather: request.feather,
+                ...extraVars,
                 patches: prepared.map((item) => ({ crop: rectArray(item.crop), composite: item.composite.map(rectArray), instruction: item.instruction })),
             },
-            refHashes: [sourceHash],
+            refHashes: refHashesFor(variant),
             size: `${merged.width}x${merged.height}`,
-            outputs: [fileEntry(path, png)],
+            outputs: [fileEntryOf(rootDir, path, png)],
             estimatedUsd: 0,
         }));
-        say(`saved ${fileEntry(path, png).file}`);
-        say(`before and after at 2x: ${fileEntry(join(outDir, `${stem}-${variant}-compare.png`), sheet).file}`);
+        say(`saved ${fileEntryOf(rootDir, path, png).file}`);
+        say(`before and after at 2x: ${fileEntryOf(rootDir, sheetPath, sheet).file}`);
     }
-
-    if (stopped) {
-        if (calls === 0) {
-            throw new Error(`No images were made: ${stopped}`);
-        }
-        say(`STOPPED after ${calls} of ${callCount} calls: ${stopped}`);
-    }
-    return { dryRun: false, partial: Boolean(stopped), calls };
 }
 
 function reportDifference({ say, label, before, after, item }) {

@@ -126,8 +126,9 @@ const PATCH_OPTIONS = {
     spec: { type: 'string' },
     instruction: { type: 'string' },
     model: { type: 'string' },
-    n: { type: 'string', default: '1' },
+    n: { type: 'string' },
     feather: { type: 'string', default: '6' },
+    reuse: { type: 'string' },
     out: { type: 'string' },
     stage: { type: 'string' },
     'dry-run': { type: 'boolean', default: false },
@@ -135,6 +136,9 @@ const PATCH_OPTIONS = {
     balance: { type: 'boolean', default: false },
     'allow-unlocked': { type: 'boolean', default: false },
 };
+
+// Flags that steer the model call, which --reuse never makes.
+const MODEL_CALL_FLAGS = ['n', 'model', 'instruction', 'balance', 'allow-unlocked'];
 
 /**
  * Turns patch.mjs argv into a trusted request: the spec file is read here, so a bad path or bad JSON fails before any cost.
@@ -149,7 +153,11 @@ export function parsePatchRequest(argv, rootDir = ROOT_DIR) {
             throw new Error(`Pass ${flag} (see the usage in the README).`);
         }
     }
-    const n = Number(values.n);
+    const ignoredFlag = values.reuse ? MODEL_CALL_FLAGS.find((flag) => values[flag]) : undefined;
+    if (ignoredFlag) {
+        throw new Error(`--reuse makes no model call, so --${ignoredFlag} has no effect. The variants come from the reused run.`);
+    }
+    const n = Number(values.n ?? '1');
     const feather = Number(values.feather);
     if (!Number.isInteger(n) || n < 1) {
         throw new Error('--n must be a whole number of 1 or more.');
@@ -172,6 +180,7 @@ export function parsePatchRequest(argv, rootDir = ROOT_DIR) {
         model: values.model,
         n,
         feather,
+        reuse: values.reuse,
         outDir: values.out ?? join('raw', stage),
         stage,
         dryRun: values['dry-run'],

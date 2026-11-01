@@ -11,7 +11,7 @@ const read = (name) => readFileSync(join(PROMPTS, name), 'utf8');
 
 const RULE = 'No human ears: the only ears are the rabbit ears on top of the head; the sides of the head where human ears would be are covered by hair.';
 // A template that draws no character must be listed here, so a new character template cannot forget the rule.
-const DRAWS_NO_CHARACTER = ['logo-concept'];
+const DRAWS_NO_CHARACTER = ['logo-concept', 'pixel-prop'];
 
 const composeWith = (id, refCount) => {
     const template = kit.templates.get(id);
@@ -39,7 +39,7 @@ test('every character-drawing template carries the rule, with and without refere
     }
 });
 
-test('the logo template is the only one that does not need it', () => {
+test('the logo and the prop templates are the only ones that do not need it, because they draw no character', () => {
     assert.deepEqual([...kit.templates.keys()].filter((id) => !composeWith(id, 0).includes(RULE)), DRAWS_NO_CHARACTER);
 });
 

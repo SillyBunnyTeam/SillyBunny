@@ -126,3 +126,18 @@ test('only the text between the markers is replaced', () => {
 test('a NOTICE without markers is an error, not an overwrite', () => {
     assert.throws(() => applyGeneratedRegion('no markers here', 'x'), /generated:begin/);
 });
+
+test('an output approved in place is listed under the name it took over, with its own sha', () => {
+    const text = renderGeneratedRegion({
+        entries: [
+            entry({ outputs: [sheet('gs-reisen-done', 'a'.repeat(64), { superseded: 'b'.repeat(64) })] }),
+            entry({ outputs: [sheet('20261101T125043Z-patch-1', 'b'.repeat(64), { approvedAs: 'gs-reisen-done.png' })] }),
+        ],
+        tools: [],
+        checkedOn: '2026-11-01',
+    });
+    assert.match(text, /\| gs-reisen-done\.png \| gpt-image-2\.5-sunburst-h \| bbbbbbbbbbbbbbbb \|/);
+    assert.ok(!text.includes('20261101T125043Z-patch-1.png'), 'the timestamped name is not listed');
+    assert.equal(text.match(/gs-reisen-done\.png/g).length, 1, 'the superseded copy of that name is not listed');
+    assert.match(text, /Superseded approvals \(history\): 1 \(aaaaaaaa -> bbbbbbbb\)/);
+});

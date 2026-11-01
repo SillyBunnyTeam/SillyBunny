@@ -42,3 +42,19 @@ test('missing or bad input fails before anything is read or sent', () => {
     const broken = makeRoot('[{"crop":');
     assert.throws(() => parsePatchRequest(['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s2/'], broken), /patches\.json is not valid JSON/);
 });
+
+test('--reuse is read as given, and the variant count is left to the reused run', () => {
+    const root = makeRoot();
+    const base = ['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s5/fix/'];
+    const request = parsePatchRequest([...base, '--reuse', 'raw/s5/tails/x/20261101T125043Z-gpt-image-2.5-sunburst-h-patch', '--feather', '2'], root);
+    assert.deepEqual([request.reuse, request.feather], ['raw/s5/tails/x/20261101T125043Z-gpt-image-2.5-sunburst-h-patch', 2]);
+    assert.equal(parsePatchRequest(base, root).reuse, undefined);
+});
+
+test('--reuse refuses the flags that only steer a model call', () => {
+    const root = makeRoot();
+    const base = ['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s5/fix/', '--reuse', 'raw/s5/x-patch'];
+    for (const extra of [['--n', '2'], ['--model', 'gpt-image-2.5-flare-h'], ['--instruction', 'x'], ['--balance'], ['--allow-unlocked']]) {
+        assert.throws(() => parsePatchRequest([...base, ...extra], root), new RegExp(`--reuse makes no model call, so ${extra[0]} has no effect`));
+    }
+});

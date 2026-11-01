@@ -1,3 +1,5 @@
+import { approvedName } from './log.mjs';
+
 const BEGIN = '<!-- generated:begin -->';
 const END = '<!-- generated:end -->';
 
@@ -62,7 +64,7 @@ function renderApprovals(entries) {
     } else {
         lines.push('| File | Model | SHA-256 |', '|---|---|---|');
         for (const { output, model } of current) {
-            lines.push(`| ${output.file.split('/').pop()} | ${model} | ${output.sha256.slice(0, 16)} |`);
+            lines.push(`| ${approvedName(output)} | ${model} | ${output.sha256.slice(0, 16)} |`);
         }
     }
     const replaced = outputs.filter(({ output }) => output.approved && output.superseded);

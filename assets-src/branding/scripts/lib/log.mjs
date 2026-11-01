@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { basename, dirname } from 'node:path';
 
 /** @param {Buffer} bytes */
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -27,6 +27,13 @@ export function makeLogEntry({ time, stage, provider, model, template, vars, ref
         approved: false,
     };
 }
+
+/**
+ * The file name an approved output has in approved/ and refs/: its own, unless it replaced another output in
+ * place (`approve.mjs --supersede --in-place`), in which case it keeps that output's name as `approvedAs`.
+ * @param {{ file: string, approvedAs?: string }} output
+ */
+export const approvedName = (output) => output.approvedAs ?? basename(output.file);
 
 /** @param {string} logPath */
 export function readLog(logPath) {

@@ -1,6 +1,6 @@
 {
     "lockedModel": "gpt-image-2.5-sunburst-h",
-    "costCapUsd": 30,
+    "costCapUsd": 40,
     "pricing": {
         "source": "GET https://api.linkapi.ai/api/pricing (public, no key)",
         "retrieved": "2026-11-01",

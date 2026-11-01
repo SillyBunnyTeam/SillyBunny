@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
@@ -269,3 +269,140 @@ test('the key never appears in the printed lines', async () => {
     await runPatches(request(imagePath), deps);
     assert.ok(!lines.join('\n').includes(KEY));
 });
+
+const FIRST_STAMP = '20261101T120000Z';
+const PREFIX = `raw/s2/${FIRST_STAMP}-gpt-image-2.5-sunburst-h-patch`;
+const REUSE_SPEC = [
+    { crop: [80, 30, 140, 120], composite: [[98, 88, 14, 14]] },
+    { crop: [0, 0, 130, 110], composite: [[100, 85, 20, 20]] },
+];
+const readLogText = (root) => readFileSync(join(root, 'log', 'generations.jsonl'), 'utf8');
+const listRaw = (root) => readdirSync(join(root, 'raw'), { recursive: true }).sort();
+
+/** Deps for a reuse run: a later clock so the new files do not collide, and a relay that must never be called. */
+function reuseDeps(root) {
+    const { deps, lines } = makeDeps(root);
+    deps.now = () => new Date('2026-11-01T13:00:00.000Z');
+    deps.fetchImpl = async () => {
+        throw new Error('a reuse run must not call the relay');
+    };
+    return { deps, lines };
+}
+
+const reuseRequest = (imagePath, overrides = {}) => request(imagePath, { patches: REUSE_SPEC, reuse: PREFIX, outDir: 'raw/s2/fix', feather: 0, instruction: undefined, ...overrides });
+
+/** A finished normal run of two patches and two variants, whose results a reuse run can start from. */
+async function finishedRun() {
+    const made = await makeRoot();
+    const { deps } = makeDeps(made.root);
+    await runPatches(request(made.imagePath, { patches: TWO, n: 2 }), deps);
+    return made;
+}
+
+test('--reuse composites the saved results again with new rects: no call, the same variants, pictures that change only inside the new rects, and a free log line per picture', async () => {
+    const { root, source, imagePath } = await finishedRun();
+    const before = logOf(root);
+    const { deps, lines } = reuseDeps(root);
+    const outcome = await runPatches(reuseRequest(imagePath), deps);
+    assert.deepEqual([outcome.dryRun, outcome.partial, outcome.calls], [false, false, 0]);
+
+    const stem = '20261101T130000Z-gpt-image-2.5-sunburst-h-patch';
+    assert.deepEqual(readdirSync(join(root, 'raw', 's2', 'fix')).sort(), [`${stem}-1-compare.png`, `${stem}-1.png`, `${stem}-2-compare.png`, `${stem}-2.png`]);
+    for (const variant of [1, 2]) {
+        const result = await readRaster(join(root, 'raw', 's2', 'fix', `${stem}-${variant}.png`));
+        assert.deepEqual([result.width, result.height], [300, 200]);
+        for (let y = 0; y < 200; y++) {
+            for (let x = 0; x < 300; x++) {
+                const inside = (x >= 98 && x < 112 && y >= 88 && y < 102) || (x >= 100 && x < 120 && y >= 85 && y < 105);
+                if (!inside) {
+                    assert.deepEqual(getPixel(result, x, y), getPixel(source, x, y), `pixel ${x},${y} outside the new rects changed`);
+                }
+            }
+        }
+        assert.ok(isGreenish(getPixel(result, 104, 94)), 'the saved result, not the source, shows inside the new rects');
+    }
+
+    const logged = logOf(root);
+    assert.equal(logged.length, before.length + 2);
+    assert.deepEqual(logged.slice(0, before.length), before, 'earlier lines are untouched');
+    const [first, second] = logged.slice(before.length);
+    const editOutputs = (patch, variant) => before.find((entry) => entry.template === 'patch-edit' && entry.vars.patch === patch && entry.vars.variant === variant).outputs[0].sha256;
+    const sourceHash = sha256(readFileSync(imagePath));
+    assert.deepEqual([first.template, first.estimatedUsd, first.approved, first.stage, first.model, first.provider], ['patch-composite', 0, false, 's2', 'gpt-image-2.5-sunburst-h', 'openai']);
+    assert.deepEqual(first.refs, [sourceHash, editOutputs(1, 1), editOutputs(2, 1)]);
+    assert.deepEqual(second.refs, [sourceHash, editOutputs(1, 2), editOutputs(2, 2)]);
+    assert.deepEqual([first.vars.reused, first.vars.feather, first.vars.variant, first.vars.source], [PREFIX, 0, 1, 'refs/page.png']);
+    assert.deepEqual(first.vars.patches.map((patch) => patch.composite), [[[98, 88, 14, 14]], [[100, 85, 20, 20]]]);
+    assert.deepEqual(first.vars.patches.map((patch) => patch.instruction), ['Remove the human ears.', 'Make it clearer.'], 'instructions come from the reused run');
+    assert.equal(first.outputs[0].file, `raw/s2/fix/${stem}-1.png`);
+    assert.equal(first.outputs[0].sha256, sha256(readFileSync(join(root, first.outputs[0].file))));
+    assert.match(lines.join('\n'), /reusing raw\/s2\/.*-patch {3}openai \/ gpt-image-2\.5-sunburst-h {3}template: patch-composite/);
+    assert.match(lines.join('\n'), /patches: 2 {3}variants: 2 {3}model calls: 0/);
+});
+
+test('--reuse accepts a prefix given as a full path', async () => {
+    const { root, imagePath } = await finishedRun();
+    const { deps } = reuseDeps(root);
+    const outcome = await runPatches(reuseRequest(imagePath, { reuse: join(root, PREFIX) }), deps);
+    assert.equal(outcome.partial, false);
+    assert.equal(logOf(root).at(-1).vars.reused, PREFIX);
+});
+
+test('a --reuse dry run prints the plan and the checks it passed, and writes nothing', async () => {
+    const { root, imagePath } = await finishedRun();
+    const files = listRaw(root);
+    const log = readLogText(root);
+    const { deps, lines } = reuseDeps(root);
+    const outcome = await runPatches(reuseRequest(imagePath, { dryRun: true }), deps);
+    assert.equal(outcome.dryRun, true);
+    const text = lines.join('\n');
+    assert.match(text, /patch 2: crop \[0,0,130,110\] {2}composite \[\[100,85,20,20\]\] {2}feather 0/);
+    assert.match(text, /variant 2: raw\/s2\/.*-patch-p2-2\.png {2}sha256 [0-9a-f]{16}/);
+    assert.match(text, /patch 1 variant 1: mean colour difference inside the composite area/);
+    assert.match(text, /dry run: nothing was saved or logged/);
+    assert.deepEqual(listRaw(root), files);
+    assert.equal(readLogText(root), log);
+});
+
+async function otherPicture(root) {
+    const changed = page();
+    setPixel(changed, 5, 5, [1, 2, 3]);
+    const path = join(root, 'refs', 'other.png');
+    await sharp(changed.data, { raw: { width: 300, height: 200, channels: 4 } }).png().toFile(path);
+    return path;
+}
+
+const REFUSALS = [
+    ['a crop that differs from the reused run', {}, { patches: [{ ...REUSE_SPEC[0], crop: [80, 30, 140, 121] }, REUSE_SPEC[1]] }, /Patch 1: the crop \[80,30,140,121\] is not the reused run's \[80,30,140,120\]. Only the composite rects and --feather may differ/],
+    ['fewer patches than the reused run', {}, { patches: [REUSE_SPEC[0]] }, /edited 2 patches, but the spec has 1/],
+    ['more patches than the reused run', {}, { patches: [...REUSE_SPEC, REUSE_SPEC[0]] }, /edited 2 patches, but the spec has 3/],
+    ['a prefix nothing was logged under', {}, { reuse: 'raw/s2/20990101T000000Z-gpt-image-2.5-sunburst-h-patch' }, /no patch-edit result under raw\/s2\/20990101/],
+    ['a prefix outside the package', {}, { reuse: '../elsewhere/run-patch' }, /outside/],
+    ['a result missing from the log', { async mutate(root) {
+        const kept = logOf(root).filter((entry) => !(entry.template === 'patch-edit' && entry.vars.patch === 2 && entry.vars.variant === 2));
+        writeFileSync(join(root, 'log', 'generations.jsonl'), kept.map((entry) => `${JSON.stringify(entry)}\n`).join(''));
+    } }, {}, /no result for patch 2 variant 2/],
+    ['a result file that is gone', { async mutate(root) {
+        rmSync(join(root, `${PREFIX}-p1-2.png`));
+    } }, {}, /result file for patch 1 variant 2 is missing/],
+    ['a result file that is not the logged one', { async mutate(root) {
+        writeFileSync(join(root, `${PREFIX}-p2-1.png`), 'changed since it was logged');
+    } }, {}, /p2-1\.png is not the file the log recorded/],
+    ['a different source image', { async prepare(root) {
+        return { imagePath: await otherPicture(root) };
+    } }, {}, /source image .* is not the one the reused run edited/],
+];
+
+for (const [name, { mutate, prepare }, overrides, message] of REFUSALS) {
+    test(`--reuse refuses ${name}, before anything is written`, async () => {
+        const made = await finishedRun();
+        await mutate?.(made.root);
+        const { imagePath = made.imagePath } = (await prepare?.(made.root)) ?? {};
+        const files = listRaw(made.root);
+        const log = readLogText(made.root);
+        const { deps } = reuseDeps(made.root);
+        await assert.rejects(runPatches(reuseRequest(imagePath, overrides), deps), message);
+        assert.deepEqual(listRaw(made.root), files);
+        assert.equal(readLogText(made.root), log);
+    });
+}

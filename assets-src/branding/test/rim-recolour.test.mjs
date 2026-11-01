@@ -100,3 +100,55 @@ test('a picture without a rim is refused, and the report names the rim it found'
     assert.ok(near(stats.rimBefore, OLD_RIM_A, 8));
     assert.deepEqual(stats.rimTarget, TARGET);
 });
+
+const COARSE = { size: 260, edge: 10, rim: 32, white: 32 };
+const coarseInward = (x, y) => Math.min(x, y, COARSE.size - 1 - x, COARSE.size - 1 - y) - COARSE.edge;
+
+/** A sticker drawn on a coarse grid (a 32 pixel rim and a 32 pixel white band, hard edges), which the first 16 pixels of the search cannot see past. */
+function coarseSticker() {
+    const raster = createRaster(COARSE.size, COARSE.size);
+    for (let y = 0; y < COARSE.size; y++) {
+        for (let x = 0; x < COARSE.size; x++) {
+            const depth = coarseInward(x, y);
+            if (depth < 0) {
+                continue;
+            }
+            const colour = depth < COARSE.rim ? OLD_RIM_A : depth < COARSE.rim + COARSE.white ? [255, 255, 255] : SKIN;
+            setPixel(raster, x, y, colour);
+        }
+    }
+    setPixel(raster, 130, 130, [60, 30, 50]);
+    return raster;
+}
+
+test('a sticker whose rim and white band are 32 pixels thick is found, recoloured in the rim only, with its alpha and everything inside the rim untouched', () => {
+    const source = coarseSticker();
+    const { raster, stats } = recolourRim(source, { target: TARGET });
+    let rim = 0;
+    for (let y = 0; y < COARSE.size; y++) {
+        for (let x = 0; x < COARSE.size; x++) {
+            const depth = coarseInward(x, y);
+            if (depth >= 0 && depth < COARSE.rim) {
+                rim++;
+                assert.ok(near(getPixel(raster, x, y), TARGET, 6), `rim pixel ${x},${y} is ${getPixel(raster, x, y)}`);
+            } else {
+                assert.ok(!differs(source, raster, x, y), `pixel ${x},${y} outside the rim changed`);
+            }
+        }
+    }
+    assert.equal(stats.recoloured, rim);
+    assert.ok(near(stats.rimBefore, OLD_RIM_A, 2));
+    for (let at = 3; at < source.data.length; at += 4) {
+        assert.equal(raster.data[at], source.data[at], 'alpha is never changed');
+    }
+});
+
+test('a picture with a rim but no white band at any depth is still refused', () => {
+    const solid = createRaster(120, 120);
+    for (let y = 10; y < 110; y++) {
+        for (let x = 10; x < 110; x++) {
+            setPixel(solid, x, y, OLD_RIM_A);
+        }
+    }
+    assert.throws(() => recolourRim(solid, { target: TARGET }), /No white band found within 256 pixels/);
+});

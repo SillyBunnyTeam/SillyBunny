@@ -160,7 +160,7 @@ test('all intro art faces the inline end, the about pair faces the logo between 
 
 test('the slots with a named prop or pose have it', () => {
     assert.match(byId.get('hero-duo').pose, /down/);
-    assert.match(byId.get('hero-duo-night').pose, /down/);
+    assert.match(byId.get('hero-duo-night').pose, /looks up at the moon/);
     assert.match(byId.get('hero-duo-night').props, /full moon/);
     assert.ok(!/moon/i.test(byId.get('hero-duo').props + byId.get('hero-duo').pose), 'the day hero has no moon');
     assert.match(byId.get('troubleshooting-reisen').props, /medicine box/);
