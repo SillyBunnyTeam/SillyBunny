@@ -175,6 +175,7 @@ const requestGracefulExit = jest.fn();
 
 await jest.unstable_mockModule('simple-git', () => ({
     default: gitFactory,
+    simpleGit: gitFactory,
     CheckRepoActions: { IS_REPO_ROOT: 'IS_REPO_ROOT' },
 }));
 await jest.unstable_mockModule('command-exists', () => ({ sync: command => command === 'git' }));
