@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
 
-import { pipeline, env, RawImage } from 'sillytavern-transformers';
+import { pipeline, env } from 'sillytavern-transformers';
 import { getConfigValue } from './util.js';
 import { serverDirectory } from './server-directory.js';
+import { decodeRawImage } from './transformers-image.js';
 
 configureTransformers();
 
@@ -52,16 +53,13 @@ const tasks = {
 /**
  * Gets a RawImage object from a base64-encoded image.
  * @param {string} image Base64-encoded image
- * @returns {Promise<RawImage|null>} Object representing the image
+ * @returns {Promise<import('sillytavern-transformers').RawImage|null>} Object representing the image
  */
 export async function getRawImage(image) {
     try {
         const buffer = Buffer.from(image, 'base64');
-        const byteArray = new Uint8Array(buffer);
-        const blob = new Blob([byteArray]);
-
-        const rawImage = await RawImage.fromBlob(blob);
-        return rawImage;
+        // SillyBunny: RawImage.fromBlob() can loop forever on malformed non-image input, and it fails for every image under Bun.
+        return await decodeRawImage(buffer);
     } catch {
         return null;
     }
