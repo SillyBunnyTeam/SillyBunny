@@ -31,6 +31,8 @@ async function loadSettings(page, baseURL, settingsStore) {
             data.request_compression = { ...data.request_compression, enabled: false };
             const settings = settingsStore?.saved ?? JSON.parse(data.settings);
             settings.firstRun = false;
+            // The guard specs expect the discard prompt, and the app skips it when autosave is on, which a first-run account has by default.
+            settings.power_user.sb_preset_autosave = false;
             applyWelcomeSettings(settings);
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });

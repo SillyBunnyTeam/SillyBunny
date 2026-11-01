@@ -80,10 +80,13 @@ export async function bootMisc(page, baseURL, viewport, options) {
     return context;
 }
 
-/** Boots the misc fixture and opens its character's chat, because Home has no composer. */
+/**
+ * Boots the misc fixture and opens its character's chat, because Home has no composer. The surfaces that start from the
+ * composer's Options menu open it at once, and the composer focus that follows a chat load would close it.
+ */
 export async function bootMiscWithChat(page, baseURL, viewport, options) {
     const context = await bootMisc(page, baseURL, viewport, options);
-    await openMiscFixtureChat(page);
+    await openMiscFixtureChat(page, { waitForAutofocus: true });
     return context;
 }
 

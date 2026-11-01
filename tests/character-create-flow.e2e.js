@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 function makeCharacter(avatar, name, nickname = '') {
     const data = {
@@ -22,6 +23,14 @@ function requestJson(request) {
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
+    // The new row flashes only when motion is on, and the shared data root may have saved reduced motion.
+    await page.route('**/api/settings/get', async (route) => {
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
+        const settings = JSON.parse(data.settings);
+        settings.power_user.reduced_motion = false;
+        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+    });
     const characters = [
         makeCharacter('qa-character-a.png', 'QA Character A', 'Ally'),
         makeCharacter('qa-character-b.png', 'QA Character B'),

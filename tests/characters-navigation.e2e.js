@@ -309,7 +309,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         const draftName = `${fixture.name}-unsaved-draft`;
         await page.locator('#rm_group_chat_name').fill(draftName);
         await row.getByRole('switch').uncheck();
-        await expect(page.locator('#sb_group_editor_dirty')).toBeVisible();
+        // On a narrow or touch screen the header collapses when the list scrolls, which Playwright does to reach the switch, so the marker is checked as state and not as pixels.
+        await expect(page.locator('#sb_group_editor_dirty')).not.toHaveAttribute('hidden');
         await flushLiveGroupMetadata(page);
         expect(persistenceRequests.get(page).map(payload => payload.name)).not.toContain(draftName);
         await row.locator('.ch_name').click();
