@@ -43,12 +43,10 @@
             <div class="welcomeRecent">
                 <div id="welcome-recent-chat-list" class="recentChatList">
                 {{#if empty}}
-                    <div class="noRecentChat sbHomeEmpty" data-sb-home-empty="all">
+                    <div class="noRecentChat sbHomeEmpty" data-sb-home-empty="all" role="status">
                         <div class="sbHomeArt" data-sb-home-region="mascot-art" data-sb-art-placeholder="empty-tewi" aria-hidden="true">empty-tewi</div>
-                        <div class="sbHomeEmptyText">
-                            <strong data-sb-copy-placeholder="true" data-sb-copy-slot="RC-EMPTY-HEAD">TODO(copy)</strong>
-                            <span data-sb-copy-placeholder="true" data-sb-copy-slot="RC-EMPTY-BODY">TODO(copy)</span>
-                        </div>
+                        <h3 class="sbHomeEmptyTitle" data-sb-copy-placeholder="true" data-sb-copy-slot="RC-EMPTY-HEAD">TODO(copy)</h3>
+                        <p class="sbHomeEmptyDescription" data-sb-copy-placeholder="true" data-sb-copy-slot="RC-EMPTY-BODY">TODO(copy)</p>
                     </div>
                 {{/if}}
                     <div class="noRecentChat displayNone" data-recent-chat-empty-state="filtered"></div>

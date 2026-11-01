@@ -1159,22 +1159,37 @@ body.big-avatars .welcomeRecent .chatMessage {
     padding: 16px;
 }
 
-.sbHomeEmptyText {
-    display: flex;
+/* The empty list is a status page with the mascot in place of the symbolic icon, so it takes the sizes of the shared
+   status page. The shared sheet loads late and Home does not wait for it, so the sizes are set here. */
+.welcomeRecent .sbHomeEmpty {
     flex-direction: column;
-    gap: 4px;
-    min-width: 0;
+    justify-content: center;
+    gap: 0;
+    padding: 24px 16px;
+    text-align: center;
 }
 
-.sbHomeEmptyText strong {
-    font-size: var(--sb-type-title);
-    font-weight: 700;
+.sbHomeEmpty .sbHomeArt {
+    margin-block-end: 12px;
+}
+
+.sbHomeEmptyTitle {
+    width: min(100%, 36ch);
+    margin: 0 0 12px;
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
     line-height: 1.18;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
 }
 
-.sbHomeEmptyText span {
-    font-size: var(--sb-type-meta);
-    line-height: 1.5;
+.sbHomeEmptyDescription {
+    width: min(100%, 36ch);
+    margin: 0;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-body);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
 }
 
 .welcomeRecent .sb-status-page {

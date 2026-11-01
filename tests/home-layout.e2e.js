@@ -2143,6 +2143,121 @@ test.describe('Home filtered empty state', () => {
     });
 });
 
+test.describe('Home Recent Chats empty states', () => {
+    const EMPTY = '.welcomePanel [data-sb-home-empty="all"]';
+
+    /** Reads the geometry and type of the empty state, and what the shared type tokens resolve to. */
+    async function readEmptyState(page) {
+        return page.evaluate((selector) => {
+            const root = document.querySelector(selector);
+            const box = node => node.getBoundingClientRect();
+            const centre = node => (box(node).left + box(node).right) / 2;
+            const art = root.querySelector('.sbHomeArt');
+            const title = root.querySelector('[data-sb-copy-slot="RC-EMPTY-HEAD"]');
+            const body = root.querySelector('[data-sb-copy-slot="RC-EMPTY-BODY"]');
+            const probe = document.createElement('div');
+            probe.style.cssText = 'position: absolute; visibility: hidden; font-size: var(--sb-type-headline); color: var(--sb-muted-fg);';
+            const bodyProbe = document.createElement('div');
+            bodyProbe.style.cssText = 'position: absolute; visibility: hidden; font-size: var(--sb-type-body);';
+            document.body.append(probe, bodyProbe);
+            const tokens = { headline: getComputedStyle(probe).fontSize, body: getComputedStyle(bodyProbe).fontSize, muted: getComputedStyle(probe).color };
+            probe.remove();
+            bodyProbe.remove();
+            const style = node => getComputedStyle(node);
+            return {
+                role: root.getAttribute('role'),
+                titleTag: title.tagName,
+                bodyTag: body.tagName,
+                art: art && { hidden: getComputedStyle(art).display === 'none', width: box(art).width, height: box(art).height, bottom: box(art).bottom, centre: centre(art), ariaHidden: art.getAttribute('aria-hidden') },
+                title: { top: box(title).top, bottom: box(title).bottom, centre: centre(title), align: style(title).textAlign, size: style(title).fontSize, weight: style(title).fontWeight },
+                body: { top: box(body).top, centre: centre(body), align: style(body).textAlign, size: style(body).fontSize, color: style(body).color },
+                centre: (box(root).left + box(root).right) / 2,
+                overflows: root.scrollWidth > root.clientWidth,
+                tokens,
+            };
+        }, EMPTY);
+    }
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844, ...TOUCH }]) {
+        test.describe(`at ${viewport.width}x${viewport.height}`, () => {
+            test.use({ viewport: { width: viewport.width, height: viewport.height }, ...(viewport.isMobile ? TOUCH : {}) });
+
+            test.beforeEach(async ({ page }) => {
+                await protectMaintainerServer(page);
+                await installFixtureChats(page);
+                await page.goto('/', { waitUntil: 'domcontentloaded' });
+                await expectHome(page);
+                await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+            });
+
+            test('with no chats, the Tewi art, the heading and the body stack in the middle as one status page', async ({ page }) => {
+                await renderHome(page, []);
+                await chooseMode(page, 'full');
+
+                const state = await readEmptyState(page);
+
+                expect(state.role).toBe('status');
+                expect([state.titleTag, state.bodyTag]).toEqual(['H3', 'P']);
+                expect(state.art).toMatchObject({ hidden: false, width: 96, height: 96, ariaHidden: 'true' });
+                expect(state.art.bottom, 'the art sits above the heading').toBeLessThanOrEqual(state.title.top);
+                expect(state.title.bottom, 'the heading sits above the body').toBeLessThanOrEqual(state.body.top);
+                for (const centre of [state.art.centre, state.title.centre, state.body.centre]) {
+                    expect(Math.abs(centre - state.centre)).toBeLessThanOrEqual(1);
+                }
+                expect([state.title.align, state.body.align]).toEqual(['center', 'center']);
+                expect(state.overflows).toBe(false);
+            });
+
+            test('with no chats, the heading and the body use the type scale of the status pages', async ({ page }) => {
+                await renderHome(page, []);
+                await chooseMode(page, 'full');
+
+                const { title, body, tokens } = await readEmptyState(page);
+
+                expect(title.size).toBe(tokens.headline);
+                expect(title.weight).toBe('800');
+                expect(body.size).toBe(tokens.body);
+                expect(body.color).toBe(tokens.muted);
+            });
+
+            test('with no chats, Compact keeps the heading and the body in the middle without the art', async ({ page }) => {
+                await renderHome(page, []);
+                await chooseMode(page, 'compact');
+
+                const state = await readEmptyState(page);
+
+                expect(state.art.hidden).toBe(true);
+                expect(Math.abs(state.title.centre - state.centre)).toBeLessThanOrEqual(1);
+                expect(Math.abs(state.body.centre - state.centre)).toBeLessThanOrEqual(1);
+            });
+
+            test('a filter with no match keeps the symbolic icon and no mascot, and the empty state is gone while chats exist', async ({ page }) => {
+                const characters = await pickFixtureCharacters(page, 1);
+                await renderHome(page, recentChatEntries(characters, 1, { distinctFiles: true }));
+                await chooseMode(page, 'full');
+                const filtered = page.locator('.welcomePanel [data-recent-chat-empty-state="filtered"]');
+
+                await expect(page.locator(EMPTY)).toHaveCount(0);
+                await page.locator('.welcomePanel [data-recent-chat-filter="group"]').click();
+
+                await expect(filtered).toBeVisible();
+                await expect(filtered.locator('.sb-status-page')).toHaveAttribute('role', 'status');
+                await expect(filtered.locator('.sb-status-page__icon')).toBeVisible();
+                await expect(filtered.locator('[data-sb-art-placeholder]')).toHaveCount(0);
+                const [filteredSize, tokens] = await page.evaluate(() => {
+                    const probe = document.createElement('div');
+                    probe.style.cssText = 'position: absolute; visibility: hidden; font-size: var(--sb-type-headline);';
+                    document.body.append(probe);
+                    const size = getComputedStyle(probe).fontSize;
+                    probe.remove();
+                    return [getComputedStyle(document.querySelector('.welcomePanel [data-recent-chat-empty-state="filtered"] .sb-status-page__title')).fontSize, size];
+                });
+                expect(filteredSize, 'both states name themselves at one size').toBe(tokens);
+            });
+        });
+    }
+});
+
 test.describe('Home Recent Chats group row', () => {
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
         test.describe(`at ${viewport.width}x${viewport.height}`, () => {
