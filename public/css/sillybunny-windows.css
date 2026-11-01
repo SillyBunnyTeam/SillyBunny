@@ -425,9 +425,10 @@ kbd.sbKeys > kbd {
     -webkit-appearance: none;
     appearance: none;
     box-sizing: border-box;
+    --sb-flat-button-inline: 12px;
     min-height: 32px;
     margin: 0;
-    padding: 4px 12px;
+    padding: 4px var(--sb-flat-button-inline);
     border: 0;
     border-radius: var(--sb-radius-control);
     background: transparent;
@@ -461,8 +462,8 @@ kbd.sbKeys > kbd {
 
 @media (pointer: coarse) {
     .sbHomeFlatButton {
+        --sb-flat-button-inline: 14px;
         min-height: 44px;
-        padding-inline: 14px;
     }
 }
 
@@ -516,6 +517,27 @@ body.reduced-motion .sbHomeFlatButton {
 .sbHomeStepRow .ds-row-suffix {
     flex-wrap: wrap;
     justify-content: flex-end;
+}
+
+/* Learn More sits under the title as a link, so the padding of the flat button is pulled out and the text, not the
+   button, lines up with the start of the title. */
+.sbHomeStepLearnMore {
+    margin-inline-start: calc(-1 * var(--sb-flat-button-inline));
+}
+
+/* A Bundled Extras row ends with its state and the buttons that the state offers, in one line that never wraps. */
+.sbBundledExtraControls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.sbBundledExtraState {
+    margin-inline-end: 4px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
 }
 
 .sbBundledExtrasDialog .ds-row > .sbHomeArt {

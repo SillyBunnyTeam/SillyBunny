@@ -64,6 +64,7 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMor
     controller.row.querySelector('.ds-row-text').append(underText);
     if (onLearnMore) {
         const learnMore = createFlatButton(t`Learn More`);
+        learnMore.classList.add('sbHomeStepLearnMore');
         learnMore.setAttribute('aria-describedby', labelId);
         learnMore.addEventListener('click', () => onLearnMore(step.helpTopic));
         underText.append(learnMore);

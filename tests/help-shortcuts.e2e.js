@@ -465,6 +465,24 @@ for (const { name, options } of VIEWPORTS) {
                 }
             });
 
+            for (const direction of ['ltr', 'rtl']) {
+                test(`the text of Learn More starts where the title of its step starts, in ${direction}`, async ({ page }) => {
+                    await openGettingStarted(page);
+                    await page.evaluate(dir => document.documentElement.setAttribute('dir', dir), direction);
+
+                    for (const { title } of STEPS) {
+                        const offset = await stepRow(page, title).evaluate((row, dir) => {
+                            const label = row.querySelector('.ds-row-label').getBoundingClientRect();
+                            const range = document.createRange();
+                            range.selectNodeContents(row.querySelector('.ds-row-text button'));
+                            const text = range.getBoundingClientRect();
+                            return dir === 'rtl' ? label.right - text.right : text.left - label.left;
+                        }, direction);
+                        expect(Math.abs(offset), title).toBeLessThanOrEqual(1);
+                    }
+                });
+            }
+
             test('Learn More on each step closes the window and opens Help at the topic of that step', async ({ page }) => {
                 for (const { title, topic } of STEPS) {
                     await openGettingStarted(page);

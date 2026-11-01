@@ -242,6 +242,34 @@ for (const { name, options } of VIEWPORTS) {
                 await popupButton(page, 'cancel').click();
                 await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
                 expect(installs).toEqual([]);
+            test('shows the state as dimmed text that is set apart from the buttons beside it, and keeps the row inside the window', async ({ page }) => {
+                const host = await openFromTile(page);
+
+                for (const label of ['Bot Searcher', 'Deep Swipe', 'Alternate Descriptions']) {
+                    const row = host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: new RegExp(`^${label}$`) }) });
+                    const look = await row.evaluate((node) => {
+                        const state = node.querySelector('.sbBundledExtraState');
+                        const button = node.querySelector('.sbBundledExtraControls button');
+                        const controls = node.querySelector('.sbBundledExtraControls');
+                        const box = node.getBoundingClientRect();
+                        const stateBox = state.getBoundingClientRect();
+                        return {
+                            stateColor: getComputedStyle(state).color,
+                            buttonColor: getComputedStyle(button).color,
+                            display: getComputedStyle(controls).display,
+                            gap: stateBox.right - button.getBoundingClientRect().left,
+                            inside: controls.getBoundingClientRect().right <= box.right + 1,
+                            overflows: node.scrollWidth > node.clientWidth + 1,
+                        };
+                    });
+                    expect(look.stateColor, label).not.toBe(look.buttonColor);
+                    expect(look.display, label).toBe('flex');
+                    expect(look.gap, `${label}: the state ends before the first button starts`).toBeLessThanOrEqual(-4);
+                    expect(look.inside, label).toBe(true);
+                    expect(look.overflows, label).toBe(false);
+                }
+            });
+
                 await expect(statusOf(rowOf(host, 'LALib'))).toHaveText('Not installed');
 
                 await buttonsOf(rowOf(host, 'LALib')).getByText('Install').click();
