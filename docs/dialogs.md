@@ -39,6 +39,7 @@ Examples import from a file in `public/scripts/`. `openDialog(options)` returns 
 | `size` | `'fill'` | Window only. `'content'` follows the content; the height only grows while open. |
 | `className` | `''` | Added to the surface, or to the page when pushed. |
 | `responses` | `null` | `null` is immediate apply, with Close at the header end. |
+| `swipeToDismiss` | `true` | `false` removes the sheet's grab handle, so a drag neither closes the frame nor goes back a page. Read only by the call that opens the frame; a pushed page ignores it. |
 
 `responses` is an object; any non-null value shows Cancel, even `{}`:
 
@@ -50,12 +51,19 @@ Examples import from a file in `public/scripts/`. `openDialog(options)` returns 
 `canClose(reason)` returns a boolean or a promise; `false` keeps the frame open. Reasons: `'close'`,
 `'cancel'`, `'back'`, `'affirmative'` (any affirmative id), an extra response id, `'escape'`,
 `'scrim'`, `'swipe'` and `'programmatic'`. While an async check is pending, other close attempts are ignored.
+For a frame that must never end on a swipe, set `swipeToDismiss: false`. Refusing `'swipe'` in
+`canClose` also keeps the frame open, but the drag springs back and the handle still invites it.
 `initialFocus` is `() => HTMLElement`. Without it, focus goes to the search field or toggle, the
 first focusable body control, Cancel, and finally Close.
 
 `search` takes `onChange(query)`, `placeholder` and `label` (default "Search"), `debounce` (`0`),
 `collapsed` (hide the field until the toggle is used), `input` (adopt an existing input, returned on
-close), `escapeClearsFirst` and `onEscape(event)` (return `true` to take the key). `menu(trigger)`
+close), `escapeClearsFirst` and `onEscape(event)` (return `true` to take the key). `toggleLabel`
+(default "Search") is the accessible name and tooltip of the header search toggle. When another
+control in the same frame is also named "Search", give the toggle and `label` a more specific name
+that says what is searched. `ariaAutocomplete`, `ariaControls` and `enterKeyHint` set
+`aria-autocomplete`, `aria-controls` and `enterkeyhint` on the field, unless an adopted input already
+has them. `menu(trigger)`
 returns `openActionMenu` sections on every click. The ⋮ button is named `menuLabel`, or "Menu"; the
 menu title is `menuLabel`, or the page title.
 
@@ -182,10 +190,14 @@ Pick rows by the hierarchy in [Selection Controls](../DESIGN.md#selection-contro
 | Four or more exclusive options | `createComboRow`, or `createSelectRow` over an adopted select |
 | Text, number, read-only | `createEntryRow` (`floating`, `secret`), `createSpinRow` (`normalize: false` keeps upstream validation), `createPropertyRow` |
 | Section, action | `createExpanderRow`, `createButtonRow` (`danger`), `createRow({ activatable: true })` |
-| Group of rows | `createPrefGroup({ title, subtitle, rows })`, then use `.section` |
+| Group of rows | `createPrefGroup({ title, subtitle, rows, headingLevel })`, then use `.section` |
 
 Every factory returns `{ row, setDisabled, setVisible, destroy }`, plus `control` when there is one.
 Value rows add `getValue()` and `setValue(value, { silent = true })`.
+
+A group title is an `h3` by default, which suits a group under a page's `h2`. When the heading above
+the group has another level, pass `headingLevel` (a whole number from 1 to 6) so the outline steps
+down one level at a time, for example `4` under an `h3`. Any other value throws a `RangeError`.
 
 ## Stacking and Pages
 
