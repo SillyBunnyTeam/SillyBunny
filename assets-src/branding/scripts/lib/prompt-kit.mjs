@@ -3,7 +3,16 @@ import { basename, join } from 'node:path';
 
 const PLACEHOLDER = /\{([a-z][a-z0-9_]*)\}/g;
 const TEMPLATE_KEYS = new Set(['status', 'style', 'characters', 'constraints', 'require']);
-const CONDITIONAL_SECTIONS = new Set(['references', 'style-reference', 'sheet-order', 'pixel-reference']);
+// Sections that describe attached images, with the least number of images that makes them true.
+// The master and scene paragraphs name pictures by position, so they must not appear when that position is empty.
+const CONDITIONAL_SECTIONS = new Map([
+    ['references', 1],
+    ['style-reference', 1],
+    ['sheet-order', 1],
+    ['pixel-reference', 1],
+    ['master-reference', 3],
+    ['scene-reference', 5],
+]);
 
 /** @param {string} value */
 function parseList(value) {
@@ -194,7 +203,7 @@ export function composePrompt(kit, templateId, { vars, characters, refCount }) {
         ? chosenCharacters.map((c, i) => `Character ${i + 1}:\n${kit.characters.get(c)}`)
         : chosenCharacters.map((c) => kit.characters.get(c));
     const constraintBlocks = template.constraints
-        .filter((section) => refCount > 0 || !CONDITIONAL_SECTIONS.has(section))
+        .filter((section) => refCount >= (CONDITIONAL_SECTIONS.get(section) ?? 0))
         .map((section) => kit.constraints.get(section));
 
     const parts = [

@@ -36,3 +36,12 @@ The subject is centred and fills most of the canvas with only a small even margi
 
 ## pixel-reference
 The first attached image is the character's approved illustrated design sheet. Any second attached image is a line-up that shows the character beside another character, for relative height only. Redraw the character as pixel art, keeping her face shape, eye colour, ear shape, hair, outfit details and colour palette. The illustrated line weight, shading and outline are replaced by the pixel-art rules above. Draw only the one character described above; the other character in the line-up must not appear.
+
+## master-reference
+The third attached image is the character's approved pixel-art master in front view. Match its pixel size, outline colours, palette, shading and sticker edge exactly, so the new picture looks like the same artist drew it; do not copy its pose, which is replaced by the pose described above.
+
+## scene-framing
+Both characters are drawn together as one group on one canvas, each complete from the tips of the ears to the feet, with nothing cropped by the canvas edge. The camera is level, and the group is centred unless the composition line says otherwise. Character 1 is clearly taller than character 2, as in the line-up.
+
+## scene-reference
+The first attached image is character 1's approved illustrated design sheet and the second attached image is character 2's. The third attached image is the line-up of both characters, for true relative height only. The fourth and fifth attached images are the approved pixel-art masters of character 1 and character 2 in front view. Draw each character to match her own sheet and master exactly: face shape, eye colour, ear shape, hair, outfit and colour palette. Match the masters' pixel size, outline colours, shading and sticker edge exactly, and do not copy their poses, which are replaced by the pose described above. The illustrated line weight and shading of the sheets are replaced by the pixel-art rules above. Do not mix details between the two characters.

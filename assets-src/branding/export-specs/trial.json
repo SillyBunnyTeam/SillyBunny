@@ -3,7 +3,7 @@
     "assets": {
         "row-reisen": {
             "character": "reisen",
-            "master": "raw/s3/masters/reisen-portrait.png",
+            "master": "approved/reisen-portrait-a.png",
             "css": [
                 128,
                 64
@@ -17,7 +17,7 @@
         },
         "row-tewi": {
             "character": "tewi",
-            "master": "raw/s3/masters/tewi-portrait.png",
+            "master": "approved/tewi-portrait.png",
             "css": [
                 128,
                 64
@@ -31,7 +31,7 @@
         },
         "welcome-next-reisen": {
             "character": "reisen",
-            "master": "raw/s3/masters/reisen-sprite.png",
+            "master": "approved/reisen-sprite-a.png",
             "css": [
                 128
             ],
@@ -44,7 +44,7 @@
         },
         "welcome-persona-tewi": {
             "character": "tewi",
-            "master": "raw/s3/masters/tewi-sprite.png",
+            "master": "approved/tewi-sprite.png",
             "css": [
                 128
             ],

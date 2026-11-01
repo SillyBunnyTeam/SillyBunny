@@ -68,6 +68,29 @@ test('the manifest lists each asset with its master hash, frame, encoding and ev
     }
 });
 
+test('the manifest flags one file per asset as the src fallback: the 2x of the widest size, or the one the spec names', async () => {
+    const rootDir = await workspace();
+    const { assets } = await exportAssets({ rootDir, spec: spec({ 'disc-art': DISC, 'disc-pick': { ...DISC, src: { css: 24, density: 3 } } }), outDir: 'out/export' });
+    const manifest = JSON.parse(readFileSync(join(rootDir, 'out', 'export', 'manifest.json'), 'utf8'));
+    assert.equal(manifest.assets['disc-art'].src, 'disc-art@48x2.webp');
+    assert.equal(manifest.assets['disc-pick'].src, 'disc-pick@24x3.webp');
+    for (const [id, entry] of Object.entries(manifest.assets)) {
+        const flagged = entry.variants.filter((variant) => variant.src);
+        assert.deepEqual(flagged.map(({ file }) => file), [entry.src], id);
+    }
+    assert.deepEqual(assets[0].variants.filter(({ src }) => src).map(({ file }) => file), ['disc-art@48x2.webp']);
+});
+
+test('a canvas crop with no margin exports the whole picture, and a width that needs more pixels than the picture has is refused', async () => {
+    const rootDir = await workspace();
+    const whole = (css) => parseExportSpec({ assets: { whole: { master: 'raw/masters/disc.png', css, fit: 'width', crop: 'canvas', margin: 0 } } });
+    await exportAssets({ rootDir, spec: whole([80, 40]), outDir: 'out/export' });
+    const top = await sharp(join(rootDir, 'out', 'export', 'whole@80x3.webp')).metadata();
+    const small = await sharp(join(rootDir, 'out', 'export', 'whole@40x1.webp')).metadata();
+    assert.deepEqual([top.width, top.height, small.width, small.height], [240, 240, 40, 40]);
+    await assert.rejects(exportAssets({ rootDir, spec: whole([100]), outDir: 'out/export' }), /upscale/);
+});
+
 test('a transparent margin surrounds the subject at every size, so the edge never touches the file edge', async () => {
     const rootDir = await workspace();
     await exportAssets({ rootDir, spec: spec({ 'disc-art': DISC }), outDir: 'out/export' });

@@ -3,13 +3,15 @@ import { srgbToOklab } from './pixel-colour.mjs';
 import { createRaster, crop, opaqueBox, paste } from './raster.mjs';
 
 const SPEC_KEYS = new Set(['margin', 'alphaThreshold', 'assets']);
-const ASSET_KEYS = new Set(['character', 'master', 'css', 'fit', 'crop', 'margin', 'square', 'webp', 'focus']);
+const ASSET_KEYS = new Set(['character', 'master', 'css', 'fit', 'crop', 'margin', 'square', 'webp', 'focus', 'src']);
 const FITS = ['contain', 'width', 'height'];
 export const DENSITIES = [1, 2, 3];
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 // Pixels this faint are the soft tail of the sticker edge or a stray speck, not part of the subject's box.
 const DEFAULT_ALPHA_THRESHOLD = 16;
 const DEFAULT_MARGIN = 24;
+// Without `src` the fallback is the 2x file, so a browser that ignores srcset still gets a file sharp enough for most screens.
+const DEFAULT_SRC_DENSITY = 2;
 
 // A smaller-than-lossless encoding is accepted when the picture, composited on grey, differs from the Lanczos resize by less than these
 // (OKLab distance x 100). 2 is about the smallest colour step an eye can tell apart, so the mean must sit well under it and the
@@ -28,7 +30,7 @@ const LOSSY_EFFORT = 4;
 const isWholeAtLeast1 = (value) => Number.isInteger(value) && value >= 1;
 
 /**
- * Parses the export spec: `{ margin, alphaThreshold, assets: { "<id>": { character, master, css: [128, 64], fit, crop, margin, square, webp, focus } } }`.
+ * Parses the export spec: `{ margin, alphaThreshold, assets: { "<id>": { character, master, css: [128, 64], fit, crop, margin, square, webp, focus, src } } }`.
  * `css` lists the CSS sizes the asset is placed at, `fit` says what that size measures (`contain`: the longer side, as in a square box;
  * `width`; `height`). `webp` is `auto` (measure and choose), `lossless`, or `{ mode: "near-lossless" | "lossy", quality }`.
  * @param {any} raw
@@ -79,8 +81,13 @@ function parseAsset(id, asset, defaultMargin) {
     if (!FITS.includes(fit)) {
         fail(`fit must be one of ${FITS.join(', ')}, got "${fit}".`);
     }
-    if (asset.crop !== undefined && !(Array.isArray(asset.crop) && asset.crop.length === 4 && asset.crop.every(Number.isInteger) && asset.crop[2] > 0 && asset.crop[3] > 0)) {
-        fail('crop must be [x, y, width, height] in whole source pixels.');
+    const isBox = Array.isArray(asset.crop) && asset.crop.length === 4 && asset.crop.every(Number.isInteger) && asset.crop[2] > 0 && asset.crop[3] > 0;
+    if (asset.crop !== undefined && asset.crop !== 'canvas' && !isBox) {
+        fail('crop must be [x, y, width, height] in whole source pixels, or "canvas" for the whole picture.');
+    }
+    const src = asset.src ?? { css: Math.max(...asset.css), density: DEFAULT_SRC_DENSITY };
+    if (!asset.css.includes(src.css) || !DENSITIES.includes(src.density) || Object.keys(src).length !== 2) {
+        fail(`src must be { "css": one of ${asset.css.join(', ')}, "density": ${DENSITIES.join(', ')} }, the file a browser without srcset support falls back to.`);
     }
     const webp = asset.webp ?? 'auto';
     const isForced = webp !== null && typeof webp === 'object' && WEBP_MODES.includes(webp.mode) && Number.isInteger(webp.quality) && webp.quality >= 1 && webp.quality <= 100;
@@ -94,7 +101,7 @@ function parseAsset(id, asset, defaultMargin) {
     if (!Number.isInteger(margin) || margin < 0) {
         fail('margin must be a whole number of 0 or more (source pixels).');
     }
-    return { id, character: asset.character ?? id, master: asset.master, css: asset.css, fit, crop: asset.crop, margin, square: asset.square ?? false, webp, focus: asset.focus ?? [0.5, 0.3] };
+    return { id, character: asset.character ?? id, master: asset.master, css: asset.css, fit, crop: asset.crop, margin, square: asset.square ?? false, webp, focus: asset.focus ?? [0.5, 0.3], src };
 }
 
 /**
@@ -102,12 +109,12 @@ function parseAsset(id, asset, defaultMargin) {
  * square when asked. It can reach past the canvas, and `renderFrame` fills that with transparency, so the edge of the sticker
  * never lands on the edge of the picture.
  * @param {import('./raster.mjs').Raster} master
- * @param {{ crop?: number[], margin: number, square: boolean, alphaThreshold?: number }} options
+ * @param {{ crop?: number[] | 'canvas', margin: number, square: boolean, alphaThreshold?: number }} options
  */
 export function frameBox(master, { crop: cropBox, margin, square, alphaThreshold = DEFAULT_ALPHA_THRESHOLD }) {
     let base;
     if (cropBox) {
-        const [x, y, width, height] = cropBox;
+        const [x, y, width, height] = cropBox === 'canvas' ? [0, 0, master.width, master.height] : cropBox;
         if (x < 0 || y < 0 || x + width > master.width || y + height > master.height) {
             throw new Error(`The crop [${cropBox.join(', ')}] is not inside the ${master.width}x${master.height} picture.`);
         }

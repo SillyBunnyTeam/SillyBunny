@@ -170,7 +170,7 @@ test('a missing key is named, never echoed', async () => {
 test('a stub template is refused for real runs unless --allow-stub is passed', async () => {
     const root = makeRoot();
     const { deps, calls } = makeDeps(root, { replies: [openaiReply()] });
-    const stub = baseRequest(root, { template: 'logo-concept' });
+    const stub = baseRequest(root, { template: 'social-preview' });
     await assert.rejects(runGeneration(stub, deps), /stub/);
     assert.equal(calls.length, 0);
     await runGeneration({ ...stub, allowStub: true }, deps);

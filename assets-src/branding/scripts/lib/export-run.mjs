@@ -53,8 +53,10 @@ export async function exportAssets({ rootDir, spec, outDir, only }) {
             frame,
             fit: asset.fit,
             encoding: { mode: encoding.mode, quality: encoding.quality, totals: encoding.totals },
+            src: `${asset.id}@${asset.src.css}x${asset.src.density}.webp`,
             variants: sizes.map((size, index) => ({
                 file: `${asset.id}@${size.css}x${size.density}.webp`,
+                src: size.css === asset.src.css && size.density === asset.src.density,
                 css: size.css,
                 density: size.density,
                 width: size.width,
@@ -92,6 +94,7 @@ function writeManifest(outDir, results) {
             masterSha256: result.masterSha256,
             frame: result.frame,
             fit: result.fit,
+            src: result.src,
             encoding: { mode: result.encoding.mode, quality: result.encoding.quality },
             totalsBytes: result.encoding.totals,
             variants: result.variants.map(({ buffer, ...variant }) => variant),

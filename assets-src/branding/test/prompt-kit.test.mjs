@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { SENT_TEXT_FIELDS } from '../scripts/lib/masters.mjs';
 import { composePrompt, loadPromptKit } from '../scripts/lib/prompt-kit.mjs';
 
 const REAL_PROMPTS = join(dirname(fileURLToPath(import.meta.url)), '..', 'prompts');
@@ -125,8 +126,12 @@ test('a stage can set the name variable and it reaches the prompt', () => {
     assert.match(prompt, /Name: Example Name/);
 });
 
+const sentSpecText = (file) => Object.values(JSON.parse(readFileSync(file, 'utf8')).assets)
+    .flatMap((asset) => SENT_TEXT_FIELDS.map((field) => asset[field] ?? ''))
+    .join('\n');
+
 test('no prompt file names an artist, studio, game, franchise or character', () => {
-    const banned = /touhou|imperishable|\bzun\b|team shanghai|reisen|tewi|inaba|udongein|hero of ice fairy|in the style of|style of/i;
+    const banned = /touhou|imperishable|\bzun\b|team shanghai|reisen|tewi|inaba|udongein|hero of ice fairy|in the style of|style of|silly ?tavern/i;
     const files = [];
     const walk = (dir) => {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -136,9 +141,10 @@ test('no prompt file names an artist, studio, game, franchise or character', () 
     };
     walk(REAL_PROMPTS);
     assert.ok(files.length >= 20);
+    assert.ok(files.some((file) => file.endsWith('s5-masters.json')), 'the masters spec is checked too');
     for (const file of files) {
-        // Front matter holds file ids such as "characters: reisen"; only the text that is sent matters.
-        const sentText = readFileSync(file, 'utf8').replace(/^---\n[^]*?\n---\n/, '');
+        // Front matter holds file ids such as "characters: reisen" and a spec holds refs and ids; only the text that is sent matters.
+        const sentText = file.endsWith('.json') ? sentSpecText(file) : readFileSync(file, 'utf8').replace(/^---\n[^]*?\n---\n/, '');
         assert.ok(!banned.test(sentText), `${file} contains a banned name`);
     }
     // Tewi is a very old youkai in a petite body, so her descriptors must not read as a child.

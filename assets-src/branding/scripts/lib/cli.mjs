@@ -181,7 +181,7 @@ export function parsePatchRequest(argv, rootDir = ROOT_DIR) {
     };
 }
 
-function runDeps(env) {
+export function runDeps(env) {
     return {
         rootDir: ROOT_DIR,
         config: loadConfig(join(ROOT_DIR, 'config.json')),

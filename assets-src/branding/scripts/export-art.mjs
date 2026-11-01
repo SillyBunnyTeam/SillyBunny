@@ -35,7 +35,7 @@ try {
             const others = Object.entries(variant.candidates)
                 .map(([name, figures]) => `${name} ${kilobytes(figures.bytes)}${figures.mean === 0 ? '' : ` dE ${figures.mean.toFixed(2)}/${figures.p99.toFixed(2)}${figures.passes ? '' : ' over'}`}`)
                 .join('  ');
-            say(`  ${variantLines(asset, variant)[0].padEnd(34)} ${String(variant.width).padStart(3)}x${String(variant.height).padEnd(3)} ${kilobytes(variant.bytes).padStart(9)}   ${others}`);
+            say(`  ${(variantLines(asset, variant)[0] + (variant.src ? ' [src]' : '')).padEnd(40)} ${String(variant.width).padStart(3)}x${String(variant.height).padEnd(3)} ${kilobytes(variant.bytes).padStart(9)}   ${others}`);
         }
     }
     say(join(outDir, 'manifest.json'));

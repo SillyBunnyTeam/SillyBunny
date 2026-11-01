@@ -30,6 +30,10 @@ test('an export spec is checked: known keys, ids, whole number CSS sizes, a fit,
         [{ a: asset({ css: [1.5] }) }, /css/],
         [{ a: asset({ fit: 'cover' }) }, /fit/],
         [{ a: asset({ crop: [1, 2, 3] }) }, /crop/],
+        [{ a: asset({ crop: 'full' }) }, /crop/],
+        [{ a: asset({ src: { css: 64, density: 2 } }) }, /src/],
+        [{ a: asset({ src: { css: 32, density: 4 } }) }, /src/],
+        [{ a: asset({ src: 2 }) }, /src/],
         [{ a: asset({ webp: 'png' }) }, /webp/],
         [{ a: asset({ webp: 120 }) }, /webp/],
         [{ a: asset({ webp: { mode: 'lossy', quality: 0 } }) }, /webp/],
@@ -76,6 +80,18 @@ test('a margin that runs past the canvas gives a frame that does too, so the edg
 test('a crop box replaces the trim, with the margin still added, and must lie inside the canvas', () => {
     assert.deepEqual(frameBox(canvas(), { crop: [20, 10, 50, 80], margin: 5, square: false }), { x: 15, y: 5, width: 60, height: 90 });
     assert.throws(() => frameBox(canvas(), { crop: [80, 80, 40, 40], margin: 0, square: false }), /crop/);
+});
+
+test('crop "canvas" frames the whole picture, so the layout the model drew is kept, and the margin is still added', () => {
+    assert.deepEqual(frameBox(canvas(), { crop: 'canvas', margin: 0, square: false }), { x: 0, y: 0, width: 100, height: 100 });
+    assert.deepEqual(frameBox(canvas(), { crop: 'canvas', margin: 5, square: false }), { x: -5, y: -5, width: 110, height: 110 });
+    assert.equal(spec({ a: asset({ crop: 'canvas' }) }).assets[0].crop, 'canvas');
+});
+
+test('the src fallback is the 2x file of the widest css size unless the spec names another', () => {
+    assert.deepEqual(spec({ a: asset({ css: [64, 128, 32] }) }).assets[0].src, { css: 128, density: 2 });
+    assert.deepEqual(spec({ a: asset({ css: [32] }) }).assets[0].src, { css: 32, density: 2 });
+    assert.deepEqual(spec({ a: asset({ css: [64, 32], src: { css: 32, density: 3 } }) }).assets[0].src, { css: 32, density: 3 });
 });
 
 test('square pads the shorter side so the subject stays centred in a square frame', () => {
