@@ -585,10 +585,6 @@ export const SURFACES = [
 
 // Defects the walk found in the product. A test named here is expected to fail, so the run stays green, and it turns red
 // as soon as the defect is fixed, which is the cue to delete the entry. Locations are the CSS that causes each one.
-const CHECKED_SWITCH_RING = {
-    check: 'forced-controls',
-    why: 'A focused, checked switch draws its Highlight ring on its Highlight fill (sillybunny-theme.css:8221 and :8247)',
-};
 const HELP_SIDEBAR_NARROW = {
     check: 'clipped-labels',
     why: 'The Help sidebar is 220px to 360px (sillybunny-help/help-window.js:312-314) whatever the text size, so a section title breaks mid-word at 200%',
@@ -709,7 +705,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'welcome-first-run',
-        knownBugs: [CHECKED_SWITCH_RING],
         title: 'Welcome (first run)',
         boot: bootHomeFirstRun,
         structure: { name: 'Welcome' },

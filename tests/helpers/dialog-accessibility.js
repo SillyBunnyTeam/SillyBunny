@@ -47,6 +47,8 @@ export async function installProbes(page) {
             }
             return colour === 'transparent' ? 0 : 1;
         };
+        // The red, green and blue of a colour, so that a faint tint over the same hue counts as that hue.
+        const channelsOf = colour => colour.match(/\d+(?:\.\d+)?/g)?.slice(0, 3).join(',');
         const isVisible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
         const nameOf = element => {
             const className = typeof element.className === 'string' ? element.className.trim().split(/\s+/)[0] : '';
@@ -122,6 +124,8 @@ export async function installProbes(page) {
                     // A shadow ring is a zero-blur inset shadow. An outline beside it makes two rings.
                     insetRing: /0px 0px 0px [\d.]+px inset/.test(style.boxShadow),
                     outlineOnFill: outlineShown(style) && style.outlineColor === style.backgroundColor,
+                    // A ring that stands clear of the control lies on what is behind it, so it must differ from that.
+                    outlineOnBackdrop: outlineShown(style) && parseFloat(style.outlineOffset) > 0 && channelsOf(style.outlineColor) === channelsOf(backdropOf(segment ?? element)),
                     outlineDetail: `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`,
                     shadowDetail: style.boxShadow.slice(0, 60),
                     fillDetail: style.backgroundColor,

@@ -56,7 +56,10 @@ function focusProblems(stops, { forcedColours = false } = {}) {
     const hidden = shown
         .filter(stop => stop.outlineOnFill)
         .map(stop => `${stop.label} outline ${stop.outlineDetail} has the colour of its fill ${stop.fillDetail}`);
-    return [...missing, ...doubled, ...hidden];
+    const lost = shown
+        .filter(stop => stop.outlineOnBackdrop)
+        .map(stop => `${stop.label} outline ${stop.outlineDetail} has the colour of what is behind it`);
+    return [...missing, ...doubled, ...hidden, ...lost];
 }
 
 /** Tab through a modal until the focus wraps; through a panel until it leaves. */

@@ -722,8 +722,7 @@ input[type="checkbox"].sb-switch {
     accent-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
 }
 
-.checkbox_label > input[type="checkbox"],
-input[type="checkbox"].sb-switch {
+input[type="checkbox"]:is(.sb-switch, .checkbox_label > *) {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
@@ -748,8 +747,7 @@ input[type="checkbox"].sb-switch {
     transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.checkbox_label > input[type="checkbox"]::after,
-input[type="checkbox"].sb-switch::after {
+input[type="checkbox"]:is(.sb-switch, .checkbox_label > *)::after {
     content: '';
     position: absolute;
     inset-block-start: 3px;
@@ -762,33 +760,28 @@ input[type="checkbox"].sb-switch::after {
     transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
-.checkbox_label > input[type="checkbox"]::before,
-input[type="checkbox"].sb-switch::before {
+input[type="checkbox"]:is(.sb-switch, .checkbox_label > *)::before {
     content: none;
 }
 
-.checkbox_label > input[type="checkbox"]:checked,
-input[type="checkbox"].sb-switch:checked {
+input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):checked {
     border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
     background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
 }
 
-.checkbox_label > input[type="checkbox"]:checked::after,
-input[type="checkbox"].sb-switch:checked::after {
+input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):checked::after {
     background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
     transform: translateX(18px);
 }
 
 @media (hover: hover) {
-    .checkbox_label > input[type="checkbox"]:not(:checked):not(:disabled):hover,
-    input[type="checkbox"].sb-switch:not(:checked):not(:disabled):hover {
+    input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):not(:checked):not(:disabled):hover {
         border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 46%, transparent);
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
     }
 }
 
-.checkbox_label > input[type="checkbox"]:focus-visible,
-input[type="checkbox"].sb-switch:focus-visible {
+input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):focus-visible {
     outline: 2px solid var(--sb-focus-ring);
     outline-offset: 2px;
     box-shadow: none;
@@ -8240,17 +8233,23 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     }
 
     /* A switch thumb is a pseudo-element, which forced colours paint like the track. */
-    :is(.checkbox_label > input[type='checkbox'], input[type='checkbox'].sb-switch)::after {
+    input[type='checkbox']:is(.sb-switch, .checkbox_label > *)::after {
         background: ButtonText;
     }
 
-    :is(.checkbox_label > input[type='checkbox'], input[type='checkbox'].sb-switch):checked {
+    input[type='checkbox']:is(.sb-switch, .checkbox_label > *):checked {
         border-color: Highlight;
         background: Highlight;
     }
 
-    :is(.checkbox_label > input[type='checkbox'], input[type='checkbox'].sb-switch):checked::after {
+    input[type='checkbox']:is(.sb-switch, .checkbox_label > *):checked::after {
         background: HighlightText;
+    }
+
+    /* A checked track is Highlight, so the ring stands outside it in CanvasText. */
+    input[type='checkbox']:is(.sb-switch, .checkbox_label > *):focus-visible {
+        outline: 2px solid CanvasText !important;
+        outline-offset: 2px !important;
     }
 }
 
