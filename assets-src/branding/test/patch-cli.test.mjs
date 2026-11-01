@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { parsePatchRequest } from '../scripts/lib/cli.mjs';
+
+function makeRoot(spec = '[{"crop":[0,0,10,10]}]') {
+    const root = mkdtempSync(join(tmpdir(), 'sb-patchcli-'));
+    writeFileSync(join(root, 'page.png'), 'x');
+    writeFileSync(join(root, 'patches.json'), spec);
+    return root;
+}
+
+test('patch options are parsed with the documented defaults', () => {
+    const root = makeRoot();
+    const request = parsePatchRequest(['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s2/fix'], root);
+    assert.equal(request.imagePath, join(root, 'page.png'));
+    assert.deepEqual(request.patches, [{ crop: [0, 0, 10, 10] }]);
+    assert.deepEqual([request.n, request.feather, request.stage, request.outDir], [1, 6, 'fix', 'raw/s2/fix']);
+    assert.deepEqual([request.dryRun, request.yes, request.balance, request.allowUnlocked], [false, false, false, false]);
+    assert.equal(request.instruction, undefined);
+});
+
+test('instruction, count, feather, stage and the run flags are read', () => {
+    const root = makeRoot();
+    const request = parsePatchRequest(['--image', 'page.png', '--spec', 'patches.json', '--instruction', 'Remove the human ears.', '--n', '2', '--feather', '0', '--stage', 's2', '--out', 'raw/s2/', '--dry-run', '--yes', '--balance', '--model', 'gpt-image-2.5-flare-h', '--allow-unlocked'], root);
+    assert.deepEqual([request.instruction, request.n, request.feather, request.stage], ['Remove the human ears.', 2, 0, 's2']);
+    assert.deepEqual([request.dryRun, request.yes, request.balance, request.allowUnlocked, request.model], [true, true, true, true, 'gpt-image-2.5-flare-h']);
+});
+
+test('missing or bad input fails before anything is read or sent', () => {
+    const root = makeRoot();
+    const base = ['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s2/'];
+    assert.throws(() => parsePatchRequest(['--spec', 'patches.json', '--out', 'raw/s2/'], root), /--image/);
+    assert.throws(() => parsePatchRequest(['--image', 'page.png', '--out', 'raw/s2/'], root), /--spec/);
+    assert.throws(() => parsePatchRequest(['--image', 'page.png', '--spec', 'patches.json'], root), /--out/);
+    assert.throws(() => parsePatchRequest([...base, '--n', '0'], root), /--n/);
+    assert.throws(() => parsePatchRequest([...base, '--feather', '-1'], root), /--feather/);
+    assert.throws(() => parsePatchRequest([...base, '--feather', '2.5'], root), /--feather/);
+    assert.throws(() => parsePatchRequest([...base, '--bogus'], root));
+    const broken = makeRoot('[{"crop":');
+    assert.throws(() => parsePatchRequest(['--image', 'page.png', '--spec', 'patches.json', '--out', 'raw/s2/'], broken), /patches\.json is not valid JSON/);
+});

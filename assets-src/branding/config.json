@@ -1,0 +1,99 @@
+{
+    "lockedModel": "gpt-image-2.5-sunburst-h",
+    "costCapUsd": 10,
+    "pricing": {
+        "source": "GET https://api.linkapi.ai/api/pricing (public, no key)",
+        "retrieved": "2026-11-01",
+        "pricingVersion": "a42d372ccf0b5dd13ecf71203521f9d2",
+        "currency": "USD",
+        "note": "Relay prices after the group multiplier. billingExpr is copied from the endpoint; legacyModelPrice is the endpoint's older fixed field, which disagrees with the expression and is not used. unitsPerUsd is new-api's quota rate. Confirm the estimated model against the token usage log after its smoke test.",
+        "unitsPerUsd": 500000
+    },
+    "models": {
+        "gpt-image-2.5-sunburst-h": {
+            "provider": "openai",
+            "billing": {
+                "kind": "per-image",
+                "usdPerImage": 0.2
+            },
+            "billingExpr": "tier(\"image\", fixed(0.2)) * image_count",
+            "legacyModelPrice": 0.3,
+            "groups": [
+                "all",
+                "once"
+            ],
+            "groupMultiplier": 1,
+            "estimate": false,
+            "confirmed": "2026-11-01: one 1024x1024 generation on gpt-image-2.5-sunburst-h in group all cost 100000 quota units = $0.20 (owner's request)"
+        },
+        "gpt-image-2.5-flare-h": {
+            "provider": "openai",
+            "billing": {
+                "kind": "per-image",
+                "usdPerImage": 0.2
+            },
+            "billingExpr": "tier(\"image\", fixed(0.2)) * image_count",
+            "legacyModelPrice": 0.3,
+            "groups": [
+                "all",
+                "once"
+            ],
+            "groupMultiplier": 1,
+            "estimate": false,
+            "confirmed": "2026-11-01: recorded as confirmed at the owner's instruction; the measured run was sunburst-h, and flare-h has the same billing expression"
+        },
+        "gemini-nano-banana-2.1": {
+            "provider": "gemini",
+            "billing": {
+                "kind": "tokens",
+                "inputUsdPerMTok": 1.5,
+                "outputUsdPerMTok": 30,
+                "outputTokensBySize": {
+                    "1K": {
+                        "candidates": 1346,
+                        "thoughts": 814,
+                        "basis": "measured 2026-11-01: one smoke-test image (usageMetadata candidatesTokenCount and thoughtsTokenCount)"
+                    },
+                    "2K": {
+                        "candidates": 2840,
+                        "thoughts": 1291,
+                        "basis": "measured 2026-11-01: two images, candidatesTokenCount about 2840, thoughtsTokenCount 871 to 1711 (midpoint used)"
+                    },
+                    "4K": {
+                        "candidates": 4260,
+                        "thoughts": 1291,
+                        "basis": "not measured: the 2K candidates scaled by Google's 4K to 2K token ratio (2520/1680), with the 2K thoughts"
+                    }
+                },
+                "refImageTokens": 1120,
+                "charsPerTextToken": 4
+            },
+            "billingExpr": "tier(\"base\", p * 1.5 + c * 30)",
+            "tokenSource": "Billing: the relay bills thinking tokens as output tokens. Output tokens per size are candidates plus thoughts, measured on the relay on 2026-11-01. Google's table (https://ai.google.dev/gemini-api/docs/image-generation) lists 1120, 1680 and 2520 candidate tokens for 1K, 2K and 4K, which is lower than measured.",
+            "assumptions": "refImageTokens and charsPerTextToken are assumptions. The 4K row is extrapolated, not measured. Thought tokens vary by prompt, so a real charge can differ by roughly 10 percent.",
+            "groups": [
+                "gemini"
+            ],
+            "groupMultiplier": 1.6,
+            "estimate": true,
+            "measured": [
+                "2026-11-01, 1K: 51901 quota units = $0.1038 for one image (1346 candidate + 814 thought tokens)",
+                "2026-11-01, 2K: 375324 units for three images, two of them this model and one gemini-3-pro-image-preview at its fixed $0.35 (175000 units); the remaining 200324 units over two images = $0.2003 each (thoughts 871 to 1711)"
+            ]
+        },
+        "gemini-3-pro-image-preview": {
+            "provider": "gemini",
+            "billing": {
+                "kind": "per-request",
+                "usdPerRequest": 0.21875
+            },
+            "billingExpr": "tier(\"request\", fixed(0.21875))",
+            "groups": [
+                "gemini"
+            ],
+            "groupMultiplier": 1.6,
+            "estimate": false
+        }
+    },
+    "palettes": {}
+}

@@ -1,0 +1,16 @@
+{
+    "name": "sillybunny-branding-assets",
+    "private": true,
+    "type": "module",
+    "license": "AGPL-3.0",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "test": "node --test",
+        "notice": "node scripts/notice.mjs"
+    },
+    "dependencies": {
+        "sharp": "^0.35.5"
+    }
+}
