@@ -21,12 +21,13 @@ function fitInside(width, height, boxWidth, boxHeight) {
  * Use `nearest` for pixel art so enlarged pixels stay square.
  * With `scales` (whole numbers) every image is instead shown at each scale, exactly width x scale by height x scale,
  * with nearest-neighbour resizing, so a native-size sprite can be compared at 1x and 4x. `cellWidth` and `cellHeight` are not used then.
+ * `scaleLabels: false` leaves the "2x" suffix off the labels, for images that were enlarged before they got here.
  * An item's `image` is a file path or a PNG buffer; `path` is accepted as the old name for a file path.
  * @param {Array<{ image?: string | Buffer, path?: string, label: string }>} items
- * @param {{ cols: number, cellWidth: number, cellHeight: number, gap: number, labelHeight: number, nearest: boolean, scales?: number[] }} layout
+ * @param {{ cols: number, cellWidth: number, cellHeight: number, gap: number, labelHeight: number, nearest: boolean, scales?: number[], scaleLabels?: boolean }} layout
  * @returns {Promise<Buffer>} PNG bytes
  */
-export async function buildContactSheet(items, { cols, cellWidth, cellHeight, gap, labelHeight, nearest, scales }) {
+export async function buildContactSheet(items, { cols, cellWidth, cellHeight, gap, labelHeight, nearest, scales, scaleLabels = true }) {
     if (items.length === 0) {
         throw new Error('Contact sheet has no images.');
     }
@@ -40,7 +41,7 @@ export async function buildContactSheet(items, { cols, cellWidth, cellHeight, ga
         const source = item.image ?? item.path;
         const { width, height } = await sharp(source).metadata();
         if (scales) {
-            placed.push(...scales.map((scale) => ({ source, label: `${item.label} ${scale}x`, width: width * scale, height: height * scale })));
+            placed.push(...scales.map((scale) => ({ source, label: scaleLabels ? `${item.label} ${scale}x` : item.label, width: width * scale, height: height * scale })));
         } else {
             placed.push({ source, label: item.label, ...fitInside(width, height, cellWidth, cellHeight) });
         }

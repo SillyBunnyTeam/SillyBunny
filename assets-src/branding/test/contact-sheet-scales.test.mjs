@@ -46,3 +46,13 @@ test('scales must be whole numbers of 1 or more, and file paths still work', asy
     const plain = await buildContactSheet([{ image, label: 'a' }], layout);
     assert.ok((await sharp(plain).metadata()).width > 0);
 });
+
+test('scaleLabels false drops the scale suffix from the labels and changes nothing else about the sheet', async () => {
+    // The label is clipped to the image width, so the image has to be wide enough to show the suffix.
+    const image = await sharp({ create: { width: 120, height: 10, channels: 3, background: '#808080' } }).png().toBuffer();
+    const labelled = await buildContactSheet([{ image, label: 'a' }], { ...layout, labelHeight: 20, scales: [1] });
+    const plain = await buildContactSheet([{ image, label: 'a' }], { ...layout, labelHeight: 20, scales: [1], scaleLabels: false });
+    const [one, two] = await Promise.all([labelled, plain].map((bytes) => sharp(bytes).raw().toBuffer({ resolveWithObject: true })));
+    assert.deepEqual([one.info.width, one.info.height], [two.info.width, two.info.height]);
+    assert.notDeepEqual(one.data, two.data, 'the label text differs');
+});

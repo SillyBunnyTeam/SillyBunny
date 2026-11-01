@@ -9,9 +9,9 @@ import { assertWithinCap, estimateBatch } from '../scripts/lib/cost.mjs';
 const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'config.json');
 const config = parseConfig(JSON.parse(readFileSync(CONFIG_PATH, 'utf8')));
 
-test('the shipped config loads, locks Sunburst and has a 10 dollar cap', () => {
+test('the shipped config loads, locks Sunburst and has a 20 dollar cap', () => {
     assert.equal(config.lockedModel, 'gpt-image-2.5-sunburst-h');
-    assert.equal(config.costCapUsd, 10);
+    assert.equal(config.costCapUsd, 20);
     assert.deepEqual(Object.keys(config.models).sort(), [
         'gemini-3-pro-image-preview', 'gemini-nano-banana-2.1', 'gpt-image-2.5-flare-h', 'gpt-image-2.5-sunburst-h',
     ]);
@@ -57,8 +57,9 @@ test('an unknown model or an unpriced size fails loudly', () => {
 });
 
 test('the cap allows a total that lands exactly on it and refuses anything above', () => {
-    assert.doesNotThrow(() => assertWithinCap(config, { runningUsd: 9.2, batchUsd: 0.8 }));
-    assert.throws(() => assertWithinCap(config, { runningUsd: 9.2, batchUsd: 0.9 }), /costCapUsd/);
+    const cap = config.costCapUsd;
+    assert.doesNotThrow(() => assertWithinCap(config, { runningUsd: cap - 0.8, batchUsd: 0.8 }));
+    assert.throws(() => assertWithinCap(config, { runningUsd: cap - 0.8, batchUsd: 0.9 }), /costCapUsd/);
 });
 
 test('config parsing rejects a bad cap, an unknown provider and a locked model that is not priced', () => {

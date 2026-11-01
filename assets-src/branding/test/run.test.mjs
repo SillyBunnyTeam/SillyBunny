@@ -91,7 +91,7 @@ test('a dry run prints prompt, references and estimate, needs no key, and touche
     assert.equal(outcome.dryRun, true);
     assert.equal(calls.length, 0);
     assert.match(output, /estimate: 4 x \$0\.20 = \$0\.80/);
-    assert.match(output, /cap: \$10\.00/);
+    assert.match(output, new RegExp(`cap: \\$${config.costCapUsd.toFixed(2).replace('.', '\\.')}`));
     assert.match(output, /Character design sheet/);
     assert.match(output, new RegExp(`sha256 ${sha256(PNG).slice(0, 16)}`));
     assert.match(output, /\/images\/edits/);
@@ -132,7 +132,7 @@ test('a real run saves outputs, appends a log line in the documented shape and p
 });
 
 test('the cap refuses before anything is sent', async () => {
-    const root = makeRoot([{ estimatedUsd: 9.7 }]);
+    const root = makeRoot([{ estimatedUsd: config.costCapUsd - 0.3 }]);
     const { deps, calls } = makeDeps(root, { replies: [openaiReply()] });
     await assert.rejects(runGeneration(baseRequest(root), deps), /costCapUsd/);
     assert.equal(calls.length, 0);
@@ -311,12 +311,12 @@ test('without --balance, or when the balance cannot be read, the log line has no
 });
 
 test('the cost cap counts the charged amount where the log has one, and the estimate otherwise', async () => {
-    const root = makeRoot([{ estimatedUsd: 0.2, chargedUsd: 9.8 }]);
+    const root = makeRoot([{ estimatedUsd: 0.2, chargedUsd: config.costCapUsd - 0.2 }]);
     const refused = makeDeps(root, { replies: [openaiReply()] });
     await assert.rejects(runGeneration(baseRequest(root), refused.deps), /costCapUsd/);
     assert.equal(refused.calls.length, 0);
 
-    const lowCharge = makeRoot([{ estimatedUsd: 9.8, chargedUsd: 0.2 }]);
+    const lowCharge = makeRoot([{ estimatedUsd: config.costCapUsd - 0.2, chargedUsd: 0.2 }]);
     const allowed = makeDeps(lowCharge, { replies: [openaiReply()] });
     await runGeneration(baseRequest(lowCharge), allowed.deps);
     assert.equal(allowed.calls.length, 2);

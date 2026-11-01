@@ -77,6 +77,10 @@ patch.mjs --image <png> --spec <patches.json> [--instruction "..."] [--n 1] [--f
 - One log line per call (`template: patch-edit`, `refs` the source file's sha256, `vars` with `crop`, `composite`, `patch`, `variant`, `feather`, `chargedUsd` under `--balance`), plus one line per full-size picture (`template: patch-composite`, no cost) so `approve.mjs` can approve it. A failed call stops the run, keeps what was made and builds no picture for an incomplete variant.
 - Only the OpenAI provider is supported.
 
+`patch-overlay.mjs --image <png> --spec <patches.json> [--scale 2] [--cols 2] [--flags <flags.json>] [--out out/patches/<spec>-overlay.png]` writes a check sheet: every crop at 2x (nearest-neighbour) with its composite rects outlined in green, so the rects can be judged by eye before any call is paid for. It reads the spec with the same checks as `patch.mjs`. With `--flags` (the file `ear-remnants.mjs` writes) the flagged pixels are tinted under the outlines, red for skin and yellow for warm lines, so every flag can be seen to be covered or deliberately left out.
+
+`ear-remnants.mjs --image <png> --heads <heads.json> [--name <sheet>] [--out-dir out/patches] [--scale 4] [--cols 2] [--threshold 0.2] [--open-radius 7] [--min-pixels 8]` looks for what is left of a human ear beside each face. `heads.json` is a list of `{ "name", "crop": [x, y, w, h], "skin": [x, y], "ignore": [[x, y, w, h], ...], "faceless": false }`: `skin` is a point on that face's cheek (a back view, with `"faceless": true`, can use a cheek from anywhere on the sheet), and `ignore` hides rects such as a rabbit ear that hangs beside the face. Skin-like pixels (OKLab distance from the cheek colour, lightness halved, with hue and chroma checks that keep the page and the sticker white out) outside the opened face and beside its rows are flagged red; thin orange or brown lines in the hair are flagged yellow. It writes `<name>-remnants.png` (each head at 4x with the flags tinted) and `<name>-flags.json` (`[x, y, kind]`, source pixels) to `--out-dir`. It is a hint, not a verdict: temple and blush skin beside the eyes, jaw and neck bits and rabbit-ear bases are flagged too, and a person decides which flags are real and sets the rects.
+
 `grid-image.mjs --image <png> [--step 100] [--crop x,y,w,h] [--zoom 1]` writes a copy with a labelled coordinate grid to `out/grid/`, for picking rects. With `--crop` and `--zoom` the lines and labels stay in source pixels.
 
 ## Pixel tools (S3)
@@ -145,6 +149,8 @@ The relay bills thinking tokens as output tokens, so the estimate uses candidate
 The 2K figure comes from a three-image run that cost 375,324 units, with the Pro preview image taken at its fixed $0.35 (175,000 units). Input tokens use 4 characters per text token and 1120 per reference image, which are assumptions. Thought counts vary by prompt, so a charge can differ by about 10 percent. Google's own table lists fewer candidate tokens (1120, 1680, 2520); the relay's numbers are the ones used.
 
 The endpoint's older `model_price` field says $0.30 for the GPT Image models; it disagrees with the expression and the measured charge, and is not used.
+
+`costCapUsd` was raised from 10 to 20 for S2 retries (the ear passes) plus the S3 concepts. The account had about $24 left at the time.
 
 ## Tests
 

@@ -231,7 +231,7 @@ test('a failed call stops the run, keeps and logs what was already made, builds 
 });
 
 test('every refusal happens before any call: no instruction, the wrong provider, a bad spec, the cost cap, a folder outside raw/, an unconfirmed run', async () => {
-    const { root, imagePath } = await makeRoot({ logLines: [{ time: 't', estimatedUsd: 9.9, outputs: [], refs: [], approved: false }] });
+    const { root, imagePath } = await makeRoot({ logLines: [{ time: 't', estimatedUsd: config.costCapUsd - 0.1, outputs: [], refs: [], approved: false }] });
     const attempts = [
         [{ instruction: undefined }, /Patch 1 has no instruction/],
         [{ model: 'gemini-nano-banana-2.1', allowUnlocked: true }, /only the OpenAI provider/],
