@@ -583,18 +583,6 @@ export const SURFACES = [
     },
 ];
 
-// Defects the walk found in the product. A test named here is expected to fail, so the run stays green, and it turns red
-// as soon as the defect is fixed, which is the cue to delete the entry. Locations are the CSS that causes each one.
-const HELP_ROW_LABEL = {
-    check: 'clipped-labels',
-    why: 'At 200% the Help content column is narrow, so a row with a suffix breaks its label inside a word (.ds-row-text in sillybunny-tabs.css)',
-};
-const NARROW_ROW_LABEL = {
-    check: 'clipped-labels',
-    widths: [PHONE.width],
-    why: 'On a phone at 200% the row label shares its line with an icon, keys or a badge and breaks a word (.ds-row-label in sillybunny-windows.css)',
-};
-
 // --- The windows that Home opens ------------------------------------------------------------------------
 // Each is reached the way a keyboard user reaches it: a tile or a main menu item, pressed with Enter. Home is on screen,
 // and the opener is the control that the window must give the focus back to.
@@ -635,7 +623,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'help',
-        knownBugs: [HELP_ROW_LABEL],
         title: 'Help window (a topic page, Keyboard Shortcuts pushed over it)',
         structure: { name: 'Help' },
         open: page => openFromTile(page, 'help'),
@@ -676,7 +663,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'shortcuts',
-        knownBugs: [NARROW_ROW_LABEL],
         title: 'Keyboard Shortcuts window',
         structure: { name: 'Keyboard Shortcuts' },
         open: page => openFromMenu(page, 'Keyboard Shortcuts'),
@@ -731,7 +717,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'getting-started',
-        knownBugs: [NARROW_ROW_LABEL],
         title: 'Getting Started window',
         structure: { name: 'Getting Started' },
         open: page => openFromTile(page, 'getting-started'),
@@ -741,7 +726,6 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'bundled-extras',
-        knownBugs: [NARROW_ROW_LABEL],
         title: 'Bundled Extras window',
         structure: { name: 'Bundled Extras' },
         open: page => openFromTile(page, 'extras'),

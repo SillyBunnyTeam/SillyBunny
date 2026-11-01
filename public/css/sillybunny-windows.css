@@ -256,6 +256,23 @@ kbd.sbKeys > kbd {
     text-align: center;
 }
 
+/* A row label breaks at spaces only. When its longest word cannot share the line with the keys, buttons or chips of the
+   row, those move below it. The shared row lets a label shrink to nothing and break anywhere, so the windows that hold
+   long labels beside a suffix opt out of that here. */
+:is(.sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog, .sbHelpDialog) .ds-row {
+    flex-wrap: wrap;
+}
+
+:is(.sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog, .sbHelpDialog) .ds-row-text {
+    min-inline-size: min-content;
+    overflow-wrap: break-word;
+}
+
+/* A note line is cut short with an ellipsis, so its length must not count as a word that the row has to make room for. */
+.sbHomeStepNotes {
+    contain: inline-size;
+}
+
 /* ── Help ───────────────────────────────────────────────────────────────── */
 
 /* The list editor fills the window body edge to edge. The sheet presentation pads every body, so the

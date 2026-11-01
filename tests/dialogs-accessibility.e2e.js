@@ -91,7 +91,11 @@ async function pressEscapeSteps(page, surface, context, opener) {
     }
 }
 
-/** Marks the test as an expected failure when the surface lists the defect for this check and width. */
+/**
+ * Marks the test as an expected failure when the surface lists a product defect for this check and width, as
+ * `knownBugs: [{ check, widths?, why }]`. The run stays green, and the test turns red once the defect is fixed, which is
+ * the cue to delete the entry.
+ */
 function expectKnownBugs(surface, check, viewport) {
     const known = (surface.knownBugs ?? []).filter(bug => bug.check === check && (!bug.widths || bug.widths.includes(viewport.width)));
     test.fail(known.length > 0, known.map(bug => bug.why).join('; '));
