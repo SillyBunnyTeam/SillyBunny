@@ -52,10 +52,16 @@ describe('Home main menu', () => {
         expect(actions.setDisplayMode.mock.calls.map(([mode]) => mode)).toEqual(['compact', 'list']);
     });
 
-    test.each(['compact', 'list'])('leaves Show Getting Started out in %s, where the tile never shows', (displayMode) => {
-        const sections = buildHomeMenuSections({ displayMode, gettingStartedHidden: true }, allActions());
+    test('leaves Show Getting Started out in List Only, where the tile never shows', () => {
+        const sections = buildHomeMenuSections({ displayMode: 'list', gettingStartedHidden: true }, allActions());
 
         expect(labelsOf(sections).flat()).not.toContain('Show Getting Started');
+    });
+
+    test.each(['full', 'compact'])('offers Show Getting Started in %s, where the tile shows', (displayMode) => {
+        const sections = buildHomeMenuSections({ displayMode, gettingStartedHidden: true }, allActions());
+
+        expect(labelsOf(sections)[1]).toContain('Show Getting Started');
     });
 
     test('shows Show Getting Started only while Getting Started is hidden', () => {

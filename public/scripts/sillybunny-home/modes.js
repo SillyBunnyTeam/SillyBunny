@@ -9,7 +9,7 @@ const DEFAULT_MODE = 'full';
  */
 const VISIBLE_REGIONS = Object.freeze({
     full: Object.freeze(['hero', 'tiles', 'getting-started', 'tile-lines', 'assistants', 'assistant-art', 'recent-chats', 'mascot-art']),
-    compact: Object.freeze(['tiles', 'assistants', 'recent-chats']),
+    compact: Object.freeze(['tiles', 'getting-started', 'assistants', 'recent-chats']),
     list: Object.freeze(['recent-chats']),
 });
 

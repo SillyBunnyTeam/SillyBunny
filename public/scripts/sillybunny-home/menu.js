@@ -1,7 +1,7 @@
 import { t } from '../i18n.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { getHomeDestination } from './destinations.js';
-import { parseDisplayMode } from './modes.js';
+import { getVisibleRegions, parseDisplayMode } from './modes.js';
 
 /**
  * @typedef {object} HomeMenuState
@@ -49,8 +49,8 @@ function commandItems(entries) {
 export function buildHomeMenuSections({ displayMode, gettingStartedHidden = false }, actions) {
     const gettingStarted = getHomeDestination('getting-started');
     const help = getHomeDestination('help');
-    // The Getting Started tile exists only in Full, so the item would do nothing anywhere else.
-    const canShowGettingStarted = gettingStartedHidden && parseDisplayMode(displayMode) === 'full';
+    // The item brings the tile back, so it is offered only in a mode that shows the tile.
+    const canShowGettingStarted = gettingStartedHidden && getVisibleRegions(displayMode).includes('getting-started');
     const sections = [
         { title: t`Display Mode`, items: displayModeItems(displayMode, actions.setDisplayMode) },
         {

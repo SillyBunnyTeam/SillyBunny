@@ -31,7 +31,7 @@ const WIDE_VIEWPORTS = VIEWPORTS.filter(viewport => viewport.wide);
 
 const REGION_VISIBILITY = {
     full: { hero: true, tiles: true, 'getting-started': true, assistants: true, 'assistant-art': true, 'recent-chats': true },
-    compact: { hero: false, tiles: true, 'getting-started': false, assistants: true, 'assistant-art': false, 'recent-chats': true },
+    compact: { hero: false, tiles: true, 'getting-started': true, assistants: true, 'assistant-art': false, 'recent-chats': true },
     list: { hero: false, tiles: false, 'getting-started': false, assistants: false, 'assistant-art': false, 'recent-chats': true },
 };
 const MODE_LABELS = { full: 'Full', compact: 'Compact', list: 'List Only' };
@@ -62,7 +62,7 @@ function artSelector(id) {
 // The container width at and below which the hero art, the assistant grid and More Assistants switch to their narrow form.
 const HERO_ONE_X_MAX = 740;
 const TWO_CARDS_MAX = 716;
-const VISIBLE_TILES = { full: ['Getting Started', 'Help', 'Bundled Extras'], compact: ['Help', 'Bundled Extras'], list: [] };
+const VISIBLE_TILES = { full: ['Getting Started', 'Help', 'Bundled Extras'], compact: ['Getting Started', 'Help', 'Bundled Extras'], list: [] };
 const VISIBLE_FOOT_BUTTONS = { full: 4, compact: 4, list: 0 };
 const PORTRAIT_NATIVE = 64;
 const HERO_NATIVE = [320, 160];
@@ -776,28 +776,30 @@ for (const { name, options } of VIEWPORTS) {
             expect(report.slots).not.toEqual(expect.arrayContaining(['AS-NAHIDA-SUB']));
         });
 
-        test('the tile row holds Getting Started, Help and Bundled Extras as three equal cards', async ({ page }) => {
-            await chooseMode(page, 'full');
+        for (const mode of ['full', 'compact']) {
+            test(`the tile row holds Getting Started, Help and Bundled Extras as three equal cards in ${MODE_LABELS[mode]}`, async ({ page }) => {
+                await chooseMode(page, mode);
 
-            await expect(tiles(page).locator('.sbHomeTileTitle')).toHaveText(TILE_TITLES);
-            const layout = await page.evaluate(() => {
-                const rect = node => node.getBoundingClientRect();
-                const row = rect(document.querySelector('.welcomePanel [data-sb-home-region="tiles"]'));
-                const boxes = [...document.querySelectorAll('.welcomePanel .sbHomeTile')].map(rect);
-                return {
-                    row: { left: row.left, right: row.right },
-                    tops: boxes.map(box => Math.round(box.top)),
-                    widths: boxes.map(box => box.width),
-                    first: boxes[0].left,
-                    last: boxes[boxes.length - 1].right,
-                };
+                await expect(tiles(page).locator('.sbHomeTileTitle')).toHaveText(TILE_TITLES);
+                const layout = await page.evaluate(() => {
+                    const rect = node => node.getBoundingClientRect();
+                    const row = rect(document.querySelector('.welcomePanel [data-sb-home-region="tiles"]'));
+                    const boxes = [...document.querySelectorAll('.welcomePanel .sbHomeTile')].map(rect);
+                    return {
+                        row: { left: row.left, right: row.right },
+                        tops: boxes.map(box => Math.round(box.top)),
+                        widths: boxes.map(box => box.width),
+                        first: boxes[0].left,
+                        last: boxes[boxes.length - 1].right,
+                    };
+                });
+
+                expect(new Set(layout.tops).size, 'one row').toBe(1);
+                expect(Math.max(...layout.widths) - Math.min(...layout.widths)).toBeLessThanOrEqual(1);
+                expect(Math.abs(layout.first - layout.row.left)).toBeLessThanOrEqual(1);
+                expect(Math.abs(layout.last - layout.row.right)).toBeLessThanOrEqual(1);
             });
-
-            expect(new Set(layout.tops).size, 'one row').toBe(1);
-            expect(Math.max(...layout.widths) - Math.min(...layout.widths)).toBeLessThanOrEqual(1);
-            expect(Math.abs(layout.first - layout.row.left)).toBeLessThanOrEqual(1);
-            expect(Math.abs(layout.last - layout.row.right)).toBeLessThanOrEqual(1);
-        });
+        }
 
         test('each tile is a button with a circled icon, a title and a voiced line', async ({ page }) => {
             await chooseMode(page, 'full');
@@ -818,10 +820,10 @@ for (const { name, options } of VIEWPORTS) {
             expect(parseFloat(icon.radius)).toBeGreaterThanOrEqual(24);
         });
 
-        test('Compact shows the title of Help and Bundled Extras without the voiced line, and Full brings it back', async ({ page }) => {
+        test('Compact shows the title of Getting Started, Help and Bundled Extras without the voiced line, and Full brings it back', async ({ page }) => {
             await chooseMode(page, 'compact');
 
-            await expect(tiles(page).locator('.sbHomeTileTitle:visible')).toHaveText(['Help', 'Bundled Extras']);
+            await expect(tiles(page).locator('.sbHomeTileTitle:visible')).toHaveText(TILE_TITLES);
             await expect(tiles(page).locator('.sbHomeTileLine:visible')).toHaveCount(0);
             await expect(tiles(page).locator('.sbHomeTileLine')).toHaveCount(3);
 
@@ -941,22 +943,17 @@ for (const { name, options } of VIEWPORTS) {
             await escapeOpenMenu(page);
         });
 
-        test('the main menu offers Show Getting Started only in Full, where the tile can show', async ({ page }) => {
+        test('the main menu offers Show Getting Started in Full and Compact, where the tile can show, and not in List Only', async ({ page }) => {
             await chooseMode(page, 'full');
             await setGettingStartedHidden(page, true);
 
-            for (const mode of ['compact', 'list']) {
+            for (const [mode, offered] of [['list', false], ['compact', true], ['full', true]]) {
                 await chooseMode(page, mode);
                 await menuButton(page).click();
                 await expect(page.getByRole('menuitem', { name: 'Show Welcome', exact: true })).toBeVisible();
-                await expect(page.getByRole('menuitem', { name: 'Show Getting Started', exact: true }), mode).toHaveCount(0);
+                await expect(page.getByRole('menuitem', { name: 'Show Getting Started', exact: true }), mode).toHaveCount(offered ? 1 : 0);
                 await escapeOpenMenu(page);
             }
-
-            await chooseMode(page, 'full');
-            await menuButton(page).click();
-            await expect(page.getByRole('menuitem', { name: 'Show Getting Started', exact: true })).toBeVisible();
-            await escapeOpenMenu(page);
         });
 
         test('a Getting Started tile that comes back follows the display mode', async ({ page }) => {
@@ -965,9 +962,11 @@ for (const { name, options } of VIEWPORTS) {
             await setGettingStartedHidden(page, true);
             await setGettingStartedHidden(page, false);
 
+            await expect(tile(page, 'getting-started')).toBeVisible();
+            await expect(tiles(page).locator('.sbHomeTileTitle')).toHaveText(TILE_TITLES);
+            await expect(page.locator('.welcomePanel .sbHomeTile:visible')).toHaveCount(3);
+            await chooseMode(page, 'list');
             await expect(tile(page, 'getting-started')).toBeHidden();
-            await expect(tiles(page).locator('.sbHomeTileTitle')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
-            await expect(page.locator('.welcomePanel .sbHomeTile:visible')).toHaveCount(2);
             await chooseMode(page, 'full');
             await expect(tile(page, 'getting-started')).toBeVisible();
             await expect(tiles(page).first()).toHaveAttribute('data-sb-home-key', 'getting-started');

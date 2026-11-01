@@ -34,9 +34,10 @@ describe('Home display modes', () => {
         ]));
     });
 
-    test('Compact drops the hero band, the Getting Started tile, the voiced lines, the portraits and the mascot art', () => {
+    test('Compact drops the hero band, the voiced lines, the portraits and the mascot art, and keeps the Getting Started tile', () => {
         expect(sorted(getVisibleRegions('compact'))).toEqual(sorted([
             'tiles',
+            'getting-started',
             'assistants',
             'recent-chats',
         ]));
