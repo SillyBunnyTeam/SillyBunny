@@ -77,12 +77,12 @@ describe('Android runtime workflow', () => {
             plan: { contents: 'read' },
             build: { contents: 'read' },
             publish: { contents: 'read', packages: 'write', 'id-token': 'write', attestations: 'write' },
-            'update-lock': { contents: 'write', 'pull-requests': 'write' },
+            'update-lock': { contents: 'read' },
             mirror: { contents: 'read', packages: 'write' },
         });
     });
 
-    test('uses GitHub-hosted Ubuntu with a timeout on every job, and no environments or secrets', () => {
+    test('uses GitHub-hosted Ubuntu with a timeout on every job, no environments, and no secret but the bot key', () => {
         for (const [name, job] of Object.entries(jobs)) {
             expect([name, job['runs-on']]).toEqual([name, 'ubuntu-24.04']);
             expect(Number.isInteger(job['timeout-minutes'])).toBe(true);
@@ -91,7 +91,7 @@ describe('Android runtime workflow', () => {
             expect(job.environment).toBeUndefined();
         }
         expect(jobs.build['timeout-minutes']).toBeGreaterThanOrEqual(240);
-        expect(source).not.toMatch(/secrets\./);
+        expect([...source.matchAll(/secrets\.\w+/g)].map(match => match[0])).toEqual(['secrets.ST_BOT_PRIVATE_KEY']);
         expect(source).not.toMatch(/^\s*environment:/m);
     });
 
@@ -198,9 +198,23 @@ describe('Android runtime workflow', () => {
         expect(push).toMatch(/^python3 -I -B android\/runtime\/runtime-mirror\.py --check$/m);
     });
 
+    test('pushes and opens the digest PR with the bot token, so the PR runs the checks that staging requires', () => {
+        const [app, checkout] = jobs['update-lock'].steps;
+        expect(app.id).toBe('app');
+        expect(app.uses).toMatch(/^actions\/create-github-app-token@/);
+        expect(app.with).toEqual({
+            'client-id': '${{ vars.ST_BOT_CLIENT_ID }}',
+            'private-key': '${{ secrets.ST_BOT_PRIVATE_KEY }}',
+            'permission-contents': 'write',
+            'permission-pull-requests': 'write',
+        });
+        expect(checkout.uses).toMatch(/^actions\/checkout@/);
+        expect(checkout.with).toEqual({ token: '${{ steps.app.outputs.token }}' });
+    });
+
     test('opens the digest PR through update-node-digests.py and gh', () => {
         const step = jobs['update-lock'].steps.find(step => step.name === 'Open the digest PR');
-        expect(step.env).toEqual({ GH_TOKEN: '${{ github.token }}', PUBLISHED: '${{ needs.publish.outputs.published }}' });
+        expect(step.env).toEqual({ GH_TOKEN: '${{ steps.app.outputs.token }}', PUBLISHED: '${{ needs.publish.outputs.published }}' });
         expect(step.run).toMatch(/update-node-digests\.py --published/);
         expect(step.run).toMatch(/git add android\/runtime\.lock android\/runtime\/sources\.lock\n/);
         expect(step.run).toMatch(/gh pr create --base "\$GITHUB_REF_NAME" --head "\$branch" --title 'TODO\(copy\)' --body 'TODO\(copy\)'/);

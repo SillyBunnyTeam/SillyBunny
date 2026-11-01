@@ -230,20 +230,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     concurrency:
       group: android-runtime-lock-pr
       cancel-in-progress: false
     steps:
+      # GitHub starts no workflow for an event that GITHUB_TOKEN causes. A digest PR that this job opens or
+      # force-pushes with it would therefore run none of the checks that staging requires.
+      - name: Generate GitHub App Token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.ST_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.ST_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app.outputs.token }}
 
       # Rewrites only binaries.<abi>.digest/sha256/size in runtime.lock and runtimeLockSha256 in sources.lock.
       # The bot owns the run's branch: a re-run force-pushes its new commit there, and the PR is opened only once.
       - name: Open the digest PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           PUBLISHED: ${{ needs.publish.outputs.published }}
         run: |
           printf '%s\n' "$PUBLISHED" > "$RUNNER_TEMP/published.json"
@@ -253,8 +265,8 @@ jobs:
             exit 0
           fi
           branch="android-runtime/node-digests-$GITHUB_RUN_ID"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'reisen-bot[bot]'
+          git config user.email '337429064+reisen-bot[bot]@users.noreply.github.com'
           git switch --create "$branch"
           git add android/runtime.lock android/runtime/sources.lock
           git commit --message 'chore(android): pin published Node runtime digests'
