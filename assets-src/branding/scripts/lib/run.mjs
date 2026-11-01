@@ -9,6 +9,7 @@ import { appendLogEntry, makeLogEntry, readLog, runningTotalUsd, sha256 } from '
 import { composePrompt } from './prompt-kit.mjs';
 import { createProvider, describePlan } from './providers.mjs';
 import { redactText } from './redact.mjs';
+import { endRun, otherRunsDuring, startRun } from './token-runs.mjs';
 
 const DEFAULT_SIZES = { openai: '1024x1024', gemini: '1K' };
 
@@ -148,56 +149,61 @@ export async function runGeneration(request, deps) {
         throw new Error('Cancelled. Nothing was sent.');
     }
 
-    const balanceBefore = request.balance ? await tryBalance({ say, env, providerName, config, fetchImpl }) : undefined;
-    const result = await provider.generate(job);
-    if (result.images.length === 0) {
-        throw new Error(`No images were made: ${result.error ?? 'unknown failure'}`);
-    }
+    const tokenRun = startRun({ rootDir, provider: providerName, now });
+    try {
+        const balanceBefore = request.balance ? await tryBalance({ say, env, providerName, config, fetchImpl }) : undefined;
+        const result = await provider.generate(job);
+        if (result.images.length === 0) {
+            throw new Error(`No images were made: ${result.error ?? 'unknown failure'}`);
+        }
 
-    const stamp = now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-    const stem = `${stamp}-${model}-${request.template}`;
-    mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, `${stem}.prompt.txt`), `${composed.prompt}\n`, { flag: 'wx' });
-    const outputs = result.images.map((image, index) => {
-        const { ext } = sniffImage(image.bytes);
-        const path = join(outDir, `${stem}-${index + 1}.${ext}`);
-        writeFileSync(path, image.bytes, { flag: 'wx' });
-        return { file: relative(rootDir, path).split(sep).join('/'), sha256: sha256(image.bytes) };
-    });
+        const stamp = now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+        const stem = `${stamp}-${model}-${request.template}`;
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, `${stem}.prompt.txt`), `${composed.prompt}\n`, { flag: 'wx' });
+        const outputs = result.images.map((image, index) => {
+            const { ext } = sniffImage(image.bytes);
+            const path = join(outDir, `${stem}-${index + 1}.${ext}`);
+            writeFileSync(path, image.bytes, { flag: 'wx' });
+            return { file: relative(rootDir, path).split(sep).join('/'), sha256: sha256(image.bytes) };
+        });
 
-    const spentUsd = Math.round(batch.perImageUsd * outputs.length * 1e6) / 1e6;
-    for (const output of outputs) {
-        say(`saved ${output.file}`);
-    }
-    if (background === 'transparent') {
-        for (const [index, image] of result.images.entries()) {
-            if (!pngHasAlpha(image.bytes)) {
-                say(`WARNING: ${outputs[index].file} has no transparency although a transparent background was requested. Key it out with key-bg.mjs, or retry with --vars background="flat pure green #00FF00" --background opaque.`);
+        const spentUsd = Math.round(batch.perImageUsd * outputs.length * 1e6) / 1e6;
+        for (const output of outputs) {
+            say(`saved ${output.file}`);
+        }
+        if (background === 'transparent') {
+            for (const [index, image] of result.images.entries()) {
+                if (!pngHasAlpha(image.bytes)) {
+                    say(`WARNING: ${outputs[index].file} has no transparency although a transparent background was requested. Key it out with key-bg.mjs, or retry with --vars background="flat pure green #00FF00" --background opaque.`);
+                }
             }
         }
+        for (const usage of result.usage) {
+            say(`usage: ${JSON.stringify(usage)}`);
+        }
+        const chargedUsd = balanceBefore ? await measureCharge({ say, env, providerName, config, fetchImpl, balanceBefore, spentUsd, tokenRun, now }) : undefined;
+        const entry = makeLogEntry({
+            time: now().toISOString(),
+            stage: request.stage,
+            provider: providerName,
+            model,
+            template: request.template,
+            vars: { ...composed.resolvedVars, characters: composed.characters.join(',') },
+            refHashes,
+            size: request.aspect ? `${size}/${request.aspect}` : size,
+            outputs,
+            estimatedUsd: spentUsd,
+            chargedUsd,
+        });
+        appendLogEntry(logPath, entry);
+        if (result.error) {
+            say(`STOPPED EARLY after ${outputs.length} of ${request.n}: ${result.error}`);
+        }
+        return { dryRun: false, entry, partial: Boolean(result.error) };
+    } finally {
+        endRun(tokenRun, { now });
     }
-    for (const usage of result.usage) {
-        say(`usage: ${JSON.stringify(usage)}`);
-    }
-    const chargedUsd = balanceBefore ? await measureCharge({ say, env, providerName, config, fetchImpl, balanceBefore, spentUsd }) : undefined;
-    const entry = makeLogEntry({
-        time: now().toISOString(),
-        stage: request.stage,
-        provider: providerName,
-        model,
-        template: request.template,
-        vars: { ...composed.resolvedVars, characters: composed.characters.join(',') },
-        refHashes,
-        size: request.aspect ? `${size}/${request.aspect}` : size,
-        outputs,
-        estimatedUsd: spentUsd,
-        chargedUsd,
-    });
-    appendLogEntry(logPath, entry);
-    if (result.error) {
-        say(`STOPPED EARLY after ${outputs.length} of ${request.n}: ${result.error}`);
-    }
-    return { dryRun: false, entry, partial: Boolean(result.error) };
 }
 
 function printDryRun({ say, composed, refs, refHashes, request, provider, job, batch, runningUsd, config }) {
@@ -233,15 +239,30 @@ export async function tryBalance({ say, env, providerName, config, fetchImpl }) 
 
 /**
  * The relay's charge for this run: the change in the token's total_used. It is only right when nothing else
- * spends from the same token during the run. Returns undefined when the balance cannot be read.
+ * spends from the same token during the run, so it is dropped, with a warning, when the run records show an overlap.
+ * Returns undefined when the balance cannot be read or the figure cannot be trusted.
  */
-export async function measureCharge({ say, env, providerName, config, fetchImpl, balanceBefore, spentUsd }) {
+export async function measureCharge({ say, env, providerName, config, fetchImpl, balanceBefore, spentUsd, tokenRun, now }) {
     const after = await tryBalance({ say, env, providerName, config, fetchImpl });
     const units = after ? after.totalUsedUnits - balanceBefore.totalUsedUnits : undefined;
     if (units === undefined || units < 0) {
         return undefined;
     }
+    if (warnIfOverlapped({ say, tokenRun, now, spentUsd })) {
+        return undefined;
+    }
     const chargedUsd = Math.round((units / config.pricing.unitsPerUsd) * 1e6) / 1e6;
     say(`relay charged ${usd(chargedUsd)} (${units} units); estimate was ${usd(spentUsd)}`);
     return chargedUsd;
+}
+
+/** Prints the reason a measured charge is not recorded, and says whether it printed. */
+export function warnIfOverlapped({ say, tokenRun, now, spentUsd }) {
+    const others = otherRunsDuring(tokenRun, { now });
+    if (others.length === 0) {
+        return false;
+    }
+    const who = others.map((other) => `pid ${other.pid}, started ${new Date(other.startedAt).toISOString().slice(11, 19)} UTC`).join('; ');
+    say(`WARNING: chargedUsd not recorded: another run used this token at the same time (${who}), so the balance change counts both runs. The estimate of ${usd(spentUsd)} stands.`);
+    return true;
 }

@@ -1,17 +1,17 @@
 import { oklabToSrgb, srgbToOklab } from './pixel-colour.mjs';
 
-const OPAQUE = 128;
+export const OPAQUE = 128;
 const SOLID = 250;
 // How deep into the sticker the search for white and for the rim goes, in pixels from the silhouette.
-const SEARCH_DEPTH = 16;
+export const SEARCH_DEPTH = 16;
 // The soft edge outside the silhouette that still carries the rim colour.
 const HALO_REACH = 6;
-const SAMPLE_DEPTHS = [2, 3];
+export const SAMPLE_DEPTHS = [2, 3];
 const MIN_SAMPLES = 50;
 // A rim pixel is violet (OKLab hue in degrees), coloured and of middle lightness; the white band and skin are not.
-const RIM_HUE = { min: -120, max: -30 };
-const RIM_MIN_CHROMA = 0.04;
-const RIM_LIGHTNESS = { min: 0.55, max: 0.92 };
+export const RIM_HUE = { min: -120, max: -30 };
+export const RIM_MIN_CHROMA = 0.04;
+export const RIM_LIGHTNESS = { min: 0.55, max: 0.92 };
 // Share of white pixels at which a depth counts as the white band, and how much deeper than that the rim may still reach.
 const WHITE_BAND_SHARE = 0.25;
 const WHITE_LIGHTNESS = 0.95;
@@ -23,7 +23,7 @@ const LINE_TOLERANCE = 0.12;
 // A shift smaller than this is below what 8 bit colour can show, so the pixel keeps its bytes (which makes a second run a no-op).
 const NEGLIGIBLE_SHIFT = 0.0015;
 const NEIGHBOURS_4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-const NEIGHBOURS_8 = [...NEIGHBOURS_4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
+export const NEIGHBOURS_8 = [...NEIGHBOURS_4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /** @param {string} text #rrggbb or rrggbb */
 export function parseHexColour(text) {
@@ -34,12 +34,12 @@ export function parseHexColour(text) {
     return match.slice(1).map((pair) => parseInt(pair, 16));
 }
 
-const chromaOf = (lab) => Math.hypot(lab[1], lab[2]);
-const hueOf = (lab) => (Math.atan2(lab[2], lab[1]) * 180) / Math.PI;
-const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+export const chromaOf = (lab) => Math.hypot(lab[1], lab[2]);
+export const hueOf = (lab) => (Math.atan2(lab[2], lab[1]) * 180) / Math.PI;
+export const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
 /** Walks 4-connected rings in from the silhouette: 1 for an opaque pixel next to a transparent one. The canvas border is a cut, not an edge. */
-function insideDepths(opaque, width, height, limit) {
+export function insideDepths(opaque, width, height, limit) {
     const depth = new Int16Array(width * height);
     const queue = [];
     for (let at = 0; at < depth.length; at++) {
@@ -190,7 +190,7 @@ export function recolourRim(raster, { target }) {
 }
 
 /** The image's own rim colour: the median OKLab colour of solid violet pixels two to three rings in from the edge. */
-function rimReference(raster, depth, labAt) {
+export function rimReference(raster, depth, labAt) {
     const samples = [];
     for (let at = 0; at < depth.length; at++) {
         if (!SAMPLE_DEPTHS.includes(depth[at]) || raster.data[at * 4 + 3] < SOLID) {

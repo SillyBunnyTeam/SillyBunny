@@ -9,9 +9,9 @@ import { assertWithinCap, estimateBatch } from '../scripts/lib/cost.mjs';
 const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'config.json');
 const config = parseConfig(JSON.parse(readFileSync(CONFIG_PATH, 'utf8')));
 
-test('the shipped config loads, locks Sunburst and has a 20 dollar cap', () => {
+test('the shipped config loads, locks Sunburst and has a positive dollar cap', () => {
     assert.equal(config.lockedModel, 'gpt-image-2.5-sunburst-h');
-    assert.equal(config.costCapUsd, 20);
+    assert.ok(config.costCapUsd > 0, 'the owner sets the cap, so only its presence is checked');
     assert.deepEqual(Object.keys(config.models).sort(), [
         'gemini-3-pro-image-preview', 'gemini-nano-banana-2.1', 'gpt-image-2.5-flare-h', 'gpt-image-2.5-sunburst-h',
     ]);

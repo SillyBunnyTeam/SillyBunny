@@ -11,7 +11,8 @@ import { composePrompt } from './prompt-kit.mjs';
 import { createProvider, describePlan } from './providers.mjs';
 import { crop as cropRaster, readRaster } from './raster.mjs';
 import { redactText } from './redact.mjs';
-import { resolveModel, resolveOutDir, tryBalance, usd } from './run.mjs';
+import { resolveModel, resolveOutDir, tryBalance, usd, warnIfOverlapped } from './run.mjs';
+import { endRun, startRun } from './token-runs.mjs';
 
 // Mean colour difference (0-255) outside the composite rects above which the model has probably redrawn more than asked.
 const OUTSIDE_WARN = 10;
@@ -139,6 +140,7 @@ export async function runPatches(request, deps) {
     mkdirSync(outDir, { recursive: true });
     const fileEntry = (path, bytes) => ({ file: relative(rootDir, path).split(sep).join('/'), sha256: sha256(bytes) });
 
+    const tokenRun = startRun({ rootDir, provider: providerName, now });
     let balanceBefore = request.balance ? await tryBalance({ say, env, providerName, config, fetchImpl }) : undefined;
     /** results.get(`${patch}:${variant}`) is the model's crop, scaled back to the crop size */
     const results = new Map();
@@ -168,7 +170,8 @@ export async function runPatches(request, deps) {
                 if (balanceBefore) {
                     const after = await tryBalance({ say, env, providerName, config, fetchImpl });
                     const units = after ? after.totalUsedUnits - balanceBefore.totalUsedUnits : -1;
-                    chargedUsd = units >= 0 ? Math.round((units / config.pricing.unitsPerUsd) * 1e6) / 1e6 : undefined;
+                    const overlapped = units >= 0 && warnIfOverlapped({ say, tokenRun, now, spentUsd: perCallUsd[item.number - 1] });
+                    chargedUsd = units >= 0 && !overlapped ? Math.round((units / config.pricing.unitsPerUsd) * 1e6) / 1e6 : undefined;
                     if (chargedUsd !== undefined) {
                         say(`relay charged ${usd(chargedUsd)} (${units} units); estimate was ${usd(perCallUsd[item.number - 1])}`);
                     }
@@ -209,7 +212,12 @@ export async function runPatches(request, deps) {
         }
         return undefined;
     };
-    const stopped = await makeCalls();
+    let stopped;
+    try {
+        stopped = await makeCalls();
+    } finally {
+        endRun(tokenRun, { now });
+    }
 
     for (let variant = 1; variant <= request.n; variant++) {
         if (!prepared.every((item) => results.has(`${item.number}:${variant}`))) {

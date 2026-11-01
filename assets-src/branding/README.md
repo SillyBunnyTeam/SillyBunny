@@ -117,7 +117,7 @@ The approved full-size picture is the master. A build step resizes it to the exa
 - `masters.mjs [--spec prompts/s5-masters.json] [--only id,id] [--n 1] [--dry-run] [--prompt id,id|all] [--yes]` builds one generation per slot from `prompts/s5-masters.json` (template `pixel-still` for one character, `pixel-scene` for two, the pose, expression, props, ears, facing and composition, the CSS sizes, the size sent, and the refs in the order each template's reference paragraph describes) and sends it through the usual run, so the cost cap, the confirmation and the log apply. `--dry-run` prints the table (id, size, aspect, refs, cost), the totals for one and two images per slot with the cap check, and the prompts named by `--prompt`; it sends, saves and logs nothing.
 - Sizes are multiples of 16 at eight output pixels to the grid cell (the look of the approved masters): 1024x1024 for squares, 1536x1024 for 3:2 and 2048x1024 for 2:1, each at least 3x its biggest CSS size. Facing is `inline-end` (the right of the picture, mirrored by the front end in RTL), `inline-start` or `viewer`.
 - The refs are the approved sheets, the line-up and the sprite masters in `refs/`. A finished master goes through `rim-recolour.mjs` into `raw/s5/masters/<id>.png` and is approved as `approved/<id>.png`, which is where `export-specs/shell.json` looks for it.
-- `logo-concept` (S4) takes `--vars variation=asymmetric|symmetric` and `colour=#8b64aa`, and asks for a transparent background.
+- `logo-concept` (S4) takes `--vars variation=asymmetric|symmetric`, `letters=inside|none` (a small "SB" in the brain, or no letters) and the four lavender tones `colour=#8b64aa`, `dark`, `light` and `lightest`, and asks for a transparent background. It is flat line art in lavender only: the prompt names no other hue and no project, and a test keeps it that way. Run it as four groups of two (each variation with and without letters). The original project's logo is only described in words, never sent as a reference.
 
 ## Prompt kit
 
@@ -126,6 +126,8 @@ The approved full-size picture is the master. A build step resizes it to the exa
 ## Log
 
 `log/generations.jsonl` is committed. Each line is `{ time, stage, provider, model, template, vars, refs, size, n, outputs, estimatedUsd, [chargedUsd,] approved }`. `chargedUsd` is the relay's measured charge and is optional. The cost cap sums `chargedUsd` where a line has it and `estimatedUsd` otherwise; `notice.mjs` shows the two separately. `refs` and `outputs[].sha256` are hashes. For Gemini, `size` is `<size>/<aspect>` when an aspect is set. `n` and `estimatedUsd` count the images actually made. The composed prompt is written next to the outputs as `*.prompt.txt` (git-ignored).
+
+`--balance` measures the change in the token's total, which counts every run on the token, so two runs at once would each record both. Every real run therefore leaves a record in `log/.runs/` (git-ignored: provider, pid, start, end; no key). When another run's record overlaps this one, `--balance` records no `chargedUsd` and prints a warning, and the estimate stands. `fix-charged.mjs --from <time> [--write]` lowers a `chargedUsd` above the price times the images, from that time on, to that figure, changing nothing else in the line; it refuses to write while a run is going. It was used once, from 2026-11-01T09:10:00Z, for edit lines measured while the S5 masters run was spending on the same token.
 
 ## Request shapes and sources
 

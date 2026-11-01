@@ -5,3 +5,4 @@ node_modules/
 
 # The root .gitignore ignores every *.jsonl; the generation log is committed.
 !log/generations.jsonl
+log/.runs/

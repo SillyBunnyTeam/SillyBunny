@@ -51,3 +51,40 @@ export function sticker({ borderCut = false } = {}) {
     }
     return raster;
 }
+
+/** A sticker whose white band is the outermost opaque thing: no lavender ring outside it, only a faint antialiased white edge. */
+export function ringlessSticker() {
+    const raster = createRaster(SIZE, SIZE);
+    for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+            const depth = inward(x, y);
+            if (depth === -1) {
+                setPixel(raster, x, y, [...WHITE, 90]);
+            } else if (depth >= 0 && depth < WHITE_WIDTH) {
+                setPixel(raster, x, y, WHITE);
+            } else if (depth >= WHITE_WIDTH) {
+                setPixel(raster, x, y, SKIN);
+            }
+        }
+    }
+    setPixel(raster, 45, 45, DARK);
+    return raster;
+}
+
+export const SOFT_FRINGE = [183, 155, 226];
+// Alpha of the translucent lavender fringe, from the ring touching the white band outwards (inward -1, -2, ...).
+export const SOFT_FRINGE_ALPHA = [240, 210, 180, 150, 100, 50];
+
+/** A sticker whose lavender ring outside the white band is only translucent, so it never reaches full opacity. */
+export function softFringeSticker() {
+    const raster = ringlessSticker();
+    for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+            const depth = inward(x, y);
+            if (depth < 0 && depth >= -SOFT_FRINGE_ALPHA.length) {
+                setPixel(raster, x, y, [...SOFT_FRINGE, SOFT_FRINGE_ALPHA[-depth - 1]]);
+            }
+        }
+    }
+    return raster;
+}

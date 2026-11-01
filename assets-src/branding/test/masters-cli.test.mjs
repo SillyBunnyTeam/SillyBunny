@@ -14,7 +14,8 @@ test('a dry run prints the table, the totals for one and two images, the cap che
     assert.match(stdout, /hero-duo-night\s+2048x1024\s+2:1\s+5: 2 sheets, line-up, 2 sprites\s+\$0\.20/);
     assert.match(stdout, /1 image per slot: 17 x \$0\.20 = \$3\.40/);
     assert.match(stdout, /2 images per slot: 34 x \$0\.20 = \$6\.80/);
-    assert.match(stdout, /cap \$20\.00/);
+    assert.match(stdout, /cap \$\d+\.\d\d/);
+    assert.match(stdout, /(within the cap|WOULD REFUSE: passes the cap)\n2 images per slot/);
     assert.match(stdout, /--- prompt: empty-tewi ---\nPixel art style/);
     assert.ok(!/--- prompt: hero-duo ---/.test(stdout));
     assert.match(stdout, /dry run: nothing was sent, saved or logged\./);

@@ -208,6 +208,17 @@ test('--balance puts the relay charge of each call into its own log line', async
     assert.equal(entries[2].chargedUsd, undefined);
 });
 
+test('--balance drops the relay charge of a call when another run is using the same token', async () => {
+    const { root, imagePath } = await makeRoot();
+    const started = Date.parse('2026-11-01T11:59:00.000Z');
+    mkdirSync(join(root, 'log', '.runs'), { recursive: true });
+    writeFileSync(join(root, 'log', '.runs', `openai-${started}-${process.pid}.json`), JSON.stringify({ provider: 'openai', pid: process.pid, startedAt: started }));
+    const { deps, lines } = makeDeps(root, { usage: [1_000_000, 1_100_000, 1_300_000] });
+    await runPatches(request(imagePath, { patches: TWO, balance: true }), deps);
+    assert.ok(logOf(root).slice(0, 2).every((entry) => entry.chargedUsd === undefined));
+    assert.match(lines.join('\n'), /WARNING: chargedUsd not recorded: another run used this token at the same time/);
+});
+
 test('a model that redraws the area outside the composite rects is called out, since that is the face being redrawn', async () => {
     const { root, imagePath } = await makeRoot();
     const { deps, lines } = makeDeps(root, { mode: 'invert' });

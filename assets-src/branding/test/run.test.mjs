@@ -299,6 +299,70 @@ test('--balance writes the relay charge into the log line as chargedUsd, right a
     assert.deepEqual(Object.keys(entry), ['time', 'stage', 'provider', 'model', 'template', 'vars', 'refs', 'size', 'n', 'outputs', 'estimatedUsd', 'chargedUsd', 'approved']);
 });
 
+/** Leaves the record of a run that is still going on the same token, as another terminal's run would. */
+function plantRunningRun(root, { startedAt = '2026-11-01T11:59:00.000Z' } = {}) {
+    const dir = join(root, 'log', '.runs');
+    mkdirSync(dir, { recursive: true });
+    const started = new Date(startedAt).getTime();
+    writeFileSync(join(dir, `openai-${started}-${process.pid}.json`), JSON.stringify({ provider: 'openai', pid: process.pid, startedAt: started }));
+}
+
+test('--balance does not write chargedUsd when another run is using the same token, and says why', async () => {
+    const root = makeRoot();
+    plantRunningRun(root);
+    const usage = (used) => ({ json: { data: { total_used: used } } });
+    const { deps, lines } = makeDeps(root, { replies: [usage(1_000_000), openaiReply(), openaiReply(), usage(1_400_000)] });
+    await runGeneration(baseRequest(root, { balance: true }), deps);
+    const entry = JSON.parse(readFileSync(join(root, 'log', 'generations.jsonl'), 'utf8').trim());
+    assert.ok(!('chargedUsd' in entry), 'a charge that counts two runs is not recorded');
+    assert.equal(entry.estimatedUsd, 0.4);
+    const output = lines.join('\n');
+    assert.match(output, /WARNING: chargedUsd not recorded: another run used this token at the same time/);
+    assert.match(output, new RegExp(`pid ${process.pid}`));
+    assert.match(output, /estimate of \$0\.40 stands/);
+    assert.ok(!/relay charged/.test(output));
+});
+
+test('a run that finished before this one started does not stop chargedUsd from being recorded', async () => {
+    const root = makeRoot();
+    mkdirSync(join(root, 'log', '.runs'), { recursive: true });
+    const [started, ended] = [Date.parse('2026-11-01T11:50:00.000Z'), Date.parse('2026-11-01T11:55:00.000Z')];
+    writeFileSync(join(root, 'log', '.runs', `openai-${started}-1.json`), JSON.stringify({ provider: 'openai', pid: 1, startedAt: started, endedAt: ended }));
+    const usage = (used) => ({ json: { data: { total_used: used } } });
+    const { deps } = makeDeps(root, { replies: [usage(1_000_000), openaiReply(), openaiReply(), usage(1_200_000)] });
+    await runGeneration(baseRequest(root, { balance: true }), deps);
+    assert.equal(JSON.parse(readFileSync(join(root, 'log', 'generations.jsonl'), 'utf8').trim()).chargedUsd, 0.4);
+});
+
+test('a run without --balance still counts as a run on the token, so a measuring run that overlaps it drops its figure', async () => {
+    const root = makeRoot();
+    const usage = (used) => ({ json: { data: { total_used: used } } });
+    const outer = makeDeps(root, { replies: [openaiReply()] });
+    const inner = makeDeps(root, { replies: [usage(1_000_000), openaiReply(), usage(1_100_000)] });
+    const sendOuter = outer.deps.fetchImpl;
+    outer.deps.fetchImpl = async (url, init) => {
+        await runGeneration(baseRequest(root, { balance: true, n: 1, outDir: 'raw/inner' }), inner.deps);
+        return sendOuter(url, init);
+    };
+    await runGeneration(baseRequest(root, { n: 1 }), outer.deps);
+    const [innerEntry, outerEntry] = readFileSync(join(root, 'log', 'generations.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.ok(!('chargedUsd' in innerEntry));
+    assert.ok(!('chargedUsd' in outerEntry));
+    assert.match(inner.lines.join('\n'), /WARNING: chargedUsd not recorded/);
+});
+
+test('every real run leaves a finished record, also when the model fails, and a dry run leaves none', async () => {
+    const root = makeRoot();
+    await runGeneration(baseRequest(root, { n: 1 }), makeDeps(root, { replies: [openaiReply()] }).deps);
+    await assert.rejects(runGeneration(baseRequest(root, { n: 1, outDir: 'raw/again' }), makeDeps(root, { replies: [{ status: 401, text: 'no' }] }).deps));
+    const records = readdirSync(join(root, 'log', '.runs')).map((name) => JSON.parse(readFileSync(join(root, 'log', '.runs', name), 'utf8')));
+    assert.equal(records.length > 0, true);
+    assert.ok(records.every((record) => Number.isFinite(record.endedAt)), 'no record is left open');
+    const dryRoot = makeRoot();
+    await runGeneration(baseRequest(dryRoot, { dryRun: true }), makeDeps(dryRoot).deps);
+    assert.ok(!existsSync(join(dryRoot, 'log', '.runs')));
+});
+
 test('without --balance, or when the balance cannot be read, the log line has no chargedUsd', async () => {
     const plainRoot = makeRoot();
     await runGeneration(baseRequest(plainRoot), makeDeps(plainRoot, { replies: [openaiReply()] }).deps);
