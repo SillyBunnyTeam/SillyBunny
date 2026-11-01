@@ -143,6 +143,7 @@
     },
   },
   "overrides": {
+    "basic-ftp": "^6.2.3",
     "lodash-es": "^4.18.1",
     "openai": "^4.17.0",
     "whatwg-url": "^14.0.0",
@@ -570,7 +571,7 @@
 
     "baseline-browser-mapping": ["baseline-browser-mapping@2.11.29", "", { "bin": "dist/cli.cjs" }, "sha512-YeesxhUmR4h5y5V8KF8iBCqJb8YFrBJ++XBTeGcWIaQOYXGN19JM0FoiOjAhwuDoln8owMgXcWBmgHtYSkky2w=="],
 
-    "basic-ftp": ["basic-ftp@5.3.1", "", {}, "sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw=="],
+    "basic-ftp": ["basic-ftp@6.2.3", "", {}, "sha512-T7GYtQ2eKJUN5YORG7A8u2WfB9JMN0a4/wl3MI64qq2qTRfa3FXzoNq0DDojZDkDyStcL+TkfKsz4JHEZx5kGQ=="],
 
     "bing-translate-api": ["bing-translate-api@4.1.0", "", { "dependencies": { "got": "^11.8.6" } }, "sha512-oP2663Yd5MXX4kbB/3LdS9YgPiE+ls9+2iFZH2ZXigWhWyHT3R4m6aCup4TNJd3/U4gqHHnQoxTaIW7uOf4+vA=="],
 
