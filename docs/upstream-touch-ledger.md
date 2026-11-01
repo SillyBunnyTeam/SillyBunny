@@ -539,6 +539,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-23 Conversation lorebooks. |
 | Owner | TODO(copy) |
 
+### `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, and `public/scripts/macros/definitions/core-macros.js` - macro whitespace markers
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, `public/scripts/macros/definitions/core-macros.js` |
+| Area | Macros 2.0 whitespace trimming. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/macros/sillybunny-whitespace-markers.js`. |
+| Adapter shape | `MacroCstWalker` marks `{{newline}}`, `{{space}}` and `{{noop}}` output, and removes the markers from arguments, from scoped content after its trim, and from variable shorthand values after their trim. `MacroEngine.evaluate()` gives marked text to the `core:` post-processors that run before all others, runs the legacy `{{trim}}` through `applyLegacyTrim()`, and gives the other post-processors text without markers. `resolve()` passes `keepWhitespaceMarkers` to `MacroEngine.evaluate()`. Only the `{{if}}` handler sets it, for its branch, so that its trim keeps the marked output. |
+| Protecting tests | `tests/sillybunny-macro-whitespace.test.js`, `tests/frontend/sillybunny-macro-whitespace.e2e.js`, `tests/frontend/MacroEngine.e2e.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, `npm run test:unit -- sillybunny-macro-whitespace.test.js` and the full `npm run test:unit` in `tests/`, `npm run check:frontend-budgets`, and `npm run test:e2e -- frontend/sillybunny-macro-whitespace.e2e.js frontend/MacroEngine.e2e.js` against a running server in Chromium. |
+| Rollback path | Remove the `SillyBunny:` lines in the four files and delete the marker module; the engine then trims as upstream does, and the specs that test the markers fail until they are removed. If upstream merges its own fix for SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674 (open as SillyTavern/SillyTavern#6040), take the upstream code in the sync, drop this adapter, and keep the whitespace cases in `tests/frontend/sillybunny-macro-whitespace.e2e.js` that still apply. |
+| Last reviewed | 2026-11-02 macro whitespace markers. |
+| Owner | TODO(copy) |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |

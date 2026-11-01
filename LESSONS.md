@@ -154,6 +154,16 @@ This is the largest class by a wide margin.
 - **Partial adoption:** `7b6db61d1` took SillyTavern's `src/electron/` package files (`Start.bat`, `package.json`, `package-lock.json`) but not `index.js`, which `package.json` names as `main` for `electron .`. `Start.bat` also installs with `--ignore-scripts`, and the electron package downloads its binary only in its `postinstall` script, so the launcher could not start. npm audit still reported 30 advisories against its lockfile (electron 41.1.1 and extract-zip 2.0.1). SillyBunny removed `src/electron/`. SillyTavern still ships it, so a sync leaves `src/electron/**` out (`docs/upstream-touch-ledger.md`).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
 
+### Macro whitespace
+
+- **Breaks:** a trim in the macro engine removes whitespace that a template asks for with `{{newline}}`, `{{space}}` or `{{noop}}` (SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674).
+- **Cause:** the engine trims text after it resolves the macros in it. `{{if}}` trims its resolved branch, scoped macros trim their content, and variable shorthand values (`{{.x = ...}}`) are trimmed. The legacy `{{trim}}` post-processor runs after `{{noop}}` is already an empty string, so `{{noop}}` does not stop it as it did in the legacy engine (`public/scripts/macros.js`).
+- **Files:** `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/definitions/core-macros.js`.
+- **Guards:** `public/scripts/macros/sillybunny-whitespace-markers.js`. The walker wraps `{{newline}}` and `{{space}}` output in U+FDD0 and `{{noop}}` output in U+FDD1, and removes them after each trim. `MacroEngine.evaluate()` removes them before it returns, except for the `{{if}}` branch, which `resolve(text, { keepWhitespaceMarkers: true })` returns with markers for the trim in the `{{if}}` handler. Only the `core:` post-processors see the markers.
+- **Tests:** `tests/sillybunny-macro-whitespace.test.js` (runs the real engine in Jest), `tests/frontend/sillybunny-macro-whitespace.e2e.js`.
+- **Limit:** `{{trim}}` still removes `{{newline}}` output next to it, as the legacy engine did. Put `{{noop}}` between them to keep the newline.
+- **Limit:** prompt text that already contains U+FDD0 or U+FDD1 loses those characters.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
