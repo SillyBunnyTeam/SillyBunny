@@ -8,8 +8,8 @@ import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const currentClaudeModels = ['claude-opus-5', 'claude-sonnet-5'];
-const currentGoogleStudioModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
-const currentVertexModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+const currentGoogleStudioModels = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1'];
+const currentVertexModels = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1'];
 const retiredMainModels = [
     'chatgpt-4o-latest',
     'gpt-4.5-preview',
@@ -51,6 +51,8 @@ const retiredClaudeModels = [
 // Note: some of these (e.g. gemini-3.1-flash-lite-preview, gemini-3-pro-preview) are legitimately
 // retained in the Vertex sections, so tests must scope checks to the AI Studio selects only.
 const retiredGoogleStudioModels = [
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
     'gemini-3.1-flash-lite-preview',
     'gemini-3.1-flash-image-preview',
     'gemini-3-pro-preview',
@@ -86,13 +88,16 @@ const retiredGoogleStudioModels = [
     'gemma-3-1b-it',
 ];
 
-// IDs removed from Vertex AI selects (the Gemini 2.0 batch; 3.x previews are Vertex-only retained)
+// IDs removed from Vertex AI selects (the retired Gemini 2.0 and 2.5 models; 3.x previews are Vertex-only retained)
 const retiredVertexModels = [
     'gemini-2.0-flash-exp',
     'gemini-2.0-flash-preview-image-generation',
     'gemini-2.0-flash',
     'gemini-2.0-flash-001',
     'gemini-2.0-flash-lite-001',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
 ];
 
 function readSource(relativePath) {
@@ -282,7 +287,7 @@ test('Google AI Studio pickers include current models and omit all retired Gemin
     expect(captionAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
 });
 
-test('Vertex AI pickers include current models and omit retired Gemini 2.0 entries', () => {
+test('Vertex AI pickers include current models and omit retired Gemini 2.0 and 2.5 entries', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
 
@@ -295,17 +300,71 @@ test('Vertex AI pickers include current models and omit retired Gemini 2.0 entri
     expect(captionVertex).toEqual(expect.arrayContaining(currentVertexModels));
 });
 
+test('saved AI Studio models follow the IDs that AI Studio routes to newer models', () => {
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const migrate = openAiScript.match(/function migrateChatCompletionSettings\(settings\) \{[\s\S]*?\n\}/)[0];
+    const migrateSettings = settings => runInNewContext(`(${migrate})(settings); settings`, {
+        settings,
+        migrateNanoGptProviderSettings: () => {},
+        legacy_group_nudge_prompt: 'legacy',
+        default_group_nudge_prompt: 'default',
+        character_names_behavior: {},
+        chat_completion_sources: CHAT_COMPLETION_SOURCES,
+        custom_prompt_post_processing_types: {},
+        reasoning_effort_types: {},
+    });
+
+    expect(migrateSettings({ google_model: 'gemini-3.7-flash', vertexai_model: 'gemini-3.7-flash' }))
+        .toEqual({ google_model: 'gemini-3.8-flash', vertexai_model: 'gemini-3.7-flash' });
+    expect(migrateSettings({ google_model: 'gemini-3.5-flash', vertexai_model: 'gemini-3.5-flash' }))
+        .toEqual({ google_model: 'gemini-3.6-flash', vertexai_model: 'gemini-3.5-flash' });
+});
+
+for (const [model, expected] of [
+    ['gemini-4-argon', 1000000],
+    ['gemini-3.8-flash', 1000000],
+    ['gemini-3.1-flash-lite-image', 65535],
+    ['gemini-nano-banana-2.1', 128000],
+]) {
+    test(`sets the Google context limit for ${model}`, () => {
+        const openAiScript = readSource('../public/scripts/openai.js');
+        const contextBranches = openAiScript.match(/chat_completion_sources\.VERTEXAI\]\.includes\(oai_settings\.chat_completion_source\)\) \{\n\s+(if \(maxContextUnlocked\) \{[\s\S]*?\n {8}\}\n)/)[1];
+        const contextConstants = openAiScript.match(/^const (?:max_[a-z0-9]+|unlocked_max) = .+;$/gm).join('\n');
+        let maxContext;
+        runInNewContext(`${contextConstants}\n${contextBranches}`, {
+            value: model,
+            maxContextUnlocked: false,
+            $: () => ({ attr: (_name, limit) => { maxContext = limit; } }),
+        });
+
+        expect(maxContext).toBe(expected);
+    });
+}
+
+test('Gemini 4 and Nano Banana accept inline media', () => {
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
+    const videoModels = openAiScript.match(/const videoSupportedModels = \[([\s\S]*?)\];/)[1];
+    const audioModels = openAiScript.match(/const audioSupportedModels = \[([\s\S]*?)\];/)[1];
+
+    for (const model of ['gemini-4', 'gemini-nano-banana']) {
+        expect(visionModels).toContain(`'${model}'`);
+        expect(videoModels).toContain(`'${model}'`);
+    }
+    expect(audioModels).toContain('\'gemini-4\'');
+});
+
 test('new provider models are the defaults where requested', () => {
     const openAiScript = readSource('../public/scripts/openai.js');
     const defaultPreset = JSON.parse(readSource('../default/content/presets/openai/Default.json'));
 
-    expect(openAiScript).toContain('google_model: \'gemini-3.7-flash\'');
-    expect(openAiScript).toContain('vertexai_model: \'gemini-3.7-flash\'');
+    expect(openAiScript).toContain('google_model: \'gemini-3.8-flash\'');
+    expect(openAiScript).toContain('vertexai_model: \'gemini-3.8-flash\'');
     expect(openAiScript).toContain('minimax_model: \'MiniMax-M3\'');
     expect(openAiScript).toContain('zai_model: \'glm-5.3\'');
     expect(defaultPreset).toMatchObject({
-        google_model: 'gemini-3.7-flash',
-        vertexai_model: 'gemini-3.7-flash',
+        google_model: 'gemini-3.8-flash',
+        vertexai_model: 'gemini-3.8-flash',
         minimax_model: 'MiniMax-M3',
     });
 });

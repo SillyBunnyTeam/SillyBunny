@@ -340,6 +340,7 @@ describe('request-local output controls', () => {
         { model: 'moonshot/kimi-k3' },
         { model: 'moonshot/kimi-k2-thinking', reasoning_effort: 'none' },
         { model: 'gemini-2.0-flash-thinking-exp', reasoning_effort: 'none' },
+        { model: 'gemini-4-argon' },
         { model: 'qwen3-32b' },
         { model: 'ordinary', thinking: { type: 'enabled', budget_tokens: 4096 } },
         { model: 'ordinary', thinking: { type: 'adaptive' } },
