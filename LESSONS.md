@@ -151,6 +151,7 @@ This is the largest class by a wide margin.
 - **Guards:** the version map clamps a SillyBunny version with no mapping to the highest synced SillyTavern version for its major.
 - **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
+- **Partial adoption:** `7b6db61d1` took SillyTavern's `src/electron/` package files (`Start.bat`, `package.json`, `package-lock.json`) but not `index.js`, which `package.json` names as `main` for `electron .`. `Start.bat` also installs with `--ignore-scripts`, and the electron package downloads its binary only in its `postinstall` script, so the launcher could not start. npm audit still reported 30 advisories against its lockfile (electron 41.1.1 and extract-zip 2.0.1). SillyBunny removed `src/electron/`. SillyTavern still ships it, so a sync leaves `src/electron/**` out (`docs/upstream-touch-ledger.md`).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
 
 ### Macro whitespace
