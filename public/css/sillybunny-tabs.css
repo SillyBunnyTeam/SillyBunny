@@ -7298,12 +7298,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-#sb-settings-page .sb-action-btn.sb-edit-prompts {
-    margin-block: 16px;
-    color: var(--sb-on-solid-accent);
-    background: var(--sb-accent);
-}
-
 #sb-settings-page .sb-editor-meta {
     display: flex;
     flex-wrap: wrap;
@@ -7369,11 +7363,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 @media (hover: hover) {
     #sb-settings-page .sb-action-btn.sb-backend-navigation-pill:hover {
         background: var(--sb-raised-hover-bg);
-    }
-
-    #sb-settings-page .sb-action-btn.sb-edit-prompts:hover {
-        color: var(--sb-on-solid-accent);
-        background: color-mix(in srgb, var(--sb-accent) 90%, var(--SmartThemeBodyColor));
     }
 }
 
@@ -7542,16 +7531,55 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     row-gap: 24px !important;
 }
 
-#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .sb-edit-prompts {
-    margin-block: 0;
-}
-
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .ds-row {
     width: 100%;
     margin: 0;
     padding: 6px 16px;
     border-top: 0;
     border-radius: 0;
+}
+
+/* The shared activatable-row rules ship in the deferred Editor stylesheet, which this panel does not load. */
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row__chevron {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+        transition: none;
+    }
+}
+
+body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+    transition: none;
+}
+
+/* Edit Prompts follows a preset block, and the block's preset row already draws the line between them. */
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body > .ds-row[data-sb-edit-prompts] {
+    border-top: 0;
 }
 
 #sb-settings-page .sb-prompting-panel .sb-prompting-group-body .range-block:not(.ds-row) {

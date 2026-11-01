@@ -365,16 +365,17 @@ test('pressing the Preset Menu saves a pending edit before an action can run', a
     expect(saves).toHaveLength(1);
 });
 
-test('autosave sits below the preset row and Master Import/Export moves into the Text Completion Preset Menus', async ({ page }) => {
+test('Edit Prompts and autosave sit below the preset row and Master Import/Export moves into the Text Completion Preset Menus', async ({ page }) => {
     await loadApp(page);
     const prompting = await openPanel(page, 'prompting');
     const placement = () => prompting.evaluate(panel => {
-        const autosave = panel.querySelector('[data-sb-preset-autosave]');
         const row = [...panel.querySelectorAll('[data-sb-preset-row]')].find(candidate => candidate.checkVisibility());
         const block = row?.closest('[id$="_api-presets"]');
-        const below = block?.id === 'openai_api-presets' ? row.nextElementSibling : block?.nextElementSibling;
-        return { autosaveBelowPreset: Boolean(autosave) && below === autosave, masterVisible: document.getElementById('af_master_import').checkVisibility() };
+        const first = (block?.id === 'openai_api-presets' ? row : block)?.nextElementSibling;
+        const rowName = element => ['data-sb-edit-prompts', 'data-sb-preset-autosave'].find(name => element?.hasAttribute(name)) ?? null;
+        return { belowPreset: [rowName(first), rowName(first?.nextElementSibling)], masterVisible: document.getElementById('af_master_import').checkVisibility() };
     });
+    const expected = { belowPreset: ['data-sb-edit-prompts', 'data-sb-preset-autosave'], masterVisible: false };
     const masterItems = async () => {
         await presetMenuButton(prompting).click();
         const menu = page.locator('.sb-action-menu[role="menu"]');
@@ -385,13 +386,13 @@ test('autosave sits below the preset row and Master Import/Export moves into the
         return labels.filter(label => label.startsWith('Master'));
     };
 
-    expect(await placement()).toEqual({ autosaveBelowPreset: true, masterVisible: false });
+    expect(await placement()).toEqual(expected);
     expect(await masterItems()).toEqual([]);
     for (const api of ['textgenerationwebui', 'kobold', 'novel']) {
         await page.evaluate(api => window.$('#main_api').val(api).trigger('change'), api);
-        await expect.poll(placement).toEqual({ autosaveBelowPreset: true, masterVisible: false });
+        await expect.poll(placement).toEqual(expected);
         expect(await masterItems()).toEqual(['Master Import…', 'Master Export…']);
     }
     await page.evaluate(() => window.$('#main_api').val('openai').trigger('change'));
-    await expect.poll(placement).toEqual({ autosaveBelowPreset: true, masterVisible: false });
+    await expect.poll(placement).toEqual(expected);
 });

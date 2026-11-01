@@ -19,6 +19,7 @@ import { openActionMenu } from './sillybunny-action-menu.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
+import { createRow } from './sillybunny-editor/rows.js';
 import { createProfileRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
@@ -419,17 +420,19 @@ function mountPresetRows(root) {
 }
 
 /**
- * Keeps the autosave switch under the active backend's preset row. On Chat Completions it sits inside
- * the block, ahead of the linking drawer. Elsewhere it follows the block.
+ * Keeps Edit Prompts and then the autosave switch under the active backend's preset row. On Chat
+ * Completions they sit inside the block, ahead of the linking drawer. Elsewhere they follow the block.
  */
 function placeSharedPresetControls(root, activeApi) {
     const block = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
     if (!(block instanceof HTMLElement) || !root.contains(block)) return;
-    const autosaveRow = root.querySelector('[data-sb-preset-autosave]');
-    const anchor = activeApi === 'openai' ? block.querySelector('[data-sb-preset-row]') : block;
-    // Moving a row that is already in place still queues a mutation, and the drawer observer re-runs this.
-    if (autosaveRow instanceof HTMLElement && anchor instanceof HTMLElement && anchor.nextElementSibling !== autosaveRow) {
-        anchor.after(autosaveRow);
+    let anchor = activeApi === 'openai' ? block.querySelector('[data-sb-preset-row]') : block;
+    if (!(anchor instanceof HTMLElement)) return;
+    for (const row of [root.querySelector('[data-sb-edit-prompts]'), root.querySelector('[data-sb-preset-autosave]')]) {
+        if (!(row instanceof HTMLElement)) continue;
+        // Moving a row that is already in place still queues a mutation, and the drawer observer re-runs this.
+        if (anchor.nextElementSibling !== row) anchor.after(row);
+        anchor = row;
     }
 }
 
@@ -9912,13 +9915,14 @@ function preparePromptingPanel(root) {
         for (const child of [...block.children].slice(1)) body.append(child);
         block.append(body);
     }
-    const editPrompts = createElement('button', {
-        className: 'menu_button sb-action-btn sb-backend-navigation-pill sb-edit-prompts',
-        text: 'Edit prompts',
-        attrs: { type: 'button', 'data-sb-edit-prompts': '', 'data-i18n': 'Edit prompts' },
+    const editPrompts = createRow({
+        label: t`Edit Prompts`,
+        field: 'edit-prompts',
+        activatable: true,
+        onActivate: () => openShell('left', 'editor'),
     });
-    editPrompts.addEventListener('click', () => openShell('left', 'editor'));
-    presetsContainer?.after(editPrompts);
+    editPrompts.row.dataset.sbEditPrompts = '';
+    presetsContainer?.querySelector(':scope > .sb-prompting-group-body')?.append(editPrompts.row);
     const generation = configuration.querySelector('#pro-settings-block');
     if (generation instanceof HTMLElement) {
         for (const id of ['streaming_textgenerationwebui_block', 'streaming_kobold_block', 'streaming_novel_block']) {

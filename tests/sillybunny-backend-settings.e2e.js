@@ -485,8 +485,22 @@ test('Backend tabs, aliases and Presets/Editor links are stable in every mode', 
         await expect(page.locator('#sb-settings-tab-list button')).toHaveText(['Connections', 'Sampling', 'Presets', 'Editor', 'Formatting', 'Agents']);
         await expect(page.locator('[data-sb-settings-tab="prompting"]')).toHaveAttribute('data-sb-search-aliases', 'Prompting|Presets|Update Preset|Save Preset As|Rename Preset|Import Preset|Export Preset|Delete Preset');
         await expect(page.locator('[data-sb-settings-tab="editor"]')).toHaveAttribute('data-sb-search-aliases', 'Prompt Manager|Prompts');
-        const edit = presets.getByRole('button', { name: 'Edit prompts', exact: true });
-        expect(await edit.evaluate(button => button.previousElementSibling?.id)).toBe('respective-presets-block');
+        const edit = presets.getByRole('button', { name: 'Edit Prompts', exact: true });
+        // The Characters list can load the deferred Editor stylesheet first, so it is switched off to check the row's own style.
+        expect(await edit.evaluate(row => {
+            const editorSheet = document.getElementById('deferred-editor-shell-css');
+            if (editorSheet) editorSheet.disabled = true;
+            const cursor = getComputedStyle(row).cursor;
+            if (editorSheet) editorSheet.disabled = false;
+            return cursor;
+        })).toBe('pointer');
+        await expect(edit.locator('.ds-row__chevron')).toBeVisible();
+        // The preset row above draws the separator, so a top border here would double it.
+        await expect(edit).toHaveCSS('border-top-width', '0px');
+        expect(await edit.evaluate(row => {
+            const previous = row.previousElementSibling;
+            return previous?.matches('[data-sb-preset-row]') || previous?.querySelector('[data-sb-preset-row]')?.checkVisibility();
+        })).toBe(true);
         await edit.focus();
         await page.keyboard.press('Enter');
         const editor = page.locator('[data-sb-panel="editor"]');

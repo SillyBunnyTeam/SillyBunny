@@ -105,7 +105,8 @@ This is the largest class by a wide margin.
 - **Preset Menu:** the Presets page hides each backend's original preset select row and action buttons, the Chat Completions title card and Master Import/Export, and the row's Preset Menu clicks those hidden originals, because upstream and PresetManager bind every action to them (`mountPresetRows()` in `public/scripts/sillybunny-tabs.js`).
   - The menu is built on every open, so PresetManager's late restore-defaults button and the read-only Update of a bundled preset are current.
   - **Pitfall:** the menu's clicks are untrusted, and preset autosave saves a pending edit only on a trusted press of a control in `FLUSH_CONTROL_SELECTOR` (`public/scripts/sillybunny-preset-autosave.js`). That list names `[data-sb-preset-row]`, so the press on the row's ⋮ or picker saves first. Without it, a menu action such as Delete… or Rename… starts while the edit is still pending.
-  - **Tests:** `tests/sillybunny-backend-settings.e2e.js` (menu sections, Import… opens a file chooser), `tests/sillybunny-preset-autosave.e2e.js` (read-only Update, the press saves at once, autosave placement).
+  - **Pitfall:** Edit Prompts is an activatable `createRow()` row, but the activatable-row and chevron rules live in the deferred `public/css/sillybunny-editor-shell.css`, which the Presets page does not load. On desktop the Characters list usually loads it first, which hides the gap. The page keeps its own copy of those rules in `public/css/sillybunny-tabs.css`.
+  - **Tests:** `tests/sillybunny-backend-settings.e2e.js` (menu sections, Import… opens a file chooser, Edit Prompts styled with the Editor stylesheet off), `tests/sillybunny-preset-autosave.e2e.js` (read-only Update, the press saves at once, Edit Prompts and autosave placement).
 
 ### Cache, boot and reload
 
