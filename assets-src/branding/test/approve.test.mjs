@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { approveOutputs, revertSupersede, supersedeOutput } from '../scripts/lib/approve.mjs';
 import { sha256 } from '../scripts/lib/log.mjs';
 import { renderGeneratedRegion } from '../scripts/lib/notice.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const BYTES = { a: Buffer.from('image a'), b: Buffer.from('image b'), c: Buffer.from('image c') };
 
 function makeProject() {
-    const root = mkdtempSync(join(tmpdir(), 'sb-approve-'));
+    const root = tempDir('sb-approve-');
     mkdirSync(join(root, 'log'));
     mkdirSync(join(root, 'raw', 's1'), { recursive: true });
     for (const [name, bytes] of Object.entries(BYTES)) {
@@ -118,7 +118,7 @@ test('a dry run checks everything, reports the copies and writes nothing', () =>
 });
 
 test('approving on a checkout with no log says the file is not in the log and writes nothing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'sb-approve-empty-'));
+    const root = tempDir('sb-approve-empty-');
     assert.throws(() => approveOutputs({ rootDir: root, targets: ['raw/s1/a.png'], ref: true }), /is not in the log/);
     assert.ok(!existsSync(join(root, 'approved')) && !existsSync(join(root, 'log')));
 });
@@ -559,7 +559,7 @@ test('NOTICE.md lists the original as current after a --to revert, with a histor
 
 /** A project whose log has one entry per `[bytes name]`, all for the file raw/s1/x.png, which holds `current` on disk. */
 function rerunProject(logged, current) {
-    const root = mkdtempSync(join(tmpdir(), 'sb-approve-rerun-'));
+    const root = tempDir('sb-approve-rerun-');
     mkdirSync(join(root, 'log'));
     mkdirSync(join(root, 'raw', 's1'), { recursive: true });
     if (current) {

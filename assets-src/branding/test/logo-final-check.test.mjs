@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(ROOT, 'scripts', 'logo-final-check.mjs');
@@ -16,7 +17,7 @@ const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect
 const sheetName = (label) => join('out', 'test-tmp', `logo-final-check-${process.pid}-${label}.png`);
 const run = (args) => spawnSync('node', [SCRIPT, ...args], { encoding: 'utf8', cwd: ROOT });
 const folderWith = (names) => {
-    const directory = mkdtempSync(join(tmpdir(), 'sb-final-'));
+    const directory = tempDir('sb-final-');
     for (const name of names) {
         writeFileSync(join(directory, name), SVG);
     }

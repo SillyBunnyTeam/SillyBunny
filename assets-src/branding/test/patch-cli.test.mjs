@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { parsePatchRequest } from '../scripts/lib/cli.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 function makeRoot(spec = '[{"crop":[0,0,10,10]}]') {
-    const root = mkdtempSync(join(tmpdir(), 'sb-patchcli-'));
+    const root = tempDir('sb-patchcli-');
     writeFileSync(join(root, 'page.png'), 'x');
     writeFileSync(join(root, 'patches.json'), spec);
     return root;

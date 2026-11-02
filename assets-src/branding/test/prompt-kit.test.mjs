@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { SENT_TEXT_FIELDS } from '../scripts/lib/masters.mjs';
 import { composePrompt, loadPromptKit } from '../scripts/lib/prompt-kit.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const REAL_PROMPTS = join(dirname(fileURLToPath(import.meta.url)), '..', 'prompts');
 
 function writeKit(files) {
-    const dir = mkdtempSync(join(tmpdir(), 'sb-kit-'));
+    const dir = tempDir('sb-kit-');
     for (const [name, text] of Object.entries(files)) {
         mkdirSync(dirname(join(dir, name)), { recursive: true });
         writeFileSync(join(dir, name), text);

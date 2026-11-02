@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -14,6 +13,7 @@ import { opaqueBox, readRaster, writeRaster } from '../scripts/lib/raster.mjs';
 import { buildSvg, findVtracer, runVectorize } from '../scripts/lib/vectorize-run.mjs';
 import { DARK, LIGHT, MID, emblem } from '../test-support/emblem.mjs';
 import { getPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 let vtracer;
 try {
@@ -28,7 +28,7 @@ const NOW = () => new Date('2026-11-01T12:00:00.000Z');
 const DRIFTED = [136, 99, 158];
 
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-vectorize-'));
+    const rootDir = tempDir('sb-vectorize-');
     mkdirSync(join(rootDir, 'approved'));
     const picture = emblem();
     for (let at = 0; at < picture.data.length; at += 4) {

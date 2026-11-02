@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
 import { test } from 'node:test';
@@ -11,6 +10,7 @@ import { OUTLINE, outlineCrop, renderPatchOverlay } from '../scripts/lib/patch-o
 import { parsePatchSpec } from '../scripts/lib/patch.mjs';
 import { readRaster, writeRaster } from '../scripts/lib/raster.mjs';
 import { createRaster, getPixel, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'patch-overlay.mjs');
 
@@ -86,7 +86,7 @@ test('flags inside the crop are tinted at their enlarged position, flags outside
 });
 
 test('the script takes a flags file and draws it on every crop', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'sb-overlay-flags-'));
+    const cwd = tempDir('sb-overlay-flags-');
     await writeRaster(join(cwd, 'page.png'), page());
     writeFileSync(join(cwd, 'spec.json'), JSON.stringify([{ crop: [10, 20, 40, 30], composite: [[15, 25, 10, 8]] }]));
     writeFileSync(join(cwd, 'flags.json'), JSON.stringify([[30, 40, 1]]));
@@ -103,7 +103,7 @@ test('the script takes a flags file and draws it on every crop', async () => {
 });
 
 test('the script writes the sheet to out/patches named after the spec and refuses a bad spec before writing anything', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'sb-overlay-'));
+    const cwd = tempDir('sb-overlay-');
     await writeRaster(join(cwd, 'page.png'), page());
     writeFileSync(join(cwd, 'spec.json'), JSON.stringify([{ crop: [10, 20, 40, 30], composite: [[15, 25, 10, 8]] }]));
     const result = spawnSync('node', [SCRIPT, '--image', 'page.png', '--spec', 'spec.json'], { cwd, encoding: 'utf8' });

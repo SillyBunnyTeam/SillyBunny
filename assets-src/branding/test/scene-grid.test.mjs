@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import sharp from 'sharp';
@@ -15,6 +14,7 @@ import { runComposeScene } from '../scripts/lib/scene-run.mjs';
 import { buildCompositeSheet } from '../scripts/lib/snap-sheet.mjs';
 import { figure } from '../test-support/figure.mjs';
 import { createRaster, getPixel, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const NOW = () => new Date('2026-11-02T12:00:00.000Z');
 const RED = [220, 30, 30, 255];
@@ -129,7 +129,7 @@ test('a ratio between two figures comes from the heights they were snapped at, a
 });
 
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-grid-'));
+    const rootDir = tempDir('sb-grid-');
     for (const dir of ['raw/s5/pixel', 'raw/s3', 'layouts', 'out/s5', 'approved']) {
         mkdirSync(join(rootDir, dir), { recursive: true });
     }
@@ -204,7 +204,7 @@ test('an approved grid scene is kept under approved/pixel/ beside a smooth maste
 
 /** A package root with a grid layout of one layer, its smooth twin, a still, a review file and, when asked, the log line of the still's snap. */
 async function compositeRoot({ logged = true } = {}) {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-composite-'));
+    const rootDir = tempDir('sb-composite-');
     for (const folder of ['layouts', 'raw', 'review']) {
         mkdirSync(join(rootDir, folder));
     }

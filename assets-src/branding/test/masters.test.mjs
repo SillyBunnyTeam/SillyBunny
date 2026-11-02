@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +7,7 @@ import { loadConfig } from '../scripts/lib/config.mjs';
 import { loadEnvironment } from '../scripts/lib/env.mjs';
 import { buildRequest, dryRunMasters, generateMasters, formatTable, parseMastersSpec, refsLabel, summarise } from '../scripts/lib/masters.mjs';
 import { composePrompt, loadPromptKit } from '../scripts/lib/prompt-kit.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const BRANDING = join(dirname(fileURLToPath(import.meta.url)), '..');
 const kit = loadPromptKit(join(BRANDING, 'prompts'));
@@ -253,7 +253,7 @@ const KEY = 'sk-test-0123456789abcdefABCDEF';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 test('a real run sends one request per slot through the usual run, logs it under stage s5, and saves under raw/s5/<id>/', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'sb-masters-'));
+    const root = tempDir('sb-masters-');
     mkdirSync(join(root, 'log'));
     mkdirSync(join(root, 'refs'));
     for (const path of Object.values(REFS)) {

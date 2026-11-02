@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(ROOT, 'scripts', 'logo-fix-check.mjs');
@@ -19,7 +20,7 @@ const plate = (shift) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1
 const sheetName = (label) => join('out', 'test-tmp', `logo-fix-check-${process.pid}-${label}.png`);
 const run = (args) => spawnSync('node', [SCRIPT, ...args], { encoding: 'utf8', cwd: ROOT });
 const folderWith = (names, at) => {
-    const directory = mkdtempSync(join(tmpdir(), 'sb-fix-'));
+    const directory = tempDir('sb-fix-');
     for (const name of names) {
         writeFileSync(join(directory, name), plate(at));
     }
@@ -34,7 +35,7 @@ const masterFile = async () => {
             data.set(hole ? [139, 100, 170, 0] : [139, 100, 170, 255], (y * 1024 + x) * 4);
         }
     }
-    const path = join(mkdtempSync(join(tmpdir(), 'sb-master-')), 'master.png');
+    const path = join(tempDir('sb-master-'), 'master.png');
     await sharp(data, { raw: { width: 1024, height: 1024, channels: 4 } }).png().toFile(path);
     return path;
 };
@@ -63,7 +64,7 @@ test('a missing plate is named, and nothing is written', async () => {
 });
 
 test('a master with no letters, and a call with no master, stop the command with a message', async () => {
-    const solid = join(mkdtempSync(join(tmpdir(), 'sb-master-')), 'solid.png');
+    const solid = join(tempDir('sb-master-'), 'solid.png');
     await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 1, g: 2, b: 3, alpha: 1 } } }).png().toFile(solid);
     const sheet = sheetName('solid');
     const outcome = run(['--master', solid, '--old', folderWith(PLATES, 0), '--new', folderWith(PLATES, 2), '--sheet', sheet]);

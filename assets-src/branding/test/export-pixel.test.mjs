@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,13 +11,14 @@ import { sha256 } from '../scripts/lib/log.mjs';
 import { readRaster, writeRaster } from '../scripts/lib/raster.mjs';
 import { renderExportSheets } from '../scripts/lib/export-sheets.mjs';
 import { createRaster, getPixel, nativeSprite, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'export-art.mjs');
 const COLOURS = [[200, 40, 50], [40, 60, 200], [230, 210, 90], [60, 160, 90], [250, 250, 250]];
 
 /** A package with a snapped still (60 x 70 art pixels, 6 empty around a 48 x 58 body) and a smooth master with soft edges. */
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-pixel-export-'));
+    const rootDir = tempDir('sb-pixel-export-');
     mkdirSync(join(rootDir, 'approved', 'pixel'), { recursive: true });
     const snapped = nativeSprite(60, 70, COLOURS, { seed: 9, margin: 6 });
     await writeRaster(join(rootDir, 'approved', 'pixel', 'hero.png'), snapped);

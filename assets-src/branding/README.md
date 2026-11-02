@@ -194,3 +194,5 @@ The endpoint's older `model_price` field says $0.30 for the GPT Image models; it
 ## Tests
 
 `npm test` runs `node --test` with no network; every provider call is a stubbed `fetch`.
+
+- A test makes its scratch folders with `tempDir(prefix)` from `test-support/temp-dir.mjs`, never with `mkdtempSync` directly. The folders are removed when the test process exits under `node --test`, whether the tests passed or not. `bun test` never emits `exit`, so `bunfig.toml` preloads `test-support/bun-preload.mjs`, which removes them after the last test file; run `bun test` from this folder for that to apply.

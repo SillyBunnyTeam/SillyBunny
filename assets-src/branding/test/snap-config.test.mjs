@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { bodyHeightFor, characterOf, configuredRingWidths, parseSnapConfig } from '../scripts/lib/snap-config.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG = { bodyHeights: { tewi: 283, reisen: 340 }, lineupRatio: 0.8333 };
 
 function root({ config = CONFIG, assets = { solo: { characters: ['tewi'] }, duo: { characters: ['reisen', 'tewi'] } } } = {}) {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-snapcfg-'));
+    const rootDir = tempDir('sb-snapcfg-');
     mkdirSync(join(rootDir, 'prompts'));
     writeFileSync(join(rootDir, 'prompts', 's5-masters.json'), JSON.stringify({ assets }));
     if (config) {

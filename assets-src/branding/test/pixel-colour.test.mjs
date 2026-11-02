@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { findPalettePath, formatHex, oklabToSrgb, paletteIndexFinder, parsePalette, srgbToOklab } from '../scripts/lib/pixel-colour.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 test('sRGB converts to OKLab and back without drifting', () => {
     for (const rgb of [[0, 0, 0], [255, 255, 255], [255, 0, 0], [12, 200, 90], [133, 71, 220], [240, 241, 251]]) {
@@ -41,7 +41,7 @@ test('the nearest palette colour is found in OKLab and is cached', () => {
 });
 
 test('a palette name resolves from the working directory, then from palettes/ in the package, with .hex or .gpl', () => {
-    const root = mkdtempSync(join(tmpdir(), 'sb-pal-'));
+    const root = tempDir('sb-pal-');
     mkdirSync(join(root, 'palettes'));
     writeFileSync(join(root, 'palettes', 'reisen.hex'), 'ffffff\n');
     writeFileSync(join(root, 'palettes', 'tewi.gpl'), 'GIMP Palette\n1 2 3 x\n');

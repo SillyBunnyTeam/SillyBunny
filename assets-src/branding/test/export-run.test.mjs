@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,12 +10,13 @@ import { exportAssets, variantLines } from '../scripts/lib/export-run.mjs';
 import { sha256 } from '../scripts/lib/log.mjs';
 import { writeRaster } from '../scripts/lib/raster.mjs';
 import { addNoise, createRaster, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'export-art.mjs');
 
 /** A 240 square master with a disc of grained colour in it, off centre, and a lot of empty canvas. */
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-export-'));
+    const rootDir = tempDir('sb-export-');
     mkdirSync(join(rootDir, 'raw', 'masters'), { recursive: true });
     const raster = createRaster(240, 240);
     for (let y = 0; y < 240; y++) {

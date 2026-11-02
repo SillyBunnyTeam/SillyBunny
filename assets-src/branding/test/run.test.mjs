@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +9,7 @@ import { loadEnvironment } from '../scripts/lib/env.mjs';
 import { sha256 } from '../scripts/lib/log.mjs';
 import { loadPromptKit } from '../scripts/lib/prompt-kit.mjs';
 import { runGeneration } from '../scripts/lib/run.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const BRANDING = join(dirname(fileURLToPath(import.meta.url)), '..');
 const KEY = 'sk-test-0123456789abcdefABCDEF';
@@ -19,7 +19,7 @@ const config = loadConfig(join(BRANDING, 'config.json'));
 const kit = loadPromptKit(join(BRANDING, 'prompts'));
 
 function makeRoot(logLines = []) {
-    const root = mkdtempSync(join(tmpdir(), 'sb-run-'));
+    const root = tempDir('sb-run-');
     mkdirSync(join(root, 'log'));
     writeFileSync(join(root, 'log', 'generations.jsonl'), logLines.map((l) => `${JSON.stringify(l)}\n`).join(''));
     writeFileSync(join(root, 'ref.png'), PNG);

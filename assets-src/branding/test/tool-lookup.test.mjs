@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { detectTools } from '../scripts/lib/notice.mjs';
 import { findPotrace } from '../scripts/lib/potrace.mjs';
 import { findTool, toolCandidates } from '../scripts/lib/tool-lookup.mjs';
 import { findVtracer } from '../scripts/lib/vectorize-run.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const RUNTIMES = { sharp: '0', node: 'v0' };
 // What the notice generator does to run a tool, with the PATH of the environment under test so a tool installed on this machine cannot leak in.
@@ -15,7 +15,7 @@ const runIn = (env) => (command, args) => execFileSync(command, args, { encoding
 
 /** A folder standing in for a home folder, and a program that answers --version like the real tool. */
 function fakeTool(name, version) {
-    const home = mkdtempSync(join(tmpdir(), 'sb-tool-'));
+    const home = tempDir('sb-tool-');
     const program = (directory) => {
         mkdirSync(directory, { recursive: true });
         const path = join(directory, name);
@@ -53,7 +53,7 @@ test('vtracer reached through the cargo directory, which is not on the PATH, is 
 });
 
 test('a vtracer that is nowhere is refused by the scripts with their message and shown as not installed in the notice', () => {
-    const env = { HOME: mkdtempSync(join(tmpdir(), 'sb-tool-')), PATH: '' };
+    const env = { HOME: tempDir('sb-tool-'), PATH: '' };
     assert.equal(findTool('vtracer', env), undefined);
     assert.throws(() => findVtracer(env), /vtracer was not found\. Install it with `cargo install vtracer` or set VTRACER/);
     assert.equal(rowOf(detectTools(runIn(env), RUNTIMES, env), 'vtracer'), 'not installed');

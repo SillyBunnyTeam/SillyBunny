@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { appendLogEntry, makeLogEntry, readLog, runningTotalUsd } from '../scripts/lib/log.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const base = { time: 't', stage: 's', provider: 'openai', model: 'm', template: 'x', vars: {}, refHashes: [], size: '1024x1024', outputs: [{ file: 'a', sha256: 'b' }], estimatedUsd: 0.2 };
 
@@ -21,7 +21,7 @@ test('chargedUsd sits after estimatedUsd and only appears when it is measured', 
 });
 
 test('the first log line creates log/ on a checkout that has no log yet', () => {
-    const logPath = join(mkdtempSync(join(tmpdir(), 'sb-log-')), 'log', 'generations.jsonl');
+    const logPath = join(tempDir('sb-log-'), 'log', 'generations.jsonl');
     assert.ok(!existsSync(logPath));
     assert.deepEqual(readLog(logPath), []);
     appendLogEntry(logPath, makeLogEntry(base));

@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import sharp from 'sharp';
 import { buildContactSheet } from '../scripts/lib/contact-sheet.mjs';
 import { keyBackgroundFile, parseHexColour } from '../scripts/lib/key.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
-const scratch = () => mkdtempSync(join(tmpdir(), 'sb-img-'));
+const scratch = () => tempDir('sb-img-');
 
 async function writePng(path, width, height, pixels) {
     const data = Buffer.alloc(width * height * 4);

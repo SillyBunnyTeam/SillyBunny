@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
 import { test } from 'node:test';
@@ -12,6 +11,7 @@ import { runPatches } from '../scripts/lib/patch-run.mjs';
 import { loadPromptKit } from '../scripts/lib/prompt-kit.mjs';
 import { readRaster } from '../scripts/lib/raster.mjs';
 import { createRaster, getPixel, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const BRANDING = join(dirname(fileURLToPath(import.meta.url)), '..');
 const KEY = 'sk-test-0123456789abcdefABCDEF';
@@ -35,7 +35,7 @@ function page(background = [240, 236, 250, 255]) {
 }
 
 async function makeRoot({ logLines = [], background } = {}) {
-    const root = mkdtempSync(join(tmpdir(), 'sb-patch-'));
+    const root = tempDir('sb-patch-');
     mkdirSync(join(root, 'refs'));
     const source = page(background);
     const imagePath = join(root, 'refs', 'page.png');

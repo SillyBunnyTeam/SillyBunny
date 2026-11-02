@@ -1,0 +1,2 @@
+[test]
+preload = ["./test-support/bun-preload.mjs"]

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +13,7 @@ import { findPotrace } from '../scripts/lib/potrace.mjs';
 import { DARK, LIGHT, MID } from '../test-support/emblem.mjs';
 import { LEFT_DOT, logoWithLines } from '../test-support/logo-lines.mjs';
 import { createRaster, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 let potrace;
 try {
@@ -27,7 +27,7 @@ const NOW = () => new Date('2026-11-02T12:00:00.000Z');
 const DRIFTED = [136, 99, 158];
 
 async function workspace(picture = logoWithLines()) {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-plates-'));
+    const rootDir = tempDir('sb-plates-');
     mkdirSync(join(rootDir, 'approved'));
     for (let at = 0; at < picture.data.length; at += 4) {
         if (picture.data[at] === MID[0] && picture.data[at + 1] === MID[1] && picture.data[at + 2] === MID[2]) {

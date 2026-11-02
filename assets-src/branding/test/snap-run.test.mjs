@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +14,7 @@ import { compareSampling, measureMasters, parseBatch, readRegions, runBatch, run
 import { buildSnapSheet, parseRegions } from '../scripts/lib/snap-sheet.mjs';
 import { figure } from '../test-support/figure.mjs';
 import { getPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'snap.mjs');
 const NOW = () => new Date('2026-11-02T12:00:00.000Z');
@@ -27,7 +27,7 @@ const REGIONS = {
 
 /** A package root holding an approved master `m.png` that was logged and approved the way a generated picture is. */
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-snap-'));
+    const rootDir = tempDir('sb-snap-');
     mkdirSync(join(rootDir, 'raw', 's3'), { recursive: true });
     const raw = join(rootDir, 'raw', 's3', 'm.png');
     await writeRaster(raw, figure());

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +9,7 @@ import { createRaster, readRaster, writeRaster } from '../scripts/lib/raster.mjs
 import { runComposeScene } from '../scripts/lib/scene-run.mjs';
 import { figure } from '../test-support/figure.mjs';
 import { getPixel, setPixel } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'compose-scene.mjs');
 const NOW = () => new Date('2026-11-01T12:00:00.000Z');
@@ -27,7 +27,7 @@ function block(colour) {
 }
 
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-scene-'));
+    const rootDir = tempDir('sb-scene-');
     for (const dir of ['raw/s5/masters', 'layouts', 'out/s5']) {
         mkdirSync(join(rootDir, dir), { recursive: true });
     }

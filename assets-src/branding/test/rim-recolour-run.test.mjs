@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,12 +10,13 @@ import { measureApprovedRims, runRimRecolour } from '../scripts/lib/rim-recolour
 import { readRaster, writeRaster } from '../scripts/lib/raster.mjs';
 import { getPixel } from '../test-support/synthetic.mjs';
 import { EDGE, ringlessSticker, sticker } from '../test-support/sticker.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'rim-recolour.mjs');
 const NOW = () => new Date('2026-11-01T12:00:00.000Z');
 
 async function workspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-rim-'));
+    const rootDir = tempDir('sb-rim-');
     mkdirSync(join(rootDir, 'raw', 's3', 'concept'), { recursive: true });
     const inPath = join(rootDir, 'raw', 's3', 'concept', 'a-edit-2.png');
     await writeRaster(inPath, sticker());
@@ -76,7 +76,7 @@ test('the command line takes --in, --out and --target, and says what it did', as
 });
 
 async function ringlessWorkspace() {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-addrim-'));
+    const rootDir = tempDir('sb-addrim-');
     mkdirSync(join(rootDir, 'raw', 's5', 'draft'), { recursive: true });
     const inPath = join(rootDir, 'raw', 's5', 'draft', 'a-2.png');
     await writeRaster(inPath, ringlessSticker());
@@ -114,7 +114,7 @@ test('an add-rim output can be approved like any other, and a picture that has a
 });
 
 test('the approved masters give the rim width: the median of their own widths, skipping sheets and pictures that have no rim to measure', async () => {
-    const rootDir = mkdtempSync(join(tmpdir(), 'sb-approved-'));
+    const rootDir = tempDir('sb-approved-');
     const dir = join(rootDir, 'approved');
     mkdirSync(dir);
     await writeRaster(join(dir, 'one.png'), sticker());

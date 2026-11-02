@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { capInflatedCharges } from '../scripts/lib/log-fix.mjs';
 import { activeRuns } from '../scripts/lib/token-runs.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'fix-charged.mjs');
 const FROM = '2026-11-01T09:10:00.000Z';
@@ -67,18 +67,18 @@ test('a time that is not a date is refused', () => {
 });
 
 test('active runs are the records with no end whose process is alive', () => {
-    const root = mkdtempSync(join(tmpdir(), 'sb-active-'));
+    const root = tempDir('sb-active-');
     const dir = join(root, 'log', '.runs');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'openai-1-10-aa.json'), JSON.stringify({ provider: 'openai', pid: 10, startedAt: 1 }));
     writeFileSync(join(dir, 'openai-2-11-bb.json'), JSON.stringify({ provider: 'openai', pid: 11, startedAt: 2, endedAt: 3 }));
     writeFileSync(join(dir, 'openai-4-12-cc.json'), JSON.stringify({ provider: 'openai', pid: 12, startedAt: 4 }));
     assert.deepEqual(activeRuns(root, { isAlive: (pid) => pid === 10 }).map(({ pid }) => pid), [10]);
-    assert.deepEqual(activeRuns(mkdtempSync(join(tmpdir(), 'sb-none-')), { isAlive: () => true }), []);
+    assert.deepEqual(activeRuns(tempDir('sb-none-'), { isAlive: () => true }), []);
 });
 
 function workspace(lines, extra = {}) {
-    const root = mkdtempSync(join(tmpdir(), 'sb-fixcli-'));
+    const root = tempDir('sb-fixcli-');
     mkdirSync(join(root, 'log'), { recursive: true });
     writeFileSync(join(root, 'log', 'generations.jsonl'), `${lines.join('\n')}\n`);
     return { root, ...extra };

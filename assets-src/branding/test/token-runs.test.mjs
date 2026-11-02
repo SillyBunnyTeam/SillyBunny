@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { endRun, otherRunsDuring, startRun } from '../scripts/lib/token-runs.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const at = (minute, second = 0) => new Date(Date.UTC(2026, 10, 1, 9, minute, second));
 const clock = (date) => () => date;
 const alive = () => true;
 const dead = () => false;
 
-const makeRoot = () => mkdtempSync(join(tmpdir(), 'sb-runs-'));
+const makeRoot = () => tempDir('sb-runs-');
 const runsOf = (root) => readdirSync(join(root, 'log', '.runs')).sort();
 
 /** A record another process left, as startRun and endRun write them. */

@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import sharp from 'sharp';
 import { splitSubpaths } from '../scripts/lib/geometry.mjs';
 import { lumaOf, silhouetteCoverage, toneLumaField, traceTones } from '../scripts/lib/field-trace.mjs';
 import { findPotrace } from '../scripts/lib/potrace.mjs';
 import { serialisePath } from '../scripts/lib/vector-path.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 let potrace;
 try {
@@ -174,7 +172,7 @@ const render = async (commands, fill) => {
 
 test('three layers come back, and a band reaches no further past the shape than the overhang', needsPotrace, async () => {
     const { coverage, luma } = discPicture();
-    const layers = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) });
+    const layers = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') });
     assert.deepEqual(Object.keys(layers), ['base', 'letters', 'dark', 'light']);
     assert.deepEqual(layers.letters, [], 'a picture with no letters has none');
     const [base, dark, light] = await Promise.all([render(layers.base, '#000'), render(layers.dark, '#000'), render(layers.light, '#000')]);
@@ -205,7 +203,7 @@ test('three layers come back, and a band reaches no further past the shape than 
 
 test('where a band meets the edge of the shape the base tone does not show beside it', needsPotrace, async () => {
     const { coverage, luma } = discPicture();
-    const layers = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) });
+    const layers = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') });
     const [base, dark, light] = await Promise.all([render(layers.base, '#000'), render(layers.dark, '#000'), render(layers.light, '#000')]);
     const across = SIZE * 2;
     let [darkRim, lightRim] = [0, 0];
@@ -222,7 +220,7 @@ test('where a band meets the edge of the shape the base tone does not show besid
 
 test('the bands are where the luma says, and the base is the whole disc', needsPotrace, async () => {
     const { coverage, luma } = discPicture();
-    const layers = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) });
+    const layers = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') });
     const areas = Object.fromEntries(await Promise.all(Object.entries(layers).map(async ([name, commands]) => [name, (await render(commands, '#000')).reduce((sum, value) => sum + value, 0) / 255 / 4])));
     assert.ok(Math.abs(areas.base - Math.PI * 40 * 40) < 40, `${areas.base}`);
     // The cap above row 38 and the band from row 83 down are circular segments of a disc of radius 40 centred on row 60, and each reaches
@@ -240,7 +238,7 @@ test('a hole in the shape comes back as a shape of its own, so the outline has n
             coverage[y * SIZE + x] = 0;
         }
     }
-    const { base, letters } = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) });
+    const { base, letters } = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') });
     assert.equal(splitSubpaths(base).length, 1);
     assert.equal(splitSubpaths(letters).length, 1);
     const [outline, shape] = await Promise.all([render(base, '#000'), render(letters, '#000')]);
@@ -257,7 +255,7 @@ test('the letters keep their straight sides and corners, with no more curve than
             coverage[y * SIZE + x] = 0;
         }
     }
-    const { letters } = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) });
+    const { letters } = await traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') });
     const ends = letters.filter(({ command }) => command !== 'Z').map(({ points }) => points[points.length - 1]);
     for (const [x, y] of [[45, 50], [55, 50], [55, 80], [45, 80]]) {
         assert.ok(ends.some((end) => Math.hypot(end[0] - x, end[1] - y) < 0.9), `a corner at ${x},${y} in ${JSON.stringify(ends.map((end) => end.map((value) => Math.round(value * 10) / 10)))}`);
@@ -268,9 +266,9 @@ test('the letters keep their straight sides and corners, with no more curve than
 test('a tone with no pixels is an error that names the tone', needsPotrace, async () => {
     const { coverage } = discPicture();
     const luma = new Float32Array(SIZE * SIZE).fill(100);
-    await assert.rejects(traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) }), /no pixel of the dark tone/);
+    await assert.rejects(traceTones({ coverage, luma, width: SIZE, height: SIZE, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') }), /no pixel of the dark tone/);
 });
 
 test('a picture with no coverage has nothing to trace', needsPotrace, async () => {
-    await assert.rejects(traceTones({ coverage: new Float32Array(100), luma: new Float32Array(100), width: 10, height: 10, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-field-')) }), /nothing to trace/);
+    await assert.rejects(traceTones({ coverage: new Float32Array(100), luma: new Float32Array(100), width: 10, height: 10, levels: { dark: 40, base: 100, light: 200 } }, { potrace, directory: tempDir('sb-field-') }), /nothing to trace/);
 });

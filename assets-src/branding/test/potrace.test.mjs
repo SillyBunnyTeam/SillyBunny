@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import { encodePbm, findPotrace, parsePotraceSvg, traceBitmap } from '../scripts/lib/potrace.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 let potrace;
 try {
@@ -61,7 +59,7 @@ test('a bitmap of a rectangle comes back as one closed outline of straight lines
             data[y * width + x] = 1;
         }
     }
-    const commands = traceBitmap({ width, height, data }, { potrace, directory: mkdtempSync(join(tmpdir(), 'sb-potrace-')), alphamax: 1, opttolerance: 0.2 });
+    const commands = traceBitmap({ width, height, data }, { potrace, directory: tempDir('sb-potrace-'), alphamax: 1, opttolerance: 0.2 });
     assert.equal(commands.filter(({ command }) => command === 'M').length, 1);
     assert.equal(commands.at(-1).command, 'Z');
     const corners = commands.flatMap(({ points }) => points.slice(-1)).map(([x, y]) => `${Math.round(x)},${Math.round(y)}`);
@@ -72,5 +70,5 @@ test('a bitmap of a rectangle comes back as one closed outline of straight lines
 
 test('potrace failing is reported with its message', needsPotrace, () => {
     assert.throws(() => traceBitmap({ width: 4, height: 4, data: new Uint8Array(16) }, { potrace, directory: '/nonexistent-directory-for-sb', alphamax: 1, opttolerance: 0.2 }), /ENOENT|no such file/i);
-    assert.throws(() => traceBitmap({ width: 4, height: 4, data: new Uint8Array(16) }, { potrace: '/bin/false', directory: mkdtempSync(join(tmpdir(), 'sb-potrace-')), alphamax: 1, opttolerance: 0.2 }), /potrace failed/);
+    assert.throws(() => traceBitmap({ width: 4, height: 4, data: new Uint8Array(16) }, { potrace: '/bin/false', directory: tempDir('sb-potrace-'), alphamax: 1, opttolerance: 0.2 }), /potrace failed/);
 });

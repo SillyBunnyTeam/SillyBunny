@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { findOrphans } from '../scripts/lib/pixelate.mjs';
 import { readRaster, writeRaster } from '../scripts/lib/raster.mjs';
 import { addNoise, blur, countMatches, createRaster, getPixel, nativeSprite, setPixel, upscale } from '../test-support/synthetic.mjs';
+import { tempDir } from '../test-support/temp-dir.mjs';
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 const PALETTE = [[200, 40, 50], [40, 60, 200], [230, 210, 90], [60, 160, 90], [250, 250, 250], [40, 20, 50]];
@@ -16,7 +16,7 @@ const hex = (rgb) => rgb.map((c) => c.toString(16).padStart(2, '0')).join('');
 const run = (script, args, cwd) => spawnSync('node', [join(SCRIPTS, script), ...args], { cwd, encoding: 'utf8' });
 
 async function workspace() {
-    const cwd = mkdtempSync(join(tmpdir(), 'sb-pixelcli-'));
+    const cwd = tempDir('sb-pixelcli-');
     writeFileSync(join(cwd, 'palette.hex'), `${PALETTE.map(hex).join('\n')}\n`);
     const native = nativeSprite(64, 60, PALETTE, { seed: 11, margin: 14 });
     const messy = blur(addNoise(upscale(native, 8), 8));
@@ -80,7 +80,7 @@ test('pixel-fix applies a patch to a copy, counts the change and can hold the pa
 });
 
 test('trim-align writes every frame on the shared canvas with the feet on one line', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'sb-trimcli-'));
+    const cwd = tempDir('sb-trimcli-');
     for (const [name, x, y, w, h] of [['a', 3, 2, 6, 10], ['b', 5, 4, 8, 14]]) {
         const frame = createRaster(20, 20);
         for (let row = y; row < y + h; row++) {
@@ -103,7 +103,7 @@ test('trim-align writes every frame on the shared canvas with the feet on one li
 });
 
 test('palette-extract writes a draft .hex, .gpl and preview and says it is a draft', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'sb-palcli-'));
+    const cwd = tempDir('sb-palcli-');
     const sheet = createRaster(300, 300, [244, 241, 251, 255]);
     const hues = [[170, 150, 210], [200, 40, 60], [50, 30, 40], [240, 200, 170], [60, 160, 90], [230, 190, 40], [40, 90, 200], [230, 120, 40], [120, 70, 40], [30, 170, 190]];
     hues.forEach((colour, index) => {
@@ -124,7 +124,7 @@ test('palette-extract writes a draft .hex, .gpl and preview and says it is a dra
 });
 
 test('every script prints a usage line and exits with 1 when given nothing', () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'sb-usage-'));
+    const cwd = tempDir('sb-usage-');
     for (const script of ['pixelate.mjs', 'pixel-fix.mjs', 'trim-align.mjs', 'palette-extract.mjs', 'grid-image.mjs']) {
         const real = run(script, [], cwd);
         assert.equal(real.status, 1, script);
