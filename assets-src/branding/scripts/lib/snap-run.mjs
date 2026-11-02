@@ -11,6 +11,7 @@ import { parseHexColour } from './rim-recolour.mjs';
 import { figureProblems, measureFigureScaled } from './scene-measure.mjs';
 import { resolveOutDir } from './run.mjs';
 import { bodyHeightFor, characterOf, configuredRingWidths } from './snap-config.mjs';
+import { assertFrameId, baseFixesFile, checkFrame, findBaseSnap, gridOptionsOf } from './snap-frame.mjs';
 import { buildSamplingSheet, buildSnapSheet, parseRegions } from './snap-sheet.mjs';
 
 const ID = /^[\w-]+$/;
@@ -57,10 +58,11 @@ function resolveSizing({ rootDir, id, character, options, detect }) {
 
 /**
  * Snaps one master and applies its touch-ups. The touch-ups come after the snap and are a fixed list of pixels, so snapping the same master
- * with the same options always gives the same file.
- * @param {{ rootDir: string, masterPath: string, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, character?: string, detect?: boolean }} request
+ * with the same options always gives the same file. With `noFixes` the fixes/<id>.json that would be found is not looked for, which is how a
+ * frame gets the touch-ups of its base (named by `fixesPath`) and no others.
+ * @param {{ rootDir: string, masterPath: string, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, noFixes?: boolean, character?: string, detect?: boolean }} request
  */
-export async function snapPicture({ rootDir, masterPath, id, options = {}, fixesPath, character, detect = false }) {
+export async function snapPicture({ rootDir, masterPath, id, options = {}, fixesPath, noFixes = false, character, detect = false }) {
     const name = snapId(masterPath, id);
     const sized = resolveSizing({ rootDir, id: name, character, options, detect });
     const masterBytes = readFileSync(masterPath);
@@ -68,7 +70,7 @@ export async function snapPicture({ rootDir, masterPath, id, options = {}, fixes
     const master = await readRaster(masterPath);
     // The ring widths are one for every picture: the config sets them, and a flag or batch key for this picture overrides them.
     const { raster: snapped, report } = snapRaster(master, { ...configuredRingWidths(rootDir), ...Object.fromEntries(Object.entries(sized.options).filter(([, value]) => value !== undefined)) });
-    const fixes = findFixes({ rootDir, id: name, fixesPath });
+    const fixes = noFixes ? undefined : findFixes({ rootDir, id: name, fixesPath });
     let raster = snapped;
     let patched = null;
     if (fixes) {
@@ -121,10 +123,13 @@ const absoluteIn = (rootDir, path) => (isAbsolute(path) ? path : resolve(rootDir
 /**
  * Everything a snap needs before anything is written: the checks on where it goes, the snapped picture, its PNG and its review sheet,
  * all in memory. A batch prepares every picture first, so a bad one stops the batch before the first file or log line is written.
+ * With `gridFrom` (an approved snap's file or sha256) the picture is a frame of that snap: it takes the snap's grid and settings as logged,
+ * with nothing detected, is called `<snap id>--<name>`, and is checked against the snap, which `frameRegion` (master pixels) limits to the area
+ * that may change. The check is made before anything is written.
  * @param {{ rootDir: string, masterPath: string, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, character?: string, detect?: boolean,
- *   outPath?: string, outDir?: string, stage?: string, preview?: boolean, sheetPath?: string }} request
+ *   outPath?: string, outDir?: string, stage?: string, preview?: boolean, sheetPath?: string, gridFrom?: string, frameRegion?: { x: number, y: number, width: number, height: number } }} request
  */
-export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixesPath, character, detect, outPath, outDir, stage, preview = false, sheetPath }) {
+export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixesPath, character, detect, outPath, outDir, stage, preview = false, sheetPath, gridFrom, frameRegion }) {
     const name = snapId(masterPath, id);
     if (!preview && !stage) {
         throw new Error('Pass --stage (such as s5) for a run that is logged, or --preview to write under out/ without logging.');
@@ -144,8 +149,21 @@ export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixes
         resolveOutDir(rootDir, dirname(absoluteSheet));
     }
 
-    const snap = await snapPicture({ rootDir, masterPath, id: name, options, fixesPath, character, detect });
-    const { report } = snap;
+    const base = gridFrom ? await findBaseSnap({ rootDir, from: gridFrom }) : undefined;
+    if (!base && frameRegion) {
+        throw new Error('--frame-region limits what a frame changed from its base, so it needs --grid-from.');
+    }
+    if (base) {
+        assertFrameId(name, base.id);
+        if (existsSync(join(rootDir, 'fixes', `${name}.json`))) {
+            throw new Error(`fixes/${name}.json exists, but a frame gets the touch-ups of its base snap "${base.id}" and no others. Remove the file.`);
+        }
+    }
+    const snap = base
+        ? await snapPicture({ rootDir, masterPath, id: name, options: gridOptionsOf(base), fixesPath: baseFixesFile(rootDir, base), noFixes: !base.vars.fixes, character: base.vars.character ?? undefined })
+        : await snapPicture({ rootDir, masterPath, id: name, options, fixesPath, character, detect });
+    const frame = base ? checkFrame({ base: base.raster, frame: snap.raster, grid: { cell: snap.report.cell, offset: snap.report.offset }, baseId: base.id, region: frameRegion, masterSize: snap.master }) : undefined;
+    const report = frame ? { ...snap.report, frame: { ...frame, base: { id: base.id, sha256: base.sha256, file: base.file } } } : snap.report;
     const png = await sharp(snap.raster.data, { raw: { width: snap.raster.width, height: snap.raster.height, channels: 4 } }).png({ compressionLevel: 9 }).toBuffer();
     let sheet;
     if (absoluteSheet) {
@@ -153,12 +171,13 @@ export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixes
         const caption = `${name}, cell ${report.cell.toFixed(3)}, ${report.size.width}x${report.size.height} art px, figure ${report.figureHeight} tall, head to feet ${report.body.height}`;
         sheet = { path: absoluteSheet, bytes: await buildSnapSheet({ master: snap.master, native: snap.raster, grid, regions: readRegions({ rootDir, id: name, master: snap.master }), caption }) };
     }
-    return { ...snap, masterPath, absoluteOut, logOut, png, sheet };
+    const refHashes = base ? [sha256(snap.masterBytes), base.sha256] : [sha256(snap.masterBytes)];
+    return { ...snap, report, masterPath, absoluteOut, logOut, png, sheet, refHashes };
 }
 
 /**
  * Writes a prepared snap: the PNG (never over a file), the sheet, and, unless it is a preview, one log entry as a local tool (no model call,
- * so no cost): `refs` holds the master's sha256, and everything needed to repeat the snap is in `vars`.
+ * so no cost): `refs` holds the master's sha256 (and, for a frame, the base snap's), and everything needed to repeat the snap is in `vars`.
  */
 export function commitSnap(prepared, { rootDir, stage, preview = false, now }) {
     const { report } = prepared;
@@ -178,7 +197,7 @@ export function commitSnap(prepared, { rootDir, stage, preview = false, now }) {
             model: 'pixel-snap',
             template: 'pixel-snap',
             vars: snapVars({ rootDir, masterPath: prepared.masterPath, id: prepared.id, character: prepared.character, report }),
-            refHashes: [sha256(prepared.masterBytes)],
+            refHashes: prepared.refHashes,
             size: `${report.size.width}x${report.size.height}`,
             outputs: [{ file: prepared.logOut, sha256: sha256(prepared.png) }],
             estimatedUsd: 0,
@@ -278,7 +297,7 @@ function snapVars({ rootDir, masterPath, id, character, report }) {
         cell: report.cell,
         cellSource: report.cellSource,
         offset: report.offset,
-        pitch: { across: round(report.pitchAcross), down: round(report.pitchDown), strengthAcross: round(report.strengthAcross), strengthDown: round(report.strengthDown) },
+        pitch: report.pitchAcross === null ? null : { across: round(report.pitchAcross), down: round(report.pitchDown), strengthAcross: round(report.strengthAcross), strengthDown: round(report.strengthDown) },
         sample: report.sample,
         colours: report.colours,
         targetBodyHeight: report.targetBodyHeight,
@@ -290,6 +309,7 @@ function snapVars({ rootDir, masterPath, id, character, report }) {
         ringsMeasured: report.rings ? { rimWidth: report.rings.measured.rimWidth, bandWidth: report.rings.measured.bandWidth } : null,
         orphans: report.orphans.length,
         fixes: report.fixes,
+        ...(report.frame ? { gridFrom: report.frame.base, frame: { changed: report.frame.changed, box: report.frame.box, masterBox: report.frame.masterBox, region: report.frame.region } } : {}),
     };
 }
 

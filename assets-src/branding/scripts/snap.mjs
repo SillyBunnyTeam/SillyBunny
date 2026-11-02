@@ -45,11 +45,22 @@ function printBatch(results, dryRun) {
     }
 }
 
+const boxText = (box) => `${box.width}x${box.height} at ${box.x},${box.y}`;
+
+function printFrame({ base, changed, box, masterBox, region, allowed }) {
+    say(`frame of ${base.id} (${base.file}, sha256 ${base.sha256.slice(0, 16)}): ${changed} art pixels changed, in the box ${boxText(box)} art px (${boxText(masterBox)} master px)`);
+    say(region ? `region check: all inside --frame-region ${region.x},${region.y},${region.width},${region.height} plus the margin (${boxText(allowed)} art px)` : 'region check: none (pass --frame-region x,y,w,h to refuse a frame that changed more than the eyes)');
+}
+
 function printSnap(result) {
     const { report } = result;
     say(result.file);
     say(`character ${result.character ?? '-'}; head to feet ${report.body.method === 'head' ? `${report.body.height} art px (head top row ${report.body.headTop}, feet row ${report.body.feet})` : 'not found'}${report.targetBodyHeight === null ? '' : `, asked for ${report.targetBodyHeight}`}`);
-    say(`pitch across ${fixed(report.pitchAcross)} (strength ${fixed(report.strengthAcross)}), down ${fixed(report.pitchDown)} (strength ${fixed(report.strengthDown)}); cell ${fixed(report.cell, 3)} (${report.cellSource}), offset ${fixed(report.offset.x)},${fixed(report.offset.y)}; fit at the cell ${fixed(report.fit.across)} across, ${fixed(report.fit.down)} down`);
+    if (report.fit) {
+        say(`pitch across ${fixed(report.pitchAcross)} (strength ${fixed(report.strengthAcross)}), down ${fixed(report.pitchDown)} (strength ${fixed(report.strengthDown)}); cell ${fixed(report.cell, 3)} (${report.cellSource}), offset ${fixed(report.offset.x)},${fixed(report.offset.y)}; fit at the cell ${fixed(report.fit.across)} across, ${fixed(report.fit.down)} down`);
+    } else {
+        say(`grid taken from ${report.frame.base.id}, nothing detected: cell ${report.cell}, offset ${report.offset.x},${report.offset.y}`);
+    }
     say(`snapped ${report.size.width}x${report.size.height} art pixels, figure ${report.figure ? `${report.figure.width}x${report.figure.height}` : 'none'}; sample ${report.sample}; ${report.colours === null ? 'no palette' : `${report.colours} colours`}, ${report.distinctColours} distinct; error against the master ${fixed(report.reprojectionError)}`);
     if (report.rings) {
         say(`rings: rim ${report.rings.rimWidth} + white band ${report.rings.bandWidth} art pixels (master ${report.rings.rimMaster === undefined ? 'unmeasured' : `${fixed(report.rings.rimMaster, 1)} + ${fixed(report.rings.bandMaster, 1)} px`}); ${report.rings.broken} ring pixels were broken by the snap and rebuilt; measured on the result: rim ${report.rings.measured.rimWidth} + band ${report.rings.measured.bandWidth}`);
@@ -60,6 +71,9 @@ function printSnap(result) {
     const listed = report.orphans.slice(0, 12).map(({ x, y, kind, suggest }) => `${kind} ${x},${y} -> ${suggest}`).join('; ');
     say(`orphans: ${report.orphans.length} found, NOT changed${listed ? ` (${listed}${report.orphans.length > 12 ? '; ...' : ''})` : ''}; ${report.orphansExact} if every different colour counted`);
     say(report.fixes ? `fixes: ${report.fixes.edits} edits from ${report.fixes.file} changed ${report.fixes.changed} pixels` : 'fixes: none');
+    if (report.frame) {
+        printFrame(report.frame);
+    }
     for (const problem of report.body.problems) {
         say(`CHECK: ${problem}`);
     }
@@ -95,7 +109,7 @@ try {
             say(`sheet: ${outcome.sheet}`);
         }
     } else {
-        printSnap(await runSnap({ rootDir: ROOT_DIR, masterPath: resolve(request.inPath), id: request.id, options: request.options, character: request.character, detect: request.detect, fixesPath: request.fixesPath, outPath: request.outPath, stage: request.stage, preview: request.preview, sheetPath: request.sheetPath, now: () => new Date() }));
+        printSnap(await runSnap({ rootDir: ROOT_DIR, masterPath: resolve(request.inPath), id: request.id, options: request.options, character: request.character, detect: request.detect, fixesPath: request.fixesPath, outPath: request.outPath, stage: request.stage, preview: request.preview, sheetPath: request.sheetPath, gridFrom: request.gridFrom, frameRegion: request.frameRegion, now: () => new Date() }));
     }
 } catch (error) {
     process.stderr.write(`error: ${error.message}\n`);

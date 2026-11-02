@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
 import { SAMPLES } from './pixel-snap.mjs';
+import { parseFrameRegion } from './snap-frame.mjs';
 
 export const SNAP_USAGE = [
     'Usage:',
@@ -7,6 +8,8 @@ export const SNAP_USAGE = [
     '           [--rim #b99bf2] [--band #ffffff] [--rim-width N] [--band-width N] [--no-ring-repair] [--fixes <file.json>] [--out <png>] [--sheet <png>]',
     '           with none of the four sizes, the body height snap-config.json sets for the picture\'s character is used',
     '  snap.mjs --in <master.png> --preview [same options]    writes out/snap/<id>-preview.png and logs nothing',
+    '  snap.mjs --in <patched.png> --grid-from <approved/pixel/<id>.png | sha256> --id <id>--<name> [--frame-region x,y,w,h] --stage s5 [--out <png>] [--sheet <png>]    a frame on the grid of an approved snap',
+    '           (or --preview); the cell, offset, sampling and rings are the base snap\'s, nothing is detected, and the frame is checked against the base: --frame-region is the area, in master pixels, that may change',
     '  snap.mjs --batch snap-batch.json --stage s5 [--out-dir raw/s5/pixel-body] [--sheet-dir out/snap] [--dry-run]    every picture of the file, one after the other',
     '  snap.mjs --measure [--approved approved] [--only id,id] [--figure-height N] [--body-sheet <png>]    pitch, head top and feet of every approved master',
     '  snap.mjs --compare --in <master.png> [--colours K] [same size options] [--sheet <png>]    sampling and palette comparison',
@@ -25,7 +28,7 @@ const OPTIONS = {
     'sheet-dir': { type: 'string' },
     'dry-run': { type: 'boolean', default: false },
     'body-sheet': { type: 'string' },
-    sample: { type: 'string', default: 'median' },
+    sample: { type: 'string' },
     colours: { type: 'string' },
     rim: { type: 'string' },
     band: { type: 'string' },
@@ -33,6 +36,8 @@ const OPTIONS = {
     'band-width': { type: 'string' },
     'no-ring-repair': { type: 'boolean', default: false },
     fixes: { type: 'string' },
+    'grid-from': { type: 'string' },
+    'frame-region': { type: 'string' },
     out: { type: 'string' },
     stage: { type: 'string' },
     sheet: { type: 'string' },
@@ -64,8 +69,9 @@ export function parseSnapArgs(argv) {
     if (modes.length > 1) {
         throw new Error('Pass --measure or --compare, not both.');
     }
-    if (!SAMPLES.includes(values.sample)) {
-        throw new Error(`--sample must be one of ${SAMPLES.join(', ')}, got "${values.sample}".`);
+    const sample = values.sample ?? 'median';
+    if (!SAMPLES.includes(sample)) {
+        throw new Error(`--sample must be one of ${SAMPLES.join(', ')}, got "${sample}".`);
     }
     const cell = number(values.cell, '--cell', (value) => value > 1, 'a number above 1 (master pixels per art pixel)');
     const figureHeight = number(values['figure-height'], '--figure-height', (value) => value >= 8, 'a number of 8 or more (art pixels)');
@@ -85,7 +91,7 @@ export function parseSnapArgs(argv) {
         cell,
         figureHeight,
         bodyHeight,
-        sample: values.sample,
+        sample,
         colours,
         ringRepair,
         ...(values.rim === undefined ? {} : { rim: values.rim }),
@@ -97,16 +103,25 @@ export function parseSnapArgs(argv) {
         return { mode: 'measure', approved: values.approved, only: values.only?.split(',').map((id) => id.trim()).filter(Boolean), figureHeight, bodySheet: values['body-sheet'] };
     }
     if (values.batch) {
-        if (values.in || sizes.length > 0 || values.id || values.fixes || values.out || values.sheet || values.character) {
+        if (values.in || sizes.length > 0 || values.id || values.fixes || values.out || values.sheet || values.character || values['grid-from'] || values['frame-region']) {
             throw new Error('--batch takes its pictures and their sizes from the batch file; pass only --stage, --out-dir, --sheet-dir, --sample and --dry-run with it.');
         }
         if (!values['dry-run'] && !values.stage) {
             throw new Error('Pass --stage (such as s5) for a batch that is logged, or --dry-run.');
         }
-        return { mode: 'batch', batchPath: values.batch, stage: values.stage, outDir: values['out-dir'], sheetDir: values['sheet-dir'], dryRun: values['dry-run'], sample: values.sample === 'median' ? undefined : values.sample };
+        return { mode: 'batch', batchPath: values.batch, stage: values.stage, outDir: values['out-dir'], sheetDir: values['sheet-dir'], dryRun: values['dry-run'], sample: sample === 'median' ? undefined : sample };
     }
     if (!values.in) {
         throw new Error(`Pass --in <master.png>.\n${SNAP_USAGE}`);
+    }
+    if (values['frame-region'] && !values['grid-from']) {
+        throw new Error('--frame-region limits what a frame changed from its base, so it needs --grid-from.');
+    }
+    if (values['grid-from']) {
+        const conflicting = [...sizes.map(([flag]) => flag), ...['sample', 'colours', 'rim', 'band', 'rim-width', 'band-width', 'no-ring-repair', 'fixes', 'character'].filter((name) => values[name] !== undefined && values[name] !== false).map((name) => `--${name}`)];
+        if (conflicting.length > 0 || values.compare) {
+            throw new Error(`--grid-from takes the cell, offset, sampling, colours, rings and touch-ups of the base snap as they were logged; drop ${[...conflicting, ...(values.compare ? ['--compare'] : [])].join(', ')}.`);
+        }
     }
     if (values.compare) {
         return { mode: 'compare', inPath: values.in, id: values.id, options, character: values.character, detect: values.detect, sheetPath: values.sheet };
@@ -114,5 +129,5 @@ export function parseSnapArgs(argv) {
     if (values.preview && values.stage) {
         throw new Error('--preview logs nothing, so it takes no --stage. Drop one of them.');
     }
-    return { mode: 'snap', inPath: values.in, id: values.id, options, character: values.character, detect: values.detect, fixesPath: values.fixes, outPath: values.out, stage: values.stage, preview: values.preview, sheetPath: values.sheet };
+    return { mode: 'snap', inPath: values.in, id: values.id, options, character: values.character, detect: values.detect, fixesPath: values.fixes, outPath: values.out, stage: values.stage, preview: values.preview, sheetPath: values.sheet, gridFrom: values['grid-from'], frameRegion: values['frame-region'] === undefined ? undefined : parseFrameRegion(values['frame-region']) };
 }

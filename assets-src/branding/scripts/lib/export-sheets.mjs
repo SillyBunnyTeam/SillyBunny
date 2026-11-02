@@ -78,7 +78,7 @@ export async function renderExportSheets(assets, outDir) {
     for (const character of characters) {
         const entries = [];
         for (const asset of assets.filter((candidate) => candidate.character === character)) {
-            for (const variant of asset.variants) {
+            for (const variant of [...asset.variants, ...(asset.frames ?? []).map(({ variant: frame }) => frame)]) {
                 entries.push({ lines: variantLines(asset, variant), raster: await decodeVariant(variant), focus: asset.focus });
             }
         }

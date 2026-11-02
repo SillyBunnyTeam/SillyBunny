@@ -3,7 +3,7 @@ import { srgbToOklab } from './pixel-colour.mjs';
 import { createRaster, crop, hasBinaryAlpha, opaqueBox, paste } from './raster.mjs';
 
 const SPEC_KEYS = new Set(['margin', 'alphaThreshold', 'assets']);
-const ASSET_KEYS = new Set(['character', 'master', 'css', 'fit', 'crop', 'margin', 'square', 'webp', 'focus', 'src', 'pixel']);
+const ASSET_KEYS = new Set(['character', 'master', 'css', 'fit', 'crop', 'margin', 'square', 'webp', 'focus', 'src', 'pixel', 'frames']);
 // What a pixel placement is shipped at is fixed by the picture itself, so the keys that choose sizes and encoders do not apply to it.
 const SMOOTH_ONLY_KEYS = ['css', 'fit', 'src', 'webp'];
 // A pixel placement's margin is in art pixels of the snapped picture, not in source pixels.
@@ -11,6 +11,7 @@ const DEFAULT_PIXEL_MARGIN = 2;
 const FITS = ['contain', 'width', 'height'];
 export const DENSITIES = [1, 2, 3];
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+const FRAME_KEYS = new Set(['id', 'master']);
 // Pixels this faint are the soft tail of the sticker edge or a stray speck, not part of the subject's box.
 const DEFAULT_ALPHA_THRESHOLD = 16;
 const DEFAULT_MARGIN = 24;
@@ -38,7 +39,8 @@ const isWholeAtLeast1 = (value) => Number.isInteger(value) && value >= 1;
  * `css` lists the CSS sizes the asset is placed at, `fit` says what that size measures (`contain`: the longer side, as in a square box;
  * `width`; `height`). `webp` is `auto` (measure and choose), `lossless`, or `{ mode: "near-lossless" | "lossy", quality }`.
  * An asset with `"pixel": true` has a snapped still as its master and is shipped at that picture's own size: it takes no `css`, `fit`, `src` or
- * `webp`, and its `margin` and `crop` are in art pixels (the margin defaults to 2).
+ * `webp`, and its `margin` and `crop` are in art pixels (the margin defaults to 2). A pixel asset may list `frames: [{ id: "blink", master }]`, the
+ * snapped stills of an animation after its base picture, in the order they play; each is shipped as `<asset id>--<frame id>@native`.
  * @param {any} raw
  */
 export function parseExportSpec(raw) {
@@ -82,6 +84,9 @@ function parseAsset(id, asset, defaultMargin) {
     }
     if (asset.pixel) {
         return parsePixelAsset(id, asset, fail);
+    }
+    if (asset.frames !== undefined) {
+        fail('frames apply to a pixel placement only, whose pictures ship at their own size. Add "pixel": true, or remove them.');
     }
     if (!Array.isArray(asset.css) || asset.css.length === 0 || !asset.css.every(isWholeAtLeast1)) {
         fail('css must be a list of whole CSS sizes, such as [128, 64].');
@@ -134,7 +139,37 @@ function parsePixelAsset(id, asset, fail) {
     if (!Number.isInteger(margin) || margin < 0) {
         fail('margin must be a whole number of 0 or more (art pixels).');
     }
-    return { id, character: asset.character ?? id, master: asset.master, pixel: true, crop: asset.crop, margin, square: asset.square ?? false, focus: asset.focus ?? [0.5, 0.3] };
+    return { id, character: asset.character ?? id, master: asset.master, pixel: true, crop: asset.crop, margin, square: asset.square ?? false, focus: asset.focus ?? [0.5, 0.3], frames: parseFrames(asset.frames, fail) };
+}
+
+/** The frames of a pixel placement, in play order: each has an id (lowercase letters, digits and hyphens, one per frame) and the snapped still it is. */
+function parseFrames(raw, fail) {
+    if (raw === undefined) {
+        return [];
+    }
+    if (!Array.isArray(raw) || raw.length === 0) {
+        fail('frames must be a list of { "id": "blink", "master": "approved/pixel/<picture>.png" }, the pictures that follow the base in the order they play.');
+    }
+    const seen = new Set();
+    return raw.map((frame, index) => {
+        const where = `frames[${index}]`;
+        for (const key of Object.keys(frame ?? {})) {
+            if (!FRAME_KEYS.has(key)) {
+                fail(`${where}: unknown key "${key}". Known keys: ${[...FRAME_KEYS].join(', ')}.`);
+            }
+        }
+        if (typeof frame?.id !== 'string' || !ID_PATTERN.test(frame.id)) {
+            fail(`${where}: id must be lowercase letters, digits and hyphens, such as blink.`);
+        }
+        if (typeof frame.master !== 'string' || !frame.master) {
+            fail(`${where} ("${frame.id}"): master must be the path of the snapped still.`);
+        }
+        if (seen.has(frame.id)) {
+            fail(`${where}: two frames are called "${frame.id}".`);
+        }
+        seen.add(frame.id);
+        return { id: frame.id, master: frame.master };
+    });
 }
 
 /** Refuses a picture that is not a snapped still: a pixel placement ships its pixels as they are, so a soft edge would ship as a soft edge. */
@@ -327,14 +362,16 @@ export async function chooseEncoding(rasters, { webp }) {
 
 /**
  * Stores a snapped picture exactly as it is, as lossless PNG and as lossless WebP, and keeps the smaller (the PNG when they are the same size,
- * since every browser reads it). No pixel changes in either, so there is no quality to choose.
+ * since every browser reads it). No pixel changes in either, so there is no quality to choose. With `format` that one is kept, which is how
+ * the frames of an animation all get the format of its base.
  * @param {import('./raster.mjs').Raster} raster
+ * @param {{ format?: 'png' | 'webp' }} [options]
  */
-export async function encodeNative(raster) {
+export async function encodeNative(raster, { format } = {}) {
     const input = sharp(raster.data, rawInput(raster));
     const png = await input.clone().png({ compressionLevel: 9 }).toBuffer();
     const webp = await ENCODERS.lossless(raster);
     const candidates = { png: { bytes: png.length, mean: 0, p99: 0, passes: true }, webp: { bytes: webp.length, mean: 0, p99: 0, passes: true } };
-    const useWebp = webp.length < png.length;
+    const useWebp = format ? format === 'webp' : webp.length < png.length;
     return { format: useWebp ? 'webp' : 'png', buffer: useWebp ? webp : png, candidates };
 }

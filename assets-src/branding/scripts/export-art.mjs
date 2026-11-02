@@ -38,6 +38,9 @@ try {
                 .join('  ');
             say(`  ${(variantLines(asset, variant)[0] + (variant.src ? ' [src]' : '')).padEnd(40)} ${String(variant.width).padStart(3)}x${String(variant.height).padEnd(3)} ${kilobytes(variant.bytes).padStart(9)}   ${others}`);
         }
+        for (const [index, { id, variant }] of (asset.frames ?? []).entries()) {
+            say(`  ${`${id}@native [frame ${index + 2} of ${asset.frames.length + 1}]`.padEnd(40)} ${String(variant.width).padStart(3)}x${String(variant.height).padEnd(3)} ${kilobytes(variant.bytes).padStart(9)}   lossless ${variant.format}`);
+        }
     }
     say(join(outDir, 'manifest.json'));
     if (values.sheets) {

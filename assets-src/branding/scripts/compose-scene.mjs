@@ -9,6 +9,7 @@ import { runComposeScene } from './lib/scene-run.mjs';
 const USAGE = [
     'Usage: compose-scene.mjs --layout layouts/<name>.json --out raw/<stage>/masters/<name>.png [--stage s5] [--set <layer>=<picture>]...',
     '       compose-scene.mjs --layout layouts/<name>.json --grid --out raw/<stage>/pixel/<name>.png [--stage s5] [--set <layer>=<snapped still>]...    on the layout\'s pixel grid',
+    '       compose-scene.mjs --layout layouts/<name>.json --grid --frame-of <base scene.png> --set <layer>=<frame still>... --out raw/<stage>/pixel/<name>--<frame>.png    a frame of a scene: only the frame stills\' changed pixels may differ',
     '       compose-scene.mjs --layout layouts/<name>.json --preview --out out/<stage>/<name>.png [--set <layer>=<picture>]...',
     '       compose-scene.mjs --measure <picture.png>[:<first column>-<last column>]...',
 ].join('\n');
@@ -39,6 +40,7 @@ try {
             set: { type: 'string', multiple: true, default: [] },
             preview: { type: 'boolean', default: false },
             grid: { type: 'boolean', default: false },
+            'frame-of': { type: 'string' },
             measure: { type: 'boolean', default: false },
         },
         allowPositionals: true,
@@ -68,6 +70,7 @@ try {
             overrides: parseOverrides(values.set),
             preview: values.preview,
             grid: values.grid,
+            frameOf: values['frame-of'],
             now: () => new Date(),
         });
         say(`${result.file}  ${result.size.width} x ${result.size.height}${result.grid ? ` art pixels (the layout's canvas / ${result.grid.cell})` : ''}${values.preview ? '  (preview, not logged)' : ''}`);
@@ -79,6 +82,10 @@ try {
             }
             const heightNote = placement.measure === 'figure' ? ` figure ${placement.targetHeight} px, ${placement.method === 'head' ? 'head top to feet' : 'whole box (head not found)'}` : ` height ${placement.targetHeight} px`;
             say(`  ${placement.id}${placement.point > 0 || result.placements.filter(({ id }) => id === placement.id).length > 1 ? ` #${placement.point + 1}` : ''}: ${placement.width} x ${placement.height} at ${placement.left},${placement.top}  scale ${placement.scale}${heightNote}`);
+        }
+        if (result.frame) {
+            const { box, canvasBox } = result.frame;
+            say(`  frame of ${result.frame.base.file}: ${result.frame.changed} art pixels differ, in the box ${box.width}x${box.height} at ${box.x},${box.y} art px (${canvasBox.width}x${canvasBox.height} at ${canvasBox.x},${canvasBox.y} canvas px), all in the changed pixels of ${result.frame.layers.join(', ')}`);
         }
         for (const [id, grade] of Object.entries(result.grades)) {
             say(`  ${id}: graded toward ${grade.toward} by ${grade.amount}, lightness ${grade.lightness}${grade.keepSticker ? ', sticker kept' : ', sticker graded too'}`);

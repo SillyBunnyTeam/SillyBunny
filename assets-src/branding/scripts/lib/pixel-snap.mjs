@@ -43,11 +43,13 @@ const medianColour = (pixels) => [0, 1, 2].map((channel) => median(pixels.map((p
  * it is the cell at which the picture's opaque box (ears included) is that many art pixels tall; with `bodyHeight` it is the cell at which
  * the figure from head top to feet, ears left out, is that many art pixels tall (the head top is found by `measureFigureScaled`, the same
  * rule `compose-scene` sizes a figure by, and the call fails when it is not found); and with none it is the mean of the pitch found across
- * and the pitch found down. The offsets of the grid are always searched at the chosen cell.
+ * and the pitch found down. The offsets of the grid are searched at the chosen cell, unless `offset` is given: the grid is then exactly
+ * `cell` and `offset` with nothing detected, which is how a frame of an animation lands on the grid of its base picture. Such a grid has
+ * no pitch or fit to report, so those are `null`.
  * @param {import('./raster.mjs').Raster} raster
- * @param {{ cell?: number, figureHeight?: number, bodyHeight?: number, window?: { minCell: number, maxCell: number } }} [options]
+ * @param {{ cell?: number, offset?: { x: number, y: number }, figureHeight?: number, bodyHeight?: number, window?: { minCell: number, maxCell: number } }} [options]
  */
-export function chooseGrid(raster, { cell, figureHeight, bodyHeight, window = DEFAULT_WINDOW } = {}) {
+export function chooseGrid(raster, { cell, offset, figureHeight, bodyHeight, window = DEFAULT_WINDOW } = {}) {
     const box = opaqueBox(raster, VISIBLE);
     if (!box) {
         throw new Error(`The picture has nothing opaque (alpha ${VISIBLE} or more).`);
@@ -58,6 +60,9 @@ export function chooseGrid(raster, { cell, figureHeight, bodyHeight, window = DE
     if (cell !== undefined && !(cell > 1)) {
         throw new Error(`The cell must be more than 1 master pixel, got ${cell}.`);
     }
+    if (offset !== undefined && (cell === undefined || !Number.isFinite(offset.x) || !Number.isFinite(offset.y))) {
+        throw new Error('An offset is the place of a grid whose cell is given: pass the cell with it, and a number for both x and y.');
+    }
     for (const [name, value] of [['figure height', figureHeight], ['body height', bodyHeight]]) {
         if (value !== undefined && !(value >= 8)) {
             throw new Error(`The ${name} must be at least 8 art pixels, got ${value}.`);
@@ -66,6 +71,9 @@ export function chooseGrid(raster, { cell, figureHeight, bodyHeight, window = DE
     const body = measureFigureScaled(raster);
     if (bodyHeight !== undefined && body.method !== 'head') {
         throw new Error('The head top of this figure could not be found (no row inside the sticker has a long enough run of pixels that are not ear coloured), so a body height cannot be set. Use --cell or --figure-height, or look at the picture.');
+    }
+    if (offset !== undefined) {
+        return { cell, cellSource: 'grid-from', offsetX: offset.x, offsetY: offset.y, pitchAcross: null, pitchDown: null, strengthAcross: null, strengthDown: null, fitAcross: null, fitDown: null, body, box };
     }
     const detected = detectAxes(raster, box, window);
     const wanted = figureHeight ?? bodyHeight;
@@ -390,12 +398,12 @@ export function ringWidths(master, cell) {
  * `colours`, makes alpha binary, and rebuilds the sticker rings so they come out continuous and in the shared rim colour.
  * Touch-ups are not made here; they are a patch applied afterwards, so snapping a master again gives the same file.
  * @param {import('./raster.mjs').Raster} master
- * @param {{ cell?: number, figureHeight?: number, bodyHeight?: number, sample?: 'median' | 'mode', colours?: number, ringRepair?: boolean, rim?: string,
- *   band?: string, rimWidth?: number, bandWidth?: number }} [options]
+ * @param {{ cell?: number, offset?: { x: number, y: number }, figureHeight?: number, bodyHeight?: number, sample?: 'median' | 'mode', colours?: number,
+ *   ringRepair?: boolean, rim?: string, band?: string, rimWidth?: number, bandWidth?: number }} [options]
  */
-export function snapRaster(master, { cell, figureHeight, bodyHeight, sample = 'median', colours, ringRepair = true, rim = '#b99bf2', band = '#ffffff', rimWidth, bandWidth } = {}) {
+export function snapRaster(master, { cell, offset, figureHeight, bodyHeight, sample = 'median', colours, ringRepair = true, rim = '#b99bf2', band = '#ffffff', rimWidth, bandWidth } = {}) {
     const warnings = [];
-    const grid = chooseGrid(master, { cell, figureHeight, bodyHeight });
+    const grid = chooseGrid(master, { cell, offset, figureHeight, bodyHeight });
     if (grid.cellSource === 'detected' && Math.min(grid.strengthAcross, grid.strengthDown) < WEAK_STRENGTH) {
         warnings.push(`The grid is weak (strength ${grid.strengthAcross.toFixed(2)} across, ${grid.strengthDown.toFixed(2)} down; 1 is chance), so the detected pitch is not to be trusted. Pass --cell, --figure-height or --body-height.`);
     }
@@ -448,7 +456,7 @@ export function snapRaster(master, { cell, figureHeight, bodyHeight, sample = 'm
             pitchDown: grid.pitchDown,
             strengthAcross: grid.strengthAcross,
             strengthDown: grid.strengthDown,
-            fit: { across: grid.fitAcross, down: grid.fitDown },
+            fit: grid.fitAcross === null ? null : { across: grid.fitAcross, down: grid.fitDown },
             reprojectionError: error,
             size: { width: native.width, height: native.height },
             figure: sprite,
