@@ -320,6 +320,14 @@
         "type": "background"
     },
     {
+        "filename": "default_AssistantReisen.png",
+        "type": "character"
+    },
+    {
+        "filename": "default_AssistantTewi.png",
+        "type": "character"
+    },
+    {
         "filename": "default_Seraphina.png",
         "type": "character"
     },
