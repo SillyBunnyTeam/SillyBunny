@@ -43,6 +43,8 @@ import { Popup } from './popup.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getCurrentUserHandle } from './user.js';
 import { kai_settings } from './kai-settings.js';
+// SillyBunny: the resize compensation below asks whether a greeting-only chat that is opening stays at its top.
+import { shouldHoldChatAtTop } from './sillybunny-home/greeting-art-opening.js';
 
 const MOVING_UI_SHARED_KEYS = Object.freeze({
     'left-nav-panel': 'nav-panel-shared-size',
@@ -915,9 +917,10 @@ export function initRossMods() {
                 const deltaHeight = newHeight - lastHeight;
                 const wasScrollAtBottom = Math.abs(chatBlock.scrollHeight - chatBlock.scrollTop - lastHeight) <= threshold;
 
+                // SillyBunny: a chat held at its top has no distance to the bottom to keep; a banner that shrinks it would push it off the top.
                 if (wasScrollAtBottom) {
                     chatBlock.scrollTop = chatBlock.scrollHeight;
-                } else if (!isMobile() && Math.abs(deltaHeight) > threshold) {
+                } else if (!isMobile() && !shouldHoldChatAtTop() && Math.abs(deltaHeight) > threshold) {
                     chatBlock.scrollTop -= deltaHeight;
                 }
                 lastHeight = newHeight;

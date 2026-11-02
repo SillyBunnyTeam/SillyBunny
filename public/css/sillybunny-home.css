@@ -1412,3 +1412,76 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
         min-height: 44px;
     }
 }
+
+/* ── Greeting picture ───────────────────────────────────────────────────── */
+
+/* A chat rule, kept in this sheet because the blocking stylesheets are at their budget (see check:frontend-budgets). */
+
+/* The picture above the main greeting of a bundled assistant (see greeting-art.js). It is a sibling of .mes_text. The
+   script sets its right padding to that of the text, so that the right edges meet, and sets the width and the file of
+   the image. The height follows from the attributes of the image, so a column that shrinks before the script runs
+   again cannot stretch the picture. Whole steps are drawn pixelated from the 1x file; the rest fills the room smoothly
+   from the 2x file. */
+.sbGreetingArt {
+    display: block;
+    box-sizing: border-box;
+    margin: 0;
+    padding: var(--spacing-xs) 0 var(--spacing-sm);
+}
+
+.sbGreetingArtOpen {
+    position: relative;
+    display: block;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 0;
+    overflow: hidden;
+    cursor: zoom-in;
+}
+
+/* A hairline keeps a picture with a light edge from dissolving into a light chat. The focus ring replaces it, because
+   the ring is the one focus treatment of a button and an image would hide a ring drawn under it. */
+.sbGreetingArtOpen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    pointer-events: none;
+}
+
+.sbGreetingArtOpen:focus-visible {
+    outline: none;
+}
+
+.sbGreetingArtOpen:focus-visible::after {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sbGreetingArtImage,
+.sbGreetingArtLarge {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.sbGreetingArtLarge {
+    margin-inline: auto;
+    border-radius: var(--sb-radius-control);
+}
+
+.sbGreetingArt[data-sb-scale='pixel'] .sbGreetingArtImage,
+.sbGreetingArtLarge[data-sb-scale='pixel'] {
+    image-rendering: pixelated;
+}
+
+.sbGreetingArt[data-sb-scale='smooth'] .sbGreetingArtImage,
+.sbGreetingArtLarge[data-sb-scale='smooth'] {
+    image-rendering: auto;
+}

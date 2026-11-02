@@ -21,6 +21,8 @@ import { accountStorage } from './util/AccountStorage.js';
 import { initializeMessageActions } from './sillybunny-message-actions.js';
 import { initializeToastMotion } from './sillybunny-toast-motion.js';
 import './sillybunny-extension-actions.js';
+// Listens for the chat from the moment the app loads, because a chat can be on screen before Home has ever rendered.
+import './sillybunny-home/greeting-art-boot.js';
 import { initializeColorPickers } from './sillybunny-color-picker.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { isApplePlatform } from './sillybunny-platform.js';

@@ -1,3 +1,5 @@
+import { COPY_PLACEHOLDER } from './copy.js';
+
 /**
  * The assistants that SillyBunny ships, in one list that Home, the Welcome Screen code, Getting Started and Bundled
  * Extras all read.
@@ -26,9 +28,22 @@
  * @property {string} [personality] The personality of a card that the app creates.
  * @property {string} [scenario] The scenario of a card that the app creates.
  * @property {string} [firstMessage] The greeting of a card that the app creates.
+ * @property {GreetingArt} [greetingArt] The picture that Roleplay chats show above the main greeting of the card.
  *
  * `title`, `creator` and `characterName` are what the card of an assistant is recognised by. Reisen and Tewi, whose cards
  * only the server provides, have none of them, so code that reads them first asks `getCreationMethod`.
+ */
+
+/**
+ * A picture that is only shown, never part of a card or a chat file, so the model never sees it.
+ *
+ * @typedef {object} GreetingArt
+ * @property {string} src The bundled file, served from this origin, with one file pixel per art pixel.
+ * @property {string} src2x The same picture with every art pixel drawn as 2 by 2 file pixels.
+ * @property {number} width The width of the picture in art pixels.
+ * @property {number} height The height of the picture in art pixels.
+ * @property {string} alt The description of the picture. It is also the name of the button that enlarges it.
+ * @property {string} altSlot Copy slot of `alt`.
  */
 
 /** The account storage key of the Welcome Page Assistant, which is the default assistant unless the user chose another. */
@@ -47,6 +62,14 @@ export const ASSISTANTS = Object.freeze([
         deletedStorageKey: 'bundledAssistantReisenDeleted',
         defaultAvatar: 'default_AssistantReisen.png',
         fileName: 'default_AssistantReisen',
+        greetingArt: {
+            src: '/img/sillybunny/greeting-reisen.webp',
+            src2x: '/img/sillybunny/greeting-reisen@2x.webp',
+            width: 768,
+            height: 512,
+            alt: COPY_PLACEHOLDER,
+            altSlot: 'GREETING-ART-REISEN',
+        },
     },
     {
         id: 'tewi',
@@ -59,6 +82,14 @@ export const ASSISTANTS = Object.freeze([
         deletedStorageKey: 'bundledAssistantTewiDeleted',
         defaultAvatar: 'default_AssistantTewi.png',
         fileName: 'default_AssistantTewi',
+        greetingArt: {
+            src: '/img/sillybunny/greeting-tewi.webp',
+            src2x: '/img/sillybunny/greeting-tewi@2x.webp',
+            width: 768,
+            height: 512,
+            alt: COPY_PLACEHOLDER,
+            altSlot: 'GREETING-ART-TEWI',
+        },
     },
     {
         id: 'guide',

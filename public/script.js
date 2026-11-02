@@ -369,6 +369,8 @@ import { beginTemporaryChat, endTemporaryChat, leaveTemporaryChat, showTemporary
 import { lorebookSelectOptions } from './scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 // SillyBunny: screenshot spin rows preserve the existing parseInt/range-validation contract.
 import { messageScreenshotOptions } from './scripts/sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: the scroll sink asks this whether a greeting-only chat that is opening stays at its top. The module has no imports, so it adds no cycle.
+import { shouldHoldChatAtTop } from './scripts/sillybunny-home/greeting-art-opening.js';
 // SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
 import {
     beginCharacterEditorLoad,
@@ -5708,6 +5710,11 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
 let requestId = null;
 
 function scrollChatElementToBottom({ behavior = 'auto' } = {}) {
+    // SillyBunny: a greeting-only chat that is opening stays at its top. It is not skipped for `force`, because the pins of a chat load are forced too.
+    if (shouldHoldChatAtTop()) {
+        return;
+    }
+
     let position = chatElement[0].scrollHeight;
 
     if (power_user.waifuMode) {
