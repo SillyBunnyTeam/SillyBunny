@@ -336,6 +336,10 @@
         "type": "world"
     },
     {
+        "filename": "SillyBunny Lexicon.json",
+        "type": "world"
+    },
+    {
         "filename": "user-default.png",
         "type": "avatar"
     },

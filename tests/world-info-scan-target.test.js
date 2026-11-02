@@ -270,3 +270,66 @@ describe('World Info scan of a scan target', () => {
         expect(result.worldInfoAfter).toBe('Bram sees the moon.');
     });
 });
+
+describe('the SillyBunny Lexicon through a scan target', () => {
+    const lexicon = JSON.parse(readFileSync(new URL('../default/content/SillyBunny Lexicon.json', import.meta.url), 'utf8'));
+    const entries = Object.values(lexicon.entries);
+    const overview = entries.find(candidate => candidate.constant);
+    const ASSISTANT_ID = 2;
+    const target = Object.freeze({ characterId: ASSISTANT_ID, chatWorld: '', personaWorld: '', userName: 'Conversation User' });
+
+    /** A speaker whose card links the lexicon, scanned with no other book in play. */
+    function createLexiconHarness({ linked = true } = {}) {
+        const context = createHarness({ books: { 'SillyBunny Lexicon': lexicon } });
+        context.characters.push({ name: 'Assistant Reisen', avatar: 'default_AssistantReisen.png', data: { extensions: linked ? { world: 'SillyBunny Lexicon' } : {} } });
+        context.selected_world_info = [];
+        context.world_info = { charLore: [] };
+        return context;
+    }
+
+    const scan = (context, message) => context.checkWorldInfo([`Conversation User: ${message}`], 100000, true, context.defaultGlobalScanData, target);
+
+    test('always gives the overview and nothing else to a message that no entry is keyed on', async () => {
+        const context = createLexiconHarness();
+
+        const result = await scan(context, 'Good morning!');
+
+        expect(context.loadWorldInfo.mock.calls.map(([name]) => name)).toEqual(['SillyBunny Lexicon']);
+        expect(result.worldInfoBefore).toBe(overview.content);
+        expect(result.worldInfoAfter).toBe('');
+    });
+
+    test('brings in the entry that a question is keyed on, next to the overview', async () => {
+        const context = createLexiconHarness();
+
+        const result = await scan(context, 'Where can I change the temperature?');
+
+        expect(result.worldInfoBefore.split('\n')).toEqual(expect.arrayContaining([overview.content, entries.find(candidate => candidate.comment.startsWith('A13 ')).content]));
+        expect(result.worldInfoAfter).toBe('');
+    });
+
+    test('reaches every keyword entry by its own first key, and puts it where Conversation reads', async () => {
+        const context = createLexiconHarness();
+        const missed = [];
+
+        for (const candidate of entries.filter(entry => !entry.constant)) {
+            const result = await scan(context, `Tell me about ${candidate.key[0]}`);
+            const reachable = result.worldInfoBefore.split('\n').includes(candidate.content);
+            const elsewhere = [result.worldInfoAfter, ...result.EMEntries.map(slot => slot.content), ...result.ANBeforeEntries, ...result.ANAfterEntries, ...result.WIDepthEntries.flatMap(slot => slot.entries)];
+            if (!reachable || elsewhere.some(text => text !== '')) {
+                missed.push(candidate.comment);
+            }
+        }
+
+        expect(missed).toEqual([]);
+    });
+
+    test('gives a speaker whose card does not link the lexicon nothing from it', async () => {
+        const context = createLexiconHarness({ linked: false });
+
+        const result = await scan(context, 'Where can I change the temperature?');
+
+        expect(context.loadWorldInfo).not.toHaveBeenCalled();
+        expect(result.worldInfoBefore).toBe('');
+    });
+});

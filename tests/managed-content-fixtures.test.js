@@ -58,11 +58,14 @@ describe('the managed content fixtures', () => {
         }
     });
 
-    test('are not listed in the default index that seeds every user', () => {
-        const defaultIndex = fs.readFileSync(path.join(committedDirectory, '..', '..', '..', '..', 'default', 'content', 'index.json'), 'utf8');
+    test('are not what the default index seeds: an item that ships under a fixture name is a different file', () => {
+        const shipped = path.join(committedDirectory, '..', '..', '..', '..', 'default', 'content');
+        const index = JSON.parse(fs.readFileSync(path.join(shipped, 'index.json'), 'utf8'));
+        const readItem = file => (fs.statSync(file).isDirectory() ? readTree(file) : fs.readFileSync(file));
 
-        for (const { filename } of FIXTURE_ITEMS) {
-            expect(defaultIndex).not.toContain(filename);
+        for (const { filename } of FIXTURE_ITEMS.filter(item => index.some(entry => entry.filename === item.filename))) {
+            expect([filename, fs.existsSync(path.join(shipped, filename))]).toEqual([filename, true]);
+            expect([filename, readItem(path.join(shipped, filename))]).not.toEqual([filename, readItem(path.join(committedDirectory, filename))]);
         }
     });
 });
