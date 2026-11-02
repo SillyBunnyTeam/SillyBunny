@@ -124,19 +124,35 @@ const ASSISTANT_LIBRARY = [
     ['Bob.png', 'Bob'],
     ['Carol.png', 'Carol'],
 ];
+const BUNDLED_CARD_FILES = ['default_AssistantReisen.png', 'default_AssistantTewi.png'];
 const ASSISTANT_THUMBNAIL = readFileSync(new URL('../../public/img/ai4.png', import.meta.url));
 
 /**
  * Makes the assistant cards of Home the same on every data root: the library is the one above, the pointer is the one the
  * surface names, and the migration of the pointer counts as done, so the third card is the same on every run.
  */
-async function pinAssistants(page, pointer) {
+async function pinAssistants(page, { pointer, absent = [], account = {}, managed: managedAtStart = {} }) {
+    // Each boot starts from the same status, because the routes below change it.
+    const managed = structuredClone(managedAtStart);
+    const library = ASSISTANT_LIBRARY.filter(([avatar]) => !absent.includes(avatar));
     await page.route('**/thumbnail?*', route => route.fulfill({ contentType: 'image/png', body: ASSISTANT_THUMBNAIL }));
-    await page.route('**/api/characters/all', route => route.fulfill({ json: ASSISTANT_LIBRARY.map(([avatar, name]) => makeCharacterCard(avatar, name)) }));
+    await page.route('**/api/characters/all', route => route.fulfill({ json: library.map(([avatar, name]) => makeCharacterCard(avatar, name)) }));
+    // The managed content of the server: what it says of the two bundled cards, and a Restore that puts the card back.
+    await page.route('**/api/sillybunny/managed-content/status', route => route.fulfill({
+        json: { items: BUNDLED_CARD_FILES.map(filename => ({ filename, type: 'character', version: 1, status: 'current', updateAvailable: false, ...managed[filename] })) },
+    }));
+    await page.route(/\/api\/sillybunny\/managed-content\/(?:apply|restore)$/, (route) => {
+        const { filename } = route.request().postDataJSON();
+        managed[filename] = { status: 'current', updateAvailable: false };
+        const entry = ASSISTANT_LIBRARY.find(([avatar]) => avatar === filename);
+        if (entry && !library.some(([avatar]) => avatar === filename)) library.push(entry);
+        return route.fulfill({ json: { backup: 'managed/backup' } });
+    });
     return (settings) => {
         settings.accountStorage = {
             ...withoutAssistantAccount(settings.accountStorage),
             WelcomePage_AssistantPointerMigrated: 'true',
+            ...account,
             ...(pointer === null ? {} : { assistant: pointer }),
         };
     };
@@ -145,14 +161,16 @@ async function pinAssistants(page, pointer) {
 /**
  * Boots the app on Home with the account of a spec about Home, and Welcome shut. `firstRun` boots an account that has never
  * met Welcome instead: its dialog is the first thing on the page, and the app is not ready until the persona has a name.
- * `assistants` pins the library and the assistant pointer (`null` for none), so the third assistant card is known.
+ * `assistants` pins the library and the assistant pointer (`null` for none), so the third assistant card is known. `absent`
+ * names the bundled cards that the library lacks, `account` adds account storage keys, and `managed` says what the server
+ * reports of a bundled file.
  */
 async function bootHome(page, baseURL, viewport, options, { firstRun = false, assistants = null } = {}) {
     const { context, configureSettings, reducedMotion } = await prepareBoot(page, baseURL, { ...options, guard: false });
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion });
-    const pinAccount = assistants ? await pinAssistants(page, assistants.pointer) : () => {};
+    const pinAccount = assistants ? await pinAssistants(page, assistants) : () => {};
     await page.route('**/api/settings/get', async (route) => {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
@@ -177,7 +195,19 @@ async function bootHome(page, baseURL, viewport, options, { firstRun = false, as
 }
 
 const bootHomeFirstRun = (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { firstRun: true });
-const bootHomeWithAssistants = pointer => (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { assistants: { pointer } });
+const bootHomeWithAssistants = (pointer, more = {}) => (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { assistants: { pointer, ...more } });
+
+/** Reisen was deleted: her card is not in the library, the account recorded it, and the server reports the bundled file as deleted. */
+export const bootHomeWithDeletedReisen = bootHomeWithAssistants(null, {
+    absent: ['default_AssistantReisen.png'],
+    account: { bundledAssistantReisenDeleted: 'true' },
+    managed: { 'default_AssistantReisen.png': { status: 'deleted' } },
+});
+
+/** Reisen was edited, and the bundled card has a newer version. */
+const bootHomeWithEditedReisen = bootHomeWithAssistants(null, {
+    managed: { 'default_AssistantReisen.png': { status: 'modified', updateAvailable: true, version: 2 } },
+});
 
 async function waitForSettled(page) {
     await page.waitForFunction(() => !document.querySelector('dialog[open][opening], dialog[open][closing]'));
@@ -307,6 +337,21 @@ async function openPickerFromCardMenu(page) {
     await opener.focus();
     await pressKey(page, 'Enter');
     const item = page.getByRole('menuitem', { name: 'Choose Another Assistant…', exact: true });
+    await expect(item).toBeVisible();
+    await item.focus();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.locator(OPEN_DIALOG));
+    return opener;
+}
+
+const reisenCardPart = (page, selector) => page.locator(`#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-reisen"] ${selector}`);
+
+/** The menu of the edited card has Update Available after its chat item, and the question opens over Home. */
+async function openUpdateQuestionFromCardMenu(page) {
+    const opener = reisenCardPart(page, '.sbHomeRowMenu');
+    await opener.focus();
+    await pressKey(page, 'Enter');
+    const item = page.getByRole('menuitem', { name: 'Update Available', exact: true });
     await expect(item).toBeVisible();
     await item.focus();
     await pressKey(page, 'Enter');
@@ -807,6 +852,18 @@ SURFACES.push(
         open: openPickerFromCardMenu,
         escapes: [{ closes: true, async check() {} }],
         states: [{ name: 'characters', title: 'Choose Assistant', async enter() {} }],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'managed-update-alert',
+        title: 'Update Available alert (opened from the menu of an edited assistant card)',
+        boot: bootHomeWithEditedReisen,
+        structure: { name: 'TODO(copy)', role: 'alertdialog' },
+        frameSelector: 'dialog[open] .sb-dialog',
+        open: openUpdateQuestionFromCardMenu,
+        // The tab order is the two answers, so Escape is the way out that neither updates nor keeps.
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'alert', async enter() {} }],
     },
     {
         id: 'assistant-menu-sheet',

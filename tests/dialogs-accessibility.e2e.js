@@ -2,7 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { dialog as archiveDialog, isCollapsed, rows, waitForDetail } from './helpers/chats-archive.js';
 import { a11yShot, expectSingleFocusRing, settleTransitions, tabUntil, walkTabOrder } from './helpers/dialog-accessibility.js';
-import { DESKTOP, SURFACES, TEXT_SCALE, bootMisc, bootMiscWithChat, openArchiveList, pressKey } from './helpers/dialog-accessibility-surfaces.js';
+import { DESKTOP, PHONE, SURFACES, TEXT_SCALE, bootHomeWithDeletedReisen, bootMisc, bootMiscWithChat, openArchiveList, pressKey } from './helpers/dialog-accessibility-surfaces.js';
 
 /**
  * Accessibility checks for the dialog frame, the Chat Archive, action-menu sheets and side panels:
@@ -254,6 +254,68 @@ for (const surface of SURFACES) {
         }
     });
 }
+
+// Restore is a button of the card, not a dialog, so it is checked here with the same probes as the surfaces above.
+test.describe('The Restore button of a deleted assistant card', () => {
+    const CARD = '#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-reisen"]';
+    const restoreOf = page => page.locator(`${CARD} .sbHomeFootButton`);
+
+    for (const viewport of [DESKTOP, PHONE]) {
+        test.describe(`${viewport.width}×${viewport.height}`, () => {
+            test('keyboard: Tab reaches it, it shows one focus ring, and Enter restores the card and keeps the focus on it', async ({ page, baseURL }) => {
+                await bootHomeWithDeletedReisen(page, baseURL, viewport, { motion: false });
+                const restore = restoreOf(page);
+                await expect(restore).toHaveAccessibleName('Restore Reisen');
+                await restore.focus();
+                await pressKey(page, 'Shift+Tab');
+                const { stops } = await walkTabOrder(page, CARD, { untilOutside: true });
+                expect(insideOnly(stops).map(stop => stop.label), 'the controls Tab reaches in the card').toHaveLength(1);
+                expect(focusProblems(stops)).toEqual([]);
+                await restore.focus();
+
+                await pressKey(page, 'Enter');
+
+                await expect(page.locator(`${CARD} .sbHomeCardOpen`)).toBeEnabled();
+                await expect(page.locator(`${CARD} .sbHomeFootButton`)).toHaveCount(2);
+                await expect(page.locator(`${CARD} .sbHomeFootButton`).first(), 'the focus stays on the card').toBeFocused();
+            });
+
+            test('forced colours: the button, the card and its text stay visible, and the focus ring too', async ({ page, baseURL }) => {
+                await bootHomeWithDeletedReisen(page, baseURL, viewport, { motion: false });
+                await page.emulateMedia({ forcedColors: 'active' });
+                await restoreOf(page).focus();
+                await pressKey(page, 'Shift+Tab');
+                await a11yShot(page, `forced-colours-restore-${viewport.width}`);
+
+                const report = await page.evaluate(selector => window.sbA11y.forcedColours(selector, selector), CARD);
+                const { stops } = await walkTabOrder(page, CARD, { untilOutside: true });
+
+                // The footer buttons of a card are flat on purpose: the label and the icon carry the button, and the card's own
+                // boundary and the focus ring below bound it. So the check of control boundaries, which holds a dialog button
+                // to a border or a fill, is not made here.
+                expect.soft(report.frame, 'card boundary').toEqual([]);
+                expect.soft(report.text, 'transparent text').toEqual([]);
+                expect(insideOnly(stops).length, 'focusable stops in the card').toBe(1);
+                expect.soft(focusProblems(stops, { forcedColours: true }), 'focus indicator').toEqual([]);
+            });
+
+            test('200% text: the label is not clipped and the button stays inside the card', async ({ page, baseURL }) => {
+                await bootHomeWithDeletedReisen(page, baseURL, viewport, { motion: false, fontScale: TEXT_SCALE });
+                await a11yShot(page, `text-200-restore-${viewport.width}`);
+
+                const report = await page.evaluate(([root, ellipsizing]) => window.sbA11y.scale(root, ellipsizing), [CARD, ELLIPSIZING]);
+                const inside = await restoreOf(page).evaluate((button, root) => {
+                    const box = button.getBoundingClientRect();
+                    const card = document.querySelector(root).getBoundingClientRect();
+                    return box.left >= card.left && box.right <= card.right + 1 && box.bottom <= card.bottom + 1;
+                }, CARD);
+
+                expect.soft(report.clipped, 'clipped labels').toEqual([]);
+                expect(inside, 'the button is inside the card').toBe(true);
+            });
+        });
+    }
+});
 
 test.describe('One focus ring on a .menu_button', () => {
     test('a Presets action button shows one ring, not an outline beside the shared ring', async ({ page, baseURL }) => {

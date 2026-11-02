@@ -19,6 +19,7 @@ function createLibrary({ characters = {}, deleted = [], renamed = {} } = {}) {
     };
 }
 
+const NONE = { filename: null, restore: false, update: null };
 const BOTH = { [REISEN]: 'Assistant Reisen', [TEWI]: 'Assistant Tewi' };
 const keysOf = cards => cards.map(card => card.key);
 const stateOf = (cards, id) => cards.find(card => card.id === id)?.state;
@@ -120,6 +121,78 @@ describe('the state of an assistant card', () => {
     });
 });
 
+describe('what a card offers from the managed content', () => {
+    const entry = (filename, overrides = {}) => ({ filename, type: 'character', version: 2, status: 'modified', updateAvailable: true, ...overrides });
+    const offersOf = (cards, id) => cards.find(card => card.id === id)?.offers;
+
+    test('is Restore on a deleted card whose bundled file the server reports as deleted', () => {
+        const library = createLibrary({ characters: { [TEWI]: 'Tewi' }, deleted: ['reisen'] });
+        const managed = { items: [entry(REISEN, { status: 'deleted', updateAvailable: false })], dismissed: new Map() };
+
+        const cards = getAssistantCards({ library, pointerAvatar: null, managed });
+
+        expect(offersOf(cards, 'reisen')).toEqual({ filename: REISEN, restore: true, update: null });
+        expect(offersOf(cards, 'tewi')).toEqual({ filename: null, restore: false, update: null });
+    });
+
+    test('is Restore on a card with no file that the account never deleted, when the server reports the bundled file as deleted', () => {
+        const managed = { items: [entry(REISEN, { status: 'deleted', updateAvailable: false })], dismissed: new Map() };
+
+        const cards = getAssistantCards({ library: createLibrary({ characters: { [TEWI]: 'Tewi' } }), pointerAvatar: null, managed });
+
+        expect(stateOf(cards, 'reisen')).toBe('missing');
+        expect(offersOf(cards, 'reisen')).toEqual({ filename: REISEN, restore: true, update: null });
+    });
+
+    test('is Update Available on an available card the server reports as modified with a newer bundled version', () => {
+        const managed = { items: [entry(TEWI, { version: 4 })], dismissed: new Map() };
+
+        const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null, managed });
+
+        expect(offersOf(cards, 'tewi')).toEqual({ filename: TEWI, restore: false, update: { version: 4 } });
+        expect(offersOf(cards, 'reisen').update).toBeNull();
+    });
+
+    test('reads the versions that the user kept, so a kept version is not offered again', () => {
+        const managed = { items: [entry(TEWI, { version: 4 })], dismissed: new Map([[TEWI, 4]]) };
+
+        const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null, managed });
+
+        expect(offersOf(cards, 'tewi').update).toBeNull();
+    });
+
+    test('looks up the bundled file by the default avatar, also when the user renamed the card', () => {
+        const library = createLibrary({ characters: { 'My Reisen.png': 'My Reisen', [TEWI]: 'Tewi' }, renamed: { reisen: 'My Reisen.png' } });
+        const managed = { items: [entry(REISEN)], dismissed: new Map() };
+
+        const cards = getAssistantCards({ library, pointerAvatar: null, managed });
+
+        expect(offersOf(cards, 'reisen').update).toEqual({ version: 2 });
+    });
+
+    test('is nothing for any card while the status is not known, and when no status is given', () => {
+        const library = createLibrary({ characters: BOTH, deleted: [] });
+
+        const unknown = getAssistantCards({ library, pointerAvatar: null, managed: { items: null, dismissed: new Map() } });
+        const absent = getAssistantCards({ library, pointerAvatar: null });
+
+        for (const cards of [unknown, absent]) {
+            expect(cards.map(card => card.offers)).toEqual([NONE, NONE, NONE]);
+        }
+    });
+
+    test('is nothing for the card of the third slot, whichever character it holds', () => {
+        const library = createLibrary({ characters: { ...BOTH, 'Alice.png': 'Alice' } });
+        const managed = { items: [entry('Alice.png')], dismissed: new Map() };
+
+        const pointer = getAssistantCards({ library, pointerAvatar: 'Alice.png', managed });
+        const choose = getAssistantCards({ library, pointerAvatar: null, managed });
+
+        expect(pointer[2]).toMatchObject({ kind: 'pointer', offers: NONE });
+        expect(choose[2]).toMatchObject({ kind: 'choose', offers: NONE });
+    });
+});
+
 describe('what a card shows', () => {
     test('keeps the names, subtitle slots and placeholder art that Reisen and Tewi had', () => {
         const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null });
@@ -141,7 +214,7 @@ describe('what a card shows', () => {
     test('has no name, art or avatar for the card to choose from, which the view labels', () => {
         const choose = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null })[2];
 
-        expect(choose).toEqual({ key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available' });
+        expect(choose).toEqual({ key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available', offers: NONE });
     });
 
     test('has the same key for the card of the third slot in both of its states, so focus finds it after the pointer changes', () => {

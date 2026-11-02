@@ -46,6 +46,43 @@ function createFootButton({ icon, label, name, title, disabled, onActivate }) {
     return button;
 }
 
+function createChatButtons(card, actions, disabled) {
+    return [
+        createFootButton({
+            icon: 'fa-solid fa-plus',
+            label: t`Start New Chat`,
+            name: t`Start new chat with ${card.name}`,
+            title: t`Start New Chat With ${card.name}`,
+            disabled,
+            onActivate: () => void actions.newChat(card),
+        }),
+        createFootButton({
+            icon: 'fa-solid fa-hourglass-half',
+            label: t`Temporary Chat`,
+            name: t`Temporary Chat with ${card.name}`,
+            title: t`Temporary Chat With ${card.name}`,
+            disabled,
+            onActivate: () => void actions.temporaryChat(card),
+        }),
+    ];
+}
+
+/** The one action of a card whose file is gone. Safari does not focus a button on click, and Home puts the focus back where it was. */
+function createRestoreButton(card, restore) {
+    const button = createFootButton({
+        icon: 'fa-solid fa-rotate-left',
+        label: t`Restore`,
+        name: t`Restore ${card.name}`,
+        title: t`Restore ${card.name}`,
+        disabled: false,
+        onActivate: () => {
+            button.focus({ preventScroll: true });
+            void restore(card);
+        },
+    });
+    return button;
+}
+
 function createMenuButton(id) {
     const button = createElement('button', 'sbHomeRowMenu');
     button.type = 'button';
@@ -98,8 +135,9 @@ function createCardArt({ art }, getThumbnailUrl) {
 }
 
 /**
- * A card whose file is missing or deleted has nothing to open, so its controls are disabled and it shows no menu. The
- * card of the third slot has two more menu items, which change which character it is.
+ * A card whose file is missing or deleted has nothing to open, so its card button is disabled and it shows no menu. When
+ * its bundled file can be restored, Restore is the one control of its footer, in place of the two chat buttons. The card
+ * of the third slot has two more menu items, which change which character it is.
  */
 function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker, removeAssistant }) {
     const titleId = `sb-home-${card.key}-title`;
@@ -112,24 +150,8 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
     element.dataset.sbAssistantKind = card.kind;
 
     const footer = createElement('div', 'sbHomeCardFooter');
-    footer.append(
-        createFootButton({
-            icon: 'fa-solid fa-plus',
-            label: t`Start New Chat`,
-            name: t`Start new chat with ${card.name}`,
-            title: t`Start New Chat With ${card.name}`,
-            disabled,
-            onActivate: () => void actions.newChat(card),
-        }),
-        createFootButton({
-            icon: 'fa-solid fa-hourglass-half',
-            label: t`Temporary Chat`,
-            name: t`Temporary Chat with ${card.name}`,
-            title: t`Temporary Chat With ${card.name}`,
-            disabled,
-            onActivate: () => void actions.temporaryChat(card),
-        }),
-    );
+    const canRestore = card.offers.restore && typeof actions.restore === 'function';
+    footer.append(...(canRestore ? [createRestoreButton(card, actions.restore)] : createChatButtons(card, actions, disabled)));
 
     if (buildAssistantMenuSections({ lastMode: getLastChatMode(), actions: menuActions, state: card.state }).length > 0) {
         const menuButton = createMenuButton(`sb-home-${card.key}-menu`);
@@ -141,10 +163,17 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
             };
             menuActions.remove = () => removeAssistant();
         }
+        if (actions.update) {
+            // The question opens a dialog that returns focus to the control that had it, and the menu has just closed.
+            menuActions.update = () => {
+                menuButton.focus({ preventScroll: true });
+                void actions.update(card);
+            };
+        }
         // Reads as "Assistant Menu Reisen": the button's own name, then the card's title.
         menuButton.setAttribute('aria-labelledby', `${menuButton.id} ${titleId}`);
         menuButton.addEventListener('click', (event) => {
-            openAssistantMenu(menuButton, { lastMode: getLastChatMode(), actions: menuActions, state: card.state }, { keyboard: event.detail === 0, bounds: panel });
+            openAssistantMenu(menuButton, { lastMode: getLastChatMode(), actions: menuActions, state: card.state, offers: card.offers }, { keyboard: event.detail === 0, bounds: panel });
         });
         footer.append(menuButton);
     }
@@ -197,7 +226,8 @@ function createChooseCard(card, { openPicker }) {
  * @param {HTMLElement} panel The `.welcomePanel` root.
  * @param {object} options
  * @param {() => (import('./assistant-cards.js').AssistantCard | import('./assistant-cards.js').ChooseCard)[]} options.getCards
- * @param {ReturnType<typeof import('./assistant-actions.js').createAssistantActions>} options.actions
+ * @param {ReturnType<typeof import('./assistant-actions.js').createAssistantActions> & Partial<ReturnType<typeof import('./assistant-managed-actions.js').createManagedActions>>} options.actions
+ *   `restore` and `update` are the actions of a card that offers them; without them the menu has no such items.
  * @param {(avatar: string) => string} options.getThumbnailUrl The URL of the thumbnail of a character's card.
  * @param {() => void} options.openPicker Opens the window that chooses the character of the third slot.
  * @param {() => unknown} options.removeAssistant Clears the choice, which returns the third slot to its card to choose from.

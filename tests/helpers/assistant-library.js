@@ -36,7 +36,7 @@ export const PINNED_ASSISTANT_ACCOUNT = Object.freeze({ assistant: null, Welcome
  */
 export function withoutAssistantAccount(accountStorage) {
     return Object.fromEntries(Object.entries(accountStorage ?? {})
-        .filter(([key]) => key !== 'assistant' && key !== 'WelcomePage_AssistantPointerMigrated' && !key.startsWith('bundledAssistant')));
+        .filter(([key]) => key !== 'assistant' && key !== 'WelcomePage_AssistantPointerMigrated' && key !== 'WelcomePage_ManagedDismissed' && !key.startsWith('bundledAssistant')));
 }
 
 /**

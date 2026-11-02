@@ -1,4 +1,5 @@
 import { getHomeAssistants } from './assistant-registry.js';
+import { NO_OFFERS, findOffers } from './managed-content.js';
 
 const POINTER_SLOT = 'AS-POINTER-SUB';
 const CHOOSE_SLOT = 'AS-CHOOSE-SUB';
@@ -28,6 +29,7 @@ export const OWN_CARD_KEY = 'assistant-own';
  * @property {{ name: string, avatar: string | null }} art `name` is the size key; an `avatar` is shown as the thumbnail of that card.
  * @property {string | null} avatar The avatar the card has in the library, or null while it has none.
  * @property {AssistantCardState} state
+ * @property {import('./managed-content.js').ManagedOffers} offers What the card may offer for its bundled file.
  *
  * The third slot while the pointer names no character of its own. The view labels it and draws its icon.
  * @typedef {object} ChooseCard
@@ -39,6 +41,7 @@ export const OWN_CARD_KEY = 'assistant-own';
  * @property {null} art
  * @property {null} avatar
  * @property {'available'} state
+ * @property {import('./managed-content.js').ManagedOffers} offers
  *
  * @typedef {{ avatar: string, name: string }} LibraryCharacter
  * @typedef {object} AssistantLibrary What the cards are read from, on every render of Home.
@@ -55,12 +58,24 @@ export const OWN_CARD_KEY = 'assistant-own';
  */
 
 /**
+ * What the server knows of the bundled files, and what the user kept their cards against.
+ * @typedef {object} ManagedState
+ * @property {import('./managed-content.js').ManagedItem[] | null} items Null while the status is not known.
+ * @property {Map<string, number>} dismissed
+ */
+
+/** @type {ManagedState} */
+const UNKNOWN_MANAGED = Object.freeze({ items: null, dismissed: new Map() });
+
+/**
  * @param {import('./assistant-registry.js').AssistantEntry} assistant
  * @param {AssistantLibrary} library
+ * @param {ManagedState} managed
  * @returns {AssistantCard}
  */
-function describeAssistant(assistant, library) {
+function describeAssistant(assistant, library, managed) {
     const found = library.findCard(assistant);
+    const state = found ? 'available' : (library.isDeleted(assistant) ? 'deleted' : 'missing');
     return {
         key: `assistant-${assistant.id}`,
         id: assistant.id,
@@ -69,7 +84,8 @@ function describeAssistant(assistant, library) {
         slot: assistant.slot,
         art: { name: assistant.art, avatar: null },
         avatar: found?.avatar ?? null,
-        state: found ? 'available' : (library.isDeleted(assistant) ? 'deleted' : 'missing'),
+        state,
+        offers: findOffers({ filename: assistant.defaultAvatar, cardState: state, items: managed.items, dismissed: managed.dismissed }),
     };
 }
 
@@ -87,12 +103,13 @@ function describePointer(character) {
         art: { name: POINTER_ART, avatar: character.avatar },
         avatar: character.avatar,
         state: 'available',
+        offers: NO_OFFERS,
     };
 }
 
 /** @type {ChooseCard} */
 const CHOOSE_CARD = Object.freeze({
-    key: OWN_CARD_KEY, id: 'own', kind: 'choose', name: null, slot: CHOOSE_SLOT, art: null, avatar: null, state: 'available',
+    key: OWN_CARD_KEY, id: 'own', kind: 'choose', name: null, slot: CHOOSE_SLOT, art: null, avatar: null, state: 'available', offers: NO_OFFERS,
 });
 
 /**
@@ -112,10 +129,11 @@ function getBundledAvatars(library) {
  * @param {object} options
  * @param {AssistantLibrary} options.library
  * @param {string | null | undefined} options.pointerAvatar The avatar the account's assistant pointer names.
+ * @param {ManagedState} [options.managed] Without it, no card offers Restore or Update.
  * @returns {(AssistantCard | ChooseCard)[]}
  */
-export function getAssistantCards({ library, pointerAvatar }) {
-    const bundledCards = getHomeAssistants().map(assistant => describeAssistant(assistant, library));
+export function getAssistantCards({ library, pointerAvatar, managed = UNKNOWN_MANAGED }) {
+    const bundledCards = getHomeAssistants().map(assistant => describeAssistant(assistant, library, managed));
     const pointed = pointerAvatar ? library.findAvatar(pointerAvatar) : null;
     if (!pointed || bundledCards.some(card => card.avatar === pointed.avatar)) {
         return [...bundledCards, CHOOSE_CARD];

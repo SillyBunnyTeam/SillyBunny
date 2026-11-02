@@ -255,6 +255,70 @@ describe('Assistant menu', () => {
         expect(buildAssistantMenuSections({ lastMode: 'roleplay', actions, state: 'missing' })).toEqual([]);
     });
 
+    describe('Restore and Update Available', () => {
+        const RESTORE = { filename: 'default_AssistantReisen.png', restore: true, update: null };
+        const UPDATE = { filename: 'default_AssistantReisen.png', restore: false, update: { version: 2 } };
+        const managedActions = () => ({ ...assistantActions(), update: jest.fn() });
+
+        test.each(['deleted', 'missing'])('has no menu for a %s card, even when the card offers Restore, because Restore is a button of the card', (state) => {
+            expect(buildAssistantMenuSections({ lastMode: 'roleplay', actions: managedActions(), state, offers: RESTORE })).toEqual([]);
+        });
+
+        test('has no Restore item for an available card, whatever the offer says', () => {
+            const labels = labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: managedActions(), state: 'available', offers: RESTORE })).flat();
+
+            expect(labels).toEqual(['New Chat in Conversation']);
+        });
+
+        test('has Update Available after the chat item, in a section of its own, for an available card with an update', () => {
+            const actions = managedActions();
+
+            const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions, state: 'available', offers: UPDATE });
+
+            expect(labelsOf(sections)).toEqual([['New Chat in Conversation'], ['Update Available']]);
+            sections[1].items[0].onSelect();
+            expect(actions.update).toHaveBeenCalledTimes(1);
+        });
+
+        test('puts Update Available before Choose Another Assistant and Remove Assistant', () => {
+            const actions = { ...managedActions(), chooseAnother: jest.fn(), remove: jest.fn() };
+
+            const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions, offers: UPDATE });
+
+            expect(labelsOf(sections)).toEqual([['New Chat in Conversation'], ['Update Available'], ['Choose Another Assistant\u2026', 'Remove Assistant']]);
+        });
+
+        test('gives Update Available an explicit icon that fits the icon box', () => {
+            const sections = buildAssistantMenuSections({ lastMode: 'roleplay', actions: managedActions(), offers: UPDATE });
+
+            expect(sections[1].items[0].icon).toBe('fa-solid fa-circle-arrow-up sbHomeMenuIconFit');
+        });
+
+        test('has no Update Available when the card offers none, although the actions exist', () => {
+            const labels = labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: managedActions(), offers: { filename: null, restore: false, update: null } })).flat();
+
+            expect(labels).toEqual(['New Chat in Conversation']);
+        });
+
+        test('has no Update Available when the offer is for a restore only', () => {
+            const labels = labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: managedActions(), offers: RESTORE })).flat();
+
+            expect(labels).toEqual(['New Chat in Conversation']);
+        });
+
+        test('has no Update Available item when the actions have no update', () => {
+            expect(labelsOf(buildAssistantMenuSections({ lastMode: 'roleplay', actions: assistantActions(), offers: UPDATE }))).toEqual([['New Chat in Conversation']]);
+        });
+
+        test('passes the offers on when it opens the menu', () => {
+            openActionMenu.mockClear();
+
+            openAssistantMenu({}, { lastMode: 'roleplay', actions: managedActions(), state: 'available', offers: UPDATE });
+
+            expect(labelsOf(openActionMenu.mock.calls[0][0].sections)).toEqual([['New Chat in Conversation'], ['Update Available']]);
+        });
+    });
+
     test('opens the shared action menu named Assistant Menu, kept inside the given bounds', () => {
         const trigger = {};
         const bounds = {};

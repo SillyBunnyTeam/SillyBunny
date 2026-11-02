@@ -13,11 +13,12 @@ let lastMode = 'roleplay';
 jest.unstable_mockModule('../../public/scripts/sillybunny-chat-mode-memory.js', () => ({ getLastChatMode: () => lastMode }));
 const { mountAssistants } = await import('../../public/scripts/sillybunny-home/assistants-view.js');
 
-const AVAILABLE_REISEN = { key: 'assistant-reisen', id: 'reisen', kind: 'bundled', name: 'Reisen', slot: 'AS-REISEN-SUB', art: { name: 'row-reisen', avatar: null }, avatar: 'default_AssistantReisen.png', state: 'available' };
-const MISSING_TEWI = { key: 'assistant-tewi', id: 'tewi', kind: 'bundled', name: 'Tewi', slot: 'AS-TEWI-SUB', art: { name: 'row-tewi', avatar: null }, avatar: null, state: 'missing' };
+const NONE = { filename: null, restore: false, update: null };
+const AVAILABLE_REISEN = { key: 'assistant-reisen', id: 'reisen', kind: 'bundled', name: 'Reisen', slot: 'AS-REISEN-SUB', art: { name: 'row-reisen', avatar: null }, avatar: 'default_AssistantReisen.png', state: 'available', offers: NONE };
+const MISSING_TEWI = { key: 'assistant-tewi', id: 'tewi', kind: 'bundled', name: 'Tewi', slot: 'AS-TEWI-SUB', art: { name: 'row-tewi', avatar: null }, avatar: null, state: 'missing', offers: NONE };
 const DELETED_TEWI = { ...MISSING_TEWI, state: 'deleted' };
-const POINTER = { key: 'assistant-own', id: 'pointer', kind: 'pointer', name: 'Alice', slot: 'AS-POINTER-SUB', art: { name: 'row-pointer', avatar: 'Alice.png' }, avatar: 'Alice.png', state: 'available' };
-const CHOOSE = { key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available' };
+const POINTER = { key: 'assistant-own', id: 'pointer', kind: 'pointer', name: 'Alice', slot: 'AS-POINTER-SUB', art: { name: 'row-pointer', avatar: 'Alice.png' }, avatar: 'Alice.png', state: 'available', offers: NONE };
+const CHOOSE = { key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available', offers: NONE };
 
 function createActions() {
     return { newChat: jest.fn(), temporaryChat: jest.fn(), newChatInMode: jest.fn() };
@@ -180,6 +181,145 @@ describe.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('a card wh
         const element = cardOf(panel, 'assistant-tewi');
 
         expect(element.querySelector('[data-state], [aria-disabled]')).toBeNull();
+    });
+});
+
+describe('a card whose bundled file can be restored', () => {
+    const RESTORE = { filename: 'default_AssistantTewi.png', restore: true, update: null };
+    const deleted = { ...DELETED_TEWI, offers: RESTORE };
+    const missing = { ...MISSING_TEWI, offers: RESTORE };
+    const managedActions = () => ({ ...createActions(), restore: jest.fn(), update: jest.fn() });
+
+    describe.each([['deleted', deleted], ['missing', missing]])('when its file is %s', (_state, card) => {
+        test('has Restore as the one control of its footer, in place of Start New Chat and Temporary Chat', () => {
+            const { panel } = render([card], { actions: managedActions() });
+            const element = cardOf(panel, 'assistant-tewi');
+
+            expect(footButtons(element)).toHaveLength(1);
+            expect(footButtons(element)[0].querySelector('.sbHomeFootLabel').textContent).toBe('Restore');
+            expect(element.querySelectorAll('.sbHomeCardFooter > *')).toHaveLength(1);
+        });
+
+        test('names the button with the card, and gives it the icon of the footer buttons', () => {
+            const { panel } = render([card], { actions: managedActions() });
+            const [button] = footButtons(cardOf(panel, 'assistant-tewi'));
+
+            expect(button.getAttribute('aria-label')).toBe('Restore Tewi');
+            expect(button.title).toBe('Restore Tewi');
+            expect(button.querySelector('i').className).toBe('fa-solid fa-rotate-left fa-fw');
+            expect(button.querySelector('i').getAttribute('aria-hidden')).toBe('true');
+            expect(button.disabled).toBe(false);
+        });
+
+        test('has no menu button, because nothing is left to put in its menu', () => {
+            const { panel } = render([card], { actions: managedActions() });
+
+            expect(cardOf(panel, 'assistant-tewi').querySelector('.sbHomeRowMenu')).toBeNull();
+        });
+
+        test('keeps the card button disabled, because there is no chat to open', () => {
+            const { panel } = render([card], { actions: managedActions() });
+
+            expect(overlay(cardOf(panel, 'assistant-tewi')).disabled).toBe(true);
+        });
+
+        test('runs Restore for this card, and only that', () => {
+            const actions = managedActions();
+            const { panel } = render([card], { actions });
+
+            footButtons(cardOf(panel, 'assistant-tewi'))[0].click();
+
+            expect(actions.restore).toHaveBeenCalledTimes(1);
+            expect(actions.restore).toHaveBeenCalledWith(card);
+            expect(actions.newChat).not.toHaveBeenCalled();
+            expect(actions.temporaryChat).not.toHaveBeenCalled();
+            expect(actions.update).not.toHaveBeenCalled();
+        });
+
+        test('takes the focus when it is pressed, because Safari does not and Home puts the focus back where it was', () => {
+            const { panel } = render([card], { actions: managedActions() });
+            const [button] = footButtons(cardOf(panel, 'assistant-tewi'));
+
+            button.click();
+
+            expect(document.activeElement).toBe(button);
+        });
+
+        test('keeps its name, its placeholder subtitle, and adds no other text', () => {
+            const { panel } = render([card], { actions: managedActions() });
+            const element = cardOf(panel, 'assistant-tewi');
+
+            expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
+            expect(element.querySelector('.sbHomeCardSub').dataset.sbCopySlot).toBe('AS-TEWI-SUB');
+            expect(element.querySelectorAll('[data-sb-copy-placeholder="true"]')).toHaveLength(1);
+        });
+    });
+
+    test('shows the two disabled chat buttons and no Restore when the card offers none', () => {
+        const { panel } = render([DELETED_TEWI], { actions: managedActions() });
+        const element = cardOf(panel, 'assistant-tewi');
+
+        expect([...element.querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
+        expect(footButtons(element).map(button => button.disabled)).toEqual([true, true]);
+    });
+
+    test('shows the chat buttons when the actions have no Restore, so the card never offers what it cannot do', () => {
+        const { panel } = render([deleted]);
+
+        expect([...cardOf(panel, 'assistant-tewi').querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
+    });
+});
+
+describe('a card with an update from the managed content', () => {
+    const UPDATE = { filename: 'default_AssistantReisen.png', restore: false, update: { version: 2 } };
+    const updatable = { ...AVAILABLE_REISEN, offers: UPDATE };
+    const managedActions = () => ({ ...createActions(), restore: jest.fn(), update: jest.fn() });
+
+    test('has Update Available in the menu after the chat item, and runs Update for this card', () => {
+        const actions = managedActions();
+        const { panel } = render([updatable], { actions });
+
+        cardOf(panel, 'assistant-reisen').querySelector('.sbHomeRowMenu').click();
+        const sections = openActionMenu.mock.calls[0][0].sections;
+        sections[1].items[0].onSelect();
+
+        expect(sections.map(section => section.items.map(item => item.label))).toEqual([['New Chat in Conversation'], ['Update Available']]);
+        expect(actions.update).toHaveBeenCalledWith(updatable);
+        expect(actions.restore).not.toHaveBeenCalled();
+    });
+
+    test('gives the focus to the menu button before it asks, because the question returns it to the control that had it', () => {
+        const actions = managedActions();
+        actions.update.mockImplementation(() => { actions.focusWhenAsked = document.activeElement; });
+        const { panel } = render([updatable], { actions });
+        const menuButton = cardOf(panel, 'assistant-reisen').querySelector('.sbHomeRowMenu');
+        menuButton.click();
+
+        openActionMenu.mock.calls[0][0].sections[1].items[0].onSelect();
+
+        expect(actions.focusWhenAsked).toBe(menuButton);
+    });
+
+    test('keeps both chat buttons in its footer', () => {
+        const { panel } = render([updatable], { actions: managedActions() });
+
+        expect([...cardOf(panel, 'assistant-reisen').querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
+    });
+
+    test('has only the chat item when it has no update', () => {
+        const { panel } = render([AVAILABLE_REISEN], { actions: managedActions() });
+
+        cardOf(panel, 'assistant-reisen').querySelector('.sbHomeRowMenu').click();
+
+        expect(openActionMenu.mock.calls[0][0].sections.map(section => section.items.length)).toEqual([1]);
+    });
+
+    test('does not fail when the actions it was given have no Update, and has no such item', () => {
+        const { panel } = render([updatable]);
+
+        cardOf(panel, 'assistant-reisen').querySelector('.sbHomeRowMenu').click();
+
+        expect(openActionMenu.mock.calls[0][0].sections.map(section => section.items.length)).toEqual([1]);
     });
 });
 

@@ -4,6 +4,7 @@ import { createArtPlaceholder } from './art.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
+import { captureHomeFocus, restoreHomeFocus } from './focus.js';
 // Listens for the Getting Started signals from the moment the app loads, not from the first render of Home.
 import './getting-started-boot.js';
 import { getSharedGettingStartedState } from './getting-started.js';
@@ -111,6 +112,8 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
  * empty states and the display mode.
  * @param {HTMLElement} panel The `.welcomePanel` root, before or after it is attached.
  * @param {HomeContext} context
+ * @returns {{ remountAssistants: () => void }} `remountAssistants` makes the cards again from the context, for a status
+ *   that arrived after the panel was mounted. It keeps the focus on the control that had it.
  */
 export function mountHome(panel, context) {
     panel.querySelector('[data-sb-home-region="hero"]')?.prepend(createArtPlaceholder(chooseHeroArt(new Date())));
@@ -132,12 +135,26 @@ export function mountHome(panel, context) {
         openHelp,
     });
     const { getPickerEntries, getThumbnailUrl, setPointer } = context.assistants;
-    mountAssistants(panel, {
-        ...context.assistants,
-        openPicker: () => openAssistantPicker({ getEntries: getPickerEntries, getThumbnailUrl, choose: setPointer }),
-        removeAssistant: () => setPointer(null),
-    });
-    fitCardFooters(panel);
+    const mountCards = () => {
+        mountAssistants(panel, {
+            ...context.assistants,
+            openPicker: () => openAssistantPicker({ getEntries: getPickerEntries, getThumbnailUrl, choose: setPointer }),
+            removeAssistant: () => setPointer(null),
+        });
+        fitCardFooters(panel);
+    };
+    mountCards();
     fitHomeHeader(panel);
     applyDisplayMode(panel, context.getDisplayMode());
+
+    return {
+        remountAssistants() {
+            const grid = panel.querySelector('[data-sb-home-list="assistants"]');
+            const focus = grid?.contains(document.activeElement) ? captureHomeFocus(panel) : null;
+            mountCards();
+            // The art of a card is a region of its own, which the display mode hides in Compact.
+            applyDisplayMode(panel, panel.dataset.homePanelMode);
+            restoreHomeFocus(panel, focus);
+        },
+    };
 }

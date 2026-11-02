@@ -47,6 +47,8 @@ import { createDefaultAssistantResolver } from './sillybunny-home/default-assist
 // SillyBunny: the assistant cards of Home read the library through the cards model, and their actions are built outside this file.
 import { getAssistantCards, getAssistantPickerEntries } from './sillybunny-home/assistant-cards.js';
 import { createAppAssistantActions, reportFailure as reportAssistantFailure } from './sillybunny-home/assistant-chat.js';
+// SillyBunny: Restore and Update Available of the bundled assistant cards are built outside this file.
+import { createAppManagedAssistants } from './sillybunny-home/assistant-managed-app.js';
 
 // SillyBunny: the pointer key is the registry's.
 const assistantAvatarKey = ASSISTANT_POINTER_KEY;
@@ -719,6 +721,22 @@ const assistantActions = createAppAssistantActions({
     openConversation: (avatar, { branchId, groupId, enable }) => openRecentConversationChat(avatar, groupId, branchId, { enable }),
 });
 
+// SillyBunny: a Restore or an Update puts a file back, so the library is read again and the deletion mark that made the card show as deleted is cleared. Keep Mine changes no file, so it only renders Home.
+async function showManagedChange({ filename, fileChanged }) {
+    if (fileChanged) {
+        const config = WELCOME_BUNDLED_ASSISTANTS.find(item => item.defaultAvatar === filename);
+        if (config) {
+            clearBundledAssistantDeleted(config);
+        }
+        await getCharacters();
+        await refreshCharacterAvatarCache(filename);
+    }
+    await refreshWelcomeScreen();
+}
+
+// SillyBunny: the bundled files that the server could restore or update, read before each render of Home.
+const managedAssistants = createAppManagedAssistants({ afterChange: showManagedChange });
+
 function getHomePanel() {
     const panel = document.querySelector('#chat > .welcomePanel');
     return panel instanceof HTMLElement ? panel : null;
@@ -772,8 +790,11 @@ async function sendWelcomePanel(chats, expand = false) {
             return;
         }
         const templateData = buildWelcomeTemplateData(chats);
+        // SillyBunny: the status of the bundled files is read while the template loads. Only the first render waits for it, and briefly; a later answer replaces the cards.
+        const managedStatus = managedAssistants.refreshStatus();
         // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
         const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261101a', templateData, true, true, true);
+        await managedAssistants.waitForFirstAnswer(managedStatus);
         // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.
         if (getCurrentChatId() !== undefined) {
             return;
@@ -792,7 +813,7 @@ async function sendWelcomePanel(chats, expand = false) {
                 });
             });
             // SillyBunny: the Home header, menu and empty states are built by sillybunny-home/.
-            mountHome(root, {
+            const home = mountHome(root, {
                 version: displayVersion,
                 getDisplayMode: getWelcomePanelMode,
                 setDisplayMode: mode => setWelcomePanelMode(root, mode),
@@ -802,13 +823,15 @@ async function sendWelcomePanel(chats, expand = false) {
                 },
                 // SillyBunny: the cards are read from the library on every render, and their actions are the app's.
                 assistants: {
-                    getCards: () => getAssistantCards({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
+                    getCards: () => getAssistantCards({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey), managed: managedAssistants.getManaged() }),
                     getPickerEntries: () => getAssistantPickerEntries({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
                     setPointer: chooseHomeAssistant,
-                    actions: assistantActions,
+                    actions: { ...assistantActions, ...managedAssistants.actions },
                     getThumbnailUrl: avatar => getThumbnailUrl('avatar', avatar),
                 },
             });
+            // SillyBunny: a status that arrives after the cards were made replaces them, unless a menu or a dialog is open.
+            managedAssistants.keepCardsCurrent({ panel: root, home, pending: managedStatus });
         });
         fragment.querySelectorAll('.recentChatOpen').forEach((button) => {
             button.addEventListener('click', () => {
