@@ -60,14 +60,15 @@ function resolveSizing({ rootDir, id, character, options, detect }) {
  * Snaps one master and applies its touch-ups. The touch-ups come after the snap and are a fixed list of pixels, so snapping the same master
  * with the same options always gives the same file. With `noFixes` the fixes/<id>.json that would be found is not looked for, which is how a
  * frame gets the touch-ups of its base (named by `fixesPath`) and no others.
- * @param {{ rootDir: string, masterPath: string, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, noFixes?: boolean, character?: string, detect?: boolean }} request
+ * With `masterBytes` the master is those bytes (a picture that is made in memory and not written yet) and `masterPath` only names it.
+ * @param {{ rootDir: string, masterPath: string, masterBytes?: Buffer, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, noFixes?: boolean, character?: string, detect?: boolean }} request
  */
-export async function snapPicture({ rootDir, masterPath, id, options = {}, fixesPath, noFixes = false, character, detect = false }) {
+export async function snapPicture({ rootDir, masterPath, masterBytes: given, id, options = {}, fixesPath, noFixes = false, character, detect = false }) {
     const name = snapId(masterPath, id);
     const sized = resolveSizing({ rootDir, id: name, character, options, detect });
-    const masterBytes = readFileSync(masterPath);
+    const masterBytes = given ?? readFileSync(masterPath);
     sniffImage(masterBytes);
-    const master = await readRaster(masterPath);
+    const master = await readRaster(masterBytes);
     // The ring widths are one for every picture: the config sets them, and a flag or batch key for this picture overrides them.
     const { raster: snapped, report } = snapRaster(master, { ...configuredRingWidths(rootDir), ...Object.fromEntries(Object.entries(sized.options).filter(([, value]) => value !== undefined)) });
     const fixes = noFixes ? undefined : findFixes({ rootDir, id: name, fixesPath });
@@ -126,10 +127,12 @@ const absoluteIn = (rootDir, path) => (isAbsolute(path) ? path : resolve(rootDir
  * With `gridFrom` (an approved snap's file or sha256) the picture is a frame of that snap: it takes the snap's grid and settings as logged,
  * with nothing detected, is called `<snap id>--<name>`, and is checked against the snap, which `frameRegion` (master pixels) limits to the area
  * that may change. The check is made before anything is written.
- * @param {{ rootDir: string, masterPath: string, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, character?: string, detect?: boolean,
- *   outPath?: string, outDir?: string, stage?: string, preview?: boolean, sheetPath?: string, gridFrom?: string, frameRegion?: { x: number, y: number, width: number, height: number } }} request
+ * A frame can also be given the base snap itself, as `baseSnap` (what `findBaseSnap` returns), for a base that is snapped in the same run and not logged yet.
+ * With `replace` a picture that already exists at the output path is not an error, for previews that are made again.
+ * @param {{ rootDir: string, masterPath: string, masterBytes?: Buffer, id?: string, options?: Parameters<typeof snapRaster>[1], fixesPath?: string, character?: string, detect?: boolean,
+ *   outPath?: string, outDir?: string, stage?: string, preview?: boolean, replace?: boolean, sheetPath?: string, gridFrom?: string, baseSnap?: Awaited<ReturnType<typeof findBaseSnap>>, frameRegion?: { x: number, y: number, width: number, height: number } }} request
  */
-export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixesPath, character, detect, outPath, outDir, stage, preview = false, sheetPath, gridFrom, frameRegion }) {
+export async function prepareSnap({ rootDir, masterPath, masterBytes, id, options = {}, fixesPath, character, detect, outPath, outDir, stage, preview = false, replace = false, sheetPath, gridFrom, baseSnap, frameRegion }) {
     const name = snapId(masterPath, id);
     if (!preview && !stage) {
         throw new Error('Pass --stage (such as s5) for a run that is logged, or --preview to write under out/ without logging.');
@@ -141,7 +144,7 @@ export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixes
     if (preview && !logOut.startsWith('out/')) {
         throw new Error(`A preview is written under out/ only, not ${logOut}, so it cannot be mistaken for a snap.`);
     }
-    if (existsSync(absoluteOut)) {
+    if (!replace && existsSync(absoluteOut)) {
         throw new Error(`${logOut} already exists; pick another name or remove it first.`);
     }
     const absoluteSheet = sheetPath ? absoluteIn(rootDir, sheetPath) : undefined;
@@ -149,7 +152,7 @@ export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixes
         resolveOutDir(rootDir, dirname(absoluteSheet));
     }
 
-    const base = gridFrom ? await findBaseSnap({ rootDir, from: gridFrom }) : undefined;
+    const base = baseSnap ?? (gridFrom ? await findBaseSnap({ rootDir, from: gridFrom }) : undefined);
     if (!base && frameRegion) {
         throw new Error('--frame-region limits what a frame changed from its base, so it needs --grid-from.');
     }
@@ -160,8 +163,8 @@ export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixes
         }
     }
     const snap = base
-        ? await snapPicture({ rootDir, masterPath, id: name, options: gridOptionsOf(base), fixesPath: baseFixesFile(rootDir, base), noFixes: !base.vars.fixes, character: base.vars.character ?? undefined })
-        : await snapPicture({ rootDir, masterPath, id: name, options, fixesPath, character, detect });
+        ? await snapPicture({ rootDir, masterPath, masterBytes, id: name, options: gridOptionsOf(base), fixesPath: baseFixesFile(rootDir, base), noFixes: !base.vars.fixes, character: base.vars.character ?? undefined })
+        : await snapPicture({ rootDir, masterPath, masterBytes, id: name, options, fixesPath, character, detect });
     const frame = base ? checkFrame({ base: base.raster, frame: snap.raster, grid: { cell: snap.report.cell, offset: snap.report.offset }, baseId: base.id, region: frameRegion, masterSize: snap.master }) : undefined;
     const report = frame ? { ...snap.report, frame: { ...frame, base: { id: base.id, sha256: base.sha256, file: base.file } } } : snap.report;
     const png = await sharp(snap.raster.data, { raw: { width: snap.raster.width, height: snap.raster.height, channels: 4 } }).png({ compressionLevel: 9 }).toBuffer();
@@ -172,7 +175,7 @@ export async function prepareSnap({ rootDir, masterPath, id, options = {}, fixes
         sheet = { path: absoluteSheet, bytes: await buildSnapSheet({ master: snap.master, native: snap.raster, grid, regions: readRegions({ rootDir, id: name, master: snap.master }), caption }) };
     }
     const refHashes = base ? [sha256(snap.masterBytes), base.sha256] : [sha256(snap.masterBytes)];
-    return { ...snap, report, masterPath, absoluteOut, logOut, png, sheet, refHashes };
+    return { ...snap, report, masterPath, absoluteOut, logOut, png, sheet, refHashes, base: base ? { id: base.id, sha256: base.sha256, file: base.file } : undefined };
 }
 
 /**
@@ -289,7 +292,7 @@ export async function runBatch({ rootDir, batch, stage, outDir, sheetDir, dryRun
 }
 
 /** What the log records of a snap: the options that made it, exactly as `snap.mjs` takes them back, and how it came out. */
-function snapVars({ rootDir, masterPath, id, character, report }) {
+export function snapVars({ rootDir, masterPath, id, character, report }) {
     return {
         id,
         master: toLogPath(rootDir, resolve(masterPath)),

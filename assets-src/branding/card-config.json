@@ -1,0 +1,45 @@
+{
+    "canvas": {
+        "width": 768,
+        "height": 1152
+    },
+    "background": {
+        "top": "#f5e9ff",
+        "bottom": "#d9c2f0"
+    },
+    "sprite": {
+        "alphaThreshold": 16,
+        "solidAlpha": 128,
+        "sideMargin": 16,
+        "topMargin": 16,
+        "sticker": {
+            "rim": "#b99bf2",
+            "rimTolerance": 45,
+            "whiteFloor": 235,
+            "rowShare": 0.5,
+            "maxRows": 48,
+            "inset": 2
+        }
+    },
+    "avatar": {
+        "sizes": [
+            128,
+            50
+        ],
+        "lightBackdrop": "#f4f4f6",
+        "darkBackdrop": "#1e1e24"
+    },
+    "world": "SillyBunny Lexicon",
+    "cards": {
+        "reisen": {
+            "cardFile": "Assistant Reisen.json",
+            "art": "approved/card-reisen.png",
+            "output": "default/content/default_AssistantReisen.png"
+        },
+        "tewi": {
+            "cardFile": "Assistant Tewi.json",
+            "art": "approved/card-tewi.png",
+            "output": "default/content/default_AssistantTewi.png"
+        }
+    }
+}

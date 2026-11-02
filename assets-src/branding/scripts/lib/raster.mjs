@@ -2,6 +2,7 @@ import sharp from 'sharp';
 
 /** @typedef {{ width: number, height: number, data: Uint8Array }} Raster RGBA, 4 bytes per pixel, row by row */
 
+/** Reads a picture from a file path or from its bytes. */
 export async function readRaster(path) {
     const { data, info } = await sharp(path).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     return { width: info.width, height: info.height, data };
@@ -17,6 +18,18 @@ export async function readRaster(path) {
 export async function writeRaster(path, raster, { indexed = false } = {}) {
     const image = sharp(raster.data, { raw: { width: raster.width, height: raster.height, channels: 4 } });
     await (indexed ? image.png({ palette: true, colours: 256, dither: 0, compressionLevel: 9 }) : image.png({ compressionLevel: 9 })).toFile(path);
+}
+
+/** The PNG bytes of a raster, lossless. */
+export const encodePng = (raster) => sharp(raster.data, { raw: { width: raster.width, height: raster.height, channels: 4 } }).png({ compressionLevel: 9 }).toBuffer();
+
+/** The smallest box around boxes. @param {{ x: number, y: number, width: number, height: number }[]} boxes */
+export function unionBox(boxes) {
+    const left = Math.min(...boxes.map(({ x }) => x));
+    const top = Math.min(...boxes.map(({ y }) => y));
+    const right = Math.max(...boxes.map(({ x, width }) => x + width));
+    const bottom = Math.max(...boxes.map(({ y, height }) => y + height));
+    return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 export function createRaster(width, height) {

@@ -141,7 +141,7 @@ export async function composeScene(layout, pictures) {
  * pixel within the rim and band widths of transparent space) rather than by the detection that suits smooth art, which in a ring only
  * a few art pixels wide leaves some band pixels at the diagonals to be tinted.
  */
-function gradeSnappedStill(picture, grade) {
+export function gradeSnappedStill(picture, grade) {
     const graded = gradeRaster(picture, { ...grade, toward: parseHexColour(grade.toward) });
     if (!grade.keepSticker) {
         return graded;
