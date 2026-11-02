@@ -63,14 +63,16 @@ describe('Home window openers', () => {
         await flush();
     });
 
-    test('Bundled Extras receives the group it was asked to open at, and none from a plain activation', async () => {
+    test('Bundled Extras opens its window with no options, whatever the activation passed, and once at a time', async () => {
         const first = openWindow();
         openBundledExtrasWindow.mockResolvedValueOnce(first.handle);
 
-        openBundledExtras({ group: 'themes' });
+        openBundledExtras({ type: 'click' });
+        openBundledExtras();
         await flush();
 
-        expect(openBundledExtrasWindow).toHaveBeenLastCalledWith({ group: 'themes' });
+        expect(openBundledExtrasWindow).toHaveBeenCalledTimes(1);
+        expect(openBundledExtrasWindow).toHaveBeenCalledWith();
         first.close();
         await flush();
         const second = openWindow();
@@ -79,7 +81,7 @@ describe('Home window openers', () => {
         openBundledExtras();
         await flush();
 
-        expect(openBundledExtrasWindow).toHaveBeenLastCalledWith(undefined);
+        expect(openBundledExtrasWindow).toHaveBeenCalledTimes(2);
         second.close();
         await flush();
     });

@@ -138,39 +138,23 @@ function getWindowGroups(items) {
  * Opens the Bundled Extras window. It is a Window because it is a long list of groups, and a Window is the
  * tier for lists. The rows act at once, so it has no responses and shows Close.
  * @param {object} [options]
- * @param {string | null} [options.group] A group id to open at. Its heading takes focus, so the list is
- *   already scrolled there and a screen reader starts at the group.
  * @param {(target: string) => unknown} [options.openTarget]
  * @param {readonly import('../sillybunny-bundled-extras.js').BundledExtra[]} [options.items] What the window lists.
  * @param {ReturnType<typeof import('./bundled-extras-actions.js').createBundledExtrasActions>} [options.actions]
  *   What the rows show and do. The app's own when it is not given.
  * @returns {Promise<ReturnType<typeof openDialog>>}
  */
-export async function openBundledExtrasWindow({ group = null, openTarget = openShellTarget, items = BUNDLED_EXTRAS, actions = null } = {}) {
+export async function openBundledExtrasWindow({ openTarget = openShellTarget, items = BUNDLED_EXTRAS, actions = null } = {}) {
     await ensureWindowStyles();
     const rowActions = actions ?? (await import('./bundled-extras-adapters.js')).createAppBundledExtrasActions();
     /** @type {ReturnType<typeof openDialog>} */
     let dialog;
-    /** @type {Map<string, HTMLElement>} */
-    const headings = new Map();
 
-    const itemGroups = getWindowGroups(items).filter(entry => entry.items.length > 0).map((entry) => {
-        const { section } = createPrefGroup({
-            title: getGroupTitle(entry.id),
-            field: `bundled-extras-${entry.id}`,
-            rows: entry.items.map(item => createItemRow(item, rowActions)),
-        });
-        const heading = section.querySelector('.ds-pref-group-heading');
-        if (entry.id === group) {
-            // A heading is not focusable by itself. The tabindex lets the window put focus there without adding a tab stop.
-            heading.tabIndex = -1;
-        }
-        headings.set(entry.id, heading);
-        return section;
-    });
-    if (group !== null && !headings.has(group)) {
-        throw new Error(`Unknown Bundled Extras group: ${group}`);
-    }
+    const itemGroups = getWindowGroups(items).filter(entry => entry.items.length > 0).map(entry => createPrefGroup({
+        title: getGroupTitle(entry.id),
+        field: `bundled-extras-${entry.id}`,
+        rows: entry.items.map(item => createItemRow(item, rowActions)),
+    }).section);
 
     const uiThemes = createRow({
         label: t`UI Themes`,
@@ -187,11 +171,6 @@ export async function openBundledExtrasWindow({ group = null, openTarget = openS
         size: 'content',
         title: t`Bundled Extras`,
         className: 'sbBundledExtrasDialog',
-        initialFocus: group === null ? undefined : () => {
-            const heading = headings.get(group);
-            heading.scrollIntoView({ block: 'start' });
-            return heading;
-        },
         content: body => body.append(
             createArtIntro({ art: 'extras-tewi', slot: 'BE-INTRO' }).intro,
             ...itemGroups,

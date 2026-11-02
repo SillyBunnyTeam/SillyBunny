@@ -97,7 +97,6 @@ export const openKeyboardShortcuts = openOnce('Keyboard Shortcuts', async () => 
 export const openHelp = openOnce('Help', async options => (await import('../sillybunny-help/help-window.js')).openHelpWindow({ topicId: options?.topic ?? null }));
 export const openAbout = openOnce('About', async () => (await import('../sillybunny-about.js')).openAboutWindow());
 export const openGettingStarted = openOnce('Getting Started', async () => (await import('./getting-started-window.js')).openGettingStartedWindow());
-/** Takes `{ group }`, a group id to open the window at. */
-export const openBundledExtras = openOnce('Bundled Extras', async options => (await import('./bundled-extras-window.js')).openBundledExtrasWindow(options));
+export const openBundledExtras = openOnce('Bundled Extras', async () => (await import('./bundled-extras-window.js')).openBundledExtrasWindow());
 /** Takes what the picker needs: `{ getEntries, getThumbnailUrl, choose }`. */
 export const openAssistantPicker = openOnce('Choose Assistant', async options => (await import('./assistant-picker.js')).openAssistantPickerWindow(options));
