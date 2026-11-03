@@ -142,6 +142,7 @@ This is the largest class by a wide margin.
   - Sandbox frames have an opaque origin, so `event.origin` cannot be checked. `handleSandboxMessage()` checks `event.source`, the message schema, the nonce, the message ID and the rate limit, then the command allowlist. It rejects unknown commands.
   - Card scripts need user confirmation before they run (`confirmCardScriptExecution()`). This gate applies only to card scripts; other imported behaviour has no general gate.
   - `decodeRawImage()` in `src/transformers-image.js` passes only bytes with a PNG, JPEG, GIF, BMP, TIFF, WebP or AVIF signature to jimp. file-type before 21.3.1 loops forever on a 55-byte ASF header with a zero-size sub-header (GHSA-5v7r-6r5c-r473) and blocks the event loop, so one `POST /api/extra/caption` stopped the whole server under Node.js. Test: `tests/transformers-image.test.js`.
+  - `getPngName()` in `src/endpoints/characters.js` sanitises the name on every platform and drops a trailing `.png`, because `getPngFileName()` keeps that extension and the import route returns the name without it. `writeCharacterData()` writes only a PNG directly inside the user's characters folder (`resolveCharacterAvatarPath()`). The V2/V3 JSON import sanitises the card name as SillyTavern's `importFromJson()` does (`1bb2a5ea1`). No test guards these yet.
 - **Tests:** `tests/card-script-runtime.test.js`, `tests/card-script-sandbox-wrapper.test.js`, `tests/openai-prompt-logging-wiring.test.js`, `tests/openai-preset-utils.test.js`.
 - **Fixes:** #110 (sandbox helpers), #144 (block remote loads from the sandbox), #348 (gate verbose prompt logging), #560 (bind custom endpoint profiles to their saved secrets).
 - **Order matters:** at startup, `readSecretState()` (`public/scripts/secrets.js`) runs before `getSettings()` calls `accountStorage.init()`, and `accountStorage.getItem()` returns `null` until then. Call `checkOpenRouterAuth()` only after `getSettings()` (`public/script.js`). An earlier call does not find the PKCE code verifier and removes the OAuth query from the URL, so the OpenRouter key exchange never happens. SillyTavern moved the call out of `readSecretState()` in `97dba399e`; the SillyTavern 1.18 port (`9fe08ef34`) kept it. Test: `tests/openrouter-oauth-return.test.js`.
@@ -242,6 +243,16 @@ This is the largest class by a wide margin.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
 - **Partial adoption:** `7b6db61d1` took SillyTavern's `src/electron/` package files (`Start.bat`, `package.json`, `package-lock.json`) but not `index.js`, which `package.json` names as `main` for `electron .`. `Start.bat` also installs with `--ignore-scripts`, and the electron package downloads its binary only in its `postinstall` script, so the launcher could not start. npm audit still reported 30 advisories against its lockfile (electron 41.1.1 and extract-zip 2.0.1). SillyBunny removed `src/electron/`. SillyTavern still ships it, so a sync leaves `src/electron/**` out (`docs/upstream-touch-ledger.md`).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
+
+### Macro whitespace
+
+- **Breaks:** a trim in the macro engine removes whitespace that a template asks for with `{{newline}}`, `{{space}}` or `{{noop}}` (SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674).
+- **Cause:** the engine trims text after it resolves the macros in it. `{{if}}` trims its resolved branch, scoped macros trim their content, and variable shorthand values (`{{.x = ...}}`) are trimmed. The legacy `{{trim}}` post-processor runs after `{{noop}}` is already an empty string, so `{{noop}}` does not stop it as it did in the legacy engine (`public/scripts/macros.js`).
+- **Files:** `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/definitions/core-macros.js`.
+- **Guards:** `public/scripts/macros/sillybunny-whitespace-markers.js`. The walker wraps `{{newline}}` and `{{space}}` output in U+FDD0 and `{{noop}}` output in U+FDD1, and removes them after each trim. `MacroEngine.evaluate()` removes them before it returns, except for the `{{if}}` branch, which `resolve(text, { keepWhitespaceMarkers: true })` returns with markers for the trim in the `{{if}}` handler. Only the `core:` post-processors see the markers.
+- **Tests:** `tests/sillybunny-macro-whitespace.test.js` (runs the real engine in Jest), `tests/frontend/sillybunny-macro-whitespace.e2e.js`.
+- **Limit:** `{{trim}}` still removes `{{newline}}` output next to it, as the legacy engine did. Put `{{noop}}` between them to keep the newline.
+- **Limit:** prompt text that already contains U+FDD0 or U+FDD1 loses those characters.
 
 ## Reverts and release problems
 
