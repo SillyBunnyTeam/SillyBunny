@@ -22,7 +22,7 @@ Pure refactors, styling and bug fixes that restore documented behaviour need no 
   - `position` is `0` or `1` (before or after the character definitions), the only places Conversation reads;
   - `sticky`, `cooldown` and `delay` stay `0`, because Conversation keeps no timed effects between replies;
   - no macros (`{{…}}`), because Conversation resolves them against whichever character is open in Roleplay.
-- **Voice.** Entries are plain, factual and neutral, with no character voice, because both assistants and any card that links the Lexicon read the same text. Name controls as they appear in the interface, and give the path to reach them ("Backend → Connections").
+- **Voice.** Entries are plain, factual and neutral, with no character voice, because both assistants and any card that links the Lexicon read the same text. Name controls as they appear in the interface, and give the path to reach them with "▸" between the steps ("Backend ▸ Connections").
 - **Removed things.** Never mention features or content that SillyBunny no longer ships. The test keeps a list of removed names.
 
 ## Making a change
