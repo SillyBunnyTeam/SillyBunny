@@ -720,6 +720,11 @@ async function importZipContents(zipFilePath, targetRoot) {
 
                 completed = true;
 
+                // yauzl closes the archive itself only after its last entry or its own error, so an import that stops early closes it here.
+                if (finalError) {
+                    zipfile.close();
+                }
+
                 const completionError = finalError;
                 if (!completionError && importedEntityDateAdded !== undefined) {
                     try {
@@ -806,12 +811,22 @@ async function importZipContents(zipFilePath, targetRoot) {
                         return;
                     }
 
+                    let opened = false;
+                    writeStream.once('open', () => {
+                        opened = true;
+                    });
                     pipeline(readStream, writeStream)
                         .then(() => {
                             importedFiles++;
                             zipfile.readEntry();
                         })
-                        .catch(finalize);
+                        .catch(async pipelineError => {
+                            // Opening the file emptied it, so a file that stopped part of the way is removed.
+                            if (opened) {
+                                await fsPromises.rm(destinationPath, { force: true }).catch(() => { });
+                            }
+                            finalize(pipelineError);
+                        });
                 });
             });
 

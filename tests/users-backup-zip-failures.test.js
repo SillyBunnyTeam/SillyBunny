@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from '@
 import fs from 'node:fs';
 import path from 'node:path';
 import archiver from 'archiver';
+import yauzl from 'yauzl';
 
 import { OPEN_MEMBER, readReply, startAccountServer } from './util/user-account-harness.js';
 
@@ -30,6 +31,17 @@ function createZip(entries) {
         }
         archive.finalize();
     });
+}
+
+/**
+ * Builds a backup ZIP whose chat entry does not inflate, after a settings file that does.
+ */
+async function createCorruptZip() {
+    const zip = await createZip({ ...SETTINGS, [CHAT]: 'x'.repeat(5000) });
+    const localHeader = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]), zip.lastIndexOf(Buffer.from(CHAT)));
+    const dataStart = localHeader + 30 + zip.readUInt16LE(localHeader + 26) + zip.readUInt16LE(localHeader + 28);
+    zip.fill(0xff, dataStart, dataStart + 8);
+    return zip;
 }
 
 async function importZip(zip) {
@@ -88,6 +100,30 @@ describe('POST /api/users/import-sillytavern/zip, entry names', () => {
 });
 
 describe('POST /api/users/import-sillytavern/zip, failures', () => {
+    test('answers 400 to an entry that does not inflate, and removes its partial file', async () => {
+        const reply = await importZip(await createCorruptZip());
+
+        expect(reply.status).toBe(400);
+        expect(fs.existsSync(memberFile(CHAT))).toBe(false);
+    });
+
+    test('closes the archive when an entry fails', async () => {
+        const archives = [];
+        const open = yauzl.open;
+        spies.push(jest.spyOn(yauzl, 'open').mockImplementation((file, options, callback) => open.call(yauzl, file, options, (error, zipfile) => {
+            if (zipfile) {
+                archives.push(zipfile);
+            }
+            callback(error, zipfile);
+        })));
+
+        const reply = await importZip(await createCorruptZip());
+
+        expect(reply.status).toBe(400);
+        expect(archives).toHaveLength(2);
+        expect(archives.filter(zipfile => zipfile.isOpen)).toEqual([]);
+    });
+
     test('answers, and keeps answering, when opening a file throws', async () => {
         const createWriteStream = fs.createWriteStream;
         spies.push(jest.spyOn(fs, 'createWriteStream').mockImplementation((target, ...args) => {
