@@ -985,6 +985,20 @@ async function importFromYaml(uploadPath, context, preservedFileName) {
     return result ? fileName : '';
 }
 
+// SillyBunny: a card name that sanitizes to nothing would make the characters folder itself the asset folder of an archive card.
+/**
+ * Gets the name of the folder that keeps the assets of an archive card.
+ * @param {string} name Card name
+ * @param {string} fileName Card file name without its extension
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @returns {string|null} The sanitized card name, else the file name, or null if that does not name a folder directly inside the characters and user images folders
+ */
+function getCardAssetFolder(name, fileName, directories) {
+    const folder = sanitize(name) || fileName;
+    const isChildFolder = directory => path.dirname(path.resolve(directory, folder)) === path.resolve(directory);
+    return isChildFolder(directories.characters) && isChildFolder(directories.userImages) ? folder : null;
+}
+
 /**
  * Imports a character card from CharX (ZIP) file.
  * @param {string} uploadPath
@@ -1011,9 +1025,10 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
     const fileName = preservedFileName || getPngName(processedCard.name, request.user.directories);
     // Use the actual character name for asset folders, not the unique filename
     // ST's sprite system looks up by character name, not PNG filename
-    const characterFolder = processedCard.name;
+    // SillyBunny: a name that sanitizes to nothing would make the characters folder itself the asset folder, so the file name names the folder then.
+    const characterFolder = getCardAssetFolder(processedCard.name, fileName, request.user.directories);
 
-    if (auxiliaryAssets.length > 0) {
+    if (auxiliaryAssets.length > 0 && characterFolder) {
         try {
             const summary = persistCharXAssets(auxiliaryAssets, extractedBuffers, request.user.directories, characterFolder);
             if (summary.sprites || summary.backgrounds || summary.misc) {
@@ -1022,6 +1037,9 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
         } catch (error) {
             console.warn(`CharX: Failed to persist auxiliary assets for ${characterFolder}`, error);
         }
+    } else if (auxiliaryAssets.length > 0) {
+        // SillyBunny: neither the card name nor the file name names a folder of its own, so the assets have nowhere to go.
+        console.warn('CharX: Skipped the auxiliary assets, because neither the card name nor its file name can name an asset folder');
     }
 
     const result = await writeCharacterData(avatar, JSON.stringify(processedCard), fileName, request);
@@ -1085,7 +1103,8 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
             // BYAF does not support character expressions, so using the same structure will not result in conflicts,
             // even if the expression system did not tolerate additional icons that are not mapped to expressions.
             // This will not yet allow changing icons within the UI but at least the icons will be available for manual selection, rather than being lost.
-            const altImagesFolder = path.join(request.user.directories.characters, sanitize(card.name));
+            // SillyBunny: a card name that sanitizes to nothing would put the icons directly in the characters folder, so the file name names the folder then.
+            const altImagesFolder = path.join(request.user.directories.characters, getCardAssetFolder(card.name, fileName, request.user.directories));
             if (!fs.existsSync(altImagesFolder)) fs.mkdirSync(altImagesFolder, { recursive: true });
             const extension = path.extname(icon.filename) || '.png';
             const file = getUniqueName(`${sanitize(icon.label, { replacement: sanitizeSafeCharacterReplacements }) || 'alt'}`, (name) => fs.existsSync(path.join(altImagesFolder, `${name}${extension}`)));
