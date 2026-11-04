@@ -7610,6 +7610,10 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     isolation: isolate;
 }
 
+.sb-dialog * {
+    text-shadow: none;
+}
+
 /* AdwAlertDialog: 300px preferred, 372px at most (600px with preferWide). */
 .sb-dialog--alert {
     width: max-content;

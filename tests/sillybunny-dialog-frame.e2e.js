@@ -949,3 +949,35 @@ test.describe('page chains', () => {
         await expect(page.locator('dialog.popup')).toHaveCount(0);
     });
 });
+
+test('text inside a Dialog, a Window and an Alert has no text shadow while the theme shadow width is above zero', async ({ page }) => {
+    await prepare(page, { width: 1440, height: 900 });
+    const shadowWidth = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--shadowWidth')));
+    expect(shadowWidth).toBeGreaterThan(0);
+    // The universal rule of style.css gives the page its text shadow, so the check below fails only on a leak.
+    expect(await page.evaluate(() => getComputedStyle(document.body).textShadow)).not.toBe('none');
+
+    for (const tier of ['dialog', 'window', 'alert']) {
+        await page.evaluate(async (opening) => {
+            const { openDialog, openAlert } = await import('/scripts/sillybunny-editor/dialog.js');
+            if (opening === 'alert') {
+                window.qaDialog = openAlert({ heading: 'QA heading', body: 'QA body text.', responses: [{ id: 'cancel', label: 'Cancel' }] });
+                return;
+            }
+            const content = document.createElement('div');
+            content.innerHTML = '<p>Paragraph</p><label>Label <input value="Value"></label><button type="button">Action</button>';
+            window.qaDialog = openDialog({ tier: opening, title: 'QA Dialog', content, responses: { affirmative: { id: 'save', label: 'Save' } } });
+        }, tier);
+        const surface = page.locator('.sb-dialog-host[open] .sb-dialog');
+        await expect(surface).toBeVisible();
+
+        const haloed = await surface.evaluate(node => [node, ...node.querySelectorAll('*')]
+            .filter(element => [...element.childNodes].some(child => child.nodeType === Node.TEXT_NODE && child.textContent.trim()))
+            .filter(element => getComputedStyle(element).textShadow !== 'none')
+            .map(element => `${element.tagName.toLowerCase()}.${[...element.classList].join('.')}`));
+        expect(haloed, `${tier}: elements that still paint a text shadow`).toEqual([]);
+
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.sb-dialog-host')).toHaveCount(0);
+    }
+});

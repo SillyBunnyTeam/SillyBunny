@@ -598,7 +598,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/script-module-identity.test.js`, `tests/frontend-assets.test.js`, `tests/ooc-blocks.test.js`, `tests/core-message-transparency.test.js`, `tests/mobile-css-budgets.test.js`, `tests/header-icon-button-parity.e2e.js`, `tests/in-chat-agents-list.e2e.js`, `tests/mobile-character-toggle-and-panels.e2e.js`. |
 | Validation | Unit tests for script identity and frontend assets, the focused status-page and mobile Characters E2E cases, `npm run check:frontend-budgets`, and browser smoke at desktop and mobile widths. |
 | Rollback path | Restore versioned `script.js` references, previous settings copy, and remove core transparency slider markup if cache behavior or settings semantics regress. Chat transparency CSS loading rolls back through `public/scripts/power-user.js`. |
-| Last reviewed | 2026-11-04, PR #870 (the `sillybunny-theme.css` key, `20261104e`; the `style.css` key, `20261104h`, at both call sites). |
+| Last reviewed | 2026-11-05, PR #870 (the `sillybunny-theme.css` key, `20261105a`; the `style.css` key, `20261104h`, at both call sites). |
 | Owner | Refactor integrator. |
 
 ### `public/index.html` - Characters/Groups deferred stylesheet cache key
