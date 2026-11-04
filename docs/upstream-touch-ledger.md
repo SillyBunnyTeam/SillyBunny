@@ -452,12 +452,26 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `src/endpoints/characters.js`. |
 | Area | CHARX and BYAF asset storage, and the format lookup of `POST /import`. |
 | Divergence reason | TODO(copy) |
-| Target seam | none yet. |
-| Adapter shape | `getCardAssetFolder()` returns the sanitized card name, else the card's file name, or `null` when that name is not a folder directly inside the characters and user images folders. `importFromCharX()` passes it to `persistCharXAssets()` and skips the assets for `null`; `importFromByaf()` uses it for the alternate icon folder. `isArchiveImage()` accepts a file only when `ARCHIVE_IMAGE_CHECKS` has its extension (png, apng, jpg, jpeg, jfif, gif, webp, avif, bmp) and its leading bytes match that type. `importFromCharX()` filters the parser's auxiliary assets with it; `importFromByaf()` filters the chat backgrounds before it writes them and the chats, and filters the alternate icons. The stored bytes stay as they are. `POST /import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`. `src/charx.js` and `src/byaf.js` stay as in SillyTavern. |
+| Target seam | `src/image-file-type.js` for the image check; none yet for the asset folders and the format lookup. |
+| Adapter shape | `getCardAssetFolder()` returns the sanitized card name, else the card's file name, or `null` when that name is not a folder directly inside the characters and user images folders. `importFromCharX()` passes it to `persistCharXAssets()` and skips the assets for `null`; `importFromByaf()` uses it for the alternate icon folder. `isArchiveImage()` passes a file to `isImageFile()` from `src/image-file-type.js`, which accepts it only when its extension is png, apng, jpg, jpeg, jfif, gif, webp, avif or bmp and its leading bytes match that type, and logs the files that fail. `importFromCharX()` filters the parser's auxiliary assets with it; `importFromByaf()` filters the chat backgrounds before it writes them and the chats, and filters the alternate icons. The stored bytes stay as they are. `POST /import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`. `src/charx.js` and `src/byaf.js` stay as in SillyTavern. |
 | Protecting tests | `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- character-archive-assets.test.js character-route-names.test.js` (on the base commit all 8 archive tests and the format test fail), `npm run lint`. |
-| Rollback path | Revert the `getCardAssetFolder()`, `isArchiveImage()` and `ARCHIVE_IMAGE_CHECKS` additions, their uses in `importFromCharX()` and `importFromByaf()`, and the `Object.hasOwn()` lookup in `POST /import`. No stored data or settings change. |
-| Last reviewed | 2026-11-05 archive asset folders and image types, import format lookup. |
+| Validation | `npm run test:unit --prefix tests -- character-archive-assets.test.js character-route-names.test.js` (all 13 pass after the image check moved to `src/image-file-type.js`; when that check accepts every file, the 3 image tests fail), `npm run lint`. |
+| Rollback path | Revert the `getCardAssetFolder()` and `isArchiveImage()` additions, the `isImageFile()` import, their uses in `importFromCharX()` and `importFromByaf()`, and the `Object.hasOwn()` lookup in `POST /import`. `src/image-file-type.js` stays while `src/endpoints/sprites.js` uses it. No stored data or settings change. |
+| Last reviewed | 2026-11-05 image check moved to `src/image-file-type.js`. |
+| Owner | TODO(copy) |
+
+### `src/endpoints/sprites.js` - sprite file types
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/sprites.js`. |
+| Area | Sprite uploads (`POST /api/sprites/upload` and `POST /api/sprites/upload-zip`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/image-file-type.js`. |
+| Adapter shape | `/upload-zip` keeps an entry of `getImageBuffers()` only when `isImageFile(path.extname(sanitize(filename)), buffer)` passes. `/upload` reads the leading bytes of the upload with `readImageSignature()`, keeps the uploaded extension when `isImageFile()` passes, else takes `getImageExtension()`, and sanitizes the name. When the sanitized name fails `isImageFile()`, the route deletes the upload and answers 400 before it creates the sprite folder or deletes an existing sprite. The stored bytes stay as they are. |
+| Protecting tests | `tests/sprite-upload-images.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- sprite-upload-images.test.js` (with the base commit's `sprites.js`, all 8 tests fail), `npm run lint`. |
+| Rollback path | Revert the `/upload-zip` filter, the `/upload` check and the import in `src/endpoints/sprites.js`. Keep `src/image-file-type.js`, which the character imports use. No stored data or settings change. |
+| Last reviewed | 2026-11-05 sprite upload file types. |
 | Owner | TODO(copy) |
 
 ### `src/character-card-parser.js` - PNG chunk bounds
