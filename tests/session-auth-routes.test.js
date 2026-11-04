@@ -11,6 +11,7 @@ import {
     startApp,
     writeErrorPage,
 } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
 
 const USERNAME = 'test-user';
 const PASSWORD = 'test-password';
@@ -134,7 +135,7 @@ describe('POST /api/auth/login', () => {
 
         expect(reply.status).toBe(200);
         expect(sessionAuth.validateSession(reply.body.token)?.username).toBe(USERNAME);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('answers 401 to wrong credentials and gives no token', async () => {
         const { base } = await startSessionRoutes();
@@ -142,7 +143,7 @@ describe('POST /api/auth/login', () => {
         const reply = await login(base, { username: USERNAME, password: 'wrong-password' });
 
         expect(reply).toMatchObject({ status: 401, body: { error: 'Invalid credentials.' } });
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test.each([
         ['no fields', {}],
@@ -157,7 +158,7 @@ describe('POST /api/auth/login', () => {
         const reply = await login(base, body);
 
         expect(reply).toMatchObject({ status: 400, body: { error: 'Username and password are required.' } });
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('answers 400 to an object password for an account that has a password, and keeps answering', async () => {
         const { base } = await startSessionRoutes({ env: ACCOUNT_PASSWORDS, accounts: true });
@@ -167,7 +168,7 @@ describe('POST /api/auth/login', () => {
 
         expect(reply.status).toBe(400);
         expect(next.status).toBe(200);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('answers 500 when the account storage fails', async () => {
         const { storage, base } = await startSessionRoutes({ env: ACCOUNT_PASSWORDS, accounts: true });
@@ -176,7 +177,7 @@ describe('POST /api/auth/login', () => {
         const reply = await login(base, { username: 'alice', password: 'alice-pass' });
 
         expect(reply.status).toBe(500);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
 
 describe('the session login limit', () => {
@@ -195,7 +196,7 @@ describe('the session login limit', () => {
         expect(limited.body).toEqual({ error: 'Too many attempts. Try again later or contact your admin.' });
         expect(Number(limited.retryAfter)).toBeGreaterThan(0);
         expect(Number(limited.retryAfter)).toBeLessThanOrEqual(60);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('allows five failed logins by default', async () => {
         const { base } = await startSessionRoutes();
@@ -205,7 +206,7 @@ describe('the session login limit', () => {
 
         expect(failures).toEqual(Array(5).fill(401));
         expect(limited.status).toBe(429);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('a successful login clears the count', async () => {
         const { base } = await startSessionRoutes({ env: limitOfThree });
@@ -218,7 +219,7 @@ describe('the session login limit', () => {
         expect(success.status).toBe(200);
         expect(failures).toEqual([401, 401, 401]);
         expect(limited.status).toBe(429);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('does not count a request that answers 400', async () => {
         const { base } = await startSessionRoutes({ env: limitOfThree });
@@ -228,7 +229,7 @@ describe('the session login limit', () => {
 
         expect(malformed).toEqual(Array(5).fill(400));
         expect(success.status).toBe(200);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('counts a socket address once, whatever forwarded address the client names', async () => {
         const { base } = await startSessionRoutes({ env: limitOfThree });
@@ -239,7 +240,7 @@ describe('the session login limit', () => {
         const limited = await login(base, right, { 'X-Real-IP': '203.0.113.99' });
 
         expect(limited.status).toBe(429);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('a limit of 0 turns the limit off', async () => {
         const { base } = await startSessionRoutes({ env: { SILLYTAVERN_RATELIMITING_BASICAUTHMAXATTEMPTS: '0' } });
@@ -249,7 +250,7 @@ describe('the session login limit', () => {
 
         expect(failures).toEqual(Array(8).fill(401));
         expect(success.status).toBe(200);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
 
 describe('whitelist checks on the session routes', () => {
@@ -259,7 +260,7 @@ describe('whitelist checks on the session routes', () => {
         const reply = await login(base, { username: USERNAME, password: PASSWORD });
 
         expect(reply).toEqual({ status: 403, body: WHITELIST_PAGE, retryAfter: null });
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('a client outside the IP whitelist gets the whitelist page before its request is read', async () => {
         const { base } = await startSessionRoutes({ env: { ...ACCOUNT_PASSWORDS, SILLYTAVERN_WHITELIST: '["192.0.2.1"]' }, whitelistMode: true, accounts: true });
@@ -268,7 +269,7 @@ describe('whitelist checks on the session routes', () => {
 
         expect(reply.status).toBe(403);
         expect(reply.body).toBe(WHITELIST_PAGE);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('a client outside the IP whitelist keeps getting the whitelist page, not 429', async () => {
         const env = { SILLYTAVERN_WHITELIST: '["192.0.2.1"]', SILLYTAVERN_RATELIMITING_BASICAUTHMAXATTEMPTS: '1' };
@@ -277,7 +278,7 @@ describe('whitelist checks on the session routes', () => {
         const statuses = await repeatLogin(3, blocked.base, { username: USERNAME, password: 'wrong-password' });
 
         expect(statuses).toEqual([403, 403, 403]);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('a client inside the IP whitelist can log in', async () => {
         const { base } = await startSessionRoutes({ env: { SILLYTAVERN_WHITELIST: '["127.0.0.1"]' }, whitelistMode: true });
@@ -286,7 +287,7 @@ describe('whitelist checks on the session routes', () => {
 
         expect(reply.status).toBe(200);
         expect(typeof reply.body.token).toBe('string');
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('the IP whitelist is not checked when whitelist mode is off', async () => {
         const { base } = await startSessionRoutes({ env: { SILLYTAVERN_WHITELIST: '["192.0.2.1"]' }, whitelistMode: false });
@@ -294,7 +295,7 @@ describe('whitelist checks on the session routes', () => {
         const reply = await login(base, { username: USERNAME, password: PASSWORD });
 
         expect(reply.status).toBe(200);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('logout answers a client outside the IP whitelist with the whitelist page and keeps the session', async () => {
         const { sessionAuth, base } = await startSessionRoutes({ env: { SILLYTAVERN_WHITELIST: '["192.0.2.1"]' }, whitelistMode: true });
@@ -304,7 +305,7 @@ describe('whitelist checks on the session routes', () => {
 
         expect(reply.status).toBe(403);
         expect(sessionAuth.validateSession(token)).not.toBeNull();
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('a request for a host outside the host whitelist gets the host page before its credentials are read', async () => {
         const env = { SILLYTAVERN_HOSTWHITELIST_ENABLED: 'true', SILLYTAVERN_HOSTWHITELIST_HOSTS: '["allowed.example"]' };
@@ -316,7 +317,7 @@ describe('whitelist checks on the session routes', () => {
         expect(blocked).toEqual({ status: 403, body: HOST_PAGE });
         expect(allowed.status).toBe(200);
         expect(typeof JSON.parse(allowed.body).token).toBe('string');
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
 
 describe('POST /api/auth/logout', () => {
@@ -328,7 +329,7 @@ describe('POST /api/auth/logout', () => {
 
         expect(reply).toMatchObject({ status: 200, body: { success: true } });
         expect(sessionAuth.validateSession(body.token)).toBeNull();
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
 
 describe('validateCredentials', () => {
@@ -352,7 +353,7 @@ describe('validateCredentials', () => {
         const { validateCredentials } = await import('../src/middleware/sessionAuth.js');
 
         await expect(validateCredentials('alice', password)).resolves.toBe(false);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
 
 describe('empty basicAuthUser credentials', () => {
@@ -370,23 +371,23 @@ describe('empty basicAuthUser credentials', () => {
         const { validateCredentials } = await import('../src/middleware/sessionAuth.js');
 
         await expect(validateCredentials(username, password)).resolves.toBe(false);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('registering the session routes logs one warning when a configured value is empty', async () => {
         await startSessionRoutes({ env: { SILLYTAVERN_BASICAUTHUSER_PASSWORD: '' } });
 
         expect(credentialWarnings()).toHaveLength(1);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('registering the session routes logs no such warning when both values are set', async () => {
         await startSessionRoutes();
 
         expect(credentialWarnings()).toHaveLength(0);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     test('registering the session routes logs no such warning when logins use the account passwords', async () => {
         await startSessionRoutes({ env: { ...ACCOUNT_PASSWORDS, SILLYTAVERN_BASICAUTHUSER_PASSWORD: '' } });
 
         expect(credentialWarnings()).toHaveLength(0);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
