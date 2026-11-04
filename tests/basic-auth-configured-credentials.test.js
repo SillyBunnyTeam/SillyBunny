@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import crypto from 'node:crypto';
 
 import { closeApps, createTempDirectory, removeTempDirectory, resetServerModules, startApp } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
 
 const USERNAME = 'test-user';
 const PASSWORD = 'test-password';
@@ -55,14 +56,14 @@ describe('basic auth configured credentials', () => {
         const app = await startBasicAuth(username, password);
 
         expect(await statusFor(app, username, password)).toBe(401);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     describe('comparison', () => {
         let app;
 
         beforeAll(async () => {
             app = await startBasicAuth(USERNAME, PASSWORD);
-        });
+        }, MODULE_RELOAD_TIMEOUT_MS);
 
         test.each([
             ['a wrong username of another length', 'someone-else', PASSWORD, 401],
