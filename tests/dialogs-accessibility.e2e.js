@@ -115,8 +115,14 @@ for (const surface of SURFACES) {
                     if (!surface.modal) {
                         const forward = await walkSurface(page, surface);
                         expect(forward.leftRoot, 'Tab leaves a non-modal panel').toBe(true);
-                        await pressKey(page, 'Shift+Tab');
-                        expect((await focusStateOf(page, surface)).inside, 'Shift+Tab returns into the panel').toBe(true);
+                        // A page has a document stop after its last control, so the first Shift+Tab can land on the document.
+                        const stepsBack = surface.hasEscape === false ? 2 : 1;
+                        let returned = false;
+                        for (let step = 0; step < stepsBack && !returned; step++) {
+                            await pressKey(page, 'Shift+Tab');
+                            returned = (await focusStateOf(page, surface)).inside === true;
+                        }
+                        expect(returned, 'Shift+Tab returns into the panel').toBe(true);
                         return;
                     }
                     await expectTabStaysInside(page, surface);
@@ -136,12 +142,14 @@ for (const surface of SURFACES) {
                     expect(focusProblems(stops)).toEqual([]);
                 });
 
-                test('keyboard: Escape closes or pops one level and focus returns to the opener', async ({ page, baseURL }) => {
-                    const context = await surface.boot(page, baseURL, viewport, { motion: false });
-                    const opener = await surface.open(page, context);
-                    await pressEscapeSteps(page, surface, context, opener);
-                    await expect(surface.isOpen(page)).toHaveCount(0);
-                });
+                if (surface.hasEscape !== false) {
+                    test('keyboard: Escape closes or pops one level and focus returns to the opener', async ({ page, baseURL }) => {
+                        const context = await surface.boot(page, baseURL, viewport, { motion: false });
+                        const opener = await surface.open(page, context);
+                        await pressEscapeSteps(page, surface, context, opener);
+                        await expect(surface.isOpen(page)).toHaveCount(0);
+                    });
+                }
 
                 if (surface.structure) {
                     test('structure: the dialog has a role and a name that follows its page, is modal, and every control in it has a name', async ({ page, baseURL }) => {
@@ -161,12 +169,14 @@ for (const surface of SURFACES) {
                     });
                 }
 
-                test('keyboard with motion: Escape closes through the closing animation and focus returns', async ({ page, baseURL }) => {
-                    const context = await surface.boot(page, baseURL, viewport, { motion: true });
-                    const opener = await surface.open(page, context);
-                    await pressEscapeSteps(page, surface, context, opener);
-                    await expect(surface.isOpen(page)).toHaveCount(0);
-                });
+                if (surface.hasEscape !== false) {
+                    test('keyboard with motion: Escape closes through the closing animation and focus returns', async ({ page, baseURL }) => {
+                        const context = await surface.boot(page, baseURL, viewport, { motion: true });
+                        const opener = await surface.open(page, context);
+                        await pressEscapeSteps(page, surface, context, opener);
+                        await expect(surface.isOpen(page)).toHaveCount(0);
+                    });
+                }
 
                 if (surface.destructive) {
                     test('keyboard: Return with Cancel focused does not confirm', async ({ page, baseURL }) => {
@@ -213,7 +223,8 @@ for (const surface of SURFACES) {
                         await state.enter(page, context);
                         await settleTransitions(page);
                         const report = await page.evaluate(([root, frame]) => window.sbA11y.forcedColours(root, frame), [surface.rootSelector, surface.frameSelector]);
-                        expect.soft(report.controls, `${state.name}: control boundaries or fills`).toEqual([]);
+                        const bounded = report.controls.filter(control => !surface.flatControls?.test(control));
+                        expect.soft(bounded, `${state.name}: control boundaries or fills`).toEqual([]);
                         expect.soft(report.selected, `${state.name}: selected segment`).toEqual([]);
                         const { stops } = await walkSurface(page, surface);
                         expect.soft(focusProblems(stops, { forcedColours: true }), `${state.name}: focus indicator`).toEqual([]);
@@ -241,9 +252,12 @@ for (const surface of SURFACES) {
                         await state.enter(page, context);
                         await settleTransitions(page);
                         const report = await page.evaluate(([root, ellipsizing]) => window.sbA11y.scale(root, ellipsizing), [surface.rootSelector, ELLIPSIZING]);
-                        expect.soft(report.insideViewport, `${state.name}: frame inside the viewport`).toBe(true);
+                        // A page scrolls, so only its width has to fit the viewport.
+                        expect.soft(surface.scrolls ? report.insideAcross : report.insideViewport, `${state.name}: frame inside the viewport`).toBe(true);
                         expect.soft(report.overlaps, `${state.name}: overlapping header controls`).toEqual([]);
-                        expect.soft(report.responseCount, `${state.name}: responses found`).toBeGreaterThan(0);
+                        if (surface.hasResponses !== false) {
+                            expect.soft(report.responseCount, `${state.name}: responses found`).toBeGreaterThan(0);
+                        }
                         expect.soft(report.responses, `${state.name}: responses visible`).toEqual([]);
                         const last = await page.evaluate(selector => window.sbA11y.lastContent(selector), surface.rootSelector);
                         expect.soft(last.problems, `${state.name}: last content reachable`).toEqual([]);

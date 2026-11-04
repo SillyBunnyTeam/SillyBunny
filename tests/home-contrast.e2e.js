@@ -2,9 +2,8 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
-import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { stubTheme } from './helpers/theme-stub.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -34,24 +33,6 @@ const EDGE_BEFORE = {
 };
 /** The tint alpha of the Everforest Dark chat column. */
 const EVERFOREST_TINT_ALPHA = 0.05;
-
-/** The settings the app reads, with the palette of one bundled theme copied into the user's settings. */
-async function stubTheme(page, themeName, { tint } = {}) {
-    await page.route('**/api/settings/get', async (route) => {
-        const data = await fetchJsonOrSkip(route);
-        if (!data) return;
-        const settings = JSON.parse(data.settings);
-        applyHomeTestSettings(settings, { firstRun: false });
-        const palette = { ...data.themes.find(entry => entry.name === themeName) };
-        delete palette.name;
-        if (tint) {
-            palette.chat_tint_color = tint;
-        }
-        settings.power_user = { ...settings.power_user, ...palette, theme: themeName, world_import_dialog: false };
-        settings.extension_settings = settings.extension_settings || {};
-        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
-    });
-}
 
 async function showWallpaper(page) {
     const body = readFileSync(WALLPAPER_FILE);
@@ -223,6 +204,22 @@ async function columnLineColor(page) {
     return line ? resolveColor(page, line[1]) : null;
 }
 
+/** The opaque colour that the page shows behind an element's text: its own fill and those of its ancestors up to the column, over the column. */
+async function surfaceBehind(page, selector) {
+    const fills = await page.locator(`${PANEL} ${selector}`).first().evaluate((node) => {
+        const layers = [];
+        for (let current = node; current && current.id !== 'chat'; current = current.parentElement) {
+            layers.push(getComputedStyle(current).backgroundColor);
+        }
+        return layers;
+    });
+    let surface = await columnPixel(page);
+    for (const fill of fills.reverse()) {
+        surface = over(await resolveColor(page, fill), surface);
+    }
+    return surface;
+}
+
 const channelGap = (a, b) => Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b));
 
 const TARGETS = {
@@ -343,6 +340,27 @@ for (const { name, options, narrow } of VIEWPORTS) {
                     expect(line, selector).toEqual(expected);
                 }
             });
+        });
+
+        test.describe('Libadwaita Light', () => {
+            test.beforeEach(async ({ page }) => {
+                await bootHome(page, 'Libadwaita Light');
+            });
+
+            for (const [label, selector] of Object.entries(TARGETS)) {
+                test(`the edge of the ${label} stands out from the page by ${EDGE_FLOOR}:1`, async ({ page }) => {
+                    expect(await edgeContrast(page, selector)).toBeGreaterThanOrEqual(EDGE_FLOOR);
+                });
+            }
+
+            for (const selector of ['.sbHomeTitle', '#sb-home-assistants-title', '.sbHomeTileTitle', '.sbHomeCardName']) {
+                test(`${selector} reads at ${TEXT_FLOOR}:1 on what is behind it`, async ({ page }) => {
+                    const text = await resolveColor(page, await page.locator(`${PANEL} ${selector}`).first().evaluate(node => getComputedStyle(node).color));
+
+                    expect(text.a, 'the text is opaque').toBe(1);
+                    expect(contrastOf(text, await surfaceBehind(page, selector))).toBeGreaterThanOrEqual(TEXT_FLOOR);
+                });
+            }
         });
 
         if (!narrow) {

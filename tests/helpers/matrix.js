@@ -11,6 +11,14 @@ export const QUICK_MATRIX = process.env.SB_QUICK_MATRIX === '1';
 export const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 390, height: 844 };
 export const SMALL_PHONE = { width: 360, height: 640 };
+/** The widest window that shows the action menus as sheets. */
+export const SHEET_BOUNDARY_PHONE = { width: 450, height: 800 };
+export const LANDSCAPE_PHONE = { width: 844, height: 390 };
+/**
+ * Sizes where a spec checks the geometry of a layout and nothing else, because the tests of a layout that do not depend on
+ * the size already pass at the sizes beside them. Pass them as `geometryOnlySizes` to `sizeFreeTestFor`.
+ */
+export const GEOMETRY_ONLY_SIZES = [SHEET_BOUNDARY_PHONE, LANDSCAPE_PHONE];
 
 /** Picks the full value, or the quick one while `SB_QUICK_MATRIX=1`. */
 export function quickOr(full, quick) {
@@ -51,14 +59,16 @@ const unregisteredTest = new Proxy(() => {}, { get: () => unregisteredTest });
 /**
  * The function that registers the tests of a spec whose result does not depend on the window size. It is `test` itself
  * in a full run, and in a quick run it is `test` at the desktop size only and a stand-in that registers nothing at
- * every other size.
+ * every other size. At a size in `geometryOnlySizes` it is the stand-in in a full run too.
  * @template T
  * @param {T} test The `test` of the spec.
  * @param {{ width: number, height: number }} size The window size of the pass that registers the tests.
+ * @param {{ width: number, height: number }[]} [geometryOnlySizes] Sizes that run the tests of the layout only.
  * @returns {T}
  */
-export function sizeFreeTestFor(test, size) {
-    if (!QUICK_MATRIX || isSameSize(size, DESKTOP)) {
+export function sizeFreeTestFor(test, size, geometryOnlySizes = []) {
+    const isGeometryOnly = geometryOnlySizes.some(geometrySize => isSameSize(geometrySize, size));
+    if (!isGeometryOnly && (!QUICK_MATRIX || isSameSize(size, DESKTOP))) {
         return test;
     }
     return /** @type {T} */ (/** @type {unknown} */ (unregisteredTest));

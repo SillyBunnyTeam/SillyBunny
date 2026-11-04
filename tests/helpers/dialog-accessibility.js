@@ -189,15 +189,17 @@ export async function installProbes(page) {
             scale(rootSelector, ellipsizing) {
                 const root = topVisible(rootSelector);
                 const frame = root.getBoundingClientRect();
-                const report = { clipped: [], overlaps: [], responses: [], insideViewport: true, responseCount: 0 };
-                report.insideViewport = frame.left >= -0.5 && frame.right <= innerWidth + 0.5 && frame.top >= -0.5 && frame.bottom <= innerHeight + 0.5;
+                const report = { clipped: [], overlaps: [], responses: [], insideViewport: true, insideAcross: true, responseCount: 0 };
+                report.insideAcross = frame.left >= -0.5 && frame.right <= innerWidth + 0.5;
+                report.insideViewport = report.insideAcross && frame.top >= -0.5 && frame.bottom <= innerHeight + 0.5;
                 for (const node of root.querySelectorAll(LABELS)) {
                     if (!isVisible(node) || node.clientWidth <= 1 || node.closest('[inert]')) continue;
                     if (ellipsizing.some(selector => node.matches(selector))) continue;
                     const style = getComputedStyle(node);
-                    // Overflow that stays visible is not clipped: an icon glyph can overhang its box by a few pixels.
+                    // Overflow that stays visible is not clipped: an icon glyph can overhang its box by a few pixels, and a
+                    // display heading can overhang a line box that is shorter than its glyphs.
                     const clippedAcross = style.overflowX !== 'visible' && node.scrollWidth > node.clientWidth + 1;
-                    const clippedDown = node.scrollHeight > node.clientHeight + 1;
+                    const clippedDown = style.overflowY !== 'visible' && node.scrollHeight > node.clientHeight + 1;
                     if (clippedAcross || clippedDown) {
                         report.clipped.push(`${nameOf(node)} ${node.scrollWidth}x${node.scrollHeight} in ${node.clientWidth}x${node.clientHeight}`);
                     }

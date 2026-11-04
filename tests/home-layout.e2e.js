@@ -8,7 +8,7 @@ import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-ch
 import { HOME_COPY } from './helpers/copy-home.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { DESKTOP, matrixViewports, PHONE, sizeFreeTestFor, SMALL_PHONE } from './helpers/matrix.js';
+import { DESKTOP, GEOMETRY_ONLY_SIZES, matrixViewports, PHONE, sizeFreeTestFor, SMALL_PHONE } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { settledRead } from './helpers/settled-read.js';
 
@@ -30,6 +30,8 @@ const VIEWPORTS = [
     { name: 'tablet 768x1024', wide: false, options: { viewport: { width: 768, height: 1024 }, ...TOUCH } },
     { name: 'phone 390x844', wide: false, options: { viewport: { width: 390, height: 844 }, ...TOUCH } },
     { name: 'phone 360x640', wide: false, options: { viewport: { width: 360, height: 640 }, ...TOUCH } },
+    { name: 'phone 450x800', wide: false, options: { viewport: { width: 450, height: 800 }, ...TOUCH } },
+    { name: 'landscape phone 844x390', wide: false, options: { viewport: { width: 844, height: 390 }, ...TOUCH } },
 ];
 const WIDE_VIEWPORTS = VIEWPORTS.filter(viewport => viewport.wide);
 
@@ -378,8 +380,9 @@ async function trackSettingsSaves(page) {
 for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMALL_PHONE])) {
     test.describe(`Home layout at ${name}`, () => {
         test.use(options);
-        // `test` below measures the layout or follows a branch of the size; `sizeFreeTest` does not depend on the size.
-        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
+        // `test` below measures the layout or follows a branch of the size; `sizeFreeTest` does not depend on the size,
+        // so it does not run at the sizes that only check the geometry.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport, GEOMETRY_ONLY_SIZES);
 
         test.beforeEach(async ({ page, bundledCardsOnly }) => {
             await protectMaintainerServer(page);

@@ -158,6 +158,18 @@ async function pinAssistants(page, { pointer, absent = [], account = {}, managed
     };
 }
 
+/** Rows for the Recent Chats list of Home, one per character of the library, so the list has rows to tab through. */
+function recentChatEntries(count) {
+    return Array.from({ length: count }, (_, index) => ({
+        file_name: `qa-home-${index}.jsonl`,
+        avatar: ASSISTANT_LIBRARY[2 + (index % 3)][0],
+        last_mes: Date.now() - index * 60_000,
+        mes: `Preview ${index}`,
+        chat_items: 3,
+        file_size: '1kb',
+    }));
+}
+
 /**
  * Boots the app on Home with the account of a spec about Home, and Welcome shut. `firstRun` boots an account that has never
  * met Welcome instead: its dialog is the first thing on the page, and the app is not ready until the persona has a name.
@@ -165,9 +177,10 @@ async function pinAssistants(page, { pointer, absent = [], account = {}, managed
  * names the bundled cards that the library lacks, `account` adds account storage keys, and `managed` says what the server
  * reports of a bundled file.
  */
-async function bootHome(page, baseURL, viewport, options, { firstRun = false, assistants = null } = {}) {
+async function bootHome(page, baseURL, viewport, options, { firstRun = false, assistants = null, recentChats = 0 } = {}) {
     const { context, configureSettings, reducedMotion } = await prepareBoot(page, baseURL, { ...options, guard: false });
     await protectMaintainerServer(page);
+    if (recentChats > 0) await page.route('**/api/chats/recent', route => route.fulfill({ json: recentChatEntries(recentChats) }));
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion });
     const pinAccount = assistants ? await pinAssistants(page, assistants) : () => {};
@@ -194,6 +207,7 @@ async function bootHome(page, baseURL, viewport, options, { firstRun = false, as
     return context;
 }
 
+const bootHomeWithRecentChats = (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { assistants: { pointer: null }, recentChats: 4 });
 const bootHomeFirstRun = (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { firstRun: true });
 const bootHomeWithAssistants = (pointer, more = {}) => (page, baseURL, viewport, options) => bootHome(page, baseURL, viewport, options, { assistants: { pointer, ...more } });
 
@@ -295,7 +309,8 @@ async function pushTagMembersPage(page) {
 
 const homeTile = (page, key) => page.locator(`#chat > .welcomePanel .sbHomeTile[data-sb-home-key="${key}"]`);
 const shown = page => page.locator(SHOWN_PAGE);
-const homeMenuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
+const HOME_PANEL = '#chat > .welcomePanel';
+const homeMenuButton = page => page.locator(`${HOME_PANEL} .sbHomeMenuButton`);
 
 /** A tile is a button, so the keyboard user reaches the window with Enter and the window returns focus to the tile. */
 async function openFromTile(page, key) {
@@ -864,6 +879,35 @@ SURFACES.push(
         // The tab order is the two answers, so Escape is the way out that neither updates nor keeps.
         escapes: [{ closes: true, async check() {} }],
         states: [{ name: 'alert', async enter() {} }],
+    },
+    {
+        // Home is the page and not a window on it, so Escape has nothing to close and a page has no response bar. Tab leaves it
+        // for the rest of the page, as it leaves a side panel.
+        id: 'home-page',
+        title: 'Home page (the header, tiles, assistant cards and Recent Chats rows)',
+        viewports: [DESKTOP, PHONE],
+        modal: false,
+        hasEscape: false,
+        hasResponses: false,
+        scrolls: true,
+        // The buttons of a tile, card or row are flat on purpose: the label and icon carry them, the card or row bounds them, and
+        // the focus ring is checked on every stop.
+        knownBugs: [{
+            check: 'clipped-labels',
+            widths: [390],
+            why: 'At 200% text the three tiles stay in one row of 112px tracks (.sbHomeTiles, public/css/sillybunny-home.css:481), so a tile title overflows its tile and the description breaks inside words.',
+        }],
+        flatControls: /^button\.(?:sbHomeCardOpen|sbHomeFootButton|sbHomeRowMenu|welcomeRecentTab|recentChatOpen|pinChat|chatMenu)\[/,
+        rootSelector: HOME_PANEL,
+        frameSelector: `${HOME_PANEL} .sbHomeTile`,
+        isOpen: page => page.locator(OPEN_DIALOG),
+        boot: bootHomeWithRecentChats,
+        async open(page) {
+            const opener = homeMenuButton(page);
+            await opener.focus();
+            return opener;
+        },
+        states: [{ name: 'home', async enter() {} }],
     },
     {
         id: 'assistant-menu-sheet',

@@ -50,6 +50,23 @@ describe('the e2e viewport matrix', () => {
         expect(sizeFreeTestFor(test, PHONE)).not.toBe(test);
     });
 
+    test.each([false, true])('a size that checks geometry only registers no size-free test (quick run: %s)', async (quick) => {
+        const { sizeFreeTestFor, GEOMETRY_ONLY_SIZES, SHEET_BOUNDARY_PHONE, LANDSCAPE_PHONE } = await loadMatrix(quick);
+        const test = () => {};
+
+        expect(GEOMETRY_ONLY_SIZES).toEqual([SHEET_BOUNDARY_PHONE, LANDSCAPE_PHONE]);
+        expect(sizeFreeTestFor(test, LANDSCAPE_PHONE, GEOMETRY_ONLY_SIZES)).not.toBe(test);
+        expect(sizeFreeTestFor(test, SHEET_BOUNDARY_PHONE, GEOMETRY_ONLY_SIZES)).not.toBe(test);
+        expect(sizeFreeTestFor(test, LANDSCAPE_PHONE) === test).toBe(!quick);
+    });
+
+    test('a full run registers size-free tests at a size that is not geometry only', async () => {
+        const { sizeFreeTestFor, GEOMETRY_ONLY_SIZES } = await loadMatrix(false);
+        const test = () => {};
+
+        expect(sizeFreeTestFor(test, PHONE, GEOMETRY_ONLY_SIZES)).toBe(test);
+    });
+
     test('at another size every form of the call is accepted and nothing runs', async () => {
         const { sizeFreeTestFor } = await loadMatrix(true);
         const body = jest.fn();
