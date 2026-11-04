@@ -1328,11 +1328,13 @@ export class SlashCommandParser {
         this.take(); // discard opening quote
         let value = '';
         while (!this.testQuotedValueEnd()) value += this.take(); // take all chars until closing quote
+        // SillyBunny: the value ends before the closing quote, so macro positions are counted back from there.
+        const valueEnd = this.index;
         this.take(); // discard closing quote
         if (this.flags[PARSER_FLAG.REPLACE_GETVAR]) {
             value = this.replaceGetvar(value);
         }
-        this.indexMacros(this.index - value.length, value);
+        this.indexMacros(valueEnd - value.length, value);
         return value;
     }
 

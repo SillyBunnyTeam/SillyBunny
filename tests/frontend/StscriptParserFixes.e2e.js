@@ -10,6 +10,14 @@ function summarizeError(result) {
     return { type: result.error?.type, message: result.error?.message, index: result.error?.index };
 }
 
+function nameAt(page, text, index) {
+    return page.evaluate(async ({ text, index }) => {
+        const { SlashCommandParser } = await import('/scripts/slash-commands/SlashCommandParser.js');
+        const result = await new SlashCommandParser().getNameAt(text, index);
+        return { name: result?.name, start: result?.start };
+    }, { text, index });
+}
+
 function executeWithErrorToasts(page, script) {
     return page.evaluate(async script => {
         const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
@@ -151,6 +159,22 @@ test.describe('STscript parser fixes', () => {
         expect.soft(results[0]).toEqual({ tree: { variables: ['y'], executors: [{ name: 'let', unnamed: ['y', 'prefix {: /stp-plain c :}'] }] } });
         expect.soft(results[1]).toEqual({ tree: { executors: [{ name: 'stp-split1', unnamed: ['a', '{: :} "b c" d'] }] } });
         expect.soft(await executeWithErrorToasts(page, '/times 2 /if left=1 right=1 {: /pass yes :}')).toEqual({ pipe: 'yes', errorTitles: [] });
+    });
+
+    test('macros inside quoted values are indexed where they are', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/stp-plain "{{user}}" tail', positions: true },
+            { script: '/stp-plain key="{{user}}"', positions: true },
+            { script: '/stp-split1 name "{{char}}"', positions: true },
+        ]);
+
+        expect.soft(results.map(result => result.index.macros)).toEqual([
+            [{ name: 'user', start: 12, end: 20 }],
+            [{ name: 'user', start: 16, end: 24 }],
+            [{ name: 'char', start: 18, end: 26 }],
+        ]);
+        expect.soft(await nameAt(page, '/stp-plain "{{user}}" tail', 16)).toEqual({ name: 'user', start: 14 });
+        expect.soft(await nameAt(page, '/stp-plain key="{{user}}"', 20)).toEqual({ name: 'user', start: 18 });
     });
 
     test('a closure among split values keeps the quotes in the rest', async ({ page }) => {
