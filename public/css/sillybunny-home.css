@@ -398,17 +398,73 @@
     text-align: center;
 }
 
-.sbHomeArt[data-sb-art-placeholder='empty-tewi'] {
-    width: 96px;
-    height: 96px;
-}
-
+/* The portraits on a card are smooth pictures, so they are not drawn as pixel art. */
 .sbHomeArt[data-sb-art-placeholder='row-reisen'],
 .sbHomeArt[data-sb-art-placeholder='row-tewi'],
 .sbHomeArt[data-sb-art-placeholder='row-pointer'] {
     width: 64px;
     height: 64px;
+}
+
+/* ── Pixel art panels and banners ───────────────────────────────────────── */
+
+/* A character on the brand lavender (#b99bf2), faded over the surface of the window or the page, so it reads on the
+   light and the dark theme alike. The lavender is part of the artwork and does not follow the theme. The art is
+   pixel art, sized to a whole number of device pixels per art pixel, so the browser must not smooth it. The panel is
+   shown whole, standing on its bottom edge. A banner shows the figure from the head down, to the hips at most and to
+   30% of the viewport height at most, and its bottom edge fades out. */
+.sbArtPanel {
+    --sb-art-backdrop: 185 155 242;
+    box-sizing: border-box;
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    justify-content: center;
+    gap: var(--sb-art-figure-gap, 8px);
+    padding: var(--sb-art-pad, 12px);
+    border-radius: var(--sb-radius-lg);
+    background: linear-gradient(to bottom, rgb(var(--sb-art-backdrop) / 20%), rgb(var(--sb-art-backdrop) / 5%));
+}
+
+.sbArtPanel[data-sb-art-mode='banner'] {
+    align-items: flex-start;
+    align-self: stretch;
+    padding-inline: 0;
+    padding-block-end: 0;
+    -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent);
+    mask-image: linear-gradient(to bottom, #000 58%, transparent);
+}
+
+/* A viewport this short has no room for a banner of a useful size, so the content gets all the room. */
+.sbArtPanel[data-sb-art-mode='hidden'] {
+    display: none;
+}
+
+.sbArtFigure {
+    position: relative;
+    display: block;
+    flex: none;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.sbPixelArt {
+    display: block;
+    max-width: none;
     image-rendering: pixelated;
+}
+
+/* A picture that is shrunk below one device pixel per art pixel has uneven stripes under nearest-neighbour sampling.
+   Smooth sampling is the lesser evil there. */
+.sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt {
+    image-rendering: auto;
+}
+
+/* Forced colours replace every background, and a gradient would not survive. The figure keeps its own colours. */
+@media (forced-colors: active) {
+    .sbArtPanel {
+        background: none;
+    }
 }
 
 /* The thumbnail of a card fills the box that the placeholder art has. It is a picture, so it is not drawn as pixel art. */
@@ -1138,8 +1194,39 @@ body.big-avatars .welcomeRecent .chatMessage {
     text-align: center;
 }
 
-.sbHomeEmpty .sbHomeArt {
+.sbHomeEmpty > .sbArtPanel {
     margin-block-end: 12px;
+}
+
+/* On wide Home the mascot stands beside the text, as a panel does in a window. The container is the Home panel, whose
+   width does not depend on this layout. Below 640px no panel leaves the text a 360px column beside the paddings of the
+   Home column and of the empty state. The script makes the exact choice and sets `data-sb-art-mode`. */
+@container welcome-home (min-width: 640px) {
+    .welcomeRecent .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        column-gap: 16px;
+        text-align: start;
+    }
+
+    .sbHomeEmpty > .sbArtPanel[data-sb-art-mode='panel'] {
+        grid-row: 1 / span 2;
+        margin-block-end: 0;
+    }
+
+    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > :is(.sbHomeEmptyTitle, .sbHomeEmptyDescription) {
+        grid-column: 2;
+        justify-self: start;
+    }
+
+    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > .sbHomeEmptyTitle {
+        align-self: end;
+    }
+
+    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > .sbHomeEmptyDescription {
+        align-self: start;
+    }
 }
 
 .sbHomeEmptyTitle {

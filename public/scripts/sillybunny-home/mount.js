@@ -1,6 +1,7 @@
 import { loadListEditorStyles } from '../sillybunny-editor/list-shell.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { createArtPlaceholder } from './art.js';
+import { createArtPanel } from './art-layout.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
@@ -52,6 +53,19 @@ export function applyDisplayMode(panel, mode) {
 
 function getVersionLabel(version) {
     return String(version ?? '').trim().replace(/^SillyBunny\s+/i, '');
+}
+
+/**
+ * The empty Recent Chats list holds a stand-in where its mascot goes, so the template does not depend on the art
+ * code. It becomes the art panel here, in the same place and region, so a display mode hides it as before.
+ * @param {HTMLElement} panel
+ */
+function mountEmptyStateArt(panel) {
+    for (const standIn of panel.querySelectorAll('.sbHomeEmpty > [data-sb-art-placeholder="empty-tewi"]')) {
+        const { panel: art } = createArtPanel(['empty-tewi']);
+        art.dataset.sbHomeRegion = standIn instanceof HTMLElement ? (standIn.dataset.sbHomeRegion ?? '') : '';
+        standIn.replaceWith(art);
+    }
 }
 
 function mountFilteredEmptyState(panel) {
@@ -125,6 +139,7 @@ export function mountHome(panel, context) {
         link.setAttribute('rel', 'noopener noreferrer');
     });
     const gettingStarted = getSharedGettingStartedState();
+    mountEmptyStateArt(panel);
     mountFilteredEmptyState(panel);
     mountMenuButton(panel, context, gettingStarted);
     mountTiles(panel, {

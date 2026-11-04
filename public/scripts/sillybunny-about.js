@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import { readBootMarks } from './sillybunny-boot-marks.js';
 import { createArtPlaceholder } from './sillybunny-home/art.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
+import { createArtPanel } from './sillybunny-home/art-layout.js';
 import { markCopyPlaceholder } from './sillybunny-home/copy.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createPrefGroup, createPropertyRow, createRow } from './sillybunny-editor/rows.js';
@@ -130,13 +131,12 @@ function createMainContent(server, pages) {
     const name = document.createElement('h3');
     name.className = 'sbAboutName';
     name.textContent = 'SillyBunny';
-    const portraits = document.createElement('div');
-    portraits.className = 'sbAboutPortraits';
-    portraits.append(createArtPlaceholder('about-reisen'), createArtPlaceholder('logo-64'), createArtPlaceholder('about-tewi'));
     const developer = document.createElement('p');
     developer.className = 'sbAboutDeveloper';
     developer.textContent = 'SillyBunnyTeam';
-    header.append(portraits, name, developer);
+    header.append(createArtPlaceholder('logo-64'), name, developer);
+    // Both characters share one panel at one step, so Tewi stands at her own height beside Reisen. The logo stays in the header.
+    const { panel: characters } = createArtPanel(['about-reisen', 'about-tewi']);
 
     const branch = createPropertyRow({ label: t`Branch`, value: server.details.branch, field: 'about-branch' });
     const commit = createPropertyRow({ label: t`Commit`, value: server.details.commit, field: 'about-commit' });
@@ -170,7 +170,7 @@ function createMainContent(server, pages) {
             createRow({ label: t`Legal`, field: 'about-legal', activatable: true, onActivate: pages.legal }),
         ],
     });
-    return [header, details.section, whatsNew.section, links.section, troubleshooting.section, more.section];
+    return [characters, header, details.section, whatsNew.section, links.section, troubleshooting.section, more.section];
 }
 
 function fillWhatsNew(body) {

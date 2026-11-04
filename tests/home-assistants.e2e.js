@@ -155,6 +155,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         art: node.dataset.sbArtPlaceholder,
                         size: [Math.round(box.width), Math.round(box.height)],
                         radius: getComputedStyle(node).borderTopLeftRadius,
+                        rendering: [getComputedStyle(node).imageRendering, image ? getComputedStyle(image).imageRendering : 'auto'],
                         image: imageBox ? { size: [Math.round(imageBox.width), Math.round(imageBox.height)], fit: getComputedStyle(image).objectFit } : null,
                     };
                 }));
@@ -163,6 +164,8 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 for (const box of boxes) {
                     expect(box.size, `${box.art} box`).toEqual(reisen.size);
                     expect(box.radius, `${box.art} corners`).toBe(reisen.radius);
+                    // The portraits are smooth pictures: they are scaled with the smooth filter, not drawn as pixel art.
+                    expect(box.rendering, `${box.art} is not drawn as pixel art`).toEqual(['auto', 'auto']);
                 }
                 const pictures = boxes.filter(box => box.image);
                 expect(pictures.map(box => box.art)).toEqual(['row-pointer']);

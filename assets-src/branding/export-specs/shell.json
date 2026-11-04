@@ -43,43 +43,18 @@
         },
         "welcome-both": {
             "character": "duo",
-            "master": "approved/welcome-both.png",
-            "css": [
-                192
-            ],
-            "fit": "width",
-            "crop": "canvas",
-            "margin": 0,
-            "focus": [
-                0.5,
-                0.35
-            ]
+            "master": "approved/pixel/welcome-both.png",
+            "pixel": true
         },
         "welcome-persona-tewi": {
             "character": "tewi",
-            "master": "approved/welcome-persona-tewi.png",
-            "css": [
-                128
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/welcome-persona-tewi.png",
+            "pixel": true
         },
         "welcome-next-reisen": {
             "character": "reisen",
-            "master": "approved/welcome-next-reisen.png",
-            "css": [
-                128
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/welcome-next-reisen.png",
+            "pixel": true
         },
         "hero-duo": {
             "character": "duo",
@@ -141,120 +116,48 @@
         },
         "gs-reisen": {
             "character": "reisen",
-            "master": "approved/gs-reisen.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/gs-reisen.png",
+            "pixel": true
         },
         "gs-reisen-done": {
             "character": "reisen",
-            "master": "approved/gs-reisen-done.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/gs-reisen-done.png",
+            "pixel": true
         },
         "help-reisen": {
             "character": "reisen",
-            "master": "approved/help-reisen.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/help-reisen.png",
+            "pixel": true
         },
         "extras-tewi": {
             "character": "tewi",
-            "master": "approved/extras-tewi.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/extras-tewi.png",
+            "pixel": true
         },
         "shortcuts-tewi": {
             "character": "tewi",
-            "master": "approved/shortcuts-tewi.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/shortcuts-tewi.png",
+            "pixel": true
         },
         "about-reisen": {
             "character": "reisen",
-            "master": "approved/about-reisen.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/about-reisen.png",
+            "pixel": true
         },
         "about-tewi": {
             "character": "tewi",
-            "master": "approved/about-tewi.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/about-tewi.png",
+            "pixel": true
         },
         "troubleshooting-reisen": {
             "character": "reisen",
-            "master": "approved/troubleshooting-reisen.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/troubleshooting-reisen.png",
+            "pixel": true
         },
         "empty-tewi": {
             "character": "tewi",
-            "master": "approved/empty-tewi.png",
-            "css": [
-                96
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/empty-tewi.png",
+            "pixel": true
         }
     }
 }

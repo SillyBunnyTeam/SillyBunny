@@ -1,31 +1,7 @@
 /* The windows that open from Home: Welcome, Help, About, Keyboard Shortcuts, Getting Started and Bundled Extras.
    Deferred: sillybunny-window-styles.js loads it with the editor-shell sheet before a window opens. */
 
-/* ── Artwork stand-ins, at the size the artwork will have ───────────────── */
-
-.sbHomeArt[data-sb-art-placeholder='welcome-both'] {
-    width: 192px;
-    height: 128px;
-}
-
-/* The art of the second and third Welcome pages is as tall as the duo of the first, so the page does not move. */
-.sbHomeArt[data-sb-art-placeholder='welcome-persona-tewi'],
-.sbHomeArt[data-sb-art-placeholder='welcome-next-reisen'] {
-    width: 128px;
-    height: 128px;
-}
-
-.sbHomeArt[data-sb-art-placeholder='help-reisen'],
-.sbHomeArt[data-sb-art-placeholder='gs-reisen'],
-.sbHomeArt[data-sb-art-placeholder='gs-reisen-done'],
-.sbHomeArt[data-sb-art-placeholder='extras-tewi'],
-.sbHomeArt[data-sb-art-placeholder='shortcuts-tewi'],
-.sbHomeArt[data-sb-art-placeholder='about-reisen'],
-.sbHomeArt[data-sb-art-placeholder='about-tewi'],
-.sbHomeArt[data-sb-art-placeholder='troubleshooting-reisen'] {
-    width: 96px;
-    height: 96px;
-}
+/* ── Logo stand-in, at the size the logo will have ───────────────────────── */
 
 .sbHomeArt[data-sb-art-placeholder='logo-64'] {
     width: 64px;
@@ -78,23 +54,42 @@
     white-space: nowrap;
 }
 
-/* ── Art and text intro ─────────────────────────────────────────────────── */
+/* ── Art beside the content of a window ─────────────────────────────────── */
 
-/* A character's art at the inline start, and the line they say beside it. The line's basis is the narrowest column
-   that still reads as a line, in its own em so it follows the text size. It is small enough that 96px window art
-   sits beside its line on the narrowest phone sheet at the default size. A container query cannot make the pair
-   stack, because it cannot read the width of the art. */
-.sbArtIntro {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 16px;
+/* The art of a character is a panel beside the whole body of the window, or a banner above it. The panel and the line
+   that the character says are direct children of the body, so the rules for the children of a body apply to them.
+   The panel then sits in the body's start padding, stays in view while the body scrolls, and takes no height of its
+   own, so the content keeps its place. Its script sets the size of the panel, the gap, and the padding and row gap
+   that this body really has, because they change with the density and the presentation of the window. The window
+   itself is wider by the panel's width (`--sb-dialog-aside` in `sillybunny-theme.css`). */
+.sbArtLine {
+    margin: 0;
 }
 
-.sbArtIntro > p {
-    flex: 1 1 14em;
-    min-width: 0;
-    margin: 0;
+/* The surface is the container, because its width does not change with the padding that a panel adds to the body.
+   No panel is narrower than about 120px (the smallest art at two thirds of a CSS pixel per art pixel, with its
+   padding), so below 520px no panel can leave the content a 360px column beside the body's own padding and the gap.
+   The script has chosen a banner by then, and this keeps a resize from overlapping the content for the frame
+   before it notices. */
+.sbArtSurface {
+    container: sbart / inline-size;
+}
+
+@container sbart (min-width: 520px) {
+    /* The surface in the selector outranks the padding of the Help page. */
+    .sbArtSurface .sbArtHost[data-sb-art-mode='panel'] {
+        padding-inline-start: calc(var(--sb-art-w) + var(--sb-art-gap) + var(--sb-art-inset));
+        min-block-size: calc(var(--sb-art-h) + var(--sb-art-inset-block));
+    }
+
+    .sbArtHost[data-sb-art-mode='panel'] > .sbArtPanel[data-sb-art-mode='panel'] {
+        position: sticky;
+        inset-block-start: 0;
+        align-self: flex-start;
+        inline-size: var(--sb-art-w);
+        margin-inline-start: calc(-1 * (var(--sb-art-w) + var(--sb-art-gap)));
+        margin-block-end: calc(-1 * (var(--sb-art-h) + var(--sb-art-row-gap)));
+    }
 }
 
 /* ── Welcome ────────────────────────────────────────────────────────────── */
@@ -183,17 +178,6 @@
     align-items: center;
     gap: 8px;
     text-align: center;
-}
-
-/* Reisen at the inline start edge of the masthead, Tewi at the inline end edge and the logo between them. The row
-   order follows the writing direction. 96 + 64 + 96 plus two gaps of 16px fit the 328px of a 360px phone's sheet
-   on one line. A wider masthead puts its extra width between the pieces, so the art stays at the edges. */
-.sbAboutPortraits {
-    display: flex;
-    align-items: center;
-    align-self: stretch;
-    justify-content: space-between;
-    gap: 16px;
 }
 
 .sbAboutName {

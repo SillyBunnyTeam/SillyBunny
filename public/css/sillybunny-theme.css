@@ -6845,10 +6845,7 @@ dialog.popup.sb-dialog--alert > .popup-body {
     background: var(--sb-layer-alert);
 }
 
-dialog.popup.sb-dialog--dialog {
-    background: var(--sb-layer-window);
-}
-
+dialog.popup.sb-dialog--dialog,
 dialog.popup.sb-dialog--window {
     background: var(--sb-layer-window);
 }
@@ -7633,14 +7630,14 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 
 /* AdwDialog follows its content, up to AdwPreferencesDialog's 640px. */
 .sb-dialog--dialog {
-    width: min(640px, 100%);
+    width: min(640px + var(--sb-dialog-aside, 0px), 100%);
     min-width: min(360px, 100%);
     max-height: min(90dvh, 100%);
 }
 
 /* The shell's large pop-out footprint (Tag Manager). */
 .sb-dialog--window {
-    width: min(max(640px, var(--sheldWidth, 64vw)), 100%);
+    width: min(max(640px, var(--sheldWidth, 64vw)) + var(--sb-dialog-aside, 0px), 100%);
     min-height: min(360px, 100%);
     height: fit-content;
     max-height: 90dvh;

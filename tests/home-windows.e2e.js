@@ -132,7 +132,8 @@ async function expectNoUnmarkedPlaceholder(host) {
     expect(unmarked).toEqual([]);
 }
 
-async function expectArt(scope, id, size) {
+/** A stand-in that has no picture yet, such as the logo: its text names it and its box is the size it will have. */
+async function expectPlaceholder(scope, id, size) {
     const art = scope.locator(`[data-sb-art-placeholder="${id}"]`);
     await expect(art).toBeVisible();
     await expect(art).toHaveAttribute('aria-hidden', 'true');
@@ -141,97 +142,172 @@ async function expectArt(scope, id, size) {
     expect(await art.evaluate(node => [node.offsetWidth, node.offsetHeight])).toEqual(size);
 }
 
-/** The smallest text column beside art in an art-and-text intro, in the em of the line itself: 14em. */
-const INTRO_TEXT_MIN_EM = 14;
-const INTRO_GAP = 16;
+const MIN_CONTENT = 360;
+const ART_GAP = 16;
 
 /**
- * An art-and-text intro: the art at the inline start at its size, the line of the character beside it, centred on
- * the art, or below it when the text column would be narrower than 14em of its own type size.
+ * The most rows that a banner shows on a viewport of this height at 1x, written down by hand: 30% of the height, less
+ * the 12px above the art, at one CSS pixel per row.
  */
-async function expectIntro(scope, artName, { slot, size, rtl = false }) {
-    await expectArt(scope, artName, size);
-    const intro = scope.locator(`.sbArtIntro:has([data-sb-art-placeholder="${artName}"])`);
-    const line = intro.locator('[data-sb-copy-slot]');
+const BANNER_ROW_LIMITS = { 844: 241, 640: 180 };
+
+/**
+ * One pixel placement of the art of a window: hidden from assistive technology, with its file loaded, as wide as its
+ * art at the fixed step of the screen, and as tall as the whole figure in a panel or as its crop in a banner.
+ * @returns {Promise<'panel' | 'banner'>} The mode that the art is shown in.
+ */
+async function expectArt(scope, id) {
+    const figure = scope.locator(`.sbArtPanel > [data-sb-art-placeholder="${id}"]`);
+    await expect(figure).toBeVisible();
+    await expect(figure.locator('xpath=..')).toHaveAttribute('aria-hidden', 'true');
+    await expect(figure.locator('img')).toHaveAttribute('alt', '');
+    await expect.poll(() => figure.locator('img').evaluate(image => image.complete && image.naturalWidth), `the file of ${id} loads`).toBeGreaterThan(0);
+    const read = await figure.evaluate(async (node, name) => {
+        const { getPixelArt } = await import('/scripts/sillybunny-home/art-sources.js');
+        const art = getPixelArt(name);
+        const image = node.firstElementChild;
+        return {
+            mode: node.parentElement.dataset.sbArtMode,
+            box: [node.offsetWidth, node.offsetHeight],
+            file: [image.naturalWidth, image.naturalHeight],
+            art: [art.width, art.height],
+            ratio: devicePixelRatio,
+            viewportHeight: innerHeight,
+            rendering: getComputedStyle(image).imageRendering,
+        };
+    }, id);
+    // A banner is the top 62% of the figure, and at most 30% of the viewport height with the 12px above the art.
+    const step = Math.max(1, Math.round(read.ratio));
+    const bannerLimit = BANNER_ROW_LIMITS[read.viewportHeight];
+    if (read.mode === 'banner') {
+        expect(bannerLimit, `the table knows the banner of a ${read.viewportHeight}px viewport`).toBeDefined();
+    }
+    const rows = read.mode === 'banner' ? Math.min(Math.floor(read.art[1] * 0.62), bannerLimit) : read.art[1];
+    const expected = [(read.art[0] * step) / read.ratio, (rows * step) / read.ratio];
+    expect(read.file, `the file of ${id} is its art size`).toEqual(read.art);
+    expect(Math.abs(read.box[0] - expected[0]), `${id} is ${expected[0]}px wide`).toBeLessThanOrEqual(1);
+    expect(Math.abs(read.box[1] - expected[1]), `${id} is ${expected[1]}px tall in a ${read.mode}`).toBeLessThanOrEqual(1);
+    expect(read.rendering).toBe('pixelated');
+    return read.mode;
+}
+
+/**
+ * An art-and-text intro. The art is a panel at the inline start beside the whole body of the window, or a banner above
+ * it. The panel and the line are direct children of the same body, so the rules for the children of a body apply to
+ * both. Beside a panel the line starts the content column, which keeps at least 360px; below a banner it is the first
+ * line of the body.
+ */
+async function expectIntro(scope, artName, { slot, rtl = false }) {
+    const mode = await expectArt(scope, artName);
+    const line = scope.locator(`.sbArtLine[data-sb-copy-slot="${slot}"]`);
     await expect(line).toHaveCount(1);
-    await expect(line).toHaveAttribute('data-sb-copy-slot', slot);
     await expect(line).toHaveAttribute('data-sb-copy-placeholder', 'true');
     await expect(line).toHaveText(COPY_PLACEHOLDER);
-    const layout = await intro.evaluate((node) => {
+    const layout = await line.evaluate((node) => {
         const box = element => element.getBoundingClientRect();
-        const style = getComputedStyle(node);
-        const art = box(node.querySelector('[data-sb-art-placeholder]'));
-        const line = node.querySelector('[data-sb-copy-slot]');
-        const text = box(line);
-        const frame = box(node);
+        const host = node.parentElement;
+        const panel = [...host.children].find(child => child.classList.contains('sbArtPanel'));
+        const art = box(panel.querySelector('[data-sb-art-placeholder]'));
+        const text = box(node);
         return {
-            art: { left: art.left, right: art.right, top: art.top, bottom: art.bottom, middle: (art.top + art.bottom) / 2 },
-            text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom, middle: (text.top + text.bottom) / 2 },
-            frame: { left: frame.left, right: frame.right },
-            content: frame.width,
-            em: Number.parseFloat(getComputedStyle(line).fontSize),
-            rtl: style.direction === 'rtl',
+            sameParent: Boolean(panel),
+            mode: panel.dataset.sbArtMode,
+            host: { left: box(host).left, right: box(host).right },
+            panel: { left: box(panel).left, right: box(panel).right, top: box(panel).top, bottom: box(panel).bottom },
+            art: { left: art.left, right: art.right, top: art.top, bottom: art.bottom },
+            text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom, width: text.width },
+            em: Number.parseFloat(getComputedStyle(node).fontSize),
+            rtl: getComputedStyle(node).direction === 'rtl',
         };
     });
+    expect(layout.sameParent, 'the panel and the line are children of one body').toBe(true);
+    expect(layout.mode).toBe(mode);
     expect(layout.rtl).toBe(rtl);
-    const artWidth = layout.art.right - layout.art.left;
-    const fitsBeside = layout.content >= artWidth + INTRO_GAP + INTRO_TEXT_MIN_EM * layout.em;
-    const beside = layout.rtl ? layout.text.right <= layout.art.left + 1 : layout.text.left >= layout.art.right - 1;
-    expect(beside, `the text is ${fitsBeside ? 'beside' : 'below'} the art in ${layout.content}px`).toBe(fitsBeside);
-    expect(layout.rtl ? layout.frame.right - layout.art.right : layout.art.left - layout.frame.left, 'the art is at the inline start edge').toBeLessThanOrEqual(1);
-    if (fitsBeside) {
-        expect(Math.abs(layout.text.middle - layout.art.middle), 'the text is centred on the art').toBeLessThanOrEqual(2);
+    if (layout.mode === 'panel') {
+        const gap = rtl ? layout.panel.left - layout.text.right : layout.text.left - layout.panel.right;
+        expect(gap, 'the line is beside the panel, a gap away').toBeGreaterThanOrEqual(ART_GAP - 1);
+        expect(layout.text.width, 'the content column keeps its width').toBeGreaterThanOrEqual(MIN_CONTENT - 1);
+        expect(Math.abs(layout.text.top - layout.panel.top), 'the line starts at the top of the panel').toBeLessThanOrEqual(1);
+        const inset = rtl ? layout.host.right - layout.panel.right : layout.panel.left - layout.host.left;
+        expect(inset, 'the panel is at the inline start edge').toBeLessThanOrEqual(20);
     } else {
-        expect(layout.text.top, 'the text is below the art').toBeGreaterThanOrEqual(layout.art.bottom - 1);
+        expect(layout.text.top, 'the line is below the banner').toBeGreaterThanOrEqual(layout.panel.bottom - 1);
+        expect(layout.panel.right - layout.panel.left, 'the banner spans the body').toBeGreaterThanOrEqual(layout.text.width - 1);
     }
     return layout;
 }
 
-/** How far the art of the intro starts from the first boxed list of the page, which it should share a content edge with. */
+/** How far the line of the intro starts from the first boxed list of the page, which it should share a content edge with. */
 async function readIntroOffsetFromList(scope) {
     const [intro, list] = await Promise.all([
-        scope.locator('.sbArtIntro [data-sb-art-placeholder]').evaluate(node => node.getBoundingClientRect().left),
+        scope.locator('.sbArtLine').evaluate(node => node.getBoundingClientRect().left),
         scope.locator('.ds-pref-group').first().evaluate(node => node.getBoundingClientRect().left),
     ]);
     return Math.abs(intro - list);
 }
 
-/** Boxes of the three pieces of art on the About page, relative to the page, plus the heading under them. */
-async function readMasthead(host) {
-    return host.evaluate((root) => {
-        const rect = (selector) => {
-            const { left, right, top, bottom } = root.querySelector(selector).getBoundingClientRect();
-            return { left, right, top, bottom, middle: (top + bottom) / 2, centre: (left + right) / 2 };
+/**
+ * The pair of characters on the About page and what stays in the header: one panel holds both at one step, the logo
+ * and the name stay in the content.
+ */
+async function readAboutArt(host) {
+    return host.evaluate(async (root) => {
+        const { getPixelArt } = await import('/scripts/sillybunny-home/art-sources.js');
+        const rect = (node) => {
+            const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+            return { left, right, top, bottom, width, height, centre: (left + right) / 2 };
         };
-        const body = root.querySelector('.sb-dialog__page:not([hidden]) .sb-dialog__body').getBoundingClientRect();
+        const page = root.querySelector('.sb-dialog__page:not([hidden]):not(.is-underlay):not(.is-leaving)');
+        const body = page.querySelector('.sb-dialog__body');
+        const panel = page.querySelector('.sbArtPanel');
+        const figure = name => panel.querySelector(`[data-sb-art-placeholder="${name}"]`);
         return {
-            reisen: rect('[data-sb-art-placeholder="about-reisen"]'),
-            logo: rect('[data-sb-art-placeholder="logo-64"]'),
-            tewi: rect('[data-sb-art-placeholder="about-tewi"]'),
-            name: rect('.sbAboutName'),
-            header: rect('.sbAboutHeader'),
-            body: { left: body.left, right: body.right },
+            mode: panel.dataset.sbArtMode,
+            ariaHidden: panel.getAttribute('aria-hidden'),
+            panel: rect(panel),
+            reisen: rect(figure('about-reisen')),
+            tewi: rect(figure('about-tewi')),
+            native: { reisen: getPixelArt('about-reisen'), tewi: getPixelArt('about-tewi') },
+            inPanel: [...panel.querySelectorAll('[data-sb-art-placeholder]')].map(node => node.dataset.sbArtPlaceholder),
+            logo: rect(page.querySelector('.sbAboutHeader [data-sb-art-placeholder="logo-64"]')),
+            name: rect(page.querySelector('.sbAboutName')),
+            header: rect(page.querySelector('.sbAboutHeader')),
+            body: rect(body),
+            panelIsChildOfBody: panel.parentElement === body,
+            scrollsSideways: body.scrollWidth > body.clientWidth,
+            ratio: devicePixelRatio,
         };
     });
 }
 
-async function expectMastheadOnOneLine(host, { rtl = false } = {}) {
-    await expectArt(host, 'about-reisen', [96, 96]);
-    await expectArt(host, 'about-tewi', [96, 96]);
-    await expectArt(host, 'logo-64', [64, 64]);
-    const { reisen, logo, tewi, name, header } = await readMasthead(host);
-    const [first, last] = rtl ? [tewi, reisen] : [reisen, tewi];
+async function expectAboutPair(host, { rtl = false } = {}) {
+    await expectPlaceholder(host, 'logo-64', [64, 64]);
+    const mode = await expectArt(host, 'about-reisen');
+    await expectArt(host, 'about-tewi');
+    const art = await readAboutArt(host);
+    const cssSize = artPixels => (artPixels * Math.max(1, Math.round(art.ratio))) / art.ratio;
 
-    expect([reisen.middle, tewi.middle].map(middle => Math.abs(middle - logo.middle)).every(gap => gap <= 1), 'the three boxes are centred on one line').toBe(true);
-    expect(first.right, 'the left piece ends before the logo').toBeLessThanOrEqual(logo.left);
-    expect(logo.right, 'the logo ends before the right piece').toBeLessThanOrEqual(last.left);
-    expect(logo.left - first.right, 'clear space between the left piece and the logo').toBeGreaterThanOrEqual(16);
-    expect(last.left - logo.right, 'clear space between the logo and the right piece').toBeGreaterThanOrEqual(16);
-    expect(Math.abs(logo.centre - (first.centre + last.centre) / 2), 'the logo is centred between them').toBeLessThanOrEqual(1);
-    expect(Math.abs((logo.left - first.right) - (last.left - logo.right)), 'the gaps match').toBeLessThanOrEqual(1);
-    expect(Math.abs(first.left - header.left), 'the left piece touches the left edge of the masthead').toBeLessThanOrEqual(1);
-    expect(Math.abs(header.right - last.right), 'the right piece touches the right edge of the masthead').toBeLessThanOrEqual(1);
-    expect(name.top, 'the name sits below the art').toBeGreaterThanOrEqual(Math.max(reisen.bottom, tewi.bottom));
+    expect(art.inPanel, 'both characters are in one panel, in this order').toEqual(['about-reisen', 'about-tewi']);
+    expect(art.panelIsChildOfBody).toBe(true);
+    expect(art.ariaHidden).toBe('true');
+    expect(art.mode).toBe(mode);
+    // Both figures are drawn at one step, so Tewi is shorter than Reisen by the ratio of their pictures.
+    expect(art.tewi.width / art.reisen.width).toBeCloseTo(art.native.tewi.width / art.native.reisen.width, 2);
+    if (mode === 'panel') {
+        expect(art.tewi.height / art.reisen.height).toBeCloseTo(art.native.tewi.height / art.native.reisen.height, 2);
+        expect(art.reisen.height).toBeCloseTo(cssSize(art.native.reisen.height), 0);
+        expect(Math.abs(art.reisen.bottom - art.tewi.bottom), 'they stand on one edge').toBeLessThanOrEqual(1);
+        expect(art.tewi.top, 'Tewi is shorter, so her head is lower').toBeGreaterThan(art.reisen.top + 1);
+        expect(art.header.left, 'the header is in the content column, beside the panel').toBeGreaterThanOrEqual(rtl ? art.body.left : art.panel.right);
+    } else {
+        expect(art.header.top, 'the header is below the banner').toBeGreaterThanOrEqual(art.panel.bottom - 1);
+    }
+    expect(rtl ? art.tewi.centre < art.reisen.centre : art.reisen.centre < art.tewi.centre, 'Reisen is first, on the start side').toBe(true);
+    expect(art.panel.left >= art.body.left - 1 && art.panel.right <= art.body.right + 1, 'the art is inside the body').toBe(true);
+    expect(art.logo.top, 'the logo is in the header, above the name').toBeLessThan(art.name.top);
+    expect(Math.abs(art.logo.centre - (art.header.left + art.header.right) / 2), 'the logo is centred in the header').toBeLessThanOrEqual(1);
+    expect(art.scrollsSideways).toBe(false);
+    return art;
 }
 
 async function readVersion(page) {
@@ -343,15 +419,15 @@ for (const { name, sheet, options } of VIEWPORTS) {
             test('page one greets with the duo art, copy placeholders, and the adopted language select', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
-                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING', size: [192, 128] });
+                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING' });
                 await expectSlots(host, ['WD-1-GREETING', 'WD-1-ABOUT', 'WD-1-FORK', 'WD-1-FANWORK']);
                 await expectNoUnmarkedPlaceholder(host);
-                await expect(host.locator('.sbArtIntro [data-sb-copy-slot]'), 'only the greeting sits beside the art').toHaveCount(1);
+                await expect(host.locator('.sbArtLine'), 'only the greeting is the line of the art').toHaveCount(1);
                 const below = await host.evaluate((root) => {
-                    const intro = root.querySelector('.sbArtIntro').getBoundingClientRect();
-                    return ['WD-1-ABOUT', 'WD-1-FORK'].map(slot => root.querySelector(`[data-sb-copy-slot="${slot}"]`).getBoundingClientRect().top >= intro.bottom - 1);
+                    const greeting = root.querySelector('.sbArtLine').getBoundingClientRect();
+                    return ['WD-1-ABOUT', 'WD-1-FORK'].map(slot => root.querySelector(`[data-sb-copy-slot="${slot}"]`).getBoundingClientRect().top >= greeting.bottom - 1);
                 });
-                expect(below, 'the about and fork lines stay below the intro').toEqual([true, true]);
+                expect(below, 'the about and fork lines stay below the greeting').toEqual([true, true]);
                 const prose = await host.evaluate((root) => {
                     const read = (slot) => {
                         const style = getComputedStyle(root.querySelector(`[data-sb-copy-slot="${slot}"]`));
@@ -449,31 +525,30 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByText('Step 2 of 3')).toHaveCount(0);
             });
 
-            test('pages one to three open with an intro whose art area is 128px high, at the inline start, with the page line beside it', async ({ page }) => {
+            test('pages one to three open with their art in the same place, at the inline start, with the page line beside it', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 const current = shownPage(host);
-                const area = async () => current.evaluate((node) => {
-                    const art = node.querySelector('[data-sb-art-placeholder]').getBoundingClientRect();
+                const place = async () => current.evaluate((node) => {
+                    const panel = node.querySelector('.sbArtPanel').getBoundingClientRect();
                     const body = node.querySelector('.sb-dialog__body').getBoundingClientRect();
-                    return { top: art.top - body.top, height: art.height, start: art.left - body.left };
+                    return { top: panel.top - body.top, start: panel.left - body.left };
                 });
 
-                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING', size: [192, 128] });
-                const first = await area();
+                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING' });
+                const first = await place();
                 await current.getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Your Persona');
-                await expectIntro(current, 'welcome-persona-tewi', { slot: 'WD-2-PROMPT', size: [128, 128] });
+                await expectIntro(current, 'welcome-persona-tewi', { slot: 'WD-2-PROMPT' });
                 expect(await readIntroOffsetFromList(current), 'the intro and the first list share a start edge').toBeLessThanOrEqual(1);
-                const second = await area();
+                const second = await place();
                 await current.getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('What’s Next');
-                await expectIntro(current, 'welcome-next-reisen', { slot: 'WD-3-INTRO', size: [128, 128] });
-                const third = await area();
+                await expectIntro(current, 'welcome-next-reisen', { slot: 'WD-3-INTRO' });
+                const third = await place();
 
-                expect([first.height, second.height, third.height]).toEqual([128, 128, 128]);
-                expect([second.top, third.top]).toEqual([first.top, first.top]);
-                expect([second.start, third.start]).toEqual([first.start, first.start]);
-                await expect(host.locator('[data-sb-art-placeholder]:visible')).toHaveCount(1);
+                expect([second.top, third.top], 'the art starts at the same height on every page').toEqual([first.top, first.top]);
+                expect([second.start, third.start], 'and at the same inline start').toEqual([first.start, first.start]);
+                await expect(host.locator('.sbArtPanel:visible')).toHaveCount(1);
             });
 
             test('the Import page has no art', async ({ page }) => {
@@ -843,17 +918,19 @@ for (const { name, sheet, options } of VIEWPORTS) {
             test('opens with Tewi\'s art and her line beside it, above the first group', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-                await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO', size: [96, 96] });
+                await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO' });
                 await expectNoUnmarkedPlaceholder(host);
                 const layout = await host.evaluate((root) => {
                     const body = root.querySelector('.sb-dialog__body');
-                    const intro = body.querySelector('.sbArtIntro');
+                    const panel = body.querySelector('.sbArtPanel');
+                    const line = body.querySelector('.sbArtLine');
                     return {
-                        firstChild: body.firstElementChild === intro,
-                        above: intro.getBoundingClientRect().bottom <= body.querySelector('[role="group"]').getBoundingClientRect().top,
+                        panelFirst: body.firstElementChild === panel,
+                        lineSecond: body.children[1] === line,
+                        above: line.getBoundingClientRect().bottom <= body.querySelector('[role="group"]').getBoundingClientRect().top,
                     };
                 });
-                expect(layout).toEqual({ firstChild: true, above: true });
+                expect(layout).toEqual({ panelFirst: true, lineSecond: true, above: true });
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
             });
 
@@ -874,7 +951,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const view = helpView(host);
 
                 await expect(view).toHaveAttribute('data-sb-help-view', 'index');
-                await expectIntro(view, 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+                await expectIntro(view, 'help-reisen', { slot: 'HELP-INTRO' });
                 await expectSlots(view, ['HELP-INTRO', ...FEATURED_IDS.map(id => `HELP-TOPIC-${id}-DESC`), ...SECTION_IDS.map(id => `HELP-SECTION-${id}-DESC`)]);
                 await expect(view.getByRole('group', { name: 'Featured Topics' }).locator('.ds-row-label')).toHaveText(FEATURED_TITLES);
                 const sections = view.getByRole('group', { name: 'All Sections' });
@@ -961,14 +1038,14 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await trail().getByRole('button', { name: 'Help', exact: true }).click();
 
                 await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
-                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO' });
             });
 
             test('the intro line has the type of a paragraph in the dialog body', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
                 await showIndex(host);
 
-                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO' });
                 const [line, body] = await page.evaluate(() => {
                     const read = (node) => {
                         const style = getComputedStyle(node);
@@ -976,7 +1053,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     };
                     const probe = document.createElement('p');
                     document.querySelector('dialog.sb-dialog-host .sb-dialog__body').append(probe);
-                    const result = [read(document.querySelector('.sbArtIntro [data-sb-copy-slot="HELP-INTRO"]')), read(probe)];
+                    const result = [read(document.querySelector('.sbArtLine[data-sb-copy-slot="HELP-INTRO"]')), read(probe)];
                     probe.remove();
                     return result;
                 });
@@ -999,9 +1076,11 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const host = await openFromMenu(page, 'Help');
                 await showIndex(host);
 
-                const layout = await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96], rtl: true });
+                const layout = await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', rtl: true });
 
-                expect(layout.art.left, 'Reisen is on the right of her line').toBeGreaterThan(layout.text.left);
+                // Beside a panel the art is on the right of the line; above it in a banner, the art is higher than the line.
+                const atStart = layout.mode === 'panel' ? layout.art.left > layout.text.left : layout.art.top < layout.text.top;
+                expect(atStart, 'Reisen is at the start, which is the right, or above her line').toBe(true);
             });
 
             test('More Information opens the section page', async ({ page }) => {
@@ -1601,7 +1680,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const version = await readVersion(page);
                 const host = await openFromMenu(page, 'About SillyBunny');
 
-                await expectArt(host, 'logo-64', [64, 64]);
+                await expectPlaceholder(host, 'logo-64', [64, 64]);
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(3);
                 await expect(host.getByRole('heading', { name: 'SillyBunny', exact: true })).toBeVisible();
                 await expect(host.locator('.sbAboutDeveloper')).toHaveText('SillyBunnyTeam');
@@ -1611,23 +1690,17 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByText(version.gitRevision, { exact: true })).toBeVisible();
             });
 
-            test('puts Reisen and Tewi either side of the logo, on one line, with the name below', async ({ page }) => {
+            test('puts Reisen and Tewi in one panel, Reisen first, with the logo and the name staying in the content', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
 
-                await expectMastheadOnOneLine(host);
-                const { reisen, tewi, logo } = await readMasthead(host);
-                expect(reisen.centre, 'Reisen is on the start side').toBeLessThan(logo.centre);
-                expect(tewi.centre, 'Tewi is on the end side').toBeGreaterThan(logo.centre);
+                await expectAboutPair(host);
             });
 
-            test('mirrors the order in a right-to-left page: Reisen on the end side', async ({ page }) => {
+            test('mirrors the order in a right-to-left page: Reisen on the end side of Tewi', async ({ page }) => {
                 await page.evaluate(() => document.documentElement.setAttribute('dir', 'rtl'));
                 const host = await openFromMenu(page, 'About SillyBunny');
 
-                await expectMastheadOnOneLine(host, { rtl: true });
-                const { reisen, tewi, logo } = await readMasthead(host);
-                expect(reisen.centre, 'Reisen is on the start side, which is the right').toBeGreaterThan(logo.centre);
-                expect(tewi.centre, 'Tewi is on the end side, which is the left').toBeLessThan(logo.centre);
+                await expectAboutPair(host, { rtl: true });
             });
 
             test('opens at once, shows a stand-in for the branch and commit, and fills them when the server answers', async ({ page }) => {
@@ -1735,9 +1808,9 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await host.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
 
                 const current = shownPage(host);
-                await expectIntro(current, 'troubleshooting-reisen', { slot: 'TROUBLESHOOTING-INTRO', size: [96, 96] });
+                await expectIntro(current, 'troubleshooting-reisen', { slot: 'TROUBLESHOOTING-INTRO' });
                 await expectNoUnmarkedPlaceholder(current);
-                const above = await current.evaluate(node => node.querySelector('.sbArtIntro').getBoundingClientRect().bottom <= node.querySelector('.sbDebugInfo').getBoundingClientRect().top);
+                const above = await current.evaluate(node => node.querySelector('.sbArtLine').getBoundingClientRect().bottom <= node.querySelector('.sbDebugInfo').getBoundingClientRect().top);
                 expect(above).toBe(true);
             });
 
@@ -1815,7 +1888,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
             test('shows Reisen\'s art and intro, then the four steps with their placeholders, Show Me and Skip', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
-                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO', size: [96, 96] });
+                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO' });
                 await expectSlots(host, ['GS-INTRO', 'GS-1-BODY', 'GS-2-BODY', 'GS-3-BODY', 'GS-4-BODY']);
                 await expectNoUnmarkedPlaceholder(host);
                 await expect(host.locator('.ds-row-label')).toHaveText([
@@ -1842,7 +1915,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
             test('Reisen shows her done pose once all four steps are skipped, live, and goes back when one is un-skipped', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
-                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO', size: [96, 96] });
+                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO' });
 
                 for (const title of STEP_TITLES) {
                     await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
@@ -1850,14 +1923,14 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 }
 
                 await expect(host.locator('.sb-dialog__subtitle')).toHaveText('4 of 4');
-                await expectIntro(host, 'gs-reisen-done', { slot: 'GS-INTRO-DONE', size: [96, 96] });
+                await expectIntro(host, 'gs-reisen-done', { slot: 'GS-INTRO-DONE' });
                 await expect(host.locator('[data-sb-art-placeholder="gs-reisen"]')).toHaveCount(0);
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
                 await expect(host.locator('[data-sb-copy-slot="GS-INTRO"]')).toHaveCount(0);
 
                 await rowOf(host, 'Set Up a Preset').getByRole('button', { name: 'Skip', exact: true }).click();
 
-                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO', size: [96, 96] });
+                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO' });
                 await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
                 await expect(host.locator('[data-sb-copy-slot="GS-INTRO-DONE"]')).toHaveCount(0);
             });
@@ -2158,10 +2231,10 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expectNoUnmarkedPlaceholder(host);
             });
 
-            test('shows the Tewi art at 96px, and no art beside a row', async ({ page }) => {
+            test('shows the Tewi art, and no art beside a row', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
-                await expectIntro(host, 'extras-tewi', { slot: 'BE-INTRO', size: [96, 96] });
+                await expectIntro(host, 'extras-tewi', { slot: 'BE-INTRO' });
                 await expect(host.locator('[data-sb-art-placeholder^="row-"]')).toHaveCount(0);
             });
 
@@ -2403,22 +2476,24 @@ test.describe('Intros on a 360px phone', () => {
         await expectHome(page);
     });
 
-    test('a 96px window intro keeps its line beside the art at the default type size', async ({ page }) => {
+    test('a window is a banner on a phone, with the line of the character under it', async ({ page }) => {
         const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO', size: [96, 96] });
+        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO' });
 
-        expect(layout.text.left, 'the line is beside the art').toBeGreaterThanOrEqual(layout.art.right);
+        expect(layout.mode).toBe('banner');
+        expect(layout.text.top, 'the line is under the banner').toBeGreaterThanOrEqual(layout.panel.bottom - 1);
     });
 
-    test('with the Global Font Size at 20px the line drops under the art, because its column follows the type size', async ({ page }) => {
+    test('with the Global Font Size at 20px it is still a banner, and the line stays under it', async ({ page }) => {
         await page.evaluate(() => document.documentElement.style.setProperty('--fontScale', String(20 / 15)));
         const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO', size: [96, 96] });
+        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO' });
 
         expect(layout.em, 'the type is larger').toBeGreaterThan(18);
-        expect(layout.text.top, 'the line is under the art').toBeGreaterThanOrEqual(layout.art.bottom);
+        expect(layout.mode).toBe('banner');
+        expect(layout.text.top, 'the line is under the banner').toBeGreaterThanOrEqual(layout.panel.bottom - 1);
     });
 });
 
@@ -2433,17 +2508,18 @@ test.describe('Intros with a larger type size on a desktop', () => {
         await page.evaluate(() => document.documentElement.style.setProperty('--fontScale', String(20 / 15)));
         const host = await openFromMenu(page, 'Help');
 
-        const layout = await expectIntro(host.locator('.sb-list-editor__detail .sbHelpPage'), 'help-reisen', { slot: 'HELP-INTRO', size: [96, 96] });
+        const layout = await expectIntro(host.locator('.sb-list-editor__detail .sbHelpPage'), 'help-reisen', { slot: 'HELP-INTRO' });
 
         expect(layout.em, 'the type is larger').toBeGreaterThan(18);
-        expect(layout.text.left, 'the line is beside the art').toBeGreaterThanOrEqual(layout.art.right);
+        expect(layout.mode, 'the window widens for the larger sidebar and keeps the panel').toBe('panel');
+        expect(layout.text.left, 'the line is beside the panel').toBeGreaterThanOrEqual(layout.panel.right);
     });
 });
 
 test.describe('About on a 360px phone', () => {
     test.use({ viewport: { width: 360, height: 640 }, isMobile: true, hasTouch: true });
 
-    test('keeps Reisen, the logo and Tewi on one line without wrapping or leaving the sheet', async ({ page }) => {
+    test('shows Reisen and Tewi as one banner above the logo, without leaving the sheet', async ({ page }) => {
         await protectMaintainerServer(page);
         await openQuietChatForSmoke(page, { selectCharacter: false });
         await expectHome(page);
@@ -2451,7 +2527,7 @@ test.describe('About on a 360px phone', () => {
         const host = await openFromMenu(page, 'About SillyBunny');
 
         await expect(host).toHaveAttribute('data-presentation', 'sheet');
-        await expectMastheadOnOneLine(host);
+        await expectAboutPair(host);
     });
 });
 

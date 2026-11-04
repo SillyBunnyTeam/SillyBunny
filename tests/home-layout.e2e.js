@@ -1520,7 +1520,7 @@ for (const { name, options } of VIEWPORTS) {
             await chooseMode(page, 'full');
             await renderHome(page, []);
             const panelWidth = await page.evaluate(() => document.querySelector('.welcomePanel').clientWidth);
-            const sizes = { 'empty-tewi': [96, 96], ...pixelArtSizes(panelWidth) };
+            const sizes = pixelArtSizes(panelWidth);
 
             for (const [id, [width, height]] of Object.entries(sizes)) {
                 const box = page.locator(`.welcomePanel ${artSelector(id)}`);
@@ -2095,7 +2095,8 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                     'row-tewi': [64 * scale, 64 * scale],
                     'choose-icon': [64 * scale, 64 * scale],
                 });
-                expect(await page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
+                // The card portraits are smooth pictures, so only the hero is drawn as pixel art.
+                expect(await page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('auto');
             });
         }
     });
@@ -2140,7 +2141,8 @@ test.describe('Home Recent Chats empty states', () => {
             const root = document.querySelector(selector);
             const box = node => node.getBoundingClientRect();
             const centre = node => (box(node).left + box(node).right) / 2;
-            const art = root.querySelector('.sbHomeArt');
+            const art = root.querySelector('.sbArtPanel');
+            const figure = art.querySelector('.sbArtFigure');
             const title = root.querySelector('[data-sb-copy-slot="RC-EMPTY-HEAD"]');
             const body = root.querySelector('[data-sb-copy-slot="RC-EMPTY-BODY"]');
             const probe = document.createElement('div');
@@ -2156,9 +2158,21 @@ test.describe('Home Recent Chats empty states', () => {
                 role: root.getAttribute('role'),
                 titleTag: title.tagName,
                 bodyTag: body.tagName,
-                art: art && { hidden: getComputedStyle(art).display === 'none', width: box(art).width, height: box(art).height, bottom: box(art).bottom, centre: centre(art), ariaHidden: art.getAttribute('aria-hidden') },
-                title: { top: box(title).top, bottom: box(title).bottom, centre: centre(title), align: style(title).textAlign, size: style(title).fontSize, weight: style(title).fontWeight },
-                body: { top: box(body).top, centre: centre(body), align: style(body).textAlign, size: style(body).fontSize, color: style(body).color },
+                art: {
+                    hidden: getComputedStyle(art).display === 'none',
+                    mode: art.dataset.sbArtMode,
+                    id: figure.dataset.sbArtPlaceholder,
+                    width: box(figure).width,
+                    height: box(figure).height,
+                    left: box(art).left,
+                    right: box(art).right,
+                    bottom: box(art).bottom,
+                    centre: centre(art),
+                    ariaHidden: art.getAttribute('aria-hidden'),
+                    rendering: getComputedStyle(figure.firstElementChild).imageRendering,
+                },
+                title: { top: box(title).top, bottom: box(title).bottom, left: box(title).left, centre: centre(title), align: style(title).textAlign, size: style(title).fontSize, weight: style(title).fontWeight },
+                body: { top: box(body).top, left: box(body).left, centre: centre(body), align: style(body).textAlign, size: style(body).fontSize, color: style(body).color },
                 centre: (box(root).left + box(root).right) / 2,
                 overflows: root.scrollWidth > root.clientWidth,
                 tokens,
@@ -2178,7 +2192,10 @@ test.describe('Home Recent Chats empty states', () => {
                 await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
             });
 
-            test('with no chats, the Tewi art, the heading and the body stack in the middle as one status page', async ({ page }) => {
+            // Wide Home puts Tewi beside the text, and narrow Home puts a banner above it.
+            const beside = viewport.width >= 1024;
+
+            test(`with no chats, Tewi is ${beside ? 'a panel beside' : 'a banner above'} the heading and the body, as one status page`, async ({ page }) => {
                 await renderHome(page, []);
                 await chooseMode(page, 'full');
 
@@ -2186,14 +2203,23 @@ test.describe('Home Recent Chats empty states', () => {
 
                 expect(state.role).toBe('status');
                 expect([state.titleTag, state.bodyTag]).toEqual(['H3', 'P']);
-                expect(state.art).toMatchObject({ hidden: false, width: 96, height: 96, ariaHidden: 'true' });
+                expect(state.art).toMatchObject({ hidden: false, mode: beside ? 'panel' : 'banner', id: 'empty-tewi', ariaHidden: 'true', rendering: 'pixelated' });
+                // 159 x 318 art pixels at one device pixel each. A banner shows the rows down to the hips, 62% of them.
+                expect([state.art.width, Math.round(state.art.height)]).toEqual([159, beside ? 318 : Math.floor(318 * 0.62)]);
+                expect(state.overflows).toBe(false);
+                if (beside) {
+                    expect(state.art.right, 'the art is before the text').toBeLessThanOrEqual(state.title.left);
+                    expect(Math.abs(state.title.left - state.body.left), 'the heading and the body share a start edge').toBeLessThanOrEqual(1);
+                    expect([state.title.align, state.body.align]).toEqual(['start', 'start']);
+                    expect(state.title.bottom, 'the heading sits above the body').toBeLessThanOrEqual(state.body.top);
+                    return;
+                }
                 expect(state.art.bottom, 'the art sits above the heading').toBeLessThanOrEqual(state.title.top);
                 expect(state.title.bottom, 'the heading sits above the body').toBeLessThanOrEqual(state.body.top);
                 for (const centre of [state.art.centre, state.title.centre, state.body.centre]) {
                     expect(Math.abs(centre - state.centre)).toBeLessThanOrEqual(1);
                 }
                 expect([state.title.align, state.body.align]).toEqual(['center', 'center']);
-                expect(state.overflows).toBe(false);
             });
 
             test('with no chats, the heading and the body use the type scale of the status pages', async ({ page }) => {
