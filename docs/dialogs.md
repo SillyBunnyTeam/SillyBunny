@@ -280,6 +280,15 @@ onClose })` in `side-panel.js`:
 - Registered today: `floatingPrompt` (left), `cfgConfig` (left) and `logprobsViewer` (right) in
   `adapters/side-panels.js`, and `sb-chat-sidebar` (right) in `sillybunny-tabs.js`.
 
+## Content Beside the Main Column
+
+A Dialog or Window that shows something beside its main column, such as an illustration, is wider
+by that width, so the main column keeps the width its tier gives it. The tier width rules in
+`css/sillybunny-theme.css` add `--sb-dialog-aside`, and `sillybunny-editor/dialog-aside.js` sets and
+reads it (`writeDialogAside(surface, px)`, `readDialogAside(surface)`). A sheet ignores it, because
+its width is the screen. The width only grows while a window is open, so moving between pages never
+makes it narrower.
+
 ## Breakpoints
 
 From `sillybunny-editor/breakpoints.js`:

@@ -171,6 +171,14 @@
       "css": ".sb-side-panel { background: var(--sb-layer-window); box-shadow: none; border: 1px solid var(--SmartThemeBorderColor); } @media (max-width: 768px) { .sb-side-panel[data-presentation=\"sheet\"] { max-height: 50dvh; } }"
     },
     {
+      "name": "Illustration",
+      "kind": "illustration",
+      "refersTo": "illustration",
+      "description": "Decorative art in a view. Pixel art is drawn at a whole number of device pixels per art pixel (the screen scale rounded, at least 1) and drawn smooth only when shrunk by a fraction. In a Dialog or Window it sits beside the content when the content keeps 360px times the text scale and the art fits the height, and the window widens by --sb-dialog-aside and never narrows while open; otherwise it sits above the content, at most 30% of the viewport height, with padding 12px, a 16px gap to the content and 8px between figures, and is hidden below 90 art rows. Its backdrop is its own colour in every theme (the mascots use #b99bf2 from 20% to 5%) and is dropped in forced colours. Hidden from assistive technology, alt=\"\", no focus.",
+      "html": "<sb-art-panel class=\"sbArtPanel\" aria-hidden=\"true\" data-sb-art-mode=\"panel\"><span class=\"sbArtFigure\"><img class=\"sbPixelArt\" alt=\"\" width=\"189\" height=\"372\" src=\"img/sillybunny/gs-reisen@native.webp\"></span></sb-art-panel>",
+      "css": ".sbArtPanel { background: linear-gradient(to bottom, rgb(185 155 242 / 20%), rgb(185 155 242 / 5%)); } .sbPixelArt { image-rendering: pixelated; } .sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt { image-rendering: auto; }"
+    },
+    {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input-field",
@@ -303,7 +311,7 @@
     ],
     "rules": [
       {"name": "The Signal Scarcity Rule", "body": "Accent appears for action, selection, focus, or meaningful state. If removing it does not reduce comprehension, remove it.", "section": "colors"},
-      {"name": "The Theme Alias Rule", "body": "New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes.", "section": "colors"},
+      {"name": "The Theme Alias Rule", "body": "New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes. Deviation: an illustration's backdrop belongs to the artwork, so it keeps its own colour in every theme; it is dropped under forced colours and is never used for anything but the illustration.", "section": "colors"},
       {"name": "The Contrast Rule", "body": "Body and placeholder text target at least 4.5:1 contrast; large text targets at least 3:1. Muted text can be quiet, but never illegible. Colour is never the only carrier of information; pair it with text, an icon, or shape (HIG UI Styling). Surfaces stay usable under `prefers-contrast: more` and `forced-colors: active`.", "section": "colors"},
       {"name": "The Opaque Shell Rule", "body": "Header bars, drawers, popovers, menus, dialogs, and toasts are opaque. No `backdrop-filter` on shell layers; background images may show only through the canvas and the chat column at the theme's own tint alpha.", "section": "colors"},
       {"name": "The Single Shell Rule", "body": "The shell has one libadwaita direction; there is no Shell Style picker, and stored legacy `sb-theme` values are ignored. UI themes, custom CSS, and the accent colour are the theming surface.", "section": "colors"},
@@ -315,7 +323,7 @@
       {"name": "The Flat Toolbar Rule", "body": "Toolbar and navigation buttons are transparent at rest. Hover, press, and selection use neutral fills mixed from the body color, with no borders, bottom stripes, underlines, glows, or hover lift. Hover fills apply only under `(hover: hover)`.", "section": "elevation"},
       {"name": "The Reduced Motion Rule", "body": "`prefers-reduced-motion: reduce` or the Reduced Motion setting removes movement and scale. State changes become instant or a crossfade of 200ms or less. JS helpers are no-ops under reduced motion.", "section": "motion"},
       {"name": "The WebKit Reliability Rule", "body": "Prefer solid surfaces on mobile. Fixed layers must respect safe areas, keyboard resizing, scrolling, and focus behavior in Safari/WebKit.", "section": "layout"},
-      {"name": "The State-Only Motion Rule", "body": "Animate state, origin, and destination only. No decorative choreography, ambient loops, or hover lift. Only the dialog spring overshoots.", "section": "motion"}
+      {"name": "The State-Only Motion Rule", "body": "Animate state, origin, and destination only. No decorative choreography, ambient loops, or hover lift. Only the dialog spring overshoots. Deviation: an illustration may move in place, such as a character who blinks or breathes, and a loading screen may animate its picture and line while it waits. The motion stays inside the illustration or the line, never moves layout, pauses while it is hidden, and stops under the Reduced Motion Rule, which shows the first frame (a loading line shows finished).", "section": "motion"}
     ],
     "dos": [
       "Do keep main content uninterrupted and let configuration appear only after deliberate input.",
@@ -336,7 +344,7 @@
       "Don't present configuration sprawl, bottom bar bloat, or a dense control wall by default.",
       "Don't interrupt active conversation with a modal for non-critical configuration; try inline or progressive alternatives first.",
       "Don't rely on mystery meat navigation, hover-only discovery, desktop-only assumptions, tiny touch targets, or fragile iOS WebKit behavior.",
-      "Don't use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose.",
+      "Don't use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose, except an illustration moving in place (Motion).",
       "Don't use gradient text, decorative glassmorphism, backdrop blur on shell layers, ambient accent glows, repeating stripe or grid backgrounds, identical repeated card grids, or sketchy illustrations.",
       "Don't use `border-left` or `border-right` greater than `1px` as a colored accent.",
       "Don't pair a `1px` border with a shadow of `16px` blur or more on a resting surface. Overlays may keep one border and one overlay shadow.",

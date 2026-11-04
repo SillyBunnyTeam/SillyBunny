@@ -274,7 +274,7 @@ Hex values are what the bundled Libadwaita and Libadwaita Light themes render. T
 ### Named Rules
 **The Signal Scarcity Rule.** Accent appears for action, selection, focus, or meaningful state. If removing it does not reduce comprehension, remove it.
 
-**The Theme Alias Rule.** New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes.
+**The Theme Alias Rule.** New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes. Deviation: an illustration's backdrop belongs to the artwork, so it keeps its own colour in every theme; it is dropped under forced colours and is never used for anything but the illustration.
 
 **The Contrast Rule.** Body and placeholder text target at least 4.5:1 contrast; large text targets at least 3:1. Muted text can be quiet, but never illegible. Colour is never the only carrier of information; pair it with text, an icon, or shape (HIG UI Styling). Surfaces stay usable under `prefers-contrast: more` and `forced-colors: active`.
 
@@ -399,7 +399,7 @@ Springs are sampled from libadwaita's AdwSpringAnimation into CSS `linear()` eas
 - **Side panels:** The chat shifts over `--sb-transition` (`250ms`) when a panel docks or closes. The panel appears after the chat has settled.
 
 ### Named Rules
-**The State-Only Motion Rule.** Animate state, origin, and destination only. No decorative choreography, ambient loops, or hover lift.
+**The State-Only Motion Rule.** Animate state, origin, and destination only. No decorative choreography, ambient loops, or hover lift. Deviation: an illustration may move in place, such as a character who blinks or breathes, and a loading screen may animate its picture and line while it waits. The motion stays inside the illustration or the line, never moves layout, pauses while it is hidden, and stops under the Reduced Motion Rule, which shows the first frame (a loading line shows finished).
 
 **The Reduced Motion Rule.** `prefers-reduced-motion: reduce` or the Reduced Motion setting removes movement and scale. State changes become instant or a crossfade of 200ms or less. JS helpers are no-ops under reduced motion.
 
@@ -411,7 +411,7 @@ Patterns follow the HIG pattern groups. Sizes and corners come from Layout and S
 
 #### Dialogs
 - **Implementation:** [docs/dialogs.md](docs/dialogs.md) is the code reference for Alerts, Dialogs, Windows, pages, and side panels: the `openDialog` and `openAlert` APIs, the Popup hook, page chains, adapters, and a testing checklist. Read it before you build or change one.
-- **Tiers:** **Alert** is for messages, confirmations, one-field prompts, and at most one boolean option: `300px` preferred and `372px` maximum (`600px` when wide), content-sized and centred, with a centred heading and body. **Dialog** is for forms and action dialogs: `min(640px, 100% - 32px)` wide with a `360px` minimum, a header bar, and one scrolling body. **Window** is for lists, editors, and viewers: `min(max(640px, var(--sheldWidth)), 100% - 32px)` wide. Dialog and Window heights follow their content up to `90dvh`; a Window that fills (document viewers and editors) is `90dvh` tall. How a Popup picks its tier is in the implementation reference.
+- **Tiers:** **Alert** is for messages, confirmations, one-field prompts, and at most one boolean option: `300px` preferred and `372px` maximum (`600px` when wide), content-sized and centred, with a centred heading and body. **Dialog** is for forms and action dialogs: `min(640px, 100% - 32px)` wide with a `360px` minimum, a header bar, and one scrolling body. **Window** is for lists, editors, and viewers: `min(max(640px, var(--sheldWidth)), 100% - 32px)` wide. A Dialog or Window that shows something beside its content, such as an illustration, is wider by that width (`--sb-dialog-aside`). Dialog and Window heights follow their content up to `90dvh`; a Window that fills (document viewers and editors) is `90dvh` tall. How a Popup picks its tier is in the implementation reference.
 - **Surface:** An Alert uses the Dialog layer. A Dialog or Window uses the Window layer, as `AdwDialog` uses `window-bg`; a Window header uses Header bar, and the body of a document Window (a notes, editor, or output viewer) uses View. All three have a `1px` border, Dialog Shadow, and a Dialog Backdrop without blur.
 - **Headers:** Cancel comes first and the affirmative last, as in GNOME; custom responses sit between them. An explicit-action Dialog or Window puts Cancel at the header start and the affirmative action at the end, with no Close. An immediate-apply surface shows Close at the end. With three or more responses, other responses sit in a bottom bar aligned to the end. Responses use the primary and ghost button families; Close is a flat circle.
 - **Pages and stacking:** One Alert may open above any surface. A Dialog or Window opened over another becomes a page in the same frame, never a second visible frame, and the parent becomes inert. A pushed page shows Back at the start. With explicit responses, Cancel acts as Back and the affirmative stays at the end, with no Close; without them, Close sits at the end. Back and Esc pop one page. Close closes the whole frame one page at a time, from the top, and stops at a page that refuses to close. A page over a bottom sheet keeps the sheet's shape and grab handle, and a downward swipe on the handle pops the page.
@@ -469,6 +469,11 @@ Patterns follow the HIG pattern groups. Sizes and corners come from Layout and S
 - **Sheet:** At most one panel at a time, persistent and non-blocking above the composer, at most `50dvh`; the composer remains visible and usable. It has its own scrolling, a grab handle, and Close.
 - **Layering:** Docked panels sit over expression sprites and zoomed avatars. In visual-novel mode, the sprite area follows the chat's free area between panels.
 - **Keyboard:** Escape closes through the panel controller. Opening moves focus into the panel; closing returns it to its opener.
+
+#### Illustrations
+- **Pixel art:** drawn at a whole number of device pixels per art pixel (the screen scale rounded, at least 1), so a picture is the same size everywhere on one screen. Where no whole step fits, it is shrunk by a fraction and drawn smooth, never in uneven blocks.
+- **In a Dialog or Window:** beside the content when the content column keeps its minimum width (`360px`, scaled with the text size) and the illustration fits the window's height; the window then grows by the illustration's width and does not narrow while it is open. Otherwise above the content, at most 30% of the viewport height, and hidden when too little of the figure would show.
+- **Accessibility:** a decorative illustration is hidden from assistive technology (`aria-hidden`, `alt=""`) and takes no focus.
 
 ### Navigation
 
@@ -580,7 +585,7 @@ The chat is the product's core, so its messages have their own pattern.
 - **Don't** present configuration sprawl, bottom bar bloat, or a dense control wall by default.
 - **Don't** interrupt active conversation with a modal for non-critical configuration; try inline or progressive alternatives first.
 - **Don't** rely on mystery meat navigation, hover-only discovery, desktop-only assumptions, tiny touch targets, or fragile iOS WebKit behavior.
-- **Don't** use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose.
+- **Don't** use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose, except an illustration moving in place (Motion).
 - **Don't** use gradient text, decorative glassmorphism, backdrop blur on shell layers, ambient accent glows, repeating stripe or grid backgrounds, identical repeated card grids, or sketchy illustrations.
 - **Don't** use `border-left` or `border-right` greater than `1px` as a colored accent.
 - **Don't** pair a `1px` border with a shadow of `16px` blur or more on a resting surface. Overlays may keep one border and one overlay shadow.
