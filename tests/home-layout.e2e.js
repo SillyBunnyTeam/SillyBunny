@@ -9,6 +9,7 @@ import { HOME_COPY } from './helpers/copy-home.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { DESKTOP, GEOMETRY_ONLY_SIZES, matrixViewports, PHONE, sizeFreeTestFor, SMALL_PHONE } from './helpers/matrix.js';
+import { HOME_LOGO, expectRealLogo } from './helpers/logo.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { settledRead } from './helpers/settled-read.js';
 
@@ -42,11 +43,11 @@ const REGION_VISIBILITY = {
 };
 const MODE_LABELS = { full: 'Full', compact: 'Compact', list: 'List Only' };
 const ART_VISIBILITY = {
-    full: { 'hero-duo': true, 'logo-32': true },
-    compact: { 'hero-duo': false, 'logo-32': true },
-    list: { 'hero-duo': false, 'logo-32': true },
+    full: { 'hero-duo': true },
+    compact: { 'hero-duo': false },
+    list: { 'hero-duo': false },
 };
-const LOGO_SIZE = [32, 32];
+const LOGO = '.welcomePanel .sbHomeLogo';
 
 /** A menu takes its focus in an animation frame, and its Escape handler lives inside it, so an earlier Escape is lost. */
 const FOCUSED_MENU = `${OPEN_ACTION_SHEET}:focus-within, .sb-action-popover:focus-within`;
@@ -187,7 +188,7 @@ async function readHeader(page) {
         return {
             column: rect('.sbHomeLayout'),
             row: rect('.sbHomeHeader'),
-            logo: rect('[data-sb-art-placeholder="logo-32"]'),
+            logo: rect('.sbHomeLogo'),
             title: rect('.sbHomeTitle'),
             text: textBox('.sbHomeTitle'),
             version: textBox('.sbHomeVersion'),
@@ -682,6 +683,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                     await expect(art).toHaveCount(1);
                     await expect(art, `${artId} in ${mode}`).toBeVisible({ visible });
                 }
+                await expect(page.locator(LOGO), `the logo in ${mode}`).toBeVisible();
                 await expect(page.getByRole('heading', { level: 1, name: 'SillyBunny' })).toBeVisible();
                 await expect(menuButton(page)).toBeVisible();
                 await expect(page.locator('.welcomePanel .sbHomeTile:visible')).toHaveText(VISIBLE_TILES[mode].map(title => new RegExp(`^${title}`)));
@@ -721,7 +723,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
 
             await expectHome(page);
             await expect(page.locator('#chat > .welcomePanel')).toHaveAttribute('data-home-panel-mode', 'compact');
-            await expect(page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]')).toBeVisible();
+            await expect(page.locator(LOGO)).toBeVisible();
         });
 
         sizeFreeTest('switching the display mode does not fetch Recent Chats again', async ({ page }) => {
@@ -1555,7 +1557,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(page.locator('.welcomePanel .sbHomeFork p a')).toHaveCount(0);
         });
 
-        test('art placeholders keep their native size and are hidden from assistive technology', async ({ page }) => {
+        test('art placeholders keep their native size and are hidden from assistive technology, and the logo is a real picture', async ({ page }) => {
             await chooseMode(page, 'full');
             await renderHome(page, []);
             const panelWidth = await page.evaluate(() => document.querySelector('.welcomePanel').clientWidth);
@@ -1569,11 +1571,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 const rect = await measure(page, `.welcomePanel ${artSelector(id)}`);
                 expect([id, Math.round(rect.width), Math.round(rect.height)]).toEqual([id, width, height]);
             }
-            const logo = page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]');
-            await expect(logo).toBeVisible();
-            await expect(logo).toHaveAttribute('aria-hidden', 'true');
-            const logoRect = await measure(page, '.welcomePanel [data-sb-art-placeholder="logo-32"]');
-            expect([Math.round(logoRect.width), Math.round(logoRect.height)]).toEqual(LOGO_SIZE);
+            await expectRealLogo(page.locator(LOGO), HOME_LOGO);
 
             // The hero is a picture, not a stand-in: one image, hidden from assistive technology, at a size that fits the band.
             const hero = await settledRead(page, readHero);
@@ -1585,10 +1583,21 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(page.locator(`.welcomePanel ${artSelector('hero-duo')} img`)).toHaveAttribute('alt', '');
 
             await chooseMode(page, 'compact');
-            await expect(page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]')).toBeVisible();
+            await expect(page.locator(LOGO)).toBeVisible();
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="empty-tewi"]')).toBeHidden();
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]')).toBeHidden();
         });
+
+        for (const scale of [1, 2, 3]) {
+            test.describe(`at a screen scale of ${scale}`, () => {
+                test.use({ deviceScaleFactor: scale });
+
+                // eslint-disable-next-line playwright/expect-expect -- The logo has its assertions in `expectRealLogo`.
+                sizeFreeTest('the logo of the header is the file made for the scale, in its 32px box', async ({ page }) => {
+                    await expectRealLogo(page.locator(LOGO), HOME_LOGO);
+                });
+            });
+        }
 
         test('the hero is the day scene at 12:00 and the night scene at 20:00, picked when Home renders and not while it is shown', async ({ page }) => {
             await chooseMode(page, 'full');

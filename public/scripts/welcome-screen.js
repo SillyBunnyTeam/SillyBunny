@@ -728,7 +728,7 @@ async function sendWelcomePanel(chats, expand = false) {
         // SillyBunny: the status of the bundled files is read while the template loads. Only the first render waits for it, and briefly; a later answer replaces the cards.
         const managedStatus = managedAssistants.refreshStatus();
         // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
-        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261105b', templateData, true, true, true);
+        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261106a', templateData, true, true, true);
         await managedAssistants.waitForFirstAnswer(managedStatus);
         // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.
         if (getCurrentChatId() !== undefined) {

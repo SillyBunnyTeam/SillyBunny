@@ -2,7 +2,6 @@ import { displayVersion } from '../script.js';
 import { extension_settings, extensionNames } from './extensions.js';
 import { t } from './i18n.js';
 import { readBootMarks } from './sillybunny-boot-marks.js';
-import { createArtPlaceholder } from './sillybunny-home/art.js';
 import { createArtPanel } from './sillybunny-home/art-layout.js';
 import { markCopyPlaceholder } from './sillybunny-home/copy.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
@@ -131,6 +130,20 @@ function createSection(title, body) {
     return section;
 }
 
+/** The logo is decoration: the name below it says what it is. */
+function createLogo() {
+    const logo = document.createElement('img');
+    logo.className = 'sbAboutLogo';
+    logo.src = 'img/sillybunny/logo-64.png';
+    logo.srcset = 'img/sillybunny/logo-64.png 1x, img/sillybunny/logo.svg 2x';
+    logo.width = 64;
+    logo.height = 64;
+    logo.alt = '';
+    logo.setAttribute('aria-hidden', 'true');
+    logo.decoding = 'async';
+    return logo;
+}
+
 function createMainContent(server, pages) {
     const header = document.createElement('div');
     header.className = 'sbAboutHeader';
@@ -140,7 +153,7 @@ function createMainContent(server, pages) {
     const developer = document.createElement('p');
     developer.className = 'sbAboutDeveloper';
     developer.textContent = 'SillyBunnyTeam';
-    header.append(createArtPlaceholder('logo-64'), name, developer);
+    header.append(createLogo(), name, developer);
     // Both characters share one panel at one step, so Tewi stands at her own height beside Reisen. The logo stays in the header.
     const { panel: characters } = createArtPanel(['about-reisen', 'about-tewi']);
 

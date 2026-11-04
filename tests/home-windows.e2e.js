@@ -8,6 +8,7 @@ import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { ABOUT_LOGO, expectRealLogo } from './helpers/logo.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -134,16 +135,6 @@ async function expectNoUnmarkedPlaceholder(host) {
         .filter(node => node.dataset.sbCopyPlaceholder !== 'true' || !node.dataset.sbCopySlot)
         .map(node => node.outerHTML.slice(0, 120)), COPY_PLACEHOLDER);
     expect(unmarked).toEqual([]);
-}
-
-/** A stand-in that has no picture yet, such as the logo: its text names it and its box is the size it will have. */
-async function expectPlaceholder(scope, id, size) {
-    const art = scope.locator(`[data-sb-art-placeholder="${id}"]`);
-    await expect(art).toBeVisible();
-    await expect(art).toHaveAttribute('aria-hidden', 'true');
-    await expect(art).toHaveText(id);
-    // The layout size ignores the scale of an opening window.
-    expect(await art.evaluate(node => [node.offsetWidth, node.offsetHeight])).toEqual(size);
 }
 
 const MIN_CONTENT = 360;
@@ -279,7 +270,7 @@ async function readAboutArt(host) {
             tewi: rect(figure('about-tewi')),
             native: { reisen: getPixelArt('about-reisen'), tewi: getPixelArt('about-tewi') },
             inPanel: [...panel.querySelectorAll('[data-sb-art-placeholder]')].map(node => node.dataset.sbArtPlaceholder),
-            logo: rect(page.querySelector('.sbAboutHeader [data-sb-art-placeholder="logo-64"]')),
+            logo: rect(page.querySelector('.sbAboutHeader .sbAboutLogo')),
             name: rect(page.querySelector('.sbAboutName')),
             header: rect(page.querySelector('.sbAboutHeader')),
             body: rect(body),
@@ -291,7 +282,7 @@ async function readAboutArt(host) {
 }
 
 async function expectAboutPair(host, { rtl = false } = {}) {
-    await expectPlaceholder(host, 'logo-64', [64, 64]);
+    await expectRealLogo(host.locator('.sbAboutLogo'), ABOUT_LOGO);
     const mode = await expectArt(host, 'about-reisen');
     await expectArt(host, 'about-tewi');
     const art = await readAboutArt(host);
@@ -1694,8 +1685,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const version = await readVersion(page);
                 const host = await openFromMenu(page, 'About SillyBunny');
 
-                await expectPlaceholder(host, 'logo-64', [64, 64]);
-                await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(3);
+                await expectRealLogo(host.locator('.sbAboutLogo'), ABOUT_LOGO);
+                await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(2);
                 await expect(host.getByRole('heading', { name: 'SillyBunny', exact: true })).toBeVisible();
                 await expect(host.locator('.sbAboutDeveloper')).toHaveText('SillyBunnyTeam');
                 expect(await readCopyPlaceholders(host), 'the main page has no copy placeholder left').toEqual([]);
@@ -1703,6 +1694,19 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByText(version.gitBranch, { exact: true })).toBeVisible();
                 await expect(host.getByText(version.gitRevision, { exact: true })).toBeVisible();
             });
+
+            for (const scale of [1, 2, 3]) {
+                test.describe(`at a screen scale of ${scale}`, () => {
+                    test.use({ deviceScaleFactor: scale });
+
+                    // eslint-disable-next-line playwright/expect-expect -- The logo has its assertions in `expectRealLogo`.
+                    sizeFreeTest('the logo is the file made for the scale, in its 64px box', async ({ page }) => {
+                        const host = await openFromMenu(page, 'About SillyBunny');
+
+                        await expectRealLogo(host.locator('.sbAboutLogo'), ABOUT_LOGO);
+                    });
+                });
+            }
 
             test('puts Reisen and Tewi in one panel, Reisen first, with the logo and the name staying in the content', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');

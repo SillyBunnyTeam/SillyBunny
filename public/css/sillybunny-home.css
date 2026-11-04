@@ -193,10 +193,12 @@
     display: contents;
 }
 
-.sbHomeArt[data-sb-art-placeholder='logo-32'] {
+.sbHomeLogo {
     grid-column: 1;
     justify-self: end;
     align-self: center;
+    width: 32px;
+    height: 32px;
     margin-inline-end: 10px;
 }
 
@@ -467,12 +469,6 @@
     height: 100%;
     object-fit: cover;
     image-rendering: auto;
-}
-
-.sbHomeArt[data-sb-art-placeholder='logo-32'] {
-    width: 32px;
-    height: 32px;
-    font-size: 7px;
 }
 
 /* ── Tiles ──────────────────────────────────────────────────────────────── */

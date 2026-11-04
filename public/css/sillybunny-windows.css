@@ -1,9 +1,10 @@
 /* The windows that open from Home: Welcome, Help, About, Keyboard Shortcuts, Getting Started and Bundled Extras.
    Deferred: sillybunny-window-styles.js loads it with the editor-shell sheet before a window opens. */
 
-/* ── Logo stand-in, at the size the logo will have ───────────────────────── */
+/* ── Logo ───────────────────────────────────────────────────────────────── */
 
-.sbHomeArt[data-sb-art-placeholder='logo-64'] {
+.sbAboutLogo {
+    flex: none;
     width: 64px;
     height: 64px;
 }
