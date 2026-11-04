@@ -144,7 +144,8 @@ function layoutAlertResponses(controls, sheet) {
     const buttons = [...controls.children].filter(isShown);
     if (buttons.length < 2) return;
     controls.classList.add('is-measuring');
-    const widest = Math.max(0, ...buttons.map(button => button.getBoundingClientRect().width));
+    // `offsetWidth` is the layout width. `getBoundingClientRect()` includes the opening scale of the dialog.
+    const widest = Math.max(0, ...buttons.map(button => button.offsetWidth));
     const style = getComputedStyle(controls);
     const gap = parseFloat(style.columnGap) || 0;
     const available = controls.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);

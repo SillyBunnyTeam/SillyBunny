@@ -15,6 +15,9 @@ import { bootWindowToolsDialogs, currentToolPopup } from './helpers/window-tools
 test.setTimeout(240000);
 test.use({ serviceWorkers: 'block' });
 
+// Each label fits a 300px Alert when the opening scale of 0.8 shrinks it, and does not fit at full size.
+const LONG_LABEL = 'A response wide label';
+
 for (const viewport of MISC_VIEWPORTS) {
     const size = `${viewport.width}x${viewport.height}`;
 
@@ -98,4 +101,19 @@ test('A content-sized Window on a phone keeps no empty space after onOpening', a
     }), { keepOpen: true });
     expect(await page.locator('dialog.popup[open]').evaluate(dlg => dlg.offsetHeight)).toBeLessThan(400);
     await closePopups(page);
+});
+
+test('Alert responses stack from their full width during the opening animation', async ({ page }) => {
+    await bootMiscDialogs(page, MISC_VIEWPORTS[0], MOTION);
+    const { popup, shared } = await page.evaluate(async label => {
+        const { Popup } = await import('/scripts/popup.js');
+        const { openAlert } = await import('/scripts/sillybunny-editor/dialog.js');
+        void Popup.show.confirm('Heading', 'Body', { okButton: label, cancelButton: label });
+        const opened = Popup.util.popups.at(-1);
+        const popupStacked = opened.buttonControls.classList.contains('is-stacked');
+        await opened.completeCancelled();
+        void openAlert({ heading: 'Heading', responses: [{ id: 'cancel', label }, { id: 'ok', label }] });
+        return { popup: popupStacked, shared: document.querySelector('.sb-dialog__responses').classList.contains('is-stacked') };
+    }, LONG_LABEL);
+    expect({ popup, shared }).toEqual({ popup: true, shared: true });
 });

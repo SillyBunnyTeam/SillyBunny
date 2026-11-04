@@ -416,6 +416,22 @@ describe('Popup frame adapter', () => {
         }
     });
 
+    test('an Alert decides to stack from the layout width of its responses, not their scaled rectangles', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        // Two 150px responses do not fit in 280px, but their rectangles fit at the opening scale of 0.8.
+        for (const button of [value.okButton, value.cancelButton]) {
+            Object.defineProperty(button, 'offsetWidth', { value: 150 });
+            button.getBoundingClientRect = () => ({ width: 120 });
+        }
+        Object.defineProperty(value.buttonControls, 'clientWidth', { value: 280 });
+        const frame = framePopup(value, { tier: 'alert' });
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.buttonControls.classList.contains('is-stacked')).toBe(true);
+        frame.dispose();
+    });
+
     test('contentChanged lets a content-sized Window measure a shorter height', () => {
         setupDialogMedia();
         const animationFrame = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
