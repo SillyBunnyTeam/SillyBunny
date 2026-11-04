@@ -461,8 +461,25 @@ async function syncThirdPartyExtension(sourcePath, targetPath, protectedRoots) {
         const details = await inspectExtensionDirectory(tempTargetPath, extensionName);
         warnings.push(...details.warnings);
 
-        await fsPromises.rm(targetPath, { recursive: true, force: true });
-        await fsPromises.rename(tempTargetPath, targetPath);
+        // Move the existing extension aside instead of removing it, so that a failed rename can put it back.
+        const previousPath = `${tempTargetPath}-previous`;
+        const hasPrevious = await fsPromises.lstat(targetPath).then(() => true, () => false);
+        if (hasPrevious) {
+            await fsPromises.rename(targetPath, previousPath);
+        }
+
+        try {
+            await fsPromises.rename(tempTargetPath, targetPath);
+        } catch (error) {
+            if (hasPrevious) {
+                await fsPromises.rename(previousPath, targetPath);
+            }
+            throw error;
+        }
+
+        if (hasPrevious) {
+            await fsPromises.rm(previousPath, { recursive: true, force: true });
+        }
 
         const status = warnings.length > 0 ? 'warning' : 'ready';
         return {
