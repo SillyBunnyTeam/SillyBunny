@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 
 import storage from 'node-persist';
 import express from 'express';
+import sanitize from 'sanitize-filename';
 import yauzl from 'yauzl';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 
@@ -592,6 +593,33 @@ function isDefaultUserImportBase(basePath) {
     return String(basePath ?? '') === 'default-user' || String(basePath ?? '').endsWith('/default-user');
 }
 
+const ZIP_IMPORT_FAILED = 'Failed to import that SillyTavern backup ZIP.';
+
+/**
+ * Gets the path of a ZIP entry inside the account folder.
+ * @param {string} normalizedEntry Entry path from normalizeZipEntryPath()
+ * @param {string} basePath Folder in the ZIP that holds the account, or an empty string for the ZIP root
+ * @returns {string} The path inside the account, or an empty string when the entry is outside the base folder
+ */
+function getImportRelativePath(normalizedEntry, basePath) {
+    if (!basePath) {
+        return normalizedEntry;
+    }
+
+    return normalizedEntry.startsWith(`${basePath}/`) ? normalizedEntry.slice(basePath.length + 1) : '';
+}
+
+/**
+ * Checks that sanitize-filename keeps every folder and file name of a ZIP entry path as it is.
+ * Such a name has no NUL or control character, no character that Windows refuses, no reserved device name
+ * such as CON, and no trailing dot or space, so every supported system can store it.
+ * @param {string} entryPath Entry path with forward slashes
+ * @returns {boolean} True if every name in the path is kept as it is
+ */
+function hasPortableNames(entryPath) {
+    return entryPath.split('/').filter(Boolean).every(name => sanitize(name) === name);
+}
+
 async function detectZipImportBase(zipFilePath) {
     return await new Promise((resolve, reject) => {
         yauzl.open(zipFilePath, { lazyEntries: true }, (error, zipfile) => {
@@ -601,6 +629,7 @@ async function detectZipImportBase(zipFilePath) {
             }
 
             const baseScores = new Map();
+            const unportableEntries = [];
 
             zipfile.readEntry();
             zipfile.on('entry', entry => {
@@ -608,6 +637,10 @@ async function detectZipImportBase(zipFilePath) {
                 if (!normalizedEntry || normalizedEntry.startsWith('__MACOSX/')) {
                     zipfile.readEntry();
                     return;
+                }
+
+                if (!hasPortableNames(normalizedEntry)) {
+                    unportableEntries.push(normalizedEntry);
                 }
 
                 const segments = normalizedEntry.split('/').filter(Boolean);
@@ -645,7 +678,19 @@ async function detectZipImportBase(zipFilePath) {
                     return;
                 }
 
-                resolve(rankedBases[0][0]);
+                // The import checks the names before it writes anything, so that an archive with a name that cannot be stored changes nothing.
+                const basePath = rankedBases[0][0];
+                const unportableEntry = unportableEntries.find(entryName => {
+                    const relativePath = getImportRelativePath(entryName, basePath);
+                    return relativePath && isImportableRelativePath(relativePath) && !hasPortableNames(relativePath);
+                });
+                if (unportableEntry) {
+                    console.warn('SillyTavern ZIP import refused an entry name that some systems cannot store:', JSON.stringify(unportableEntry));
+                    reject(new Error(ZIP_IMPORT_FAILED));
+                    return;
+                }
+
+                resolve(basePath);
             });
 
             zipfile.once('error', reject);
@@ -711,11 +756,7 @@ async function importZipContents(zipFilePath, targetRoot) {
                     return;
                 }
 
-                const relativePath = basePath
-                    ? normalizedEntry.startsWith(`${basePath}/`)
-                        ? normalizedEntry.slice(basePath.length + 1)
-                        : ''
-                    : normalizedEntry;
+                const relativePath = getImportRelativePath(normalizedEntry, basePath);
 
                 if (!relativePath || !isImportableRelativePath(relativePath)) {
                     zipfile.readEntry();
