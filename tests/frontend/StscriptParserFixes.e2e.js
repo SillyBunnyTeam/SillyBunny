@@ -142,6 +142,17 @@ test.describe('STscript parser fixes', () => {
         expect.soft(await executeWithErrorToasts(page, '/let x "hello world"| /pass {{var::x}}')).toEqual({ pipe: 'hello world', errorTitles: [] });
     });
 
+    test('a closure in the rest of a split-count command keeps its source text', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/let y prefix {: /stp-plain c :}' },
+            { script: '/stp-split1 a {: :} "b c" d' },
+        ]);
+
+        expect.soft(results[0]).toEqual({ tree: { variables: ['y'], executors: [{ name: 'let', unnamed: ['y', 'prefix {: /stp-plain c :}'] }] } });
+        expect.soft(results[1]).toEqual({ tree: { executors: [{ name: 'stp-split1', unnamed: ['a', '{: :} "b c" d'] }] } });
+        expect.soft(await executeWithErrorToasts(page, '/times 2 /if left=1 right=1 {: /pass yes :}')).toEqual({ pipe: 'yes', errorTitles: [] });
+    });
+
     test('a closure among split values keeps the quotes in the rest', async ({ page }) => {
         const results = await parse(page, [
             { script: '/stp-split2 a {: /stp-plain y :} "b c" d' },

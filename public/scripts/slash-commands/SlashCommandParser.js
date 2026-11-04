@@ -1290,6 +1290,8 @@ export class SlashCommandParser {
                 joined.value = '';
                 for (let i = splitCount; i < listValues.length; i++) {
                     if (listQuoted[i]) joined.value += `"${listValues[i].value}"`;
+                    // SillyBunny: the joined value is a string, so a closure keeps its source text instead of becoming "[Closure]".
+                    else if (listValues[i].value instanceof SlashCommandClosure) joined.value += this.text.slice(listValues[i].start, listValues[i].end);
                     else joined.value += listValues[i].value;
                 }
                 listValues = [
