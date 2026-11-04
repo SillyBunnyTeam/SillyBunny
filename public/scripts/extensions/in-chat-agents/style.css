@@ -973,8 +973,11 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-/* SillyBunny: modal surfaces must cover the fixed companion handle as well as the page. */
-body:has(dialog[open]) .ica--tpanel-handle {
+/* SillyBunny: modal surfaces must cover the fixed companion handle as well as the page.
+   Dialogs and the handle are both direct children of body, so each side names the other as a sibling.
+   A body-wide :has() here made every DOM change in a long chat re-check the whole document. */
+body .ica--tpanel-handle:has(~ dialog[open]),
+body > dialog[open] ~ .ica--tpanel-handle {
     visibility: hidden;
     pointer-events: none;
 }

@@ -3453,15 +3453,14 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 /* Conversation zoomed avatars sit beside the split view instead of the roleplay chat column. */
-#sheld[data-sb-conversation-mode='on'] ~ .sb-conversation-zoomed-avatar,
-body:has(#sheld[data-sb-conversation-mode='on']) .sb-conversation-zoomed-avatar {
+#sheld[data-sb-conversation-mode='on'] ~ .sb-conversation-zoomed-avatar {
     left: max(12px, env(safe-area-inset-left, 0px));
     top: max(72px, env(safe-area-inset-top, 0px));
     max-width: min(var(--maxWidth, calc(90vh * 0.666)), 42vw);
 }
 
 @media (max-width: 768px) {
-    body:has(#sheld[data-sb-conversation-mode='on']) .sb-conversation-zoomed-avatar {
+    body > #sheld[data-sb-conversation-mode='on'] ~ .sb-conversation-zoomed-avatar {
         left: 50%;
         right: auto;
         top: max(64px, env(safe-area-inset-top, 0px));

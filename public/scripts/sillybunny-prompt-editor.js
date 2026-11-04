@@ -1293,7 +1293,11 @@ export function initializePromptEditor(column) {
             contentRequests.clear();
         }
         if (root.hidden) root.hidden = false;
-        if (!column.classList.contains('sb-prompt-owned')) column.classList.add('sb-prompt-owned');
+        if (!column.classList.contains('sb-prompt-owned')) {
+            column.classList.add('sb-prompt-owned');
+            // The legacy popup sits outside this column. Finding the column with a body-wide :has() made every DOM change re-check the document.
+            document.getElementById('completion_prompt_manager_popup')?.setAttribute('data-sb-prompt-owned', '');
+        }
         if (draft && !dirty()) {
             const live = kind === 'prompt'
                 ? promptFor(draft.identifier)
@@ -1359,7 +1363,7 @@ export function initializePromptEditor(column) {
     const resizeObserver = new ResizeObserver(scheduleLayout);
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261027a', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261104a', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

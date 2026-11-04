@@ -2,7 +2,7 @@
     display: none !important;
 }
 
-body:has(.sb-prompt-owned) #completion_prompt_manager_popup {
+body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     display: none !important;
 }
 

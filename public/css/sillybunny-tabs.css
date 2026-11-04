@@ -5831,7 +5831,7 @@ body.reduced-motion .sb-shell-main {
 
 /* Native floating portraits sit above settings. Keep their position and open state while
    concealing them until the settings page has finished its closing animation. */
-body:has(#sb-settings-page:not([hidden])) > .zoomed_avatar[forchar] {
+body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     visibility: hidden;
     pointer-events: none;
 }
