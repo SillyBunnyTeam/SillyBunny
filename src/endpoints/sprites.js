@@ -8,6 +8,7 @@ import sanitize from 'sanitize-filename';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { getImageBuffers } from '../util.js';
+import { getImageExtension, isImageFile, readImageSignature } from '../image-file-type.js';
 
 /**
  * Gets the path to the sprites folder for the provided character name
@@ -213,7 +214,8 @@ router.post('/upload-zip', async (request, response) => {
         }
 
         const spritePackPath = path.join(file.destination, file.filename);
-        const sprites = await getImageBuffers(spritePackPath);
+        // SillyBunny: a sprite keeps the extension of its name in the pack, which decides how the server serves it, so store only images of that type. The check reads the sanitized name, because sanitizing can cut the end of a long name.
+        const sprites = (await getImageBuffers(spritePackPath)).filter(([filename, buffer]) => isImageFile(path.extname(sanitize(filename)), buffer));
         const files = fs.readdirSync(spritesPath);
 
         for (const [filename, buffer] of sprites) {
@@ -250,6 +252,17 @@ router.post('/upload', async (request, response) => {
     }
 
     try {
+        const spritePath = path.join(file.destination, file.filename);
+        // SillyBunny: the stored extension decides how the server serves the sprite, so it must name the image type of the bytes. A sprite uploaded from a URL arrives as image.png whatever its type, so a wrong image extension is replaced and any other file is refused.
+        const signature = readImageSignature(spritePath);
+        const uploadedExtension = path.parse(file.originalname).ext;
+        const extension = isImageFile(uploadedExtension, signature) ? uploadedExtension : getImageExtension(signature);
+        const filename = sanitize(spriteName + (extension ?? ''));
+        if (!isImageFile(path.extname(filename), signature)) {
+            fs.unlinkSync(spritePath);
+            return response.sendStatus(400);
+        }
+
         const spritesPath = getSpritesPath(request.user.directories, name, isSubfolder);
 
         // Invalid sprites path
@@ -276,9 +289,7 @@ router.post('/upload', async (request, response) => {
             }
         }
 
-        const filename = spriteName + path.parse(file.originalname).ext;
-        const spritePath = path.join(file.destination, file.filename);
-        const pathToFile = path.join(spritesPath, sanitize(filename));
+        const pathToFile = path.join(spritesPath, filename);
         // Copy uploaded file to sprites folder
         fs.cpSync(spritePath, pathToFile);
         // Remove uploaded file

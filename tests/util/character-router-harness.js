@@ -24,9 +24,9 @@ async function readAnswer(response) {
 }
 
 /**
- * Serves the characters router on a local port for one user whose folders are in a temp folder.
- * The router reads its config when it loads and finds the default avatar from the working folder,
- * so this sets both before it loads the router, and close() restores them.
+ * Serves the characters and sprites routers on a local port for one user whose folders are in a temp folder.
+ * The characters router reads its config when it loads and finds the default avatar from the working folder,
+ * so this sets both before it loads the routers, and close() restores them.
  * @param {string} prefix Start of each temp folder name
  */
 export async function startCharacterRouter(prefix) {
@@ -36,6 +36,7 @@ export async function startCharacterRouter(prefix) {
     process.chdir(repoRoot);
     setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
     const { router } = await import('../../src/endpoints/characters.js');
+    const { router: spritesRouter } = await import('../../src/endpoints/sprites.js');
 
     let tempRoot;
     let directories;
@@ -50,6 +51,7 @@ export async function startCharacterRouter(prefix) {
     app.use((request, response, next) => uploadMiddleware(request, response, next));
     app.use(multerMonkeyPatch);
     app.use('/api/characters', router);
+    app.use('/api/sprites', spritesRouter);
     const server = await new Promise(resolve => {
         const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
     });
@@ -107,13 +109,17 @@ export async function startCharacterRouter(prefix) {
                 .sort();
         },
 
-        async importCard(bytes, fileType, fields = {}) {
+        async upload(resource, bytes, fileName, fields = {}) {
             const form = new FormData();
-            form.append('avatar', new Blob([bytes]), `upload.${fileType}`);
-            for (const [key, value] of Object.entries({ file_type: fileType, user_name: 'Tester', ...fields })) {
+            form.append('avatar', new Blob([bytes]), fileName);
+            for (const [key, value] of Object.entries(fields)) {
                 form.append(key, value);
             }
-            return readAnswer(await fetch(`${baseUrl}/api/characters/import`, { method: 'POST', body: form }));
+            return readAnswer(await fetch(`${baseUrl}${resource}`, { method: 'POST', body: form }));
+        },
+
+        importCard(bytes, fileType, fields = {}) {
+            return this.upload('/api/characters/import', bytes, `upload.${fileType}`, { file_type: fileType, user_name: 'Tester', ...fields });
         },
 
         async postJson(resource, body) {
