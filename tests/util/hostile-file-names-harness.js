@@ -72,8 +72,9 @@ export function prepareEnvironment() {
     const originalWorkingDirectory = process.cwd();
     const originalDataRoot = global.DATA_ROOT;
     const tempRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'sillybunny-hostile-'));
-    const dataRoot = path.join(tempRoot, 'data');
-    fs.mkdirSync(dataRoot);
+    // The deepest climb in the input list is four levels, so this depth keeps every climb inside the hashed temp folder.
+    const dataRoot = path.join(tempRoot, 'a', 'b', 'c', 'data');
+    fs.mkdirSync(dataRoot, { recursive: true });
 
     process.chdir(repoRoot);
     setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
@@ -108,6 +109,9 @@ function sha256(buffer) {
  */
 export function hashTree(root, skipped = new Set()) {
     const entries = new Map();
+    if (!fs.existsSync(root)) {
+        return entries;
+    }
     const walk = (directory) => {
         for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
             const fullPath = path.join(directory, entry.name);
@@ -230,15 +234,30 @@ export async function startHarness(environment, routers) {
     const userRoot = directories.root;
     const uploadsRoot = path.join(dataRoot, '_uploads');
     const outsideRoot = path.join(dataRoot, 'outside');
-    for (const directory of [...Object.values(directories), uploadsRoot, outsideRoot]) {
+    for (const directory of [...Object.values(directories), uploadsRoot]) {
         fs.mkdirSync(directory, { recursive: true });
     }
 
-    for (const name of ['sentinel', 'sentinel.json', 'sentinel.jsonl', 'sentinel.txt']) {
-        fs.writeFileSync(path.join(outsideRoot, name), OUTSIDE_FILE_TEXT);
-    }
-    fs.writeFileSync(path.join(outsideRoot, 'sentinel.png'), SEED_PNG);
-    fs.writeFileSync(path.join(outsideRoot, OUTSIDE_LISTING_NAME), SEED_PNG);
+    const sentinelCard = Buffer.concat([
+        writeCard(SEED_PNG, JSON.stringify({ name: OUTSIDE_FILE_TEXT, spec: 'chara_card_v2', spec_version: '2.0', data: { name: OUTSIDE_FILE_TEXT, extensions: {} } })),
+        Buffer.from(OUTSIDE_FILE_TEXT),
+    ]);
+    const sentinelJson = JSON.stringify({ name: OUTSIDE_FILE_TEXT, entries: {} });
+    // A route that escapes parses what it finds, so each file is valid for its type and its contents still show in an answer.
+    // The seed and joy names match the fixed fields of the table rows, so a hostile folder name alone finds a file here.
+    const outsideFiles = {
+        'sentinel': sentinelCard,
+        'sentinel.png': sentinelCard,
+        'sentinel.json': sentinelJson,
+        'sentinel.jsonl': `${sentinelJson}\n`,
+        'sentinel.txt': OUTSIDE_FILE_TEXT,
+        [OUTSIDE_LISTING_NAME]: SEED_PNG,
+        [`bgm/${OUTSIDE_LISTING_NAME}`]: SEED_PNG,
+        'seed.json': sentinelJson,
+        'seed.jsonl': `${sentinelJson}\n`,
+        'seed.mp3': OUTSIDE_FILE_TEXT,
+        'joy.png': SEED_PNG,
+    };
 
     const seedCard = JSON.stringify({
         name: 'seed',
@@ -274,15 +293,34 @@ export async function startHarness(environment, routers) {
         'vectors/webllm/seed/seed.json': '{}',
         'settings.json': '{}',
     };
-    for (const [relativePath, content] of Object.entries(seedFiles)) {
-        const target = path.join(userRoot, relativePath);
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.writeFileSync(target, content);
+    const seedContents = new Map();
+    for (const [root, files] of [[userRoot, seedFiles], [outsideRoot, outsideFiles]]) {
+        for (const [relativePath, content] of Object.entries(files)) {
+            const target = path.join(root, relativePath);
+            fs.mkdirSync(path.dirname(target), { recursive: true });
+            fs.writeFileSync(target, content);
+            seedContents.set(target, content);
+        }
     }
 
     const outsideTreeSkip = new Set([userRoot, uploadsRoot]);
-    const baseline = hashTree(userRoot);
-    let outsideTree = hashTree(tempRoot, outsideTreeSkip);
+    const userBaseline = hashTree(userRoot);
+    const outsideBaseline = hashTree(tempRoot, outsideTreeSkip);
+    // These inputs are absolute paths outside the temp folder, so the tree hash cannot see a write to them.
+    const absoluteTargets = ['/etc/x', 'C:\\x'].map(target => path.resolve(target));
+
+    const restoreTree = (root, baseline, skipped) => {
+        fs.mkdirSync(root, { recursive: true });
+        for (const key of diffTrees(baseline, hashTree(root, skipped))) {
+            const target = path.join(root, key);
+            fs.rmSync(target, { recursive: true, force: true, maxRetries: 5 });
+            if (baseline.get(key) === 'folder') {
+                fs.mkdirSync(target);
+            } else if (baseline.has(key)) {
+                fs.writeFileSync(target, seedContents.get(target));
+            }
+        }
+    };
 
     const app = express();
     app.use(express.json({ limit: '10mb' }));
@@ -305,45 +343,27 @@ export async function startHarness(environment, routers) {
     });
     const { port } = server.address();
 
-    const restoreUserTree = () => {
-        for (const key of diffTrees(baseline, hashTree(userRoot)).reverse()) {
-            const target = path.join(userRoot, key);
-            if (!baseline.has(key)) {
-                fs.rmSync(target, { recursive: true, force: true, maxRetries: 5 });
-            } else if (baseline.get(key) === 'folder') {
-                fs.mkdirSync(target, { recursive: true });
-            } else {
-                fs.rmSync(target, { recursive: true, force: true, maxRetries: 5 });
-                fs.mkdirSync(path.dirname(target), { recursive: true });
-                fs.writeFileSync(target, seedFiles[key]);
-            }
-        }
-    };
-
     return {
         directories,
-        userRoot,
         outsideRoot,
         /**
-         * Restores the seeded user folder, sends one input through a row and reports what changed on disk.
+         * Restores both seeded trees, sends one input through a row and reports what changed on disk.
          * @param {object} row Route table row
          * @param {{ value: string, raw?: boolean }} input Input value
          * @returns {Promise<{ status: number, text: string, outsideChanges: string[], userChanges: string[] }>}
          */
         async run(row, input) {
-            restoreUserTree();
+            restoreTree(userRoot, userBaseline);
+            restoreTree(tempRoot, outsideBaseline, outsideTreeSkip);
+            fs.mkdirSync(uploadsRoot, { recursive: true });
             const response = await sendRequest(port, buildRequest(row, input));
-            const outsideAfter = hashTree(tempRoot, outsideTreeSkip);
-            const outsideChanges = diffTrees(outsideTree, outsideAfter);
-            outsideTree = outsideAfter;
             return {
                 status: response.status,
                 text: response.body.toString('latin1'),
-                outsideChanges,
-                userChanges: diffTrees(baseline, hashTree(userRoot)),
+                outsideChanges: [...diffTrees(outsideBaseline, hashTree(tempRoot, outsideTreeSkip)), ...absoluteTargets.filter(target => fs.existsSync(target))],
+                userChanges: diffTrees(userBaseline, hashTree(userRoot)),
             };
         },
-        restoreUserTree,
         async close() {
             server.closeAllConnections();
             await new Promise(resolve => server.close(resolve));
