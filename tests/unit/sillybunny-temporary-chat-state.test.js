@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { TC_COPY } from '../helpers/copy-temporary-chat.js';
 
 async function loadState() {
     jest.resetModules();
@@ -137,7 +138,9 @@ describe('temporary chat state', () => {
         expect(() => state.assertChatFileWritable()).not.toThrow();
 
         state.enterTemporaryState({ avatar: 'a.png', previousChatName: 'x' });
-        expect(() => state.assertChatFileWritable()).toThrow('TODO(copy)');
+        expect(() => state.assertChatFileWritable()).toThrow(TC_COPY.commandError);
+        // The message reaches a slash-command toast as HTML.
+        expect(TC_COPY.commandError).not.toMatch(/[<&]/);
 
         state.exitTemporaryState();
         expect(() => state.assertChatFileWritable()).not.toThrow();

@@ -31,11 +31,7 @@ import {
 } from './sillybunny-temporary-chat-state.js';
 import { uuidv4 } from './utils.js';
 
-const COPY_PLACEHOLDER = 'TODO(copy)';
 const BANNER_ID = 'sb-temporary-chat-banner';
-const BANNER_SLOT = 'TC-BANNER';
-const LEAVE_HEAD_SLOT = 'TC-LEAVE-HEAD';
-const LEAVE_BODY_SLOT = 'TC-LEAVE-BODY';
 const PAGE_MARK = 'sbTemporaryChat';
 const STYLE_ID = 'sb-temporary-chat-style';
 
@@ -56,24 +52,9 @@ let openLeaveAlert = null;
 /** @type {{ reservedName: string, contents: string }|null} The chat the user agreed to discard, as it was then. */
 let agreedToDiscard = null;
 
-/**
- * @param {Element|null|undefined} element Element that shows copy which is still missing
- * @param {string} slot Names the text that belongs there
- */
-function markCopyPlaceholder(element, slot) {
-    if (element instanceof HTMLElement) {
-        element.dataset.sbCopyPlaceholder = 'true';
-        element.dataset.sbCopySlot = slot;
-    }
-}
-
-/**
- * Shows an error toast whose text is still missing.
- * @param {string} slot Names the text that belongs there
- */
-export function showTemporaryChatError(slot) {
-    const toast = toastr.error(COPY_PLACEHOLDER);
-    toast?.attr?.({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': slot });
+/** Tells the user that a temporary chat could not start. */
+export function showTemporaryChatError() {
+    toastr.error(t`The temporary chat couldn't start. Try again.`);
 }
 
 function ensureFileBoundActionStyle() {
@@ -100,12 +81,11 @@ function showBanner() {
         return;
     }
     banner = createBanner({
-        title: COPY_PLACEHOLDER,
+        title: t`This chat isn't being saved`,
         actionLabel: t`Save as New Chat`,
         onActivate: () => void saveTemporaryChatAsNew(),
     });
     banner.element.id = BANNER_ID;
-    markCopyPlaceholder(banner.element.firstElementChild, BANNER_SLOT);
     const chatElement = document.getElementById('chat');
     if (chatElement) {
         chatElement.before(banner.element);
@@ -271,8 +251,8 @@ export async function leaveTemporaryChat() {
  */
 async function askToLeave(reservedName) {
     const answer = openAlert({
-        heading: COPY_PLACEHOLDER,
-        body: COPY_PLACEHOLDER,
+        heading: t`Keep This Chat?`,
+        body: t`This temporary chat hasn't been saved. It will be deleted if you leave without saving.`,
         responses: [
             { id: 'cancel', label: t`Cancel` },
             { id: 'discard', label: t`Discard`, appearance: 'destructive' },
@@ -280,10 +260,6 @@ async function askToLeave(reservedName) {
         ],
         closeResponse: 'cancel',
     });
-    const alerts = document.querySelectorAll('[role="alertdialog"]');
-    const alert = alerts[alerts.length - 1];
-    markCopyPlaceholder(alert?.querySelector('.sb-dialog__heading'), LEAVE_HEAD_SLOT);
-    markCopyPlaceholder(alert?.querySelector('.sb-dialog__message'), LEAVE_BODY_SLOT);
 
     const response = await answer;
     if (response === 'save') {

@@ -2,6 +2,7 @@
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { TC_COPY } from '../helpers/copy-temporary-chat.js';
 
 const GREETING = { name: 'Seraphina', is_user: false, is_system: false, mes: 'Welcome.' };
 const USER_MESSAGE = { name: 'You', is_user: true, is_system: false, mes: 'Hello.' };
@@ -72,6 +73,19 @@ describe('the module interface', () => {
     });
 });
 
+describe('the error when a temporary chat cannot start', () => {
+    test('is one error toast with the approved text, and no argument', () => {
+        const error = jest.fn();
+        globalThis.toastr = { error };
+
+        temporary.showTemporaryChatError();
+
+        expect(error).toHaveBeenCalledTimes(1);
+        expect(error).toHaveBeenCalledWith(TC_COPY.openError);
+        delete globalThis.toastr;
+    });
+});
+
 describe('starting a temporary chat', () => {
     test('selects the character as a temporary chat without switching the menu, and makes no request itself', async () => {
         await expect(temporary.startTemporaryChat(1)).resolves.toBe(true);
@@ -131,7 +145,7 @@ describe('while a chat is temporary', () => {
         expect(seraphina.chat).toBe('Seraphina - 2025');
     });
 
-    test('a banner at the top of the chat offers Save as New Chat and carries its copy slot', () => {
+    test('a banner at the top of the chat says it is not saved and offers Save as New Chat', () => {
         const chatElement = document.createElement('div');
         chatElement.id = 'chat';
         document.body.append(chatElement);
@@ -142,9 +156,8 @@ describe('while a chat is temporary', () => {
         expect(element).not.toBeNull();
         expect(element.nextElementSibling).toBe(chatElement);
         const title = element.querySelector('span');
-        expect(title.textContent).toBe('TODO(copy)');
-        expect(title.dataset.sbCopyPlaceholder).toBe('true');
-        expect(title.dataset.sbCopySlot).toBe('TC-BANNER');
+        expect(title.textContent).toBe(TC_COPY.banner);
+        expect(title.hasAttribute('data-sb-copy-placeholder')).toBe(false);
         const buttons = element.querySelectorAll('button');
         expect([...buttons].map(button => button.textContent)).toEqual(['Save as New Chat']);
 
@@ -212,7 +225,7 @@ describe('leaving a temporary chat', () => {
         expect(script.saveChat).not.toHaveBeenCalled();
     });
 
-    test('asks with Cancel, Discard and Save as New Chat after the user sent a message, and the copy is a placeholder', async () => {
+    test('asks with Cancel, Discard and Save as New Chat after the user sent a message, and says what is lost', async () => {
         script.chat.push({ ...USER_MESSAGE });
         temporary.beginTemporaryChat(seraphina);
         answerAlertWith('cancel');
@@ -222,8 +235,8 @@ describe('leaving a temporary chat', () => {
         const options = openAlert.mock.calls[0][0];
         expect(options.responses.map(({ id, label }) => [id, label])).toEqual([['cancel', 'Cancel'], ['discard', 'Discard'], ['save', 'Save as New Chat']]);
         expect(options.responses.find(({ id }) => id === 'discard').appearance).toBe('destructive');
-        expect(options.heading).toBe('TODO(copy)');
-        expect(options.body).toBe('TODO(copy)');
+        expect(options.heading).toBe(TC_COPY.leaveHead);
+        expect(options.body).toBe(TC_COPY.leaveBody);
         expect(options.closeResponse).toBe('cancel');
     });
 

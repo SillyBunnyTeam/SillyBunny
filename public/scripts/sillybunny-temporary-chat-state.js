@@ -59,12 +59,13 @@ export function getTemporaryChatState() {
 }
 
 /**
- * Makes a command that needs a chat file say so, where a refused write would give an empty result.
+ * Makes a command that needs a chat file say so, where a refused write would give an empty result. The message
+ * reaches a slash-command toast as HTML and this module has no imports, so it is plain English with no `<` or `&`.
  * @throws {Error} While the chat is temporary
  */
 export function assertChatFileWritable() {
     if (current) {
-        throw new Error('TODO(copy)');
+        throw new Error('A temporary chat has no file to branch or checkpoint from. Save it as a new chat first.');
     }
 }
 

@@ -12519,7 +12519,7 @@ async function getTemporaryChat({ switchMenu = true } = {}) {
     } catch (error) {
         console.log(error);
         endTemporaryChat();
-        showTemporaryChatError('TC-OPEN-ERROR');
+        showTemporaryChatError();
         return false;
     }
 }

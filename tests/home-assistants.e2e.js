@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { makeCharacterCard, withoutAssistantAccount } from './helpers/assistant-library.js';
 import { HOME_COPY } from './helpers/copy-home.js';
+import { TC_COPY } from './helpers/copy-temporary-chat.js';
 import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -363,7 +364,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 });
 
                 const alert = page.locator('[role="alertdialog"]');
-                await expect(alert.locator('.sb-dialog__heading')).toHaveAttribute('data-sb-copy-slot', 'TC-LEAVE-HEAD');
+                await expect(alert.locator('.sb-dialog__heading')).toHaveText(TC_COPY.leaveHead);
                 await alert.getByRole('button', { name: 'Cancel' }).click();
                 await page.evaluate(() => window.qaNewChat);
 

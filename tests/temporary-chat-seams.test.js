@@ -288,7 +288,7 @@ describe('opening a temporary chat', () => {
         await expect(context.getTemporaryChat()).resolves.toBe(false);
 
         expect(context.endTemporaryChat).toHaveBeenCalledTimes(1);
-        expect(context.showTemporaryChatError).toHaveBeenCalledWith('TC-OPEN-ERROR');
+        expect(context.showTemporaryChatError).toHaveBeenCalledWith();
     });
 });
 

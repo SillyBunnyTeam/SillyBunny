@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { TC_COPY } from './helpers/copy-temporary-chat.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { DESKTOP, matrixViewports } from './helpers/matrix.js';
@@ -296,9 +297,8 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                 expect(settingsSaves.some(save => save.active_character === avatar)).toBe(false);
 
                 const title = page.locator(`${BANNER} > span`);
-                await expect(title).toHaveText('TODO(copy)');
-                await expect(title).toHaveAttribute('data-sb-copy-slot', 'TC-BANNER');
-                await expect(title).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(title).toHaveText(TC_COPY.banner);
+                await expect(title).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
                 await expect(page.locator(`${BANNER} button`)).toHaveCount(1);
                 await expect(page.locator(`${BANNER} button`)).toHaveText('Save as New Chat');
             });
@@ -485,7 +485,7 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                     }, command);
 
                     expect(result.isError).toBe(true);
-                    expect(result.errorMessage).toContain('TODO(copy)');
+                    expect(result.errorMessage).toContain(TC_COPY.commandError);
                     await expect(page.locator(BANNER)).toBeVisible();
                     expect(writesSince(context)).toEqual([]);
                 });
@@ -575,7 +575,7 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                 expect(writesSince(context)).toEqual([]);
             });
 
-            test('asks once the user sent a message, with Cancel, Discard and Save as New Chat, and the copy slots', async ({ page }) => {
+            test('asks once the user sent a message, with Cancel, Discard and Save as New Chat, and says what is lost', async ({ page }) => {
                 await openWrittenTemporaryChat(page);
 
                 await clickHome(page);
@@ -583,9 +583,9 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                 const alert = alertOf(page);
                 await expect(alert).toBeVisible();
                 await expect(alert.getByRole('button')).toHaveText(['Cancel', 'Discard', 'Save as New Chat']);
-                await expect(alert.locator('.sb-dialog__heading')).toHaveAttribute('data-sb-copy-slot', 'TC-LEAVE-HEAD');
-                await expect(alert.locator('.sb-dialog__message')).toHaveAttribute('data-sb-copy-slot', 'TC-LEAVE-BODY');
-                await expect(alert.locator('.sb-dialog__heading')).toHaveText('TODO(copy)');
+                await expect(alert.locator('.sb-dialog__heading')).toHaveText(TC_COPY.leaveHead);
+                await expect(alert.locator('.sb-dialog__message')).toHaveText(TC_COPY.leaveBody);
+                await expect(alert.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
             });
 
             test('Cancel keeps the user in the temporary chat, unsaved', async ({ page }) => {
