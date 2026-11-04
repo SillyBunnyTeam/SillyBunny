@@ -946,14 +946,16 @@ async function sendMakerSuiteRequest(request, response) {
             console.debug(`${apiName} response:`, summarizeLlmPayloadForLog(generateResponseJson));
 
             const responseText = typeof responseContent === 'string' ? responseContent : responseContent?.parts?.filter(part => !part.thought)?.map(part => part.text)?.join('\n\n');
+            // SillyBunny: these finishes mean the model stopped before it finished the reply, and the client must know that.
+            const isCutOff = ['MAX_TOKENS', 'CONTINUATION'].includes(candidates[0].finishReason);
             if (!responseText && !functionCall && !inlineData) {
-                let message = `${apiName} Candidate text empty`;
+                let message = isCutOff ? 'TODO(copy)' : `${apiName} Candidate text empty`;
                 console.warn(message, generateResponseJson);
                 return response.send({ error: { message } });
             }
 
             // Wrap it back to OAI format (responseContent includes thought signatures in parts array)
-            const reply = { choices: [{ 'message': { 'content': responseText } }], responseContent };
+            const reply = { choices: [{ 'message': { 'content': responseText }, 'finish_reason': isCutOff ? 'length' : undefined }], responseContent };
             return response.send(reply);
         }
     } catch (error) {
@@ -3015,6 +3017,9 @@ function convertMessagesToInteractionSteps(messages, useSystemPrompt, names) {
     };
 }
 
+// SillyBunny: these statuses mean the model stopped before it finished the reply, so the client receives them as a length finish.
+const INTERACTION_CUT_OFF_STATUSES = ['requires_continuation', 'incomplete'];
+
 /**
  * Transforms an Interactions API resource into a Chat Completions response.
  * @param {object} data Interactions API resource
@@ -3069,10 +3074,11 @@ function transformInteractionToChatCompletion(data) {
         message.tool_calls = toolCalls;
     }
 
+    const statusFinishReason = INTERACTION_CUT_OFF_STATUSES.includes(data?.status) ? 'length' : (data?.status === 'completed' ? 'stop' : (data?.status || 'stop'));
     const choice = {
         index: 0,
         message: message,
-        finish_reason: toolCalls.length > 0 ? 'tool_calls' : (data?.status === 'completed' ? 'stop' : (data?.status || 'stop')),
+        finish_reason: toolCalls.length > 0 ? 'tool_calls' : statusFinishReason,
     };
 
     return {
@@ -3191,6 +3197,7 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
 
     let buffer = '';
     let done = false;
+    let interactionStatus = null;
     const stopPolling = pollStreamingRequestConnection(request, expressResponse, closeStream);
 
     function closeStream() {
@@ -3218,6 +3225,10 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
         done = true;
         stopPolling();
         if (!expressResponse.writableEnded) {
+            // SillyBunny: a cut-off interaction ends like a finished one, so this chunk is the only signal the client gets.
+            if (INTERACTION_CUT_OFF_STATUSES.includes(interactionStatus)) {
+                expressResponse.write(`data: ${JSON.stringify({ object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'length' }] })}\n\n`);
+            }
             expressResponse.write('data: [DONE]\n\n');
             expressResponse.end();
         }
@@ -3244,6 +3255,8 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
             try {
                 const event = JSON.parse(dataStr);
                 const eventType = event?.event_type ?? event?.type;
+                // SillyBunny: the status can arrive on a status update or inside the completed event, and the last one wins.
+                interactionStatus = event?.interaction?.status ?? (eventType === 'interaction.status_update' ? event.status : null) ?? interactionStatus;
                 if (eventType === 'interaction.completed') {
                     finishStream();
                     break;
