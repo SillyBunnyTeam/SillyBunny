@@ -6,9 +6,9 @@ export const MOTION = { reducedMotion: 'no-preference' };
  * Records every open Popup on each animation frame. The first frame after the opening task shows what the
  * first paint shows. `offsetWidth` and `offsetHeight` read the layout size, so the opening scale does not change them.
  */
-export async function installOpeningSampler(page) {
+export async function installOpeningSampler(page, { scroller = null } = {}) {
     expect(await page.evaluate(() => document.body.classList.contains('reduced-motion')), 'these checks need motion on').toBe(false);
-    await page.evaluate(() => {
+    await page.evaluate(scroller => {
         window.__openingFrames = [];
         const tick = () => {
             for (const dlg of document.querySelectorAll('dialog.popup[open]:not([closing])')) {
@@ -17,12 +17,13 @@ export async function installOpeningSampler(page) {
                     width: dlg.offsetWidth,
                     height: dlg.offsetHeight,
                     response: dlg.querySelector('.popup-controls > .menu_button')?.offsetWidth ?? 0,
+                    scroll: scroller ? dlg.querySelector(scroller)?.scrollTop ?? 0 : 0,
                 });
             }
             requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
-    });
+    }, scroller);
 }
 
 export async function closePopups(page) {
@@ -45,7 +46,7 @@ export async function expectOpensAtFinalSize(page, name, open, { keepOpen = fals
     });
     const [first, last] = [frames[0], frames.at(-1)];
     expect(first, `${name}: the sampler saw the dialog`).toBeTruthy();
-    for (const [label, key] of [['width', 'width'], ['height', 'height'], ['first response width', 'response']]) {
+    for (const [label, key] of [['width', 'width'], ['height', 'height'], ['first response width', 'response'], ['scroll position', 'scroll']]) {
         expect.soft(Math.abs(first[key] - last[key]), `${name}: ${label} goes ${first[key]} -> ${last[key]}`).toBeLessThanOrEqual(1);
     }
     if (!keepOpen) await closePopups(page);

@@ -176,6 +176,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     let framed = false;
     let heightLock = null;
     let syncLayout = null;
+    let syncResponseBar = null;
     let disposed = false;
     /** The completion that Popup is running now, so that a chain Close does not start a second one. */
     let completion = null;
@@ -269,6 +270,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
             // Reserve its measured height so it never covers the body's scrolling content.
             const syncBar = () => dlg.style.setProperty('--sb-popup-response-height', `${bar.offsetHeight}px`);
             syncBar();
+            syncResponseBar = syncBar;
             const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncBar);
             observer?.observe(bar);
             cleanups.push(() => observer?.disconnect());
@@ -460,6 +462,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
 
     function contentChanged() {
         heightLock?.remeasure();
+        syncResponseBar?.();
         syncLayout?.();
     }
 

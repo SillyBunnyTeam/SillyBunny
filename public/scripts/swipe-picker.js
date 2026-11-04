@@ -102,10 +102,12 @@ async function openSwipePicker(messageId) {
             if (scrollParent instanceof HTMLElement) {
                 const blockRect = swipeBlock.getBoundingClientRect();
                 const parentRect = scrollParent.getBoundingClientRect();
+                // SillyBunny: the opening animation scales both rectangles, and `scrollTop` is in layout pixels.
+                const scale = parentRect.height / scrollParent.offsetHeight || 1;
                 if (blockRect.top < parentRect.top) {
-                    scrollParent.scrollTop -= (parentRect.top - blockRect.top) + 5;
+                    scrollParent.scrollTop -= (parentRect.top - blockRect.top) / scale + 5;
                 } else if (blockRect.bottom > parentRect.bottom) {
-                    scrollParent.scrollTop += (blockRect.bottom - parentRect.bottom) + 5;
+                    scrollParent.scrollTop += (blockRect.bottom - parentRect.bottom) / scale + 5;
                 }
             }
         }
@@ -357,11 +359,13 @@ async function openSwipePicker(messageId) {
         large: true,
         wider: true,
         allowVerticalScrolling: true,
-        onOpen: function () {
+        onOpening: function () {
             const footer = popup.buttonControls.querySelector('.sb-dialog__bottom-bar');
             if (footer instanceof HTMLElement) {
                 footer.classList.add('swipe_picker_footer');
                 if (swipeIdLabel instanceof HTMLLabelElement) footer.prepend(swipeIdLabel);
+                // SillyBunny: the list gives up the height of the footer, and the scroll distance below depends on the list.
+                popup.sbFrame.contentChanged();
             }
             scrollToSelectedSwipe();
             if (swipeIdInput instanceof HTMLInputElement) {
