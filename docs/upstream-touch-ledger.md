@@ -460,6 +460,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 image check moved to `src/image-file-type.js`. |
 | Owner | TODO(copy) |
 
+### `src/endpoints/characters.js` - route input types and errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Request checks and error handling of `POST /rename`, `POST /edit`, `POST /delete` and `POST /import`. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `POST /rename` answers 400 when `avatar_url` or `new_name` is not a string, before `sanitize()` and `path.parse()`. `POST /edit` answers 400 when `avatar_url` is not a non-empty string, before `path.join()`, and runs `charaFormatData()`, the `chat` and `create_date` assignments and `JSON.stringify()` inside a `try` block that answers 400. `POST /delete` answers 400 when `delete_chats` is an object, before `delete_chats == true`, and calls `invalidateThumbnail()` inside a `try` block that logs the error. `POST /import` calls `recoverFileWriteSync()` for `preserved_name` inside a `try` block that answers 500. `charaFormatData()` stays as in SillyTavern. |
+| Protecting tests | `tests/character-route-inputs.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-route-inputs.test.js` (with the base commit's `characters.js`, all 19 tests fail: each request gets no answer, and its error reaches Jest as an unhandled rejection), `npm run lint`. |
+| Rollback path | Revert the type checks in `POST /rename`, `POST /edit` and `POST /delete`, and the `try` blocks around the formatting in `POST /edit`, `invalidateThumbnail()` in `POST /delete` and `recoverFileWriteSync()` in `POST /import`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 route input types and errors. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/sprites.js` - sprite file types
 | Field | Value |
 | --- | --- |

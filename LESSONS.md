@@ -126,6 +126,19 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`, `tests/png-chunk-bounds.test.js`, `tests/sprite-upload-images.test.js`.
 - **Fixes:** `803c96bf0` (import formats), `45683ee8b` (create file names), `1d06397ae` (archive asset folders), `42c2a54d6` (archive images), `cf407575c` (PNG chunk lengths), `afac16c92` (shared image check), `2049ad29e` (sprite uploads).
 
+### Character route input
+
+- **Breaks:** a request field of an unexpected type, or a file that a route cannot recover or remove, makes a character route throw outside its `try` block. The request gets no answer, and the `unhandledRejection` handler in `src/server-main.js` stops the server with exit code 0, which the supervisor does not restart.
+- **Cause:** Express 4 does not catch a rejection from an async route. `sanitize()`, `path.parse()` and `path.join()` throw on a value that is not a string, and `getFileNameValidationFunction()` in `src/middleware/validateFileName.js` checks a field only for separators and NUL, so a number, a list or an object reaches the route. A JSON body can send an object whose `toString` is not a function, and loose equality, string concatenation and `Number()` throw for it. `charaFormatData()` keeps a `json_data` that parses to a primitive (`tryParse(...) || {}`), and setting a field on a primitive throws in an ES module.
+- **Files:** `src/endpoints/characters.js`.
+- **Guards:**
+  - `POST /api/characters/rename` answers 400 when `avatar_url` or `new_name` is not a string.
+  - `POST /api/characters/edit` answers 400 when `avatar_url` is missing, empty or not a string. It formats the body inside a `try` block that answers 400 when `charaFormatData()` throws or returns a primitive.
+  - `POST /api/characters/delete` answers 400 when `delete_chats` is an object. It logs a thumbnail that `invalidateThumbnail()` cannot remove and still answers 200, because the card is already deleted.
+  - `POST /api/characters/import` answers 500 when `recoverFileWriteSync()` throws for the card that `preserved_name` names, for example on a damaged write-recovery record.
+- **Tests:** `tests/character-route-inputs.test.js`. Its harness option `requestTimeoutMs` makes a request that a route never answers fail at a deadline, and Jest fails the running test with the unhandled rejection.
+- **Fixes:** `5e6923c81` (request fields), `62068ea31` (file steps).
+
 ### Security and credentials
 
 - **Breaks:** untrusted card scripts reach remote resources; secrets cross scopes.
