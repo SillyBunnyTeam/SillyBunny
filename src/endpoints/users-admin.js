@@ -65,7 +65,8 @@ router.post('/get', requireAdminMiddleware, async (_request, response) => {
 
 router.post('/disable', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Disable user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -94,7 +95,8 @@ router.post('/disable', requireAdminMiddleware, async (request, response) => {
 
 router.post('/enable', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Enable user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -118,7 +120,8 @@ router.post('/enable', requireAdminMiddleware, async (request, response) => {
 
 router.post('/promote', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Promote user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -142,7 +145,8 @@ router.post('/promote', requireAdminMiddleware, async (request, response) => {
 
 router.post('/demote', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Demote user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -171,7 +175,8 @@ router.post('/demote', requireAdminMiddleware, async (request, response) => {
 
 router.post('/create', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle || !request.body.name) {
+        // SillyBunny: slugify() turns any value into text, and getPasswordHash() throws on a value that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || !request.body.name || typeof (request.body.password ?? '') !== 'string') {
             console.warn('Create user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -218,7 +223,8 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
 
 router.post('/delete', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Delete user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }

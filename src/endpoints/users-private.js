@@ -725,7 +725,8 @@ router.get('/me', async (request, response) => {
 
 router.post('/change-avatar', async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, and the data URL check throws on an avatar that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || typeof request.body.avatar !== 'string') {
             console.warn('Change avatar failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -760,7 +761,8 @@ router.post('/change-avatar', async (request, response) => {
 
 router.post('/change-password', async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, and getPasswordHash() throws on a value that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || typeof (request.body.newPassword ?? '') !== 'string') {
             console.warn('Change password failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -783,9 +785,17 @@ router.post('/change-password', async (request, response) => {
             return response.status(403).json({ error: 'User is disabled' });
         }
 
-        if (!request.user.profile.admin && user.password && user.password !== getPasswordHash(request.body.oldPassword, user.salt)) {
-            console.error('Change password failed: Incorrect password');
-            return response.status(403).json({ error: 'Incorrect password' });
+        if (!request.user.profile.admin && user.password) {
+            // SillyBunny: getPasswordHash() throws on a value that is not a string, so a missing old password answers 400.
+            if (typeof request.body.oldPassword !== 'string') {
+                console.warn('Change password failed: Missing required fields');
+                return response.status(400).json({ error: 'Missing required fields' });
+            }
+
+            if (user.password !== getPasswordHash(request.body.oldPassword, user.salt)) {
+                console.error('Change password failed: Incorrect password');
+                return response.status(403).json({ error: 'Incorrect password' });
+            }
         }
 
         if (request.body.newPassword) {
@@ -822,7 +832,8 @@ router.post('/backup', async (request, response) => {
 
         const handle = request.body.handle;
 
-        if (!handle) {
+        // SillyBunny: getUserDirectories() throws on a handle that is not a string.
+        if (typeof handle !== 'string' || !handle) {
             console.warn('Backup failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -912,9 +923,17 @@ router.post('/reset-settings', async (request, response) => {
     try {
         const password = request.body.password;
 
-        if (request.user.profile.password && request.user.profile.password !== getPasswordHash(password, request.user.profile.salt)) {
-            console.warn('Reset settings failed: Incorrect password');
-            return response.status(403).json({ error: 'Incorrect password' });
+        if (request.user.profile.password) {
+            // SillyBunny: getPasswordHash() throws on a value that is not a string, so a missing password answers 400.
+            if (typeof password !== 'string') {
+                console.warn('Reset settings failed: Missing required fields');
+                return response.status(400).json({ error: 'Missing required fields' });
+            }
+
+            if (request.user.profile.password !== getPasswordHash(password, request.user.profile.salt)) {
+                console.warn('Reset settings failed: Incorrect password');
+                return response.status(403).json({ error: 'Incorrect password' });
+            }
         }
 
         const pathToFile = path.join(request.user.directories.root, SETTINGS_FILE);
@@ -930,7 +949,8 @@ router.post('/reset-settings', async (request, response) => {
 
 router.post('/change-name', async (request, response) => {
     try {
-        if (!request.body.name || !request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (!request.body.name || typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Change name failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -987,7 +1007,8 @@ router.post('/reset-step1', async (request, response) => {
 
 router.post('/reset-step2', async (request, response) => {
     try {
-        if (!request.body.code) {
+        // SillyBunny: getPasswordHash() throws on a value that is not a string, so a missing password answers 400.
+        if (!request.body.code || (request.user.profile.password && typeof request.body.password !== 'string')) {
             console.warn('Reset step 2 failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
