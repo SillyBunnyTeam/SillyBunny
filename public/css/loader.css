@@ -50,6 +50,26 @@
     image-rendering: auto;
 }
 
+/* The loop of the splash plays in a box that the mascot is moved into, so the box has the size and the place of the
+   mascot at every step and the pictures lie over it. The overflow keeps the motion inside the picture. */
+.sb-boot-loop {
+    position: relative;
+    display: block;
+    flex: none;
+    overflow: hidden;
+}
+
+.sb-boot-loop-layer,
+.sb-boot-effect {
+    position: absolute;
+    max-width: none;
+    pointer-events: none;
+}
+
+.sb-boot-loop-layer {
+    image-rendering: pixelated;
+}
+
 .sb-boot-line {
     margin: 0;
     max-width: min(32rem, calc(100vw - 3rem));
@@ -90,15 +110,19 @@
 
 /* Four-point stars drawn on the grid of the mascot, so one art pixel of a star is as big as one of the picture. They
    appear when the typing starts and then twinkle, each a little behind the one before. */
+.sb-boot-star,
+.sb-boot-effect {
+    fill: currentColor;
+    color: currentColor;
+    color: color-mix(in srgb, var(--sb-boot-fg, currentColor) 60%, var(--sb-boot-bg, transparent));
+    shape-rendering: crispEdges;
+}
+
 .sb-boot-star {
     flex: none;
     display: block;
     width: calc(var(--sb-boot-px, 1px) * 7);
     height: calc(var(--sb-boot-px, 1px) * 7);
-    fill: currentColor;
-    color: currentColor;
-    color: color-mix(in srgb, var(--sb-boot-fg, currentColor) 60%, var(--sb-boot-bg, transparent));
-    shape-rendering: crispEdges;
     animation: sb-boot-star-in 1ms steps(1, end) backwards, sb-boot-twinkle 1600ms steps(1, end) infinite;
     animation-delay: var(--sb-boot-reveal-start, 0ms), calc(var(--sb-boot-reveal-start, 0ms) + var(--sb-boot-star-offset, 0ms));
 }

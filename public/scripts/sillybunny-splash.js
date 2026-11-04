@@ -38,6 +38,15 @@
         both: { file: 'splash-both@native.webp', width: 263, height: 366 },
     };
 
+    // The loop of each variant, as the file that describes it. A variant with no loop stays a still. The loops are played by
+    // sillybunny-splash-loop.js, which is not in index.html: this script loads it after the still has been painted, so the
+    // first paint never waits for the frames. Change LOOP_SCRIPT_VERSION whenever that file changes. The manifest and the
+    // frames are in /img/sillybunny/ with the stills, so they take their key from ART_VERSION and not from LOOP_SCRIPT_VERSION.
+    var LOOP_FILES = {};
+    var LOOP_SCRIPT_VERSION = '20261105a';
+    // The longest that the start of a loop waits for the main thread to be idle, in milliseconds.
+    var LOOP_IDLE_LIMIT_MS = 2000;
+
     // All three pictures are sized by the tallest of them, so one screen has one step and Tewi keeps her height
     // relative to Reisen whichever character the splash shows.
     var TALLEST_ROWS = Math.max(ART.reisen.height, ART.tewi.height, ART.both.height);
@@ -90,8 +99,11 @@
         var fit = chooseFit(window.innerHeight, readRatio());
         mascot.style.width = art.width * fit.cssPerArtPixel + 'px';
         mascot.style.height = art.height * fit.cssPerArtPixel + 'px';
-        // The sparkles beside the line are drawn on the grid of the mascot, so they take its size of an art pixel.
-        if (mascot.parentNode) mascot.parentNode.style.setProperty('--sb-boot-px', fit.cssPerArtPixel + 'px');
+        // The sparkles beside the line are drawn on the grid of the mascot, so they take its size of an art pixel. The loop
+        // puts the mascot in a box of its own, so the splash is looked for and not taken to be the parent.
+        var splash = mascot.parentNode;
+        while (splash && !(splash.classList && splash.classList.contains('sb-boot-splash'))) splash = splash.parentNode;
+        if (splash) splash.style.setProperty('--sb-boot-px', fit.cssPerArtPixel + 'px');
         // loader.css turns off the pixelated rendering of a picture that is drawn at a fraction of a step.
         mascot.setAttribute('data-fit', fit.smooth ? 'smooth' : 'step');
         if (fit.smooth) {
@@ -163,6 +175,38 @@
         return typed;
     }
 
+    // Starts the loop of the variant, when it has one, after the still is on screen and a frame has passed, so that the first
+    // paint is the still alone. Under Reduced Motion nothing is loaded: the still is what it shows.
+    function scheduleLoop(preloader, variant) {
+        var mascot = preloader.querySelector('.sb-boot-mascot');
+        if (!mascot || !LOOP_FILES[variant] || preloader.classList.contains('sb-boot-reduced')) return;
+        if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        function inject() {
+            if (!document.documentElement.contains(preloader)) return;
+            var script = document.createElement('script');
+            script.async = true;
+            script.src = '/scripts/sillybunny-splash-loop.js?v=' + LOOP_SCRIPT_VERSION;
+            script.onload = function () {
+                if (window.SillyBunnySplashLoop) window.SillyBunnySplashLoop.start(preloader);
+            };
+            document.head.appendChild(script);
+        }
+        // The script, the manifest and the frames come after the modules of the app and not beside them, so that the boot does
+        // not wait for pictures that only decorate it. A boot that never goes idle still starts the loop at the limit. Safari
+        // has no idle callbacks, so it waits half the limit.
+        function whenIdle() {
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(inject, { timeout: LOOP_IDLE_LIMIT_MS });
+            else window.setTimeout(inject, LOOP_IDLE_LIMIT_MS / 2);
+        }
+        function afterPaint() {
+            mascot.removeEventListener('load', afterPaint);
+            if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(whenIdle);
+            else whenIdle();
+        }
+        if (mascot.complete && mascot.naturalWidth > 0) afterPaint();
+        else mascot.addEventListener('load', afterPaint);
+    }
+
     function render(preloader) {
         if (!preloader) return;
         var variant = resolveVariant(readStorage(VARIANT_STORAGE_KEY));
@@ -181,12 +225,16 @@
         if (readStorage(REDUCED_MOTION_STORAGE_KEY) === 'true') {
             preloader.classList.add('sb-boot-reduced');
         }
+        scheduleLoop(preloader, variant);
     }
 
     window.SillyBunnySplash = {
         SPLASH_LINES: SPLASH_LINES,
         ART: ART,
         ART_VERSION: ART_VERSION,
+        LOOP_FILES: LOOP_FILES,
+        LOOP_SCRIPT_VERSION: LOOP_SCRIPT_VERSION,
+        LOOP_IDLE_LIMIT_MS: LOOP_IDLE_LIMIT_MS,
         HEIGHT_SHARE: HEIGHT_SHARE,
         STEP_ONE_MAX_SHARE: STEP_ONE_MAX_SHARE,
         TALLEST_ROWS: TALLEST_ROWS,
