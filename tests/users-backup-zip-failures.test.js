@@ -124,6 +124,15 @@ describe('POST /api/users/import-sillytavern/zip, failures', () => {
         expect(archives.filter(zipfile => zipfile.isOpen)).toEqual([]);
     });
 
+    test('answers 500 without a server path when the server cannot write a file', async () => {
+        fs.mkdirSync(harness.userRoot(OPEN_MEMBER.handle), { recursive: true });
+        fs.writeFileSync(memberFile('chats'), 'a file where the chats folder belongs');
+
+        const reply = await importZip(await createZip({ ...SETTINGS, [CHAT]: '{}' }));
+
+        expect(reply).toEqual({ status: 500, body: { error: FAILED } });
+    });
+
     test('answers, and keeps answering, when opening a file throws', async () => {
         const createWriteStream = fs.createWriteStream;
         spies.push(jest.spyOn(fs, 'createWriteStream').mockImplementation((target, ...args) => {

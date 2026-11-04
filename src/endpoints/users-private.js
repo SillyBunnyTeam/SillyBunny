@@ -1097,7 +1097,11 @@ router.post('/import-sillytavern/zip', async (request, response) => {
         });
     } catch (error) {
         console.error('SillyTavern ZIP import failed:', error);
-        return response.status(400).json({ error: error.message || 'Failed to import that SillyTavern backup ZIP.' });
+        // An error with a syscall comes from the operating system, so the server could not read the upload or write the account. Its message also holds a server path.
+        if (error?.syscall) {
+            return response.status(500).json({ error: ZIP_IMPORT_FAILED });
+        }
+        return response.status(400).json({ error: error.message || ZIP_IMPORT_FAILED });
     } finally {
         if (uploadedZipPath) {
             await fsPromises.rm(uploadedZipPath, { force: true }).catch(() => { });
