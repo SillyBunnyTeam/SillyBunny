@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test';
 import { SETTINGS_COPY } from './helpers/copy-settings.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
+import { contrastOf, over, resolveColor, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { stubTheme } from './helpers/theme-stub.js';
 
 test.use({ serviceWorkers: 'block' });
 test.describe.configure({ timeout: 60_000 });
@@ -633,3 +635,85 @@ for (const { name, options } of VIEWPORTS) {
         });
     });
 }
+
+test.describe('Splash colours', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    let releaseBoot;
+
+    test.afterEach(() => {
+        releaseBoot?.();
+        releaseBoot = undefined;
+    });
+
+    /** What the splash is painted with: its own surface, and the colour of the line, resolved to opaque channels. */
+    async function readSplashColours(page) {
+        const painted = await page.evaluate(() => ({
+            background: getComputedStyle(document.getElementById('preloader')).backgroundColor,
+            line: getComputedStyle(document.querySelector('.sb-boot-line')).color,
+        }));
+        const background = await resolveColor(page, painted.background);
+        const line = await resolveColor(page, painted.line);
+        return { background, line, ratio: contrastOf(over(line, over(background, { r: 255, g: 255, b: 255 })), over(background, { r: 255, g: 255, b: 255 })) };
+    }
+
+    test('the line reads at 4.5:1 on the surface that a Libadwaita Light session leaves for the next start', async ({ page }) => {
+        await protectMaintainerServer(page);
+        await stubTheme(page, 'Libadwaita Light');
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+        await expect.poll(() => page.evaluate(() => localStorage.getItem('sb-boot-surface'))).not.toBeNull();
+        const surface = JSON.parse(await page.evaluate(() => localStorage.getItem('sb-boot-surface')));
+        const seeded = { bg: await resolveColor(page, surface.bg), fg: await resolveColor(page, surface.fg) };
+        expect(contrastOf(over(seeded.bg, { r: 255, g: 255, b: 255 }), { r: 0, g: 0, b: 0 }), 'the session was a light one').toBeGreaterThan(10);
+
+        releaseBoot = await holdBoot(page);
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await expect(page.locator('#preloader .sb-boot-mascot')).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await expect(page.locator('.sb-boot-line-text')).not.toBeEmpty();
+
+        const colours = await readSplashColours(page);
+        expect(colours.background, 'the splash paints the surface that was stored').toEqual(seeded.bg);
+        expect(colours.line, 'and the line the stored text colour').toEqual(seeded.fg);
+        expect(colours.background.a, 'the surface is opaque').toBe(1);
+        expect(colours.ratio, 'the line against the surface').toBeGreaterThanOrEqual(TEXT_CONTRAST);
+    });
+
+    test.describe('in forced colours', () => {
+        test.use({ forcedColors: 'active' });
+
+        test('the mascot is visible, the line is CanvasText on Canvas, and the dots show', async ({ page }) => {
+            await protectMaintainerServer(page);
+            releaseBoot = await holdBoot(page);
+            await openSplash(page, { variant: 'both' });
+            await expect.poll(async () => (await readMascot(page)).loaded).toBe(ART.both.width);
+            await expect(page.locator('.sb-boot-line-text')).not.toBeEmpty();
+
+            const system = await page.evaluate(() => {
+                const probe = document.createElement('span');
+                probe.style.cssText = 'color: CanvasText; background-color: Canvas;';
+                document.body.append(probe);
+                const style = getComputedStyle(probe);
+                const colours = { text: style.color, canvas: style.backgroundColor };
+                probe.remove();
+                return colours;
+            });
+            const painted = await page.evaluate(() => ({
+                background: getComputedStyle(document.getElementById('preloader')).backgroundColor,
+                line: getComputedStyle(document.querySelector('.sb-boot-line')).color,
+                dots: [...document.querySelectorAll('.sb-boot-dots > span')].map(dot => getComputedStyle(dot).color),
+                mascot: (() => {
+                    const style = getComputedStyle(document.querySelector('.sb-boot-mascot'));
+                    return { opacity: style.opacity, visibility: style.visibility, display: style.display };
+                })(),
+            }));
+            expect(painted.background, 'the splash is on Canvas').toBe(system.canvas);
+            expect(painted.line, 'the line is CanvasText').toBe(system.text);
+            expect(painted.dots, 'the dots are CanvasText').toEqual([system.text, system.text, system.text]);
+            expect(painted.mascot).toEqual({ opacity: '1', visibility: 'visible', display: 'block' });
+
+            // The dots come in one after the other and loop, so poll for the moment that all three are in.
+            await expect.poll(async () => (await readDots(page)).map(dot => dot.opacity), { timeout: 5000 }).toEqual(['1', '1', '1']);
+        });
+    });
+});
