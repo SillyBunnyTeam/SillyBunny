@@ -10,7 +10,12 @@ const REQUEST_TIMEOUT_MS = 3_000;
 
 const ROUTERS = {
     '/api/files': () => import('../src/endpoints/files.js'),
+    '/api/chats': () => import('../src/endpoints/chats.js'),
+    '/api/groups': () => import('../src/endpoints/groups.js'),
 };
+
+const CHAT_HEADER = JSON.stringify({ user_name: 'user', character_name: 'seed', create_date: '2026-01-01', chat_metadata: {} });
+const chatMessage = mes => JSON.stringify({ name: 'seed', mes, is_user: false, send_date: '2026-01-01' });
 
 let environment;
 let server;
@@ -104,5 +109,88 @@ describe('file routes and a sibling of the files folder', () => {
 
         expect(result.status).toBe(200);
         expect(JSON.parse(result.text)).toEqual({ [toRequestPath(keptFile)]: true });
+    });
+});
+
+describe('group chat IDs', () => {
+    let groupFile;
+    let outsideChatId;
+
+    const writeGroup = chats => write(groupFile, JSON.stringify({ id: 'grp', name: 'grp', members: [], chat_id: 'seedchat', chats }));
+    const readStoredChats = () => JSON.parse(fs.readFileSync(groupFile, 'utf8')).chats;
+    const groupChatNames = text => JSON.parse(text).filter(chat => chat.group === 'grp').map(chat => chat.file_name);
+
+    beforeEach(() => {
+        groupFile = path.join(directories.groups, 'grp.json');
+        writeGroup(['seedchat']);
+        write(path.join(directories.groupChats, 'seedchat.jsonl'), `${CHAT_HEADER}\n${chatMessage('seed message')}`);
+        write(path.join(outsideRoot, 'outside-chat.jsonl'), `${CHAT_HEADER}\n${chatMessage(OUTSIDE_FILE_TEXT)}`);
+        outsideChatId = path.relative(directories.groupChats, path.join(outsideRoot, 'outside-chat')).replaceAll(path.sep, '/');
+    });
+
+    test('POST /api/groups/edit stores chat IDs inside the group chats folder and refuses an ID whose path leaves it', async () => {
+        const insideChats = ['seedchat', 'Before/After', 1700000000000];
+        const inside = await post('/api/groups/edit', { id: 'grp', name: 'grp', members: [], chat_id: 'seedchat', chats: insideChats });
+        const leaving = await post('/api/groups/edit', { id: 'grp', name: 'grp', members: [], chat_id: 'seedchat', chats: ['seedchat', outsideChatId] });
+
+        expect(inside.status).toBe(200);
+        expect(leaving.status).toBe(400);
+        expect(readStoredChats()).toEqual(insideChats);
+    });
+
+    test.each([
+        ['an object', { toString: 1 }],
+        ['null', null],
+    ])('POST /api/groups/edit refuses a chat ID that is %s', async (_label, chatId) => {
+        const result = await post('/api/groups/edit', { id: 'grp', name: 'grp', members: [], chat_id: 'seedchat', chats: ['seedchat', chatId] });
+
+        expect(result.status).toBe(400);
+        expect(readStoredChats()).toEqual(['seedchat']);
+    });
+
+    test('POST /api/groups/create refuses a chat list with an ID whose path leaves the group chats folder', async () => {
+        const result = await post('/api/groups/create', { name: 'created', members: [], chat_id: 'created', chats: [outsideChatId] });
+
+        expect(result.status).toBe(400);
+        expect(fs.readdirSync(directories.groups)).toEqual(['grp.json']);
+        expect(fs.readdirSync(directories.groupChats)).toEqual(['seedchat.jsonl']);
+    });
+
+    test('POST /api/chats/search leaves out a stored chat ID whose path leaves the group chats folder', async () => {
+        writeGroup(['seedchat', outsideChatId]);
+
+        const result = await post('/api/chats/search', { group_id: 'grp' });
+
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text).map(chat => chat.file_name)).toEqual(['seedchat']);
+        expect(result.text).not.toContain(OUTSIDE_FILE_TEXT);
+    });
+
+    test('POST /api/chats/search skips a stored chat ID that is not a string or a number', async () => {
+        writeGroup([{ toString: 1 }, 'seedchat']);
+
+        const result = await post('/api/chats/search', { group_id: 'grp' });
+
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text).map(chat => chat.file_name)).toEqual(['seedchat']);
+    });
+
+    test('POST /api/chats/recent leaves out a stored chat ID whose path leaves the group chats folder', async () => {
+        writeGroup(['seedchat', outsideChatId]);
+
+        const result = await post('/api/chats/recent', { max: 50 });
+
+        expect(result.status).toBe(200);
+        expect(groupChatNames(result.text)).toEqual(['seedchat.jsonl']);
+        expect(result.text).not.toContain(OUTSIDE_FILE_TEXT);
+    });
+
+    test('POST /api/chats/recent keeps the other chats of a group whose list holds a chat ID that is not a string or a number', async () => {
+        writeGroup([{ toString: 1 }, 'seedchat']);
+
+        const result = await post('/api/chats/recent', { max: 50 });
+
+        expect(result.status).toBe(200);
+        expect(groupChatNames(result.text)).toEqual(['seedchat.jsonl']);
     });
 });

@@ -1097,6 +1097,22 @@ export async function getListableGroupChatInfo(chatFilePath, id) {
     };
 }
 
+// SillyBunny: group files keep chat IDs as clients send them, so a joined chat path must stay inside the group chats folder.
+/**
+ * Joins a chat ID from a group's chat list into the path of its chat file.
+ * @param {string} groupChatsDirectory Group chats folder
+ * @param {unknown} chatId Chat ID from a group's chat list
+ * @returns {string|null} Path of the chat file, or null when the ID names no file inside the group chats folder
+ */
+export function getGroupChatPath(groupChatsDirectory, chatId) {
+    if (typeof chatId !== 'string' && typeof chatId !== 'number') {
+        return null;
+    }
+
+    const chatFilePath = path.join(groupChatsDirectory, `${chatId}.jsonl`);
+    return isPathUnderParent(groupChatsDirectory, chatFilePath) ? chatFilePath : null;
+}
+
 export const router = express.Router();
 
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
@@ -2061,9 +2077,10 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
 
             // Find group chat files for given group ID
             const groupChatsDir = path.join(request.user.directories.groupChats);
+            // SillyBunny: skip a chat ID that names no file inside the group chats folder, so that one stored ID cannot fail the search.
             chatFiles = targetGroup.chats
-                .map(chatId => path.join(groupChatsDir, `${chatId}.jsonl`))
-                .filter(fileName => fs.existsSync(fileName));
+                .map(chatId => getGroupChatPath(groupChatsDir, chatId))
+                .filter(fileName => fileName && fs.existsSync(fileName));
         } else {
             // Regular character chat directory
             const character_name = avatar_url.replace('.png', '');
@@ -2180,8 +2197,9 @@ router.post('/recent', async function (request, response) {
 
                     if (Array.isArray(groupData.chats)) {
                         for (const chat of groupData.chats) {
-                            const filePath = path.join(request.user.directories.groupChats, `${chat}.jsonl`);
-                            if (!fs.existsSync(filePath)) {
+                            // SillyBunny: group files keep chat IDs as clients send them, so skip an ID that names no file inside the group chats folder.
+                            const filePath = getGroupChatPath(request.user.directories.groupChats, chat);
+                            if (!filePath || !fs.existsSync(filePath)) {
                                 continue;
                             }
                             const stats = await fs.promises.stat(filePath);
