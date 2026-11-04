@@ -565,4 +565,131 @@ describe('checkForNewContent', () => {
             expect(console.error).not.toHaveBeenCalled();
         });
     });
+
+    describe('with obsolete bundled presets', () => {
+        const obsoletePresets = [
+            ['openAI_Settings', 'presets/openai/Geechan - Universal Roleplay (Chat Completions) (v5.0).json'],
+            ['context', 'presets/context/Geechan - Universal Roleplay (V5.0).json'],
+            ['sysprompt', 'presets/sysprompt/Geechan - Universal Roleplay (V5.0).json'],
+            ['sysprompt', 'presets/sysprompt/Geechan - Universal Roleplay (NSFW) (V5.0).json'],
+            ['sysprompt', 'presets/sysprompt/Geechan - Universal Roleplay (Simplified) (V5.0).json'],
+            ['sysprompt', 'presets/sysprompt/Geechan - Universal Roleplay (NSFW Simplified) (V5.0).json'],
+        ];
+        const obsoleteLogEntries = obsoletePresets.map(([, filename]) => filename);
+        const noLongerBundledLogEntry = 'presets/openai/No Longer Bundled.json';
+        const contentLogPath = handle => path.join(getUserDirectories(handle).root, 'content.log');
+        const readContentLog = handle => fs.existsSync(contentLogPath(handle)) ? fs.readFileSync(contentLogPath(handle), 'utf8') : '';
+        const toSnapshotKey = filePath => path.relative(sandbox.root, filePath).split(path.sep).join('/');
+        const stillPresent = filePaths => filePaths.filter(filePath => fs.existsSync(filePath));
+
+        function writeObsoletePresets(handle) {
+            const directories = getUserDirectories(handle);
+            return obsoletePresets.map(([folder, filename]) => {
+                const filePath = path.join(directories[folder], path.posix.basename(filename));
+                fs.writeFileSync(filePath, '{"synthetic":"preset from an older bundle"}');
+                return filePath;
+            });
+        }
+
+        function listObsoletePresetsInContentLog(handle) {
+            const [firstLine, ...otherLines] = readContentLog(handle).split('\n');
+            const lines = [firstLine, ...obsoleteLogEntries.slice(0, 3), ...otherLines, ...obsoleteLogEntries.slice(3)];
+            fs.writeFileSync(contentLogPath(handle), lines.join('\n'));
+        }
+
+        function writeUserPresets(handle) {
+            const directories = getUserDirectories(handle);
+            writeFiles(directories.openAI_Settings, { 'My Chat Preset.json': '{"name":"My Chat Preset"}' });
+            writeFiles(directories.context, { 'My Context.json': '{"name":"My Context"}' });
+            writeFiles(directories.sysprompt, {
+                'My Prompt.json': '{"name":"My Prompt"}',
+                'Geechan - Universal Roleplay (V5.0) (copy).json': '{"name":"Edited copy of an older bundled prompt"}',
+            });
+        }
+
+        beforeEach(async () => {
+            await run();
+            fs.appendFileSync(contentLogPath(FIRST_HANDLE), `\n${noLongerBundledLogEntry}`);
+        });
+
+        test('removes each one that the content log lists', async () => {
+            const presets = writeObsoletePresets(FIRST_HANDLE);
+            listObsoletePresetsInContentLog(FIRST_HANDLE);
+
+            await run();
+
+            expect(stillPresent(presets)).toEqual([]);
+            expect(console.error).not.toHaveBeenCalled();
+        });
+
+        test('removes them from the content log and keeps the other entries in order', async () => {
+            const log = readContentLog(FIRST_HANDLE);
+            writeObsoletePresets(FIRST_HANDLE);
+            listObsoletePresetsInContentLog(FIRST_HANDLE);
+
+            await run();
+
+            expect(readContentLog(FIRST_HANDLE)).toBe(log);
+        });
+
+        test('keeps user presets and all other content', async () => {
+            writeUserPresets(FIRST_HANDLE);
+            const presetKeys = writeObsoletePresets(FIRST_HANDLE).map(toSnapshotKey);
+            listObsoletePresetsInContentLog(FIRST_HANDLE);
+            const logKey = toSnapshotKey(contentLogPath(FIRST_HANDLE));
+            const before = snapshotTree(sandbox.root);
+
+            await run();
+
+            expect(without(snapshotTree(sandbox.root), logKey)).toEqual(without(before, logKey, ...presetKeys));
+        });
+
+        test('removes them for every user', async () => {
+            await addSecondUser();
+            const presets = [FIRST_HANDLE, SECOND_HANDLE].flatMap(handle => {
+                listObsoletePresetsInContentLog(handle);
+                return writeObsoletePresets(handle);
+            });
+
+            await run();
+
+            expect(stillPresent(presets)).toEqual([]);
+        });
+
+        test('keeps files with obsolete names that the content log does not list', async () => {
+            writeObsoletePresets(FIRST_HANDLE);
+            const before = snapshotTree(sandbox.root);
+
+            await run();
+
+            expect(snapshotTree(sandbox.root)).toEqual(before);
+        });
+
+        test('removes the log entries of obsolete presets that the user already deleted', async () => {
+            const log = readContentLog(FIRST_HANDLE);
+            listObsoletePresetsInContentLog(FIRST_HANDLE);
+            const logKey = toSnapshotKey(contentLogPath(FIRST_HANDLE));
+            const before = snapshotTree(sandbox.root);
+
+            await run();
+
+            expect(readContentLog(FIRST_HANDLE)).toBe(log);
+            expect(without(snapshotTree(sandbox.root), logKey)).toEqual(without(before, logKey));
+            expect(console.error).not.toHaveBeenCalled();
+        });
+
+        test('changes nothing when it runs a second time', async () => {
+            writeUserPresets(FIRST_HANDLE);
+            writeObsoletePresets(FIRST_HANDLE);
+            listObsoletePresetsInContentLog(FIRST_HANDLE);
+            await run();
+            const before = snapshotTree(sandbox.root);
+            jest.clearAllMocks();
+
+            await run();
+
+            expect(snapshotTree(sandbox.root)).toEqual(before);
+            expect(console.error).not.toHaveBeenCalled();
+        });
+    });
 });
