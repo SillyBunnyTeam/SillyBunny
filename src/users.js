@@ -1013,7 +1013,14 @@ export async function setUserDataMiddleware(request, response, next) {
     }
 
     /** @type {User} */
-    const user = await storage.getItem(toKey(handle));
+    let user;
+    // SillyBunny: Express 4 does not catch a rejection from async middleware, so a failed read answers here or the request stays open.
+    try {
+        user = await storage.getItem(toKey(handle));
+    } catch (error) {
+        console.error('Failed to read the user record:', handle, error);
+        return response.sendStatus(500);
+    }
 
     if (!user) {
         console.error('User not found:', handle);
