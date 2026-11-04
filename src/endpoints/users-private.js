@@ -16,6 +16,7 @@ import { SECRETS_FILE } from './secrets.js';
 import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath, recoverFileWritesInDirectorySync } from '../util.js';
 import { ENTITY_DATE_ADDED_FILE, importEntityDateAdded } from '../entity-date-added.js';
 import { ENTITY_LAST_CHAT_FILE, importEntityLastChat } from '../entity-last-chat.js';
+import { isPathInside } from '../path-containment.js';
 
 import { getIpAddress, retryAfter } from '../express-common.js';
 
@@ -178,6 +179,38 @@ async function getStableRealPath(targetPath) {
     }
 }
 
+/**
+ * Returns a check for the real paths that an import may read for the user of a request.
+ * An admin may read any path. Other users may read paths outside the data root and paths inside their own folder.
+ * @param {import('express').Request} request Request with a user
+ * @returns {Promise<(realPath: string) => boolean>} Check that takes a real path
+ */
+async function getImportReadCheck(request) {
+    if (request.user.profile.admin) {
+        return () => true;
+    }
+
+    const dataRoot = await getStableRealPath(globalThis.DATA_ROOT);
+    const userRoot = await getStableRealPath(request.user.directories.root);
+    return realPath => !isPathInside(dataRoot, realPath, { allowEqual: true }) || isPathInside(userRoot, realPath, { allowEqual: true });
+}
+
+/**
+ * Resolves the import root of a request, after the real path of the given path and of the root pass the read check.
+ * @param {unknown} inputPath Path from the request
+ * @param {(realPath: string) => boolean} canRead Check from getImportReadCheck()
+ * @returns {Promise<string|null>} Import root, or null when the check refuses either path
+ */
+async function resolveReadableImportRoot(inputPath, canRead) {
+    const normalizedInput = String(inputPath ?? '').trim();
+    if (normalizedInput && !canRead(await getStableRealPath(path.resolve(normalizedInput)))) {
+        return null;
+    }
+
+    const sourceRoot = await resolveSillyTavernFolderImportRoot(normalizedInput);
+    return canRead(await getStableRealPath(sourceRoot)) ? sourceRoot : null;
+}
+
 function emitImportWarning(onWarning, message) {
     const warningMessage = String(message ?? '').trim();
     if (!warningMessage) {
@@ -198,6 +231,7 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
     visitedDirectories = new Set(),
     skipDirectoryNames = new Set(),
     onWarning = null,
+    canRead = () => true,
 } = {}) {
     const stableSourcePath = await getStableRealPath(sourceDirectory);
 
@@ -211,6 +245,11 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
             emitImportWarning(onWarning, `Skipping import path that resolves into the current account: ${sourceDirectory}`);
             return 0;
         }
+    }
+
+    if (!canRead(stableSourcePath)) {
+        emitImportWarning(onWarning, `Skipping import path that resolves into the data root: ${sourceDirectory}`);
+        return 0;
     }
 
     visitedDirectories.add(stableSourcePath);
@@ -240,6 +279,7 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
                 visitedDirectories,
                 skipDirectoryNames,
                 onWarning,
+                canRead,
             });
             continue;
         }
@@ -261,7 +301,7 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
     return copiedFiles;
 }
 
-async function copyAllowedFolderContents(sourceRoot, targetRoot) {
+async function copyAllowedFolderContents(sourceRoot, targetRoot, canRead) {
     let copiedEntries = 0;
     let importedEntityDateAdded;
     let importedEntityLastChat;
@@ -271,6 +311,11 @@ async function copyAllowedFolderContents(sourceRoot, targetRoot) {
     for (const relativePath of IMPORTABLE_RELATIVE_PATHS) {
         const sourcePath = path.join(sourceRoot, relativePath);
         if (!(await pathExists(sourcePath))) {
+            continue;
+        }
+
+        if (!canRead(await getStableRealPath(sourcePath))) {
+            console.warn(`Skipping import path that resolves into the data root: ${sourcePath}`);
             continue;
         }
 
@@ -296,6 +341,7 @@ async function copyAllowedFolderContents(sourceRoot, targetRoot) {
                     ? SKIPPABLE_IMPORT_DIRECTORY_NAMES
                     : new Set(),
                 onWarning: warning => console.warn(warning),
+                canRead,
             });
             if (copiedFiles > 0 || await pathExists(destinationPath)) {
                 copiedEntries++;
@@ -894,7 +940,13 @@ router.post('/backup', async (request, response) => {
 
 router.post('/import-sillytavern/folder', async (request, response) => {
     try {
-        const sourceRoot = await resolveSillyTavernFolderImportRoot(request.body?.sourcePath);
+        const canRead = await getImportReadCheck(request);
+        const sourceRoot = await resolveReadableImportRoot(request.body?.sourcePath, canRead);
+        if (!sourceRoot) {
+            console.warn('SillyTavern folder import failed: Unauthorized');
+            return response.status(403).json({ error: 'Unauthorized' });
+        }
+
         const targetRoot = path.resolve(request.user.directories.root);
 
         if (path.resolve(sourceRoot) === targetRoot) {
@@ -902,7 +954,7 @@ router.post('/import-sillytavern/folder', async (request, response) => {
         }
 
         recoverFileWritesInDirectorySync(request.user.directories.characters);
-        const copiedEntries = await copyAllowedFolderContents(sourceRoot, targetRoot);
+        const copiedEntries = await copyAllowedFolderContents(sourceRoot, targetRoot, canRead);
         await checkForNewContent([request.user.directories]);
 
         return response.json({
@@ -918,7 +970,13 @@ router.post('/import-sillytavern/folder', async (request, response) => {
 
 router.post('/import-sillytavern/extensions', async (request, response) => {
     try {
-        const sourceRoot = await resolveSillyTavernFolderImportRoot(request.body?.sourcePath);
+        const canRead = await getImportReadCheck(request);
+        const sourceRoot = await resolveReadableImportRoot(request.body?.sourcePath, canRead);
+        if (!sourceRoot || !canRead(await getStableRealPath(path.join(sourceRoot, USER_DIRECTORY_TEMPLATE.extensions)))) {
+            console.warn('SillyTavern extension sync failed: Unauthorized');
+            return response.status(403).json({ error: 'Unauthorized' });
+        }
+
         const targetRoot = path.resolve(request.user.directories.root);
 
         if (path.resolve(sourceRoot) === targetRoot) {
