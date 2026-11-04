@@ -34,17 +34,18 @@ The tables below are generated from the generation log. They list each model's i
 | gemini | gemini-3-pro-image-preview | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.35 | - |
 | gemini | gemini-nano-banana-2.1 | 5 | 2026-11-01 | 2026-11-01 | 0 | $0.90 | - |
 | local | compose-scene | 17 | 2026-11-01 | 2026-11-01 | 8 | - | $0.00 |
-| local | pixel-snap | 56 | 2026-11-01 | 2026-11-01 | 27 | - | $0.00 |
+| local | github-assets | 14 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
+| local | pixel-snap | 66 | 2026-11-01 | 2026-11-04 | 37 | - | $0.00 |
 | local | rim-recolour | 48 | 2026-11-01 | 2026-11-01 | 13 | - | $0.00 |
 | local | vectorize | 14 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 316 | 2026-11-01 | 2026-11-01 | 8 | $42.40 | $7.20 |
+| openai | gpt-image-2.5-sunburst-h | 364 | 2026-11-01 | 2026-11-03 | 8 | $51.80 | $7.20 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 513 |
-| Total charged | $44.05 |
+| Reference images attached | 617 |
+| Total charged | $53.45 |
 | Total estimated, not yet measured | $7.20 |
 
 ### Current approvals
@@ -111,10 +112,20 @@ The tables below are generated from the generation log. They list each model's i
 | pixel/hero-duo.png | compose-scene | 56264c68917e834b |
 | pixel/splash-both.png | compose-scene | 3a31482b395a1f6d |
 | pixel/welcome-both.png | compose-scene | 2d497764720e1b73 |
+| pixel/social-welcome.png | pixel-snap | 31a1d0e32a63d040 |
+| pixel/banner-main.png | pixel-snap | 5bf1dfeb19cb2fb6 |
+| pixel/banner-features.png | pixel-snap | 3289ec50ed67a8d4 |
+| pixel/banner-install.png | pixel-snap | 7f65075d9dd32ff7 |
+| pixel/banner-contributing.png | pixel-snap | d2fcd974e8f8efdb |
+| pixel/banner-credits.png | pixel-snap | efca5a5c0f22b549 |
+| pixel/banner-community.png | pixel-snap | 6f7f02a330348c3f |
+| pixel/backdrop-mansion-day-banner.png | pixel-snap | 9bd8c4c86e75c783 |
+| pixel/backdrop-mansion-day-social.png | pixel-snap | b2d9da391491adc7 |
+| pixel/backdrop-mansion-night-banner.png | pixel-snap | a4806dbc8e0f8a51 |
 
 Superseded approvals (history): 40 (0936fee3 -> 865ebf9f, 7dc7ff2d -> 92924be1, 9b48358e -> 2795ed66, 92924be1 -> 6063c87e, ed20db74 -> 877b98da, 758fd49a -> 29409083, 29409083 -> 8fda287e, d3b60b7b -> 15a30c6f, e0b718ef -> 95b33a9e, 04fb7477 -> 9b293839, 4494ac9b -> 6f721a0b, c1a53329 -> a91a7e2a, e6492c50 -> 9c23bd36, 9329c6de -> a7e8510d, 8e9a6171 -> 6077d325, a5c1d826 -> ef9b5594, e1245726 -> 54523c95, deaa1915 -> 0791c10b, d253f22f -> 353f37ba, ad4625da -> 8e8d51b9, d75c6a83 -> d7800378, 85994317 -> 2c572d22, 6d393ee8 -> 9ea402f6, ba01225c -> 63facca5, 804aeaba -> 833b9051, 54523c95 -> ac8f6a1e, 0eca4383 -> e6492c50, 5a8c6685 -> deaa1915, 6077d325 -> 40b991bb, 61ae5f93 -> 01467705, d47af0f9 -> 65c9acf5, 7857a7d9 -> f05d898d, 468ab45d -> b72395bd, 9c23bd36 -> 8dfe73c3, ef9b5594 -> bc8ea8db, afd7869b -> 5a8c6685, 2c572d22 -> 9be6ceec, 15a30c6f -> ca329447, 353f37ba -> 969567dd, d7800378 -> 0218df3e).
 
-### Tools (checked 2026-11-01)
+### Tools (checked 2026-11-04)
 
 | Tool | Version |
 |---|---|

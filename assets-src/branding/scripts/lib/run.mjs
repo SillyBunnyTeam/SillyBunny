@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { readBalance } from './balance.mjs';
 import { resolveBackground } from './background.mjs';
 import { assertWithinCap, estimateBatch } from './cost.mjs';
@@ -57,8 +57,9 @@ export const usd = (value) => {
 
 /** @param {string} rootDir @param {string} outDir */
 export function resolveOutDir(rootDir, outDir) {
-    const absolute = isAbsolute(outDir) ? outDir : resolve(rootDir, outDir);
-    const allowed = ['raw', 'out'].map((name) => join(rootDir, name));
+    // resolve() also normalises an absolute path, so "<root>/out/../../x" is checked as the place it points to.
+    const absolute = resolve(rootDir, outDir);
+    const allowed = ['raw', 'out'].map((name) => resolve(rootDir, name));
     const inside = allowed.some((base) => absolute === base || absolute.startsWith(base + sep));
     if (!inside) {
         throw new Error(`--out must be inside raw/ or out/ (both git-ignored); got ${outDir}.`);

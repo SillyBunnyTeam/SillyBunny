@@ -56,6 +56,9 @@ export function opaqueBox(raster, minAlpha = 1) {
     return right < 0 ? undefined : { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
 }
 
+/** True when no pixel is even partly transparent: a scene that fills its canvas, not a figure on a transparent background. */
+export const isOpaque = (raster) => raster.data.every((value, at) => at % 4 !== 3 || value === 255);
+
 /** True when every pixel is either fully transparent or fully opaque, which is what a snapped still is. */
 export const hasBinaryAlpha = (raster) => raster.data.every((value, at) => at % 4 !== 3 || value === 0 || value === 255);
 
