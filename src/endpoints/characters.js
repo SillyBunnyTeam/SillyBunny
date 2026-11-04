@@ -27,6 +27,7 @@ import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
+import { isImageFile } from '../image-file-type.js';
 import {
     clearChatRecoveryState,
     createCharacterChatTarget,
@@ -72,19 +73,6 @@ const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, s
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 const isPngBuffer = buffer => buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
 // SillyBunny: archive imports store a file under the extension it has in the archive, and the server serves it by that extension.
-const hasBytesAt = (buffer, offset, bytes) => buffer.subarray(offset, offset + bytes.length).equals(Buffer.from(bytes, 'latin1'));
-const isJpegBuffer = buffer => hasBytesAt(buffer, 0, '\xFF\xD8\xFF');
-const ARCHIVE_IMAGE_CHECKS = new Map([
-    ['.png', isPngBuffer],
-    ['.apng', isPngBuffer],
-    ['.jpg', isJpegBuffer],
-    ['.jpeg', isJpegBuffer],
-    ['.jfif', isJpegBuffer],
-    ['.gif', buffer => hasBytesAt(buffer, 0, 'GIF8')],
-    ['.webp', buffer => hasBytesAt(buffer, 0, 'RIFF') && hasBytesAt(buffer, 8, 'WEBP')],
-    ['.avif', buffer => hasBytesAt(buffer, 4, 'ftypavif') || hasBytesAt(buffer, 4, 'ftypavis')],
-    ['.bmp', buffer => hasBytesAt(buffer, 0, 'BM')],
-]);
 /**
  * Checks that a file from an archive is an image of the type that its extension names, and logs a file that is not.
  * @param {string} extension File extension with its dot
@@ -93,7 +81,7 @@ const ARCHIVE_IMAGE_CHECKS = new Map([
  * @returns {boolean} True if the file is an image of that type
  */
 function isArchiveImage(extension, buffer, name) {
-    if (Buffer.isBuffer(buffer) && ARCHIVE_IMAGE_CHECKS.get(extension.toLowerCase())?.(buffer)) {
+    if (isImageFile(extension, buffer)) {
         return true;
     }
     console.warn(`Skipped ${name} from the archive, because it is not an image of the type that its extension names.`);
