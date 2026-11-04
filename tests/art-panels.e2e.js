@@ -281,18 +281,21 @@ test.describe('a viewport too short for a banner', () => {
 
 /** The least contrast between the lavender backdrop of a panel and the surface of the window under it that still reads as a backdrop. */
 const BACKDROP_FLOOR = 1.1;
+/** The windows whose panel has the backdrop: one of two figures, and the two windows that have one figure. */
+const BACKDROP_WINDOWS = ['About', 'Getting Started', 'Welcome'];
+const THEME_AND_WINDOW = ['Libadwaita', 'Libadwaita Light'].flatMap(themeName => BACKDROP_WINDOWS.map(windowName => [themeName, windowName]));
 
 test.describe('the backdrop of a panel', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
-    for (const themeName of ['Libadwaita', 'Libadwaita Light']) {
-        test(`reads against the window in ${themeName}, as a lavender that fades from about 20% to about 5%`, async ({ page }) => {
+    for (const [themeName, windowName] of THEME_AND_WINDOW) {
+        test(`reads against the ${windowName} window in ${themeName}, as a lavender that fades from about 20% to about 5%`, async ({ page }) => {
             await protectMaintainerServer(page);
             await installFixtureChats(page);
             await stubTheme(page, themeName);
             await openQuietChatForSmoke(page, { selectCharacter: false });
             await expect(page.locator('#chat > .welcomePanel')).toBeAttached({ timeout: STARTUP_TIMEOUT });
-            await openWindow(page, windowNamed('About'));
+            await openWindow(page, windowNamed(windowName));
 
             const read = await page.evaluate(() => {
                 const panel = document.querySelector('.sb-dialog-host[open] .sbArtPanel');
@@ -320,16 +323,19 @@ test.describe('the backdrop of a panel', () => {
         });
     }
 
-    test('is dropped in forced colours, and the picture stays', async ({ page }) => {
-        await startHome(page);
-        await page.emulateMedia({ forcedColors: 'active' });
-        await openWindow(page, windowNamed('About'));
+    for (const windowName of BACKDROP_WINDOWS) {
+        test(`is dropped in forced colours, and the picture stays, in ${windowName}`, async ({ page }) => {
+            await startHome(page);
+            await page.emulateMedia({ forcedColors: 'active' });
+            const shown = windowNamed(windowName);
+            await openWindow(page, shown);
 
-        const panel = page.locator('.sb-dialog-host[open] .sbArtPanel');
-        await expect(panel).toHaveCSS('background-image', 'none');
-        await expect(panel.locator('.sbArtFigure')).toHaveCount(2);
-        await expect(panel.locator('.sbPixelArt').first()).toBeVisible();
-    });
+            const panel = page.locator('.sb-dialog-host[open] .sbArtPanel');
+            await expect(panel).toHaveCSS('background-image', 'none');
+            await expect(panel.locator('.sbArtFigure')).toHaveCount(shown.art.length);
+            await expect(panel.locator('.sbPixelArt').first()).toBeVisible();
+        });
+    }
 });
 
 /**
@@ -529,4 +535,45 @@ test.describe('a body with the padding of Compact density', () => {
         expect(read.firstBox.top - read.hostBox.top, 'the panel takes no height, so the content starts under the padding').toBeCloseTo(read.padding.top, 0);
         expect(read.hostBox.width - read.padding.start - read.padding.end, 'the column keeps its width').toBeGreaterThanOrEqual(MIN_CONTENT - 1);
     });
+});
+
+/**
+ * The content column has to keep 360px at the default text size, and the app scales that with the text. At 200% text it
+ * is 720px, which a 1024x600 window cannot hold beside the two figures of About, so its art goes above the content. The
+ * single figure of Getting Started is narrower, so its window widens to hold the panel and the column keeps 720px.
+ */
+test.describe('a window at 200% text', () => {
+    test.use({ viewport: { width: 1024, height: 600 }, deviceScaleFactor: 1 });
+
+    const TEXT_SCALE = 2;
+    const AT_200_PERCENT = [
+        { windowName: 'About', mode: 'banner', minColumn: MIN_CONTENT },
+        { windowName: 'Getting Started', mode: 'panel', minColumn: MIN_CONTENT * TEXT_SCALE },
+    ];
+
+    /** Sets the text scale the way the Global Font Size slider does, before the window opens. */
+    const scaleText = (page, scale) => page.evaluate(value => document.documentElement.style.setProperty('--fontScale', String(value)), scale);
+
+    for (const { windowName, mode, minColumn } of AT_200_PERCENT) {
+        test(`${windowName}: at 100% text a panel, at 200% a ${mode}, and the column keeps ${minColumn}px`, async ({ page }) => {
+            await startHome(page);
+            const shown = windowNamed(windowName);
+
+            await openWindow(page, shown);
+            expect((await readLayout(page)).mode, 'at 100% text the window holds a panel').toBe('panel');
+            await page.keyboard.press('Escape');
+            await expect(page.locator('dialog.sb-dialog-host[open]')).toHaveCount(0);
+
+            await scaleText(page, TEXT_SCALE);
+            await openWindow(page, shown);
+            const layout = await readLayout(page);
+
+            expect(layout.mode, 'the mode at 200% text').toBe(mode);
+            expect(layout.hostMode).toBe(mode);
+            expect(layout.overflowsSideways, 'the body does not scroll sideways').toBe(false);
+            const column = layout.host.width - layout.hostPadding.start - layout.hostPadding.end;
+            expect(column, 'the content column').toBeGreaterThanOrEqual(minColumn - 1);
+            expect(layout.surface.right, 'the window stays inside the viewport').toBeLessThanOrEqual(layout.viewport.width + 0.5);
+        });
+    }
 });
