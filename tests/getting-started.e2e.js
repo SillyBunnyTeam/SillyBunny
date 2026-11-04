@@ -4,6 +4,7 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { captureAccountStorageSaves, gettingStartedValue, savedGettingStarted, stubGettingStarted } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 import { BUNDLED_THEME_NAMES, GLYPH_CONTRAST, readChipContrast, resolveColor, selectTheme } from './helpers/page-contrast.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -98,15 +99,17 @@ async function bootHome(page, { value, firstRun } = {}) {
 for (const { name, options, checksColours } of VIEWPORTS) {
     test.describe(`Getting Started signals at ${name}`, () => {
         test.use(options);
+        // Only the tests that measure a row or a toast use `test`; the rest do not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
-        test('an account from before Getting Started starts hidden, and its checklist is written as the default of the account', async ({ page }) => {
+        sizeFreeTest('an account from before Getting Started starts hidden, and its checklist is written as the default of the account', async ({ page }) => {
             const captured = await bootHome(page, { value: null, firstRun: false });
 
             await expect(tile(page)).toHaveCount(0);
             await expect.poll(() => savedGettingStarted(captured), { timeout: SAVE_TIMEOUT }).toMatchObject({ hidden: true, hiddenBy: 'account' });
         });
 
-        test('Show Getting Started brings the checklist of an old account back with its progress', async ({ page }) => {
+        sizeFreeTest('Show Getting Started brings the checklist of an old account back with its progress', async ({ page }) => {
             const captured = await bootHome(page, { value: null });
             await expect(tile(page)).toHaveCount(0);
 
@@ -116,7 +119,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect.poll(() => savedGettingStarted(captured)?.hidden, { timeout: SAVE_TIMEOUT }).toBe(false);
         });
 
-        test('a stored checklist decides what the tile, the window and its rows show', async ({ page }) => {
+        sizeFreeTest('a stored checklist decides what the tile, the window and its rows show', async ({ page }) => {
             await bootHome(page, { value: gettingStartedValue({ steps: { connect: 'done', preset: 'skipped' } }) });
             await expect(progressOf(page)).toHaveText('2 of 4');
 
@@ -211,7 +214,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             }
         });
 
-        test('a damaged stored checklist falls back to the defaults of the account without breaking Home', async ({ page }) => {
+        sizeFreeTest('a damaged stored checklist falls back to the defaults of the account without breaking Home', async ({ page }) => {
             await bootHome(page, { value: '{not json' });
 
             await expect(tile(page)).toHaveCount(0);
@@ -219,7 +222,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(progressOf(page)).toHaveText('0 of 4');
         });
 
-        test('a connection that the backend confirmed finishes Connect a Model, and the toast names the next step with one Show Me', async ({ page }) => {
+        sizeFreeTest('a connection that the backend confirmed finishes Connect a Model, and the toast names the next step with one Show Me', async ({ page }) => {
             const captured = await bootHome(page);
 
             await emit(page, 'ONLINE_STATUS_CHANGED', 'no_connection');
@@ -243,7 +246,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
                 'Invalid Azure endpoint URL. Requests may fail.',
                 'Status check bypassed',
             ]) {
-                test(`"${status}" does not finish Connect a Model`, async ({ page }) => {
+                sizeFreeTest(`"${status}" does not finish Connect a Model`, async ({ page }) => {
                     await bootHome(page);
 
                     await emit(page, 'ONLINE_STATUS_CHANGED', status);
@@ -254,7 +257,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             }
         });
 
-        test('Show Me on the toast opens the place of the next step', async ({ page }) => {
+        sizeFreeTest('Show Me on the toast opens the place of the next step', async ({ page }) => {
             await bootHome(page);
             await emit(page, 'ONLINE_STATUS_CHANGED', 'valid');
 
@@ -285,7 +288,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
         });
 
         test.describe('a preset', () => {
-            test('that the app applies without a gesture of the user does not finish Set Up a Preset', async ({ page }) => {
+            sizeFreeTest('that the app applies without a gesture of the user does not finish Set Up a Preset', async ({ page }) => {
                 await bootHome(page);
 
                 await emitWithoutGesture(page, 'PRESET_CHANGED', { apiId: 'openai', name: 'Default' });
@@ -294,7 +297,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
                 await expect(toasts(page)).toHaveCount(0);
             });
 
-            test('that the user applies in the presets list finishes Set Up a Preset', async ({ page }) => {
+            sizeFreeTest('that the user applies in the presets list finishes Set Up a Preset', async ({ page }) => {
                 await bootHome(page);
                 await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'prompting'));
                 const presets = page.locator('#settings_preset_openai');
@@ -308,7 +311,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             });
         });
 
-        test('a card of the user in the library finishes Get a Character Card with the line for another card', async ({ page }) => {
+        sizeFreeTest('a card of the user in the library finishes Get a Character Card with the line for another card', async ({ page }) => {
             await bootHome(page);
             await expect(progressOf(page), 'the cards that ship with SillyBunny are not a card of the user').toHaveText('0 of 4');
 
@@ -325,7 +328,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(rowOf(host, 'Get a Character Card').locator('[data-sb-copy-slot]')).toHaveAttribute('data-sb-copy-slot', 'GS-3-DONE-OTHER');
         });
 
-        test('the card of Nahida, which earlier versions let the user install, does not finish Get a Character Card', async ({ page }) => {
+        sizeFreeTest('the card of Nahida, which earlier versions let the user install, does not finish Get a Character Card', async ({ page }) => {
             await bootHome(page);
             await expect(progressOf(page)).toHaveText('0 of 4');
 
@@ -340,7 +343,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(rowOf(host, 'Get a Character Card')).toHaveAttribute('data-sb-step-state', 'open');
         });
 
-        test('opening a chat finishes Get a Character Card', async ({ page }) => {
+        sizeFreeTest('opening a chat finishes Get a Character Card', async ({ page }) => {
             await bootHome(page);
             await expect(progressOf(page)).toHaveText('0 of 4');
 
@@ -351,7 +354,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(progressOf(page)).toHaveText('1 of 4');
         });
 
-        test('opening a Conversation thread with a bundled card finishes Get a Character Card, and a message finishes Start Chatting', async ({ page }) => {
+        sizeFreeTest('opening a Conversation thread with a bundled card finishes Get a Character Card, and a message finishes Start Chatting', async ({ page }) => {
             await bootHome(page);
             await expect(progressOf(page)).toHaveText('0 of 4');
 
@@ -365,7 +368,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect.poll(stepsOf.bind(null, page)).toEqual({ connect: null, preset: null, character: 'done', chat: 'done' });
         });
 
-        test('a message of the user finishes Start Chatting, in either mode', async ({ page }) => {
+        sizeFreeTest('a message of the user finishes Start Chatting, in either mode', async ({ page }) => {
             await bootHome(page);
             const messageId = await addUserMessage(page);
 
@@ -375,7 +378,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page).locator('.toast-title')).toHaveText('Start Chatting');
         });
 
-        test('a Conversation message finishes Start Chatting as well', async ({ page }) => {
+        sizeFreeTest('a Conversation message finishes Start Chatting as well', async ({ page }) => {
             await bootHome(page);
 
             await page.evaluate(() => window.dispatchEvent(new CustomEvent('sb:conversation-user-message-sent')));
@@ -383,7 +386,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(progressOf(page)).toHaveText('1 of 4');
         });
 
-        test('Skip is silent: no toast, and a skipped step that gets its signal becomes done without one', async ({ page }) => {
+        sizeFreeTest('Skip is silent: no toast, and a skipped step that gets its signal becomes done without one', async ({ page }) => {
             await bootHome(page);
             const host = await openWindow(page);
 
@@ -397,7 +400,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page)).toHaveCount(0);
         });
 
-        test('while Getting Started is hidden the progress is recorded and no toast shows', async ({ page }) => {
+        sizeFreeTest('while Getting Started is hidden the progress is recorded and no toast shows', async ({ page }) => {
             await bootHome(page, { value: null });
 
             await emit(page, 'ONLINE_STATUS_CHANGED', 'valid');
@@ -408,7 +411,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(progressOf(page)).toHaveText('1 of 4');
         });
 
-        test('the signal that finishes the last step shows no toast, and the tile goes', async ({ page }) => {
+        sizeFreeTest('the signal that finishes the last step shows no toast, and the tile goes', async ({ page }) => {
             await bootHome(page, { value: gettingStartedValue({ steps: { connect: 'done', preset: 'skipped', character: 'done' } }) });
             await expect(progressOf(page)).toHaveText('3 of 4');
             const messageId = await addUserMessage(page);
@@ -419,7 +422,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page)).toHaveCount(0);
         });
 
-        test('un-skipping after the auto-hide brings the tile back', async ({ page }) => {
+        sizeFreeTest('un-skipping after the auto-hide brings the tile back', async ({ page }) => {
             const captured = await bootHome(page, { value: gettingStartedValue({ steps: { connect: 'skipped', preset: 'skipped', character: 'skipped' } }) });
             const host = await openWindow(page);
 
@@ -432,7 +435,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect.poll(() => savedGettingStarted(captured)?.hidden, { timeout: SAVE_TIMEOUT }).toBe(false);
         });
 
-        test('what the app saved comes back after a reload, and a preset load of the first moments does not count', async ({ page }) => {
+        sizeFreeTest('what the app saved comes back after a reload, and a preset load of the first moments does not count', async ({ page }) => {
             const captured = await bootHome(page);
             await emit(page, 'ONLINE_STATUS_CHANGED', 'valid');
             await expect(progressOf(page)).toHaveText('1 of 4');

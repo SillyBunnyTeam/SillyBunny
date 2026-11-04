@@ -5,6 +5,7 @@ import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 // A describe whose tests assert how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
@@ -357,6 +358,8 @@ async function expectSurfaceAnimates(host) {
 }
 
 for (const { name, sheet, options } of VIEWPORTS) {
+    // `test` below depends on the size of the window or follows a branch of it; `sizeFreeTest` does not.
+    const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
     // A phone shows each Help page as a pushed page, and a desktop shows it beside the sections.
     const helpView = host => (sheet ? shownPage(host) : host.locator('.sb-list-editor__detail')).locator('.sbHelpPage');
     const helpTitle = host => (sheet ? shownPage(host).locator('.sb-dialog__title') : host.locator('.sb-list-editor__detail .sbHelpPageTitle'));
@@ -391,7 +394,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
             });
 
             if (menuItem !== 'Show Welcome') {
-                test(`${menuItem} closes with Escape and gives focus back to the main menu button`, async ({ page }) => {
+                sizeFreeTest(`${menuItem} closes with Escape and gives focus back to the main menu button`, async ({ page }) => {
                     await openFromMenu(page, menuItem);
 
                     await page.keyboard.press('Escape');
@@ -403,7 +406,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
         }
 
         for (const { menuItem } of WINDOWS.filter(entry => entry.menuItem !== 'Show Welcome')) {
-            test(`${menuItem} closes with its Close button and gives focus back to the main menu button`, async ({ page }) => {
+            sizeFreeTest(`${menuItem} closes with its Close button and gives focus back to the main menu button`, async ({ page }) => {
                 const host = await openFromMenu(page, menuItem);
 
                 await (await visiblePageClose(host)).click();
@@ -449,7 +452,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(adopted).toEqual({ count: 1, inDialog: true });
             });
 
-            test('Close on page one closes the dialog and gives focus back to the main menu button', async ({ page }) => {
+            sizeFreeTest('Close on page one closes the dialog and gives focus back to the main menu button', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
                 await shownPage(host).getByRole('button', { name: 'Close', exact: true }).click();
@@ -458,7 +461,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            test('shows no Language row, and says why in the console, when the first-run select is gone', async ({ page }) => {
+            sizeFreeTest('shows no Language row, and says why in the console, when the first-run select is gone', async ({ page }) => {
                 const debugLines = [];
                 page.on('console', message => message.type() === 'debug' && debugLines.push(message.text()));
                 await page.evaluate(() => document.getElementById('onboarding_ui_language_select').remove());
@@ -470,7 +473,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(debugLines.some(line => line.includes('onboarding_ui_language_select'))).toBe(true);
             });
 
-            test('the current position dot is told apart by an outline in forced colours', async ({ page }) => {
+            sizeFreeTest('the current position dot is told apart by an outline in forced colours', async ({ page }) => {
                 await page.emulateMedia({ forcedColors: 'active' });
                 const host = await openFromMenu(page, 'Show Welcome');
 
@@ -486,7 +489,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 ]);
             });
 
-            test('gives the language select back to its template when the dialog closes', async ({ page }) => {
+            sizeFreeTest('gives the language select back to its template when the dialog closes', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 await shownPage(host).getByRole('button', { name: 'Close', exact: true }).click();
                 await expectClosed(page);
@@ -498,7 +501,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(home).toEqual({ count: 1, inTemplate: true });
             });
 
-            test('Next and Back walk the three pages and the position text follows', async ({ page }) => {
+            sizeFreeTest('Next and Back walk the three pages and the position text follows', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 const current = shownPage(host);
 
@@ -551,7 +554,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator('.sbArtPanel:visible')).toHaveCount(1);
             });
 
-            test('the Import page has no art', async ({ page }) => {
+            sizeFreeTest('the Import page has no art', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
                 await host.getByRole('button', { name: 'Import From SillyTavern' }).click();
@@ -569,7 +572,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
             };
             const glyphOf = node => [...node.classList].find(name => name.startsWith('fa-') && !['fa-solid', 'fa-fw'].includes(name));
 
-            test('What’s Next lists Getting Started, Help and Bundled Extras as rows that match the Home tiles, and no step rows', async ({ page }) => {
+            sizeFreeTest('What’s Next lists Getting Started, Help and Bundled Extras as rows that match the Home tiles, and no step rows', async ({ page }) => {
                 const host = await openWhatsNext(page);
                 const current = shownPage(host);
                 const rows = current.locator('[data-sb-welcome-destination]');
@@ -595,7 +598,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(current.getByRole('switch', { name: 'Show at Startup' })).not.toBeChecked();
             });
 
-            test('the Getting Started row follows the shared progress while What’s Next is open', async ({ page }) => {
+            sizeFreeTest('the Getting Started row follows the shared progress while What’s Next is open', async ({ page }) => {
                 const host = await openWhatsNext(page);
                 const progress = shownPage(host).locator('[data-sb-welcome-destination="getting-started"] .sbWelcomeRowProgress');
                 const setSkipped = (id, skipped) => page.evaluate(async ([step, value]) => {
@@ -629,7 +632,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 return host;
             };
 
-            test('Start finishes Welcome with the start response and lands on Home', async ({ page }) => {
+            sizeFreeTest('Start finishes Welcome with the start response and lands on Home', async ({ page }) => {
                 const host = await openRecordingWelcome(page);
 
                 await shownPage(host).getByRole('button', { name: 'Start', exact: true }).click();
@@ -645,7 +648,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 { key: 'help', row: 'Help', title: 'Help' },
                 { key: 'extras', row: 'Bundled Extras', title: 'Bundled Extras' },
             ]) {
-                test(`the ${row} row finishes Welcome as Start does, opens ${title}, and focus returns to its tile`, async ({ page }) => {
+                sizeFreeTest(`the ${row} row finishes Welcome as Start does, opens ${title}, and focus returns to its tile`, async ({ page }) => {
                     const host = await openRecordingWelcome(page);
 
                     await shownPage(host).locator(`[data-sb-welcome-destination="${key}"]`).click();
@@ -663,7 +666,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 });
             }
 
-            test('a destination opens its window with the main menu button as the focus target when Home is not shown', async ({ page }) => {
+            sizeFreeTest('a destination opens its window with the main menu button as the focus target when Home is not shown', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
@@ -678,7 +681,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            test('the Getting Started row goes while every step is done or skipped, as its tile does, and comes back with it', async ({ page }) => {
+            sizeFreeTest('the Getting Started row goes while every step is done or skipped, as its tile does, and comes back with it', async ({ page }) => {
                 const host = await openWhatsNext(page);
                 const current = shownPage(host);
                 const rows = current.locator('[data-sb-welcome-destination]');
@@ -702,7 +705,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(rows.first().locator('.sbWelcomeRowProgress')).toHaveText('3 of 4');
             });
 
-            test('What’s Next opened while every step is resolved lists Help and Bundled Extras only', async ({ page }) => {
+            sizeFreeTest('What’s Next opened while every step is resolved lists Help and Bundled Extras only', async ({ page }) => {
                 await page.evaluate(async () => {
                     const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
                     ['connect', 'preset', 'character', 'chat'].forEach(id => getSharedGettingStartedState().setSkipped(id, true));
@@ -713,7 +716,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(shownPage(host).locator('[data-sb-welcome-destination] .ds-row-label')).toHaveText(['Help', 'Bundled Extras']);
             });
 
-            test('leaving What’s Next stops following the progress', async ({ page }) => {
+            sizeFreeTest('leaving What’s Next stops following the progress', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 const title = shownPage(host).locator('.sb-dialog__title');
                 await page.evaluate(async () => {
@@ -739,7 +742,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect.poll(() => page.evaluate(() => window.__liveListeners())).toBe(0);
             });
 
-            test('Import From SillyTavern pushes a page whose buttons send nothing until there is a folder path or a chosen file', async ({ page }) => {
+            sizeFreeTest('Import From SillyTavern pushes a page whose buttons send nothing until there is a folder path or a chosen file', async ({ page }) => {
                 const imports = [];
                 page.on('request', request => {
                     if (/import|restore|backup/i.test(new URL(request.url()).pathname) && request.method() !== 'GET') {
@@ -770,7 +773,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Welcome');
             });
 
-            test('Escape pops the Import page, and then does nothing on the first page', async ({ page }) => {
+            sizeFreeTest('Escape pops the Import page, and then does nothing on the first page', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 await host.getByRole('button', { name: 'Import From SillyTavern' }).click();
                 await expect(shownPage(host).locator('.sb-dialog__title')).toHaveText('Import From SillyTavern');
@@ -784,7 +787,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(hosts(page)).toHaveCount(1);
             });
 
-            test('Escape on the first page does nothing, and Close is still reached by Tab', async ({ page }) => {
+            sizeFreeTest('Escape on the first page does nothing, and Close is still reached by Tab', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
                 await page.keyboard.press('Escape');
@@ -873,7 +876,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 });
             }
 
-            test('nothing in Welcome says that Escape closes it', async ({ page }) => {
+            sizeFreeTest('nothing in Welcome says that Escape closes it', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
                 await expect(host.locator('[aria-keyshortcuts]')).toHaveCount(0);
@@ -882,7 +885,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator('[aria-keyshortcuts]')).toHaveCount(0);
             });
 
-            test('Escape on the Persona and What’s Next pages goes back one page each', async ({ page }) => {
+            sizeFreeTest('Escape on the Persona and What’s Next pages goes back one page each', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
                 const title = shownPage(host).locator('.sb-dialog__title');
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
@@ -900,7 +903,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('Keyboard Shortcuts', () => {
-            test('lists General, Editors and Lists, Chat and Formatting, with the Keyboard Shortcuts and Help keys in General', async ({ page }) => {
+            sizeFreeTest('lists General, Editors and Lists, Chat and Formatting, with the Keyboard Shortcuts and Help keys in General', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
                 for (const group of ['General', 'Editors and Lists', 'Chat', 'Formatting']) {
@@ -934,7 +937,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
             });
 
-            test('lists the save and find shortcuts of the editors and lists', async ({ page }) => {
+            sizeFreeTest('lists the save and find shortcuts of the editors and lists', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
                 const editors = host.getByRole('group', { name: 'Editors and Lists' });
 
@@ -1131,7 +1134,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(helpTitle(host)).toHaveText('Choose a Preset');
             });
 
-            test('a search without a match shows the status page, and clearing it brings the sections back', async ({ page }) => {
+            sizeFreeTest('a search without a match shows the status page, and clearing it brings the sections back', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
                 await host.locator('.sb-dialog__search-toggle').click();
                 const field = host.getByRole('searchbox');
@@ -1148,7 +1151,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(status).toBeHidden();
             });
 
-            test('the no-match page is not a second live announcement', async ({ page }) => {
+            sizeFreeTest('the no-match page is not a second live announcement', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
                 await host.locator('.sb-dialog__search-toggle').click();
 
@@ -1159,7 +1162,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(status).not.toHaveAttribute('role', /.+/);
             });
 
-            test('Escape closes an open search first, then the window', async ({ page }) => {
+            sizeFreeTest('Escape closes an open search first, then the window', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
                 await host.locator('.sb-dialog__search-toggle').click();
                 await host.getByRole('searchbox').fill('preset');
@@ -1259,7 +1262,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator(':focus')).toHaveAccessibleName('Overview');
             });
 
-            test('the search button is named Search Help, and the Search section keeps its name', async ({ page }) => {
+            sizeFreeTest('the search button is named Search Help, and the Search section keeps its name', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
 
                 await expect(host.getByRole('button', { name: 'Search Help', exact: true })).toHaveCount(1);
@@ -1271,7 +1274,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByRole('searchbox', { name: 'Search Help' })).toBeVisible();
             });
 
-            test('a model that is not valid is refused, and no window opens', async ({ page }) => {
+            sizeFreeTest('a model that is not valid is refused, and no window opens', async ({ page }) => {
                 const message = await page.evaluate(async () => {
                     const { getHelpSections } = await import('/scripts/sillybunny-help/topics.js');
                     const { openHelpWindow } = await import('/scripts/sillybunny-help/help-window.js');
@@ -1625,7 +1628,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 });
             }
 
-            test('activating the Help tile twice opens one window, and it opens again after it closes', async ({ page }) => {
+            sizeFreeTest('activating the Help tile twice opens one window, and it opens again after it closes', async ({ page }) => {
                 await helpTile(page).evaluate((row) => {
                     row.click();
                     row.click();
@@ -1642,7 +1645,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(hosts(page)).toHaveCount(1);
             });
 
-            test('a window that fails to load logs the error, toasts, and can be opened again', async ({ page }) => {
+            sizeFreeTest('a window that fails to load logs the error, toasts, and can be opened again', async ({ page }) => {
                 const errors = [];
                 page.on('console', message => message.type() === 'error' && errors.push(message.text()));
                 await showToasts(page);
@@ -1661,7 +1664,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host).toHaveAccessibleName('About SillyBunny');
             });
 
-            test('the Help tile on Home opens Help, is no longer a stub, and gives focus back to the tile', async ({ page }) => {
+            sizeFreeTest('the Help tile on Home opens Help, is no longer a stub, and gives focus back to the tile', async ({ page }) => {
                 await expect(helpTile(page)).not.toHaveAttribute('data-sb-stub', /.*/);
 
                 await helpTile(page).click();
@@ -1703,7 +1706,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expectAboutPair(host, { rtl: true });
             });
 
-            test('opens at once, shows a stand-in for the branch and commit, and fills them when the server answers', async ({ page }) => {
+            sizeFreeTest('opens at once, shows a stand-in for the branch and commit, and fills them when the server answers', async ({ page }) => {
                 const version = await readVersion(page);
                 let answer;
                 const answered = new Promise((resolve) => {
@@ -1731,7 +1734,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(aboutRow(answeredHost, 'about-branch')).not.toContainText('…');
             });
 
-            test('shows Unknown for the branch and commit when the server does not answer', async ({ page }) => {
+            sizeFreeTest('shows Unknown for the branch and commit when the server does not answer', async ({ page }) => {
                 await page.route('**/version', route => route.abort());
 
                 const host = await openFromMenu(page, 'About SillyBunny');
@@ -1740,7 +1743,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(aboutRow(host, 'about-commit')).toContainText('Unknown');
             });
 
-            test('Website and Report an Issue are links that open a new tab safely', async ({ page }) => {
+            sizeFreeTest('Website and Report an Issue are links that open a new tab safely', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
 
                 for (const [name, href] of [['Website', WEBSITE_URL], ['Report an Issue', ISSUES_URL]]) {
@@ -1751,7 +1754,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 }
             });
 
-            test('What’s New pushes a page with the release notes placeholder', async ({ page }) => {
+            sizeFreeTest('What’s New pushes a page with the release notes placeholder', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
                 const current = shownPage(host);
 
@@ -1764,7 +1767,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByRole('button', { name: 'What’s New', exact: true })).toBeFocused();
             });
 
-            test('Credits lists its names and the acknowledgements, and Legal pushes labelled groups with placeholder bodies', async ({ page }) => {
+            sizeFreeTest('Credits lists its names and the acknowledgements, and Legal pushes labelled groups with placeholder bodies', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
                 const current = shownPage(host);
 
@@ -1831,7 +1834,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(fit.scrollHeight).toBeLessThanOrEqual(fit.clientHeight + 1);
             });
 
-            test('Troubleshooting shows real debug info that Copy puts on the clipboard and Save downloads', async ({ page, context }) => {
+            sizeFreeTest('Troubleshooting shows real debug info that Copy puts on the clipboard and Save downloads', async ({ page, context }) => {
                 await context.grantPermissions(['clipboard-read', 'clipboard-write']);
                 const version = await readVersion(page);
                 const host = await openFromMenu(page, 'About SillyBunny');
@@ -1903,7 +1906,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
             });
 
             for (const { title, check } of STEP_TARGETS) {
-                test(`Show Me on "${title}" closes the window and opens its target`, async ({ page }) => {
+                sizeFreeTest(`Show Me on "${title}" closes the window and opens its target`, async ({ page }) => {
                     const host = await openFromTile(page, 'getting-started');
 
                     await rowOf(host, title).getByRole('button', { name: 'Show Me', exact: true }).click();
@@ -1969,7 +1972,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 };
             });
 
-            test('no row has an empty note line at rest, and only the Set Up a Preset row shows Optional', async ({ page }) => {
+            sizeFreeTest('no row has an empty note line at rest, and only the Set Up a Preset row shows Optional', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
                 for (const title of STEP_TITLES) {
@@ -2045,7 +2048,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(lines).toEqual({ whiteSpace: 'nowrap', overflow: 'hidden', ellipsis: 'ellipsis', lines: 1 });
             });
 
-            test('a skipped step stays skipped after Home renders again and the window opens again', async ({ page }) => {
+            sizeFreeTest('a skipped step stays skipped after Home renders again and the window opens again', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
                 await rowOf(host, 'Connect a Model').getByRole('button', { name: 'Skip', exact: true }).click();
                 await page.keyboard.press('Escape');
@@ -2059,7 +2062,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(rowOf(again, 'Connect a Model').getByRole('button', { name: 'Skip', exact: true })).toHaveAttribute('aria-pressed', 'true');
             });
 
-            test('a Home that renders while the window is open leaves it open, and the new tile follows the window', async ({ page }) => {
+            sizeFreeTest('a Home that renders while the window is open leaves it open, and the new tile follows the window', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
                 await renderHomeAgain(page);
@@ -2095,7 +2098,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(page.locator('#chat > .welcomePanel .sbHomeTile')).toHaveCount(2);
             });
 
-            test('Escape closes the window and gives focus back to the tile', async ({ page }) => {
+            sizeFreeTest('Escape closes the window and gives focus back to the tile', async ({ page }) => {
                 await openFromTile(page, 'getting-started');
 
                 await page.keyboard.press('Escape');
@@ -2104,7 +2107,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'getting-started')).toBeFocused();
             });
 
-            test('Close closes the window and gives focus back to the tile', async ({ page }) => {
+            sizeFreeTest('Close closes the window and gives focus back to the tile', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
                 await (await visiblePageClose(host)).click();
@@ -2113,7 +2116,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'getting-started')).toBeFocused();
             });
 
-            test('activating the tile twice opens one window', async ({ page }) => {
+            sizeFreeTest('activating the tile twice opens one window', async ({ page }) => {
                 await homeTile(page, 'getting-started').evaluate((tile) => {
                     tile.click();
                     tile.click();
@@ -2123,7 +2126,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(hosts(page).locator('.sb-dialog__page')).toHaveCount(1);
             });
 
-            test('a window that fails to load toasts with its copy slot, logs the error, and can be opened again', async ({ page }) => {
+            sizeFreeTest('a window that fails to load toasts with its copy slot, logs the error, and can be opened again', async ({ page }) => {
                 const errors = [];
                 page.on('console', message => message.type() === 'error' && errors.push(message.text()));
                 await showToasts(page);
@@ -2144,7 +2147,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
         test.describe('Focus after Home renders while a window is open', () => {
             for (const [key, title] of [['getting-started', 'Getting Started'], ['help', 'Help'], ['extras', 'Bundled Extras']]) {
-                test(`Escape on ${title} gives focus to the ${title} tile of the new panel`, async ({ page }) => {
+                sizeFreeTest(`Escape on ${title} gives focus to the ${title} tile of the new panel`, async ({ page }) => {
                     const host = await openFromTile(page, key);
                     const replaced = await homeTile(page, key).evaluate((tile) => {
                         window.qaOldPanel = tile.closest('.welcomePanel');
@@ -2162,7 +2165,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 });
             }
 
-            test('Escape on a window from the main menu gives focus to the main menu button of the new panel', async ({ page }) => {
+            sizeFreeTest('Escape on a window from the main menu gives focus to the main menu button of the new panel', async ({ page }) => {
                 await openFromMenu(page, 'About SillyBunny');
 
                 await renderHomeAgain(page);
@@ -2172,7 +2175,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            test('Escape on the Choose Assistant window gives focus to the Choose Assistant card of the new panel', async ({ page }) => {
+            sizeFreeTest('Escape on the Choose Assistant window gives focus to the Choose Assistant card of the new panel', async ({ page }) => {
                 await chooseAssistant(page).click();
                 await expect(hosts(page)).toBeVisible();
 
@@ -2183,7 +2186,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(chooseAssistant(page)).toBeFocused();
             });
 
-            test('Escape gives focus to the main menu button when the tile is gone from the new panel', async ({ page }) => {
+            sizeFreeTest('Escape gives focus to the main menu button when the tile is gone from the new panel', async ({ page }) => {
                 await openFromTile(page, 'getting-started');
 
                 await page.evaluate(async () => {
@@ -2210,14 +2213,14 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
             });
 
-            test('lists every extension, theme and preset, then UI Themes, with no Assistants group', async ({ page }) => {
+            sizeFreeTest('lists every extension, theme and preset, then UI Themes, with no Assistants group', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expect(host.getByRole('heading', { level: 3 })).toHaveText(EXTRAS_GROUPS);
                 await expect(labelsOf(host)).toHaveText([...EXTRAS_ITEMS, 'UI Themes']);
             });
 
-            test('keeps the intro and every item description as marked placeholders, with no assistant subtitle', async ({ page }) => {
+            sizeFreeTest('keeps the intro and every item description as marked placeholders, with no assistant subtitle', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 const found = await readCopyPlaceholders(host);
@@ -2238,7 +2241,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator('[data-sb-art-placeholder^="row-"]')).toHaveCount(0);
             });
 
-            test('gives a library that holds the card of Nahida no row for her, and loads no portrait of her', async ({ page }) => {
+            sizeFreeTest('gives a library that holds the card of Nahida no row for her, and loads no portrait of her', async ({ page }) => {
                 const portraits = [];
                 page.on('request', request => /nahida/i.test(request.url()) && /\.(?:png|jpe?g|webp)(?:\?|$)/i.test(request.url()) && request.url().includes('/img/') && portraits.push(request.url()));
                 await page.route('**/api/characters/all', async (route) => {
@@ -2257,13 +2260,13 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(portraits).toEqual([]);
             });
 
-            test('lists no link for an extension, a theme or a preset', async ({ page }) => {
+            sizeFreeTest('lists no link for an extension, a theme or a preset', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expect(host.locator('a')).toHaveCount(0);
             });
 
-            test('UI Themes closes the window and opens Customize, Appearance with the theme select shown', async ({ page }) => {
+            sizeFreeTest('UI Themes closes the window and opens Customize, Appearance with the theme select shown', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await host.getByRole('button', { name: 'UI Themes' }).click();
@@ -2273,7 +2276,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(page.locator('#themes')).toBeVisible();
             });
 
-            test('Escape closes the window and gives focus back to the tile', async ({ page }) => {
+            sizeFreeTest('Escape closes the window and gives focus back to the tile', async ({ page }) => {
                 await openFromTile(page, 'extras');
 
                 await page.keyboard.press('Escape');
@@ -2282,7 +2285,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'extras')).toBeFocused();
             });
 
-            test('Close closes the window and gives focus back to the tile', async ({ page }) => {
+            sizeFreeTest('Close closes the window and gives focus back to the tile', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await (await visiblePageClose(host)).click();
@@ -2291,14 +2294,14 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'extras')).toBeFocused();
             });
 
-            test('opened from the tile, the window does not take focus to a heading', async ({ page }) => {
+            sizeFreeTest('opened from the tile, the window does not take focus to a heading', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
                 await expect(host.locator('h3:focus')).toHaveCount(0);
                 await expect(host.locator(':focus')).toHaveCount(1);
             });
 
-            test('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
+            sizeFreeTest('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
                 const errors = [];
                 page.on('console', message => message.type() === 'error' && errors.push(message.text()));
                 await showToasts(page);
@@ -2327,11 +2330,11 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host).toHaveAccessibleName('Choose Assistant');
             });
 
-            test('is not a stub', async ({ page }) => {
+            sizeFreeTest('is not a stub', async ({ page }) => {
                 await expect(chooseAssistant(page)).not.toHaveAttribute('data-sb-stub', /.*/);
             });
 
-            test('gets focus back on its card after Escape and after Close, and opens one window when pressed twice', async ({ page }) => {
+            sizeFreeTest('gets focus back on its card after Escape and after Close, and opens one window when pressed twice', async ({ page }) => {
                 await chooseAssistant(page).evaluate((button) => {
                     button.click();
                     button.click();
@@ -2348,7 +2351,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(chooseAssistant(page)).toBeFocused();
             });
 
-            test('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
+            sizeFreeTest('a window that fails to load toasts, logs the error, and can be opened again', async ({ page }) => {
                 const errors = [];
                 page.on('console', message => message.type() === 'error' && errors.push(message.text()));
                 await showToasts(page);
@@ -2366,7 +2369,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
             });
         });
 
-        test('every window leaves no unmarked copy placeholder behind', async ({ page }) => {
+        sizeFreeTest('every window leaves no unmarked copy placeholder behind', async ({ page }) => {
             for (const { menuItem } of WINDOWS) {
                 const host = await openFromMenu(page, menuItem);
                 await expect(host).toBeVisible();

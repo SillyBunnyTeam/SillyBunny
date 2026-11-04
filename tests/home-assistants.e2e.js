@@ -5,6 +5,7 @@ import { makeCharacterCard, withoutAssistantAccount } from './helpers/assistant-
 import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -123,9 +124,11 @@ const BOTH = [REISEN, TEWI];
 for (const { name, portrait, options } of VIEWPORTS) {
     test.describe(`Home assistant cards at ${name}`, () => {
         test.use(options);
+        // Only the tests that measure a portrait or a card use `test`; the rest do not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
         test.describe('the cards', () => {
-            test('are Reisen, Tewi and the character of the pointer, each with its subtitle', async ({ page }) => {
+            sizeFreeTest('are Reisen, Tewi and the character of the pointer, each with its subtitle', async ({ page }) => {
                 await boot(page, { library: [...BOTH, NAHIDA, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
 
                 const keys = await page.locator(`${HOME} .sbHomeCards > .sbHomeCard`).evaluateAll(nodes => nodes.map(node => node.dataset.sbHomeKey));
@@ -190,7 +193,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(await boxes()).toEqual(before);
             });
 
-            test('are sensitive when the library has the card: the card button, both footer buttons and the menu button are enabled', async ({ page }) => {
+            sizeFreeTest('are sensitive when the library has the card: the card button, both footer buttons and the menu button are enabled', async ({ page }) => {
                 await boot(page, { library: BOTH });
 
                 for (const key of ['assistant-reisen', 'assistant-tewi']) {
@@ -204,7 +207,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('a card with no file', () => {
-            test('is insensitive when the library never had the card: its buttons are disabled and it has no menu', async ({ page }) => {
+            sizeFreeTest('is insensitive when the library never had the card: its buttons are disabled and it has no menu', async ({ page }) => {
                 await boot(page, { library: [REISEN] });
                 const tewi = cardOf(page, 'assistant-tewi');
 
@@ -216,7 +219,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(overlayOf(cardOf(page, 'assistant-reisen'))).toBeEnabled();
             });
 
-            test('is insensitive in the same way when the account recorded that the card was deleted', async ({ page }) => {
+            sizeFreeTest('is insensitive in the same way when the account recorded that the card was deleted', async ({ page }) => {
                 await boot(page, { library: [TEWI], accountStorage: { bundledAssistantReisenDeleted: 'true' } });
                 const reisen = cardOf(page, 'assistant-reisen');
 
@@ -226,7 +229,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(menuOf(reisen)).toHaveCount(0);
             });
 
-            test('keeps its name, its subtitle and its footer labels, and adds no text', async ({ page }) => {
+            sizeFreeTest('keeps its name, its subtitle and its footer labels, and adds no text', async ({ page }) => {
                 await boot(page, { library: [] });
                 const reisen = cardOf(page, 'assistant-reisen');
 
@@ -236,7 +239,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(0);
             });
 
-            test('opens nothing when it is pressed', async ({ page }) => {
+            sizeFreeTest('opens nothing when it is pressed', async ({ page }) => {
                 const world = await boot(page, { library: [REISEN] });
                 const tewi = cardOf(page, 'assistant-tewi');
 
@@ -249,7 +252,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(world.chatSaves).toEqual([]);
             });
 
-            test('becomes sensitive on the next render of Home once its card is in the library', async ({ page }) => {
+            sizeFreeTest('becomes sensitive on the next render of Home once its card is in the library', async ({ page }) => {
                 const world = await boot(page, { library: [REISEN] });
                 await expect(overlayOf(cardOf(page, 'assistant-tewi'))).toBeDisabled();
 
@@ -263,7 +266,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('New Chat in Roleplay', () => {
-            test('Start New Chat selects the character and opens a new chat of hers', async ({ page }) => {
+            sizeFreeTest('Start New Chat selects the character and opens a new chat of hers', async ({ page }) => {
                 const world = await boot(page, { library: BOTH });
 
                 await startOf(cardOf(page, 'assistant-reisen')).click();
@@ -276,7 +279,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(await isTemporary(page)).toBe(false);
             });
 
-            test('the card button does the same for Tewi', async ({ page }) => {
+            sizeFreeTest('the card button does the same for Tewi', async ({ page }) => {
                 await boot(page, { library: BOTH });
 
                 await overlayOf(cardOf(page, 'assistant-tewi')).click();
@@ -285,7 +288,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect.poll(() => currentChat(page)).toMatch(/^Assistant Tewi - /);
             });
 
-            test('opens one chat when the button is pressed twice in a row', async ({ page }) => {
+            sizeFreeTest('opens one chat when the button is pressed twice in a row', async ({ page }) => {
                 const world = await boot(page, { library: BOTH });
                 const button = startOf(cardOf(page, 'assistant-reisen'));
 
@@ -301,7 +304,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('New Chat in Conversation', () => {
-            test('makes a new branch of the thread, turns Conversation on for the character and opens it', async ({ page }) => {
+            sizeFreeTest('makes a new branch of the thread, turns Conversation on for the character and opens it', async ({ page }) => {
                 const world = await boot(page, { library: BOTH, lastMode: 'conversation' });
                 await startThread(page, REISEN);
                 const before = await conversationOf(page, REISEN);
@@ -315,7 +318,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(world.chatSaves).toEqual([]);
             });
 
-            test('a second New Chat is a second fresh branch, not the one before', async ({ page }) => {
+            sizeFreeTest('a second New Chat is a second fresh branch, not the one before', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'conversation' });
                 await startThread(page, TEWI);
                 await overlayOf(cardOf(page, 'assistant-tewi')).click();
@@ -335,7 +338,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('Temporary Chat', () => {
-            test('opens a temporary chat with the character: the banner shows and nothing is saved', async ({ page }) => {
+            sizeFreeTest('opens a temporary chat with the character: the banner shows and nothing is saved', async ({ page }) => {
                 const world = await boot(page, { library: BOTH });
 
                 await temporaryOf(cardOf(page, 'assistant-reisen')).click();
@@ -348,7 +351,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(world.lastChats).toEqual([]);
             });
 
-            test('a new chat asks before it leaves a temporary chat that was written in, and Cancel keeps the chat unsaved', async ({ page }) => {
+            sizeFreeTest('a new chat asks before it leaves a temporary chat that was written in, and Cancel keeps the chat unsaved', async ({ page }) => {
                 const world = await boot(page, { library: BOTH });
                 await temporaryOf(cardOf(page, 'assistant-reisen')).click();
                 await expect(page.locator('#sb-temporary-chat-banner')).toBeVisible();
@@ -369,7 +372,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(world.lastChats).toEqual([]);
             });
 
-            test('opens in Roleplay even when Conversation was the last mode', async ({ page }) => {
+            sizeFreeTest('opens in Roleplay even when Conversation was the last mode', async ({ page }) => {
                 const world = await boot(page, { library: BOTH, lastMode: 'conversation' });
 
                 await temporaryOf(cardOf(page, 'assistant-tewi')).click();
@@ -382,7 +385,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('New Chat in the other mode, from the Assistant Menu', () => {
-            test('opens a fresh Conversation when Roleplay was the last mode', async ({ page }) => {
+            sizeFreeTest('opens a fresh Conversation when Roleplay was the last mode', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'roleplay' });
                 await startThread(page, REISEN);
                 const before = await conversationOf(page, REISEN);
@@ -394,7 +397,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect(await stored(page, MODE_KEY)).toBe('conversation');
             });
 
-            test('opens a new Roleplay chat when Conversation was the last mode', async ({ page }) => {
+            sizeFreeTest('opens a new Roleplay chat when Conversation was the last mode', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'conversation' });
 
                 await menuOf(cardOf(page, 'assistant-tewi')).click();
@@ -405,7 +408,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 expect((await conversationOf(page, TEWI)).open).toBe(false);
             });
 
-            test('a new Roleplay chat closes the Conversation workspace that is open', async ({ page }) => {
+            sizeFreeTest('a new Roleplay chat closes the Conversation workspace that is open', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'conversation' });
                 await startThread(page, REISEN);
                 await overlayOf(cardOf(page, 'assistant-reisen')).click();
@@ -422,7 +425,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect.poll(() => currentChat(page)).toMatch(/^Assistant Tewi - /);
             });
 
-            test('the menu offers nothing for a card with no file, so the card has no menu button', async ({ page }) => {
+            sizeFreeTest('the menu offers nothing for a card with no file, so the card has no menu button', async ({ page }) => {
                 await boot(page, { library: [REISEN] });
 
                 await expect(menuOf(cardOf(page, 'assistant-tewi'))).toHaveCount(0);
@@ -431,7 +434,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('a card whose character has left the library since Home rendered', () => {
-            test('tells the user with the placeholder toast when New Chat is pressed, and Home stays', async ({ page }) => {
+            sizeFreeTest('tells the user with the placeholder toast when New Chat is pressed, and Home stays', async ({ page }) => {
                 const world = await boot(page, { library: BOTH });
                 await showToasts(page);
                 await page.evaluate(async (avatar) => {
@@ -541,7 +544,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         await expectCard(page);
                     });
 
-                    test('lists Reisen and Tewi once each, and the same characters in the picker whatever the pointer names', async ({ page }) => {
+                    sizeFreeTest('lists Reisen and Tewi once each, and the same characters in the picker whatever the pointer names', async ({ page }) => {
                         await boot(page, { library: LIBRARY, accountStorage, exact: true });
 
                         await expect(cardOf(page, 'assistant-reisen')).toHaveCount(1);
@@ -566,7 +569,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const rowOf = (host, page, label) => host.locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: new RegExp(`^${label}$`) }) });
                 const searchInputOf = host => host.locator('.sb-dialog__search input');
 
-                test('has a thumbnail of the card for each character, and leaves Reisen and Tewi out', async ({ page }) => {
+                sizeFreeTest('has a thumbnail of the card for each character, and leaves Reisen and Tewi out', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
 
                     const host = await openPicker(page);
@@ -581,7 +584,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     }
                 });
 
-                test('applies the first row pressed when a second one is pressed before the window has closed', async ({ page }) => {
+                sizeFreeTest('applies the first row pressed when a second one is pressed before the window has closed', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     await openPicker(page);
 
@@ -603,7 +606,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     const LONG = [...BOTH, ...CHARACTERS];
                     const builtRows = page => page.locator('dialog.sb-dialog-host .ds-row[data-sb-assistant-avatar]');
 
-                    test('builds the first rows at once and the rest in chunks, always in the order of the list', async ({ page }) => {
+                    sizeFreeTest('builds the first rows at once and the rest in chunks, always in the order of the list', async ({ page }) => {
                         await boot(page, { library: LONG, exact: true });
                         await page.evaluate(() => {
                             window.qaRowCounts = [];
@@ -623,7 +626,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         expect(await builtRows(page).evaluateAll(rows => rows.map(row => row.dataset.sbAssistantAvatar))).toEqual(CHARACTERS);
                     });
 
-                    test('searches the whole library at once, also the rows that are still to come', async ({ page }) => {
+                    sizeFreeTest('searches the whole library at once, also the rows that are still to come', async ({ page }) => {
                         await boot(page, { library: LONG, exact: true });
                         const host = await openPicker(page);
 
@@ -634,7 +637,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         await expect(host.locator('.ds-row[data-sb-assistant-avatar]:not([hidden]) .ds-row-label')).toHaveText(CHARACTERS.slice(390));
                     });
 
-                    test('puts the focus on the selected row far down the list, and keeps it there while the rest arrives', async ({ page }) => {
+                    sizeFreeTest('puts the focus on the selected row far down the list, and keeps it there while the rest arrives', async ({ page }) => {
                         await boot(page, { library: LONG, accountStorage: { assistant: 'Char350.png' }, exact: true });
                         await menuOf(ownCard(page)).click();
                         await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
@@ -647,7 +650,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     });
                 });
 
-                test('marks the character of the pointer as selected, and puts focus on its row', async ({ page }) => {
+                sizeFreeTest('marks the character of the pointer as selected, and puts focus on its row', async ({ page }) => {
                     await boot(page, { library: LIBRARY, accountStorage: { assistant: 'Bob.png' }, exact: true });
                     await menuOf(ownCard(page)).click();
                     await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
@@ -661,7 +664,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(rowOf(host, page, 'Bob')).toBeFocused();
                 });
 
-                test('marks no row while the pointer names nobody of the list', async ({ page }) => {
+                sizeFreeTest('marks no row while the pointer names nobody of the list', async ({ page }) => {
                     await boot(page, { library: LIBRARY, accountStorage: { assistant: REISEN }, exact: true });
 
                     const host = await openPicker(page);
@@ -670,7 +673,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(host.locator('.sbAssistantPickerSelected')).toHaveCount(0);
                 });
 
-                test('searches by name, says No results, and takes one Escape to clear the search, one to close it and one to close the window', async ({ page }) => {
+                sizeFreeTest('searches by name, says No results, and takes one Escape to clear the search, one to close it and one to close the window', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     const host = await openPicker(page);
 
@@ -697,7 +700,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(chooseOf(page)).toBeFocused();
                 });
 
-                test('shows a marked placeholder status and no rows while the library holds only Reisen and Tewi', async ({ page }) => {
+                sizeFreeTest('shows a marked placeholder status and no rows while the library holds only Reisen and Tewi', async ({ page }) => {
                     await boot(page, { library: BOTH, exact: true });
 
                     const host = await openPicker(page);
@@ -709,7 +712,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(title).toHaveText(COPY_PLACEHOLDER);
                 });
 
-                test('Escape closes it without a change and returns focus to the Choose Assistant card', async ({ page }) => {
+                sizeFreeTest('Escape closes it without a change and returns focus to the Choose Assistant card', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     await openPicker(page);
 
@@ -721,7 +724,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
                 });
 
-                test('choosing a character writes the pointer and turns the card into the card of that character', async ({ page }) => {
+                sizeFreeTest('choosing a character writes the pointer and turns the card into the card of that character', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     const host = await openPicker(page);
 
@@ -735,7 +738,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(ownCard(page).locator(':focus')).toHaveCount(1);
                 });
 
-                test('choosing the character that is already chosen changes nothing', async ({ page }) => {
+                sizeFreeTest('choosing the character that is already chosen changes nothing', async ({ page }) => {
                     await boot(page, { library: LIBRARY, accountStorage: { assistant: 'Alice.png' }, exact: true });
                     await menuOf(ownCard(page)).click();
                     await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
@@ -748,7 +751,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Alice');
                 });
 
-                test('a character that left the library before the choice is told with the placeholder toast, and the pointer stays', async ({ page }) => {
+                sizeFreeTest('a character that left the library before the choice is told with the placeholder toast, and the pointer stays', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     await showToasts(page);
                     const host = await openPicker(page);
@@ -770,7 +773,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
             test.describe('the card of the chosen character', () => {
                 const chosen = { library: LIBRARY, accountStorage: { assistant: 'Alice.png' }, exact: true };
 
-                test('has the chat item in the other mode, Choose Another Assistant and Remove Assistant, and Reisen keeps one item', async ({ page }) => {
+                sizeFreeTest('has the chat item in the other mode, Choose Another Assistant and Remove Assistant, and Reisen keeps one item', async ({ page }) => {
                     await boot(page, chosen);
 
                     await menuOf(ownCard(page)).click();
@@ -782,7 +785,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(page.getByRole('menu', { name: 'Assistant Menu' }).getByRole('menuitem')).toHaveText(['New Chat in Conversation']);
                 });
 
-                test('Choose Another Assistant opens the picker, and Escape returns focus to the menu button of the card', async ({ page }) => {
+                sizeFreeTest('Choose Another Assistant opens the picker, and Escape returns focus to the menu button of the card', async ({ page }) => {
                     await boot(page, chosen);
                     await menuOf(ownCard(page)).click();
 
@@ -794,7 +797,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(menuOf(ownCard(page))).toBeFocused();
                 });
 
-                test('Choose Another Assistant changes the character of the card', async ({ page }) => {
+                sizeFreeTest('Choose Another Assistant changes the character of the card', async ({ page }) => {
                     await boot(page, chosen);
                     await menuOf(ownCard(page)).click();
                     await page.getByRole('menuitem', { name: 'Choose Another Assistant…' }).click();
@@ -805,7 +808,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     expect(await stored(page, 'assistant')).toBe('Bob.png');
                 });
 
-                test('Remove Assistant clears the pointer and returns the slot to the Choose Assistant card, with focus kept on the slot', async ({ page }) => {
+                sizeFreeTest('Remove Assistant clears the pointer and returns the slot to the Choose Assistant card, with focus kept on the slot', async ({ page }) => {
                     await boot(page, chosen);
                     await menuOf(ownCard(page)).click();
 
@@ -818,7 +821,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(ownCard(page).locator(':focus')).toHaveCount(1);
                 });
 
-                test('Remove Assistant deletes no character', async ({ page }) => {
+                sizeFreeTest('Remove Assistant deletes no character', async ({ page }) => {
                     await boot(page, chosen);
                     const requests = [];
                     page.on('request', request => request.method() === 'POST' && /\/api\/characters\/delete/.test(request.url()) && requests.push(request.url()));
@@ -831,7 +834,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(page.locator(`${HOME} .sbHomeCards`)).toBeVisible();
                 });
 
-                test('Start New Chat opens a new chat of the character', async ({ page }) => {
+                sizeFreeTest('Start New Chat opens a new chat of the character', async ({ page }) => {
                     await boot(page, chosen);
 
                     await startOf(ownCard(page)).click();
@@ -840,7 +843,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect.poll(() => currentChat(page)).toMatch(/^Alice - /);
                 });
 
-                test('Temporary Chat opens a temporary chat with the character', async ({ page }) => {
+                sizeFreeTest('Temporary Chat opens a temporary chat with the character', async ({ page }) => {
                     const world = await boot(page, chosen);
 
                     await temporaryOf(ownCard(page)).click();
@@ -851,7 +854,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 });
 
                 test.describe('a user who installed Nahida with an earlier version', () => {
-                    test('has no card of her own while the pointer does not name her', async ({ page }) => {
+                    sizeFreeTest('has no card of her own while the pointer does not name her', async ({ page }) => {
                         await boot(page, { library: LIBRARY, exact: true });
 
                         await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
@@ -859,7 +862,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
                     });
 
-                    test('sees her card in the third slot like any other character once the pointer names her', async ({ page }) => {
+                    sizeFreeTest('sees her card in the third slot like any other character once the pointer names her', async ({ page }) => {
                         await boot(page, { library: LIBRARY, accountStorage: { assistant: NAHIDA }, exact: true });
 
                         await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
@@ -870,7 +873,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);
                     });
 
-                    test('opens a new chat with her from Start New Chat, as with any character', async ({ page }) => {
+                    sizeFreeTest('opens a new chat with her from Start New Chat, as with any character', async ({ page }) => {
                         await boot(page, { library: LIBRARY, accountStorage: { assistant: NAHIDA }, exact: true });
 
                         await startOf(ownCard(page)).click();
@@ -879,7 +882,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         await expect.poll(() => currentChat(page)).toMatch(/^Assistant Nahida - /);
                     });
 
-                    test('finds her in the picker among the other characters', async ({ page }) => {
+                    sizeFreeTest('finds her in the picker among the other characters', async ({ page }) => {
                         await boot(page, { library: LIBRARY, exact: true });
 
                         await chooseOf(page).click();
@@ -896,7 +899,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     assignCharacterAsAssistant(String(characters.findIndex(character => character.avatar === target)));
                 }, avatar);
 
-                test('Set as assistant on a character shows it in the third slot, and again on the same character brings the Choose Assistant card back', async ({ page }) => {
+                sizeFreeTest('Set as assistant on a character shows it in the third slot, and again on the same character brings the Choose Assistant card back', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
 
@@ -912,7 +915,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     expect(await stored(page, 'assistant')).toBeNull();
                 });
 
-                test('Set as assistant shows the badge in the character list on the new assistant and takes it from the old one, again when toggled off', async ({ page }) => {
+                sizeFreeTest('Set as assistant shows the badge in the character list on the new assistant and takes it from the old one, again when toggled off', async ({ page }) => {
                     await boot(page, { library: LIBRARY, accountStorage: { assistant: 'Alice.png' }, exact: true });
                     await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
                     await expect(page.locator('.sb-character-list[data-mounted="true"]')).toBeVisible();
@@ -932,7 +935,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     { name: 'Set as assistant', accountStorage: {}, after: 'Bob.png' },
                     { name: 'Set as assistant on the assistant again', accountStorage: { assistant: 'Bob.png' }, after: null },
                 ]) {
-                    test(`${action} tells a render of Home that fails with the placeholder toast, and leaves no rejection unhandled`, async ({ page }) => {
+                    sizeFreeTest(`${action} tells a render of Home that fails with the placeholder toast, and leaves no rejection unhandled`, async ({ page }) => {
                         await boot(page, { library: LIBRARY, accountStorage, exact: true });
                         await showToasts(page);
                         const unhandled = [];
@@ -952,7 +955,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     });
                 }
 
-                test('the character that the picker chose is the one a new assistant chat opens', async ({ page }) => {
+                sizeFreeTest('the character that the picker chose is the one a new assistant chat opens', async ({ page }) => {
                     await boot(page, { library: LIBRARY, exact: true });
                     await chooseOf(page).click();
                     await hosts(page).locator('.ds-row', { has: page.locator('.ds-row-label', { hasText: /^Bob$/ }) }).click();

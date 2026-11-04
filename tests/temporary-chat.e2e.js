@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { DESKTOP, matrixViewports } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
@@ -265,7 +266,7 @@ const storedPromptSets = page => page.evaluate(() => new Promise((resolve, rejec
     };
 }));
 
-for (const { label, size } of VIEWPORTS) {
+for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => viewport.size)) {
     test.describe(`Temporary Chat at ${label}`, () => {
         test.use({ viewport: size });
 

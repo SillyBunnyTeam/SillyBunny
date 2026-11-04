@@ -4,6 +4,7 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 import { installFixtureChats, pickFixtureCharacters, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { DESKTOP, matrixViewports } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -88,7 +89,7 @@ async function trackSettingsSaves(page) {
     return saved;
 }
 
-for (const { name, options } of VIEWPORTS) {
+for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
     test.describe(`Home mode memory at ${name}`, () => {
         test.use(options);
 

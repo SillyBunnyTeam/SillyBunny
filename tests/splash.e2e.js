@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block' });
@@ -356,6 +357,8 @@ const readAccount = (page, key) => page.evaluate(async (name) => {
 for (const { name, options } of VIEWPORTS) {
     test.describe(`Splash settings at ${name}`, () => {
         test.use(options);
+        // Only the tests that fit a row or the debug text to the window use `test`; the rest do not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
         test('Splash Character sits in Customize, Interface, with its four choices and a copy placeholder subtitle', async ({ page }) => {
             await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: undefined } });
@@ -375,7 +378,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(fitsBeside).toBe(true);
         });
 
-        test('choosing a character stores it in this browser and in the account, and the next start shows it', async ({ page }) => {
+        sizeFreeTest('choosing a character stores it in this browser and in the account, and the next start shows it', async ({ page }) => {
             await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: undefined } });
             const row = await openInterface(page);
 
@@ -396,7 +399,7 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
-        test('a new browser copies the account character after the settings load, and shows it in the row', async ({ page }) => {
+        sizeFreeTest('a new browser copies the account character after the settings load, and shows it in the row', async ({ page }) => {
             await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: 'reisen' } });
 
             await expect.poll(() => readLocal(page, SPLASH_CHARACTER_KEY)).toBe('reisen');
@@ -404,7 +407,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(row.getByRole('combobox', { name: 'Splash Character' })).toHaveValue('reisen');
         });
 
-        test('Reduced Motion is mirrored to this browser when the settings load and on every save', async ({ page }) => {
+        sizeFreeTest('Reduced Motion is mirrored to this browser when the settings load and on every save', async ({ page }) => {
             await bootApp(page, { reducedMotion: false });
             const setReducedMotion = checked => page.evaluate((value) => {
                 const box = document.querySelector('#reduced_motion');

@@ -4,6 +4,7 @@ import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 import { BUNDLED_THEME_NAMES, readChipContrast, selectTheme } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
@@ -181,6 +182,8 @@ const popupButton = (page, name) => page.locator(`dialog.popup[open] .popup-butt
 for (const { name, checksColours, options } of VIEWPORTS) {
     test.describe(`Bundled Extras at ${name}`, () => {
         test.use(options);
+        // Only the tests that open the window and fit its rows use `test`; the rest do not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
         test.describe('the window', () => {
             /** @type {Awaited<ReturnType<typeof boot>>} */
@@ -285,7 +288,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 });
             }
 
-            test('Install on a first-party extension asks the install route for its repository, without a third-party warning, and the row then shows it installed', async ({ page }) => {
+            sizeFreeTest('Install on a first-party extension asks the install route for its repository, without a third-party warning, and the row then shows it installed', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 const installed = page.waitForRequest('**/api/extensions/install');
@@ -299,7 +302,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await expect(buttonsOf(rowOf(host, 'Alternate Descriptions'))).toHaveText(['Disable', 'Remove']);
             });
 
-            test('Install on a third-party extension asks first: cancelling installs nothing, and accepting installs it', async ({ page }) => {
+            sizeFreeTest('Install on a third-party extension asks first: cancelling installs nothing, and accepting installs it', async ({ page }) => {
                 const host = await openFromTile(page);
                 const installs = [];
                 page.on('request', request => request.url().endsWith('/api/extensions/install') && installs.push(request.postDataJSON().url));
@@ -317,7 +320,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 expect(installs).toEqual([item('lalib').url]);
             });
 
-            test('Install on a theme that is an extension goes through the same install route', async ({ page }) => {
+            sizeFreeTest('Install on a theme that is an extension goes through the same install route', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 const installed = page.waitForRequest('**/api/extensions/install');
@@ -327,7 +330,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await expect(statusOf(rowOf(host, 'Moonlit Echoes'))).toHaveText('Enabled');
             });
 
-            test('Enable takes the extension off the disabled list and saves the settings', async ({ page }) => {
+            sizeFreeTest('Enable takes the extension off the disabled list and saves the settings', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 const saved = page.waitForRequest(request => request.url().endsWith('/api/settings/save') && !readPayload(request).extension_settings.disabledExtensions.includes('third-party/SillyBunny-BotSearcher'));
@@ -336,7 +339,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 expect((await saved).method()).toBe('POST');
             });
 
-            test('Disable puts the extension on the disabled list and saves the settings', async ({ page }) => {
+            sizeFreeTest('Disable puts the extension on the disabled list and saves the settings', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 const saved = page.waitForRequest(request => request.url().endsWith('/api/settings/save') && readPayload(request).extension_settings.disabledExtensions.includes('third-party/SillyBunny-Deep-Swipe'));
@@ -345,7 +348,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 expect((await saved).method()).toBe('POST');
             });
 
-            test('Remove asks first: cancelling deletes nothing, and accepting deletes the extension folder', async ({ page }) => {
+            sizeFreeTest('Remove asks first: cancelling deletes nothing, and accepting deletes the extension folder', async ({ page }) => {
                 const host = await openFromTile(page);
                 const deletes = [];
                 page.on('request', request => request.url().endsWith('/api/extensions/delete') && deletes.push(request.postDataJSON()));
@@ -363,7 +366,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 expect((await deleted).postDataJSON()).toEqual({ extensionName: 'SillyBunny-Deep-Swipe', global: false });
             });
 
-            test('Remove on an extension with a clean hook offers the clean-up checkbox of the Extensions panel, and one without does not', async ({ page }) => {
+            sizeFreeTest('Remove on an extension with a clean hook offers the clean-up checkbox of the Extensions panel, and one without does not', async ({ page }) => {
                 const host = await openFromTile(page);
                 const cleanup = page.locator('dialog.popup[open]').getByLabel('Also clean up extension data');
 
@@ -379,7 +382,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await popupButton(page, 'cancel').click();
             });
 
-            test('the delete confirm shows a name with HTML as text', async ({ page }) => {
+            sizeFreeTest('the delete confirm shows a name with HTML as text', async ({ page }) => {
                 await openFromTile(page);
                 const name = '<img src="/x.png" alt="injected">';
 
@@ -394,7 +397,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await popupButton(page, 'cancel').click();
             });
 
-            test('Restore on a missing bundled preset restores that one preset through the single-preset routes, and the row then shows it installed', async ({ page }) => {
+            sizeFreeTest('Restore on a missing bundled preset restores that one preset through the single-preset routes, and the row then shows it installed', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 const read = page.waitForRequest('**/api/presets/restore');
@@ -408,7 +411,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 expect(world.calls.filter(call => call.path === '/api/presets/restore-defaults'), 'the bulk restore is not called').toEqual([]);
             });
 
-            test('Restore adds the preset to the list without selecting it, so the preset in use stays', async ({ page }) => {
+            sizeFreeTest('Restore adds the preset to the list without selecting it, so the preset in use stays', async ({ page }) => {
                 const host = await openFromTile(page);
                 const selected = () => page.locator('#settings_preset_openai').inputValue();
                 const before = await selected();
@@ -420,7 +423,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 expect(await selected()).toBe(before);
             });
 
-            test('lists no Third-Party Themes group while no CSS theme is pinned, and shows it once there is one', async ({ page }) => {
+            sizeFreeTest('lists no Third-Party Themes group while no CSS theme is pinned, and shows it once there is one', async ({ page }) => {
                 const closed = await openFromTile(page);
                 await expect(closed.getByRole('heading', { name: 'Third-Party Themes' })).toHaveCount(0);
                 await page.keyboard.press('Escape');
@@ -433,7 +436,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await expect(host.locator('[data-sb-copy-slot="BE-ITEM-FIXTURE-MIDNIGHT"]')).toHaveText(COPY_PLACEHOLDER);
             });
 
-            test('installing a CSS theme posts its id, refreshes the UI theme list, and Apply switches to it', async ({ page }) => {
+            sizeFreeTest('installing a CSS theme posts its id, refreshes the UI theme list, and Apply switches to it', async ({ page }) => {
                 const host = await openWithFixtureTheme(page);
                 await expect(page.locator(`#themes option[value="${FIXTURE_THEME.themeName}"]`)).toHaveCount(0);
 
@@ -452,7 +455,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await expect.poll(() => page.evaluate(async () => (await import('/scripts/power-user.js')).power_user.theme)).toBe(FIXTURE_THEME.themeName);
             });
 
-            test('lists no assistant: no group, no row for Nahida, no art beside a row, and opening the window imports no card', async ({ page }) => {
+            sizeFreeTest('lists no assistant: no group, no row for Nahida, no art beside a row, and opening the window imports no card', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 await expect(host.getByRole('heading', { name: 'Assistants' })).toHaveCount(0);
@@ -464,7 +467,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
         });
 
         test.describe('a theme that is saved already', () => {
-            test('is read back from the saved themes, because the route leaves the one that is there', async ({ page }) => {
+            sizeFreeTest('is read back from the saved themes, because the route leaves the one that is there', async ({ page }) => {
                 const world = await boot(page, { themeInstall: { status: 409 } });
                 const host = await openWithFixtureTheme(page);
                 // The theme reached the server after this page loaded, so the page's list does not have it.
@@ -480,7 +483,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
         });
 
         test.describe('a theme that fails to install', () => {
-            test('stays not installed, logs the error and toasts the marked placeholder', async ({ page }) => {
+            sizeFreeTest('stays not installed, logs the error and toasts the marked placeholder', async ({ page }) => {
                 await boot(page, { themeInstall: { status: 502, error: 'hash_mismatch' } });
                 await showToasts(page);
                 const errors = [];

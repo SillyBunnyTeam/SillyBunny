@@ -6,6 +6,7 @@ import { PINNED_ASSISTANT_ACCOUNT, REISEN_AVATAR, stubAssistantCards, TEWI_AVATA
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { DESKTOP, matrixViewports, PHONE, sizeFreeTestFor, SMALL_PHONE } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 // A test that asserts how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
@@ -366,9 +367,12 @@ async function trackSettingsSaves(page) {
     return saved;
 }
 
-for (const { name, options } of VIEWPORTS) {
+// A quick run keeps the sizes where the layout tests differ: the desktop, a phone and the narrowest phone, which the tile line limit is tuned for.
+for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMALL_PHONE])) {
     test.describe(`Home layout at ${name}`, () => {
         test.use(options);
+        // `test` below measures the layout or follows a branch of the size; `sizeFreeTest` does not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
         test.beforeEach(async ({ page, bundledCardsOnly }) => {
             await protectMaintainerServer(page);
@@ -445,7 +449,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(firstLap, 'Tab order').toEqual(order.inDom);
         });
 
-        test('every region is a landmark named by its visible heading, and the tile row is named Quick Links', async ({ page }) => {
+        sizeFreeTest('every region is a landmark named by its visible heading, and the tile row is named Quick Links', async ({ page }) => {
             await chooseMode(page, 'full');
 
             for (const [id, name] of Object.entries(REGION_NAMES)) {
@@ -457,7 +461,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.getByRole('region', { name: 'Quick Links' })).toBeVisible();
         });
 
-        test('keeps the DOM order of the regions', async ({ page }) => {
+        sizeFreeTest('keeps the DOM order of the regions', async ({ page }) => {
             const order = await page.evaluate((ids) => {
                 const nodes = ['.sbHomeHeader', ...ids.map(id => `[data-sb-home-region="${id}"]`)]
                     .map(selector => document.querySelector(`.welcomePanel ${selector}`));
@@ -577,7 +581,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(widths.full.recent).toEqual(widths.full.header);
         });
 
-        test('the Home panel starts at the top of the chat, whatever the resize observer did', async ({ page }) => {
+        sizeFreeTest('the Home panel starts at the top of the chat, whatever the resize observer did', async ({ page }) => {
             await chooseMode(page, 'full');
             await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 500)));
 
@@ -686,7 +690,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(fill.panelHeight).toBeGreaterThanOrEqual(Math.min(fill.chatHeight, 400) - 2);
         });
 
-        test('the display mode is saved and survives a reload', async ({ page }) => {
+        sizeFreeTest('the display mode is saved and survives a reload', async ({ page }) => {
             const saved = await trackSettingsSaves(page);
 
             await chooseMode(page, 'compact');
@@ -710,7 +714,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]')).toBeVisible();
         });
 
-        test('switching the display mode does not fetch Recent Chats again', async ({ page }) => {
+        sizeFreeTest('switching the display mode does not fetch Recent Chats again', async ({ page }) => {
             let requests = 0;
             await page.route('**/api/chats/recent', (route) => {
                 requests++;
@@ -724,7 +728,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(requests).toBe(0);
         });
 
-        test('the main menu button is named, announced and reachable by keyboard', async ({ page }) => {
+        sizeFreeTest('the main menu button is named, announced and reachable by keyboard', async ({ page }) => {
             await chooseMode(page, 'full');
             const button = menuButton(page);
             await expect(button).toHaveAttribute('aria-label', 'Main Menu');
@@ -752,7 +756,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(button).toBeFocused();
         });
 
-        test('the main menu checks the current display mode', async ({ page }) => {
+        sizeFreeTest('the main menu checks the current display mode', async ({ page }) => {
             await chooseMode(page, 'list');
 
             await menuButton(page).click();
@@ -762,7 +766,7 @@ for (const { name, options } of VIEWPORTS) {
             await escapeOpenMenu(page);
         });
 
-        test('Recent Chats Settings opens from the main menu', async ({ page }) => {
+        sizeFreeTest('Recent Chats Settings opens from the main menu', async ({ page }) => {
             await menuButton(page).click();
             await page.getByRole('menuitem', { name: 'Recent Chats Settings', exact: true }).click();
 
@@ -773,7 +777,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('#maxRecentChats')).toHaveCount(0);
         });
 
-        test('every copy placeholder carries both copy attributes and no other element does', async ({ page }) => {
+        sizeFreeTest('every copy placeholder carries both copy attributes and no other element does', async ({ page }) => {
             await chooseMode(page, 'full');
 
             const report = await page.evaluate(() => {
@@ -850,7 +854,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(parseFloat(icon.radius)).toBeGreaterThanOrEqual(24);
         });
 
-        test('Compact shows the title of Getting Started, Help and Bundled Extras without the voiced line, and Full brings it back', async ({ page }) => {
+        sizeFreeTest('Compact shows the title of Getting Started, Help and Bundled Extras without the voiced line, and Full brings it back', async ({ page }) => {
             await chooseMode(page, 'compact');
 
             await expect(tiles(page).locator('.sbHomeTileTitle:visible')).toHaveText(TILE_TITLES);
@@ -864,7 +868,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(tiles(page).locator('.sbHomeTileLine').last()).toBeVisible();
         });
 
-        test('the ids that name and describe the tiles are unique and the same after Home renders again', async ({ page }) => {
+        sizeFreeTest('the ids that name and describe the tiles are unique and the same after Home renders again', async ({ page }) => {
             const ids = () => page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeTile')].map(node => [node.getAttribute('aria-labelledby'), node.getAttribute('aria-describedby')]));
             await chooseMode(page, 'full');
             const before = await ids();
@@ -957,7 +961,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(Math.abs(layout.edges[1] - layout.right)).toBeLessThanOrEqual(1);
         });
 
-        test('Getting Started stays hidden when Home renders again, and Show Getting Started in the main menu brings it back first', async ({ page }) => {
+        sizeFreeTest('Getting Started stays hidden when Home renders again, and Show Getting Started in the main menu brings it back first', async ({ page }) => {
             await chooseMode(page, 'full');
             await setGettingStartedHidden(page, true);
 
@@ -973,7 +977,7 @@ for (const { name, options } of VIEWPORTS) {
             await escapeOpenMenu(page);
         });
 
-        test('the main menu offers Show Getting Started in Full and Compact, where the tile can show, and not in List Only', async ({ page }) => {
+        sizeFreeTest('the main menu offers Show Getting Started in Full and Compact, where the tile can show, and not in List Only', async ({ page }) => {
             await chooseMode(page, 'full');
             await setGettingStartedHidden(page, true);
 
@@ -986,7 +990,7 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
-        test('a Getting Started tile that comes back follows the display mode', async ({ page }) => {
+        sizeFreeTest('a Getting Started tile that comes back follows the display mode', async ({ page }) => {
             await chooseMode(page, 'compact');
 
             await setGettingStartedHidden(page, true);
@@ -1002,7 +1006,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(tiles(page).first()).toHaveAttribute('data-sb-home-key', 'getting-started');
         });
 
-        test('the tile row never holds a Getting Started tile that every step has resolved', async ({ page }) => {
+        sizeFreeTest('the tile row never holds a Getting Started tile that every step has resolved', async ({ page }) => {
             await chooseMode(page, 'full');
 
             await page.evaluate(async () => {
@@ -1039,7 +1043,7 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
-        test('the Assistants section holds Reisen, Tewi and a Choose Assistant card', async ({ page }) => {
+        sizeFreeTest('the Assistants section holds Reisen, Tewi and a Choose Assistant card', async ({ page }) => {
             await chooseMode(page, 'full');
             const cards = page.locator('#chat > .welcomePanel .sbHomeCards > .sbHomeCard');
 
@@ -1050,7 +1054,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel [data-sb-home-region="assistants"]').getByRole('heading', { level: 2, name: 'Assistants' })).toBeVisible();
         });
 
-        test('each assistant card has a portrait, a name, a subtitle and a footer with three controls', async ({ page }) => {
+        sizeFreeTest('each assistant card has a portrait, a name, a subtitle and a footer with three controls', async ({ page }) => {
             await chooseMode(page, 'full');
 
             for (const name of ASSISTANT_NAMES) {
@@ -1068,7 +1072,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(border).toBe('1px');
         });
 
-        test('the card controls are named after their assistant, with a title, and the card button is described by its subtitle', async ({ page }) => {
+        sizeFreeTest('the card controls are named after their assistant, with a title, and the card button is described by its subtitle', async ({ page }) => {
             await chooseMode(page, 'full');
 
             for (const name of ASSISTANT_NAMES) {
@@ -1087,7 +1091,7 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
-        test('Tab visits the card button, Start New Chat, Temporary Chat and the menu in that order', async ({ page }) => {
+        sizeFreeTest('Tab visits the card button, Start New Chat, Temporary Chat and the menu in that order', async ({ page }) => {
             await chooseMode(page, 'full');
             const card = assistantCard(page, 'Tewi');
 
@@ -1270,7 +1274,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(await page.evaluate(() => window.qaCardActions), 'card body').toEqual({ 'assistant-reisen': 2, 'assistant-tewi': 0 });
         });
 
-        test('pressing an assistant card fills the card, and pressing its menu button does not', async ({ page }) => {
+        sizeFreeTest('pressing an assistant card fills the card, and pressing its menu button does not', async ({ page }) => {
             await chooseMode(page, 'full');
             const card = assistantCard(page, 'Reisen');
             await card.scrollIntoViewIfNeeded();
@@ -1299,7 +1303,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(pressedMenu).toBe(resting);
         });
 
-        test('the card, Start New Chat and Temporary Chat of a card with a file are enabled controls and no stubs', async ({ page }) => {
+        sizeFreeTest('the card, Start New Chat and Temporary Chat of a card with a file are enabled controls and no stubs', async ({ page }) => {
             await chooseMode(page, 'full');
             const card = assistantCard(page, 'Reisen');
 
@@ -1334,7 +1338,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('dialog[open]')).toHaveCount(0);
         });
 
-        test('the Assistant Menu opens from the keyboard and offers Roleplay after Conversation', async ({ page }) => {
+        sizeFreeTest('the Assistant Menu opens from the keyboard and offers Roleplay after Conversation', async ({ page }) => {
             await page.evaluate(async () => {
                 const { recordChatMode } = await import('/scripts/sillybunny-chat-mode-memory.js');
                 recordChatMode('conversation');
@@ -1450,7 +1454,7 @@ for (const { name, options } of VIEWPORTS) {
 
         for (const mode of ['full', 'compact']) {
             for (const footer of ['labelled', 'icon-only']) {
-                test(`every icon-only control in ${mode} has a tooltip and a name, and no labelled control repeats its label, with ${footer} card footers`, async ({ page }) => {
+                sizeFreeTest(`every icon-only control in ${mode} has a tooltip and a name, and no labelled control repeats its label, with ${footer} card footers`, async ({ page }) => {
                     const characters = await pickFixtureCharacters(page, 2);
                     await renderHome(page, recentChatEntries(characters, 5, { distinctFiles: true }));
                     await chooseMode(page, mode);
@@ -1521,7 +1525,7 @@ for (const { name, options } of VIEWPORTS) {
             }
         }
 
-        test('the pin tooltips are header-capitalised and follow the state of the chat', async ({ page }) => {
+        sizeFreeTest('the pin tooltips are header-capitalised and follow the state of the chat', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 1);
             await renderHome(page, recentChatEntries(characters, 1));
             const pin = page.locator('.welcomePanel .recentChat .pinChat').first();
@@ -1538,7 +1542,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel .recentChat .pinChat').first()).toHaveAttribute('title', 'Pin Chat');
         });
 
-        test('the fork notice link is separate from its placeholder and opens SillyTavern safely', async ({ page }) => {
+        sizeFreeTest('the fork notice link is separate from its placeholder and opens SillyTavern safely', async ({ page }) => {
             const link = page.locator('.welcomePanel a[href="https://github.com/SillyTavern/SillyTavern"]');
 
             await expect(link).toHaveText('SillyTavern');
@@ -1645,7 +1649,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(band.textWidth, 'readable measure').toBeLessThanOrEqual(band.fontSize * 70);
         });
 
-        test('the project info keeps its three placeholders in order, the fork link apart from its text', async ({ page }) => {
+        sizeFreeTest('the project info keeps its three placeholders in order, the fork link apart from its text', async ({ page }) => {
             await chooseMode(page, 'full');
 
             const slots = await page.locator('.welcomePanel [data-sb-home-region="hero"] [data-sb-copy-placeholder]')
@@ -1654,7 +1658,7 @@ for (const { name, options } of VIEWPORTS) {
             expect(slots).toEqual(['HOME-HERO-DESC', 'HOME-HERO-FORK', 'HOME-HERO-GREETING-01']);
         });
 
-        test('an empty Recent Chats list shows the placeholder copy and no filtered state', async ({ page }) => {
+        sizeFreeTest('an empty Recent Chats list shows the placeholder copy and no filtered state', async ({ page }) => {
             await chooseMode(page, 'full');
             await renderHome(page, []);
 
@@ -1664,7 +1668,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel [data-recent-chat-empty-state="filtered"]')).toBeHidden();
         });
 
-        test('Recent Chats lists, filters and expands', async ({ page }) => {
+        sizeFreeTest('Recent Chats lists, filters and expands', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 2);
             expect(characters.length).toBeGreaterThan(0);
             await renderHome(page, recentChatEntries(characters, 5));
@@ -1693,7 +1697,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(rows).toHaveCount(3);
         });
 
-        test('a Recent Chats entry opens its chat', async ({ page }) => {
+        sizeFreeTest('a Recent Chats entry opens its chat', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 1);
             expect(characters).toHaveLength(1);
             await renderHome(page, recentChatEntries(characters, 1));
@@ -1709,7 +1713,7 @@ for (const { name, options } of VIEWPORTS) {
             }), { timeout: STARTUP_TIMEOUT }).toEqual({ chatId: characters[0].chat, avatar: characters[0].avatar });
         });
 
-        test('pinning a chat re-renders Home in place without announcing a Home state change', async ({ page }) => {
+        sizeFreeTest('pinning a chat re-renders Home in place without announcing a Home state change', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 2);
             expect(characters.length).toBeGreaterThan(0);
             await renderHome(page, recentChatEntries(characters, characters.length));
@@ -1732,7 +1736,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
         });
 
-        test('a pinned chat keeps keyboard focus on its pin control after Home renders again', async ({ page }) => {
+        sizeFreeTest('a pinned chat keeps keyboard focus on its pin control after Home renders again', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 1);
             expect(characters.length).toBeGreaterThan(0);
             await renderHome(page, recentChatEntries(characters, 3, { distinctFiles: true }));
@@ -1745,7 +1749,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(row.locator('.pinChat')).toBeFocused();
         });
 
-        test('a pin activated by a pointer that does not focus buttons still keeps focus on the pin control', async ({ page }) => {
+        sizeFreeTest('a pin activated by a pointer that does not focus buttons still keeps focus on the pin control', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 1);
             expect(characters.length).toBeGreaterThan(0);
             await renderHome(page, recentChatEntries(characters, 3, { distinctFiles: true }));
@@ -1760,7 +1764,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(row.locator('.pinChat')).toBeFocused();
         });
 
-        test('Recent Chats Settings returns focus to the main menu button after it saves', async ({ page }) => {
+        sizeFreeTest('Recent Chats Settings returns focus to the main menu button after it saves', async ({ page }) => {
             await menuButton(page).click();
             await page.getByRole('menuitem', { name: 'Recent Chats Settings', exact: true }).click();
             await expect(page.locator('#maxRecentChats')).toBeVisible();
@@ -1802,7 +1806,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(trigger).toBeFocused();
         });
 
-        test('Delete from the Chat Menu confirms, and focus lands on the row that took its place', async ({ page }) => {
+        sizeFreeTest('Delete from the Chat Menu confirms, and focus lands on the row that took its place', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 1);
             expect(characters.length).toBeGreaterThan(0);
             const entries = recentChatEntries(characters, 3, { distinctFiles: true });
@@ -1830,7 +1834,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel .recentChat[data-file="qa-home-2"] .recentChatOpen')).toBeFocused();
         });
 
-        test('cancelling Delete leaves focus on the Chat Menu button', async ({ page }) => {
+        sizeFreeTest('cancelling Delete leaves focus on the Chat Menu button', async ({ page }) => {
             const characters = await pickFixtureCharacters(page, 1);
             expect(characters.length).toBeGreaterThan(0);
             await renderHome(page, recentChatEntries(characters, 2, { distinctFiles: true }));
@@ -1847,7 +1851,7 @@ for (const { name, options } of VIEWPORTS) {
         test.describe('Getting Started progress', () => {
             test.use({ bundledCardsOnly: true });
 
-            test('the Getting Started tile shows the progress in one string and opens its window', async ({ page }) => {
+            sizeFreeTest('the Getting Started tile shows the progress in one string and opens its window', async ({ page }) => {
                 await chooseMode(page, 'full');
                 const started = tile(page, 'getting-started');
 
@@ -1863,7 +1867,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator('.welcomePanel details')).toHaveCount(0);
             });
 
-            test('every tile carries a voiced line as a copy placeholder in its own slot, and only Getting Started has a progress', async ({ page }) => {
+            sizeFreeTest('every tile carries a voiced line as a copy placeholder in its own slot, and only Getting Started has a progress', async ({ page }) => {
                 await chooseMode(page, 'full');
 
                 for (const [key, slot] of [['getting-started', 'HOME-ROW-GS-LINE'], ['help', 'HOME-ROW-HELP'], ['extras', 'HOME-ROW-EXTRAS']]) {
@@ -1879,7 +1883,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(tile(page, 'extras')).not.toHaveAttribute('data-sb-stub', /.*/);
             });
 
-            test('a tile is named by its title and described by its voiced line and progress, and Compact leaves the line out of the description', async ({ page }) => {
+            sizeFreeTest('a tile is named by its title and described by its voiced line and progress, and Compact leaves the line out of the description', async ({ page }) => {
                 await chooseMode(page, 'full');
 
                 await expect(tile(page, 'getting-started')).toHaveAccessibleName('Getting Started');

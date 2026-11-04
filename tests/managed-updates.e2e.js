@@ -5,6 +5,7 @@ import { makeCharacterCard, withoutAssistantAccount } from './helpers/assistant-
 import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { DESKTOP, matrixViewports } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -158,7 +159,7 @@ const VIEWPORTS = [
 ];
 
 
-for (const { name, options } of VIEWPORTS) {
+for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
     test.describe(`Restore and Update Available at ${name}`, () => {
         test.use(options);
 

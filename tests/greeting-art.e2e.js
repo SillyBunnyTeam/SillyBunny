@@ -5,6 +5,7 @@ import { withoutAssistantAccount } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { OPENING_HOLD_MS } from '../public/scripts/sillybunny-home/greeting-art-opening.js';
 
@@ -226,9 +227,11 @@ async function sendMessage(page, text, expectedMessages) {
 for (const { name, options } of VIEWPORTS) {
     test.describe(`the greeting picture at ${name}`, () => {
         test.use(options);
+        // Only the tests that read the size of the picture use `test`; the rest do not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
         for (const way of Object.keys(HOME_WAYS)) {
-            test(`shows once above the greeting of Reisen that ${way} opens, as a button named by its alt text`, async ({ page }) => {
+            sizeFreeTest(`shows once above the greeting of Reisen that ${way} opens, as a button named by its alt text`, async ({ page }) => {
                 await boot(page);
                 await openFromHome(page, 'assistant-reisen', way);
 
@@ -243,7 +246,7 @@ for (const { name, options } of VIEWPORTS) {
             });
         }
 
-        test('shows the picture of Tewi above her greeting', async ({ page }) => {
+        sizeFreeTest('shows the picture of Tewi above her greeting', async ({ page }) => {
             await boot(page);
             await openFromHome(page, 'assistant-tewi', 'Start New Chat');
 
@@ -329,7 +332,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(message.locator('.mes_text')).toContainText('An edited greeting.');
         });
 
-        test('comes back when the chat is opened again after the page reloads', async ({ page }) => {
+        sizeFreeTest('comes back when the chat is opened again after the page reloads', async ({ page }) => {
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);
@@ -352,7 +355,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('#chat .mes')).toHaveCount(3);
         });
 
-        test('is on no later message, not in a chat of another character, and not left behind when the character changes', async ({ page }) => {
+        sizeFreeTest('is on no later message, not in a chat of another character, and not left behind when the character changes', async ({ page }) => {
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);
@@ -382,7 +385,7 @@ for (const { name, options } of VIEWPORTS) {
             await expectOneFigure(page, { assistant: 'tewi' });
         });
 
-        test('is not shown in Conversation', async ({ page }) => {
+        sizeFreeTest('is not shown in Conversation', async ({ page }) => {
             await boot(page, { lastMode: 'conversation' });
             await cardOf(page, 'assistant-reisen').locator('.sbHomeFootButton').nth(0).click();
 
@@ -392,7 +395,7 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('#sheld .sbGreetingArt')).toHaveCount(0);
         });
 
-        test('goes in Conversation over the same chat, and comes back when the app returns to Roleplay', async ({ page }) => {
+        sizeFreeTest('goes in Conversation over the same chat, and comes back when the app returns to Roleplay', async ({ page }) => {
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);
@@ -407,7 +410,7 @@ for (const { name, options } of VIEWPORTS) {
             await expectOneFigure(page);
         });
 
-        test('never reaches the model, and never reaches the chat file', async ({ page }) => {
+        sizeFreeTest('never reaches the model, and never reaches the chat file', async ({ page }) => {
             const world = await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);
@@ -488,7 +491,7 @@ for (const { name, options } of VIEWPORTS) {
             }, { timeout: 10_000 }).toBe(true);
         });
 
-        test('is reached by the Tab key and shows the focus ring of the app when it is', async ({ page }) => {
+        sizeFreeTest('is reached by the Tab key and shows the focus ring of the app when it is', async ({ page }) => {
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);

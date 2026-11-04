@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { sizeFreeTestFor } from './helpers/matrix.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 60_000 });
@@ -159,13 +160,15 @@ const settingsTab = page => page.locator('#sb-settings-page .sb-settings-tab[ari
 for (const { name, options } of VIEWPORTS) {
     test.describe(`Help and Keyboard Shortcuts keys, ${name}`, () => {
         test.use(options);
+        // Only the tests that lay out Learn More or open a topic page use `test`; the rest do not depend on the size.
+        const sizeFreeTest = sizeFreeTestFor(test, options.viewport);
 
         test.describe('on Home', () => {
             test.beforeEach(async ({ page }) => {
                 await boot(page);
             });
 
-            test('F1 opens Help and holds the key back from the browser', async ({ page }) => {
+            sizeFreeTest('F1 opens Help and holds the key back from the browser', async ({ page }) => {
                 await page.keyboard.press('F1');
 
                 await expect(page.locator(HELP)).toBeVisible();
@@ -173,7 +176,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: 'F1', prevented: true });
             });
 
-            test('Ctrl+? opens Keyboard Shortcuts and holds the key back', async ({ page }) => {
+            sizeFreeTest('Ctrl+? opens Keyboard Shortcuts and holds the key back', async ({ page }) => {
                 await page.keyboard.press('Control+?');
 
                 await expect(page.locator(SHORTCUTS)).toBeVisible();
@@ -181,7 +184,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: '?', prevented: true });
             });
 
-            test('Super+? opens nothing and is left to the system, because the modifier of the app here is Ctrl', async ({ page }) => {
+            sizeFreeTest('Super+? opens nothing and is left to the system, because the modifier of the app here is Ctrl', async ({ page }) => {
                 await page.keyboard.press('Meta+?');
                 await settle(page);
 
@@ -189,7 +192,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: '?', prevented: false });
             });
 
-            test('a plain question mark and Ctrl with another key open nothing', async ({ page }) => {
+            sizeFreeTest('a plain question mark and Ctrl with another key open nothing', async ({ page }) => {
                 await page.keyboard.press('?');
                 await page.keyboard.press('Control+/');
                 await page.keyboard.press('Control+F1');
@@ -199,7 +202,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator(OPEN_HOSTS)).toHaveCount(0);
             });
 
-            test('the AltGr question mark opens nothing and is left to the layout', async ({ page }) => {
+            sizeFreeTest('the AltGr question mark opens nothing and is left to the layout', async ({ page }) => {
                 await page.keyboard.press('Control+Alt+?');
                 await settle(page);
 
@@ -207,7 +210,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: '?', prevented: false });
             });
 
-            test('a window that is open is not opened again: the key does nothing', async ({ page }) => {
+            sizeFreeTest('a window that is open is not opened again: the key does nothing', async ({ page }) => {
                 await page.keyboard.press('F1');
                 await expect(page.locator(HELP)).toBeVisible();
 
@@ -219,7 +222,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: 'F1', prevented: true });
             });
 
-            test('Ctrl+? over Help shows Keyboard Shortcuts as a page of the same window, and Back returns to Help', async ({ page }) => {
+            sizeFreeTest('Ctrl+? over Help shows Keyboard Shortcuts as a page of the same window, and Back returns to Help', async ({ page }) => {
                 await page.keyboard.press('F1');
                 await expect(page.locator(HELP)).toBeVisible();
 
@@ -238,7 +241,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator(OPEN_HOSTS)).toHaveCount(1);
             });
 
-            test('another modal blocks both keys, and the browser still does not get F1', async ({ page }) => {
+            sizeFreeTest('another modal blocks both keys, and the browser still does not get F1', async ({ page }) => {
                 await openOtherDialog(page);
 
                 await page.keyboard.press('F1');
@@ -256,7 +259,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator(HELP)).toBeVisible();
             });
 
-            test('a legacy popup blocks both keys as well', async ({ page }) => {
+            sizeFreeTest('a legacy popup blocks both keys as well', async ({ page }) => {
                 await page.evaluate(async () => {
                     const { callGenericPopup, POPUP_TYPE } = await import('/scripts/popup.js');
                     void callGenericPopup('A popup', POPUP_TYPE.TEXT);
@@ -271,7 +274,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator(SHORTCUTS)).toHaveCount(0);
             });
 
-            test('Keyboard Shortcuts lists F1 and Ctrl+?, and notes the Formatting group as copy that is still missing', async ({ page }) => {
+            sizeFreeTest('Keyboard Shortcuts lists F1 and Ctrl+?, and notes the Formatting group as copy that is still missing', async ({ page }) => {
                 await page.keyboard.press('Control+?');
                 const window = page.locator(SHORTCUTS);
                 await expect(window).toBeVisible();
@@ -286,7 +289,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(note).toHaveAttribute('data-sb-copy-placeholder', 'true');
             });
 
-            test('every general shortcut of the registry has its key pinned here, and does what its row says', async ({ page }) => {
+            sizeFreeTest('every general shortcut of the registry has its key pinned here, and does what its row says', async ({ page }) => {
                 expect(await registryOf(page, 'general')).toEqual(Object.keys(GENERAL_KEYS));
 
                 await test.step('Ctrl+U opens Backend settings on Connections', async () => {
@@ -341,7 +344,7 @@ for (const { name, options } of VIEWPORTS) {
                 await page.locator('#send_textarea').focus();
             });
 
-            test('F1 and Ctrl+? open their windows from #send_textarea and leave the draft alone', async ({ page }) => {
+            sizeFreeTest('F1 and Ctrl+? open their windows from #send_textarea and leave the draft alone', async ({ page }) => {
                 await page.keyboard.press('F1');
                 await expect(page.locator(HELP)).toBeVisible();
                 await closeTopDialog(page);
@@ -354,7 +357,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator('#send_textarea')).toHaveValue('draft');
             });
 
-            test('the AltGr question mark in #send_textarea opens no window and leaves the draft alone', async ({ page }) => {
+            sizeFreeTest('the AltGr question mark in #send_textarea opens no window and leaves the draft alone', async ({ page }) => {
                 await page.keyboard.press('Control+Alt+?');
                 await settle(page);
 
@@ -363,7 +366,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: '?', prevented: false });
             });
 
-            test('the Markdown hotkeys of the registry format the selected word, once the setting is on', async ({ page }) => {
+            sizeFreeTest('the Markdown hotkeys of the registry format the selected word, once the setting is on', async ({ page }) => {
                 await page.evaluate(async () => {
                     const { power_user } = await import('/scripts/power-user.js');
                     power_user.enable_md_hotkeys = true;
@@ -381,7 +384,7 @@ for (const { name, options } of VIEWPORTS) {
                 }
             });
 
-            test('the Markdown hotkeys do nothing while the setting is off', async ({ page }) => {
+            sizeFreeTest('the Markdown hotkeys do nothing while the setting is off', async ({ page }) => {
                 await page.evaluate(async () => {
                     const { power_user } = await import('/scripts/power-user.js');
                     power_user.enable_md_hotkeys = false;
@@ -400,7 +403,7 @@ for (const { name, options } of VIEWPORTS) {
                 await boot(page, { platform: 'MacIntel' });
             });
 
-            test('Cmd+? opens Keyboard Shortcuts and holds the key back, and Ctrl+? does nothing', async ({ page }) => {
+            sizeFreeTest('Cmd+? opens Keyboard Shortcuts and holds the key back, and Ctrl+? does nothing', async ({ page }) => {
                 await page.keyboard.press('Control+?');
                 await settle(page);
                 await expect(page.locator(OPEN_HOSTS)).toHaveCount(0);
@@ -412,7 +415,7 @@ for (const { name, options } of VIEWPORTS) {
                 expect(await lastKeydown(page)).toEqual({ key: '?', prevented: true });
             });
 
-            test('lists the Keyboard Shortcuts key as Command and a question mark', async ({ page }) => {
+            sizeFreeTest('lists the Keyboard Shortcuts key as Command and a question mark', async ({ page }) => {
                 await page.keyboard.press('F1');
                 await expect(page.locator(HELP)).toBeVisible();
                 await closeTopDialog(page);
@@ -593,7 +596,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator(`${HELP} ${TOPIC_PAGE}`)).toHaveAttribute('data-sb-help-id', 'fix-a-connection-problem');
             });
 
-            test('every topic of the model has a template file that the server serves', async ({ page }) => {
+            sizeFreeTest('every topic of the model has a template file that the server serves', async ({ page }) => {
                 const results = await page.evaluate(async () => {
                     const { getHelpSections } = await import('/scripts/sillybunny-help/topics.js');
                     const topics = getHelpSections().flatMap(section => section.topics);

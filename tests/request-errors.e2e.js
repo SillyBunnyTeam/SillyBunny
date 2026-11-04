@@ -5,6 +5,7 @@ import { withoutAssistantAccount } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { quickOr } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -40,6 +41,9 @@ const ROWS = [
     ['text-stream', '401json', 'Incorrect API key provided: sk-bad.', 'key'],
     ['text-stream', '500text', 'upstream connect error or disconnect/reset before headers', 'down'],
 ];
+
+// A quick run keeps one row per API path, because each path reports a failure through its own code.
+const FIRST_ROW_OF_EACH_API = ROWS.filter(([api], index) => ROWS.findIndex(([other]) => other === api) === index);
 
 const TOAST_TITLES = ['Chat Completion API', 'Text Completion API', 'Text generation error'];
 
@@ -112,7 +116,7 @@ test.describe('failed generation requests show the provider message and a hint i
         await provider.close();
     });
 
-    for (const [api, failure, expectedMessage, expectedKind] of ROWS) {
+    for (const [api, failure, expectedMessage, expectedKind] of quickOr(ROWS, FIRST_ROW_OF_EACH_API)) {
         test(`${api} answered with ${failure}`, async ({ page }) => {
             await openChatWithToastRecorder(page);
             await page.evaluate(async ({ api, failure, port }) => {
