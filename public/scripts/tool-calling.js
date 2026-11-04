@@ -620,8 +620,9 @@ export class ToolManager {
         }
 
         // GPT-6 Astra requires Responses for tools. Sol and Luna allow Chat Completions tools only without reasoning.
+        // SillyBunny: None is the effort that turns reasoning off, because Minimum is sent as 'minimal'.
         if ([chat_completion_sources.OPENAI, chat_completion_sources.AZURE_OPENAI].includes(settings.chat_completion_source)
-            && (/^gpt-6-astra/.test(model) || (/^gpt-6-(sol|luna)/.test(model) && settings.reasoning_effort !== 'min'))) {
+            && (/^gpt-6-astra/.test(model) || (/^gpt-6-(sol|luna)/.test(model) && settings.reasoning_effort !== 'none'))) {
             return false;
         }
 

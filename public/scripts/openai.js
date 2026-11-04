@@ -5331,10 +5331,10 @@ function getReasoningEffort(settings = null, model = null) {
 
         switch (settings.reasoning_effort) {
             case reasoning_effort_types.none:
-                // GPT-5.1 and newer accept 'none' as a real value that pins thinking off;
+                // GPT-5.1 and newer, GPT-6 Sol and GPT-6 Luna accept 'none' as a real value that pins thinking off;
                 // omitting the field instead lets the model pick its own default depth.
                 // Everywhere else 'none' stays unsent, since endpoints that do not list it reject it.
-                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^gpt-5\.([1-9]|\d{2,})/.test(model)
+                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^(?:gpt-5\.(?:[1-9]|\d{2,})|gpt-6-(?:sol|luna))/.test(model)
                     ? reasoning_effort_types.none
                     : undefined;
             case reasoning_effort_types.min:
