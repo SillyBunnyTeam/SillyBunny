@@ -416,6 +416,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-04, `feat/home-mascot-overhaul` (#870). |
 | Owner | TODO(copy) |
 
+### `public/script.js` and `public/scripts/openai.js` - Send and Connect feedback without a connection
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `public/scripts/openai.js`. |
+| Area | Generation lifecycle and API connection: Send with no connection, Connect with an empty key. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-connection-notices.js` (`notifyNotConnected`, `flagMissingKey`). |
+| Adapter shape | `public/script.js`: one import; `sendTextareaMessage` returns before any chat change when `online_status` is `no_connection` or not yet known and the draft is not a slash command, and calls `notifyNotConnected()`; the Send button handler calls it where it already refused offline activation. Upstream behaviour change: Enter with no connection no longer posts the user's message without a reply. `public/scripts/openai.js`: `onConnectButtonClick` calls `flagMissingKey(...)` for a user's press (`e.originalEvent` present) when the key field is empty. |
+| Protecting tests | `tests/sillybunny-connection-notices.test.js`, `tests/connection-notices.e2e.js`, `tests/roleplay-composer-visibility.e2e.js`, `tests/conversation-composer-connection.e2e.js`, `tests/sillybunny-conversation-core-roleplay-queue.test.js`. |
+| Validation | `npm run lint`; the focused unit tests; `npm run check:frontend-budgets`; the four e2e specs on a Bun server; code review 2026-11-04. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-04, `feat/home-mascot-overhaul` (#870). |
+| Owner | TODO(copy) |
+
 ### `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, and `src/endpoints/chats.js` - server-owned chat generations
 | Field | Value |
 | --- | --- |

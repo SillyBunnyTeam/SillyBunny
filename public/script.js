@@ -97,6 +97,7 @@ import {
 // SillyBunny: chat-history and chat-file confirmations use the shared frame so legacy controls keep their identities without owning modal geometry.
 import { openAlert } from './scripts/sillybunny-editor/dialog.js';
 import { openChatHistoryDialog } from './scripts/sillybunny-chat-dialogs.js';
+import { notifyNotConnected } from './scripts/sillybunny-connection-notices.js'; // SillyBunny: Send with no API connection says so and points to Connections.
 
 import {
     collapseNewlines,
@@ -4242,6 +4243,12 @@ export async function sendTextareaMessage() {
     if (swipeState !== SWIPE_STATE.NONE) return; // don't proceed if mid-swipe.
     if (is_send_press) return;
     if (isExecutingCommandsFromChatInput) return;
+
+    // SillyBunny: with no API the message used to be posted without a reply or any word about why. Slash commands still run offline.
+    if ((online_status === 'no_connection' || online_status === undefined) && !String($('#send_textarea').val()).trimStart().startsWith('/')) {
+        notifyNotConnected();
+        return;
+    }
 
     hideSwipeButtons(); //Swipe buttons must be hidden now, otherwise concurrent generations are possible.
 
@@ -18075,6 +18082,7 @@ jQuery(async function () {
     bindIOSFastTapSendButton(sendButtonElement, async () => {
         // SillyBunny: the offline Send control stays visible; reject activation before draft or chat mutation.
         if (online_status === 'no_connection' || online_status === undefined) {
+            notifyNotConnected();
             return;
         }
         await userInputGenerateMutex.update();

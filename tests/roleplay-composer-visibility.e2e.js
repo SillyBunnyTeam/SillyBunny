@@ -80,6 +80,8 @@ async function renderComposer(page, width, { isIOS = false } = {}) {
         const resolveGenerationUiLockState = () => ({ shouldShowStopButton: false, shouldHideSwipeButtons: false, bodyGeneratingValue: null });
         const hideStopButton = () => document.getElementById('send_form').classList.remove('sb-generating-controls');
         const showSwipeButtons = () => {};
+        window.notConnectedNotices = 0;
+        const notifyNotConnected = () => { window.notConnectedNotices += 1; };
         const userInputGenerateMutex = {
             async update() {
                 const textarea = document.getElementById('send_textarea');
@@ -148,10 +150,11 @@ for (const width of [390, 1440]) {
         await expect(send).toHaveClass(/\bdisabled\b/);
         await expect(send).toHaveAttribute('aria-disabled', 'true');
         await expect(send).not.toHaveAttribute('tabindex');
-        await expect(send).toHaveCSS('pointer-events', 'none');
+        await expect(send).toHaveCSS('pointer-events', 'auto');
         await expect(send).toHaveCSS('cursor', 'not-allowed');
         const bounds = await send.boundingBox();
         await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+        await expect.poll(() => page.evaluate(() => window.notConnectedNotices)).toBe(1);
         await send.dispatchEvent('keydown', { key: 'Enter', bubbles: true });
         await send.dispatchEvent('keydown', { key: ' ', bubbles: true });
         await expect(textarea).toHaveValue('Keep this draft');

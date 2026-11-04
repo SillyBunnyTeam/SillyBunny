@@ -90,6 +90,7 @@ for (const width of [390, 1440]) {
         await input.fill('Unsent offline draft');
         await input.press('Enter');
         await expect(input).toHaveValue('Unsent offline draft');
+        await expect(page.locator('.toast', { hasText: 'Not connected to API!' })).toHaveCount(1);
         await page.evaluate(async () => {
             const { submitConversationInput } = await import('/scripts/sillybunny-conversation/attachments.js');
             await submitConversationInput();

@@ -55,6 +55,7 @@ import {
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
+import { notifyNotConnected } from '../sillybunny-connection-notices.js';
 import {
     coalesceConversationQueueItems,
     createConversationMessageRevisionEntries,
@@ -748,7 +749,11 @@ export async function processSendQueue({ processItem = processQueuedConversation
 }
 
 export async function submitConversationInput() {
-    if (online_status === 'no_connection' || is_send_press || conversationState.conversationUploadActive) {
+    if (online_status === 'no_connection') {
+        notifyNotConnected();
+        return;
+    }
+    if (is_send_press || conversationState.conversationUploadActive) {
         return;
     }
 

@@ -94,6 +94,8 @@ import { getNanoGptServiceTiers, isNanoGptPayg, updateServiceTierOptions } from 
 import { customEndpointParametersOptions } from './sillybunny-editor/adapters/window-content-dialogs.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
+// SillyBunny: Connect with an empty key marks the key field and says what is missing.
+import { flagMissingKey } from './sillybunny-connection-notices.js';
 import {
     buildChatCompletionPresetForSave,
     buildChatCompletionSamplingProfileKey,
@@ -9545,7 +9547,14 @@ async function onConnectButtonClick(e) {
         }
 
         if (!secret_state[config.key] && (!config.proxy || !oai_settings.reverse_proxy) && !config.keyless) {
-            console.log(`No secret key saved for ${oai_settings.chat_completion_source}`);
+            // SillyBunny: an empty key used to do nothing at all. Only a real click gets an answer, because auto-connect
+            // and profile changes click this button through jQuery's trigger(), which has no originalEvent. A keyboard
+            // click made with element.click() has one but is not trusted, so isTrusted would silence it.
+            if (e.originalEvent) {
+                flagMissingKey(document.querySelector(config.selector));
+            } else {
+                console.log(`No secret key saved for ${oai_settings.chat_completion_source}`);
+            }
             return;
         }
     }
