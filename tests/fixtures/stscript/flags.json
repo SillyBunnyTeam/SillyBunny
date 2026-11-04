@@ -1,0 +1,505 @@
+[
+    {
+        "name": "explicit strict flag",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "explicit loose flag",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": false },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a \\| /stp-plain b"] }] } }
+    },
+    {
+        "name": "no flags falls back to loose",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a \\| /stp-plain b"] }] } }
+    },
+    {
+        "name": "configured strict flag applies without explicit flags",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "configuredFlags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "explicit false overrides the configured flag",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": false },
+        "configuredFlags": { "STRICT_ESCAPING": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a \\| /stp-plain b"] }] } }
+    },
+    {
+        "name": "explicit true overrides the configured flag",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": true },
+        "configuredFlags": { "STRICT_ESCAPING": false },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "flags missing from the explicit map fall back to the configured flags",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "flags": { "REPLACE_GETVAR": true },
+        "configuredFlags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["a \\"],
+                        "flags": ["STRICT_ESCAPING", "REPLACE_GETVAR"]
+                    },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING", "REPLACE_GETVAR"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "in-script flag turns strict escaping on",
+        "script": "/parser-flag STRICT_ESCAPING | /stp-plain a \\\\| /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "in-script flag leaves earlier commands alone",
+        "script": "/stp-plain a \\\\| b | /parser-flag STRICT_ESCAPING | /stp-plain c \\\\| /stp-plain d",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\| b"] },
+                    { "name": "stp-plain", "unnamed": ["c \\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["d"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "in-script flag with on",
+        "script": "/parser-flag STRICT_ESCAPING on | /stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"], "flags": ["STRICT_ESCAPING"] }] } }
+    },
+    {
+        "name": "in-script flag with true",
+        "script": "/parser-flag STRICT_ESCAPING true | /stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"], "flags": ["STRICT_ESCAPING"] }] } }
+    },
+    {
+        "name": "in-script flag with 1",
+        "script": "/parser-flag STRICT_ESCAPING 1 | /stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"], "flags": ["STRICT_ESCAPING"] }] } }
+    },
+    {
+        "name": "in-script flag with off",
+        "script": "/parser-flag STRICT_ESCAPING off | /stp-plain a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag with false",
+        "script": "/parser-flag STRICT_ESCAPING false | /stp-plain a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag with 0",
+        "script": "/parser-flag STRICT_ESCAPING 0 | /stp-plain a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag value is case insensitive",
+        "script": "/parser-flag STRICT_ESCAPING OFF | /stp-plain a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag with an unrecognised value turns the flag off",
+        "script": "/parser-flag STRICT_ESCAPING maybe | /stp-plain a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag with an unknown name changes nothing",
+        "script": "/parser-flag NOT_A_FLAG | /stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag names are case sensitive",
+        "script": "/parser-flag strict_escaping | /stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "in-script flag applies inside closures",
+        "script": "/parser-flag STRICT_ESCAPING | /stp-plain {: /stp-plain a \\\\| /stp-plain b :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a \\\\| /stp-plain b ",
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": ["a \\"],
+                                            "flags": ["STRICT_ESCAPING"]
+                                        },
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": ["b"],
+                                            "flags": ["STRICT_ESCAPING"]
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "flags": ["STRICT_ESCAPING"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "in-script flags combine",
+        "script": "/parser-flag STRICT_ESCAPING | /parser-flag REPLACE_GETVAR | /stp-plain a",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"], "flags": ["STRICT_ESCAPING", "REPLACE_GETVAR"] }]
+            }
+        }
+    },
+    {
+        "name": "replace getvar expands a getvar macro",
+        "script": "/stp-plain {{getvar::x}}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["x"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar expands a getglobalvar macro",
+        "script": "/stp-plain {{getglobalvar::g}} tail",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getglobalvar", "unnamed": ["g"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}} tail"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar ignores case and trims names",
+        "script": "/stp-plain {{GETVAR:: spaced }}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["spaced"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar expands each macro separately",
+        "script": "/stp-plain {{getvar::a}} and {{getvar::b}}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["a"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_3", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["b"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_4", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_3}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}} and {{var::_PARSER_VAR_4}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar in a quoted value",
+        "script": "/stp-plain \"{{getvar::q}}\" tail",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["q"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}}", " tail"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar in a named value",
+        "script": "/stp-plain key={{getvar::n}} rest",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["n"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "{{var::_PARSER_VAR_2}}" }],
+                        "unnamed": ["rest"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar in a list value",
+        "script": "/stp-plain key=[{{getvar::l}}] rest",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["l"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "[{{var::_PARSER_VAR_2}}]" }],
+                        "unnamed": ["rest"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar in a split value",
+        "script": "/stp-split {{getvar::a}} {{getglobalvar::b}}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["a"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_3", "{{pipe}}"] },
+                    { "name": "getglobalvar", "unnamed": ["b"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_4", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_3}}"] },
+                    {
+                        "name": "stp-split",
+                        "unnamed": ["{{var::_PARSER_VAR_2}}", "{{var::_PARSER_VAR_4}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar inside a closure",
+        "script": "/stp-plain {: /stp-plain {{getvar::c}} :}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain {{getvar::c}} ",
+                                    "executors": [
+                                        { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                                        { "name": "getvar", "unnamed": ["c"] },
+                                        { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                                        {
+                                            "name": "return",
+                                            "command": "pass",
+                                            "unnamed": ["{{var::_PARSER_PIPE_1}}"]
+                                        },
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": ["{{var::_PARSER_VAR_2}}"],
+                                            "flags": ["REPLACE_GETVAR"]
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar leaves other macros alone",
+        "script": "/stp-plain {{user}} {{var::x}} {{getvar_not::x}}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{user}} {{var::x}} {{getvar_not::x}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar through the configured flag",
+        "script": "/stp-plain {{getvar::x}}",
+        "configuredFlags": { "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["x"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar through the in-script flag",
+        "script": "/parser-flag REPLACE_GETVAR | /stp-plain {{getvar::x}}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["x"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}}"],
+                        "flags": ["REPLACE_GETVAR"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "replace getvar turned off in the script",
+        "script": "/parser-flag REPLACE_GETVAR off | /stp-plain {{getvar::x}}",
+        "flags": { "REPLACE_GETVAR": true },
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["{{getvar::x}}"] }] } }
+    },
+    {
+        "name": "getvar macros stay untouched without the flag",
+        "script": "/stp-plain {{getvar::x}}",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["{{getvar::x}}"] }] } }
+    },
+    {
+        "name": "the new macro engine skips the replacement",
+        "script": "/stp-plain {{getvar::x}}",
+        "flags": { "REPLACE_GETVAR": true },
+        "experimentalMacroEngine": true,
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["{{getvar::x}}"], "flags": ["REPLACE_GETVAR"] }]
+            }
+        }
+    },
+    {
+        "name": "both flags together",
+        "script": "/stp-plain {{getvar::x}} \\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": true, "REPLACE_GETVAR": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "let", "unnamed": ["_PARSER_PIPE_1", "{{pipe}}"] },
+                    { "name": "getvar", "unnamed": ["x"] },
+                    { "name": "let", "unnamed": ["_PARSER_VAR_2", "{{pipe}}"] },
+                    { "name": "return", "command": "pass", "unnamed": ["{{var::_PARSER_PIPE_1}}"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": ["{{var::_PARSER_VAR_2}} \\"],
+                        "flags": ["STRICT_ESCAPING", "REPLACE_GETVAR"]
+                    },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING", "REPLACE_GETVAR"] }
+                ]
+            }
+        }
+    }
+]

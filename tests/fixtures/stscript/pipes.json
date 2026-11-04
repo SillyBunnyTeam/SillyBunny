@@ -1,0 +1,273 @@
+[
+    {
+        "name": "single pipe injects the pipe",
+        "script": "/stp-plain a | /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "double pipe turns off pipe injection",
+        "script": "/stp-plain a || /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "injectPipe": false }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipes without surrounding spaces",
+        "script": "/stp-plain a|/stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "double pipe without surrounding spaces",
+        "script": "/stp-plain a||/stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "injectPipe": false }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipes across lines",
+        "script": "/stp-plain a |\n/stp-plain b |\n/stp-plain c",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["b"] },
+                    { "name": "stp-plain", "unnamed": ["c"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipes across Windows line endings",
+        "script": "/stp-plain a |\r\n/stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "trailing pipe",
+        "script": "/stp-plain a |",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "trailing double pipe",
+        "script": "/stp-plain a ||",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "leading pipe",
+        "script": "| /stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "repeated pipes between commands",
+        "script": "/stp-plain a | | /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "pipe injection resets after each command",
+        "script": "/stp-plain a || /stp-plain b | /stp-plain c",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "injectPipe": false },
+                    { "name": "stp-plain", "unnamed": ["c"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "three commands with mixed pipes",
+        "script": "/stp-plain a | /stp-plain b || /stp-plain c",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["b"] },
+                    { "name": "stp-plain", "unnamed": ["c"], "injectPipe": false }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe inside a macro is not a separator",
+        "script": "/stp-plain {{reverse::a|b}} | /stp-plain c",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["{{reverse::a|b}}"] },
+                    { "name": "stp-plain", "unnamed": ["c"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe inside an unclosed macro is not a separator",
+        "script": "/stp-plain {{user | /stp-plain b",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["{{user | /stp-plain b"] }] } }
+    },
+    {
+        "name": "pipe after a closed macro is a separator",
+        "script": "/stp-plain {{user}} | /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["{{user}}"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "pipe inside nested macros is not a separator",
+        "script": "/stp-plain {{outer::{{inner::a|b}}}} | /stp-plain c",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["{{outer::{{inner::a|b}}}}"] },
+                    { "name": "stp-plain", "unnamed": ["c"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe macro is kept as text",
+        "script": "/stp-plain a | /stp-plain {{pipe}}",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["{{pipe}}"] }]
+            }
+        }
+    },
+    {
+        "name": "pipe macro with surrounding text",
+        "script": "/stp-plain a | /stp-plain before {{pipe}} after",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["before {{pipe}} after"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe macro in a quoted value",
+        "script": "/stp-plain a | /stp-plain \"{{pipe}}\" tail",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["{{pipe}}", " tail"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe macro in a named argument",
+        "script": "/stp-plain a | /stp-plain key={{pipe}} rest",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "{{pipe}}" }],
+                        "unnamed": ["rest"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe macro with no injection",
+        "script": "/stp-plain a || /stp-plain {{pipe}}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    { "name": "stp-plain", "unnamed": ["{{pipe}}"], "injectPipe": false }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe macro inside a closure",
+        "script": "/stp-plain a | /stp-plain {: /stp-plain {{pipe}} :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain {{pipe}} ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["{{pipe}}"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe ends a named argument value",
+        "script": "/stp-plain key=value|/stp-plain next",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "named": [{ "name": "key", "value": "value" }] },
+                    { "name": "stp-plain", "unnamed": ["next"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipe ends a quoted named value only after the quote",
+        "script": "/stp-plain key=\"a b\" | /stp-plain next",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "named": [{ "name": "key", "value": "a b" }] },
+                    { "name": "stp-plain", "unnamed": ["next"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipes in split arguments",
+        "script": "/stp-split a b | /stp-split c d",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-split", "unnamed": ["a", "b"] },
+                    { "name": "stp-split", "unnamed": ["c", "d"] }
+                ]
+            }
+        }
+    }
+]
