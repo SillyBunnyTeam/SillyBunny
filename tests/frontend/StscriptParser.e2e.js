@@ -32,28 +32,8 @@ const HINT_CASES = [
         script: Array.from({ length: 12 }, (_, line) => `/stp-plain line${line} |`).join('\n') + '\n/nosuch',
         lines: ['/stp-plain line10 |', '/stp-plain line11 |', '/nosuch'],
     },
-];
-
-/**
- * Parser defects that the fuzz loop and the prefix sweep tolerate. Each entry matches the exact
- * failure signature, so any other error still fails.
- */
-const KNOWN_PARSER_DEFECTS = [
-    // When a nested block comment closes at the end of the text, the error for the open outer comment has an index past the end.
-    (script, { type, message, index }) => type === 'SlashCommandParserError'
-        && message.startsWith('Unclosed block comment')
-        && index === script.length + 1,
-    // /let with an empty key= value and an unnamed argument throws a TypeError.
-    (script, { type, message }) => type === 'TypeError'
-        && /reading 'toString'/.test(message)
-        && /\/let\b/.test(script)
-        && /\bkey=/.test(script),
-    // A split argument that starts with whitespace, or with an escaped pipe and whitespace, raises a parser error without text and index.
-    (script, { type, message, index }) => type === 'SlashCommandParserError'
-        && message.startsWith('Unexpected end of unnamed argument')
-        && index === null,
-    // /parser-flag with a space and no flag name throws a TypeError.
-    (script, { type, message }) => type === 'TypeError' && /reading 'value'/.test(message) && /\/parser-flag\s/.test(script),
+    { script: '/nosuch|\n/stp-plain x', lines: ['/nosuch|'] },
+    { script: '/stp-plain a |\n/nosuch x\n/stp-plain b', lines: ['/stp-plain a |', '/nosuch x'] },
 ];
 
 function loadCases() {
@@ -173,7 +153,7 @@ function withTimeLimit(promise, milliseconds, describeHang) {
 
 /** Parses the inputs in small batches so a hang can be traced to the inputs that were in flight. */
 async function parseInBatches(page, inputs, title) {
-    const counts = { tree: 0, error: 0, tolerated: 0 };
+    const counts = { tree: 0, error: 0 };
     const failures = [];
     for (let start = 0; start < inputs.length; start += BATCH_SIZE) {
         const batch = inputs.slice(start, start + BATCH_SIZE);
@@ -186,8 +166,6 @@ async function parseInBatches(page, inputs, title) {
             const input = batch[offset];
             if (outcome === 'tree' || outcome === 'error') {
                 counts[outcome]++;
-            } else if (KNOWN_PARSER_DEFECTS.some(matches => matches(input.script, outcome))) {
-                counts.tolerated++;
             } else {
                 failures.push({ input, outcome });
             }
@@ -273,10 +251,9 @@ test.describe('STscript parser', () => {
         const { counts, failures } = await parseInBatches(page, inputs, 'fuzz');
 
         expect(failures, describeFailures('fuzz', failures)).toEqual([]);
-        expect(counts.tree + counts.error + counts.tolerated).toBe(FUZZ_ITERATIONS);
+        expect(counts.tree + counts.error).toBe(FUZZ_ITERATIONS);
         expect(counts.tree).toBeGreaterThan(FUZZ_ITERATIONS * 0.1);
         expect(counts.error).toBeGreaterThan(FUZZ_ITERATIONS * 0.1);
-        expect(counts.tolerated).toBeLessThan(FUZZ_ITERATIONS * 0.05);
     });
 
     test('every prefix of every corpus script either parses or raises a well formed parser error', async ({ page }) => {
@@ -285,9 +262,8 @@ test.describe('STscript parser', () => {
         const { counts, failures } = await parseInBatches(page, inputs, 'prefix sweep');
 
         expect(failures, describeFailures('prefix sweep', failures)).toEqual([]);
-        expect(counts.tree + counts.error + counts.tolerated).toBe(inputs.length);
+        expect(counts.tree + counts.error).toBe(inputs.length);
         expect(counts.tree).toBeGreaterThan(inputs.length * 0.1);
         expect(counts.error).toBeGreaterThan(inputs.length * 0.1);
-        expect(counts.tolerated).toBeLessThan(inputs.length * 0.05);
     });
 });

@@ -109,5 +109,31 @@
         "name": "block comment before a pipe",
         "script": "/* note *| | /stp-plain x",
         "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "nested block comment that closes right before the outer close",
+        "script": "/* a /* b *|*| /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "nested block comment in a closure that closes right before the outer close",
+        "script": "/stp-plain {: /* a /* b *|*| /stp-plain c :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /* a /* b *|*| /stp-plain c ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["c"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
     }
 ]

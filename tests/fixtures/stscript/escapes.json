@@ -329,5 +329,49 @@
         "expected": {
             "tree": { "executors": [{ "name": "stp-split", "unnamed": ["a|b", "c"], "flags": ["STRICT_ESCAPING"] }] }
         }
+    },
+    {
+        "name": "loose: an escaped pipe starts the first split value",
+        "script": "/stp-split \\|1 2",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["|1", "2"] }] } }
+    },
+    {
+        "name": "loose: an escaped pipe alone is the first split value",
+        "script": "/stp-split \\| 2",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["|", "2"] }] } }
+    },
+    {
+        "name": "loose: an escaped closing closure marker starts the first split value",
+        "script": "/stp-plain {: /stp-split \\:} x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-split \\:} x ",
+                                    "executors": [{ "name": "stp-split", "unnamed": [":}", "x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "loose: an escaped pipe starts the variable name of let",
+        "script": "/let \\|x 1",
+        "expected": { "tree": { "variables": ["|x"], "executors": [{ "name": "let", "unnamed": ["|x", "1"] }] } }
+    },
+    {
+        "name": "strict: an escaped pipe starts the first split value",
+        "script": "/stp-split \\| a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-split", "unnamed": ["|", "a"], "flags": ["STRICT_ESCAPING"] }] }
+        }
     }
 ]

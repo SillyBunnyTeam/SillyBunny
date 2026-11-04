@@ -306,5 +306,69 @@
         "expected": {
             "error": { "message": "Unexpected end of list value at position 35", "index": 35, "line": 0, "column": 35 }
         }
+    },
+    {
+        "name": "outer block comment still open when a nested one closes at the end of the text",
+        "script": "/*/**|",
+        "expected": {
+            "error": { "message": "Unclosed block comment at position 6", "index": 6, "line": 0, "column": 6 }
+        }
+    },
+    {
+        "name": "outer block comment still open after a nested one closes",
+        "script": "/* a /* b *|",
+        "expected": {
+            "error": { "message": "Unclosed block comment at position 12", "index": 12, "line": 0, "column": 12 }
+        }
+    },
+    {
+        "name": "parser flag without a flag name",
+        "script": "/parser-flag ",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of unnamed argument at index 13.",
+                "index": 13,
+                "line": 0,
+                "column": 13
+            }
+        }
+    },
+    {
+        "name": "parser flag without a flag name before a pipe",
+        "script": "/parser-flag | /stp-plain ok",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of unnamed argument at index 13.",
+                "index": 13,
+                "line": 0,
+                "column": 13
+            }
+        }
+    },
+    {
+        "name": "parser flag with a second space before the flag name",
+        "script": "/parser-flag  STRICT_ESCAPING",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of unnamed argument at index 13.",
+                "index": 13,
+                "line": 0,
+                "column": 13
+            }
+        }
+    },
+    {
+        "name": "unknown command with arguments",
+        "script": "/nosuch some args",
+        "expected": {
+            "error": { "message": "Unknown command at position 1: \"/nosuch\"", "index": 1, "line": 0, "column": 1 }
+        }
+    },
+    {
+        "name": "unknown command followed by several spaces",
+        "script": "/nosuch    spaced",
+        "expected": {
+            "error": { "message": "Unknown command at position 1: \"/nosuch\"", "index": 1, "line": 0, "column": 1 }
+        }
     }
 ]

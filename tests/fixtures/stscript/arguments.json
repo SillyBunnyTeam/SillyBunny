@@ -307,6 +307,73 @@
         }
     },
     {
+        "name": "split count with a quoted rest at the end of the text",
+        "script": "/stp-split1 name \"the rest\"",
+        "expected": { "tree": { "executors": [{ "name": "stp-split1", "unnamed": ["name", "the rest"] }] } }
+    },
+    {
+        "name": "split count with a quoted rest right before a pipe",
+        "script": "/stp-split1 name \"the rest\"| /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-split1", "unnamed": ["name", "the rest"] },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "split count with a quoted rest right before a closure end",
+        "script": "/stp-plain {: /stp-split1 name \"the rest\":} | /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-split1 name \"the rest\"",
+                                    "executors": [{ "name": "stp-split1", "unnamed": ["name", "the rest"] }]
+                                }
+                            }
+                        ]
+                    },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "split count keeps a closure in the rest as its source text",
+        "script": "/stp-split1 name prefix {: /stp-plain c :}",
+        "expected": { "tree": { "executors": [{ "name": "stp-split1", "unnamed": ["name", "prefix {: /stp-plain c :}"] }] } }
+    },
+    {
+        "name": "split count of two restores quotes in the rest after a closure",
+        "script": "/stp-split2 a {: /stp-plain y :} \"b c\" d",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split2",
+                        "unnamed": [
+                            "a",
+                            { "closure": { "rawText": " /stp-plain y ", "executors": [{ "name": "stp-plain", "unnamed": ["y"] }] } },
+                            "\"b c\" d"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "let with an empty key value parses like other empty named values",
+        "script": "/let key= x",
+        "expected": { "tree": { "executors": [{ "name": "let", "named": [{ "name": "key", "value": null }], "unnamed": ["x"] }] } }
+    },
+    {
         "name": "alias resolves to its command",
         "script": "/stp-aka value",
         "expected": { "tree": { "executors": [{ "name": "stp-aka", "command": "stp-aliased", "unnamed": ["value"] }] } }

@@ -550,5 +550,66 @@
                 "scopes": [[]]
             }
         }
+    },
+    {
+        "name": "macro inside a quoted unnamed value",
+        "script": "/stp-plain \"{{user}}\" tail",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            { "value": "{{user}}", "start": 11, "end": 21 },
+                            { "value": " tail", "start": 21, "end": 26 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 26,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 26
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 26 }],
+                "closures": [{ "start": 1, "end": 25 }],
+                "macros": [{ "name": "user", "start": 12, "end": 20 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro inside a quoted named value",
+        "script": "/stp-plain key=\"{{user}}\"",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "{{user}}", "start": 11, "end": 25 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 25,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 25,
+                            "startUnnamedArgs": 25,
+                            "endUnnamedArgs": 25
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 25 }],
+                "closures": [{ "start": 1, "end": 24 }],
+                "macros": [{ "name": "user", "start": 16, "end": 24 }],
+                "scopes": [[]]
+            }
+        }
     }
 ]
