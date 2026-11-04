@@ -299,3 +299,28 @@ describe('vector index regeneration errors', () => {
         expect(result.status).toBe(500);
     });
 });
+
+describe('vector source and collection IDs that sanitize to an empty name', () => {
+    test('POST /api/vector/list refuses a collection ID that sanitizes to an empty name', async () => {
+        const refused = await post('/api/vector/list', { collectionId: '..', source: 'webllm', model: '' });
+        const kept = await post('/api/vector/list', { collectionId: 'kept', source: 'webllm', model: '' });
+
+        expect(refused.status).toBe(400);
+        expect(kept.status).toBe(200);
+        expect(fs.readdirSync(path.join(directories.vectors, 'webllm'))).toEqual(['kept']);
+    });
+
+    test('POST /api/vector/list refuses a source that sanitizes to an empty name', async () => {
+        const result = await post('/api/vector/list', { collectionId: 'kept', source: '..', model: '' });
+
+        expect(result.status).toBe(400);
+        expect(fs.readdirSync(directories.vectors)).toEqual([]);
+    });
+
+    test('POST /api/vector/query-multi refuses a collection ID that sanitizes to an empty name', async () => {
+        const result = await post('/api/vector/query-multi', { ...VECTOR_QUERY, collectionIds: ['kept', 'CON'] });
+
+        expect(result.status).toBe(400);
+        expect(fs.readdirSync(path.join(directories.vectors, 'webllm'))).toEqual(['kept']);
+    });
+});
