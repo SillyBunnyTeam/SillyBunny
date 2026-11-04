@@ -13,10 +13,10 @@ export function payload(request) {
     return body ? JSON.parse((request.headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString()) : {};
 }
 
-export async function bootPresetLorebookDialogs(page, viewport) {
+export async function bootPresetLorebookDialogs(page, viewport, { reducedMotion = 'reduce' } = {}) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion });
     const state = { settings: [], presets: [], deleted: [], worlds: [], characterWrites: [], chatWrites: [] };
     const entry = (comment, index) => ({ id: index * 4, comment, content: comment, keys: [comment], insertion_order: 100, enabled: true });
     const characters = Array.from({ length: 18 }, (_, index) => {

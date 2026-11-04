@@ -66,6 +66,7 @@ export const POPUP_RESULT = {
  * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: explicit dialog presentation tier.
  * @property {string?} [title=null] - SillyBunny: header title; null promotes the content's leading heading
  * @property {'content'|'fill'} [size='fill'] - SillyBunny: whether a Window fills its frame.
+ * @property {(popup: Popup) => void} [onOpening=null] - SillyBunny: handler called in `show()` before the first paint, for changes to the popup's layout
  */
 
 /**
@@ -175,6 +176,7 @@ export class Popup {
     /** @type {(popup: Popup) => Promise<boolean?>|boolean?} */ onClosing;
     /** @type {(popup: Popup) => Promise<void?>|void?} */ onClose;
     /** @type {(popup: Popup) => Promise<void?>|void?} */ onOpen;
+    /** SillyBunny: `show()` calls this before the first paint. @type {(popup: Popup) => void} */ onOpening;
 
     /** @type {POPUP_RESULT|number} */ result;
     /** @type {any} */ value;
@@ -228,6 +230,8 @@ export class Popup {
         size = 'fill',
         // SillyBunny: onOpen waits for the opening animation, so adapters that rebuild content use this.
         onBeforePaint = null,
+        // SillyBunny: `onOpen` runs after the opening animation, so a layout change there shows as a jump.
+        onOpening = null,
     } = {}) {
         Popup.util.popups.push(this);
 
@@ -242,6 +246,8 @@ export class Popup {
         this.onClosing = onClosing;
         this.onClose = onClose;
         this.onOpen = onOpen;
+        // SillyBunny: `show()` calls this before the first paint.
+        this.onOpening = onOpening;
 
         /**@type {HTMLTemplateElement}*/
         const template = document.querySelector('#popup_template');
@@ -708,6 +714,11 @@ export class Popup {
         this.dlg.showModal();
         // SillyBunny: tier and layout are applied before the first paint; promotion needs layout.
         this.sbFrame?.opened();
+        // SillyBunny: `onOpening` can change the size of the content, so the frame measures it again.
+        if (this.onOpening) {
+            this.onOpening(this);
+            this.sbFrame?.contentChanged();
+        }
 
         // We need to fix the toastr to be present inside this dialog
         fixToastrForDialogs();

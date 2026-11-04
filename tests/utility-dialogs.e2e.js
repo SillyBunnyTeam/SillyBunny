@@ -62,6 +62,9 @@ for (const viewport of UTILITY_VIEWPORTS) {
         const state = await bootUtilityDialogs(page, viewport);
         let popup = await openUtilityDialog(page, 'secret');
         await expectUtilityFrame(popup, viewport, expect, 'alert');
+        // The adapter clears the body text of the Alert and keeps the heading, because `aria-labelledby` points at it.
+        await expect(popup.locator('.sb-dialog__heading')).toHaveText('Add Secret');
+        await expect(popup).toHaveAccessibleName('Add Secret');
         // This upstream call uses Popup's textarea, not a password input; the adapter must not replace it.
         await expect(popup.locator('textarea.popup-input')).toHaveCount(1);
         const secret = 'fixture-secret-only';

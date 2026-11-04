@@ -409,7 +409,7 @@ export class DataMaidDialog {
             large: true,
             tier: 'window',
             title,
-            onOpen: popup => {
+            onOpening: popup => {
                 const headerEnd = popup.dlg.querySelector('.sb-dialog__header-end');
                 const scan = this.container.querySelector('.dataMaidStartButton');
                 if (headerEnd && scan) headerEnd.prepend(scan);

@@ -18,7 +18,6 @@ export function auditPromptingLayout(root) {
         const content = new Set(body.querySelectorAll([
             '.ds-row > .ds-row-text',
             '.sb-settings-flat-header b',
-            '.sb-preset-toolbar-row > strong',
             '.toggle-description:not(.ds-row-subtitle)',
             '.sb-prompting-row-with-help > :is(.notes, p, small)',
             '.range-block:not(.ds-row) > .justifyLeft',
@@ -27,21 +26,10 @@ export function auditPromptingLayout(root) {
             '.sb-setting-inline-copy > label',
             '.checkbox_label > input[type="radio"]',
         ].join(', ')));
-        for (const toolbar of body.querySelectorAll('.sb-preset-toolbar-row, .sb-non-chat-preset-row')) {
-            const leading = [];
-            for (const element of toolbar.querySelectorAll(':scope > strong, :scope > select, .sb-action-btn-group')) {
-                if (!visible(element)) continue;
-                const rect = element.getBoundingClientRect();
-                if (!leading.some(box => rect.top < box.bottom - 1 && rect.bottom > box.top + 1)) {
-                    content.add(element);
-                    leading.push(rect);
-                }
-            }
-        }
         for (const element of content) {
             if (!visible(element) || element.closest('.ds-row-suffix, .ds-row-text, #completion_prompt_manager') && !element.matches('.ds-row-text')) continue;
             const elementStyle = getComputedStyle(element);
-            const contentPadding = element.matches('input, select, textarea, .sb-action-btn-group') ? 0 : parseFloat(elementStyle.paddingLeft) + parseFloat(elementStyle.borderLeftWidth);
+            const contentPadding = element.matches('input, select, textarea') ? 0 : parseFloat(elementStyle.paddingLeft) + parseFloat(elementStyle.borderLeftWidth);
             const inset = element.getBoundingClientRect().left + contentPadding - left;
             add(element, 'content-inset', { inset }, Math.abs(inset - 16) <= 1);
         }
@@ -52,7 +40,7 @@ export function auditPromptingLayout(root) {
         }
         const first = [...body.children].find(visible);
         if (first) add(first, 'first-row-separator', { borderTop: parseFloat(getComputedStyle(first).borderTopWidth) }, parseFloat(getComputedStyle(first).borderTopWidth) === 0);
-        for (const row of body.querySelectorAll('.ds-row, .sb-prompting-row-with-help, .sb-settings-flat-header, .sb-preset-toolbar-row, .sb-non-chat-preset-row, .sb-settings-flat-section, .sb-settings-row-wrapper, label:has(> input[type="radio"])')) {
+        for (const row of body.querySelectorAll('.ds-row, .sb-prompting-row-with-help, .sb-settings-flat-header, .sb-settings-flat-section, .sb-settings-row-wrapper, label:has(> input[type="radio"])')) {
             if (!visible(row) || row.closest('#completion_prompt_manager')) continue;
             const rowStyle = getComputedStyle(row);
             const borderTop = parseFloat(rowStyle.borderTopWidth);
@@ -73,10 +61,6 @@ export function auditPromptingLayout(root) {
                 add(helper, 'helper-separator', { previousBorderBottom, helperBorderTop }, previousBorderBottom === 0 && helperBorderTop === 0);
                 previous = helper;
             }
-        }
-        for (const element of body.querySelectorAll('.sb-action-btn-label')) {
-            if (!visible(element)) continue;
-            add(element, 'label-width', { scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }, element.scrollWidth <= element.clientWidth);
         }
     }
     return records;

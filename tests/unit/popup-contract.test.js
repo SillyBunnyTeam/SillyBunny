@@ -440,6 +440,24 @@ describe('Popup closing lifecycle', () => {
             globalThis.animationGate = null;
         }
     });
+
+    test('onOpening runs inside show, after the frame is built and before onOpen', () => {
+        const events = [];
+        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', {
+            onOpening: value => events.push(['opening', value === popup, isShown(popup), popup.dlg.hasAttribute('opening'), popup.dlg.classList.contains('sb-dialog')]),
+            onOpen: () => events.push(['open', popup.dlg.hasAttribute('opening')]),
+        });
+        void popup.show();
+        expect(events).toEqual([['opening', true, true, true, true], ['open', false]]);
+    });
+
+    test('onOpening also runs for a Popup without the frame', () => {
+        const onOpening = jest.fn();
+        const popup = new Popup('x', POPUP_TYPE.TEXT, '', { transparent: true, onOpening });
+        void popup.show();
+        expect(popup.dlg.classList.contains('sb-dialog')).toBe(false);
+        expect(onOpening).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('Popup focus', () => {

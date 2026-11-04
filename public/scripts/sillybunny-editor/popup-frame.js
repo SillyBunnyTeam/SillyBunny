@@ -4,7 +4,7 @@ import { closePicker } from './picker.js';
 import { createSwitchRow, releaseRowIds } from './rows.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, releaseOverlayLayers } from './overlay-host.js';
-import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock, createIconButton } from './dialog.js';
+import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock, layoutWithoutTransitions, createIconButton } from './dialog.js';
 import { closeChain, coverSurface, findCoveredSurface, registerChainLevel, restoreChainFocus, unregisterChainLevel } from './page-chain.js';
 
 // POPUP_TYPE values (popup.js), duplicated to avoid an import cycle.
@@ -136,6 +136,10 @@ function adoptAlertOption(popup, cleanups) {
 }
 
 function layoutAlertResponses(controls, sheet) {
+    layoutWithoutTransitions(controls, () => measureAlertResponses(controls, sheet));
+}
+
+function measureAlertResponses(controls, sheet) {
     controls.classList.remove('is-stacked');
     if (sheet) {
         controls.classList.add('is-stacked');
@@ -144,7 +148,8 @@ function layoutAlertResponses(controls, sheet) {
     const buttons = [...controls.children].filter(isShown);
     if (buttons.length < 2) return;
     controls.classList.add('is-measuring');
-    const widest = Math.max(0, ...buttons.map(button => button.getBoundingClientRect().width));
+    // `offsetWidth` is the layout width. `getBoundingClientRect()` includes the opening scale of the dialog.
+    const widest = Math.max(0, ...buttons.map(button => button.offsetWidth));
     const style = getComputedStyle(controls);
     const gap = parseFloat(style.columnGap) || 0;
     const available = controls.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
@@ -163,7 +168,7 @@ function replaceDefaultNegativeLabel(popup, cancelButtonProvided) {
  * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean, onBeforePaint?: ((popup: object) => void)|null }} [options]
  * `onBeforePaint` runs at the end of `opened()`, in the task that shows the popup, so nothing it changes is ever painted
  * in its earlier state. Popup's `onOpen` waits for the opening animation instead.
- * @returns {{ opened: () => void, closing: () => void, dispose: () => void }}
+ * @returns {{ opened: () => void, contentChanged: () => void, closing: () => void, dispose: () => void }}
  */
 export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false, onBeforePaint = null } = {}) {
     const { dlg } = popup;
@@ -172,6 +177,8 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     let level = null;
     let framed = false;
     let heightLock = null;
+    let syncLayout = null;
+    let syncResponseBar = null;
     let disposed = false;
     /** The completion that Popup is running now, so that a chain Close does not start a second one. */
     let completion = null;
@@ -287,6 +294,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
             // Reserve its measured height so it never covers the body's scrolling content.
             const syncBar = () => dlg.style.setProperty('--sb-popup-response-height', `${bar.offsetHeight}px`);
             syncBar();
+            syncResponseBar = syncBar;
             const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncBar);
             observer?.observe(bar);
             cleanups.push(() => observer?.disconnect());
@@ -404,6 +412,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         };
         if (resolved !== 'alert') joinChain();
         sync();
+        syncLayout = sync;
         let backdropPress = null;
         const isBackdropEvent = event => {
             if (event.target !== dlg || dlg.dataset.presentation !== 'floating' || dlg.classList.contains('sb-dialog--page') || !allowEscapeClose) return false;
@@ -480,6 +489,12 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         runBeforePaint();
     }
 
+    function contentChanged() {
+        heightLock?.remeasure();
+        syncResponseBar?.();
+        syncLayout?.();
+    }
+
     function closing() {
         if (!framed) return;
         if (dlg.querySelector('[data-sb-overlay-layer]')) {
@@ -495,5 +510,5 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         resolveGone();
     }
 
-    return { opened, closing, dispose };
+    return { opened, contentChanged, closing, dispose };
 }

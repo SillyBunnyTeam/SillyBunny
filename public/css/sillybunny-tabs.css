@@ -5619,28 +5619,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     .sb-shell-tab-copy small {
         display: none;
     }
-
-    #openai_api-presets :is(
-        #import_oai_preset,
-        #export_oai_preset,
-        #delete_oai_preset,
-        #update_oai_preset,
-        #new_oai_preset,
-        [data-preset-manager-rename='openai'],
-        [data-preset-manager-delete-all='openai']
-    ):not(.sb-action-btn) {
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-        max-width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        max-height: var(--sb-mobile-touch-target, 44px);
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-    }
 }
 
 @supports (-webkit-touch-callout: none) {
@@ -7291,12 +7269,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-#sb-settings-page .sb-action-btn.sb-edit-prompts {
-    margin-block: 16px;
-    color: var(--sb-on-solid-accent);
-    background: var(--sb-accent);
-}
-
 #sb-settings-page .sb-editor-meta {
     display: flex;
     flex-wrap: wrap;
@@ -7363,11 +7335,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     #sb-settings-page .sb-action-btn.sb-backend-navigation-pill:hover {
         background: var(--sb-raised-hover-bg);
     }
-
-    #sb-settings-page .sb-action-btn.sb-edit-prompts:hover {
-        color: var(--sb-on-solid-accent);
-        background: color-mix(in srgb, var(--sb-accent) 90%, var(--SmartThemeBodyColor));
-    }
 }
 
 #sb-settings-page .sb-prompting-panel :is(.sb-prompting-group, .sb-prompting-group-body) {
@@ -7390,7 +7357,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     max-width: 100%;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-pref-group.sb-prompting-group-body > :not(.ds-row, .ds-row-expander, .sb-settings-flat-header, .sb-preset-toolbar-row, .sb-non-chat-preset-row) {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .ds-pref-group.sb-prompting-group-body > :not(.ds-row, .ds-row-expander, .sb-settings-flat-header, .sb-non-chat-preset-row) {
     padding-inline: 0;
     border-top: 0;
 }
@@ -7449,15 +7416,8 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding-inline: 16px;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.sb-preset-toolbar-row, .sb-non-chat-preset-row)) {
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.ds-row, .sb-non-chat-preset-row)) {
     padding-inline: 0;
-}
-
-.sb-action-btn-group {
-    display: inline-flex;
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
-    gap: 6px;
 }
 
 #sb-settings-page .sb-action-btn {
@@ -7486,12 +7446,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     -webkit-user-select: none;
 }
 
-#sb-settings-page .sb-action-btn > .sb-action-btn-label {
-    flex: 0 0 auto;
-    overflow: visible;
-    text-overflow: clip;
-}
-
 #sb-settings-page .sb-action-btn:hover {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
     border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
@@ -7507,43 +7461,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     box-shadow: none;
 }
 
-#sb-settings-page .sb-action-btn--danger {
-    color: var(--color-danger, #fb7185);
-    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 30%, transparent);
-}
-
-#sb-settings-page .sb-action-btn--danger:hover {
-    background: color-mix(in srgb, var(--color-danger, #fb7185) 12%, transparent);
-    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 55%, transparent);
-}
-
-#sb-settings-page #openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5 {
-    width: 100%;
-    height: auto;
-    min-width: 0;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 6px;
-}
-
-#sb-settings-page #openai_api-presets .sb-preset-toolbar-row > .flex-container.marginLeft5 > .sb-action-btn-group {
-    max-width: 100%;
-}
-
 @media screen and (max-width: 450px) {
     #sb-settings-page .sb-action-btn {
         flex: 1 1 auto;
         min-width: 90px;
         padding: 5px 8px;
         font-size: calc(var(--mainFontSize) * 0.76);
-    }
-
-    #sb-settings-page :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) .sb-action-btn-group {
-        display: flex;
-        flex: 1 1 100%;
-        flex-wrap: wrap;
-        width: 100%;
     }
 }
 
@@ -7579,16 +7502,92 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     row-gap: 24px !important;
 }
 
-#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .sb-edit-prompts {
-    margin-block: 0;
-}
-
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .ds-row {
     width: 100%;
     margin: 0;
     padding: 6px 16px;
     border-top: 0;
     border-radius: 0;
+}
+
+/* The shared activatable-row rules ship in the deferred Editor stylesheet, which this panel does not load. */
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row__chevron {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+        transition: none;
+    }
+}
+
+body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+    transition: none;
+}
+
+/* Edit Prompts follows a preset block, and the block's preset row already draws the line between them. */
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body > .ds-row[data-sb-edit-prompts] {
+    border-top: 0;
+}
+
+/* Bind Model to Templates follows the autosave switch and is hidden on Chat Completions, where the switch then ends the group. */
+#sb-settings-page .sb-prompting-panel .sb-prompting-group-body:has(> [name='bindModelPresetBlock'][hidden]) > [data-sb-preset-autosave] {
+    border-bottom: 0;
+}
+
+/* The linking copy blocks' `flex: 1 1 320px` basis was written for a row parent. In this column
+   group it would be a 320px height floor, and .marginTop10 sets its margin with !important. */
+#sb-settings-page .sb-prompting-panel #sb-preset-linking .sb-setting-inline-copy-center {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin-top: 0 !important;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel #sb-preset-linking :is(.sb-prompting-row-with-help > strong.toggle-description, #model_sampling_profiles_container > .toggle-description) {
+    font-size: var(--sb-type-meta);
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--sb-input-placeholder);
+}
+
+/* The profiles container already insets its content to the row text. */
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel #sb-preset-linking #model_sampling_profiles_container > .toggle-description {
+    padding-inline: 0;
+}
+
+/* With profiles off, the third switch row ends the group. */
+#sb-settings-page .sb-prompting-panel #sb-preset-linking label[for='model_sampling_profiles_enabled']:not(:has(input:checked)) {
+    border-bottom: 0;
+}
+
+#sb-settings-page .sb-prompting-panel #sb-preset-linking #model_sampling_profiles_container > .flex-container {
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 #sb-settings-page .sb-prompting-panel .sb-prompting-group-body .range-block:not(.ds-row) {
@@ -7651,47 +7650,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-prompting-panel #pro-settings-block > [id^='streaming_'] {
     width: 100%;
     margin: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    width: 100%;
-    gap: 12px;
-    padding: 10px 16px;
-    border-top: 0;
-}
-
-#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > select {
-    flex: 1 1 240px;
-    width: 100%;
-    min-width: 0;
-}
-
-#sb-settings-page .sb-prompting-panel :is(.sb-preset-toolbar-row, .sb-non-chat-preset-row) > .flex-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0;
-    width: auto;
-    height: auto;
-    justify-content: flex-start;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-preset-toolbar-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-}
-
-#sb-settings-page .sb-prompting-panel .sb-preset-toolbar-row > .flex-container {
-    grid-column: 1 / -1;
-}
-
-@media screen and (max-width: 620px) {
-    #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-preset-toolbar-row {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 /* The order pass also marks a wrapper it emptied with `hidden`, but `.flex-container` and
@@ -8105,17 +8063,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .checkbox_label,
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label + .flex-container {
     border-top: 1px solid var(--sb-shell-border);
-}
-
-/* A copy block lifted out of a flattened drawer becomes a direct child of the section, and the
-   section is a column. Its `flex: 1 1 320px` was authored for a row parent, where the basis reads
-   as a width -- the one copy block still inside a `.flex-container` measures 57px. In a column the
-   same basis becomes a height floor, so three blocks holding ~80px of text each were rendering at
-   320px and Preset API/Sampler Linking spent 1041px on five controls. In column flow the block
-   takes its content height under the same 10px/16px inset as the rows beside it. */
-.sb-settings-mounted-shell .sb-settings-flat-section > .sb-setting-inline-copy-center {
-    flex: 0 0 auto;
-    padding: 10px 16px;
 }
 
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label small,

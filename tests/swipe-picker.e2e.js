@@ -2,11 +2,13 @@ import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { expectOpensAtFinalSize, installOpeningSampler, MOTION } from './helpers/dialog-opening.js';
+import { MISC_VIEWPORTS } from './helpers/misc-dialogs.js';
 
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-async function createSwipeFixture(page, count = 52) {
-    const messageId = await page.evaluate(async ({ count }) => {
+async function createSwipeFixture(page, count = 52, swipeId = 1) {
+    const messageId = await page.evaluate(async ({ count, swipeId }) => {
         const { newAssistantChat, selectCharacterById } = await import('/script.js');
         const powerUser = await import('/scripts/power-user.js');
         const context = window.SillyTavern.getContext();
@@ -23,7 +25,7 @@ async function createSwipeFixture(page, count = 52) {
             mes: 'Swipe 1 preview text',
             extra: {},
             swipes: Array.from({ length: count }, (_, index) => `Swipe ${index + 1} preview text`),
-            swipe_id: 1,
+            swipe_id: swipeId,
             swipe_info: Array.from({ length: count }, () => ({ send_date: Date.now(), extra: { token_count: 4 } })),
         };
         context.chat.push(message);
@@ -31,7 +33,7 @@ async function createSwipeFixture(page, count = 52) {
         const id = context.chat.length - 1;
         document.querySelector(`.mes[mesid="${id}"] .swipes-counter`)?.classList.add('swipe-picker-enabled');
         return id;
-    }, { count });
+    }, { count, swipeId });
     await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
     const dialog = page.locator('dialog[open].sb-dialog--window');
     await expect(dialog).toBeVisible({ timeout: 15000 });
@@ -104,6 +106,23 @@ test.describe('swipe picker shared Window', () => {
             return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
         });
         await testSetup.awaitST({ page });
+    });
+
+    test.describe('with motion on', () => {
+        test.use({ contextOptions: MOTION });
+
+        for (const viewport of MISC_VIEWPORTS) {
+            test(`opens with the current swipe in view at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+                await page.setViewportSize(viewport);
+                await installOpeningSampler(page, { scroller: '.swipe_picker_div' });
+                await expectOpensAtFinalSize(page, 'Swipe picker', () => createSwipeFixture(page, 52, 40), { keepOpen: true });
+                // At full size, this distance shows whether the scroll position was calculated with the opening scale.
+                const space = await page.locator('dialog[open] .swipe_picker_block[highlight]').evaluate(block => {
+                    return block.closest('.swipe_picker_div').getBoundingClientRect().bottom - block.getBoundingClientRect().bottom;
+                });
+                expect(Math.abs(space - 5)).toBeLessThanOrEqual(1);
+            });
+        }
     });
 
     test('desktop supports selection, actions, navigation, scrolling and safe deletion', async ({ page }, testInfo) => {

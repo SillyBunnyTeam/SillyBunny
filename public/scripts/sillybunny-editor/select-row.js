@@ -152,8 +152,10 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         return (select.multiple ? labels.join(', ') : labels[0]) || noneLabel;
     };
     const sync = () => {
-        value.textContent = summary();
-        trigger.disabled = select.disabled;
+        const text = summary();
+        // Writing an unchanged value still queues a mutation, and some callers re-sync on every panel update.
+        if (value.textContent !== text) value.textContent = text;
+        if (trigger.disabled !== select.disabled) trigger.disabled = select.disabled;
     };
 
     let picker = null;

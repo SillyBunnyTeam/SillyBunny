@@ -416,6 +416,70 @@ describe('Popup frame adapter', () => {
         }
     });
 
+    test('an Alert decides to stack from the layout width of its responses, not their scaled rectangles', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        // Two 150px responses do not fit in 280px, but their rectangles fit at the opening scale of 0.8.
+        for (const button of [value.okButton, value.cancelButton]) {
+            Object.defineProperty(button, 'offsetWidth', { value: 150 });
+            button.getBoundingClientRect = () => ({ width: 120 });
+        }
+        Object.defineProperty(value.buttonControls, 'clientWidth', { value: 280 });
+        const frame = framePopup(value, { tier: 'alert' });
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.buttonControls.classList.contains('is-stacked')).toBe(true);
+        frame.dispose();
+    });
+
+    test('contentChanged lays out an Alert again and holds transitions off while it measures', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        let width = 100;
+        const classesWhileMeasuring = [];
+        Object.defineProperty(value.okButton, 'offsetWidth', { get: () => width });
+        Object.defineProperty(value.buttonControls, 'clientWidth', {
+            get() {
+                classesWhileMeasuring.push(value.buttonControls.className);
+                return 280;
+            },
+        });
+        const frame = framePopup(value, { tier: 'alert' });
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.buttonControls.classList.contains('is-stacked')).toBe(false);
+        width = 150;
+        frame.contentChanged();
+        expect(value.buttonControls.classList.contains('is-stacked')).toBe(true);
+        expect(classesWhileMeasuring.length).toBeGreaterThan(1);
+        expect(classesWhileMeasuring.every(classes => classes.includes('is-laying-out') && classes.includes('is-measuring'))).toBe(true);
+        expect(value.buttonControls.className).not.toMatch(/is-laying-out|is-measuring/);
+        frame.dispose();
+    });
+
+    test('contentChanged lets a content-sized Window measure a shorter height', () => {
+        setupDialogMedia();
+        const animationFrame = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
+            callback();
+            return 0;
+        });
+        const value = popupDom({ type: POPUP_TYPE.TEXT });
+        let height = 400;
+        Object.defineProperty(value.dlg, 'offsetHeight', { configurable: true, get: () => height });
+        const frame = framePopup(value, { tier: 'window', size: 'content' });
+        try {
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.style.minHeight).toBe('400px');
+            height = 300;
+            frame.contentChanged();
+            expect(value.dlg.style.minHeight).toBe('300px');
+        } finally {
+            frame.dispose();
+            animationFrame.mockRestore();
+        }
+    });
+
     test('Dialog adopts a plain boolean without losing identity, state, caption or listeners', () => {
         setupDialogMedia();
         const value = popupDom({ contentHtml: '<h3>Delete user</h3><label class="checkbox_label"><input id="purge" name="deleteUserData" type="checkbox" checked><span data-i18n="Delete data">Delete data</span></label><input name="deleteUserHandle">' });

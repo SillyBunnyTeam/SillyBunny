@@ -51,7 +51,8 @@ export function utilityFormOptions({ title, mainLabel = null, clearContent = fal
                     rows.push(entryRow(input, caption, input.title));
                 }
             }
-            if (clearContent) popup.content.replaceChildren();
+            // An Alert keeps its heading in the content, and `aria-labelledby` points at that heading.
+            if (clearContent) popup.content.replaceChildren(...popup.content.querySelectorAll(':scope > .sb-dialog__heading'));
             popup.content.classList.add('sb-dialog-rows');
             popup.content.append(createPrefGroup({ field: 'utility-fields', rows }).section);
             popup.inputControls.replaceChildren();

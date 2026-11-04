@@ -17,7 +17,7 @@ const reportItems = Array.from({ length: 24 }, (_, index) => ({
 }));
 export const DATA_MAID_FILE_HASHES = reportItems.map(item => item.hash).reverse();
 
-export async function bootWindowToolsDialogs(page, viewport, { admin = false } = {}) {
+export async function bootWindowToolsDialogs(page, viewport, { admin = false, reducedMotion } = {}) {
     // Block write/external-action routes before boot and retain context fallbacks during teardown.
     await page.context().route(/\/api\/(?:data-maid|secrets|(?:backends\/[^/]+\/(?:generate|generate_stream))|(?:extensions\/(?:install|delete|update|sync|move|switch|version|branches))|(?:[^/]*scrap[^/]*))(?:\/|\?|$)/,
         route => route.fulfill({ status: 400, body: 'Blocked by Window tools dialog test' }));
@@ -43,7 +43,7 @@ export async function bootWindowToolsDialogs(page, viewport, { admin = false } =
         display_name: 'Window tools branch fixture', version: '1.0', loading_order: 9999,
         requires: [], optional: [], author: 'Test fixture', js: '', css: '',
     } }));
-    const misc = await bootMiscDialogs(page, viewport, { admin,
+    const misc = await bootMiscDialogs(page, viewport, { admin, reducedMotion,
         configureSettings(settings) {
             settings.main_api = 'openai';
             settings.extension_settings.disabledExtensions.push('third-party/window-tools-branch');

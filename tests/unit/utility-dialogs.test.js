@@ -57,6 +57,18 @@ test.each(['text', 'password'])('entry rows keep adopted %s input, autocomplete,
     expect(mainInput.value).toBe('main value');
 });
 
+test('clearContent keeps the Alert heading that aria-labelledby points at', () => {
+    const dlg = root('<div class="popup-content"><h3 class="sb-dialog__heading">Add Secret</h3><p>Body text</p></div><textarea class="popup-input" rows="1"></textarea><div class="popup-inputs"></div>');
+    const popup = { mainInput: dlg.querySelector('textarea'), content: dlg.querySelector('.popup-content'), inputControls: dlg.querySelector('.popup-inputs') };
+    const heading = popup.content.querySelector('h3');
+    const options = adapters.utilityFormOptions({ mainLabel: 'Value', clearContent: true });
+    options.onOpening(popup);
+    expect(popup.content.firstElementChild).toBe(heading);
+    expect(popup.content.textContent).not.toContain('Body text');
+    expect(popup.content.querySelector('textarea')).toBe(popup.mainInput);
+    options.onClose(popup);
+});
+
 test('image review adopts both textareas and the frame-created switch row', () => {
     const dlg = root('<div class="popup-content">Cancel to abort</div><textarea class="popup-input" rows="8">positive</textarea><div class="popup-inputs"><label class="text_label"><span>Negative prompt</span><textarea id="sd_refine_negative" rows="4">negative</textarea></label><label class="ds-row-switch"><span>Resolution</span><input id="sd_use_saved_resolution" type="checkbox" checked></label></div>');
     const popup = { mainInput: dlg.querySelector('textarea'), content: dlg.querySelector('.popup-content'), inputControls: dlg.querySelector('.popup-inputs') };

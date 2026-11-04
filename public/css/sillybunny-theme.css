@@ -4169,50 +4169,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     text-align: left;
 }
 
-#openai_api-presets .sb-setting-inline-copy-center {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    white-space: normal;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label:not(.ds-row) {
-    align-items: center;
-    justify-content: flex-start;
-    gap: 10px;
-    width: 100%;
-    min-width: 0;
-    margin-bottom: 6px;
-    white-space: normal;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > input[type="checkbox"] {
-    flex: 0 0 auto;
-    align-self: center;
-    margin: 0;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span:not(.ds-row-text, .ds-row-suffix),
-#openai_api-presets .sb-setting-inline-copy-center .toggle-description,
-#openai_api-presets .sb-setting-inline-copy-center strong.toggle-description {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    line-height: 1.45;
-    overflow-wrap: anywhere;
-    white-space: normal;
-}
-
-#openai_api-presets .sb-setting-inline-copy-center label.checkbox_label > span:not(.ds-row-text, .ds-row-suffix) {
-    flex: 1 1 auto;
-    width: auto;
-    line-height: 1.35;
-}
-
-/* The Save/Clear profile buttons sit in a centered, full-width flex row inside
-   #openai_api-presets on mobile. .menu_button defaults to flex-shrink:1 with a
-   small square min-width, so they collapse below their nowrap label width and
-   the text overlaps. Pin them to content width so the row wraps instead. */
+/* .menu_button defaults to flex-shrink:1 with a small square min-width, so the
+   Save/Clear Profile buttons collapse below their nowrap label width and the
+   text overlaps. Pin them to content width so the row wraps instead. */
 #model_sampling_profiles_container .flex-container.gap3px > .menu_button {
     flex: 0 0 auto;
     min-width: fit-content;
@@ -4371,7 +4330,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #openai_api .flex-container,
 #openai_settings .flex-container,
-#openai_api-presets .flex-container,
 #openai_api .range-block,
 #openai_settings .range-block,
 #range_block_openai .range-block {
@@ -4379,8 +4337,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 #openai_api .flex-container,
-#openai_settings .flex-container,
-#openai_api-presets .flex-container {
+#openai_settings .flex-container {
     flex-wrap: wrap;
     align-items: stretch;
     gap: 8px;
@@ -4682,27 +4639,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     grid-column: 1 / -1;
 }
 
-#openai_api-presets .title_restorable,
-#openai_api-presets .margin0.title_restorable.standoutHeader {
-    flex-wrap: wrap;
-    align-items: center;
-    row-gap: 8px;
-}
-
-#openai_api-presets .margin0.title_restorable.standoutHeader > strong,
-#openai_api-presets .margin0.title_restorable.standoutHeader > .flex-container,
-#openai_api-presets .flex-container.marginLeft5 {
-    min-width: 0;
-}
-
-#openai_api-presets .flex-container.flexNoGap {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: stretch;
-    gap: 8px;
-}
-
-#openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]),
 #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) {
     --sb-preset-row-control-size: var(--sb-field-min-height);
     display: grid;
@@ -4711,33 +4647,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     align-items: center;
 }
 
-/* The presets block is one row: label, select, then all seven actions. The label takes the
-   leading column, so the grid needs a third track for it. */
-#openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    row-gap: 8px;
-    margin-bottom: 0;
-}
-
-#openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > strong {
-    font-size: var(--sb-type-title);
-    line-height: var(--sb-line-title);
-    color: var(--sb-shell-text-secondary);
-    white-space: nowrap;
-}
-
-/* The emptied card only stays in the dom so `#openai_api-presets > div` keeps the same first child
-   for the ChatCompletionTabs tab bar to anchor to. */
-#openai_api-presets .sb-preset-toolbar-card {
-    display: none;
-}
-
-#openai_api-presets .flex-container.flexNoGap > select {
-    min-width: 0;
-}
-
-#openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > select,
 #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > select {
     height: var(--sb-preset-row-control-size);
     min-height: var(--sb-preset-row-control-size);
@@ -4745,16 +4654,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     align-self: center;
 }
 
-#openai_api-presets .flex-container.marginLeft5 {
-    margin-left: 0;
-    justify-content: flex-start;
-}
-
-#openai_api-presets .sb-action-btn-group {
-    align-items: center;
-}
-
-#openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5,
 #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 {
     height: var(--sb-preset-row-control-size);
     align-items: center;
@@ -4763,8 +4662,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 6px;
 }
 
-#openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 > .menu_button:not(.sb-action-btn),
-#openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 > .menu_button_icon:not(.sb-action-btn),
 #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 > .menu_button,
 #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 > .menu_button_icon {
     width: var(--sb-preset-row-control-size) !important;
@@ -4775,85 +4672,10 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     max-height: var(--sb-preset-row-control-size) !important;
 }
 
-:is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-    align-items: stretch;
-}
-
-:is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-row > select {
-    width: 100%;
-    min-width: 0;
-}
-
-:is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-actions {
-    width: 100%;
-    max-width: 100%;
-    margin-left: 0;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-:is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-actions > .menu_button:not(.sb-action-btn),
-:is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-actions > .menu_button_icon:not(.sb-action-btn) {
-    width: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
-    min-width: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
-    max-width: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
-    height: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
-    min-height: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
-    max-height: var(--sb-preset-row-control-size, var(--sb-field-min-height)) !important;
-}
-
-/* The merged row's label and its seven preset actions take a fixed 542px, so between
-   roughly 1024px and the mobile breakpoint the select would be squeezed to a couple of characters.
-   In that band the row keeps two lines instead -- label and select on the first, action group
-   spanning the second. Below 768px the media query below stacks all three; above 1024px the select
-   has room again and the three-column rule further up applies. */
-@media screen and (min-width: 769px) and (max-width: 1024px) {
-    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
-        grid-template-columns: auto minmax(0, 1fr);
-        grid-template-areas:
-            'label select'
-            'actions actions';
-    }
-
-    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > strong {
-        grid-area: label;
-    }
-
-    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > select {
-        grid-area: select;
-    }
-
-    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > .flex-container.marginLeft5 {
-        grid-area: actions;
-        height: auto;
-        flex-wrap: wrap;
-    }
-}
-
 @media screen and (max-width: 768px) {
-    #openai_api-presets .flex-container.flexNoGap {
-        grid-template-columns: 1fr;
-    }
-
-    #openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]),
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) {
         --sb-preset-row-control-size: max(var(--sb-field-min-height), 44px);
         grid-template-columns: 1fr;
-    }
-
-    /* Seven 44px actions no longer fit beside the select, so the merged row stacks and
-       lets the action group wrap, which it already does at this width. */
-    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row:has(> select[data-preset-manager-for]) {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    #openai_api-presets .flex-container.flexNoGap.sb-preset-toolbar-row > .flex-container.marginLeft5 {
-        height: auto;
-        flex-wrap: wrap;
     }
 
     #openai_api .checkbox_label,
@@ -4891,13 +4713,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         min-width: 0;
     }
 
-    #openai_api-presets .flex-container.marginLeft5,
-    #openai_api-presets .flex-container.gap3px {
-        width: 100%;
-        justify-content: center;
-    }
-
-    #openai_api-presets .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5,
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 {
         height: auto;
         flex-wrap: wrap;
@@ -6262,11 +6077,6 @@ body.reduced-motion *::after {
         gap: 8px;
     }
 
-    #af_master_import:not(.sb-action-btn) > span,
-    #af_master_export:not(.sb-action-btn) > span {
-        display: none;
-    }
-
     #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
         display: flex;
         flex-direction: column;
@@ -6469,75 +6279,12 @@ body.reduced-motion *::after {
         max-height: 32px;
     }
 
-    #textgenerationwebui_api-presets > div > .flex-container.flexNoGap {
-        align-items: flex-start;
-        gap: 6px;
-    }
-
-    #textgenerationwebui_api-presets select[data-preset-manager-for='textgenerationwebui'] {
-        min-width: 0;
-    }
-
-    #textgenerationwebui_api-presets .flex-container.marginLeft5:has(> [data-preset-manager-file='textgenerationwebui']) {
-        flex: 1 1 100%;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        margin-left: 0;
-        gap: 4px;
-        max-width: 100%;
-    }
-
-    #textgenerationwebui_api-presets .flex-container.marginLeft5:has(> [data-preset-manager-file='textgenerationwebui']) > .menu_button,
-    #textgenerationwebui_api-presets .flex-container.marginLeft5:has(> [data-preset-manager-file='textgenerationwebui']) > .menu_button_icon {
-        width: 36px !important;
-        min-width: 36px !important;
-        max-width: 36px !important;
-        height: 36px !important;
-        min-height: 36px !important;
-        max-height: 36px !important;
-        padding: 0 !important;
-        border-radius: 10px;
-    }
-
     .sampler-order-lock {
         width: 34px;
         min-width: 34px;
         height: 34px;
         min-height: 34px;
         font-size: var(--sb-type-control);
-    }
-
-    :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: 8px;
-        align-items: stretch;
-    }
-
-    :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-row > select {
-        width: 100%;
-        min-width: 0;
-    }
-
-    :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-actions {
-        width: 100%;
-        max-width: 100%;
-        margin-left: 0;
-        justify-content: flex-start;
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-
-    :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-actions > .menu_button,
-    :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets) .sb-non-chat-preset-actions > .menu_button_icon {
-        width: 36px !important;
-        min-width: 36px !important;
-        max-width: 36px !important;
-        height: 36px !important;
-        min-height: 36px !important;
-        max-height: 36px !important;
-        padding: 0 !important;
-        border-radius: 10px;
     }
 
     #kobold_api-settings > .flex-container.gap10h5v.justifyCenter > .alignitemscenter.flex-container:has(> input[type='range'].neo-range-slider) {
@@ -6917,6 +6664,11 @@ dialog.popup.sb-dialog--alert > .popup-controls > .menu_button {
 dialog.popup.sb-dialog--alert > .popup-controls.is-measuring > .menu_button {
     flex: 0 0 auto;
     white-space: nowrap;
+}
+
+/* !important because a theme can set `transition: all` on these buttons with !important. */
+dialog.popup.sb-dialog--alert > .popup-controls.is-laying-out > .menu_button {
+    transition: none !important;
 }
 
 /* Stacked: keep Cancel at the bottom within thumb reach. */
@@ -8086,6 +7838,11 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
 .sb-dialog__responses.is-measuring > .sb-dialog__response {
     flex: 0 0 auto;
     white-space: nowrap;
+}
+
+/* !important because a theme can set `transition: all` on these buttons with !important. */
+.sb-dialog__responses.is-laying-out > .sb-dialog__response {
+    transition: none !important;
 }
 
 /* Stacked: keep Cancel at the bottom within thumb reach. */

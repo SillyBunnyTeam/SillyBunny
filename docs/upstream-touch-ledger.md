@@ -200,10 +200,10 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | Upstream opens these tools as popups with loose checkboxes and buttons. SillyBunny presents them as Windows with shared rows, so long lists scroll, switches sit at the row end and destructive Data Maid actions default to Cancel. `data-maid-dialog.js` holds the Data Maid dialog code that was split out of upstream's `data-maid.js`, so upstream changes to that dialog must be ported there. |
 | Target seam | `public/scripts/sillybunny-editor/adapters/window-tools-dialogs.js`; shared Popup frame and row factories. |
 | Adapter shape | Keep Token Counter, sampler visibility, debug actions and Data Maid results on their existing sources of truth; adopt sampler checkboxes and delegated debug action nodes, set explicit Window tiers, and let the Popup frame push nested Window/Dialog pages. Data Maid retains its upstream drawer classes, IDs, action nodes and toggle event path while using shared boxed rows; its category toggle is named `Show or Hide Files` through `data-i18n` on `aria-label` and `title`; delete confirmations default to Cancel. The Extensions manager keeps its existing Window tier and row identities; its shared frame body owns scrolling. |
-| Protecting tests | `tests/unit/window-tools-dialogs.test.js`; `tests/window-tools-dialogs.e2e.js` at 1440×900 and 390×844; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/sillybunny-backend-settings.e2e.js` and `tests/startup-on-demand.e2e.js`. Destructive Data Maid and debug actions are intercepted and never executed. |
-| Validation | 2026-10-22: `npm run lint`, test-file ESLint, and `git diff --check` pass. `npm run check:frontend-budgets` passes (16 blocking stylesheets / 1003.9 KiB; 24 startup scripts / 2029.3 KiB). From `tests/`, full Jest: 421 suites passed; 6,404 tests passed, 2 skipped; 1 snapshot passed. Chromium: new surface E2E + `sillybunny-dialog-tiers` + `popup-scroll` 30/30; the temporary screenshot suite 3/3; misc-form-dialogs + startup-on-demand + dialog tiers + Popup scroll 50/50; Data Maid and all remaining Chat Archive cases 14/14 when excluding its pre-existing close-target failure at line 246. Backend settings: 21/22 pass; its pre-existing unsaved-template discard alert failure at line 729 remains. Original archive run: the line 246 close target is 24px (expected ≥44px), 1 passed and 13 did not run; excluding that test yields 14/14. All destructive routes/actions are intercepted. Visually reviewed 29 desktop, phone, and landscape screenshots. |
+| Protecting tests | `tests/unit/window-tools-dialogs.test.js`; `tests/window-tools-dialogs.e2e.js` at 1440×900 and 390×844; `tests/dialog-opening-layout.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; existing `tests/sillybunny-backend-settings.e2e.js` and `tests/startup-on-demand.e2e.js`. Destructive Data Maid and debug actions are intercepted and never executed. |
+| Validation | 2026-10-22: `npm run lint`, test-file ESLint, and `git diff --check` pass. `npm run check:frontend-budgets` passes (16 blocking stylesheets / 1003.9 KiB; 24 startup scripts / 2029.3 KiB). From `tests/`, full Jest: 421 suites passed; 6,404 tests passed, 2 skipped; 1 snapshot passed. Chromium: new surface E2E + `sillybunny-dialog-tiers` + `popup-scroll` 30/30; the temporary screenshot suite 3/3; misc-form-dialogs + startup-on-demand + dialog tiers + Popup scroll 50/50; Data Maid and all remaining Chat Archive cases 14/14 when excluding its pre-existing close-target failure at line 246. Backend settings: 21/22 pass; its pre-existing unsaved-template discard alert failure at line 729 remains. Original archive run: the line 246 close target is 24px (expected ≥44px), 1 passed and 13 did not run; excluding that test yields 14/14. All destructive routes/actions are intercepted. Visually reviewed 29 desktop, phone, and landscape screenshots. 2026-11-04: `tests/window-tools-dialogs.e2e.js` and the Extensions and Data Maid checks in `tests/dialog-opening-layout.e2e.js` pass in Chromium at 1440×900 and 390×844. |
 | Rollback path | Remove the `tokenCounterOptions()` spread in `extensions/token-counter/index.js`, the `adaptSamplerSelectList()` call in `samplerSelect.js` and the `adaptDebugMenu()` call in `power-user.js`. In `data-maid-dialog.js`, the two Data Maid templates and `data-maid.css`, revert the marked hunks. Delete the Token Counter rules in `token-counter/style.css`. Then drop `tests/unit/window-tools-dialogs.test.js` and `tests/window-tools-dialogs.e2e.js`. |
-| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Last reviewed | 2026-11-04, PR #870 (dialog opening layout). |
 | Owner | UI overhaul integrator. |
 
 ### Window-tier account, override, editor and prompt adapters
@@ -437,12 +437,26 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Generation lifecycle and chat persistence. |
 | Divergence reason | SillyBunny lets the server finish a chat reply when the page that asked for it goes away, because phones freeze and close background tabs during a generation. `Generate()` must send a commit plan with each committable request, mark its streaming message so the server replaces only an unfinished reply, and skip its own save when the server kept its copy. Upstream stops the stream on `beforeunload`, which a leave-site prompt can cancel, so the hand-off and the stop run on `pagehide`. A group reply written this way must carry the rest of its round so the round can go on, and the server must save chats with the same locking, integrity and backup handling as a browser save. |
 | Target seam | `public/scripts/server-generations.js`, `public/scripts/resumable-generation.js`, `public/scripts/generation-commit-plan.js`, `src/generation-commit.js`. |
-| Adapter shape | `Generate()` registers a commit plan before each committable request (`registerGenerationCommitPlan()`), then awaits `settleGenerationCommit()` before it saves the finished reply; on `committed` it unblocks and calls `reloadServerCommittedReply()` instead of saving. `StreamingProcessor.onStartStreaming()` sets `extra[GENERATION_PLACEHOLDER_KEY]` on the streaming message, and `finalizeIntermediaryMessage()` deletes it. The window `pagehide` handler stops the stream unless the page goes into the back/forward cache; the `beforeunload` handler no longer stops it. `generateGroupWrapper()` records the members still to speak in `groupRoundRemaining`, read by `getGroupRoundRemaining()`, and `resumeGroupRound()` runs them. `parseAutoReasoningFromString()` exposes the live reasoning parse. `updateChatRecords()` saves through `trySaveChat()`, whose `integrity` option restores a chat's earlier slug when a commit is taken back. |
+| Adapter shape | `Generate()` registers a commit plan before each committable request (`registerGenerationCommitPlan()`), then awaits `settleGenerationCommit()` before it saves the finished reply; on `committed` it unblocks and calls `reloadServerCommittedReply()` instead of saving. `StreamingProcessor.onStartStreaming()` sets `extra[GENERATION_PLACEHOLDER_KEY]` on the streaming message, and `finalizeIntermediaryMessage()` and `finalizeStoppedMessage()` delete it. The window `pagehide` handler stops the stream unless the page goes into the back/forward cache; the `beforeunload` handler no longer stops it. `generateGroupWrapper()` records the members still to speak in `groupRoundRemaining`, read by `getGroupRoundRemaining()`, and `resumeGroupRound()` runs them. `parseAutoReasoningFromString()` exposes the live reasoning parse. `updateChatRecords()` saves through `trySaveChat()`, whose `integrity` option restores a chat's earlier slug when a commit is taken back. |
 | Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/server-generations-frontend.test.js`, `tests/server-generation-commit.test.js`, `tests/server-generation-commit.e2e.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- story-mode-request-controls.test.js resumable-generation-frontend.test.js server-generations-frontend.test.js server-generation-commit.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against Bun 1.3.14 and Node servers, `npm run lint`, `npm run check:frontend-budgets`. |
-| Rollback path | Remove the `registerGenerationCommitPlan()` and `settleGenerationCommit()` calls, the `GENERATION_PLACEHOLDER_KEY` lines in `onStartStreaming()` and `finalizeIntermediaryMessage()`, and the `pagehide` handler, then put `streamingProcessor.onStopStreaming()` back in the `beforeunload` handler. Requests then carry no commit plan, so the server never writes replies, and `fetchResumable()` still resumes dropped streams. `getGroupRoundRemaining()`, `resumeGroupRound()`, `parseAutoReasoningFromString()` and `updateChatRecords()` are used only by `public/scripts/server-generations.js` and `src/generation-commit.js`, so they go with those modules. |
+| Rollback path | Remove the `registerGenerationCommitPlan()` and `settleGenerationCommit()` calls, the `GENERATION_PLACEHOLDER_KEY` lines in `onStartStreaming()`, `finalizeIntermediaryMessage()` and `finalizeStoppedMessage()`, and the `pagehide` handler, then put `streamingProcessor.onStopStreaming()` back in the `beforeunload` handler. Requests then carry no commit plan, so the server never writes replies, and `fetchResumable()` still resumes dropped streams. `getGroupRoundRemaining()`, `resumeGroupRound()`, `parseAutoReasoningFromString()` and `updateChatRecords()` are used only by `public/scripts/server-generations.js` and `src/generation-commit.js`, so they go with those modules. |
 | Last reviewed | 2026-10-23 PR #877 review fixes. |
 | Owner | Generation lifecycle owner. |
+
+### `public/script.js` - stopped streaming replies
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Generation lifecycle and chat persistence. |
+| Divergence reason | TODO(copy) |
+| Target seam | `none yet`: the steps use private `StreamingProcessor` state, so they stay in `public/script.js`; `public/scripts/generation-lifecycle/` keeps the stop decision. |
+| Adapter shape | `stopGeneration()` calls `StreamingProcessor.finalizeStoppedMessage()` after `onStopStreaming()` and does not await it. The method removes `extra[GENERATION_PLACEHOLDER_KEY]`, applies the stream's pending reasoning and calls `reasoningHandler.finish()`, which persists `extra.reasoning`, `extra.reasoning_duration` and `extra.reasoning_type` and emits `STREAM_REASONING_DONE`. Then it calls `syncMesToSwipe()`, `updateMessageBlock()` and `saveChatConditional()`. It does not emit `MESSAGE_RECEIVED`. `#isOriginMessage()`, split out of `#isCurrent()`, stops it when the chat or the message changes, because Stop has already cleared `streamingProcessor` and the run. The `pagehide` handler calls only `onStopStreaming()`, so a page that goes away still hands its reply to the server. |
+| Protecting tests | `tests/story-mode-request-controls.test.js` (Stop during streamed reasoning, a chat change after Stop, explicit cancellation), `tests/server-generation-commit.e2e.js` (Stop during streamed reasoning on desktop and mobile), `tests/generation-lifecycle-wiring.test.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/resumable-generation-frontend.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js generation-lifecycle resumable-generation-frontend.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against a Bun 1.4.4 server at 1440x900 and at 390x844 with an iPhone user agent. |
+| Rollback path | Remove the `finalizeStoppedMessage()` call from `stopGeneration()` and the method. Stop then leaves the stopped reply unsaved and its reasoning in the thinking state, with a null `extra.reasoning_duration`. `#isOriginMessage()` can stay, because `#isCurrent()` returns the same result through it. Saved chats need no change, because the method writes only existing message fields. |
+| Last reviewed | 2026-10-29 Stop during streamed reasoning fix. |
+| Owner | TODO(copy) |
 
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
@@ -786,6 +800,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
 | Owner | Bugfix integrator. |
 
+### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Google model catalog
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, `src/prompt-converters.js`. |
+| Area | Settings and generation lifecycle (Google AI Studio and Vertex AI model pickers and Gemini request builders). |
+| Divergence reason | TODO(copy) |
+| Target seam | None yet; the changes follow upstream's per-model option lists and regex patterns, so a future upstream sync can drop them once upstream covers these models. |
+| Adapter shape | Static `<option>` entries and `(deprecated)` labels in both pickers and the caption list; two AI Studio entries in `migrateChatCompletionSettings`; context, vision, video and audio list entries in `openai.js`; regex alternations and list entries in `getGeminiBody`, `convertGooglePrompt` and `calculateGoogleBudgetTokens`. |
+| Protecting tests | `tests/openai-static-models.test.js`, `tests/google-model-request.test.js`, `tests/prompt-converters.test.js`, `tests/story-mode-request-controls.test.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the four protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
+| Rollback path | Revert the option entries, the two AI Studio migration entries and the regex alternations. No data cleanup is needed, because a saved `gemini-3.8-flash` or `gemini-3.6-flash` selection stays valid on AI Studio. |
+| Last reviewed | 2026-10-29 Google model catalog update. |
+| Owner | TODO(copy) |
+
 ### `public/index.html` - in-chat agent message action buttons
 | Field | Value |
 | --- | --- |
@@ -824,6 +852,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | `npm run test:unit --prefix tests -- server-listen.test.js`, `node --check src/server-startup.js`, `npm run lint`. |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
+| Owner | TODO(copy) |
+
+### `src/transformers.js` - caption image decoding
+| Field | Value |
+| --- | --- |
+| File | `src/transformers.js`. |
+| Area | Image captioning (`POST /api/extra/caption`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/transformers-image.js`. |
+| Adapter shape | `getRawImage()` decodes the base64 string into a `Buffer` and returns `decodeRawImage(buffer)`, or `null` when that throws. `decodeRawImage()` throws for bytes that do not start with a PNG, JPEG, GIF, BMP, TIFF, WebP or AVIF signature, so jimp's file-type check never sees them. It decodes the rest with the server's jimp (`src/jimp.js`) instead of calling `RawImage.fromBlob()`, and returns an RGBA `JimpRawImage`, a `RawImage` subclass whose `resize()` also uses jimp instead of `OffscreenCanvas`. `crop()` and `center_crop()` stay upstream; the default captioning model does not call them. |
+| Protecting tests | `tests/transformers-image.test.js`. The test defines `self` before sillytavern-transformers loads, so the library takes the code path that it takes under Bun. |
+| Validation | `npm run test:unit --prefix tests -- transformers-image.test.js` (on the base commit, the ASF test fails when its child process reaches the 30 s deadline, the PNG test gets `null`, and the preprocessing test fails with `OffscreenCanvas not supported by this browser.`), `npm run lint`. |
+| Rollback path | Restore the upstream `getRawImage()` body (`RawImage.fromBlob()` on a `Blob` of the decoded bytes) and the `RawImage` import, then delete `src/transformers-image.js` and `tests/transformers-image.test.js`. No stored data or settings change. The rollback brings back the server hang on a malformed ASF header and the 400 for every image under Bun. |
+| Last reviewed | 2026-11-02 caption image signature check (GHSA-5v7r-6r5c-r473). |
+| Owner | TODO(copy) |
+
+### `src/endpoints/characters.js` - character file names
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Character import, create and rename file names. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. |
+| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. |
+| Validation | `npm run test:unit --prefix tests` (on Windows, the same 10 suites and 33 tests fail as on the base commit), `npm run lint`. |
+| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks. No stored data or settings change. |
+| Last reviewed | 2026-11-02 character file names sanitised on every platform. |
 | Owner | TODO(copy) |
 
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
@@ -891,6 +947,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Account and release integrator. |
 
+### `src/electron/` - Electron launcher removal
+| Field | Value |
+| --- | --- |
+| File | `src/electron/Start.bat`, `src/electron/package.json` and `src/electron/package-lock.json`, removed. SillyTavern also ships `src/electron/index.js` and `src/electron/start.sh`, which SillyBunny never adopted. |
+| Area | Packaging and launchers. |
+| Divergence reason | TODO(copy) |
+| Target seam | None. The root launchers start `server.js`, and SillyBunny ships no Electron entry point. |
+| Adapter shape | None. A SillyTavern sync that changes `src/electron/**` leaves those changes out. |
+| Protecting tests | None. |
+| Validation | `git grep -n -i "src/electron"` finds no code, test or workflow reference. `.github/pr-auto-labels-by-files.yml` parses as YAML. |
+| Rollback path | Revert the commit that removed the package (`git log --diff-filter=D -- src/electron/package.json`), which restores the three files at electron 41.1.1. The launcher still does not start until `src/electron/index.js` comes from SillyTavern, because `package.json` names it as `main`, and until the Electron binary is installed, because `Start.bat` installs with `--ignore-scripts` and the electron package downloads its binary only in its `postinstall` script. |
+| Last reviewed | 2026-11-02, package removal. |
+| Owner | TODO(copy) |
+
 ### World Info files - shell integration and safe persistence
 | Field | Value |
 | --- | --- |
@@ -917,6 +987,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | `npm run test:unit -- world-info-scan-target.test.js` in `tests/`, `npx eslint public/scripts/world-info.js`, `npm run test:e2e -- frontend/ConversationLorebooks.e2e.js` against a running server in Chromium and WebKit. |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-10-23 Conversation lorebooks. |
+| Owner | TODO(copy) |
+
+### `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, and `public/scripts/macros/definitions/core-macros.js` - macro whitespace markers
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, `public/scripts/macros/definitions/core-macros.js` |
+| Area | Macros 2.0 whitespace trimming. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/macros/sillybunny-whitespace-markers.js`. |
+| Adapter shape | `MacroCstWalker` marks `{{newline}}`, `{{space}}` and `{{noop}}` output, and removes the markers from arguments, from scoped content after its trim, and from variable shorthand values after their trim. `MacroEngine.evaluate()` gives marked text to the `core:` post-processors that run before all others, runs the legacy `{{trim}}` through `applyLegacyTrim()`, and gives the other post-processors text without markers. `resolve()` passes `keepWhitespaceMarkers` to `MacroEngine.evaluate()`. Only the `{{if}}` handler sets it, for its branch, so that its trim keeps the marked output. |
+| Protecting tests | `tests/sillybunny-macro-whitespace.test.js`, `tests/frontend/sillybunny-macro-whitespace.e2e.js`, `tests/frontend/MacroEngine.e2e.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, `npm run test:unit -- sillybunny-macro-whitespace.test.js` and the full `npm run test:unit` in `tests/`, `npm run check:frontend-budgets`, and `npm run test:e2e -- frontend/sillybunny-macro-whitespace.e2e.js frontend/MacroEngine.e2e.js` against a running server in Chromium. |
+| Rollback path | Remove the `SillyBunny:` lines in the four files and delete the marker module; the engine then trims as upstream does, and the specs that test the markers fail until they are removed. If upstream merges its own fix for SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674 (open as SillyTavern/SillyTavern#6040), take the upstream code in the sync, drop this adapter, and keep the whitespace cases in `tests/frontend/sillybunny-macro-whitespace.e2e.js` that still apply. |
+| Last reviewed | 2026-11-02 macro whitespace markers. |
 | Owner | TODO(copy) |
 
 ### In-Chat Agents expressions and connection profiles
@@ -1322,6 +1406,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/unit/sillybunny-managed-content-router.test.js` (bad bodies, unknown and path-like names against a real temp tree, per-user isolation, generic errors, log format, rate limit including unknown names, backup before write); `tests/unit/sillybunny-managed-content-signature.test.js`. |
 | Validation | 2026-11-01: root and tests lint pass; router and signature suites 87 passed; reviewer `ses_e6c15c276ffekMopI2GmmU22vg` APPROVE (live on Node v26.10.0 and Bun 1.3.12: 403 without a CSRF token, 404, 400 and 429 with `Retry-After`); the log-format, signature and rate-limit gaps it found are fixed and red-tested. |
 | Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-01, PR #870. |
+| Owner | TODO(copy) |
+
+### `public/index.html` and `public/scripts/openai.js` - Preset API/Sampler Linking group
+
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/openai.js` |
+| Area | Presets page, Chat Completions preset linking settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `mountPresetLinkingGroup()` in `public/scripts/sillybunny-tabs.js` moves the three linking blocks into the `#sb-preset-linking` group, and the `#sb-preset-linking` rules in `public/css/sillybunny-tabs.css` style them. |
+| Adapter shape | The drawer markup, IDs and inputs stay where upstream puts them. Only the three switch labels and their `data-i18n` keys change to header capitalisation, and the Save Profile and Clear Profile buttons lose their icons. The toast in `maybeShowPresetConnectionBindingReminder()` quotes the first label, so its text changes with it. A `<!-- SillyBunny: -->` marker sits above the drawer and a `// SillyBunny:` marker above the toast. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js` (the Preset API/Sampler Linking group test and the Backend group flow); `tests/sillybunny-settings-consistency.e2e.js` (Prompting group titles); `tests/openai-sampling-profiles-wiring.test.js` (text-only profile buttons). |
+| Validation | 2026-11-01: root and tests lint with no errors; `tests/openai-sampling-profiles-wiring.test.js` 6/6; Chromium E2E on port 8231 over `sillybunny-backend-settings`, `sillybunny-preset-autosave`, the Prompting flow test in `sillybunny-settings-consistency` and the `dialogs-accessibility` one-ring test: 47 of 48 passed, and the one failure (the Text Completions template discard prompt) also fails on the base commit; `npm run check:frontend-budgets` at 1013.4 KiB blocking CSS. Screens checked at 1440×900 and 390×844, with per-model profiles off and on. |
+| Rollback path | Restore the three labels and keys, the two button icons and the toast text, and delete both markers. In `public/scripts/sillybunny-tabs.js`, remove the `mountPresetLinkingGroup()` call and function and the `sb-preset-linking` hide condition, and anchor Chat Completions on its preset row again in `placeSharedPresetControls()` so that Edit Prompts stays above the drawer. In `public/css/sillybunny-tabs.css`, remove the `#sb-preset-linking` rules and the Autosave border rule, and restore the `.sb-settings-flat-section > .sb-setting-inline-copy-center` rule. In `public/css/sillybunny-theme.css`, restore the `#openai_api-presets` linking rules. The switches then go back to a drawer inside Presets, and no saved data changes. Then drop the group test and the group title from both title lists. |
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | TODO(copy) |
 

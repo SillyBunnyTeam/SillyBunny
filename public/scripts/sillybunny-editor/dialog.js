@@ -293,6 +293,18 @@ export function bindKeyboardInset(host, { onInsetChange = null } = {}) {
     };
 }
 
+/**
+ * Runs `layout`, which changes how a row shares its width between response buttons.
+ * A theme rule such as `transition: all` would animate `flex-grow` from the measuring value, and the
+ * buttons would start narrow. Transitions stay off until the `offsetWidth` read forces the final layout.
+ */
+export function layoutWithoutTransitions(row, layout) {
+    row.classList.add('is-laying-out');
+    layout();
+    void row.offsetWidth;
+    row.classList.remove('is-laying-out');
+}
+
 /** Keeps a content-sized Window at its largest laid-out height until it closes. */
 export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
     let minimumHeight = null;
@@ -352,6 +364,12 @@ export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
 
     return {
         refresh: schedule,
+        /** Forgets the recorded height, so that content changed before the first paint can make the Window shorter. */
+        remeasure() {
+            minimumHeight = null;
+            surface.style.removeProperty('min-height');
+            schedule();
+        },
         destroy() {
             if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
             resizeObserver?.disconnect();
@@ -1267,6 +1285,10 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
     // AdwAlertDialog lays responses out side by side at equal widths when the widest fits that
     // share, and stacks them otherwise. Sheets always stack.
     function layoutResponses() {
+        layoutWithoutTransitions(responsesNode, measureResponses);
+    }
+
+    function measureResponses() {
         responsesNode.classList.remove('is-stacked');
         if (isSheet()) {
             responsesNode.classList.add('is-stacked');

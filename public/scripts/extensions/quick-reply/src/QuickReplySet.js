@@ -339,7 +339,7 @@ export class QuickReplySet {
                 customButtons: [{ text: 'Copy', classes: ['qr--copy'], result: POPUP_RESULT.AFFIRMATIVE, appendAtEnd: true, action: () => { isCopy = true; } }],
             });
             const prom = dlg.show();
-            // SillyBunny: the adapter focuses the visible select-row trigger in onBeforePaint.
+            // SillyBunny: the adapter focuses the visible select-row trigger before the first paint.
             await prom;
             if (dlg.result == POPUP_RESULT.AFFIRMATIVE) {
                 const qrs = QuickReplySet.get(sel.value);
