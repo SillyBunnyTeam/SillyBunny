@@ -76,13 +76,19 @@ function parseInteger(value, what, { min = 0 } = {}) {
 }
 
 /**
+ * A name goes into a URL without any change, so a path, a query, a fragment, an escape or a name that starts with a dot
+ * would reach something other than the picture that was meant.
+ */
+const PLAIN_FILE_NAME = /^[\w@-][\w.@-]*$/;
+
+/**
  * @param {unknown} value
  * @param {string} what
  * @returns {string}
  */
 function parseFileName(value, what) {
-    if (typeof value !== 'string' || value === '' || /[/\\]/.test(value)) {
-        throw new Error(`${what} must be a file name with no folder, got ${JSON.stringify(value)}.`);
+    if (typeof value !== 'string' || !PLAIN_FILE_NAME.test(value)) {
+        throw new Error(`${what} must be a file name of letters, digits and _ . @ -, with no folder and not starting with a dot, got ${JSON.stringify(value)}.`);
     }
     return value;
 }

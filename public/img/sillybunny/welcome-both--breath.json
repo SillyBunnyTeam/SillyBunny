@@ -1,0 +1,81 @@
+{
+    "scene": "welcome-both",
+    "grid": {
+        "cell": 2.7675675675675677,
+        "width": 312,
+        "height": 365
+    },
+    "rhythm": {
+        "cycleSeconds": 3.5,
+        "breathsPerCycle": 2
+    },
+    "poses": [
+        "c",
+        "b"
+    ],
+    "backdrop": null,
+    "layers": [
+        {
+            "id": "reisen",
+            "z": 1,
+            "left": 2,
+            "top": 2,
+            "width": 221,
+            "height": 361,
+            "waist": 198,
+            "images": {
+                "c": {
+                    "base": "welcome-both--reisen--breath-c@native.webp",
+                    "half": "welcome-both--reisen--breath-c-half@native.webp",
+                    "closed": "welcome-both--reisen--breath-c-closed@native.webp"
+                },
+                "b": {
+                    "base": "welcome-both--reisen--breath-b@native.webp",
+                    "half": "welcome-both--reisen--breath-b-half@native.webp",
+                    "closed": "welcome-both--reisen--breath-b-closed@native.webp"
+                }
+            }
+        },
+        {
+            "id": "tewi",
+            "z": 2,
+            "left": 166,
+            "top": 63,
+            "width": 144,
+            "height": 300,
+            "waist": 164,
+            "images": {
+                "c": {
+                    "base": "welcome-both--tewi--breath-c@native.webp",
+                    "half": "welcome-both--tewi--breath-c-half@native.webp",
+                    "closed": "welcome-both--tewi--breath-c-closed@native.webp"
+                },
+                "b": {
+                    "base": "welcome-both--tewi--breath-b@native.webp",
+                    "half": "welcome-both--tewi--breath-b-half@native.webp",
+                    "closed": "welcome-both--tewi--breath-b-closed@native.webp"
+                }
+            }
+        }
+    ],
+    "blinks": {
+        "steps": [
+            {
+                "variant": "half",
+                "ms": 70
+            },
+            {
+                "variant": "closed",
+                "ms": 110
+            },
+            {
+                "variant": "half",
+                "ms": 70
+            }
+        ],
+        "gapMs": [
+            3600,
+            5400
+        ]
+    }
+}

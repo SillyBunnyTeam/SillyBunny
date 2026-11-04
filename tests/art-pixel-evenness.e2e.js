@@ -1,8 +1,8 @@
-import { chromium, expect, test } from '@playwright/test';
+import { chromium, expect, test, webkit } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { measureEvenness, readFigures } from './helpers/pixel-evenness.js';
+import { measureEvenness, measureLayeredEvenness, readFigures } from './helpers/pixel-evenness.js';
 import { getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
 
 /*
@@ -19,6 +19,9 @@ test.use({ serviceWorkers: 'block' });
 test.describe.configure({ timeout: 180_000 });
 
 const STARTUP_TIMEOUT = 30_000;
+
+/** Lets the page run on its own clock for a while, which is how a test waits for a frame to change or to stay. */
+const pause = (page, ms) => page.evaluate(duration => new Promise(resolve => setTimeout(resolve, duration)), ms);
 
 const openModule = (module, call) => `(async () => { await (await import('${module}')).${call}; })()`;
 
@@ -37,9 +40,23 @@ const WINDOWS = [
     { name: 'Welcome', open: openModule('/scripts/sillybunny-welcome.js', 'openWelcomeDialog()') },
 ];
 
-async function launch(testInfo, { scale, width, height }) {
-    const browser = await chromium.launch({ args: [`--force-device-scale-factor=${scale}`, `--window-size=${width},${height}`] });
-    const context = await browser.newContext({ viewport: null, baseURL: testInfo.project.use.baseURL, serviceWorkers: 'block', reducedMotion: 'reduce' });
+/**
+ * Figures that move are measured while they move, so a test of them asks for motion; every other test measures the still.
+ * In the WebKit project the browser is WebKit, which cannot be started at a scale, so it takes the scale and the size from
+ * its context instead.
+ */
+async function launch(testInfo, { scale, width, height, motion = false }) {
+    const reducedMotion = motion ? 'no-preference' : 'reduce';
+    const isWebKit = testInfo.project.use.browserName === 'webkit';
+    const browser = isWebKit
+        ? await webkit.launch()
+        : await chromium.launch({ args: [`--force-device-scale-factor=${scale}`, `--window-size=${width},${height}`] });
+    const context = await browser.newContext({
+        ...(isWebKit ? { viewport: { width, height }, deviceScaleFactor: scale } : { viewport: null }),
+        baseURL: testInfo.project.use.baseURL,
+        serviceWorkers: 'block',
+        reducedMotion,
+    });
     const page = await context.newPage();
     return { browser, page };
 }
@@ -250,9 +267,9 @@ const HEROES = [
     { name: 'night', hour: 21, art: getPixelArt('hero-duo-night') },
 ];
 
-/** What Home leaves the hero's panel on a 390px phone: the width of the band's content, and the padding that the panel takes there. */
-const PHONE_BAND = 350;
-const PHONE_PANEL_PADDING = 8;
+/** What Home leaves the hero's panel on a 390px phone: the width of the band's content, and the padding of the panel. */
+const PHONE_BAND = 326;
+const PHONE_PANEL_PADDING = 12;
 
 /** At one device pixel per art pixel the picture is `art.width / scale` CSS pixels wide, which a phone band may not hold. */
 const isShrunk = ({ art, width, scale }) => width === 390 && art.width / scale + 2 * PHONE_PANEL_PADDING > PHONE_BAND;
@@ -260,13 +277,15 @@ const isShrunk = ({ art, width, scale }) => width === 390 && art.width / scale +
 const HERO_FIGURES = { scope: '.welcomePanel', figureSelector: '.sbHomeHeroArt .sbArtFigure' };
 
 /** Opens Home with the hero of this hour and waits until the hero is drawn and has stopped changing. */
-async function openHero(testInfo, { scale, width, height, hour }) {
-    const { browser, page } = await launch(testInfo, { scale, width, height });
-    await page.clock.setFixedTime(new Date(2026, 9, 30, hour, 0));
+async function openHero(testInfo, { scale, width, height, hour, motion = false }) {
+    const { browser, page } = await launch(testInfo, { scale, width, height, motion });
+    // A moving figure is measured with the clock stopped, so the clock is installed and runs until then.
+    if (motion) await page.clock.install({ time: new Date(2026, 9, 30, hour, 0) });
+    else await page.clock.setFixedTime(new Date(2026, 9, 30, hour, 0));
     await startHome(page, { scale, width, height });
     const hero = page.locator('.welcomePanel .sbHomeHeroArt');
     await expect(hero).toBeVisible();
-    await expect.poll(() => hero.locator('img').evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(() => hero.locator('img').first().evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
     await hero.scrollIntoViewIfNeeded();
     await expect.poll(async () => {
         const first = JSON.stringify(await readFigures(page, HERO_FIGURES));
@@ -319,4 +338,110 @@ for (const scale of [1, 1.1, 1.5, 1.75, 2, 3]) {
             }
         });
     }
+}
+
+/*
+ * A figure that moves is drawn from layers, each a picture of its own at its own place, so the blocks are even only when
+ * every layer sits on whole device pixels at the step of the figure. The clock is stopped so that no frame changes under
+ * the screenshot, the pictures that show are drawn onto a canvas at the step, and the screenshot has to show every
+ * opaque pixel of the result as an even block. The page must have been opened with the clock installed.
+ */
+async function expectLayersEven(page, { scale, step, selector, readOptions, minimumLayers }) {
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 20));
+    try {
+        const [figure] = await readFigures(page, readOptions);
+        const drawnStep = Math.round((figure.width * scale) / figure.nativeWidth);
+        expect(Math.abs((figure.width * scale) / figure.nativeWidth - drawnStep), `${selector} is ${(figure.width * scale) / figure.nativeWidth} device pixels per art pixel`).toBeLessThan(0.01);
+        expect(drawnStep, 'is no larger than the fixed step').toBeLessThanOrEqual(step);
+        const shot = await page.screenshot();
+        const result = await measureLayeredEvenness(page, { selector, figure: { ...figure, step: drawnStep }, ratio: scale, shot });
+        expect(result.layers, 'the figure shows the pictures of its layers').toBeGreaterThanOrEqual(minimumLayers);
+        expect(result.total, 'there are opaque art pixels to check').toBeGreaterThan(1000);
+        expect(result.bad, `device pixels of the layers that are not one even block (best offset ${result.offset}, first at art pixels ${JSON.stringify(result.samples)}, of ${result.total})`).toBe(0);
+    } finally {
+        await page.clock.resume();
+    }
+}
+
+/** Layers are measured at more scales than a still is: where the layout cuts a length differs by engine and by scale. */
+const LAYERED_SCALES = [1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+const HERO_FIGURE_SELECTOR = '.welcomePanel .sbHomeHeroArt .sbArtFigure';
+
+for (const scale of LAYERED_SCALES) {
+    for (const [width, height] of [[1440, 900], [390, 844]]) {
+        for (const { name, hour, art } of HEROES.filter(entry => !isShrunk({ art: entry.art, width, scale }))) {
+            test(`the layers of the moving ${name} hero are even blocks at ${width}x${height} on a screen of scale ${scale}`, async ({}, testInfo) => {
+                const { browser, page } = await openHero(testInfo, { scale, width, height, hour, motion: true });
+                try {
+                    await expect(page.locator(HERO_FIGURE_SELECTOR)).toHaveAttribute('data-sb-art-motion', 'playing', { timeout: STARTUP_TIMEOUT });
+                    await expectLayersEven(page, { scale, step: Math.max(1, Math.round(scale)), selector: HERO_FIGURE_SELECTOR, readOptions: HERO_FIGURES, minimumLayers: 3 });
+                    expect(art.width).toBeGreaterThan(0);
+                } finally {
+                    await browser.close();
+                }
+            });
+        }
+    }
+}
+
+for (const scale of LAYERED_SCALES) {
+    for (const { name, hour } of HEROES.filter(entry => isShrunk({ art: entry.art, width: 390, scale }))) {
+        test(`the moving ${name} hero keeps its still while it is shrunk to its band at 390x844 on a screen of scale ${scale}`, async ({}, testInfo) => {
+            const { browser, page } = await openHero(testInfo, { scale, width: 390, height: 844, hour, motion: true });
+            try {
+                const figure = page.locator(HERO_FIGURE_SELECTOR);
+                await expect(page.locator('.welcomePanel .sbHomeHeroArt')).toHaveAttribute('data-sb-art-fit', 'smooth');
+
+                await pause(page, 1500);
+
+                await expect(figure).not.toHaveAttribute('data-sb-art-motion', 'playing');
+                await expect(figure.locator('[data-sb-art-layer]')).toHaveCount(0);
+            } finally {
+                await browser.close();
+            }
+        });
+    }
+}
+
+/** The steps of Welcome that have art that moves, how many pictures show at once in each, and what leads to each. */
+const WELCOME_FIGURES = [
+    { id: 'welcome-both', layers: 2, after: async () => {} },
+    { id: 'welcome-persona-tewi', layers: 1, after: goToNextStep },
+    { id: 'welcome-next-reisen', layers: 1, after: goToNextStep },
+];
+
+/** Goes to the next step of Welcome once the page that is leaving has gone, so there is one button to press. */
+async function goToNextStep(page) {
+    const next = page.getByRole('button', { name: 'Next', exact: true });
+    await expect(next).toHaveCount(1);
+    await next.click();
+}
+
+for (const scale of LAYERED_SCALES) {
+    test(`the layers of the figures of Welcome are even blocks while they move, on a screen of scale ${scale}`, async ({}, testInfo) => {
+        const size = { scale, width: 1440, height: 900 };
+        const { browser, page } = await launch(testInfo, { ...size, motion: true });
+        try {
+            await page.clock.install({ time: new Date(2026, 9, 30, 12, 0) });
+            await startHome(page, size);
+            await page.evaluate(openModule('/scripts/sillybunny-welcome.js', 'openWelcomeDialog()'));
+            for (const { id, layers, after } of WELCOME_FIGURES) {
+                await test.step(id, async () => {
+                    await after(page);
+                    const selector = `.sb-dialog__page:not(.is-underlay):not(.is-leaving) .sbArtFigure[data-sb-art-placeholder="${id}"]`;
+                    await expect(page.locator(selector)).toHaveAttribute('data-sb-art-motion', 'playing', { timeout: STARTUP_TIMEOUT });
+                    const readOptions = { scope: 'dialog.sb-dialog-host[open]', figureSelector: `.sbArtFigure[data-sb-art-placeholder="${id}"]` };
+                    await expect.poll(async () => {
+                        const first = JSON.stringify(await readFigures(page, readOptions));
+                        await pause(page, 250);
+                        return first === JSON.stringify(await readFigures(page, readOptions));
+                    }, { timeout: 10_000 }).toBe(true);
+                    await expectLayersEven(page, { scale, step: Math.max(1, Math.round(scale)), selector, readOptions, minimumLayers: layers });
+                });
+            }
+        } finally {
+            await browser.close();
+        }
+    });
 }

@@ -1,13 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
+import { LAYER_EDGE_BIAS_CSS_PX } from '../public/scripts/sillybunny-home/pixel-art.js';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 /*
- * The player of the idle motion of the art, in a real browser. No real frames are shipped yet, so the scene here is a
- * fixture: two figures on a backdrop, whose pictures are one-pixel files that the test serves itself. The player is
- * what is under test: when it moves, when it stops, where it puts the pictures, and what it leaves alone. The page is
+ * The player of the idle motion of the art, in a real browser. The scene here is a fixture: two figures on a backdrop,
+ * whose pictures are one-pixel files that the test serves itself, so the player is what is under test: when it moves,
+ * when it stops, where it puts the pictures, and what it leaves alone. tests/art-motion-frames.e2e.js plays the shipped
+ * frames. The page is
  * a bare one that the test serves from the app's own origin, so the modules are the shipped ones and the app does not
  * have to boot. The clock is Playwright's, so a breath and a blink are read at exact times.
  */
@@ -129,7 +131,7 @@ function readSurroundings(page) {
  * list is what is wanted, and the figure must have layers for that to mean anything.
  */
 async function layersOffTheirPlace(page, step) {
-    return page.evaluate((wantedStep) => {
+    return page.evaluate(({ wantedStep, bias }) => {
         const figure = document.querySelector('#figure').getBoundingClientRect();
         const dpr = devicePixelRatio;
         const layers = [...document.querySelectorAll('#figure [data-sb-art-layer]')];
@@ -137,10 +139,11 @@ async function layersOffTheirPlace(page, step) {
             const box = image.getBoundingClientRect();
             const art = image.dataset.sbArtBox.split(' ').map(Number);
             const device = [(box.left - figure.left) * dpr, (box.top - figure.top) * dpr, box.width * dpr, box.height * dpr];
-            return device.some((value, index) => Math.abs(value - art[index] * wantedStep) > 0.05);
+            // Every edge of a layer carries the bias that keeps it from being cut under a device pixel, and nothing else. The margin is the cut of a few layout units.
+            return device.some((value, index) => Math.abs(value - (art[index] * wantedStep + bias * dpr)) > 0.06);
         });
         return { count: layers.length, off: off.map(image => image.dataset.sbArtLayer) };
-    }, step);
+    }, { wantedStep: step, bias: LAYER_EDGE_BIAS_CSS_PX });
 }
 
 for (const { name, options, steps } of VIEWPORTS) {
@@ -326,9 +329,9 @@ for (const { name, options, steps } of VIEWPORTS) {
 
 /*
  * The same player in the hero of Home, through the shipped wiring: the hero asks `art-sources.js` whether its art
- * moves, reads the description of the scene, checks that it fits the still, and plays the pictures. No scene is
- * shipped yet, so the test gives the table one entry by changing the module on its way to the page, and serves a
- * fixture scene. When the real frames are in the table this block is the test of the wiring.
+ * moves, reads the description of the scene, checks that it fits the still, and plays the pictures. The test gives the
+ * table the entries that it needs by changing the module on its way to the page, and serves a fixture scene, so a
+ * change of the shipped frames does not change what this block tests: the wiring.
  */
 const HERO_SCENE = { ...MANIFEST, scene: 'hero-duo', backdrop: 'hero-duo--backdrop.png' };
 const ABOUT_SCENE = {
@@ -349,7 +352,7 @@ async function openHomeWithMovingHero(page, { scene = HERO_SCENE, moving: extra 
         const response = await route.fetch();
         const source = await response.text();
         const table = JSON.stringify({ 'hero-duo': 'hero-duo--breath.json', ...extra });
-        const moving = source.replace('const PIXEL_MOTION = Object.freeze({});', `const PIXEL_MOTION = Object.freeze(${table});`);
+        const moving = source.replace(/const PIXEL_MOTION = Object\.freeze\(\{[^}]*\}\);/, `const PIXEL_MOTION = Object.freeze(${table});`);
         if (moving === source) throw new Error('The table of moving art is not where the test expects it.');
         await route.fulfill({ response, body: moving });
     });

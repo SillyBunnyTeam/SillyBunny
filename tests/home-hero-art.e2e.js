@@ -10,7 +10,7 @@ import { stubTheme } from './helpers/theme-stub.js';
  * The hero of Home is pixel art on the lavender panel of the art panels. It is drawn at the fixed step of the screen when
  * the band holds it, at the largest whole step that does when it does not, and shrunk by a fraction only when one device
  * pixel per art pixel is still wider than the band. The band has to hold the picture and the padding of the panel, which
- * is 12px, and 8px on a narrow container where every pixel counts. The size of each picture comes from `art-sources.js`
+ * is 12px at every width. The size of each picture comes from `art-sources.js`
  * and the rule is written out here, so the test follows a new picture and does not compute its answer with the code
  * under test. These tests use Playwright's `deviceScaleFactor`, which checks sizes and not the evenness of the pixels;
  * `art-pixel-evenness.e2e.js` does that on a browser that runs at the real scale.
@@ -22,15 +22,16 @@ test.describe.configure({ timeout: 120_000 });
 const STARTUP_TIMEOUT = 30_000;
 const DAY = { hour: 12, art: getPixelArt('hero-duo') };
 const NIGHT = { hour: 21, art: getPixelArt('hero-duo-night') };
-/** The container width up to which Home gives the hero's panel 8px of padding instead of 12px. */
-const NARROW_CONTAINER = 390;
+/** The padding of the hero's panel, which is the one of every art panel. */
+const PANEL_PADDING = 12;
 const BACKDROP_FLOOR = 1.1;
 
 /**
- * Widths that include common phones and both sides of each change in the paddings of Home. The container of Home is
- * narrower than the window, so a rule at 390px or 414px of container switches at a window that is wider than that.
+ * Widths that include common phones and both sides of each change in the paddings of Home and of the width where the
+ * fixed step starts. The container of Home is narrower than the window, so a rule at a container width switches at a
+ * window that is wider than that.
  */
-const WIDTHS = [360, 375, 380, 388, 390, 396, 404, 405, 414, 428, 430, 440, 460, 1440];
+const WIDTHS = [360, 375, 380, 388, 390, 396, 404, 405, 414, 428, 430, 440, 456, 460, 470, 478, 479, 480, 481, 500, 1440];
 const RATIOS = [1, 1.5, 2, 3];
 
 async function startHome(page, hour) {
@@ -94,9 +95,6 @@ function expectedDrawing({ artWidth, ratio, available }) {
     return { fit: 'smooth', width: available };
 }
 
-/** The padding that Home gives the panel of the hero: less on a narrow container. */
-const paddingOf = read => (read.container <= NARROW_CONTAINER ? 8 : 12);
-
 /** A whole step is drawn as blocks, and a shrunk picture is sampled smoothly because blocks of uneven size would show as stripes. */
 const renderingOf = fit => (fit === 'smooth' ? 'auto' : 'pixelated');
 
@@ -117,14 +115,14 @@ for (const hero of [DAY, NIGHT]) {
         test.describe(`${hero.art.id} on a ${ratio}x screen`, () => {
             test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: ratio });
 
-            test('is drawn as the rule says at every width, on a panel with the padding of its container', async ({ page }) => {
+            test('is drawn as the rule says at every width, on a panel with the padding of an art panel', async ({ page }) => {
                 await startHome(page, hero.hour);
 
                 for (const width of WIDTHS) {
                     await page.setViewportSize({ width, height: 900 });
                     const read = await settledHero(page);
                     const where = `${hero.art.id} at ${width}px on ${ratio}x`;
-                    const padding = paddingOf(read);
+                    const padding = PANEL_PADDING;
                     const expected = expectedDrawing({ artWidth: hero.art.width, ratio, available: read.inner - 2 * padding });
 
                     expectHeroBasics(read, hero, where);
@@ -141,24 +139,69 @@ for (const hero of [DAY, NIGHT]) {
 
 /*
  * The phones that matter most. The padding of the panel counts against the band, so these are the widths where a
- * change in the paddings of Home would shrink a picture that had fitted. The day picture is the one that is meant to
- * keep the fixed step on every phone that is wide enough to hold it.
+ * change in the paddings of Home would change the size of a picture. The day picture is wider than the band of a phone,
+ * so a phone draws it at a smaller whole step, or shrunk to the band at 1x where there is no smaller step.
  */
 test.describe('the hero on a phone', () => {
-    test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    test.describe('on a 3x screen', () => {
+        test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3 });
 
-    test('keeps the fixed step on a 390px phone when the picture and its panel fit the band, and says so', async ({ page }) => {
-        await startHome(page, DAY.hour);
+        test('draws the day picture at a smaller whole step on a 390px phone, and says so', async ({ page }) => {
+            await startHome(page, DAY.hour);
 
-        const read = await settledHero(page);
+            const read = await settledHero(page);
 
-        expect(read.container).toBeLessThanOrEqual(NARROW_CONTAINER);
-        expect(read.padding[0], 'the panel gives up 4px of padding on a narrow container').toBe(8);
-        expect(read.fit, 'the picture and its padding fit the band, so there is no reason to shrink').toBe('fixed');
-        expect(read.inner).toBeGreaterThanOrEqual(DAY.art.width + 16);
+            expect(read.padding[0], 'the panel keeps the padding of an art panel on a phone').toBe(PANEL_PADDING);
+            expect(read.inner, 'the band cannot hold the picture at the fixed step').toBeLessThan(DAY.art.width + 16);
+            expect(read.fit).toBe('step');
+            expect(read.figure[0]).toBeCloseTo((DAY.art.width * 2) / 3, 1);
+            expect(read.rendering).toBe('pixelated');
+        });
     });
 
-    test('shrinks a picture that cannot fit even with the smaller padding, to the band, on a 360px phone', async ({ page }) => {
+    test.describe('on a 1x screen', () => {
+        test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+
+        test('shrinks the day picture to the band on a 390px phone, because there is no smaller whole step', async ({ page }) => {
+            await startHome(page, DAY.hour);
+
+            const read = await settledHero(page);
+
+            expect(read.inner).toBeLessThan(DAY.art.width + 16);
+            expect(read.fit).toBe('smooth');
+            expect(read.panel[0]).toBeCloseTo(read.inner, 0);
+        });
+    });
+
+    test.describe('where the fixed step begins', () => {
+        test.use({ viewport: { width: 500, height: 900 }, deviceScaleFactor: 1 });
+
+        // The container has to hold the picture, 2 x 12 of panel padding, 2 x 16 of band padding, 2 x 12 of layout padding
+        // and the border of the band.
+        test('is at the container width that holds the day picture with the paddings of Home, and not a pixel before', async ({ page }) => {
+            await startHome(page, DAY.hour);
+            const wanted = DAY.art.width + 2 * 12 + 2 * 16 + 2 * 12 + 2 * 1;
+            // The container is a little narrower than the window, by an amount that is not the same at every width, so the window
+            // is moved until the container is the one that is wanted.
+            const resizeUntilContainerIs = async (container) => {
+                for (let attempt = 0; attempt < 6; attempt++) {
+                    const read = await settledHero(page);
+                    await page.setViewportSize({ width: page.viewportSize().width + (container - read.container), height: 900 });
+                }
+                return settledHero(page);
+            };
+
+            const atLimit = await resizeUntilContainerIs(wanted);
+            const below = await resizeUntilContainerIs(wanted - 1);
+
+            expect(atLimit.container).toBe(wanted);
+            expect(atLimit.fit).toBe('fixed');
+            expect(below.container).toBe(wanted - 1);
+            expect(below.fit).toBe('smooth');
+        });
+    });
+
+    test('shrinks a picture that cannot fit even at one device pixel per art pixel, to the band, on a 360px phone', async ({ page }) => {
         await page.setViewportSize({ width: 360, height: 640 });
         await startHome(page, DAY.hour);
 

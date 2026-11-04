@@ -142,6 +142,17 @@ export function sizePixelFigure(figure, { step, ratio, rows }) {
 }
 
 /**
+ * Layout cuts a length down to a unit of 1/64 CSS px. An edge that should be a whole device pixel can end a hair under it,
+ * and a layer whose edge did is painted a device pixel off from the still, at some scales and in some engines. An edge is
+ * two lengths, a position and a size, so the bias has to be more than two units; a larger one pushes other edges over a
+ * device pixel instead, and the window that holds in both Chromium and WebKit at every scale of the layered evenness
+ * tests is narrow, about two to three units. This value is inside it, so a change to it, or to the art, has to be checked
+ * with those tests in both engines. Moving the figure onto a whole device pixel does not remove the need: Chromium then
+ * needs no bias, but WebKit still paints layers off at some scales.
+ */
+export const LAYER_EDGE_BIAS_CSS_PX = 5 / 128;
+
+/**
  * Puts a picture that lies over the still of a figure at its place. Its box is in art pixels, in `data-sb-art-box`
  * as `left top width height`, and it is drawn at the same size of an art pixel as the still, so a layer lines up with
  * the still pixel for pixel at every step.
@@ -150,12 +161,13 @@ export function sizePixelFigure(figure, { step, ratio, rows }) {
  */
 export function placePixelLayer(layer, unit) {
     const [left, top, width, height] = layer.dataset.sbArtBox.split(' ').map(Number);
+    const bias = LAYER_EDGE_BIAS_CSS_PX;
     Object.assign(layer.style, {
         position: 'absolute',
-        left: `${left * unit}px`,
-        top: `${top * unit}px`,
-        width: `${width * unit}px`,
-        height: `${height * unit}px`,
+        left: `${left * unit + bias}px`,
+        top: `${top * unit + bias}px`,
+        width: `${width * unit + bias}px`,
+        height: `${height * unit + bias}px`,
     });
 }
 

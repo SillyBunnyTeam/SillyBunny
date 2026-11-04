@@ -181,7 +181,12 @@ describe('when the picture comes into view', () => {
         expect(load).toHaveBeenCalledTimes(1);
         const small = figure.querySelector('img[data-sb-art-layer="small"][data-sb-art-picture="base"][data-sb-art-pose="c"]');
         // The figure is sized at step 2 on a 2x screen, so an art pixel is one CSS pixel.
-        expect([small.style.left, small.style.top, small.style.width, small.style.height]).toEqual(['50px', '30px', '30px', '80px']);
+        const [left, top, width, height] = [small.style.left, small.style.top, small.style.width, small.style.height].map(Number.parseFloat);
+        expect([left, top, width, height].map(value => Math.round(value))).toEqual([50, 30, 30, 80]);
+        expect(left).toBeCloseTo(50, 1);
+        expect(top).toBeCloseTo(30, 1);
+        expect(width).toBeCloseTo(30, 1);
+        expect(height).toBeCloseTo(80, 1);
         expect(small.style.position).toBe('absolute');
         expect(small.getAttribute('alt')).toBe('');
         // Drawn like the still: as blocks, and not smoothed.
@@ -546,7 +551,8 @@ describe('a figure that is resized while its pictures decode', () => {
 
         const tall = layerImages(figure).find(image => image.dataset.sbArtLayer === 'tall');
         expect(figure.dataset.sbArtMotion).toBe('playing');
-        expect([tall.style.left, tall.style.width]).toEqual([`${4 * 2}px`, `${40 * 2}px`]);
+        expect(Number.parseFloat(tall.style.left)).toBeCloseTo(4 * 2, 1);
+        expect(Number.parseFloat(tall.style.width)).toBeCloseTo(40 * 2, 1);
     });
 
     test('is not a failure when the layout takes its size away meanwhile: it asks again at the next refresh', async () => {

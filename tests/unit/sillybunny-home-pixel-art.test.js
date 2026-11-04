@@ -12,6 +12,8 @@ import {
     largestStepThatFits,
     pixelCssSize,
     pixelStep,
+    LAYER_EDGE_BIAS_CSS_PX,
+    placePixelLayer,
     sizePixelFigure,
     watchPixelScale,
 } from '../../public/scripts/sillybunny-home/pixel-art.js';
@@ -176,6 +178,44 @@ describe('createPixelFigure and sizePixelFigure', () => {
 
         expect([figure.style.width, figure.style.height]).toEqual(['145px', '189px']);
         expect(figure.firstElementChild.style.height).toBe('305px');
+    });
+});
+
+describe('placePixelLayer', () => {
+    function layerAt(box) {
+        const layer = document.createElement('img');
+        layer.dataset.sbArtBox = box;
+        return layer;
+    }
+
+    test('puts a layer at its box in art pixels, in the size of an art pixel that it is given', () => {
+        const layer = layerAt('10 20 30 40');
+
+        placePixelLayer(layer, 2);
+
+        expect(layer.style.position).toBe('absolute');
+        expect([layer.style.left, layer.style.top, layer.style.width, layer.style.height].map(Number.parseFloat).map(Math.floor)).toEqual([20, 40, 60, 80]);
+    });
+
+    // A length is cut down to a layout unit, so an edge that should be a whole device pixel can end under it. The bias is
+    // the same in CSS pixels whatever the ratio of the screen, because the unit is, and every edge gets it.
+    test.each([1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3])('adds the same bias in CSS pixels to every edge at a scale of %s', (ratio) => {
+        window.devicePixelRatio = ratio;
+        const layer = layerAt('7 9 11 13');
+        const unit = 2 / ratio;
+
+        placePixelLayer(layer, unit);
+
+        const offsets = [[layer.style.left, 7], [layer.style.top, 9], [layer.style.width, 11], [layer.style.height, 13]]
+            .map(([value, art]) => Number.parseFloat(value) - art * unit);
+        for (const offset of offsets) {
+            expect(offset).toBeCloseTo(LAYER_EDGE_BIAS_CSS_PX, 9);
+        }
+    });
+
+    test('keeps the bias above two layout units and below four, where the layered evenness tests start to fail', () => {
+        expect(LAYER_EDGE_BIAS_CSS_PX).toBeGreaterThan(2 / 64);
+        expect(LAYER_EDGE_BIAS_CSS_PX).toBeLessThan(4 / 64);
     });
 });
 

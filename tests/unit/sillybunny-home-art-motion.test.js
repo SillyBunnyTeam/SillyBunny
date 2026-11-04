@@ -105,6 +105,13 @@ describe('parseBreathScene', () => {
         ['a layer with no breath pose', layers => delete layers[0].images.b, /no pictures for the pose "b"/],
         ['a picture of an unknown kind', layers => { layers[0].images.c.wink = 'x.webp'; }, /unknown kind "wink"/],
         ['a picture with a folder', layers => { layers[0].images.c.base = 'img/x.webp'; }, /no folder/],
+        ['a picture with a way up', layers => { layers[0].images.c.base = '../x.webp'; }, /no folder/],
+        ['a picture that is only a way up', layers => { layers[0].images.c.base = '..'; }, /no folder/],
+        ['a picture whose name starts with a dot', layers => { layers[0].images.c.base = '.x.webp'; }, /not starting with a dot/],
+        ['a picture with a query', layers => { layers[0].images.c.base = 'x.webp?v=1'; }, /must be a file name/],
+        ['a picture with a fragment', layers => { layers[0].images.c.base = 'x.webp#top'; }, /must be a file name/],
+        ['a picture with an escaped slash', layers => { layers[0].images.c.base = 'x%2fy.webp'; }, /must be a file name/],
+        ['a picture with a space', layers => { layers[0].images.c.base = 'x y.webp'; }, /must be a file name/],
         ['a layer with a fraction for a size', layers => { layers[0].width = 120.5; }, /width must be a whole number/],
         ['a layer with no base picture', layers => delete layers[0].images.c.base, /base must be a file name/],
     ])('refuses %s', (_name, change, message) => {
@@ -112,6 +119,13 @@ describe('parseBreathScene', () => {
         change(manifest.layers);
 
         expect(() => parseBreathScene(manifest)).toThrow(message);
+    });
+
+    test('accepts the names that the exporter writes', () => {
+        const manifest = manifestOf();
+        manifest.layers[0].images.c.base = 'hero-duo--reisen--breath-c-half@native.webp';
+
+        expect(() => parseBreathScene(manifest)).not.toThrow();
     });
 
     test('refuses what is not an object', () => {

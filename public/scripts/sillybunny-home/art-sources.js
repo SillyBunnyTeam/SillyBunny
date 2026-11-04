@@ -1,5 +1,5 @@
 /** Changes with every new set of picture files, because the service worker caches `/img/` by the full URL. */
-export const ART_VERSION = '20261104a';
+export const ART_VERSION = '20261105a';
 
 const ART_BASE = '/img/sillybunny/';
 
@@ -22,7 +22,7 @@ const PIXEL_ART = Object.freeze({
     'about-tewi': { file: 'about-tewi@native.webp', width: 145, height: 305 },
     'troubleshooting-reisen': { file: 'troubleshooting-reisen@native.webp', width: 197, height: 366 },
     'empty-tewi': { file: 'empty-tewi@native.webp', width: 159, height: 318 },
-    'hero-duo': { file: 'hero-duo@native.webp', width: 332, height: 366 },
+    'hero-duo': { file: 'hero-duo@native.webp', width: 384, height: 368 },
     'hero-duo-night': { file: 'hero-duo-night@native.webp', width: 361, height: 362 },
 });
 
@@ -31,7 +31,13 @@ const PIXEL_ART = Object.freeze({
  * (`<scene>--breath.json`). The description names the pictures of each figure, so nothing else is listed here.
  * @type {Readonly<Record<string, string>>}
  */
-const PIXEL_MOTION = Object.freeze({});
+const PIXEL_MOTION = Object.freeze({
+    'hero-duo': 'hero-duo--breath.json',
+    'hero-duo-night': 'hero-duo-night--breath.json',
+    'welcome-both': 'welcome-both--breath.json',
+    'welcome-persona-tewi': 'welcome-persona-tewi--breath.json',
+    'welcome-next-reisen': 'welcome-next-reisen--breath.json',
+});
 
 /**
  * @param {string} file A file name in the picture folder.
