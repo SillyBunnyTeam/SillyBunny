@@ -72,6 +72,10 @@ const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
 /** The longest voiced line that stays in three lines on the narrowest tile, a 360px phone. */
 const LINE_LIMIT = 40;
 const ASSISTANT_NAMES = ['Reisen', 'Tewi'];
+const SUBTITLES = {
+    Reisen: 'Did you need help with setup or troubleshooting? Leave it to me!',
+    Tewi: 'Gege~ Are you a little down on your luck? Ask me anything!',
+};
 
 const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton');
 const tiles = page => page.locator('#chat > .welcomePanel .sbHomeTile');
@@ -765,9 +769,6 @@ for (const { name, options } of VIEWPORTS) {
                 'HOME-HERO-GREETING-01',
                 'RC-FILTER-EMPTY-HEAD',
                 'RC-FILTER-EMPTY-BODY',
-                'AS-REISEN-SUB',
-                'AS-TEWI-SUB',
-                'AS-CHOOSE-SUB',
                 'HOME-ROW-GS-LINE',
                 'HOME-ROW-HELP',
                 'HOME-ROW-EXTRAS',
@@ -1018,13 +1019,14 @@ for (const { name, options } of VIEWPORTS) {
             await expect(page.locator('.welcomePanel [data-sb-home-region="assistants"]').getByRole('heading', { level: 2, name: 'Assistants' })).toBeVisible();
         });
 
-        test('each assistant card has a portrait, a name, a placeholder subtitle and a footer with three controls', async ({ page }) => {
+        test('each assistant card has a portrait, a name, a subtitle and a footer with three controls', async ({ page }) => {
             await chooseMode(page, 'full');
 
             for (const name of ASSISTANT_NAMES) {
                 const card = assistantCard(page, name);
                 await expect(card.locator(`[data-sb-art-placeholder="row-${name.toLowerCase()}"]`)).toBeVisible();
-                await expect(card.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', `AS-${name.toUpperCase()}-SUB`);
+                await expect(card.locator('.sbHomeCardSub')).toHaveText(SUBTITLES[name]);
+                await expect(card.locator('.sbHomeCardSub')).not.toHaveAttribute('data-sb-copy-placeholder', /./);
                 await expect(card.locator('.sbHomeCardFooter > *')).toHaveCount(3);
                 await expect(card.locator('.sbHomeFootButton i.fa-plus')).toHaveCount(1);
                 await expect(card.locator('.sbHomeFootButton i.fa-hourglass-half')).toHaveCount(1);
@@ -1043,7 +1045,7 @@ for (const { name, options } of VIEWPORTS) {
                 const footButtons = card.locator('.sbHomeFootButton');
                 await expect(card.locator('.sbHomeCardOpen')).toHaveAccessibleName(`New chat with ${name}`);
                 await expect(card.locator('.sbHomeCardOpen')).toHaveAttribute('title', `New Chat With ${name}`);
-                await expect(card.locator('.sbHomeCardOpen')).toHaveAccessibleDescription('TODO(copy)');
+                await expect(card.locator('.sbHomeCardOpen')).toHaveAccessibleDescription(SUBTITLES[name]);
                 await expect(footButtons.nth(0)).toHaveAccessibleName(`Start new chat with ${name}`);
                 await expect(footButtons.nth(0)).toHaveAttribute('title', `Start New Chat With ${name}`);
                 await expect(footButtons.nth(1)).toHaveAccessibleName(`Temporary Chat with ${name}`);

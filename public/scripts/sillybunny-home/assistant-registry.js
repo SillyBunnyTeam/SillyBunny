@@ -1,5 +1,3 @@
-import { COPY_PLACEHOLDER } from './copy.js';
-
 /**
  * The assistants that SillyBunny ships, in one list that Home, the Welcome Screen code, Getting Started and Bundled
  * Extras all read.
@@ -12,7 +10,6 @@ import { COPY_PLACEHOLDER } from './copy.js';
  * @property {string} id
  * @property {string} name The name that Home and Bundled Extras show.
  * @property {boolean} [home] Whether Home always lists the assistant, even before her card exists.
- * @property {string} [slot] Copy slot of the subtitle on Home.
  * @property {string} [art] Name of the art on Home, and its size key.
  * @property {string} avatarStorageKey Account storage key of the avatar that the user chose for this assistant.
  * @property {string} identityStorageKey Account storage key of the avatar that this assistant's card has now.
@@ -42,8 +39,6 @@ import { COPY_PLACEHOLDER } from './copy.js';
  * @property {string} src2x The same picture with every art pixel drawn as 2 by 2 file pixels.
  * @property {number} width The width of the picture in art pixels.
  * @property {number} height The height of the picture in art pixels.
- * @property {string} alt The description of the picture. It is also the name of the button that enlarges it.
- * @property {string} altSlot Copy slot of `alt`.
  */
 
 /** The account storage key of the Welcome Page Assistant, which is the default assistant unless the user chose another. */
@@ -55,7 +50,6 @@ export const ASSISTANTS = Object.freeze([
         id: 'reisen',
         name: 'Reisen',
         home: true,
-        slot: 'AS-REISEN-SUB',
         art: 'row-reisen',
         avatarStorageKey: ASSISTANT_POINTER_KEY,
         identityStorageKey: 'bundledAssistantReisenIdentityAvatar',
@@ -67,15 +61,12 @@ export const ASSISTANTS = Object.freeze([
             src2x: '/img/sillybunny/greeting-reisen@2x.webp',
             width: 768,
             height: 512,
-            alt: COPY_PLACEHOLDER,
-            altSlot: 'GREETING-ART-REISEN',
         },
     },
     {
         id: 'tewi',
         name: 'Tewi',
         home: true,
-        slot: 'AS-TEWI-SUB',
         art: 'row-tewi',
         avatarStorageKey: 'bundledAssistantTewiAvatar',
         identityStorageKey: 'bundledAssistantTewiIdentityAvatar',
@@ -87,8 +78,6 @@ export const ASSISTANTS = Object.freeze([
             src2x: '/img/sillybunny/greeting-tewi@2x.webp',
             width: 768,
             height: 512,
-            alt: COPY_PLACEHOLDER,
-            altSlot: 'GREETING-ART-TEWI',
         },
     },
     {

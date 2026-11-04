@@ -1,8 +1,6 @@
 import { getHomeAssistants } from './assistant-registry.js';
 import { NO_OFFERS, findOffers } from './managed-content.js';
 
-const POINTER_SLOT = 'AS-POINTER-SUB';
-const CHOOSE_SLOT = 'AS-CHOOSE-SUB';
 const POINTER_ART = 'row-pointer';
 
 // A collator compares without building one per comparison, which a library of thousands of names would otherwise do.
@@ -25,7 +23,6 @@ export const OWN_CARD_KEY = 'assistant-own';
  * @property {string} id
  * @property {'bundled' | 'pointer'} kind
  * @property {string} name
- * @property {string} slot Copy slot of the subtitle.
  * @property {{ name: string, avatar: string | null }} art `name` is the size key; an `avatar` is shown as the thumbnail of that card.
  * @property {string | null} avatar The avatar the card has in the library, or null while it has none.
  * @property {AssistantCardState} state
@@ -37,7 +34,6 @@ export const OWN_CARD_KEY = 'assistant-own';
  * @property {'own'} id
  * @property {'choose'} kind
  * @property {null} name
- * @property {string} slot
  * @property {null} art
  * @property {null} avatar
  * @property {'available'} state
@@ -81,7 +77,6 @@ function describeAssistant(assistant, library, managed) {
         id: assistant.id,
         kind: 'bundled',
         name: assistant.name,
-        slot: assistant.slot,
         art: { name: assistant.art, avatar: null },
         avatar: found?.avatar ?? null,
         state,
@@ -99,7 +94,6 @@ function describePointer(character) {
         id: 'pointer',
         kind: 'pointer',
         name: character.name,
-        slot: POINTER_SLOT,
         art: { name: POINTER_ART, avatar: character.avatar },
         avatar: character.avatar,
         state: 'available',
@@ -109,7 +103,7 @@ function describePointer(character) {
 
 /** @type {ChooseCard} */
 const CHOOSE_CARD = Object.freeze({
-    key: OWN_CARD_KEY, id: 'own', kind: 'choose', name: null, slot: CHOOSE_SLOT, art: null, avatar: null, state: 'available', offers: NO_OFFERS,
+    key: OWN_CARD_KEY, id: 'own', kind: 'choose', name: null, art: null, avatar: null, state: 'available', offers: NO_OFFERS,
 });
 
 /**

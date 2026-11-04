@@ -29,11 +29,11 @@ describe('the question of an update', () => {
     test('answers with the response that the alert resolved with', async () => {
         openAlert.mockResolvedValueOnce('update');
 
-        await expect(openManagedUpdateAlert()).resolves.toBe('update');
+        await expect(openManagedUpdateAlert('Reisen')).resolves.toBe('update');
     });
 
     test('has Keep Mine first and Update last, which is the suggested response', async () => {
-        await openManagedUpdateAlert();
+        await openManagedUpdateAlert('Reisen');
 
         const { responses } = openAlert.mock.calls[0][0];
         expect(responses.map(({ id, label }) => [id, label])).toEqual([['keep', 'Keep Mine'], ['update', 'Update']]);
@@ -41,39 +41,37 @@ describe('the question of an update', () => {
     });
 
     test('has no response that Return activates, so a stray key neither updates nor keeps', async () => {
-        await openManagedUpdateAlert();
+        await openManagedUpdateAlert('Reisen');
 
         expect(openAlert.mock.calls[0][0].defaultResponse).toBeNull();
     });
 
     test('answers Escape and the scrim with a response that is neither of the two', async () => {
-        await openManagedUpdateAlert();
+        await openManagedUpdateAlert('Reisen');
 
         const { closeResponse, responses } = openAlert.mock.calls[0][0];
         expect(responses.map(response => response.id)).not.toContain(closeResponse);
         expect(closeResponse).toBe('cancel');
     });
 
-    test('marks the body as a copy placeholder in the slot AS-UPDATE-BODY', async () => {
-        await openManagedUpdateAlert();
+    test('names the card in the heading', async () => {
+        await openManagedUpdateAlert('Tewi');
 
-        const body = document.querySelector('.sb-dialog__message [data-sb-copy-slot="AS-UPDATE-BODY"]');
-        expect(body.dataset.sbCopyPlaceholder).toBe('true');
-        expect(body.textContent).toBe('TODO(copy)');
+        expect(openAlert.mock.calls[0][0].heading).toBe('Update Tewi?');
+        expect(document.querySelector('.sb-dialog__heading').textContent).toBe('Update Tewi?');
     });
 
-    test('marks the heading as a copy placeholder in the slot AS-UPDATE-HEAD', async () => {
-        await openManagedUpdateAlert();
+    test('says in the body that the user edited the card, and that the copy is kept as a backup', async () => {
+        await openManagedUpdateAlert('Tewi');
 
-        const heading = document.querySelector('.sb-dialog__heading');
-        expect(heading.dataset.sbCopySlot).toBe('AS-UPDATE-HEAD');
-        expect(heading.dataset.sbCopyPlaceholder).toBe('true');
-        expect(heading.textContent).toBe('TODO(copy)');
+        const body = document.querySelector('.sb-dialog__message [data-sb-managed-update="body"]');
+        expect(body.textContent).toBe('A newer version of Tewi is available, but you\'ve edited your copy. Would you like to update anyway? Your copy is saved as a backup.');
+        expect(document.querySelector('dialog [data-sb-copy-placeholder]')).toBeNull();
     });
 
-    test('has no visible text of its own apart from the two labels and the placeholders', async () => {
-        await openManagedUpdateAlert();
+    test('has no visible text of its own apart from the heading, the body and the two labels', async () => {
+        await openManagedUpdateAlert('Tewi');
 
-        expect(document.querySelector('dialog').textContent).toBe('TODO(copy)TODO(copy)');
+        expect(document.querySelector('dialog').textContent).toBe('Update Tewi?A newer version of Tewi is available, but you\'ve edited your copy. Would you like to update anyway? Your copy is saved as a backup.');
     });
 });

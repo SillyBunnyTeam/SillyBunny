@@ -92,10 +92,10 @@ describe('how an assistant is brought into the library', () => {
 });
 
 describe('what Home and Getting Started read', () => {
-    test('Home lists Reisen and Tewi with the names, subtitle slots and art they had as placeholders', () => {
-        expect(getHomeAssistants().map(({ id, name, slot, art }) => ({ id, name, slot, art }))).toEqual([
-            { id: 'reisen', name: 'Reisen', slot: 'AS-REISEN-SUB', art: 'row-reisen' },
-            { id: 'tewi', name: 'Tewi', slot: 'AS-TEWI-SUB', art: 'row-tewi' },
+    test('Home lists Reisen and Tewi with the names and art they had as placeholders', () => {
+        expect(getHomeAssistants().map(({ id, name, art }) => ({ id, name, art }))).toEqual([
+            { id: 'reisen', name: 'Reisen', art: 'row-reisen' },
+            { id: 'tewi', name: 'Tewi', art: 'row-tewi' },
         ]);
     });
 

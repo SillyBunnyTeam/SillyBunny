@@ -12,6 +12,12 @@ test.describe.configure({ timeout: 90_000 });
 
 const STARTUP_TIMEOUT = 30_000;
 const COPY_PLACEHOLDER = 'TODO(copy)';
+const SUBTITLES = {
+    reisen: 'Did you need help with setup or troubleshooting? Leave it to me!',
+    tewi: 'Gege~ Are you a little down on your luck? Ask me anything!',
+    pointer: 'Chosen from your character library.',
+    own: 'Pick any character from your library as a third assistant.',
+};
 const THUMBNAIL = readFileSync(new URL('../public/img/ai4.png', import.meta.url));
 
 const VIEWPORTS = [
@@ -119,17 +125,16 @@ for (const { name, portrait, options } of VIEWPORTS) {
         test.use(options);
 
         test.describe('the cards', () => {
-            test('are Reisen, Tewi and the character of the pointer, each with its subtitle slot', async ({ page }) => {
+            test('are Reisen, Tewi and the character of the pointer, each with its subtitle', async ({ page }) => {
                 await boot(page, { library: [...BOTH, NAHIDA, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
 
                 const keys = await page.locator(`${HOME} .sbHomeCards > .sbHomeCard`).evaluateAll(nodes => nodes.map(node => node.dataset.sbHomeKey));
                 expect(keys).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
                 await expect(page.locator(`${HOME} .sbHomeCardName`)).toHaveText(['Reisen', 'Tewi', 'Alice']);
-                for (const [key, slot] of [['assistant-reisen', 'AS-REISEN-SUB'], ['assistant-tewi', 'AS-TEWI-SUB'], ['assistant-own', 'AS-POINTER-SUB']]) {
+                for (const [key, text] of [['assistant-reisen', SUBTITLES.reisen], ['assistant-tewi', SUBTITLES.tewi], ['assistant-own', SUBTITLES.pointer]]) {
                     const subtitle = cardOf(page, key).locator('.sbHomeCardSub');
-                    await expect(subtitle, key).toHaveAttribute('data-sb-copy-slot', slot);
-                    await expect(subtitle, key).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                    await expect(subtitle, key).toHaveText(COPY_PLACEHOLDER);
+                    await expect(subtitle, key).toHaveText(text);
+                    await expect(subtitle, key).not.toHaveAttribute('data-sb-copy-placeholder', /./);
                 }
             });
 
@@ -218,14 +223,14 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(menuOf(reisen)).toHaveCount(0);
             });
 
-            test('keeps its name, its placeholder subtitle and its footer labels, and adds no text', async ({ page }) => {
+            test('keeps its name, its subtitle and its footer labels, and adds no text', async ({ page }) => {
                 await boot(page, { library: [] });
                 const reisen = cardOf(page, 'assistant-reisen');
 
                 await expect(reisen.locator('.sbHomeCardName')).toHaveText('Reisen');
-                await expect(reisen.locator('.sbHomeCardSub')).toHaveText(COPY_PLACEHOLDER);
+                await expect(reisen.locator('.sbHomeCardSub')).toHaveText(SUBTITLES.reisen);
                 await expect(reisen.locator('.sbHomeFootLabel')).toHaveText(['Start New Chat', 'Temporary Chat']);
-                await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(1);
+                await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(0);
             });
 
             test('opens nothing when it is pressed', async ({ page }) => {
@@ -450,9 +455,8 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const own = ownCard(page);
 
                 await expect(own.locator('.sbHomeCardName')).toHaveText('Choose Assistant');
-                await expect(own.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-CHOOSE-SUB');
-                await expect(own.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                await expect(own.locator('.sbHomeCardSub')).toHaveText(COPY_PLACEHOLDER);
+                await expect(own.locator('.sbHomeCardSub')).toHaveText(SUBTITLES.own);
+                await expect(own.locator('.sbHomeCardSub')).not.toHaveAttribute('data-sb-copy-placeholder', /./);
                 await expect(own.locator('.sbHomeCardFooter')).toHaveCount(0);
                 await expect(menuOf(own)).toHaveCount(0);
                 await expect(own.locator('button')).toHaveCount(1);
@@ -464,7 +468,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const own = ownCard(page);
 
                 await expect(own.locator('.sbHomeCardName')).toHaveText('Alice');
-                await expect(own.locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-POINTER-SUB');
+                await expect(own.locator('.sbHomeCardSub')).toHaveText(SUBTITLES.pointer);
                 await expect(own.locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=Alice\.png/);
                 await expect(own.locator('button')).toHaveCount(4);
                 await expect(own.locator('.sbHomeFootLabel')).toHaveText(['Start New Chat', 'Temporary Chat']);
@@ -857,7 +861,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                         await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'pointer');
                         await expect(ownCard(page).locator('.sbHomeCardName')).toHaveText('Assistant Nahida');
-                        await expect(ownCard(page).locator('.sbHomeCardSub')).toHaveAttribute('data-sb-copy-slot', 'AS-POINTER-SUB');
+                        await expect(ownCard(page).locator('.sbHomeCardSub')).toHaveText(SUBTITLES.pointer);
                         await expect(ownCard(page).locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=default_AssistantNahida\.png/);
                         await expect(page.locator(`${HOME} .sbHomeCards > .sbHomeCard`)).toHaveCount(3);
                         await expect(cardOf(page, 'assistant-nahida')).toHaveCount(0);

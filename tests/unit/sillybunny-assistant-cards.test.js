@@ -35,7 +35,7 @@ describe('the order of the assistant cards', () => {
         const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar });
 
         expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
-        expect(cards[2]).toMatchObject({ kind: 'choose', slot: 'AS-CHOOSE-SUB' });
+        expect(cards[2]).toMatchObject({ kind: 'choose', id: 'own' });
     });
 
     test('is Reisen, Tewi, then the character that the pointer names, which does not take the first place', () => {
@@ -44,7 +44,7 @@ describe('the order of the assistant cards', () => {
         const cards = getAssistantCards({ library, pointerAvatar: 'Alice.png' });
 
         expect(keysOf(cards)).toEqual(['assistant-reisen', 'assistant-tewi', 'assistant-own']);
-        expect(cards[2]).toMatchObject({ kind: 'pointer', id: 'pointer', name: 'Alice', avatar: 'Alice.png', state: 'available', slot: 'AS-POINTER-SUB' });
+        expect(cards[2]).toMatchObject({ kind: 'pointer', id: 'pointer', name: 'Alice', avatar: 'Alice.png', state: 'available' });
     });
 
     test('has the same three cards when Reisen and Tewi have no card in the library', () => {
@@ -194,12 +194,12 @@ describe('what a card offers from the managed content', () => {
 });
 
 describe('what a card shows', () => {
-    test('keeps the names, subtitle slots and placeholder art that Reisen and Tewi had', () => {
+    test('keeps the names and placeholder art that Reisen and Tewi had', () => {
         const cards = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null });
 
-        expect(cards.slice(0, 2).map(({ name, slot, art }) => ({ name, slot, art }))).toEqual([
-            { name: 'Reisen', slot: 'AS-REISEN-SUB', art: { name: 'row-reisen', avatar: null } },
-            { name: 'Tewi', slot: 'AS-TEWI-SUB', art: { name: 'row-tewi', avatar: null } },
+        expect(cards.slice(0, 2).map(({ name, art }) => ({ name, art }))).toEqual([
+            { name: 'Reisen', art: { name: 'row-reisen', avatar: null } },
+            { name: 'Tewi', art: { name: 'row-tewi', avatar: null } },
         ]);
     });
 
@@ -214,7 +214,7 @@ describe('what a card shows', () => {
     test('has no name, art or avatar for the card to choose from, which the view labels', () => {
         const choose = getAssistantCards({ library: createLibrary({ characters: BOTH }), pointerAvatar: null })[2];
 
-        expect(choose).toEqual({ key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available', offers: NONE });
+        expect(choose).toEqual({ key: 'assistant-own', id: 'own', kind: 'choose', name: null, art: null, avatar: null, state: 'available', offers: NONE });
     });
 
     test('has the same key for the card of the third slot in both of its states, so focus finds it after the pointer changes', () => {

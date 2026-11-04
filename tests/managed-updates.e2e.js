@@ -286,7 +286,7 @@ for (const { name, options } of VIEWPORTS) {
                 }
             });
 
-            test('asks first, with Keep Mine and Update as the answers and the placeholders as the text', async ({ page }) => {
+            test('asks first, with Keep Mine and Update as the answers and the name of the card in the text', async ({ page }) => {
                 const world = await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED } });
                 await openMenu(page, 'assistant-reisen');
 
@@ -295,10 +295,9 @@ for (const { name, options } of VIEWPORTS) {
                 const alert = alertOf(page);
                 await expect(alert).toBeVisible();
                 await expect(alert.getByRole('button')).toHaveText(['Keep Mine', 'Update']);
-                await expect(alert.locator('[data-sb-copy-slot="AS-UPDATE-HEAD"]')).toHaveText(COPY_PLACEHOLDER);
-                await expect(alert.locator('[data-sb-copy-slot="AS-UPDATE-HEAD"]')).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                await expect(alert.locator('[data-sb-copy-slot="AS-UPDATE-BODY"]')).toHaveText(COPY_PLACEHOLDER);
-                await expect(alert.locator('[data-sb-copy-slot="AS-UPDATE-BODY"]')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(alert.getByRole('heading', { name: 'Update Reisen?' })).toBeVisible();
+                await expect(alert.locator('[data-sb-managed-update="body"]')).toHaveText('A newer version of Reisen is available, but you\'ve edited your copy. Would you like to update anyway? Your copy is saved as a backup.');
+                await expect(alert.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
                 await expect(alert.getByRole('button', { name: 'Keep Mine' })).toBeFocused();
                 expect(world.requests).toEqual([]);
             });

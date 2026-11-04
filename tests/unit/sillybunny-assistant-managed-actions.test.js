@@ -118,6 +118,14 @@ describe('Update Available', () => {
         expect(world.deps.saveDismissed).not.toHaveBeenCalled();
     });
 
+    test('asks about the card, so the question can use its name', async () => {
+        const world = createWorld({ answer: 'cancel' });
+
+        await world.actions.update(UPDATABLE);
+
+        expect(world.deps.askUpdate).toHaveBeenCalledWith(UPDATABLE);
+    });
+
     test('tells the user once, with the card, after the server confirmed the update', async () => {
         const world = createWorld({ answer: 'update' });
 

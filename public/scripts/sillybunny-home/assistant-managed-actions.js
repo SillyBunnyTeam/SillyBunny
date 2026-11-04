@@ -6,7 +6,7 @@ import { withKeptVersion } from './managed-content.js';
  *
  * @typedef {object} ManagedActionDeps
  * @property {{ apply: (filename: string) => Promise<unknown>, restore: (filename: string) => Promise<unknown> }} client
- * @property {() => Promise<'update' | 'keep' | 'cancel'>} askUpdate Asks whether the edited card becomes the bundled one.
+ * @property {(card: OfferingCard) => Promise<'update' | 'keep' | 'cancel'>} askUpdate Asks whether the edited card becomes the bundled one.
  * @property {() => Map<string, number>} getDismissed The versions that the user kept their card against.
  * @property {(dismissed: Map<string, number>) => void} saveDismissed
  * @property {(card: OfferingCard) => void} notifyUpdated Tells the user that the update went through.
@@ -87,7 +87,7 @@ export function createManagedActions({ client, askUpdate, getDismissed, saveDism
             return Promise.resolve(false);
         }
         return run(filename, async () => {
-            const answer = await askUpdate();
+            const answer = await askUpdate(card);
             if (answer === 'keep') {
                 saveDismissed(withKeptVersion(getDismissed(), filename, offered.version));
                 await show({ filename, fileChanged: false });

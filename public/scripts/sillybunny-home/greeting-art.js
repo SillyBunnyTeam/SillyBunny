@@ -1,4 +1,4 @@
-import { COPY_PLACEHOLDER } from './copy.js';
+import { getGreetingArtAlt } from './assistant-copy.js';
 import { createOpeningHold } from './greeting-art-opening.js';
 import { GREETING_ART_HEIGHT_SHARE, findGreetingArt, pickPixelStep, sourceFor } from './greeting-art-rules.js';
 
@@ -26,15 +26,11 @@ const ENLARGE_LABEL = 'Enlarge Picture';
 export function createGreetingImage(art, className, doc = document) {
     const image = doc.createElement('img');
     image.className = className;
-    image.alt = art.alt;
+    image.alt = getGreetingArtAlt(art.assistantId);
     image.setAttribute('width', String(art.width));
     image.setAttribute('height', String(art.height));
     image.decoding = 'async';
     image.draggable = false;
-    if (art.alt === COPY_PLACEHOLDER) {
-        image.dataset.sbCopyPlaceholder = 'true';
-        image.dataset.sbCopySlot = art.altSlot;
-    }
     return image;
 }
 

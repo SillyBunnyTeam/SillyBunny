@@ -6,7 +6,6 @@ import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
-import { ASSISTANTS } from '../public/scripts/sillybunny-home/assistant-registry.js';
 import { OPENING_HOLD_MS } from '../public/scripts/sillybunny-home/greeting-art-opening.js';
 
 /**
@@ -19,7 +18,8 @@ test.describe.configure({ timeout: 120_000 });
 
 const STARTUP_TIMEOUT = 30_000;
 const REPLY = 'A stubbed reply.';
-const ALT = ASSISTANTS.find(assistant => assistant.id === 'reisen').greetingArt.alt;
+const ALT = 'Early one evening, Reisen waves from her low desk among stacks of paperwork, tea and a mortar of herbs, while Tewi\'s ear peeks round the door.';
+const ALT_TEWI = 'Late at night, Tewi rests her chin on her hands at the desk beside a newspaper and carrots, while Reisen sleeps over her papers under a blanket.';
 const ENLARGE = 'Enlarge Picture';
 const HEIGHT_SHARE = 0.7;
 const MIN_FILL = 0.75;
@@ -237,8 +237,8 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(open).toBeVisible();
                 await expect(open).toHaveAttribute('aria-haspopup', 'dialog');
                 await expect(page.locator(`${FIGURES} img`)).toHaveAttribute('alt', ALT);
-                await expect(page.locator(`${FIGURES} img`)).toHaveAttribute('data-sb-copy-slot', 'GREETING-ART-REISEN');
-                await expect(page.locator(`${FIGURES} img`)).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(page.locator(`${FIGURES} img`)).not.toHaveAttribute('data-sb-copy-placeholder', /./);
+                await expect(page.locator(FIGURES).getByRole('img', { name: ALT })).toHaveCount(1);
                 await expect(page.locator(`${FIGURES} img`)).toHaveAttribute('decoding', 'async');
             });
         }
@@ -248,7 +248,8 @@ for (const { name, options } of VIEWPORTS) {
             await openFromHome(page, 'assistant-tewi', 'Start New Chat');
 
             await expectOneFigure(page, { assistant: 'tewi' });
-            await expect(page.locator(`${FIGURES} img`)).toHaveAttribute('data-sb-copy-slot', 'GREETING-ART-TEWI');
+            await expect(page.locator(`${FIGURES} img`)).toHaveAttribute('alt', ALT_TEWI);
+            await expect(page.locator(FIGURES).getByRole('img', { name: ALT_TEWI })).toHaveCount(1);
         });
 
         test('is sized and drawn by the rule, from the one file that the rule needs', async ({ page }) => {

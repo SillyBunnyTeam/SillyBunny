@@ -1,7 +1,7 @@
 import { t } from '../i18n.js';
 import { getLastChatMode } from '../sillybunny-chat-mode-memory.js';
 import { createArtPlaceholder } from './art.js';
-import { markCopyPlaceholder } from './copy.js';
+import { getAssistantSubtitle } from './assistant-copy.js';
 import { buildAssistantMenuSections, openAssistantMenu } from './menu.js';
 
 function createElement(tag, className, text) {
@@ -105,11 +105,11 @@ function createCardAction({ name, title, disabled, subtitleId, onActivate }) {
     return button;
 }
 
-function createCardText({ name, titleId, subtitleId, slot }) {
+function createCardText({ name, titleId, subtitleId, subtitle: subtitleText }) {
     const text = createElement('div', 'sbHomeCardText');
     const title = createElement('strong', 'sbHomeCardName', name);
     title.id = titleId;
-    const subtitle = markCopyPlaceholder(createElement('span', 'sbHomeCardSub'), slot);
+    const subtitle = createElement('span', 'sbHomeCardSub', subtitleText);
     subtitle.id = subtitleId;
     text.append(title, subtitle);
     return text;
@@ -187,7 +187,7 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
             onActivate: () => void actions.newChat(card),
         }),
         createCardArt(card, getThumbnailUrl),
-        createCardText({ name: card.name, titleId, subtitleId, slot: card.slot }),
+        createCardText({ name: card.name, titleId, subtitleId, subtitle: getAssistantSubtitle(card.id) }),
         footer,
     );
     return element;
@@ -215,7 +215,7 @@ function createChooseCard(card, { openPicker }) {
         },
     });
     action.setAttribute('aria-haspopup', 'dialog');
-    element.append(action, icon, createCardText({ name: t`Choose Assistant`, titleId, subtitleId, slot: card.slot }));
+    element.append(action, icon, createCardText({ name: t`Choose Assistant`, titleId, subtitleId, subtitle: getAssistantSubtitle(card.id) }));
     return element;
 }
 

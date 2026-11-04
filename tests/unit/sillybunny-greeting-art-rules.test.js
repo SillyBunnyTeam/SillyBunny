@@ -23,13 +23,11 @@ describe('the greeting picture of the assistant registry', () => {
         expect(withArt.map(assistant => assistant.id)).toEqual(['reisen', 'tewi']);
     });
 
-    test.each(withArt)('of $id is two bundled files of this origin with a size, and its alt text is a copy placeholder', ({ id, greetingArt }) => {
+    test.each(withArt)('of $id is two bundled files of this origin with a size', ({ id, greetingArt }) => {
         expect(greetingArt.src).toBe(`/img/sillybunny/greeting-${id}.webp`);
         expect(greetingArt.src2x).toBe(`/img/sillybunny/greeting-${id}@2x.webp`);
         expect(Number.isInteger(greetingArt.width) && greetingArt.width > 0).toBe(true);
         expect(Number.isInteger(greetingArt.height) && greetingArt.height > 0).toBe(true);
-        expect(greetingArt.alt).toBe('TODO(copy)');
-        expect(greetingArt.altSlot).toBe(`GREETING-ART-${id.toUpperCase()}`);
     });
 });
 
@@ -88,7 +86,7 @@ describe('the message that gets a greeting picture', () => {
     });
 
     test('is found in the assistants that it is given, by their avatar file', () => {
-        const art = { src: '/x.png', src2x: '/x@2x.png', width: 1, height: 1, alt: 'x', altSlot: 'X' };
+        const art = { src: '/x.png', src2x: '/x@2x.png', width: 1, height: 1 };
         const assistants = [{ id: 'other', name: 'Other', defaultAvatar: 'other.png', greetingArt: art }];
 
         expect(findGreetingArt(greetingOf({ avatar: 'other.png' }), assistants)).toMatchObject({ assistantId: 'other', name: 'Other', src: '/x.png' });

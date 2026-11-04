@@ -14,11 +14,11 @@ jest.unstable_mockModule('../../public/scripts/sillybunny-chat-mode-memory.js', 
 const { mountAssistants } = await import('../../public/scripts/sillybunny-home/assistants-view.js');
 
 const NONE = { filename: null, restore: false, update: null };
-const AVAILABLE_REISEN = { key: 'assistant-reisen', id: 'reisen', kind: 'bundled', name: 'Reisen', slot: 'AS-REISEN-SUB', art: { name: 'row-reisen', avatar: null }, avatar: 'default_AssistantReisen.png', state: 'available', offers: NONE };
-const MISSING_TEWI = { key: 'assistant-tewi', id: 'tewi', kind: 'bundled', name: 'Tewi', slot: 'AS-TEWI-SUB', art: { name: 'row-tewi', avatar: null }, avatar: null, state: 'missing', offers: NONE };
+const AVAILABLE_REISEN = { key: 'assistant-reisen', id: 'reisen', kind: 'bundled', name: 'Reisen', art: { name: 'row-reisen', avatar: null }, avatar: 'default_AssistantReisen.png', state: 'available', offers: NONE };
+const MISSING_TEWI = { key: 'assistant-tewi', id: 'tewi', kind: 'bundled', name: 'Tewi', art: { name: 'row-tewi', avatar: null }, avatar: null, state: 'missing', offers: NONE };
 const DELETED_TEWI = { ...MISSING_TEWI, state: 'deleted' };
-const POINTER = { key: 'assistant-own', id: 'pointer', kind: 'pointer', name: 'Alice', slot: 'AS-POINTER-SUB', art: { name: 'row-pointer', avatar: 'Alice.png' }, avatar: 'Alice.png', state: 'available', offers: NONE };
-const CHOOSE = { key: 'assistant-own', id: 'own', kind: 'choose', name: null, slot: 'AS-CHOOSE-SUB', art: null, avatar: null, state: 'available', offers: NONE };
+const POINTER = { key: 'assistant-own', id: 'pointer', kind: 'pointer', name: 'Alice', art: { name: 'row-pointer', avatar: 'Alice.png' }, avatar: 'Alice.png', state: 'available', offers: NONE };
+const CHOOSE = { key: 'assistant-own', id: 'own', kind: 'choose', name: null, art: null, avatar: null, state: 'available', offers: NONE };
 
 function createActions() {
     return { newChat: jest.fn(), temporaryChat: jest.fn(), newChatInMode: jest.fn() };
@@ -65,7 +65,7 @@ describe('the cards of the Assistants section', () => {
         expect(getCards).toHaveBeenCalledTimes(2);
     });
 
-    test('keep the names, titles and placeholder subtitles of the cards that Reisen and Tewi had', () => {
+    test('keep the names, titles and subtitles of the cards that Reisen and Tewi had', () => {
         const { panel } = render([AVAILABLE_REISEN]);
         const card = cardOf(panel, 'assistant-reisen');
 
@@ -73,8 +73,8 @@ describe('the cards of the Assistants section', () => {
         expect(overlay(card).getAttribute('aria-label')).toBe('New chat with Reisen');
         expect(overlay(card).title).toBe('New Chat With Reisen');
         expect(footButtons(card).map(button => button.getAttribute('aria-label'))).toEqual(['Start new chat with Reisen', 'Temporary Chat with Reisen']);
-        expect(card.querySelector('.sbHomeCardSub').dataset.sbCopySlot).toBe('AS-REISEN-SUB');
-        expect(card.querySelector('.sbHomeCardSub').dataset.sbCopyPlaceholder).toBe('true');
+        expect(card.querySelector('.sbHomeCardSub').textContent).toBe('Did you need help with setup or troubleshooting? Leave it to me!');
+        expect(card.querySelector('.sbHomeCardSub').hasAttribute('data-sb-copy-placeholder')).toBe(false);
         expect(card.querySelector('.sbHomeRowMenu').getAttribute('aria-label')).toBe('Assistant Menu');
     });
 
@@ -155,12 +155,12 @@ describe.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('a card wh
         expect(element.querySelectorAll('.sbHomeCardFooter > *')).toHaveLength(2);
     });
 
-    test('keeps its name and its placeholder subtitle, and adds no text', () => {
+    test('keeps its name and its subtitle, and adds no text', () => {
         const { panel } = render([card]);
         const element = cardOf(panel, 'assistant-tewi');
 
         expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
-        expect(element.querySelector('.sbHomeCardSub').dataset.sbCopySlot).toBe('AS-TEWI-SUB');
+        expect(element.querySelector('.sbHomeCardSub').textContent).toBe('Gege~ Are you a little down on your luck? Ask me anything!');
         expect([...element.querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
         expect(element.hasAttribute('title')).toBe(false);
     });
@@ -245,13 +245,13 @@ describe('a card whose bundled file can be restored', () => {
             expect(document.activeElement).toBe(button);
         });
 
-        test('keeps its name, its placeholder subtitle, and adds no other text', () => {
+        test('keeps its name, its subtitle, and adds no other text', () => {
             const { panel } = render([card], { actions: managedActions() });
             const element = cardOf(panel, 'assistant-tewi');
 
             expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
-            expect(element.querySelector('.sbHomeCardSub').dataset.sbCopySlot).toBe('AS-TEWI-SUB');
-            expect(element.querySelectorAll('[data-sb-copy-placeholder="true"]')).toHaveLength(1);
+            expect(element.querySelector('.sbHomeCardSub').textContent).toBe('Gege~ Are you a little down on your luck? Ask me anything!');
+            expect(element.querySelectorAll('[data-sb-copy-placeholder="true"]')).toHaveLength(0);
         });
     });
 
@@ -349,14 +349,13 @@ describe('the art of a card', () => {
 describe('the third slot with no character chosen', () => {
     const choose = () => cardOf(render([AVAILABLE_REISEN, MISSING_TEWI, CHOOSE]).panel, 'assistant-own');
 
-    test('is a card to choose from, labelled Choose Assistant, with a placeholder subtitle in its own slot', () => {
+    test('is a card to choose from, labelled Choose Assistant, with a subtitle that says what it is for', () => {
         const card = choose();
 
         expect(card.classList.contains('sbHomeCard--choose')).toBe(true);
         expect(card.querySelector('.sbHomeCardName').textContent).toBe('Choose Assistant');
-        expect(card.querySelector('.sbHomeCardSub').dataset.sbCopySlot).toBe('AS-CHOOSE-SUB');
-        expect(card.querySelector('.sbHomeCardSub').dataset.sbCopyPlaceholder).toBe('true');
-        expect(card.querySelector('.sbHomeCardSub').textContent).toBe('TODO(copy)');
+        expect(card.querySelector('.sbHomeCardSub').textContent).toBe('Pick any character from your library as a third assistant.');
+        expect(card.querySelector('.sbHomeCardSub').hasAttribute('data-sb-copy-placeholder')).toBe(false);
     });
 
     test('has the user-plus icon, hidden from assistive technology, and no footer, menu or chevron', () => {
@@ -392,14 +391,14 @@ describe('the third slot with no character chosen', () => {
 });
 
 describe('the third slot with a character chosen', () => {
-    test('is laid out like the card of Reisen: the thumbnail, the name, the subtitle slot of the pointer and the same three controls', () => {
+    test('is laid out like the card of Reisen: the thumbnail, the name, the subtitle of the pointer and the same three controls', () => {
         const { panel } = render([AVAILABLE_REISEN, POINTER]);
         const reisen = cardOf(panel, 'assistant-reisen');
         const card = cardOf(panel, 'assistant-own');
 
         expect(card.classList.contains('sbHomeCard--choose')).toBe(false);
         expect(card.querySelector('.sbHomeCardName').textContent).toBe('Alice');
-        expect(card.querySelector('.sbHomeCardSub').dataset.sbCopySlot).toBe('AS-POINTER-SUB');
+        expect(card.querySelector('.sbHomeCardSub').textContent).toBe('Chosen from your character library.');
         expect(card.querySelector('.sbHomeCardArt img').getAttribute('src')).toBe('/thumb/Alice.png');
         expect([...card.querySelectorAll('button')].map(button => button.className)).toEqual([...reisen.querySelectorAll('button')].map(button => button.className));
         expect(footButtons(card).map(button => button.getAttribute('aria-label'))).toEqual(['Start new chat with Alice', 'Temporary Chat with Alice']);

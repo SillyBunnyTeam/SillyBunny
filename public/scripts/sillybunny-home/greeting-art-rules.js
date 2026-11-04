@@ -20,8 +20,6 @@ const TOLERANCE = 1e-9;
  *     downscale of it stays crisp.
  * @property {number} width The width of the art in art pixels.
  * @property {number} height
- * @property {string} alt
- * @property {string} altSlot
  */
 
 /**

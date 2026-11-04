@@ -34,7 +34,7 @@ export function createAppManagedAssistants({ afterChange }) {
 
     const actions = createManagedActions({
         client,
-        askUpdate: async () => (await import('./managed-update-alert.js')).openManagedUpdateAlert(),
+        askUpdate: async card => (await import('./managed-update-alert.js')).openManagedUpdateAlert(card.name),
         getDismissed,
         saveDismissed: dismissed => accountStorage.setItem(DISMISSED_KEY, serializeDismissed(dismissed)),
         notifyUpdated: card => globalThis.toastr?.success(t`Updated ${card.name}. A backup of your version was kept.`),

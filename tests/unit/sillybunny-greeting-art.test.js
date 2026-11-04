@@ -2,7 +2,11 @@
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect -- Jest/jsdom contracts. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { createGreetingArt } from '../../public/scripts/sillybunny-home/greeting-art.js';
+
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => String.raw({ raw: strings }, ...values),
+}));
+const { createGreetingArt } = await import('../../public/scripts/sillybunny-home/greeting-art.js');
 
 const nextTask = () => new Promise(resolve => setTimeout(resolve));
 
@@ -100,7 +104,8 @@ describe('the greeting picture on the page', () => {
         expect(image().getAttribute('width')).toBe('768');
         expect(image().getAttribute('height')).toBe('512');
         expect(image().decoding).toBe('async');
-        expect(image().dataset.sbCopySlot).toBe('GREETING-ART-REISEN');
+        expect(image().alt).toBe('Early one evening, Reisen waves from her low desk among stacks of paperwork, tea and a mortar of herbs, while Tewi\'s ear peeks round the door.');
+        expect(image().hasAttribute('data-sb-copy-placeholder')).toBe(false);
 
         button.click();
         expect(openViewer).toHaveBeenCalledTimes(1);
