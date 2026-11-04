@@ -29,7 +29,7 @@ import { getLoadedServerPlugins, loadPlugins } from './plugin-loader.js';
 import { registerGracefulShutdown } from './shutdown.js';
 import { closeListeningServers } from './server-listen.js';
 import { notifyServerStartup } from './server-plugin-update-ipc.js';
-import { SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
+import { SERVER_CRASH_EXIT_CODE, SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -557,6 +557,12 @@ async function preSetupTasks() {
             process.on('disconnect', exitAfterSupervisorDisconnect);
         }
     }
+    // SillyBunny: a crash exits with a non-zero code, because the supervisor treats code 0 as a stop and does not relaunch.
+    // The timer ends the process when a cleanup step fails or does not finish.
+    const exitAfterCrash = () => {
+        setTimeout(() => process.exit(SERVER_CRASH_EXIT_CODE), SUPERVISOR_FORCE_KILL_TIMEOUT_MS);
+        return exitProcess(SERVER_CRASH_EXIT_CODE);
+    };
     process.on('uncaughtException', (err) => {
         // SillyBunny: ignore expected stream disconnects from cancelled generations.
         if (isBenignStreamAbort(err)) {
@@ -565,7 +571,7 @@ async function preSetupTasks() {
         }
 
         console.error('Uncaught exception:', err);
-        exitProcess();
+        exitAfterCrash();
     });
     process.on('unhandledRejection', (reason) => {
         // SillyBunny: ignore expected stream disconnects from cancelled generations.
@@ -575,7 +581,7 @@ async function preSetupTasks() {
         }
 
         console.error('Unhandled rejection:', reason);
-        exitProcess();
+        exitAfterCrash();
     });
 
     // Add private request filter.

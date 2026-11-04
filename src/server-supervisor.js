@@ -25,6 +25,7 @@ import { serverDirectory } from './server-directory.js';
 export const RESTART_EXIT_CODE = 75;
 export const SERVER_PLUGIN_UPDATE_EXIT_CODE = 76;
 export const SUPERVISOR_RELOAD_EXIT_CODE = 77;
+export const SERVER_CRASH_EXIT_CODE = 1;
 export const SUPERVISED_ENV = 'SILLYBUNNY_SUPERVISED';
 export const LAUNCHER_ENV = 'SILLYBUNNY_LAUNCHER';
 export const SUPERVISOR_SHUTDOWN_MESSAGE = 'sillybunny:shutdown';
