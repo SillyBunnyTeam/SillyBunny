@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 import { event_types } from '../public/scripts/events.js';
+import { read as readCardMetadata } from '../src/character-card-parser.js';
 import { normalizeWorldInfoPosition } from '../public/scripts/world-info-character-book.js';
 import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from '../public/scripts/world-info-scan-core.js';
 
@@ -331,5 +332,98 @@ describe('the SillyBunny Lexicon through a scan target', () => {
 
         expect(context.loadWorldInfo).not.toHaveBeenCalled();
         expect(result.worldInfoBefore).toBe('');
+    });
+});
+
+describe('the SillyBunny Lexicon under the shipped World Info settings', () => {
+    const lexicon = JSON.parse(readFileSync(new URL('../default/content/SillyBunny Lexicon.json', import.meta.url), 'utf8'));
+    const shipped = JSON.parse(readFileSync(new URL('../default/content/settings.json', import.meta.url), 'utf8')).world_info_settings;
+    const preset = JSON.parse(readFileSync(new URL('../default/content/presets/openai/Default.json', import.meta.url), 'utf8'));
+    const card = JSON.parse(readCardMetadata(readFileSync(new URL('../default/content/default_AssistantReisen.png', import.meta.url))));
+
+    /** The prompt room that a new Chat Completion chat has once the reply room is taken out of the context size. */
+    const PROMPT_ROOM = preset.openai_max_context - preset.openai_max_tokens;
+    /** Far more than the budget needs, so that nothing is cut for lack of room. */
+    const UNLIMITED = 1_000_000;
+    const ASSISTANT_ID = 2;
+    const UID = Object.fromEntries(Object.values(lexicon.entries).map(entry => [/^A\d+/.exec(entry.comment)[0], entry.uid]));
+
+    /** Questions a new user asks, each with the entry that answers it. */
+    const QUESTIONS = [
+        ['How do I connect a model?', 'A28'],
+        ['What\'s the difference between Roleplay and Conversation mode?', 'A43'],
+        ['My replies keep getting cut off halfway. What can I do?', 'A71'],
+        ['How do I back up my chats and characters?', 'A64'],
+        ['What\'s a lorebook, and where do I edit one?', 'A10'],
+    ];
+
+    /** Roleplay scans the greeting that the card opens the chat with, so a scan of a new chat includes it. */
+    const greetingLine = `Assistant Reisen: ${card.data.first_mes.replace(/{{user}}/gi, 'Roleplay User').replace(/{{char}}/gi, 'Assistant Reisen')}`;
+
+    /** The assistant's card is the active character and links the Lexicon, with the World Info settings a new install ships. */
+    function createShippedHarness({ recursive = shipped.world_info_recursive } = {}) {
+        const context = createHarness({ books: { 'SillyBunny Lexicon': lexicon } });
+        context.characters.push({ name: 'Assistant Reisen', avatar: 'default_AssistantReisen.png', data: { extensions: { world: 'SillyBunny Lexicon' } } });
+        Object.assign(context, {
+            this_chid: ASSISTANT_ID,
+            name2: 'Assistant Reisen',
+            selected_world_info: [],
+            world_info: { charLore: [] },
+            chat_metadata: {},
+            extensionPrompts: { note: { value: '', scan: true } },
+            world_info_depth: shipped.world_info_depth,
+            world_info_budget: shipped.world_info_budget,
+            world_info_budget_cap: shipped.world_info_budget_cap,
+            world_info_recursive: recursive,
+            world_info_case_sensitive: shipped.world_info_case_sensitive,
+            world_info_match_whole_words: shipped.world_info_match_whole_words,
+            world_info_character_strategy: shipped.world_info_character_strategy,
+            // Five characters to a token is the rate at which a scan of a new chat with Assistant Reisen holds the same six entries as the app.
+            getTokenCountAsync: async text => Math.ceil(String(text).length / 5),
+        });
+        return context;
+    }
+
+    /** @returns {Promise<string[]>} Inventory ids of the entries that the scan activated. */
+    async function activated(context, lines, maxContext) {
+        const result = await context.checkWorldInfo(lines, maxContext, true, context.defaultGlobalScanData);
+        const ids = Object.fromEntries(Object.entries(UID).map(([id, uid]) => [uid, id]));
+        return [...result.allActivatedEntries.values()].map(entry => ids[entry.uid]);
+    }
+
+    describe.each(QUESTIONS)('the question %j', (question, answer) => {
+        const lines = [`Roleplay User: ${question}`];
+
+        test(`is keyed on ${answer}, whatever other entries bring in`, async () => {
+            const context = createShippedHarness({ recursive: false });
+
+            expect(await activated(context, lines, UNLIMITED)).toContain(answer);
+        });
+
+        test(`gets ${answer} inside the budget of a new chat once other entries recurse`, async () => {
+            const context = createShippedHarness();
+
+            expect(shipped.world_info_recursive).toBe(true);
+            expect(await activated(context, lines, PROMPT_ROOM)).toContain(answer);
+        });
+    });
+
+    describe('the entry about SillyBunny against SillyTavern', () => {
+        const [connectQuestion] = QUESTIONS[0];
+
+        test.each([PROMPT_ROOM, UNLIMITED])('is not brought in by the text of another entry when a new chat asks about connecting a model (room %i)', async (maxContext) => {
+            const context = createShippedHarness();
+
+            const ids = await activated(context, [greetingLine, `Roleplay User: ${connectQuestion}`].reverse(), maxContext);
+
+            expect(ids).toContain('A28');
+            expect(ids).not.toContain('A76');
+        });
+
+        test('still answers a user who asks about the difference', async () => {
+            const context = createShippedHarness();
+
+            expect(await activated(context, ['Roleplay User: What is SillyBunny vs SillyTavern?'], PROMPT_ROOM)).toContain('A76');
+        });
     });
 });
