@@ -65,7 +65,7 @@ This is the largest class by a wide margin.
   - `reconcileManagedBundledQuickReplies()` removes a bundled Quick Reply only when its hash matches a known stale version. It does not touch user-edited files.
   - Bundled agent template updates match by template `id` (`scripts/bump-agent-template-versions.js`). An update keeps the agent's enabled state, quick-toggle pin, order and profile overrides.
   - `✅ Run Unit Tests on PR` fails when an existing bundled agent template or `index.json` entry changes without a version bump. It runs `scripts/bump-agent-template-versions.js --check` against the PR's merge ref. After a commit, bump with `npm run agents:bump-template-versions -- --base origin/staging`; without `--base` the script compares only uncommitted changes against `HEAD`.
-- **Tests:** `tests/preset-save-deleted-default.test.js`, `tests/create-only-installs.test.js`, `tests/sillybunny-theme-css.test.js`, `tests/theme-custom-css-import.test.js`, `tests/in-chat-agents-templates.test.js`, `tests/bump-agent-template-versions.test.js`.
+- **Tests:** `tests/preset-save-deleted-default.test.js`, `tests/create-only-installs.test.js`, `tests/sillybunny-theme-css.test.js`, `tests/theme-custom-css-import.test.js`, `tests/in-chat-agents-templates.test.js`, `tests/bump-agent-template-versions.test.js`, `tests/bundled-default-validators.test.js`.
 - **No test:** `a354f263d` (#753, redundant bundled-agent updates).
 - **Fixes:** #687 (saving a preset over a deleted bundled default's name), #834 (an external theme pack wipes saved themes), #919 (theme data lost on update, export or reset; Custom CSS overwritten).
 
@@ -150,7 +150,7 @@ This is the largest class by a wide margin.
 - **Breaks:** the version map reports the wrong SillyTavern base, so extensions that need a newer SillyTavern fail.
 - **Files:** `docs/upstream-sync.md`, `public/scripts/sillybunny-version-map.js`, `public/scripts/openai.js`, `src/endpoints/backends/`.
 - **Guards:** the version map clamps a SillyBunny version with no mapping to the highest synced SillyTavern version for its major.
-- **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`.
+- **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`, `tests/locale-validators.test.js`.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
 - **Partial adoption:** `7b6db61d1` took SillyTavern's `src/electron/` package files (`Start.bat`, `package.json`, `package-lock.json`) but not `index.js`, which `package.json` names as `main` for `electron .`. `Start.bat` also installs with `--ignore-scripts`, and the electron package downloads its binary only in its `postinstall` script, so the launcher could not start. npm audit still reported 30 advisories against its lockfile (electron 41.1.1 and extract-zip 2.0.1). SillyBunny removed `src/electron/`. SillyTavern still ships it, so a sync leaves `src/electron/**` out (`docs/upstream-touch-ledger.md`).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
