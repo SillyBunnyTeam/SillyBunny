@@ -85,7 +85,7 @@ test.each(['', '-1', '999', '1.8', '1suffix', ' 1 '])('screenshot spin rows pres
     const start = dlg.querySelector('#start');
     const popup = { dlg, content: dlg.querySelector('.popup-content'), inputControls: dlg.querySelector('.popup-inputs') };
     const options = adapters.messageScreenshotOptions({ startId: 'start', endId: 'end' });
-    options.onBeforePaint(popup);
+    options.onOpening(popup);
     start.value = value;
     start.dispatchEvent(new Event('input', { bubbles: true }));
     start.dispatchEvent(new Event('change', { bubbles: true }));
@@ -104,7 +104,7 @@ test('install rows move Popup mainInput and custom branch without dropping post-
     const url = popup.mainInput;
     const branch = dlg.querySelector('input');
     const options = adapters.installExtensionOptions(node);
-    options.onBeforePaint(popup);
+    options.onOpening(popup);
     expect(node.querySelector('textarea')).toBe(url);
     expect(node.querySelector('input')).toBe(branch);
     expect(node.textContent).toContain('security risks');
@@ -120,7 +120,7 @@ test('branch select stays native, keeps selected commit, emits change once, and 
     const changed = jest.fn();
     select.addEventListener('change', changed);
     const options = adapters.switchBranchOptions(select);
-    options.onBeforePaint({ content: dlg.querySelector('.popup-content') });
+    options.onOpening({ content: dlg.querySelector('.popup-content') });
     expect(select.value).toBe('main');
     dlg.querySelector('button').click();
     openPicker.mock.calls[0][0].onSelect('dev');
@@ -149,7 +149,7 @@ test.each(['changePassword', 'deleteUser', 'resetSettings', 'userReset'])('%s re
     expect(node.querySelector('.currentPasswordBlock')?.style.display ?? null).toBe({ changePassword: 'none', userReset: '', deleteUser: null, resetSettings: null }[name]);
     expect(node.querySelectorAll('input[type="checkbox"]')).toHaveLength(name === 'deleteUser' ? 1 : 0);
     const okButton = document.createElement('button');
-    options.onBeforePaint({ okButton });
+    options.onOpening({ okButton });
     expect(okButton.classList.contains('is-destructive')).toBe(name !== 'changePassword');
     options.onClose();
 });

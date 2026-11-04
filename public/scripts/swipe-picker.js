@@ -359,7 +359,7 @@ async function openSwipePicker(messageId) {
         large: true,
         wider: true,
         allowVerticalScrolling: true,
-        onBeforePaint: function () {
+        onOpening: function () {
             const footer = popup.buttonControls.querySelector('.sb-dialog__bottom-bar');
             if (footer instanceof HTMLElement) {
                 footer.classList.add('swipe_picker_footer');

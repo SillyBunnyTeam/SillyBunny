@@ -1250,7 +1250,7 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
         const popup = new Popup(t`Delete this greeting?`, POPUP_TYPE.CONFIRM, '', {
             okButton: t`Delete`,
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onBeforePaint: currentPopup => currentPopup.okButton.classList.add('is-destructive'),
+            onOpening: currentPopup => currentPopup.okButton.classList.add('is-destructive'),
         });
         if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) return;
         greetingsRef.splice(index, 1);

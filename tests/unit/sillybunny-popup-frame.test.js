@@ -564,21 +564,19 @@ describe('Popup frame adapter', () => {
         }
     });
 
-    test('onBeforePaint runs at the end of opened(), after the frame is built and the default focus is set', () => {
+    test('opened() ends with the onOpening handler, after the frame is built and the default focus is set', () => {
         setupDialogMedia();
         const calls = [];
         const value = popupDom({ contentHtml: '<h3>Title</h3>' });
         value.setAutoFocus = () => calls.push('focus');
-        const frame = framePopup(value, {
-            tier: 'dialog',
-            onBeforePaint: popupArgument => calls.push({
-                popup: popupArgument === value,
-                framed: popupArgument.dlg.classList.contains('sb-dialog--dialog'),
-                header: popupArgument.dlg.querySelector(':scope > .sb-dialog__header') !== null,
-                handle: popupArgument.dlg.querySelector(':scope > .sb-dialog__handle') !== null,
-                presentation: popupArgument.dlg.dataset.presentation,
-            }),
+        value.onOpening = popupArgument => calls.push({
+            popup: popupArgument === value,
+            framed: popupArgument.dlg.classList.contains('sb-dialog--dialog'),
+            header: popupArgument.dlg.querySelector(':scope > .sb-dialog__header') !== null,
+            handle: popupArgument.dlg.querySelector(':scope > .sb-dialog__handle') !== null,
+            presentation: popupArgument.dlg.dataset.presentation,
         });
+        const frame = framePopup(value, { tier: 'dialog' });
         value.dlg.showModal();
         expect(calls).toEqual([]);
         frame.opened();
@@ -586,13 +584,33 @@ describe('Popup frame adapter', () => {
         frame.dispose();
     });
 
-    test('the transitions that onBeforePaint starts end at once, and other animations keep running', () => {
+    test('a throwing handler is logged, and the transitions that it started still end', () => {
+        setupDialogMedia();
+        const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const transition = { transitionProperty: 'background-color', finish: jest.fn() };
+            const value = popupDom();
+            value.dlg.getAnimations = jest.fn(() => [transition]);
+            value.onOpening = () => { throw new TypeError('adapter failed'); };
+            const frame = framePopup(value, { tier: 'dialog' });
+            value.dlg.showModal();
+            frame.opened();
+            expect(error).toHaveBeenCalledTimes(1);
+            expect(transition.finish).toHaveBeenCalledTimes(1);
+            frame.dispose();
+        } finally {
+            error.mockRestore();
+        }
+    });
+
+    test('the transitions that onOpening starts end at once, and other animations keep running', () => {
         setupDialogMedia();
         const transition = { transitionProperty: 'background-color', finish: jest.fn() };
         const animation = { animationName: 'pop-in', finish: jest.fn() };
         const value = popupDom();
         value.dlg.getAnimations = jest.fn(() => [transition, animation]);
-        const frame = framePopup(value, { tier: 'dialog', onBeforePaint: jest.fn() });
+        value.onOpening = jest.fn();
+        const frame = framePopup(value, { tier: 'dialog' });
         value.dlg.showModal();
         frame.opened();
         expect(value.dlg.getAnimations).toHaveBeenCalledWith({ subtree: true });
@@ -609,17 +627,17 @@ describe('Popup frame adapter', () => {
         plainFrame.dispose();
     });
 
-    test('onBeforePaint also runs for a popup that keeps its own frame', () => {
+    test('opened() also calls the handler of a popup that keeps its own frame', () => {
         setupDialogMedia();
-        const onBeforePaint = jest.fn();
         const value = popupDom({ type: POPUP_TYPE.TEXT });
         value.dlg.classList.add('transparent_dialogue_popup');
-        const frame = framePopup(value, { onBeforePaint });
+        value.onOpening = jest.fn();
+        const frame = framePopup(value);
         value.dlg.showModal();
         frame.opened();
         expect(value.dlg.classList.contains('sb-dialog')).toBe(false);
-        expect(onBeforePaint).toHaveBeenCalledTimes(1);
-        expect(onBeforePaint).toHaveBeenCalledWith(value);
+        expect(value.onOpening).toHaveBeenCalledTimes(1);
+        expect(value.onOpening).toHaveBeenCalledWith(value);
         frame.dispose();
     });
 

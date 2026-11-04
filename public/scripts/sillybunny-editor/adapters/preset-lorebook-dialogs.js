@@ -53,7 +53,7 @@ export function presetChoicesOptions(root, { deletion = false } = {}) {
     return {
         tier: 'dialog',
         ...(deletion ? { title: t`Delete selected` } : {}),
-        onBeforePaint(popup) {
+        onOpening(popup) {
             if (deletion) popup.okButton.classList.add('is-destructive');
         },
         // Callers read the adopted checkboxes after show() resolves; do not remove the rows here.
@@ -75,7 +75,7 @@ export function embeddedLorebookOptions(root) {
 export function lorebookSortingOptions(root, definitions) {
     return {
         tier: 'dialog',
-        onBeforePaint(popup) {
+        onOpening(popup) {
             const warning = root.lastElementChild;
             const rows = definitions.map(definition => {
                 const input = popup.dlg.querySelector(`#${definition.id}`);

@@ -165,12 +165,12 @@ function replaceDefaultNegativeLabel(popup, cancelButtonProvided) {
 
 /**
  * @param {object} popup A Popup instance (popup.js).
- * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean, onBeforePaint?: ((popup: object) => void)|null }} [options]
- * `onBeforePaint` runs at the end of `opened()`, in the task that shows the popup, so nothing it changes is ever painted
- * in its earlier state. Popup's `onOpen` waits for the opening animation instead.
+ * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean }} [options]
+ * `opened()` ends with the popup's `onOpening` handler, in the task that shows the popup, so nothing the handler changes is
+ * painted in its earlier state. Popup's `onOpen` waits for the opening animation instead.
  * @returns {{ opened: () => void, contentChanged: () => void, closing: () => void, dispose: () => void }}
  */
-export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false, onBeforePaint = null } = {}) {
+export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false } = {}) {
     const { dlg } = popup;
     const cleanups = [];
     let parentSurface = null;
@@ -186,11 +186,11 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     const gone = new Promise(resolve => { resolveGone = resolve; });
 
     /** Logs a failure instead of throwing, because show() must still register the popup. */
-    function guardBeforePaint(step) {
+    function guardOpening(step) {
         try {
             step();
         } catch (error) {
-            console.error('A Popup onBeforePaint step failed:', error);
+            console.error('A Popup onOpening step failed:', error);
         }
     }
 
@@ -199,12 +199,6 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         for (const animation of dlg.getAnimations?.({ subtree: true }) ?? []) {
             if ('transitionProperty' in animation) animation.finish();
         }
-    }
-
-    function runBeforePaint() {
-        if (!onBeforePaint) return;
-        guardBeforePaint(() => onBeforePaint(popup));
-        guardBeforePaint(endStartedTransitions);
     }
 
     function buildAlert() {
@@ -378,11 +372,13 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     }
 
     function opened() {
+        frameOpened();
+        runOpening();
+    }
+
+    function frameOpened() {
         const resolved = resolvePopupTier(popup, tier);
-        if (!resolved) {
-            runBeforePaint();
-            return;
-        }
+        if (!resolved) return;
         framed = true;
         dlg.classList.add('sb-dialog', `sb-dialog--${resolved}`);
         const isDocument = dlg.matches('.sb-document, .sb-maximized-editor') || dlg.querySelector('.sb-document, .sb-maximized-editor');
@@ -485,10 +481,21 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         // Moving controls into the header/body can change the native autofocus target. Re-apply the
         // Popup contract after framing so destructive Alerts focus Cancel and INPUTs focus their field.
         popup.setAutoFocus?.();
-        // After the default focus, so an adapter that moves a control or picks its own field has the last word.
-        runBeforePaint();
     }
 
+    /**
+     * Runs after the frame is built and the default focus is set, so an adapter that moves a control or picks its own
+     * field has the last word. It is the single exit of `opened()`, so a popup that keeps its own frame gets it too.
+     */
+    function runOpening() {
+        const handler = popup.onOpening;
+        if (!handler) return;
+        guardOpening(() => handler(popup));
+        guardOpening(contentChanged);
+        guardOpening(endStartedTransitions);
+    }
+
+    /** Lays the frame out again after content changed, because the height lock and the header layout measured the content `opened()` found. */
     function contentChanged() {
         heightLock?.remeasure();
         syncResponseBar?.();

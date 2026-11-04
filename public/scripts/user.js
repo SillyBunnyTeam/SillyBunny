@@ -510,7 +510,7 @@ async function restoreSnapshot(name, callback) {
                 wide: false,
                 large: false,
                 // SillyBunny: the destructive style is set before the first paint.
-                onBeforePaint(popup) { popup.okButton.classList.add('is-destructive'); },
+                onOpening(popup) { popup.okButton.classList.add('is-destructive'); },
             },
         );
 

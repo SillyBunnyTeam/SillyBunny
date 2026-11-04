@@ -745,7 +745,7 @@ async function openKeyManagerDialog(key) {
             });
             itemTemplate.find('button[data-action="delete-secret"]').on('click', async function () {
                 // SillyBunny: secret deletion is destructive and names the delete action.
-                const confirm = await Popup.show.confirm(t`Delete Secret: ${secret?.label}`, t`Are you sure you want to delete this secret? This action cannot be undone.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
+                const confirm = await Popup.show.confirm(t`Delete Secret: ${secret?.label}`, t`Are you sure you want to delete this secret? This action cannot be undone.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
                 if (!confirm) {
                     return;
                 }

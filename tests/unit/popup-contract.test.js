@@ -378,14 +378,14 @@ describe('Popup closing lifecycle', () => {
         expect(Popup.util.lastResult).toEqual({ value: POPUP_RESULT.AFFIRMATIVE, result: POPUP_RESULT.AFFIRMATIVE, inputResults: undefined });
     });
 
-    test('a throwing onBeforePaint still lets show() register onOpen and resolve', async () => {
+    test('a throwing onOpening still lets show() register onOpen and resolve', async () => {
         const error = jest.spyOn(console, 'error').mockImplementation(() => {});
         const onOpen = jest.fn();
         try {
             const popup = new Popup('x', POPUP_TYPE.TEXT, '', {
                 tier: 'dialog',
                 title: 'Title',
-                onBeforePaint: () => { throw new TypeError('adapter failed'); },
+                onOpening: () => { throw new TypeError('adapter failed'); },
                 onOpen,
             });
             const result = popup.show();
@@ -404,7 +404,7 @@ describe('Popup closing lifecycle', () => {
         const onOpen = jest.fn();
         HTMLElement.prototype.getAnimations = () => { throw new TypeError('no animations'); };
         try {
-            const popup = new Popup('x', POPUP_TYPE.TEXT, '', { tier: 'dialog', title: 'Title', onBeforePaint: () => {}, onOpen });
+            const popup = new Popup('x', POPUP_TYPE.TEXT, '', { tier: 'dialog', title: 'Title', onOpening: () => {}, onOpen });
             const result = popup.show();
             expect(popup.dlg.hasAttribute('opening')).toBe(false);
             expect(onOpen).toHaveBeenCalledTimes(1);
@@ -417,38 +417,28 @@ describe('Popup closing lifecycle', () => {
         }
     });
 
-    test('onOpen waits for the opening animation; onBeforePaint runs inside show() with the frame built', async () => {
+    test('onOpen waits for the opening animation; onOpening runs inside show() with the frame built', async () => {
         const events = [];
         globalThis.animationGate = [];
         try {
             const popup = new Popup('x', POPUP_TYPE.TEXT, '', {
                 tier: 'dialog',
                 title: 'Title',
-                onBeforePaint: ({ dlg }) => events.push(['beforePaint', dlg.isConnected, dlg.classList.contains('sb-dialog'), dlg.hasAttribute('opening')]),
+                onOpening: (argument) => events.push(['opening', argument === popup, isShown(popup), argument.dlg.classList.contains('sb-dialog'), argument.dlg.hasAttribute('opening')]),
                 onOpen: ({ dlg }) => events.push(['open', dlg.hasAttribute('opening')]),
             });
             const result = popup.show();
-            expect(events).toEqual([['beforePaint', true, true, true]]);
+            expect(events).toEqual([['opening', true, true, true, true]]);
             await settle();
             expect(events).toHaveLength(1);
             for (const finish of globalThis.animationGate.splice(0)) finish();
-            expect(events).toEqual([['beforePaint', true, true, true], ['open', false]]);
+            expect(events).toEqual([['opening', true, true, true, true], ['open', false]]);
             globalThis.animationGate = null;
             popup.okButton.click();
             await result;
         } finally {
             globalThis.animationGate = null;
         }
-    });
-
-    test('onOpening runs inside show, after the frame is built and before onOpen', () => {
-        const events = [];
-        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', {
-            onOpening: value => events.push(['opening', value === popup, isShown(popup), popup.dlg.hasAttribute('opening'), popup.dlg.classList.contains('sb-dialog')]),
-            onOpen: () => events.push(['open', popup.dlg.hasAttribute('opening')]),
-        });
-        void popup.show();
-        expect(events).toEqual([['opening', true, true, true, true], ['open', false]]);
     });
 
     test('onOpening also runs for a Popup without the frame', () => {

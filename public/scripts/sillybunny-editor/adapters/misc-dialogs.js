@@ -129,7 +129,7 @@ export function messageScreenshotOptions({ startId, endId }) {
     return {
         tier: 'dialog',
         title: t`Screenshot messages`,
-        onBeforePaint(popup) {
+        onOpening(popup) {
             const labels = [...popup.inputControls.querySelectorAll(':scope > label.text_label')];
             const rows = labels.map(label => {
                 const input = label.querySelector('input');
@@ -153,7 +153,7 @@ export function installExtensionOptions(source) {
     const root = asElement(source);
     root.querySelectorAll(':scope > br').forEach(node => node.remove());
     return dialogCleanup(root, {
-        onBeforePaint(popup) {
+        onOpening(popup) {
             const branchInput = popup.inputControls.querySelector('#extension_branch_name');
             const branchLabel = branchInput?.closest('label');
             const urlRow = createEntryRow({
@@ -184,7 +184,7 @@ export function switchBranchOptions(select) {
     let row;
     return dialogCleanup(select, {
         title: t`Switch branch`,
-        onBeforePaint(popup) {
+        onOpening(popup) {
             row = createSelectRow({
                 select,
                 label: t`Switch branch`,
@@ -217,7 +217,7 @@ export function accountFormOptions(source, { title = null, destructive = false }
     root.classList.add('sb-dialog-rows');
     return dialogCleanup(root, {
         ...(title ? { title } : {}),
-        onBeforePaint(popup) {
+        onOpening(popup) {
             const switchRow = root.querySelector(':scope > .ds-row-switch');
             if (switchRow) {
                 const group = createPrefGroup({ field: 'account-option' });

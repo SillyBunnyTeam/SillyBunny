@@ -535,7 +535,7 @@ export const SURFACES = [
                 Popup.show.confirm('Delete this prompt?', 'This cannot be undone.', {
                     okButton: 'Delete',
                     defaultResult: POPUP_RESULT.NEGATIVE,
-                    onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+                    onOpening: popup => popup.okButton.classList.add('is-destructive'),
                 }).then(result => { window.sbA11yResult = result; });
             });
             await waitForSurface(page, page.locator('dialog.popup[open]'));

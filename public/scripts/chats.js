@@ -406,7 +406,7 @@ async function deleteMessageFile(messageBlock, messageId, fileIndex) {
     }
 
     // SillyBunny: message file confirmations use an explicit destructive action.
-    const confirm = await callGenericPopup('Are you sure you want to delete this file?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
+    const confirm = await callGenericPopup('Are you sure you want to delete this file?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
 
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
         console.debug('Delete file cancelled');
@@ -1304,7 +1304,7 @@ async function moveAttachment(attachment, source, callback) {
 export async function deleteAttachment(attachment, source, callback, confirm = true) {
     if (confirm) {
         // SillyBunny: deleting an attachment is destructive and names the delete action.
-        const result = await callGenericPopup('Are you sure you want to delete this attachment?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
+        const result = await callGenericPopup('Are you sure you want to delete this attachment?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -1644,7 +1644,7 @@ async function openAttachmentManager() {
     template.find('.bulkActionDelete').on('click', handleBulkAction({
         confirmMessage: 'Are you sure you want to delete the selected attachments?',
         // SillyBunny: Enter must cancel bulk deletion because it cannot be undone.
-        confirmOptions: { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') },
+        confirmOptions: { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
         perform: async (attachment, source) => await deleteAttachment(attachment, source, () => { }, false),
     }));
 
@@ -1670,7 +1670,7 @@ async function openAttachmentManager() {
     // SillyBunny: move the existing Data Bank controls into shared Window chrome without changing their handlers.
     await callGenericPopup(template, POPUP_TYPE.TEXT, '', {
         tier: 'window', title: t`Data Bank`, wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true,
-        onBeforePaint: popup => {
+        onOpening: popup => {
             dataBankFrame = frameDataBankManager(popup, {
                 onSearch() {
                     dataBankFrame.report(template.find('.attachmentsList > .attachmentListItem').length, getDataBankAttachments(true).length);

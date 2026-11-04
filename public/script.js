@@ -10199,7 +10199,7 @@ export async function deleteCharacterById(chid) {
         okButton: t`Delete`,
         // SillyBunny: destructive confirmations focus Cancel and style Delete in the shared frame.
         defaultResult: 0,
-        onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+        onOpening: popup => popup.okButton.classList.add('is-destructive'),
         onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },
     });
     if (!confirmed || !characters.some(item => item.avatar === avatar)) {
@@ -13836,9 +13836,9 @@ async function promptForMessageScreenshotRange(messageId) {
             },
         ],
         wider: true,
-        onBeforePaint: function (activePopup) {
+        onOpening: function (activePopup) {
             // SillyBunny: compose the adapter's rows with the initial selection, so the field is selected in the first frame.
-            dialogOptions.onBeforePaint(activePopup);
+            dialogOptions.onOpening(activePopup);
             const startInput = popup.dlg.querySelector(`#${MESSAGE_SCREENSHOT_INPUT_IDS.start}`);
             if (startInput instanceof HTMLInputElement) {
                 startInput.focus({ preventScroll: true });
@@ -15710,7 +15710,7 @@ export async function setCharacterSettingsOverrides() {
 
     $template.find('.remove_scenario_override').on('click', async function () {
         // SillyBunny: override removal is destructive and names the remove action.
-        const confirm = await Popup.show.confirm(t`Are you sure you want to remove all overrides?`, t`This action cannot be undone.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
+        const confirm = await Popup.show.confirm(t`Are you sure you want to remove all overrides?`, t`This action cannot be undone.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
         if (!confirm) {
             return;
         }
@@ -17672,7 +17672,7 @@ export async function deleteCharacter(characterKey, { deleteChats = true } = {})
         const confirmClose = await Popup.show.confirm(
             t`You are currently in a temporary chat.`,
             t`Deleting this character will close the chat and you will lose any unsaved messages. Do you want to proceed?`,
-            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') },
+            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
         );
         if (!confirmClose) {
             return false;

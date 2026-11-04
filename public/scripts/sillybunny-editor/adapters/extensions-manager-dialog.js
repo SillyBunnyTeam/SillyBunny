@@ -169,7 +169,7 @@ export function adaptExtensionsManager(source, {
     return {
         // The row actions measure the rows. The opening animation scales the dialog, so they start in onOpen.
         onOpen: () => document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-open')),
-        onBeforePaint: popup => {
+        onOpening: popup => {
             const header = popup.dlg.querySelector('.sb-dialog__header');
             if (!header) return;
             const close = header.querySelector('.popup-button-close, .sb-dialog__close');

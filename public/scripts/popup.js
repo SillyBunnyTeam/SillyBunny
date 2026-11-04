@@ -60,13 +60,12 @@ export const POPUP_RESULT = {
  * @property {(popup: Popup) => Promise<boolean?>|boolean?} [onClosing=null] - Handler called before the popup closes, return `false` to cancel the close
  * @property {(popup: Popup) => Promise<void?>|void?} [onClose=null] - Handler called after the popup closes, but before the DOM is cleaned up
  * @property {(popup: Popup) => Promise<void?>|void?} [onOpen=null] - Handler called after the popup opens
- * @property {(popup: Popup) => void} [onBeforePaint=null] - SillyBunny: handler called synchronously from `show()`, after the frame (if any) is built and before the first paint, so the popup never shows its upstream layout. `onOpen` still runs later, after the opening animation.
  * @property {number?} [cropAspect=null] - Aspect ratio for the crop popup
  * @property {string?} [cropImage=null] - Image URL to display in the crop popup
  * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: explicit dialog presentation tier.
  * @property {string?} [title=null] - SillyBunny: header title; null promotes the content's leading heading
  * @property {'content'|'fill'} [size='fill'] - SillyBunny: whether a Window fills its frame.
- * @property {(popup: Popup) => void} [onOpening=null] - SillyBunny: handler called in `show()` before the first paint, for changes to the popup's layout
+ * @property {(popup: Popup) => void} [onOpening=null] - SillyBunny: handler called in `show()` once the frame is built and before the first paint, so the popup never shows its upstream layout. A throw is logged and the popup still opens. `onOpen` still runs later, after the opening animation, and is the place for code that reads bounding rects.
  */
 
 /**
@@ -228,8 +227,6 @@ export class Popup {
         tier = null,
         title = null,
         size = 'fill',
-        // SillyBunny: onOpen waits for the opening animation, so adapters that rebuild content use this.
-        onBeforePaint = null,
         // SillyBunny: `onOpen` runs after the opening animation, so a layout change there shows as a jump.
         onOpening = null,
     } = {}) {
@@ -693,7 +690,6 @@ export class Popup {
             title,
             // SillyBunny: pass Window sizing to the shared frame without changing Popup behavior.
             size,
-            onBeforePaint,
             allowEscapeClose,
             cancelButtonProvided: Object.prototype.hasOwnProperty.call(arguments[3] ?? {}, 'cancelButton'),
         });
@@ -712,13 +708,8 @@ export class Popup {
         this.dlg.setAttribute('opening', '');
 
         this.dlg.showModal();
-        // SillyBunny: tier and layout are applied before the first paint; promotion needs layout.
+        // SillyBunny: tier and layout are applied before the first paint; promotion needs layout. `opened()` also runs `onOpening`.
         this.sbFrame?.opened();
-        // SillyBunny: `onOpening` can change the size of the content, so the frame measures it again.
-        if (this.onOpening) {
-            this.onOpening(this);
-            this.sbFrame?.contentChanged();
-        }
 
         // We need to fix the toastr to be present inside this dialog
         fixToastrForDialogs();

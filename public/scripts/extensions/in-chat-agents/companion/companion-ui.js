@@ -791,7 +791,7 @@ async function deleteCompanionCard(messageIndex, agentId, message) {
     const popupResult = await new Popup('Delete this companion note?', POPUP_TYPE.CONFIRM, '', {
         okButton: 'Delete',
         defaultResult: POPUP_RESULT.NEGATIVE,
-        onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+        onOpening: popup => popup.okButton.classList.add('is-destructive'),
     }).show();
     if (popupResult !== POPUP_RESULT.AFFIRMATIVE) {
         return;

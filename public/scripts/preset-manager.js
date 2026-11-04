@@ -806,7 +806,7 @@ class PresetManager {
         const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText, {
             okButton: t`Discard`,
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+            onOpening: popup => popup.okButton.classList.add('is-destructive'),
         });
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
@@ -1742,7 +1742,7 @@ export async function initPresetManager() {
             t`Delete selected ${pluralNoun}?`,
             t`This will permanently delete ${presetNames.length} selected ${pluralNoun} for this section. The built-in GUI preset is kept.`,
             // SillyBunny: Return must cancel the final destructive confirmation too.
-            { defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') },
+            { defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
         );
 
         if (!confirm) {

@@ -7,7 +7,7 @@ test.setTimeout(90000);
 test.use({ serviceWorkers: 'block' });
 
 // A destructive confirmation must show its OK button in the destructive colour from the first frame.
-// It is marked in `onBeforePaint`: `onOpen` waits for the opening animation, and a Delete button that is the
+// It is marked in `onOpening`: `onOpen` waits for the opening animation, and a Delete button that is the
 // accent colour for that long looks harmless.
 for (const viewport of WINDOW_VIEWPORTS) {
     test(`Delete Secret shows a destructive OK button in every frame, from the first, at ${viewport.width}×${viewport.height}`, async ({ page }) => {

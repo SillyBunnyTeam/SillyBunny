@@ -425,7 +425,7 @@ export function mountWorldInfoEditor(container) {
         if (!await Popup.show.confirm(t`Delete world info entry with UID: ${uid}?`, t`This action is irreversible!`, {
             okButton: t`Delete`,
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+            onOpening: popup => popup.okButton.classList.add('is-destructive'),
         })) return;
         if (state.data !== data) return;
         const result = await remove(deps, name, data, uid);
@@ -466,7 +466,7 @@ export function mountWorldInfoEditor(container) {
         if (!await Popup.show.confirm(`${t`lorum ipsum`} (${uids.length})`, t`This action is irreversible!`, {
             okButton: t`Delete`,
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+            onOpening: popup => popup.okButton.classList.add('is-destructive'),
         })) return;
         if (state.data !== data) return;
         const targets = existingSelectedUids(uids);

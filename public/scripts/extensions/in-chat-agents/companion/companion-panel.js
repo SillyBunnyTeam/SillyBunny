@@ -1107,7 +1107,7 @@ async function handlePanelAction(event) {
             {
                 okButton: 'Exclude',
                 defaultResult: POPUP_RESULT.NEGATIVE,
-                onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
+                onOpening: popup => popup.okButton.classList.add('is-destructive'),
             },
         ).show();
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
