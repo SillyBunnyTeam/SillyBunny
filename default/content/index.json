@@ -332,10 +332,6 @@
         "type": "character"
     },
     {
-        "filename": "default_SillyBunnyGuide.png",
-        "type": "character"
-    },
-    {
         "filename": "Seraphina",
         "type": "sprites"
     },
@@ -505,14 +501,6 @@
     },
     {
         "filename": "presets/openai/Default.json",
-        "type": "openai_preset"
-    },
-    {
-        "filename": "presets/openai/Pura's Director Preset (SillyBunny).json",
-        "type": "openai_preset"
-    },
-    {
-        "filename": "presets/openai/Pura's Director Preset 15.1 (SillyBunny).json",
         "type": "openai_preset"
     },
     {

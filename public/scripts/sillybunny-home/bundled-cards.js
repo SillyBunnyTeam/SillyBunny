@@ -1,13 +1,12 @@
 import { getAssistantAvatars } from './assistant-registry.js';
 
 /**
- * The avatar files of the cards that ship with SillyBunny: the default content (`default/content/index.json`
- * lists Seraphina and the Bunny Guide). Having one of them in the library says nothing about the user having gotten a
- * card of their own.
+ * The avatar files of the cards that count as SillyBunny's own: the default content (`default/content/index.json`
+ * lists Seraphina). Having one of them in the library says nothing about the user having gotten a card of their own.
  *
- * Nahida is an assistant that earlier versions let the user install and that SillyBunny no longer ships. Her card
- * stays in the library of a user who installed her, and it must still not count as a card of their own, so her file
- * name stays here as a literal.
+ * Two more cards stay here as literals, although SillyBunny no longer ships them: the Bunny Guide that earlier versions
+ * seeded, and Nahida, whom they let the user install. Their cards stay in the library of a user who has them, and
+ * must still not count as a card of that user's own.
  */
 export const BUNDLED_CARD_AVATARS = Object.freeze([
     'default_Seraphina.png',

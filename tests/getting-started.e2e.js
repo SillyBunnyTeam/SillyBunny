@@ -362,7 +362,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
 
             await page.evaluate(async () => {
                 const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-                openConversationWorkspaceForAvatar('default_SillyBunnyGuide.png', { showToast: false, enable: true });
+                openConversationWorkspaceForAvatar('default_Seraphina.png', { showToast: false, enable: true });
             });
             await expect.poll(async () => (await stepsOf(page)).character).toBe('done');
             await page.evaluate(() => window.dispatchEvent(new CustomEvent('sb:conversation-user-message-sent')));

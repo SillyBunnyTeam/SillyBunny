@@ -26,7 +26,7 @@ const mobileOnly = args.includes('--mobile-only');
 
 if (!versionArg) {
     console.error('Error: --version parameter is required');
-    console.error('Usage: node tests/capture-screenshots.js --version=1.7.0 [--conversation-character="Bunny Guide"]');
+    console.error('Usage: node tests/capture-screenshots.js --version=1.7.0 [--conversation-character="Seraphina"]');
     process.exit(1);
 }
 

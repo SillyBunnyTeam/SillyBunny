@@ -60,7 +60,7 @@ async function openConversation(page, baseURL, { ooc = false } = {}) {
         const { renderConversationTimeline } = await import('/scripts/sillybunny-conversation/timeline-render.js');
         const { getSettings, saveSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
         const context = window.SillyTavern.getContext();
-        const character = context.characters.find(entry => /Bunny Guide|Seraphina/.test(entry?.name ?? ''));
+        const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         if (!character?.avatar) throw new Error('No bundled Conversation character found.');
         openConversationWorkspaceForAvatar(character.avatar, { showToast: false });
         stopConversationAutoWorker();
@@ -69,7 +69,7 @@ async function openConversation(page, baseURL, { ooc = false } = {}) {
             await handleConversationSlashAction('/ooc A disposable note for action checks.');
         } else {
             appendConversationThreadMessage(character.avatar, {
-                role: 'assistant', name: 'Bunny Guide', mes: 'A disposable message for focus checks.', extra: {},
+                role: 'assistant', name: 'Seraphina', mes: 'A disposable message for focus checks.', extra: {},
             });
         }
         renderConversationTimeline();

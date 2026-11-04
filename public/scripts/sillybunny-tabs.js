@@ -15,6 +15,7 @@ import { HOME_STATE_CHANGED_EVENT, initHomeState, isHomeActive } from './sillybu
 import { CHAT_MODE_CHANGED_EVENT, getLastChatMode, initChatModeMemory, recordChatMode } from './sillybunny-chat-mode-memory.js';
 import { initBootMarks } from './sillybunny-boot-marks.js';
 import { initSplashPreferences } from './sillybunny-splash-preferences.js';
+import { initRetiredKeys } from './sillybunny-retired-keys.js';
 import { createSplashCharacterRow } from './sillybunny-splash-setting.js';
 import { power_user } from './power-user.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -15100,6 +15101,7 @@ function initAll() {
     applyTopbarIconsOnlyPreference();
     initChatModeMemory();
     getSplashPreferences();
+    initRetiredKeys({ eventSource, eventTypes: event_types, accountStorage, storage: window.localStorage });
     initBootMarks({ eventSource, eventTypes: event_types });
     bindHomeState();
     buildBottomChatBar();

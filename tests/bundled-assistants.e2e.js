@@ -12,15 +12,16 @@ test.describe.configure({ timeout: 90_000 });
 const REISEN = 'default_AssistantReisen.png';
 const TEWI = 'default_AssistantTewi.png';
 const NAHIDA = 'default_AssistantNahida.png';
+/** The Bunny Guide is no longer shipped. A user who got it from an earlier version still has the card, as an ordinary character. */
 const GUIDE = 'default_SillyBunnyGuide.png';
 const SERAPHINA = 'default_Seraphina.png';
 const MIGRATED_KEY = 'WelcomePage_AssistantPointerMigrated';
 const POINTER_KEY = 'assistant';
 
 /** A library as a server holds it before the assistant cards of 5.5 ship: the default content only. */
-const TODAY = [SERAPHINA, GUIDE];
+const TODAY = [SERAPHINA];
 /** A library that the server seeded with Reisen and Tewi, and where Nahida was never installed. Nahida ships no more. */
-const SEEDED = [SERAPHINA, GUIDE, REISEN, TEWI];
+const SEEDED = [SERAPHINA, REISEN, TEWI];
 
 function card(avatar) {
     const name = avatar.replace(/^default_/, '').replace(/\.png$/, '');
@@ -161,31 +162,52 @@ test.describe('the bundled assistants at startup', () => {
     });
 
     test.describe('the default assistant', () => {
-        test('is the Bunny Guide while the library has only the Guide, and the account is left as it was', async ({ page }) => {
+        test('is Reisen while her card is missing, and the account is left as it was', async ({ page }) => {
             await boot(page, { library: TODAY });
 
-            expect(await defaultAvatar(page)).toBe(GUIDE);
+            expect(await defaultAvatar(page)).toBe(REISEN);
             expect(await stored(page, MIGRATED_KEY)).toBeNull();
             expect(await stored(page, POINTER_KEY)).toBeNull();
         });
 
-        test('opens the card of the Guide as the assistant card', async ({ page }) => {
-            await boot(page, { library: TODAY });
+        test('opens no card as the assistant card while Reisen has none, and does not take the kept Guide for her', async ({ page }) => {
+            const world = await boot(page, { library: [...TODAY, GUIDE] });
+
+            await page.evaluate(async () => (await import('/scripts/welcome-screen.js')).openPermanentAssistantCard());
+
+            expect(await page.evaluate(async () => {
+                const app = await import('/script.js');
+                return app.characters[app.this_chid]?.avatar ?? null;
+            })).toBeNull();
+            expect(world.creates).toEqual([]);
+            expect(world.imports).toEqual([]);
+        });
+
+        test('opens the card of Reisen as the assistant card once she is in the library', async ({ page }) => {
+            await boot(page, { library: SEEDED });
 
             await page.evaluate(async () => (await import('/scripts/welcome-screen.js')).openPermanentAssistantCard());
 
             await expect.poll(() => page.evaluate(async () => {
                 const app = await import('/script.js');
                 return app.characters[app.this_chid]?.avatar ?? null;
-            })).toBe(GUIDE);
+            })).toBe(REISEN);
         });
 
-        test('is Reisen once her card is in the library, and the pointer is moved to her', async ({ page }) => {
-            await boot(page, { library: SEEDED, accountStorage: { [POINTER_KEY]: GUIDE } });
+        test('is Reisen once her card is in the library, and a pointer that names the kept Guide is moved to her', async ({ page }) => {
+            await boot(page, { library: [...SEEDED, GUIDE], accountStorage: { [POINTER_KEY]: GUIDE } });
 
             expect(await stored(page, MIGRATED_KEY)).toBe('true');
             expect(await stored(page, POINTER_KEY)).toBe(REISEN);
             expect(await defaultAvatar(page)).toBe(REISEN);
+        });
+
+        test('keeps a pointer at the kept Guide while Reisen has no card, because the pointer is not stale', async ({ page }) => {
+            await boot(page, { library: [...TODAY, GUIDE], accountStorage: { [POINTER_KEY]: GUIDE } });
+
+            expect(await stored(page, POINTER_KEY)).toBe(GUIDE);
+            expect(await stored(page, MIGRATED_KEY)).toBeNull();
+            expect(await defaultAvatar(page)).toBe(GUIDE);
         });
 
         test('is Reisen by her card alone when the account is migrated and holds no pointer', async ({ page }) => {
@@ -195,21 +217,9 @@ test.describe('the bundled assistants at startup', () => {
             expect(await defaultAvatar(page)).toBe(REISEN);
         });
 
-        test('falls back to the Bunny Guide when the account is migrated and Reisen has been removed from the library', async ({ page }) => {
-            await boot(page, { library: TODAY, accountStorage: { [MIGRATED_KEY]: 'true' } });
+        test('stays Reisen when the account is migrated and her card has been removed from the library', async ({ page }) => {
+            await boot(page, { library: [...TODAY, GUIDE], accountStorage: { [MIGRATED_KEY]: 'true' } });
 
-            expect(await defaultAvatar(page)).toBe(GUIDE);
-        });
-
-        test('follows the library when the list is reloaded to the same length with Reisen in place of the Guide', async ({ page }) => {
-            const world = await boot(page, { library: TODAY, accountStorage: { [MIGRATED_KEY]: 'true' } });
-            expect(await defaultAvatar(page)).toBe(GUIDE);
-
-            world.library.delete(GUIDE);
-            world.library.add(REISEN);
-            await page.evaluate(async () => (await import('/script.js')).getCharacters());
-
-            expect(await libraryAvatars(page)).toHaveLength(TODAY.length);
             expect(await defaultAvatar(page)).toBe(REISEN);
         });
 
@@ -236,7 +246,7 @@ test.describe('the bundled assistants at startup', () => {
     });
 
     test.describe('deleting the card that the assistant pointer names', () => {
-        const DELETED_KEYS = ['bundledAssistantReisenDeleted', 'bundledAssistantTewiDeleted', 'bundledAssistantNahidaDeleted', 'bundledAssistantGuideDeleted'];
+        const DELETED_KEYS = ['bundledAssistantReisenDeleted', 'bundledAssistantTewiDeleted', 'bundledAssistantNahidaDeleted'];
         const markersOf = page => Promise.all(DELETED_KEYS.map(key => stored(page, key)));
 
         /** The errors that the event emitter logs when a listener throws, without the failed loads of the made-up thumbnails. */
@@ -261,7 +271,7 @@ test.describe('the bundled assistants at startup', () => {
             await deleteCard(page, 'Alice.png');
 
             expect(errors).toEqual([]);
-            expect(await markersOf(page)).toEqual([null, null, null, null]);
+            expect(await markersOf(page)).toEqual([null, null, null]);
         });
 
         test('Tewi is still marked as deleted when the pointer names her card, which Reisen shares the key of', async ({ page }) => {
@@ -271,8 +281,28 @@ test.describe('the bundled assistants at startup', () => {
             await deleteCard(page, TEWI);
 
             expect(errors).toEqual([]);
-            expect(await markersOf(page)).toEqual([null, 'true', null, null]);
+            expect(await markersOf(page)).toEqual([null, 'true', null]);
         });
+    });
+
+    test('deletes the keys that no code reads any more, from the account and from the browser', async ({ page }) => {
+        const RETIRED_ACCOUNT = {
+            WelcomePage_DeckView: 'wide',
+            WelcomePage_TutorialStatus: 'done',
+            WelcomePage_TutorialIndex: '3',
+            bundledAssistantGuideAvatar: 'My Guide.png',
+            bundledAssistantGuideDeleted: 'true',
+        };
+        await page.addInitScript(() => {
+            window.localStorage.setItem('sb-frontend-icon', 'badge');
+            window.localStorage.setItem('WelcomePage_DeckView', 'wide');
+        });
+
+        await boot(page, { library: SEEDED, accountStorage: { ...RETIRED_ACCOUNT, WelcomePage_PanelMode: 'compact' } });
+
+        expect(await Promise.all(Object.keys(RETIRED_ACCOUNT).map(key => stored(page, key)))).toEqual([null, null, null, null, null]);
+        expect(await stored(page, 'WelcomePage_PanelMode')).toBe('compact');
+        expect(await page.evaluate(() => ['sb-frontend-icon', 'WelcomePage_DeckView'].map(key => window.localStorage.getItem(key)))).toEqual([null, null]);
     });
 
     test('the deleted marker of Reisen and Tewi follows the deletion of their cards', async ({ page }) => {

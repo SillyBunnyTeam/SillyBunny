@@ -4,9 +4,9 @@ import { ASSISTANT_POINTER_KEY, getAssistant } from './assistant-registry.js';
 export const ASSISTANT_POINTER_MIGRATED_KEY = 'WelcomePage_AssistantPointerMigrated';
 
 /**
- * Moves the Welcome Page Assistant of an account to Reisen, once. Whatever it named is replaced, because the Guide is
- * only the stand-in for Reisen, and a card of the user was chosen without Reisen among the options. After that the
- * pointer is the account's to change.
+ * Moves the Welcome Page Assistant of an account to Reisen, once. Whatever it named is replaced, because it named the
+ * Bunny Guide, which earlier versions used as the stand-in for Reisen, or a card of the user, chosen without Reisen
+ * among the options. After that the pointer is the account's to change.
  *
  * It waits for Reisen's card: pointing at a card that does not exist would make the pointer stale, and the next start
  * would find the account already migrated.

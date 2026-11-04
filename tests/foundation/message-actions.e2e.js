@@ -31,7 +31,7 @@ async function seedChat(page, { longName = false } = {}) {
         if (!context.characters.length) {
             await context.getCharacters();
         }
-        const id = context.characters.findIndex(character => /Bunny Guide|Seraphina/.test(character?.name ?? ''));
+        const id = context.characters.findIndex(character => /Seraphina/.test(character?.name ?? ''));
         await context.selectCharacterById(id, { switchMenu: false });
     });
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
@@ -51,7 +51,7 @@ async function seedChat(page, { longName = false } = {}) {
             });
         }
         await context.printMessages();
-    }, { name: longName ? LONG_NAME : 'Bunny Guide' });
+    }, { name: longName ? LONG_NAME : 'Seraphina' });
     await expect(page.locator(target)).toBeVisible();
     await page.locator(target).scrollIntoViewIfNeeded();
 }

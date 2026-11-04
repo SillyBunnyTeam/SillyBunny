@@ -60,7 +60,7 @@ async function seedChat(page) {
         for (let index = 0; index < 4; index++) {
             const isUser = index % 2 === 1;
             context.chat.push({
-                name: isUser ? 'Tester' : 'Bunny Guide',
+                name: isUser ? 'Tester' : 'Seraphina',
                 is_user: isUser,
                 is_system: false,
                 send_date: new Date(Date.UTC(2026, 8, 30, 12, index)).toISOString(),

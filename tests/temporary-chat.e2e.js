@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { TC_COPY } from './helpers/copy-temporary-chat.js';
+import { makeCharacterCard } from './helpers/assistant-library.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { DESKTOP, matrixViewports } from './helpers/matrix.js';
@@ -12,6 +13,9 @@ test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } 
 test.describe.configure({ timeout: 90_000 });
 
 const MODEL = 'stub-model';
+/** The default content holds one character, so the specs that leave for another character get a second card that exists in the page only. */
+const OTHER_NAME = 'QA Other';
+const OTHER_AVATAR = 'qa-other-card.png';
 const REPLY = 'A stubbed reply.';
 const BANNER = '#sb-temporary-chat-banner';
 const GREETING_START = 'You wake with a start';
@@ -109,6 +113,11 @@ async function boot(page, { extensionSettings = null } = {}) {
         if (!data) return;
         recentChats.push(data);
         return route.fulfill({ json: data });
+    });
+    await page.route('**/api/characters/all', async (route) => {
+        const data = await fetchJsonOrSkip(route);
+        if (!data) return;
+        return route.fulfill({ json: [...data, makeCharacterCard(OTHER_AVATAR, OTHER_NAME)] });
     });
     // The spec must never reach the maintainer's data: the record of the request is what counts.
     await page.route('**/api/characters/last-chat', route => route.fulfill({ json: { ok: true } }));
@@ -683,25 +692,25 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
 
             const LEAVES = {
                 'selecting another character': async (page) => {
-                    const other = await characterIdOf(page, 'Bunny Guide');
+                    const other = await characterIdOf(page, OTHER_NAME);
                     return page.evaluate(id => window.SillyTavern.getContext().selectCharacterById(id, { switchMenu: false }), other);
                 },
                 'starting a new chat': page => page.evaluate(async () => (await import('/script.js')).doNewChat()),
                 'closing the chat': page => page.evaluate(() => window.SillyTavern.getContext().closeCurrentChat()),
                 'starting another temporary chat': async (page) => {
-                    const other = await characterIdOf(page, 'Bunny Guide');
+                    const other = await characterIdOf(page, OTHER_NAME);
                     return page.evaluate(async (id) => (await import('/scripts/sillybunny-temporary-chat.js')).startTemporaryChat(id), other);
                 },
                 'the /random command': page => page.evaluate(async () => (await window.SillyTavern.getContext().executeSlashCommandsWithOptions('/random')).pipe),
-                'the /go command': page => page.evaluate(async () => (await window.SillyTavern.getContext().executeSlashCommandsWithOptions('/go Bunny Guide')).pipe),
+                'the /go command': page => page.evaluate(async () => (await window.SillyTavern.getContext().executeSlashCommandsWithOptions('/go QA Other')).pipe),
                 'selecting a group': page => page.evaluate(async () => {
                     const { groups, openGroupById } = await import('/scripts/group-chats.js');
                     groups.push({ id: 'tc-group', name: 'TC Group', members: [], chat_id: 'tc-group-chat', chats: ['tc-group-chat'] });
                     return openGroupById('tc-group', { switchMenu: false });
                 }),
                 'opening a chat from Recent Chats': async (page) => {
-                    const avatar = await page.evaluate(() => window.SillyTavern.getContext().characters.find(character => character.name === 'Bunny Guide').avatar);
-                    await page.route('**/api/chats/recent', route => route.fulfill({ json: [{ file_name: 'Bunny Guide - recent.jsonl', avatar, last_mes: new Date().toISOString(), mes: 'Hello', chat_items: 1 }] }));
+                    const avatar = await page.evaluate(() => window.SillyTavern.getContext().characters.find(character => character.name === 'QA Other').avatar);
+                    await page.route('**/api/chats/recent', route => route.fulfill({ json: [{ file_name: 'QA Other - recent.jsonl', avatar, last_mes: new Date().toISOString(), mes: 'Hello', chat_items: 1 }] }));
                     return page.evaluate(async () => (await import('/scripts/welcome-screen.js')).resumeLatestRoleplayChat());
                 },
             };
@@ -751,7 +760,7 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                 await sendAndWaitForReply(page, 'Hello there', 3);
                 expect(await page.evaluate(async () => (await import('/scripts/itemized-prompts.js')).itemizedPrompts.length)).toBeGreaterThan(0);
 
-                const other = await characterIdOf(page, 'Bunny Guide');
+                const other = await characterIdOf(page, OTHER_NAME);
                 const left = page.evaluate(id => window.SillyTavern.getContext().selectCharacterById(id, { switchMenu: false }), other);
                 await alertOf(page).getByRole('button', { name: 'Discard' }).click();
                 await left;
@@ -768,7 +777,7 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                 await sendAndWaitForReply(page, 'Hello there', 3);
                 expect(await page.evaluate(async () => (await import('/scripts/itemized-prompts.js')).itemizedPrompts.length)).toBeGreaterThan(0);
 
-                const other = await characterIdOf(page, 'Bunny Guide');
+                const other = await characterIdOf(page, OTHER_NAME);
                 await page.evaluate(async (id) => {
                     const script = await import('/script.js');
                     script.setCharacterId(String(id));
@@ -838,7 +847,7 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
 
             test('starting from Conversation mode opens the chat in Roleplay', async ({ page }) => {
                 const context = await boot(page);
-                const avatar = await page.evaluate(() => window.SillyTavern.getContext().characters.find(character => character.name === 'Bunny Guide').avatar);
+                const avatar = await page.evaluate(() => window.SillyTavern.getContext().characters.find(character => character.name === 'QA Other').avatar);
                 await page.evaluate(async (target) => {
                     const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
                     openConversationWorkspaceForAvatar(target, { showToast: false });

@@ -34,7 +34,7 @@ export async function selectSampleCharacter(page) {
             await context.getCharacters();
         }
 
-        const characterId = context.characters.findIndex(character => /Bunny Guide|Seraphina/.test(character?.name ?? character?.data?.name ?? ''));
+        const characterId = context.characters.findIndex(character => /Seraphina/.test(character?.name ?? character?.data?.name ?? ''));
 
         if (characterId < 0) {
             return false;
@@ -221,7 +221,7 @@ async function renderSyntheticLongChat(page, { messageCount, visibleCount }) {
             const isUser = index % 2 === 0;
             const baseText = `issue 167 synthetic message ${index}`;
             context.chat.push({
-                name: isUser ? 'Scroll Tester' : 'Bunny Guide',
+                name: isUser ? 'Scroll Tester' : 'Seraphina',
                 is_user: isUser,
                 is_system: false,
                 send_date: new Date(Date.UTC(2024, 0, 1, 0, index)).toISOString(),
@@ -294,7 +294,7 @@ export async function installSwipeCandidate(page, messageId) {
         const message = context.chat[targetMessageId];
 
         message.is_user = false;
-        message.name = 'Bunny Guide';
+        message.name = 'Seraphina';
         message.swipe_id = 0;
         message.swipes = [
             `issue 167 original swipe ${targetMessageId} ${'anchor filler '.repeat(20)}`,

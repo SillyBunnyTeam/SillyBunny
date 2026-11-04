@@ -199,7 +199,7 @@ describe('frontend performance measurement helpers', () => {
             is_system: false,
         }));
         expect(fixture.messages.at(1)).toEqual(expect.objectContaining({
-            name: 'Bunny Guide',
+            name: 'Seraphina',
             is_user: false,
             is_system: false,
         }));

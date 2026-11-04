@@ -26,7 +26,7 @@ async function seedConversation(page, { messageOverrides = [] } = {}) {
         if (!context.characters.length) {
             await context.getCharacters();
         }
-        const character = context.characters.find(entry => /Bunny Guide|Seraphina/.test(entry?.name ?? ''));
+        const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         if (!character?.avatar) {
             throw new Error('No bundled Conversation character found.');
         }

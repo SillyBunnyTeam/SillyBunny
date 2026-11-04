@@ -36,7 +36,7 @@ async function closeChatWithComposerFocused(page) {
 async function openConversationOverHome(page) {
     await page.evaluate(async () => {
         const context = window.SillyTavern.getContext();
-        const character = context.characters.find(entry => /Bunny Guide|Seraphina/.test(entry?.name ?? ''));
+        const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
         if (!openConversationWorkspaceForAvatar(character.avatar, { showToast: false, enable: true })) {
             throw new Error('Could not open the Conversation workspace.');

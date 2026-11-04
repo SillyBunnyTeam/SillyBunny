@@ -203,7 +203,7 @@ export function createLongChatRenderFixture({
         const isUser = index % 2 === 0;
         const baseText = `performance synthetic message ${index}`;
         messages.push({
-            name: isUser ? 'Scroll Tester' : 'Bunny Guide',
+            name: isUser ? 'Scroll Tester' : 'Seraphina',
             is_user: isUser,
             is_system: false,
             send_date: new Date(Date.UTC(2024, 0, 1, 0, index)).toISOString(),
@@ -288,7 +288,7 @@ export async function measureStreamingRender(page, fixture = createStreamingRend
         const target = browserGlobal.document.createElement('div');
         const messageId = 1;
         const message = {
-            name: 'Bunny Guide',
+            name: 'Seraphina',
             is_user: false,
             is_system: false,
             mes: '',
