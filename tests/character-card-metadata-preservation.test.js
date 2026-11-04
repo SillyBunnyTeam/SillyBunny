@@ -186,7 +186,7 @@ describe('character card metadata preservation', () => {
         const chatText = '{"name":"Alice"}\n{"is_user":false,"mes":"Existing greeting."}\n';
         fs.writeFileSync(chatPath, chatText);
         const draft = createDraft({ sourceAvatar: avatar, fields: await getCharacter(avatar) });
-        const description = '[Identity: retired navigator; Work: repair shop]\n\n{{char}}: \"Bring {{user}} the chart.\"';
+        const description = '[Identity: retired navigator; Work: repair shop]\n\n{{char}}: "Bring {{user}} the chart."';
         setDraftTarget(draft, 'description', description);
         setDraftTarget(draft, 'scenario', 'The user proposes a voyage.');
 
