@@ -67,6 +67,13 @@ import {
 } from '../../prompt-converters.js';
 import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
 import { isBunRuntime } from '../../runtime.js';
+import {
+    capFirstGenerateContentBody,
+    collectGenerateContentHops,
+    continueGenerateContentStream,
+    getGenerateContentText,
+    mergeGenerateContentHops,
+} from '../../gemini-long-decode.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -900,8 +907,8 @@ async function sendMakerSuiteRequest(request, response) {
             url = `${baseUrl}/models/${model}:${responseType}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
         }
 
-        const generateResponse = await fetch(url, {
-            body: JSON.stringify(body),
+        const sendRequest = requestBody => fetch(url, {
+            body: JSON.stringify(requestBody),
             method: 'POST',
             headers: headers,
             signal: controller.signal,
@@ -909,10 +916,15 @@ async function sendMakerSuiteRequest(request, response) {
             timeout: 0,
         });
 
+        // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
+        const firstBody = capFirstGenerateContentBody(body, model, stream);
+        const generateResponse = await sendRequest(firstBody);
+        const sendHop = continuationToken => sendRequest({ ...body, continuationToken });
+
         if (stream) {
             try {
                 // Pipe remote SSE stream to Express response
-                forwardFetchResponse(generateResponse, response, request, () => controller.abort());
+                forwardFetchResponse(continueGenerateContentStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
             } catch (error) {
                 console.error('Error forwarding streaming response:', error);
                 if (!response.headersSent) {
@@ -927,8 +939,9 @@ async function sendMakerSuiteRequest(request, response) {
                 return response.status(500).send(errorJson);
             }
 
+            const hops = await collectGenerateContentHops(await generateResponse.json(), sendHop, controller.signal, firstBody !== body);
             /** @type {any} */
-            const generateResponseJson = await generateResponse.json();
+            const generateResponseJson = mergeGenerateContentHops(hops);
 
             const candidates = generateResponseJson?.candidates;
             if (!candidates || candidates.length === 0) {
@@ -945,7 +958,7 @@ async function sendMakerSuiteRequest(request, response) {
             const inlineData = (candidates?.[0]?.content?.parts ?? []).some(part => part.inlineData);
             console.debug(`${apiName} response:`, summarizeLlmPayloadForLog(generateResponseJson));
 
-            const responseText = typeof responseContent === 'string' ? responseContent : responseContent?.parts?.filter(part => !part.thought)?.map(part => part.text)?.join('\n\n');
+            const responseText = getGenerateContentText(hops);
             // SillyBunny: these finishes mean the model stopped before it finished the reply, and the client must know that.
             const isCutOff = ['MAX_TOKENS', 'CONTINUATION'].includes(candidates[0].finishReason);
             if (!responseText && !functionCall && !inlineData) {
