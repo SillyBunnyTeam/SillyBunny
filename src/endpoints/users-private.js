@@ -9,7 +9,7 @@ import express from 'express';
 import yauzl from 'yauzl';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 
-import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey, getAccountVersion, isUserRootInsideDataRoot } from '../users.js';
+import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey, getAccountVersion, isUserRootInsideDataRoot, requireAdminMiddleware } from '../users.js';
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
 import { SECRETS_FILE } from './secrets.js';
@@ -955,7 +955,8 @@ router.post('/backup', async (request, response) => {
     }
 });
 
-router.post('/import-sillytavern/folder', async (request, response) => {
+// A server folder path can name any folder that the server can read, so only an admin may import from one. Other users upload a backup ZIP.
+router.post('/import-sillytavern/folder', requireAdminMiddleware, async (request, response) => {
     try {
         const canRead = await getImportReadCheck(request);
         const sourceRoot = await resolveReadableImportRoot(request.body?.sourcePath, canRead);
@@ -985,7 +986,7 @@ router.post('/import-sillytavern/folder', async (request, response) => {
     }
 });
 
-router.post('/import-sillytavern/extensions', async (request, response) => {
+router.post('/import-sillytavern/extensions', requireAdminMiddleware, async (request, response) => {
     try {
         const canRead = await getImportReadCheck(request);
         const sourceRoot = await resolveReadableImportRoot(request.body?.sourcePath, canRead);

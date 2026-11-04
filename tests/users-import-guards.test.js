@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, jest, test } from '@jest/global
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import archiver from 'archiver';
 
 import { DEFAULT_USER } from '../src/constants.js';
 import { ADMIN, MEMBER, OPEN_MEMBER, readReply, startAccountServer } from './util/user-account-harness.js';
@@ -12,17 +13,18 @@ const harness = await startAccountServer();
 jest.setTimeout(30000);
 
 const outsideRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'sillybunny-import-guards-'));
-const UNAUTHORIZED = { status: 403, body: { error: 'Unauthorized' } };
-const ADMIN_FILES = {
-    'settings.json': '{"owner":"admin"}',
-    'secrets.json': '{"api_key_openai":"admin-key"}',
+const FORBIDDEN = { status: 403, body: 'Forbidden' };
+const SOURCE_FILES = {
+    'settings.json': '{"owner":"source"}',
+    'secrets.json': '{"api_key_openai":"source-key"}',
     'chats/Ada/private.jsonl': '{"private":true}',
-    'extensions/admin-extension/manifest.json': '{"js":"index.js"}',
-    'extensions/admin-extension/index.js': 'export {};',
+    'extensions/source-extension/manifest.json': '{"js":"index.js"}',
+    'extensions/source-extension/index.js': 'export {};',
 };
 
 let nextFolder = 1;
 let member;
+let admin;
 
 function writeTree(root, files) {
     for (const [relativePath, content] of Object.entries(files)) {
@@ -32,49 +34,42 @@ function writeTree(root, files) {
     }
 }
 
-function outsideFolder() {
+function outsideSource() {
     const folder = path.join(outsideRoot, `source-${nextFolder++}`);
-    fs.mkdirSync(folder, { recursive: true });
+    writeTree(folder, SOURCE_FILES);
     return folder;
 }
 
-/**
- * Links a folder with a junction on Windows, which needs no extra rights there, and with a symbolic link elsewhere.
- */
-function linkFolder(target, linkPath) {
-    fs.mkdirSync(path.dirname(linkPath), { recursive: true });
-    fs.symlinkSync(target, linkPath, 'junction');
+function accountFile(account, ...segments) {
+    return path.join(harness.userRoot(account.handle), ...segments);
 }
 
-function canLinkFiles() {
-    const target = path.join(outsideRoot, 'file-link-probe-target');
-    const link = path.join(outsideRoot, 'file-link-probe-link');
-    fs.writeFileSync(target, '');
-    try {
-        fs.symlinkSync(target, link);
-        return true;
-    } catch {
-        return false;
-    } finally {
-        fs.rmSync(link, { force: true });
-        fs.rmSync(target, { force: true });
-    }
+function expectNothingImportedInto(account) {
+    expect(fs.existsSync(accountFile(account, 'secrets.json'))).toBe(false);
+    expect(fs.existsSync(accountFile(account, 'chats', 'Ada', 'private.jsonl'))).toBe(false);
+    expect(fs.existsSync(accountFile(account, 'extensions', 'source-extension'))).toBe(false);
 }
 
-function memberFile(...segments) {
-    return path.join(harness.userRoot(OPEN_MEMBER.handle), ...segments);
-}
-
-function expectNoAdminDataInMemberFolder() {
-    expect(fs.existsSync(memberFile('secrets.json'))).toBe(false);
-    expect(fs.existsSync(memberFile('chats', 'Ada', 'private.jsonl'))).toBe(false);
-    expect(fs.existsSync(memberFile('extensions', 'admin-extension'))).toBe(false);
+function createZip(entries) {
+    return new Promise((resolve, reject) => {
+        const archive = archiver('zip');
+        const chunks = [];
+        archive.on('data', chunk => chunks.push(chunk));
+        archive.on('end', () => resolve(Buffer.concat(chunks)));
+        archive.on('error', reject);
+        for (const [name, content] of Object.entries(entries)) {
+            archive.append(content, { name });
+        }
+        archive.finalize();
+    });
 }
 
 beforeEach(async () => {
     await harness.reset();
-    writeTree(harness.userRoot(ADMIN.handle), ADMIN_FILES);
+    writeTree(harness.userRoot(ADMIN.handle), SOURCE_FILES);
+    writeTree(harness.userRoot(MEMBER.handle), SOURCE_FILES);
     member = await harness.loginAs(OPEN_MEMBER);
+    admin = await harness.loginAs(DEFAULT_USER);
 });
 
 afterAll(async () => {
@@ -82,101 +77,59 @@ afterAll(async () => {
     fs.rmSync(outsideRoot, { recursive: true, force: true, maxRetries: 5 });
 });
 
-describe('POST /api/users/import-sillytavern/folder', () => {
-    const importFolder = (client, sourcePath) => client.post('/api/users/import-sillytavern/folder', { sourcePath });
+const MEMBER_SOURCES = [
+    ['a folder outside the data root', () => outsideSource()],
+    ['its own folder', () => harness.userRoot(OPEN_MEMBER.handle)],
+    ['the folder of another account', () => harness.userRoot(ADMIN.handle)],
+    ['the data root', () => harness.dataRoot],
+    ['no path', () => undefined],
+];
 
-    test('only an admin may import the folder of another account', async () => {
-        const admin = await harness.loginAs(DEFAULT_USER);
-        writeTree(harness.userRoot(MEMBER.handle), { 'settings.json': '{"owner":"member"}' });
+describe.each([
+    ['/api/users/import-sillytavern/folder'],
+    ['/api/users/import-sillytavern/extensions'],
+])('POST %s', route => {
+    test.each(MEMBER_SOURCES)('answers 403 to a member for %s, and imports nothing', async (_title, sourcePath) => {
+        const reply = await readReply(await member.post(route, { sourcePath: sourcePath() }));
 
-        const memberReply = await readReply(await importFolder(member, harness.userRoot(ADMIN.handle)));
-        const adminReply = await readReply(await importFolder(admin, harness.userRoot(MEMBER.handle)));
-
-        expect(memberReply).toEqual(UNAUTHORIZED);
-        expectNoAdminDataInMemberFolder();
-        expect(adminReply.status).toBe(200);
-    });
-
-    test.each([
-        ['the data root', () => harness.dataRoot],
-        ['a missing folder inside the data root', () => path.join(harness.dataRoot, ADMIN.handle, 'no-such-folder')],
-        ['a relative path into the data root', () => path.relative(process.cwd(), harness.userRoot(ADMIN.handle))],
-    ])('answers 403 to a member for %s', async (_title, sourcePath) => {
-        const reply = await readReply(await importFolder(member, sourcePath()));
-
-        expect(reply).toEqual(UNAUTHORIZED);
-        expectNoAdminDataInMemberFolder();
-    });
-
-    test('a member gets the answer for its own folder there, and 403 for another account', async () => {
-        writeTree(harness.userRoot(OPEN_MEMBER.handle), { 'settings.json': '{"owner":"open"}' });
-        writeTree(harness.userRoot(MEMBER.handle), { 'settings.json': '{"owner":"member"}' });
-
-        const own = await readReply(await importFolder(member, harness.userRoot(OPEN_MEMBER.handle)));
-        const other = await readReply(await importFolder(member, harness.userRoot(MEMBER.handle)));
-
-        expect(own).toEqual({ status: 400, body: { error: 'That folder is already the current SillyBunny account.' } });
-        expect(other).toEqual(UNAUTHORIZED);
-    });
-
-    test('answers 403 to a member for a folder that links to another account', async () => {
-        const link = path.join(outsideFolder(), 'linked-account');
-        linkFolder(harness.userRoot(ADMIN.handle), link);
-
-        const reply = await readReply(await importFolder(member, link));
-
-        expect(reply).toEqual(UNAUTHORIZED);
-        expectNoAdminDataInMemberFolder();
-    });
-
-    test('imports a member folder from outside the data root and skips a linked folder that leads into another account', async () => {
-        const source = outsideFolder();
-        writeTree(source, { 'settings.json': '{"owner":"outside"}', 'characters/Own.png': 'card' });
-        linkFolder(path.join(harness.userRoot(ADMIN.handle), 'chats'), path.join(source, 'chats'));
-
-        const reply = await readReply(await importFolder(member, source));
-
-        expect(reply.status).toBe(200);
-        expect(fs.readFileSync(memberFile('settings.json'), 'utf8')).toBe('{"owner":"outside"}');
-        expect(fs.readFileSync(memberFile('characters', 'Own.png'), 'utf8')).toBe('card');
-        expectNoAdminDataInMemberFolder();
+        expect(reply).toEqual(FORBIDDEN);
+        expectNothingImportedInto(OPEN_MEMBER);
     });
 });
 
-const describeWithFileLinks = canLinkFiles() ? describe : describe.skip;
-
-describeWithFileLinks('POST /api/users/import-sillytavern/folder, where the system user can link files', () => {
-    test('skips a linked file that leads into another account', async () => {
-        const source = outsideFolder();
-        writeTree(source, { 'settings.json': '{"owner":"outside"}' });
-        fs.symlinkSync(path.join(harness.userRoot(ADMIN.handle), 'secrets.json'), path.join(source, 'secrets.json'));
-
-        const reply = await readReply(await member.post('/api/users/import-sillytavern/folder', { sourcePath: source }));
+describe('server folder imports by an admin', () => {
+    test('an admin imports a folder from outside the data root', async () => {
+        const reply = await readReply(await admin.post('/api/users/import-sillytavern/folder', { sourcePath: outsideSource() }));
 
         expect(reply.status).toBe(200);
-        expect(fs.readFileSync(memberFile('settings.json'), 'utf8')).toBe('{"owner":"outside"}');
-        expect(fs.existsSync(memberFile('secrets.json'))).toBe(false);
+        expect(fs.readFileSync(accountFile(DEFAULT_USER, 'secrets.json'), 'utf8')).toBe(SOURCE_FILES['secrets.json']);
+        expect(fs.readFileSync(accountFile(DEFAULT_USER, 'chats', 'Ada', 'private.jsonl'), 'utf8')).toBe(SOURCE_FILES['chats/Ada/private.jsonl']);
+    });
+
+    test('an admin imports the folder of another account', async () => {
+        const reply = await readReply(await admin.post('/api/users/import-sillytavern/folder', { sourcePath: harness.userRoot(MEMBER.handle) }));
+
+        expect(reply.status).toBe(200);
+        expect(fs.readFileSync(accountFile(DEFAULT_USER, 'settings.json'), 'utf8')).toBe(SOURCE_FILES['settings.json']);
+    });
+
+    test('an admin syncs the extensions of a folder outside the data root', async () => {
+        const reply = await readReply(await admin.post('/api/users/import-sillytavern/extensions', { sourcePath: outsideSource() }));
+
+        expect(reply.status).toBe(200);
+        expect(reply.body.readyCount).toBe(1);
+        expect(fs.readFileSync(accountFile(DEFAULT_USER, 'extensions', 'source-extension', 'index.js'), 'utf8')).toBe('export {};');
     });
 });
 
-describe('POST /api/users/import-sillytavern/extensions', () => {
-    const syncExtensions = sourcePath => member.post('/api/users/import-sillytavern/extensions', { sourcePath });
+describe('POST /api/users/import-sillytavern/zip', () => {
+    test('a member still imports a backup ZIP', async () => {
+        const zip = await createZip({ 'settings.json': '{"owner":"zip"}', 'chats/Ada/first.jsonl': '{}' });
 
-    test('answers 403 to a member for the folder of another account', async () => {
-        const reply = await readReply(await syncExtensions(harness.userRoot(ADMIN.handle)));
+        const reply = await readReply(await member.upload('/api/users/import-sillytavern/zip', 'backup.zip', zip));
 
-        expect(reply).toEqual(UNAUTHORIZED);
-        expectNoAdminDataInMemberFolder();
-    });
-
-    test('answers 403 to a member when the extensions folder of an outside source links into another account', async () => {
-        const source = outsideFolder();
-        writeTree(source, { 'settings.json': '{"owner":"outside"}' });
-        linkFolder(path.join(harness.userRoot(ADMIN.handle), 'extensions'), path.join(source, 'extensions'));
-
-        const reply = await readReply(await syncExtensions(source));
-
-        expect(reply).toEqual(UNAUTHORIZED);
-        expectNoAdminDataInMemberFolder();
+        expect(reply.status).toBe(200);
+        expect(fs.readFileSync(accountFile(OPEN_MEMBER, 'settings.json'), 'utf8')).toBe('{"owner":"zip"}');
+        expect(fs.readFileSync(accountFile(OPEN_MEMBER, 'chats', 'Ada', 'first.jsonl'), 'utf8')).toBe('{}');
     });
 });
