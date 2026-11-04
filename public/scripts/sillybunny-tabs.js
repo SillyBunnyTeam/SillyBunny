@@ -29,7 +29,7 @@ import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
-import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, select_selected_character, this_chid } from '../script.js';
+import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, select_selected_character, saveSettingsDebounced, this_chid } from '../script.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
 } from './sampling-parameter-policy.js';
