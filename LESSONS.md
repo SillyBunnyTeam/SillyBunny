@@ -165,6 +165,22 @@ This is the largest class by a wide margin.
 - **Limit:** `{{trim}}` still removes `{{newline}}` output next to it, as the legacy engine did. Put `{{noop}}` between them to keep the newline.
 - **Limit:** prompt text that already contains U+FDD0 or U+FDD1 loses those characters.
 
+### Client addresses behind proxies
+
+- **Breaks:** the whitelist, a rate limit or `requireHttps` decides on a forwarded value that no trusted proxy set.
+- **Cause:** a reverse proxy adds the address it received the request from at the right end of `X-Forwarded-For`, and it can pass the other forwarded headers on from the client unchanged. The server cannot tell which headers its proxy set.
+- **Files:** `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/requireHttps.js`, `src/middleware/basicAuth.js`, `src/middleware/hostWhitelist.js`.
+- **Guards:**
+  - The trusted hops are the valid entries of the `whitelist` setting (`getTrustedProxies()` in `src/express-common.js`). `whitelist.txt` and the Docker host addresses do not count. `getForwardedIps()` returns the address in each enabled forwarded header and reads `X-Forwarded-For` from the right: it skips trusted hops, and the first other entry is the client.
+  - With `enableForwardedWhitelist` on, the whitelist blocks a request unless every address that `getForwardedIps()` returns is listed, and it names the first unlisted one.
+  - `getIpAddress()` adds a forwarded address only when the socket address is a trusted hop and every enabled header names the same valid address. Otherwise it returns the socket address. The basic auth, account login, account recovery, password reset and conversation message limiters and the access log read their address through it.
+  - `isIpInPatterns()` parses addresses strictly and treats a value that is not an IP address as unlisted, so a malformed forwarded value or a socket without an address gets 403, not 500. An IPv4-mapped value matches its IPv4 entry.
+  - `requireHttps` lets plain HTTP through only from a loopback socket address without forwarding headers, whatever the `Host` header says. It reads the first `X-Forwarded-Proto` value, and only from a trusted hop.
+  - Basic auth matches no request when the configured username or password is empty or is not a string, and it compares the configured user with `crypto.timingSafeEqual()` over SHA-256 digests.
+  - `hostWhitelist.enabled` goes through the `'boolean'` converter, so `SILLYTAVERN_HOSTWHITELIST_ENABLED=false` turns the host check off.
+- **Tests:** `tests/forwarded-client-address.test.js`, `tests/require-https-client-address.test.js`, `tests/basic-auth-configured-credentials.test.js`, `tests/host-whitelist-enabled-switch.test.js`.
+- **Fixes:** `1b127a865` (whitelist), `06dc7a6e0` (rate-limit keys), `e059e5d23` (`requireHttps`), `0a836ed40` (basic auth credentials), `30ecce06d` (host whitelist switch).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
