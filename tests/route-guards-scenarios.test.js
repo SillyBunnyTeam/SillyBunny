@@ -265,3 +265,18 @@ describe('chat info readers and a message whose text is an object', () => {
         expect(JSON.parse(result.text).map(chat => chat.file_name)).toEqual(['objectchat.jsonl']);
     });
 });
+
+describe('group delete with an id that is not a string or a number', () => {
+    test.each([
+        ['a JSON object', { id: { toString: 1 } }, false],
+        ['a URL-encoded object', 'id[toString]=grp', true],
+    ])('POST /api/groups/delete answers 400 for %s', async (_label, body, form) => {
+        const groupFile = path.join(directories.groups, 'grp.json');
+        write(groupFile, JSON.stringify({ id: 'grp', name: 'grp', members: [], chat_id: 'seedchat', chats: ['seedchat'] }));
+
+        const result = await post('/api/groups/delete', body, { form });
+
+        expect(result.status).toBe(400);
+        expect(fs.existsSync(groupFile)).toBe(true);
+    });
+});

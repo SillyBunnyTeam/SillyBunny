@@ -333,6 +333,10 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
     if (!request.body || !request.body.id) {
         return response.sendStatus(400);
     }
+    // SillyBunny: converting another value to a file name can throw, and a throw before the try block leaves this async route uncaught.
+    if (typeof request.body.id !== 'string' && typeof request.body.id !== 'number') {
+        return response.sendStatus(400);
+    }
 
     const id = request.body.id;
     const pathToGroup = path.join(request.user.directories.groups, sanitize(`${id}.json`));
