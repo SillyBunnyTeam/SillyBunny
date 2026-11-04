@@ -16,6 +16,7 @@ import {
     SELECTIVE_LOGIC_CASES,
     TIMED_EFFECT_CASES,
     WHOLE_WORD_CASES,
+    compareOutcomes,
     getSteps,
 } from './util/world-info-cases.js';
 
@@ -56,9 +57,8 @@ async function scanSteps(testCase) {
         context.eventSource.emit.mockClear();
         const globalScanData = { ...context.defaultGlobalScanData, ...testCase.scanData };
         const result = await context.checkWorldInfo(step.chat, step.maxContext ?? testCase.maxContext ?? 4000, false, globalScanData);
-        const uids = [...result.allActivatedEntries].map(item => item.uid);
         outcomes.push({
-            uids: step.ordered ? uids : uids.sort((a, b) => a - b),
+            uids: [...result.allActivatedEntries].map(item => item.uid),
             loops: context.eventSource.emit.mock.calls.filter(([name]) => name === event_types.WORLDINFO_SCAN_DONE).length,
         });
     }
@@ -80,17 +80,8 @@ describe.each([
     ['World Info budget', BUDGET_CASES],
 ])('%s', (title, cases) => {
     test.each(cases)('$name', async testCase => {
-        const steps = getSteps(testCase);
-        const outcomes = await scanSteps(testCase);
+        const { actual, expected } = compareOutcomes(testCase, await scanSteps(testCase));
 
-        const actual = outcomes.map((outcome, index) => ({
-            uids: outcome.uids,
-            ...(steps[index].loops === undefined ? {} : { loops: outcome.loops }),
-        }));
-        const expected = steps.map(step => ({
-            uids: step.expected,
-            ...(step.loops === undefined ? {} : { loops: step.loops }),
-        }));
         expect(actual).toEqual(expected);
     });
 });

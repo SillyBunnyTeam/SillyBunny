@@ -59,6 +59,20 @@ export function getSteps(testCase) {
     return testCase.steps ?? [{ chat: testCase.chat, expected: testCase.expected, loops: testCase.loops, ordered: testCase.ordered }];
 }
 
+export function compareOutcomes(testCase, outcomes) {
+    const steps = getSteps(testCase);
+    return {
+        actual: outcomes.map((outcome, index) => ({
+            uids: steps[index].ordered ? outcome.uids : [...outcome.uids].sort((a, b) => a - b),
+            ...(steps[index].loops === undefined ? {} : { loops: outcome.loops }),
+        })),
+        expected: steps.map(step => ({
+            uids: step.expected,
+            ...(step.loops === undefined ? {} : { loops: step.loops }),
+        })),
+    };
+}
+
 function keyCase({ name, key = ['moon'], secondary = [], logic = 'AND_ANY', selective = true, caseSensitive = null, wholeWords = null, scanDepth = null, chat, settings = {}, activates, ...rest }) {
     return {
         name,
@@ -336,7 +350,7 @@ export const RECURSION_CASES = toCases([
     },
     { name: 'follows the whole chain when the step cap is zero', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 0 }, expected: [1, 2, 3, 4], loops: 5 },
     { name: 'counts the first scan as a recursion step', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 1 }, expected: [1], loops: 1 },
-    { name: 'stops a chain after the second step when the step cap is two', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 2 }, expected: [1, 2], loops: 2 },
+    { name: 'stops a chain after the second step when the step cap is two', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 2 }, expected: [1, 2], loops: 2, crossCheck: true },
     { name: 'stops a chain after the third step when the step cap is three', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 3 }, expected: [1, 2, 3], loops: 3 },
     { name: 'finishes a chain that fits exactly in the step cap', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 4 }, expected: [1, 2, 3, 4], loops: 4 },
     { name: 'finishes a chain and ends before a higher step cap', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 9 }, expected: [1, 2, 3, 4], loops: 5 },
@@ -347,7 +361,7 @@ const MOON = [entry(1, { key: ['moon'] })];
 
 export const MIN_ACTIVATION_CASES = toCases([
     { name: 'does not look past the depth setting without a minimum', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 0 }, expected: [], loops: 1 },
-    { name: 'grows the scan depth until the minimum is reached', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1 }, expected: [1], loops: 3 },
+    { name: 'grows the scan depth until the minimum is reached', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1 }, expected: [1], loops: 3, crossCheck: true },
     { name: 'stops growing at the maximum depth', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1, world_info_min_activations_depth_max: 3 }, expected: [], loops: 2 },
     { name: 'finds an entry at the maximum depth', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1, world_info_min_activations_depth_max: 4 }, expected: [1], loops: 3 },
     { name: 'ignores a maximum depth that is deeper than the entry', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1, world_info_min_activations_depth_max: 10 }, expected: [1], loops: 3 },
@@ -485,7 +499,7 @@ export const INCLUSION_GROUP_CASES = toCases([
         entries: [
             grouped(1, { group: 'a', groupWeight: 100 }),
             grouped(2, { group: 'a', groupWeight: 300 }),
-            grouped(3, { group: 'b', groupOverride: true, order: 10 }),
+            grouped(3, { group: 'b', groupOverride: true, order: 30 }),
             grouped(4, { group: 'b', order: 20 }),
         ],
         chat: ['The moon.'],
@@ -671,3 +685,7 @@ export const BUDGET_CASES = toCases([
         loops: 3,
     },
 ]);
+
+export const CROSS_CHECK_CASES = [
+    SELECTIVE_LOGIC_CASES, WHOLE_WORD_CASES, REGEX_CASES, RECURSION_CASES, MIN_ACTIVATION_CASES, INCLUSION_GROUP_CASES, TIMED_EFFECT_CASES,
+].flatMap(cases => cases.filter(testCase => testCase.crossCheck));
