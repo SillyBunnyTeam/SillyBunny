@@ -177,6 +177,20 @@ test.describe('STscript parser fixes', () => {
         expect.soft(await nameAt(page, '/stp-plain key="{{user}}"', 20)).toEqual({ name: 'user', start: 18 });
     });
 
+    test('an unknown command error points at the command name', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/nosuch some args' },
+            { script: '/nosuch    spaced' },
+            { script: '/stp-plain a | /nosuch  x' },
+        ]);
+
+        expect.soft(results.map(summarizeError)).toEqual([
+            { type: 'SlashCommandParserError', message: 'Unknown command at position 1: "/nosuch"', index: 1 },
+            { type: 'SlashCommandParserError', message: 'Unknown command at position 1: "/nosuch"', index: 1 },
+            { type: 'SlashCommandParserError', message: 'Unknown command at position 16: "/nosuch"', index: 16 },
+        ]);
+    });
+
     test('in lenient parsing an unclosed quote leaves the pipe and the closure end to the command', async ({ page }) => {
         const results = await parse(page, [
             { script: '/stp-plain "abc | /stp-plain x', verify: false },

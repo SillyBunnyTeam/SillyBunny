@@ -1076,7 +1076,8 @@ export class SlashCommandParser {
         this.take(); // discard "/"
         while (!/\s/.test(this.char) && !this.testCommandEnd()) cmd.name += this.take(); // take chars until whitespace or end
         this.discardWhitespace();
-        if (this.verifyCommandNames && !this.commands[cmd.name]) throw new SlashCommandParserError(`Unknown command at position ${this.index - cmd.name.length}: "/${cmd.name}"`, this.text, this.index - cmd.name.length);
+        // SillyBunny: report where the command name starts, because the whitespace after the name has moved the index.
+        if (this.verifyCommandNames && !this.commands[cmd.name]) throw new SlashCommandParserError(`Unknown command at position ${start}: "/${cmd.name}"`, this.text, start);
         cmd.command = this.commands[cmd.name];
         cmd.startNamedArgs = this.index;
         cmd.endNamedArgs = this.index;
