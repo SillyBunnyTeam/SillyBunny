@@ -10,7 +10,7 @@ function payload(request) {
     return body ? JSON.parse((request.headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString()) : {};
 }
 
-export async function bootUtilityDialogs(page, viewport) {
+export async function bootUtilityDialogs(page, viewport, bootOptions = {}) {
     const state = { secrets: [], scrapes: [], replies: [], avatars: [] };
     // Internal entry points are exposed only in the test response, never the shipped module.
     for (const [path, name] of [['welcome-screen.js', 'openRecentChatsSettingsPopup'], ['extensions/stable-diffusion/index.js', 'refinePrompt']]) {
@@ -49,7 +49,7 @@ export async function bootUtilityDialogs(page, viewport) {
         return route.fulfill({ body: 'Fixture transcript' });
     });
     await page.route('**/api/sd/**', route => route.fulfill({ status: 400, body: 'Image generation disabled in dialog tests' }));
-    const misc = await bootMiscDialogs(page, viewport);
+    const misc = await bootMiscDialogs(page, viewport, bootOptions);
     // protectMaintainerServer's default secret stub is registered by bootMiscDialogs; override it last.
     await page.route('**/api/secrets/write', route => {
         state.secrets.push(payload(route.request()));
@@ -58,7 +58,8 @@ export async function bootUtilityDialogs(page, viewport) {
     return { ...state, settings: misc.settings };
 }
 
-export async function openUtilityDialog(page, surface) {
+/** Starts the surface's dialog and returns without waiting for it to open or to finish animating. */
+export async function triggerUtilityDialog(page, surface) {
     await page.evaluate(async surface => {
         if (surface === 'recent') void (await import('/scripts/welcome-screen.js')).utilityTestOpen();
         if (surface === 'persona') $('#create_dummy_persona').trigger('click');
@@ -105,6 +106,10 @@ export async function openUtilityDialog(page, surface) {
     if (surface === 'regex') {
         await page.locator('#import_regex_file').setInputFiles({ name: 'utility-regex.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ scriptName: 'Utility imported regex', findRegex: 'fixture', replaceString: 'replacement', placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: false, substituteRegex: 0 })) });
     }
+}
+
+export async function openUtilityDialog(page, surface) {
+    await triggerUtilityDialog(page, surface);
     const popup = page.locator('dialog.popup[open]').last();
     await popup.waitFor();
     await page.waitForFunction(() => !document.querySelector('dialog.popup[open][opening]'));

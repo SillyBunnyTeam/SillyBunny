@@ -13868,9 +13868,9 @@ async function promptForMessageScreenshotRange(messageId) {
             },
         ],
         wider: true,
-        onOpen: function (activePopup) {
-            // SillyBunny: compose the adapter lifecycle without changing the initial selection.
-            dialogOptions.onOpen(activePopup);
+        onBeforePaint: function (activePopup) {
+            // SillyBunny: compose the adapter's rows with the initial selection, so the field is selected in the first frame.
+            dialogOptions.onBeforePaint(activePopup);
             const startInput = popup.dlg.querySelector(`#${MESSAGE_SCREENSHOT_INPUT_IDS.start}`);
             if (startInput instanceof HTMLInputElement) {
                 startInput.focus({ preventScroll: true });
@@ -16359,6 +16359,7 @@ async function openCharacterWorldPopup() {
     const popup = new Popup(template, POPUP_TYPE.TEXT, '', {
         // SillyBunny: adopt both selects before the existing desktop Select2 initialization.
         ...lorebookSelectOptions(template[0], { character: true }),
+        // SillyBunny: Select2 stays in onOpen. The shared select row hides its container, so starting it late paints nothing.
         onOpen: function (popup) {
             const popupDialog = $(popup.dlg);
 

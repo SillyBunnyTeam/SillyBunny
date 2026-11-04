@@ -60,6 +60,7 @@ export const POPUP_RESULT = {
  * @property {(popup: Popup) => Promise<boolean?>|boolean?} [onClosing=null] - Handler called before the popup closes, return `false` to cancel the close
  * @property {(popup: Popup) => Promise<void?>|void?} [onClose=null] - Handler called after the popup closes, but before the DOM is cleaned up
  * @property {(popup: Popup) => Promise<void?>|void?} [onOpen=null] - Handler called after the popup opens
+ * @property {(popup: Popup) => void} [onBeforePaint=null] - SillyBunny: handler called synchronously from `show()`, after the frame (if any) is built and before the first paint, so the popup never shows its upstream layout. `onOpen` still runs later, after the opening animation.
  * @property {number?} [cropAspect=null] - Aspect ratio for the crop popup
  * @property {string?} [cropImage=null] - Image URL to display in the crop popup
  * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: explicit dialog presentation tier.
@@ -225,6 +226,8 @@ export class Popup {
         tier = null,
         title = null,
         size = 'fill',
+        // SillyBunny: onOpen waits for the opening animation, so adapters that rebuild content use this.
+        onBeforePaint = null,
     } = {}) {
         Popup.util.popups.push(this);
 
@@ -684,6 +687,7 @@ export class Popup {
             title,
             // SillyBunny: pass Window sizing to the shared frame without changing Popup behavior.
             size,
+            onBeforePaint,
             allowEscapeClose,
             cancelButtonProvided: Object.prototype.hasOwnProperty.call(arguments[3] ?? {}, 'cancelButton'),
         });

@@ -117,10 +117,15 @@ if (response === 'delete') deleteTag();
 
 ## The Popup Options tier and title
 
-`Popup` takes three extra options: `tier` (`'alert'`, `'dialog'` or `'window'`, default `null`), `title`
-(default `null`) and `size` (`'fill'` or `'content'`, Window only). The constructor calls
-`framePopup`. `show()` calls `opened()` after `showModal()`, and the hide path calls `closing()` and
-`dispose()`. `onOpen` runs after the frame is built. `resolvePopupTier` decides in this order:
+`Popup` takes four extra options: `tier` (`'alert'`, `'dialog'` or `'window'`, default `null`), `title`
+(default `null`), `size` (`'fill'` or `'content'`, Window only) and `onBeforePaint` (default `null`).
+The constructor calls `framePopup`. `show()` calls `opened()` after `showModal()`, and the hide path
+calls `closing()` and `dispose()`. `opened()` ends with `onBeforePaint(popup)`, in the same task as
+`showModal()`, so it runs after the frame is built, if the popup has one, and before the first paint. An
+error it throws is logged, and the dialog still opens. `onOpen` runs after the opening animation.
+Reshape content, move controls and set classes in `onBeforePaint`; keep reads of bounding rects and
+scrolling in `onOpen`, because the opening animation scales or slides the dialog. `resolvePopupTier`
+decides in this order:
 
 1. An explicit `tier`.
 2. CROP, `transparent` and image-zoom content keep their own frame.
@@ -154,8 +159,9 @@ An adapter takes the upstream markup and returns `Popup` options, as `utilityFor
    caption nodes into `.ds-row-label` with `moveCaption(target, source, options)` from `rows.js`. It
    copies `data-i18n` and removes the emptied source. `copyId`, `keepSource` and `stripColon`
    cover the adapters that need more.
-3. Reshape Popup-built controls in `onOpen(popup)`: move `popup.mainInput` into a row, then empty and
-   hide `popup.inputControls`. Popup still reads `inputResults` by id.
+3. Reshape Popup-built controls in `onBeforePaint(popup)`: move `popup.mainInput` into a row, then empty
+   and hide `popup.inputControls`. Popup still reads `inputResults` by id. Code that measures or
+   scrolls stays in `onOpen(popup)`.
 4. In `onClose`, call `releaseRowIds(popup.content)` and `row.destroy()`. Destroying a select row
    puts the adopted select, and its select2 container, back where it was, so code that reads the
    select after the dialog resolves still finds it.
@@ -169,7 +175,7 @@ export function renameOptions() {
     return {
         tier: 'dialog',
         title: t`Rename`,
-        onOpen(popup) {
+        onBeforePaint(popup) {
             const row = createEntryRow({ label: t`Name`, field: 'rename', input: popup.mainInput });
             popup.content.append(createPrefGroup({ field: 'rename-fields', rows: [row] }).section);
             popup.inputControls.style.display = 'none';

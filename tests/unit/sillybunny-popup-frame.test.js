@@ -500,6 +500,65 @@ describe('Popup frame adapter', () => {
         }
     });
 
+    test('onBeforePaint runs at the end of opened(), after the frame is built and the default focus is set', () => {
+        setupDialogMedia();
+        const calls = [];
+        const value = popupDom({ contentHtml: '<h3>Title</h3>' });
+        value.setAutoFocus = () => calls.push('focus');
+        const frame = framePopup(value, {
+            tier: 'dialog',
+            onBeforePaint: popupArgument => calls.push({
+                popup: popupArgument === value,
+                framed: popupArgument.dlg.classList.contains('sb-dialog--dialog'),
+                header: popupArgument.dlg.querySelector(':scope > .sb-dialog__header') !== null,
+                handle: popupArgument.dlg.querySelector(':scope > .sb-dialog__handle') !== null,
+                presentation: popupArgument.dlg.dataset.presentation,
+            }),
+        });
+        value.dlg.showModal();
+        expect(calls).toEqual([]);
+        frame.opened();
+        expect(calls).toEqual(['focus', { popup: true, framed: true, header: true, handle: true, presentation: 'floating' }]);
+        frame.dispose();
+    });
+
+    test('the transitions that onBeforePaint starts end at once, and other animations keep running', () => {
+        setupDialogMedia();
+        const transition = { transitionProperty: 'background-color', finish: jest.fn() };
+        const animation = { animationName: 'pop-in', finish: jest.fn() };
+        const value = popupDom();
+        value.dlg.getAnimations = jest.fn(() => [transition, animation]);
+        const frame = framePopup(value, { tier: 'dialog', onBeforePaint: jest.fn() });
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.dlg.getAnimations).toHaveBeenCalledWith({ subtree: true });
+        expect(transition.finish).toHaveBeenCalledTimes(1);
+        expect(animation.finish).not.toHaveBeenCalled();
+        frame.dispose();
+
+        const plain = popupDom();
+        plain.dlg.getAnimations = jest.fn(() => [transition]);
+        const plainFrame = framePopup(plain, { tier: 'dialog' });
+        plain.dlg.showModal();
+        plainFrame.opened();
+        expect(plain.dlg.getAnimations).not.toHaveBeenCalled();
+        plainFrame.dispose();
+    });
+
+    test('onBeforePaint also runs for a popup that keeps its own frame', () => {
+        setupDialogMedia();
+        const onBeforePaint = jest.fn();
+        const value = popupDom({ type: POPUP_TYPE.TEXT });
+        value.dlg.classList.add('transparent_dialogue_popup');
+        const frame = framePopup(value, { onBeforePaint });
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.dlg.classList.contains('sb-dialog')).toBe(false);
+        expect(onBeforePaint).toHaveBeenCalledTimes(1);
+        expect(onBeforePaint).toHaveBeenCalledWith(value);
+        frame.dispose();
+    });
+
     test('teardown lets hosted layers close before any surviving cached layers are released', () => {
         setupDialogMedia();
         const value = popupDom();

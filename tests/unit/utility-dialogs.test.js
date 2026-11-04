@@ -32,7 +32,7 @@ test.each(['', '0', '-2', '1001', '1.8'])('spin rows preserve Popup numeric inpu
     input.addEventListener('change', changed);
     const popup = { content: dlg.querySelector('.popup-content'), inputControls: dlg.querySelector('.popup-inputs') };
     const options = adapters.utilityFormOptions({ title: 'Recent Chats Settings', clearContent: true });
-    options.onOpen(popup);
+    options.onBeforePaint(popup);
     input.value = value;
     input.dispatchEvent(new Event('change', { bubbles: true }));
     expect(input.value).toBe(value);
@@ -49,7 +49,7 @@ test.each(['text', 'password'])('entry rows keep adopted %s input, autocomplete,
     const input = dlg.querySelector('input');
     const popup = { mainInput, content: dlg.querySelector('.popup-content'), inputControls: dlg.querySelector('.popup-inputs') };
     const options = adapters.utilityFormOptions({ mainLabel: 'Name', clearContent: true });
-    options.onOpen(popup);
+    options.onBeforePaint(popup);
     expect(popup.content.querySelector('textarea')).toBe(mainInput);
     expect(popup.content.querySelector('input')).toBe(input);
     expect([input.type, input.autocomplete, input.value, input.id]).toEqual([type, 'off', 'optional', 'extra']);
@@ -62,7 +62,7 @@ test('image review adopts both textareas and the frame-created switch row', () =
     const popup = { mainInput: dlg.querySelector('textarea'), content: dlg.querySelector('.popup-content'), inputControls: dlg.querySelector('.popup-inputs') };
     const switchRow = dlg.querySelector('.ds-row-switch');
     const options = adapters.utilityFormOptions({ mainLabel: 'Prompt' });
-    options.onOpen(popup);
+    options.onBeforePaint(popup);
     expect(popup.content.querySelectorAll('.ds-row--stacked')).toHaveLength(2);
     expect(popup.content.querySelector('.ds-row-switch')).toBe(switchRow);
     expect(dlg.querySelector('#sd_refine_negative').value).toBe('negative');

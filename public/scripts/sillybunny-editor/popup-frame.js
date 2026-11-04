@@ -160,10 +160,12 @@ function replaceDefaultNegativeLabel(popup, cancelButtonProvided) {
 
 /**
  * @param {object} popup A Popup instance (popup.js).
- * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean }} [options]
+ * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean, onBeforePaint?: ((popup: object) => void)|null }} [options]
+ * `onBeforePaint` runs at the end of `opened()`, in the task that shows the popup, so nothing it changes is ever painted
+ * in its earlier state. Popup's `onOpen` waits for the opening animation instead.
  * @returns {{ opened: () => void, closing: () => void, dispose: () => void }}
  */
-export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false } = {}) {
+export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false, onBeforePaint = null } = {}) {
     const { dlg } = popup;
     const cleanups = [];
     let parentSurface = null;
@@ -175,6 +177,28 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     let completion = null;
     let resolveGone;
     const gone = new Promise(resolve => { resolveGone = resolve; });
+
+    /** Logs a failure instead of throwing, because show() must still register the popup. */
+    function guardBeforePaint(step) {
+        try {
+            step();
+        } catch (error) {
+            console.error('A Popup onBeforePaint step failed:', error);
+        }
+    }
+
+    /** A style that the handler changes on an element with a CSS transition would fade in from the old style. */
+    function endStartedTransitions() {
+        for (const animation of dlg.getAnimations?.({ subtree: true }) ?? []) {
+            if ('transitionProperty' in animation) animation.finish();
+        }
+    }
+
+    function runBeforePaint() {
+        if (!onBeforePaint) return;
+        guardBeforePaint(() => onBeforePaint(popup));
+        guardBeforePaint(endStartedTransitions);
+    }
 
     function buildAlert() {
         const { body, content, buttonControls, closeButton } = popup;
@@ -347,7 +371,10 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
 
     function opened() {
         const resolved = resolvePopupTier(popup, tier);
-        if (!resolved) return;
+        if (!resolved) {
+            runBeforePaint();
+            return;
+        }
         framed = true;
         dlg.classList.add('sb-dialog', `sb-dialog--${resolved}`);
         const isDocument = dlg.matches('.sb-document, .sb-maximized-editor') || dlg.querySelector('.sb-document, .sb-maximized-editor');
@@ -449,6 +476,8 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         // Moving controls into the header/body can change the native autofocus target. Re-apply the
         // Popup contract after framing so destructive Alerts focus Cancel and INPUTs focus their field.
         popup.setAutoFocus?.();
+        // After the default focus, so an adapter that moves a control or picks its own field has the last word.
+        runBeforePaint();
     }
 
     function closing() {

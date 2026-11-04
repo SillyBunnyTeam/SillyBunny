@@ -30,7 +30,11 @@ await jest.unstable_mockModule('../../public/scripts/utils.js', () => ({
         if (index >= 0) array.splice(index, 1);
         return index >= 0;
     },
-    runAfterAnimation: (control, callback) => callback(control),
+    // A test that sets `animationGate` holds every animation callback until it calls the returned function.
+    runAfterAnimation: (control, callback) => {
+        if (globalThis.animationGate) globalThis.animationGate.push(() => callback(control));
+        else callback(control);
+    },
     uuidv4: (() => {
         let next = 0;
         return () => `popup-${++next}`;
@@ -372,6 +376,69 @@ describe('Popup closing lifecycle', () => {
         expect(events).toEqual([['open', true], ['close', true], ['resolved', false]]);
         expect(Popup.util.popups).not.toContain(popup);
         expect(Popup.util.lastResult).toEqual({ value: POPUP_RESULT.AFFIRMATIVE, result: POPUP_RESULT.AFFIRMATIVE, inputResults: undefined });
+    });
+
+    test('a throwing onBeforePaint still lets show() register onOpen and resolve', async () => {
+        const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const onOpen = jest.fn();
+        try {
+            const popup = new Popup('x', POPUP_TYPE.TEXT, '', {
+                tier: 'dialog',
+                title: 'Title',
+                onBeforePaint: () => { throw new TypeError('adapter failed'); },
+                onOpen,
+            });
+            const result = popup.show();
+            expect(popup.dlg.hasAttribute('opening')).toBe(false);
+            expect(onOpen).toHaveBeenCalledTimes(1);
+            expect(error).toHaveBeenCalledTimes(1);
+            popup.okButton.click();
+            await expect(result).resolves.toBeTruthy();
+        } finally {
+            error.mockRestore();
+        }
+    });
+
+    test('a throwing getAnimations still lets show() register onOpen and resolve', async () => {
+        const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const onOpen = jest.fn();
+        HTMLElement.prototype.getAnimations = () => { throw new TypeError('no animations'); };
+        try {
+            const popup = new Popup('x', POPUP_TYPE.TEXT, '', { tier: 'dialog', title: 'Title', onBeforePaint: () => {}, onOpen });
+            const result = popup.show();
+            expect(popup.dlg.hasAttribute('opening')).toBe(false);
+            expect(onOpen).toHaveBeenCalledTimes(1);
+            expect(error).toHaveBeenCalledTimes(1);
+            popup.okButton.click();
+            await expect(result).resolves.toBeTruthy();
+        } finally {
+            delete HTMLElement.prototype.getAnimations;
+            error.mockRestore();
+        }
+    });
+
+    test('onOpen waits for the opening animation; onBeforePaint runs inside show() with the frame built', async () => {
+        const events = [];
+        globalThis.animationGate = [];
+        try {
+            const popup = new Popup('x', POPUP_TYPE.TEXT, '', {
+                tier: 'dialog',
+                title: 'Title',
+                onBeforePaint: ({ dlg }) => events.push(['beforePaint', dlg.isConnected, dlg.classList.contains('sb-dialog'), dlg.hasAttribute('opening')]),
+                onOpen: ({ dlg }) => events.push(['open', dlg.hasAttribute('opening')]),
+            });
+            const result = popup.show();
+            expect(events).toEqual([['beforePaint', true, true, true]]);
+            await settle();
+            expect(events).toHaveLength(1);
+            for (const finish of globalThis.animationGate.splice(0)) finish();
+            expect(events).toEqual([['beforePaint', true, true, true], ['open', false]]);
+            globalThis.animationGate = null;
+            popup.okButton.click();
+            await result;
+        } finally {
+            globalThis.animationGate = null;
+        }
     });
 });
 

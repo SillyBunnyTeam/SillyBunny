@@ -21,6 +21,7 @@ const DIALOG_SPECS = [
     'sillybunny-chats-archive-layout',
     'sillybunny-overlays',
     'utility-dialogs',
+    'utility-dialog-first-paint',
     'misc-form-dialogs',
     'preset-lorebook-dialogs',
     'connection-manager-dialogs',

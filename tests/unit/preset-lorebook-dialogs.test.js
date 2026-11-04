@@ -69,7 +69,7 @@ test('Select All synchronizes mixed state, skips disabled choices and never adds
     expect(all.indeterminate).toBe(true);
     expect(options.title).toBe('Delete selected');
     const okButton = document.createElement('button');
-    options.onOpen({ okButton });
+    options.onBeforePaint({ okButton });
     expect(okButton.classList.contains('is-destructive')).toBe(true);
     options.onClose();
     expect(node.querySelectorAll('input')).toHaveLength(8);
@@ -127,7 +127,7 @@ test('sorting rows retain custom-input identity, constraints, warnings, help and
         { id: 'wi_sort_step', type: 'number', label: 'Step', tooltip: 'Gap' },
         { id: 'wi_sort_ascending', type: 'checkbox', label: 'Ascending order', tooltip: 'Count upward' },
     ]);
-    options.onOpen({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
+    options.onBeforePaint({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
     expect(node.querySelector('#wi_sort_start')).toBe(start);
     expect(start.value).toBe('100');
     expect(start.min).toBe('0');
@@ -148,7 +148,7 @@ test('sorting reuses the frame-converted switch without leaving duplicate descri
     dlg.append(node);
     const row = dlg.querySelector('.ds-row-switch');
     const options = lorebookSortingOptions(node, [{ id: 'wi_sort_start', type: 'number', label: 'Start' }, { id: 'wi_sort_ascending', type: 'checkbox', label: 'Ascending order', tooltip: 'Count upward' }]);
-    options.onOpen({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
+    options.onBeforePaint({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
     expect(node.querySelector('.ds-row-switch')).toBe(row);
     expect(node.querySelector('#wi_sort_ascending').getAttribute('aria-describedby')).toBe('ascending-help');
     expect(document.getElementById('ascending-help')).not.toBeNull();
@@ -167,7 +167,7 @@ test.each([
     const dlg = root(`<div class="popup-inputs"><input id="${id}" type="number" min="${id === 'wi_sort_step' ? 1 : 0}" value="100"></div>`);
     dlg.append(node);
     const options = lorebookSortingOptions(node, [{ id, type: 'number', label: id }]);
-    options.onOpen({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
+    options.onBeforePaint({ dlg, inputControls: dlg.querySelector('.popup-inputs') });
     const input = dlg.querySelector('input');
     input.value = value;
     input.dispatchEvent(new Event('input', { bubbles: true }));

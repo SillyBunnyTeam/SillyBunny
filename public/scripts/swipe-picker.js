@@ -357,18 +357,19 @@ async function openSwipePicker(messageId) {
         large: true,
         wider: true,
         allowVerticalScrolling: true,
-        onOpen: function () {
+        onBeforePaint: function () {
             const footer = popup.buttonControls.querySelector('.sb-dialog__bottom-bar');
             if (footer instanceof HTMLElement) {
                 footer.classList.add('swipe_picker_footer');
                 if (swipeIdLabel instanceof HTMLLabelElement) footer.prepend(swipeIdLabel);
             }
-            scrollToSelectedSwipe();
             if (swipeIdInput instanceof HTMLInputElement) {
                 swipeIdInput.focus({ preventScroll: true });
                 swipeIdInput.select();
             }
         },
+        // SillyBunny: scrolling reads bounding rects. The opening animation scales them, so scrolling waits for onOpen.
+        onOpen: scrollToSelectedSwipe,
         onClosing: function (popup) {
             if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
                 return true;

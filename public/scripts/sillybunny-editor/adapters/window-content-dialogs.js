@@ -64,7 +64,7 @@ export function snapshotsOptions(source) {
     return windowOptions(root, {
         size: 'content',
         title: t`Settings Snapshots`,
-        onOpen(popup) {
+        onBeforePaint(popup) {
             action.classList.remove('menu_button', 'menu_button_icon');
             action.classList.add('sb-dialog__icon-button');
             action.setAttribute('aria-label', t`Make a Snapshot`);
@@ -197,7 +197,7 @@ export function adminPanelOptions(source) {
         title: textOf(title),
         newUserForm: () => form,
         restoreNewUserForm: () => restoreUserForm(formContainer, form),
-        onOpen(popup) {
+        onBeforePaint(popup) {
             const header = popup.dlg.querySelector(':scope > .sb-dialog__header');
             if (!(header instanceof HTMLElement)) return;
             const headerEnd = document.createElement('div');
