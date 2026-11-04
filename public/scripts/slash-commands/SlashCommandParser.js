@@ -1213,6 +1213,8 @@ export class SlashCommandParser {
                 assignment.value = this.parseClosure();
                 assignment.end = this.index;
                 listValues.push(assignment);
+                // SillyBunny: a closure needs a quote flag too, so that each flag stays at the index of its value.
+                listQuoted.push(false);
                 assignment = new SlashCommandUnnamedArgumentAssignment();
                 assignment.start = this.index;
                 if (split) this.discardWhitespace();

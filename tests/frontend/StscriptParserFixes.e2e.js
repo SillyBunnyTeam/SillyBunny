@@ -112,4 +112,21 @@ test.describe('STscript parser fixes', () => {
             { type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 27.', index: 27 },
         ]);
     });
+
+    test('a closure among split values keeps the quotes in the rest', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/stp-split2 a {: /stp-plain y :} "b c" d' },
+            { script: '/stp-split1 {: :} "b c" d' },
+        ]);
+
+        expect.soft(results[0]).toEqual({
+            tree: {
+                executors: [{
+                    name: 'stp-split2',
+                    unnamed: ['a', { closure: { rawText: ' /stp-plain y ', executors: [{ name: 'stp-plain', unnamed: ['y'] }] } }, '"b c" d'],
+                }],
+            },
+        });
+        expect.soft(results[1]).toEqual({ tree: { executors: [{ name: 'stp-split1', unnamed: [{ closure: { rawText: ' ', executors: [] } }, '"b c" d'] }] } });
+    });
 });
