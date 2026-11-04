@@ -935,9 +935,11 @@ export class SlashCommandParser {
         cmd.name = this.take(); //set "*" as name
         while (!this.testBlockCommentEnd()) {
             if (this.testBlockComment()) {
+                // SillyBunny: the nested comment takes its own "*|", and the next character can start the outer "*|", so it is not taken here.
                 this.parseBlockComment();
+            } else {
+                this.take();
             }
-            this.take();
         }
         this.take(2); // take closing "*|"
         cmd.end = this.index - 1;
