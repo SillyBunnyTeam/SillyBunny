@@ -7,6 +7,7 @@
         "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json",
         "test:e2e": "playwright test",
         "test:e2e:webkit": "playwright test --config playwright.webkit.config.js",
+        "test:e2e:firefox": "playwright test --config playwright.firefox.config.js",
         "test:foundation": "playwright test --config playwright.foundation.config.js",
         "lint": "eslint \"**/*.js\" ./*.js",
         "lint:fix": "eslint \"**/*.js\" ./*.js --fix"
