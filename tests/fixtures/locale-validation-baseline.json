@@ -1,0 +1,103 @@
+{
+    "repeatedKeys": {
+        "ru-ru.json": {
+            "( None )": 2,
+            "Allowed Length": 2,
+            "Always allowed": 2,
+            "Always forbidden": 2,
+            "Apply current sorting as Order": 2,
+            "Attach a File": 2,
+            "Authentication (optional)": 2,
+            "Avoid spending Anlas": 2,
+            "Base": 2,
+            "Bulk select all characters": 2,
+            "Bulk_edit_characters": 2,
+            "Can be used to automatically activate Quick Replies": 2,
+            "Chat": 2,
+            "Chat Lorebook": 2,
+            "Chat Scenario Override": 2,
+            "Common prompt prefix": 2,
+            "Create new workflow": 2,
+            "DRY Repetition Penalty": 2,
+            "DRY_Allowed_Length_desc": 2,
+            "DRY_Base_desc": 2,
+            "DRY_Multiplier_desc": 2,
+            "DRY_Repetition_Penalty_desc": 2,
+            "DRY_Sequence_Breakers_desc": 2,
+            "Data Bank": 2,
+            "Delete style": 2,
+            "Delete workflow": 2,
+            "Disallow embedded media from other domains in chat messages": 2,
+            "Duplicate": 2,
+            "Enable": 2,
+            "Enhance": 2,
+            "Example:": 2,
+            "Forbid Media Override explanation": 2,
+            "Forbid Media Override subtitle": 2,
+            "Hires steps (2nd pass)": 2,
+            "Image Generation": 2,
+            "Important:": 2,
+            "Inserted before a System (added by slash commands or extensions) message.": 2,
+            "Inserted before a User message and as a last prompt line when impersonating.": 2,
+            "Max prompt cost:": 3,
+            "Mirostat_Eta_desc": 2,
+            "Mirostat_Tau_desc": 2,
+            "Model": 2,
+            "Model Providers": 2,
+            "Multiplier": 2,
+            "No character selected.": 2,
+            "Only the entries with the most number of key matches will be selected for Inclusion Group filtering": 2,
+            "Open workflow editor": 2,
+            "Penalty Range": 2,
+            "Preset deleted": 2,
+            "Preset for prompt prefix and negative prompt": 2,
+            "Remove the file": 2,
+            "Reset MovingUI panel sizes/locations.": 2,
+            "Resolution": 2,
+            "Sampling method": 2,
+            "Save": 2,
+            "Save style": 2,
+            "Search": 2,
+            "Sequence Breakers": 2,
+            "Smooth_Sampling_desc": 2,
+            "Style": 2,
+            "Swipes": 2,
+            "Switch to plaintext mode": 2,
+            "Tags_as_Folders_desc": 2,
+            "The server must be accessible from the SillyTavern host machine.": 2,
+            "Upscale by": 2,
+            "Use Group Scoring": 2,
+            "Use tag as folder": 2,
+            "View my Anlas": 2,
+            "chat_world_template_txt": 2,
+            "ext_regex_title": 2,
+            "ext_regex_user_input_desc": 2,
+            "ext_regex_wi_desc": 2,
+            "ext_translate_title": 2,
+            "help_hotkeys_20": 2,
+            "instruct_bind_to_context": 2,
+            "reset": 2,
+            "save": 2,
+            "sd_auto_auth_warning_1": 2,
+            "sd_auto_auth_warning_2": 2,
+            "sd_drawthings_auth_txt": 2
+        }
+    },
+    "droppedPlaceholders": {
+        "ru-ru.json": {
+            "Invalid return type '${0}', defaulting to 'reasoning'.": [
+                "${0}"
+            ]
+        }
+    },
+    "dataI18n": {
+        "more than one text token": {
+            "-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N.": 1,
+            "-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N.": 1,
+            "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": 1
+        },
+        "text before the [attribute] part": {
+            "[SP]) uses the OpenAI-compatible API. Keys are group-scoped on LinkAPI": 1
+        }
+    }
+}
