@@ -28,8 +28,11 @@ async function readAnswer(response) {
  * The characters router reads its config when it loads and finds the default avatar from the working folder,
  * so this sets both before it loads the routers, and close() restores them.
  * @param {string} prefix Start of each temp folder name
+ * @param {object} [options]
+ * @param {number} [options.requestTimeoutMs] Deadline of each request, so that a request that a route never answers fails then instead of at the test timeout
  */
-export async function startCharacterRouter(prefix) {
+export async function startCharacterRouter(prefix, { requestTimeoutMs } = {}) {
+    const getDeadline = () => requestTimeoutMs ? AbortSignal.timeout(requestTimeoutMs) : undefined;
     const originalWorkingDirectory = process.cwd();
     const originalDiskCacheSetting = process.env[diskCacheEnvironmentKey];
     process.env[diskCacheEnvironmentKey] = 'false';
@@ -90,6 +93,8 @@ export async function startCharacterRouter(prefix) {
         },
 
         async close() {
+            // A request that a route never answered keeps its connection open, and close() waits for every open connection.
+            server.closeAllConnections();
             await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
             if (originalDiskCacheSetting === undefined) {
                 delete process.env[diskCacheEnvironmentKey];
@@ -115,7 +120,7 @@ export async function startCharacterRouter(prefix) {
             for (const [key, value] of Object.entries(fields)) {
                 form.append(key, value);
             }
-            return readAnswer(await fetch(`${baseUrl}${resource}`, { method: 'POST', body: form }));
+            return readAnswer(await fetch(`${baseUrl}${resource}`, { method: 'POST', body: form, signal: getDeadline() }));
         },
 
         importCard(bytes, fileType, fields = {}) {
@@ -127,6 +132,7 @@ export async function startCharacterRouter(prefix) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
+                signal: getDeadline(),
             }));
         },
     };

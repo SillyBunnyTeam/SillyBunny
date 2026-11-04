@@ -1331,6 +1331,11 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
         return response.sendStatus(400);
     }
 
+    // SillyBunny: sanitize() and path.parse() throw on a value that is not a string, and they run outside the try, so the error would leave the route.
+    if (typeof request.body.avatar_url !== 'string' || typeof request.body.new_name !== 'string') {
+        return response.sendStatus(400);
+    }
+
     const oldAvatarName = request.body.avatar_url;
     const newName = sanitize(request.body.new_name);
     const oldInternalName = path.parse(request.body.avatar_url).name;
@@ -1437,6 +1442,11 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
         return;
     }
 
+    // SillyBunny: path.join() throws on a value that is not a string, and it runs outside the try, so the error would leave the route.
+    if (typeof request.body.avatar_url !== 'string' || !request.body.avatar_url) {
+        return response.sendStatus(400);
+    }
+
     const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
 
     if (request.body[CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE] !== 'true') {
@@ -1461,10 +1471,18 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
         }
     }
 
-    let char = charaFormatData(request.body, request.user.directories);
-    char.chat = request.body.chat;
-    char.create_date = request.body.create_date;
-    char = JSON.stringify(char);
+    // SillyBunny: formatting throws for a json_data that parses to a primitive and for a field that cannot become a string,
+    // so a body that cannot be formatted gets 400 instead of an error that leaves the route.
+    let char;
+    try {
+        char = charaFormatData(request.body, request.user.directories);
+        char.chat = request.body.chat;
+        char.create_date = request.body.create_date;
+        char = JSON.stringify(char);
+    } catch (error) {
+        console.warn('Error: the character data could not be formatted.', error);
+        return response.sendStatus(400);
+    }
     const targetFile = request.body.avatar_url;
 
     try {
@@ -1691,6 +1709,11 @@ router.post('/last-chat', getFileNameValidationFunction('avatar'), async functio
 router.post('/delete', validateAvatarUrlMiddleware, async function (request, response) {
     const avatar = request.body?.avatar_url;
     if (typeof avatar !== 'string' || !avatar) {
+        return response.sendStatus(400);
+    }
+
+    // SillyBunny: `delete_chats == true` converts an object to a primitive, which throws for some objects, and it runs outside a try, so the error would leave the route.
+    if (typeof request.body.delete_chats === 'object' && request.body.delete_chats !== null) {
         return response.sendStatus(400);
     }
 
