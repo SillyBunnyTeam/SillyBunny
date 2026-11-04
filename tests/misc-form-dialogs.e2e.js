@@ -12,7 +12,10 @@ async function expectFrame(popup, viewport, immediate = false) {
         const parent = document.querySelector('dialog[data-sb-covered]');
         const rect = node.getBoundingClientRect();
         const inherited = parent.getBoundingClientRect();
-        return Math.abs(rect.x - inherited.x) <= 1 && Math.abs(rect.y - inherited.y) <= 1 && Math.abs(rect.width - inherited.width) <= 1 && Math.abs(rect.height - inherited.height) <= 1;
+        const aligned = node.hasAttribute('data-covers-sheet')
+            ? Math.abs(rect.bottom - inherited.bottom) <= 1
+            : Math.abs(rect.top + rect.bottom - inherited.top - inherited.bottom) <= 2;
+        return aligned && Math.abs(rect.x - inherited.x) <= 1 && Math.abs(rect.width - inherited.width) <= 1 && rect.height >= inherited.height - 1;
     })).toBe(true);
     const content = popup.locator('.popup-content');
     await content.evaluate(node => { node.scrollTop = node.scrollHeight; });

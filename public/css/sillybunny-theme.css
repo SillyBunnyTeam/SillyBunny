@@ -6934,16 +6934,20 @@ dialog.popup.sb-dialog--alert[data-presentation='sheet'] .popup-content {
 
 /* Keep the parent laid out but hidden until the pushed page closes. */
 dialog.popup.sb-dialog--page {
+    --sb-page-max-height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px)));
     position: fixed;
-    inset: auto;
-    top: var(--sb-page-top);
-    left: var(--sb-page-left);
+    inset: 0 auto var(--sb-dialog-keyboard-inset, 0px) var(--sb-page-left);
     width: var(--sb-page-width) !important;
     min-width: 0 !important;
     max-width: none !important;
-    height: var(--sb-page-height) !important;
-    max-height: none;
-    margin: 0;
+    height: fit-content !important;
+    min-height: min(var(--sb-page-height), var(--sb-page-max-height));
+    max-height: var(--sb-page-max-height);
+    margin: auto 0;
+}
+
+dialog.popup.sb-dialog--page.sb-dialog--fill {
+    height: var(--sb-page-max-height) !important;
 }
 
 /* A covered Popup hides its own backdrop with the rest of it, so a page over a Popup keeps the dim
@@ -6958,34 +6962,37 @@ dialog.popup.sb-dialog--page:is([opening], [closing])::backdrop {
     animation: none;
 }
 
-/* A Dialog or Window over a framed Popup takes the Popup's rectangle, which is stored in the
-   --sb-page-top, --sb-page-left, --sb-page-width and --sb-page-height properties. The Popup's
-   backdrop is hidden with it, so the frame's own backdrop carries the dim and its scrim stays hidden.
-   Over an openDialog frame the scrim of that frame still dims, so this backdrop stays clear. */
+/* A Dialog or Window over a framed Popup takes the Popup's column, which is stored in the
+   --sb-page-left and --sb-page-width properties. It is at least --sb-page-height tall and grows
+   with its own content, and both frames are centred, so a page that fits has the Popup's rectangle.
+   The Popup's backdrop is hidden with it, so the frame's own backdrop carries the dim and its scrim
+   stays hidden. Over an openDialog frame the scrim of that frame still dims, so this backdrop stays clear. */
 .sb-dialog-host:has(> .sb-dialog[data-covers-popup])::backdrop {
     background: var(--sb-dialog-backdrop);
 }
 
 .sb-dialog-host > .sb-dialog.sb-dialog--page {
+    --sb-page-max-height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px)));
     position: fixed;
-    inset: auto;
-    top: var(--sb-page-top);
-    left: var(--sb-page-left);
+    inset: 0 auto var(--sb-dialog-keyboard-inset, 0px) var(--sb-page-left);
     width: var(--sb-page-width);
     min-width: 0;
     max-width: none;
-    height: var(--sb-page-height);
-    min-height: 0;
-    max-height: none;
-    margin: 0;
+    height: fit-content;
+    min-height: min(var(--sb-page-height), var(--sb-page-max-height));
+    max-height: var(--sb-page-max-height);
+    margin: auto 0;
+}
+
+.sb-dialog-host > .sb-dialog.sb-dialog--page.sb-dialog--fill {
+    height: var(--sb-page-max-height);
 }
 
 /* A page over a bottom sheet has the sheet's shape: it sits on the bottom edge, above the keyboard. */
 dialog.popup.sb-dialog--page[data-covers-sheet],
 .sb-dialog-host > .sb-dialog.sb-dialog--page[data-covers-sheet] {
+    --sb-page-max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px - var(--sb-dialog-keyboard-inset, 0px));
     top: auto;
-    bottom: var(--sb-dialog-keyboard-inset, 0px);
-    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px - var(--sb-dialog-keyboard-inset, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-width: 1px 0 0;
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;

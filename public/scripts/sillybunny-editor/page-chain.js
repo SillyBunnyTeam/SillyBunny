@@ -1,7 +1,7 @@
 /**
  * A Dialog or Window opened over another Dialog or Window is a page in a chain. Each page is its own
- * native <dialog>: a framed Popup, or an openDialog host. The pages stay in the DOM and sit at the
- * same rectangle, so the chain is tracked here instead of in the DOM.
+ * native <dialog>: a framed Popup, or an openDialog host. The pages stay in the DOM and sit over one
+ * another, so the chain is tracked here instead of in the DOM.
  */
 
 const COVERED_ATTRIBUTE = 'data-sb-covered';
@@ -247,8 +247,9 @@ export function closeChain(level) {
 }
 
 /**
- * Places `page` over `covered`: same rectangle, with `covered` inert and hidden until released.
- * The rectangle is written as `--sb-page-*` properties on `page`. When `covered` is a bottom sheet,
+ * Places `page` over `covered`, with `covered` inert and hidden until released. The left edge, width
+ * and height of `covered` are written as `--sb-page-*` properties on `page`, which is at least that
+ * tall and grows with its own content. When `covered` is a bottom sheet,
  * `page` also gets `data-covers-sheet` so that it takes the sheet's shape. `data-covers-popup` marks
  * a page that has to keep the dim: a covered Popup hides its own backdrop, but an openDialog frame
  * keeps its scrim, and a page over a Popup page already inherits the dim from the page beneath it.
@@ -256,7 +257,7 @@ export function closeChain(level) {
  * @param {HTMLElement} page
  * @returns {{ release: () => void, standalone: () => void }} `release` uncovers the surface and stops
  *     following its rectangle. `standalone` is for a page that stays open after `covered` was removed:
- *     it keeps its last rectangle and takes over the dim.
+ *     it keeps its last place and takes over the dim.
  */
 export function coverSurface(covered, page) {
     const wasInert = covered.inert;
@@ -271,7 +272,7 @@ export function coverSurface(covered, page) {
         page.toggleAttribute(COVERS_SHEET_ATTRIBUTE, coversSheet);
         page.toggleAttribute(COVERS_POPUP_ATTRIBUTE, covered.matches(`dialog.popup:not(.sb-dialog--page), dialog.popup[${COVERS_POPUP_ATTRIBUTE}]`));
         const rect = covered.getBoundingClientRect();
-        for (const [name, value] of Object.entries({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })) {
+        for (const [name, value] of Object.entries({ left: rect.left, width: rect.width, height: rect.height })) {
             page.style.setProperty(`--sb-page-${name}`, `${Math.round(value)}px`);
         }
     };

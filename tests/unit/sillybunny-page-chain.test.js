@@ -495,7 +495,7 @@ describe('a page whose covered level is removed by code', () => {
             };
         };
 
-        test('a Popup page keeps its last rectangle on resize and takes over the dim', async () => {
+        test('a Popup page keeps its last column and height on resize and takes over the dim', async () => {
             const root = await showPopup({ tier: 'window' });
             withLayout(root.popup.dlg);
             const veto = jest.fn(() => false);
@@ -507,13 +507,13 @@ describe('a page whose covered level is removed by code', () => {
             expect(page.popup.dlg.hasAttribute('open')).toBe(true);
             window.dispatchEvent(new Event('resize'));
             await settle();
-            for (const [name, value] of [['top', '20px'], ['left', '30px'], ['width', '300px'], ['height', '200px']]) {
+            for (const [name, value] of [['left', '30px'], ['width', '300px'], ['height', '200px']]) {
                 expect(page.popup.dlg.style.getPropertyValue(`--sb-page-${name}`)).toBe(value);
             }
             expect(page.popup.dlg.hasAttribute('data-covers-popup')).toBe(true);
         });
 
-        test('an openDialog page keeps its last rectangle and dims through its host', async () => {
+        test('an openDialog page keeps its last size and dims through its host', async () => {
             const root = await showPopup({ tier: 'window' });
             withLayout(root.popup.dlg);
             const dialog = openDialog({ title: 'Page', canClose: () => false });

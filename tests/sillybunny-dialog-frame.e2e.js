@@ -912,4 +912,21 @@ test.describe('page chains', () => {
         await chainClose(page, 'middle').click();
         await expect(page.locator('dialog.popup')).toHaveCount(0);
     });
+
+    test('a content-sized Popup page keeps the rectangle of a fill Window when the viewport grows', async ({ page }) => {
+        await prepare(page, { width: 1440, height: 900 });
+        await page.evaluate(async () => {
+            const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+            void new Popup('<p>Parent</p>', POPUP_TYPE.DISPLAY, '', { tier: 'window', title: 'parent' }).show();
+            void new Popup('<p>Page</p>', POPUP_TYPE.DISPLAY, '', { tier: 'window', size: 'content', title: 'child' }).show();
+        });
+        const parent = popupNamed(page, 'parent');
+        const child = popupNamed(page, 'child');
+        await expect(child).toHaveClass(/sb-dialog--page/);
+        await page.setViewportSize({ width: 1600, height: 1000 });
+        await expect.poll(async () => {
+            const [parentBox, childBox] = await Promise.all([parent.boundingBox(), child.boundingBox()]);
+            return Math.max(...['x', 'y', 'width', 'height'].map(key => Math.abs(parentBox[key] - childBox[key])));
+        }).toBeLessThanOrEqual(1);
+    });
 });
