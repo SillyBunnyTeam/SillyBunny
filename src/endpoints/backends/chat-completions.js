@@ -925,7 +925,10 @@ async function sendMakerSuiteRequest(request, response) {
         // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
         const firstBody = capFirstGenerateContentBody(body, model, stream);
         const generateResponse = await sendRequest(firstBody);
-        const sendHop = continuationToken => sendRequest({ ...body, continuationToken });
+        const sendHop = (continuationToken) => {
+            getResumableGeneration(request)?.extendLifetime();
+            return sendRequest({ ...body, continuationToken });
+        };
 
         if (stream) {
             try {
@@ -3450,7 +3453,10 @@ async function sendGeminiInteractionsRequest(request, response) {
 
         const generateResponse = await fetch(endpointUrl, config);
         // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
-        const sendHop = continuation_token => fetch(endpointUrl, { ...config, body: JSON.stringify({ ...requestBody, continuation_token }) });
+        const sendHop = (continuation_token) => {
+            getResumableGeneration(request)?.extendLifetime();
+            return fetch(endpointUrl, { ...config, body: JSON.stringify({ ...requestBody, continuation_token }) });
+        };
 
         if (request.body.stream) {
             console.info('Streaming Interactions API request in progress');

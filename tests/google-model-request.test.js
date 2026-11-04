@@ -20,6 +20,7 @@ describe('Google model request compatibility', () => {
     let appServer;
     let baseUrl;
     let capturedBody;
+    let resumableGeneration;
     const tempDirs = [];
 
     beforeAll(async () => {
@@ -42,6 +43,7 @@ describe('Google model request compatibility', () => {
         app.use(express.json());
         app.use((req, _res, next) => {
             req.user = { directories: { root: userRoot, backups: userRoot } };
+            req.resumableGeneration = resumableGeneration;
             next();
         });
         app.use('/api/backends/chat-completions', chatCompletionsRouter);
@@ -55,6 +57,7 @@ describe('Google model request compatibility', () => {
 
     beforeEach(() => {
         capturedBody = undefined;
+        resumableGeneration = null;
         nodeFetchMock.mockClear();
         nodeFetchMock.mockImplementation(async (_url, options) => {
             capturedBody = JSON.parse(options?.body ?? '{}');
@@ -253,6 +256,20 @@ describe('Google model request compatibility', () => {
                 expect(json.choices[0].message.content).toBe('Part one and part two and the end.');
                 expect(json.choices[0]).not.toHaveProperty('finish_reason');
                 expect(json.responseContent.parts).toHaveLength(3);
+            });
+
+            test('restarts the generation lifetime limit for each later request', async () => {
+                resumableGeneration = { onCancel: () => () => undefined, extendLifetime: jest.fn() };
+                replyWithHops(
+                    jsonHop([{ text: 'one ' }], { finishReason: 'CONTINUATION', continuationToken: 'token-1' }),
+                    jsonHop([{ text: 'two ' }], { finishReason: 'CONTINUATION', continuationToken: 'token-2' }),
+                    jsonHop([{ text: 'three' }], { finishReason: 'STOP' }),
+                );
+
+                const json = await (await makeRequest('gemini-4-argon')).json();
+
+                expect(json.choices[0].message.content).toBe('one two three');
+                expect(resumableGeneration.extendLifetime).toHaveBeenCalledTimes(2);
             });
 
             test('treats a thinking-only request as progress and keeps its parts for history', async () => {

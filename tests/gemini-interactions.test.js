@@ -1,5 +1,5 @@
 /* eslint-disable playwright/no-duplicate-hooks, playwright/no-conditional-in-test */
-import { afterAll, beforeAll, describe, expect, jest, test } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -64,6 +64,7 @@ describe('Gemini Interactions API integration', () => {
     let appServer;
     /** @type {import('../src/users.js').UserDirectoryList} */
     let userDirectories;
+    let resumableGeneration = null;
     const tempDirs = [];
 
     beforeAll(async () => {
@@ -84,6 +85,7 @@ describe('Gemini Interactions API integration', () => {
             req.user = {
                 directories: userDirectories,
             };
+            req.resumableGeneration = resumableGeneration;
             next();
         });
         app.use('/api/backends/chat-completions', chatCompletionsRouter);
@@ -455,7 +457,24 @@ describe('Gemini Interactions API integration', () => {
         const replyText = events => events.map(event => event.choices[0].delta?.content ?? '').join('');
         const finishes = events => events.map(event => event.choices[0].finish_reason).filter(Boolean);
 
+        afterEach(() => {
+            resumableGeneration = null;
+        });
+
         describe('without streaming', () => {
+            test('restarts the generation lifetime limit for each later request', async () => {
+                resumableGeneration = { onCancel: () => () => undefined, extendLifetime: jest.fn() };
+                replyWithHops(
+                    jsonHop({ id: 'int-1', status: 'requires_continuation', continuation_token: 'token-1', steps: [textStep('one ')] }),
+                    jsonHop({ id: 'int-2', status: 'completed', steps: [textStep('two')] }),
+                );
+
+                const json = await (await generate({ reverse_proxy: PROVIDER_ORIGIN })).json();
+
+                expect(json.choices[0].message.content).toBe('one two');
+                expect(resumableGeneration.extendLifetime).toHaveBeenCalledTimes(1);
+            });
+
             test('resends the input with the token and keeps the request stateless', async () => {
                 const fetchSpy = replyWithHops(
                     jsonHop({ id: 'int-1', status: 'requires_continuation', continuation_token: 'token-1', steps: [textStep('Part one ')], usage: { total_input_tokens: 10, total_output_tokens: 20, total_tokens: 30 } }),
