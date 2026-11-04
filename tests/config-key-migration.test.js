@@ -7,6 +7,8 @@ import { createInstallSandbox, writeFiles } from './util/install-sandbox.js';
 const sandbox = createInstallSandbox('sillybunny-config-migration');
 
 const { default: yaml } = await import('yaml');
+const { default: _ } = await import('lodash');
+const { keyToEnv } = await import('../src/util.js');
 const { addMissingConfigValues } = await import('../src/config-init.js');
 
 const defaultConfig = `port: 8000
@@ -162,5 +164,94 @@ describe('addMissingConfigValues', () => {
         addMissingConfigValues(configPath());
 
         expect(process.env[currentEnvKey]).toBe('false');
+    });
+});
+
+describe('addMissingConfigValues for each renamed or removed setting', () => {
+    const renamedSettings = [
+        ['disableThumbnails', true, 'thumbnails.enabled', false],
+        ['disableThumbnails', false, 'thumbnails.enabled', true],
+        ['thumbnailsQuality', 70, 'thumbnails.quality', 70],
+        ['avatarThumbnailsPng', true, 'thumbnails.format', 'png'],
+        ['avatarThumbnailsPng', false, 'thumbnails.format', 'jpg'],
+        ['disableChatBackup', true, 'backups.chat.enabled', false],
+        ['disableChatBackup', false, 'backups.chat.enabled', true],
+        ['numberOfBackups', 12, 'backups.common.numberOfBackups', 12],
+        ['maxTotalChatBackups', 7, 'backups.chat.maxTotalBackups', 7],
+        ['chatBackupThrottleInterval', 30000, 'backups.chat.throttleInterval', 30000],
+        ['enableExtensions', false, 'extensions.enabled', false],
+        ['enableExtensionsAutoUpdate', false, 'extensions.autoUpdate', false],
+        ['extras.disableAutoDownload', true, 'extensions.models.autoDownload', false],
+        ['extras.disableAutoDownload', false, 'extensions.models.autoDownload', true],
+        ['extras.classificationModel', 'synthetic/classification', 'extensions.models.classification', 'synthetic/classification'],
+        ['extras.captioningModel', 'synthetic/captioning', 'extensions.models.captioning', 'synthetic/captioning'],
+        ['extras.embeddingModel', 'synthetic/embedding', 'extensions.models.embedding', 'synthetic/embedding'],
+        ['extras.speechToTextModel', 'synthetic/speech-to-text', 'extensions.models.speechToText', 'synthetic/speech-to-text'],
+        ['extras.textToSpeechModel', 'synthetic/text-to-speech', 'extensions.models.textToSpeech', 'synthetic/text-to-speech'],
+        ['minLogLevel', 3, 'logging.minLogLevel', 3],
+        ['cardsCacheCapacity', 256, 'performance.memoryCacheCapacity', '256mb'],
+        ['autheliaAuth', true, 'sso.autheliaAuth', true],
+        ['authentikAuth', true, 'sso.authentikAuth', true],
+    ];
+    const renamedEnvironmentVariables = renamedSettings.map(([oldKey, oldValue, newKey, newValue]) => [keyToEnv(oldKey), String(oldValue), keyToEnv(newKey), String(newValue)]);
+    const removedSettings = [
+        ['cookieSecret', 'synthetic-cookie-secret'],
+        ['extras.promptExpansionModel', 'synthetic/prompt-expansion'],
+    ];
+    const environmentKeys = [...new Set(renamedEnvironmentVariables.flatMap(([oldEnvKey, , newEnvKey]) => [oldEnvKey, newEnvKey]))];
+    const savedEnvironment = Object.fromEntries(environmentKeys.map(key => [key, process.env[key]]));
+    const printedText = () => JSON.stringify(['debug', 'info', 'log', 'warn', 'error'].map(method => console[method].mock.calls));
+
+    beforeEach(() => {
+        for (const key of environmentKeys) {
+            delete process.env[key];
+        }
+    });
+
+    afterEach(() => {
+        for (const [key, value] of Object.entries(savedEnvironment)) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+    });
+
+    test.each(renamedSettings)('moves %s: %p to %s: %p', (oldKey, oldValue, newKey, newValue) => {
+        fs.writeFileSync(configPath(), yaml.stringify(_.set({}, oldKey, oldValue)));
+
+        addMissingConfigValues(configPath());
+
+        const config = readConfig();
+        expect(_.get(config, newKey)).toEqual(newValue);
+        expect(_.has(config, oldKey)).toBe(false);
+    });
+
+    test.each(renamedEnvironmentVariables)('redirects %s=%s to %s=%s', (oldEnvKey, oldValue, newEnvKey, newValue) => {
+        fs.writeFileSync(configPath(), defaultConfig);
+        process.env[oldEnvKey] = oldValue;
+
+        addMissingConfigValues(configPath());
+
+        expect(process.env[newEnvKey]).toBe(newValue);
+        expect(process.env[oldEnvKey]).toBeUndefined();
+    });
+
+    test.each(removedSettings)('removes %s from a config that needs no other change', (key, value) => {
+        fs.writeFileSync(configPath(), `${defaultConfig}${yaml.stringify(_.set({}, key, value))}`);
+
+        addMissingConfigValues(configPath());
+
+        expect(_.has(readConfig(), key)).toBe(false);
+        expect(fs.readFileSync(configPath(), 'utf8')).not.toContain(value);
+    });
+
+    test.each(removedSettings)('does not print the value of %s when it removes it', (key, value) => {
+        fs.writeFileSync(configPath(), `${defaultConfig}${yaml.stringify(_.set({}, key, value))}`);
+
+        addMissingConfigValues(configPath());
+
+        expect(printedText()).not.toContain(value);
     });
 });
