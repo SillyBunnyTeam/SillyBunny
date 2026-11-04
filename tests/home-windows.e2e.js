@@ -1,6 +1,7 @@
 import { expect, test as base } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { EXTRA_DESCRIPTIONS, HOME_COPY, STEP_BODIES } from './helpers/copy-home.js';
+import { WELCOME_COPY } from './helpers/copy-welcome.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
@@ -426,24 +427,26 @@ for (const { name, sheet, options } of VIEWPORTS) {
         test.describe('Welcome', () => {
             test.use({ bundledCardsOnly: true });
 
-            test('page one greets with the duo art, copy placeholders, and the adopted language select', async ({ page }) => {
+            test('page one greets with the duo art, its written lines, and the adopted language select', async ({ page }) => {
                 const host = await openFromMenu(page, 'Show Welcome');
 
-                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING' });
-                await expectSlots(host, ['WD-1-GREETING', 'WD-1-ABOUT', 'WD-1-FORK', 'WD-1-FANWORK']);
-                await expectNoUnmarkedPlaceholder(host);
+                await expectIntro(host, 'welcome-both', { text: WELCOME_COPY.greeting });
+                await expect(host.locator('.sbWelcomeIntro p')).toHaveText([WELCOME_COPY.about, WELCOME_COPY.fork]);
+                await expect(host.locator('.sbWelcomeNote')).toHaveText(WELCOME_COPY.fanWork);
+                await expect(host.getByRole('button', { name: 'Import From SillyTavern' })).toContainText(WELCOME_COPY.importRow);
                 await expect(host.locator('.sbArtLine'), 'only the greeting is the line of the art').toHaveCount(1);
+                expect(await readCopyPlaceholders(host), 'page one has no placeholder left').toEqual([]);
                 const below = await host.evaluate((root) => {
                     const greeting = root.querySelector('.sbArtLine').getBoundingClientRect();
-                    return ['WD-1-ABOUT', 'WD-1-FORK'].map(slot => root.querySelector(`[data-sb-copy-slot="${slot}"]`).getBoundingClientRect().top >= greeting.bottom - 1);
+                    return [...root.querySelectorAll('.sbWelcomeIntro p')].map(line => line.getBoundingClientRect().top >= greeting.bottom - 1);
                 });
                 expect(below, 'the about and fork lines stay below the greeting').toEqual([true, true]);
                 const prose = await host.evaluate((root) => {
-                    const read = (slot) => {
-                        const style = getComputedStyle(root.querySelector(`[data-sb-copy-slot="${slot}"]`));
+                    const read = (selector) => {
+                        const style = getComputedStyle(root.querySelector(selector));
                         return { size: style.fontSize, weight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
                     };
-                    return { greeting: read('WD-1-GREETING'), about: read('WD-1-ABOUT'), fork: read('WD-1-FORK') };
+                    return { greeting: read('.sbArtLine'), about: read('.sbWelcomeIntro p:nth-child(1)'), fork: read('.sbWelcomeIntro p:nth-child(2)') };
                 });
                 expect(prose.greeting, 'the greeting has the type of the lines below it').toEqual(prose.about);
                 expect(prose.fork).toEqual(prose.about);
@@ -518,7 +521,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 // Show Welcome is a reopen: the persona the account has, and no name to ask for.
                 await expect(current.getByRole('textbox', { name: 'Your Name' })).toHaveCount(0);
                 await expect(current.getByRole('button', { name: 'Manage Personas' })).toBeVisible();
-                await expectSlots(current, ['WD-2-PROMPT']);
+                await expect(current.locator('.sbArtLine')).toHaveText(WELCOME_COPY.personaPrompt);
 
                 await shownPage(host).getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('What’s Next');
@@ -544,16 +547,16 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     return { top: panel.top - body.top, start: panel.left - body.left };
                 });
 
-                await expectIntro(host, 'welcome-both', { slot: 'WD-1-GREETING' });
+                await expectIntro(host, 'welcome-both', { text: WELCOME_COPY.greeting });
                 const first = await place();
                 await current.getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Your Persona');
-                await expectIntro(current, 'welcome-persona-tewi', { slot: 'WD-2-PROMPT' });
+                await expectIntro(current, 'welcome-persona-tewi', { text: WELCOME_COPY.personaPrompt });
                 expect(await readIntroOffsetFromList(current), 'the intro and the first list share a start edge').toBeLessThanOrEqual(1);
                 const second = await place();
                 await current.getByRole('button', { name: 'Next', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('What’s Next');
-                await expectIntro(current, 'welcome-next-reisen', { slot: 'WD-3-INTRO' });
+                await expectIntro(current, 'welcome-next-reisen', { text: WELCOME_COPY.nextIntro });
                 const third = await place();
 
                 expect([second.top, third.top], 'the art starts at the same height on every page').toEqual([first.top, first.top]);
@@ -598,9 +601,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     const tileLine = await homeTile(page, key).locator('.sbHomeTileLine').textContent();
                     await expect(row.locator('.ds-row-subtitle'), `the ${key} row says the line of its tile`).toHaveText(tileLine);
                 }
-                await expectSlots(current, ['WD-3-INTRO']);
-                await expectNoUnmarkedPlaceholder(current);
-                await expect(current.locator('[data-sb-copy-slot^="WD-3-STEP"]')).toHaveCount(0);
+                await expect(current.locator('.sbArtLine')).toHaveText(WELCOME_COPY.nextIntro);
+                expect(await readCopyPlaceholders(current), 'What\'s Next has no placeholder left').toEqual([]);
                 await expect(current.locator('.sbHomeStepRow')).toHaveCount(0);
                 await expect(current.getByRole('button', { name: 'Show Me' })).toHaveCount(0);
                 await expect(current.getByRole('switch', { name: 'Show at Startup' })).not.toBeChecked();
@@ -763,8 +765,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await host.getByRole('button', { name: 'Import From SillyTavern' }).click();
 
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Import From SillyTavern');
-                await expectSlots(current, ['WD-IMPORT-EXPLANATION']);
-                await expectNoUnmarkedPlaceholder(current);
+                await expect(current.locator('p', { hasText: WELCOME_COPY.importExplanation })).toHaveCount(1);
+                expect(await readCopyPlaceholders(current), 'the import page has no placeholder left').toEqual([]);
                 await expect(current.getByRole('textbox', { name: 'Folder Path' })).toBeVisible();
                 const importFolder = current.getByRole('button', { name: 'Import Folder', exact: true });
                 const importZip = current.getByRole('button', { name: 'Import Backup ZIP', exact: true });

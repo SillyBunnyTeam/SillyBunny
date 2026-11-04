@@ -3,13 +3,12 @@ import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import { t } from './i18n.js';
 import { getUserAvatar, persona_description_positions, user_avatar } from './personas.js';
 import { power_user } from './power-user.js';
-import { createArtIntro } from './sillybunny-home/art-intro.js';
-import { COPY_PLACEHOLDER, markCopyPlaceholder, markRowSubtitle } from './sillybunny-home/copy.js';
 import { eventSource, event_types } from './events.js';
 import { HOME_DESTINATIONS } from './sillybunny-home/destinations.js';
 import { formatProgress, getSharedGettingStartedState } from './sillybunny-home/getting-started.js';
 import { openShellTarget } from './sillybunny-home/shell-targets.js';
 import { getWelcomeStartup } from './sillybunny-home/welcome-boot.js';
+import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { openBundledExtras, openFromHomeTile, openGettingStarted, openHelp } from './sillybunny-home/windows.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
 import { createEntryRow, createPrefGroup, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
@@ -22,8 +21,10 @@ const PAGE_COUNT = 3;
 const LANGUAGE_SELECT_ID = 'onboarding_ui_language_select';
 const GETTING_STARTED_KEY = 'getting-started';
 
-function createCopyBlock(slot) {
-    return markCopyPlaceholder(document.createElement('p'), slot);
+function createTextBlock(text) {
+    const block = document.createElement('p');
+    block.textContent = text;
+    return block;
 }
 
 /** Dots for the eye, and one translatable sentence for assistive technology. */
@@ -70,23 +71,25 @@ function createLanguageRow() {
 }
 
 function fillHello(body, { language, openImport }) {
-    const { intro: greeting } = createArtIntro({ art: 'welcome-both', slot: 'WD-1-GREETING' });
+    const { intro: greeting } = createArtIntro({ art: 'welcome-both', text: t`Hello, and welcome to SillyBunny! I'm Reisen, and this is Tewi. We'll help you settle in. So, what should we call you, brave hero?` });
 
     const intro = document.createElement('div');
     intro.className = 'sbWelcomeIntro';
-    intro.append(createCopyBlock('WD-1-ABOUT'), createCopyBlock('WD-1-FORK'));
+    intro.append(
+        createTextBlock(t`SillyBunny is a place to chat, tell stories, and interact with characters, powered by an external AI model you connect yourself.`),
+        createTextBlock(t`Oh, and don't forget - SillyBunny is a fork of SillyTavern. Your characters, chats, presets, and extensions should all work here.`),
+    );
 
     const importRow = createRow({
         label: t`Import From SillyTavern`,
-        subtitle: COPY_PLACEHOLDER,
+        subtitle: t`Coming from SillyTavern? Show me where your folder is and bring everything along!`,
         field: 'welcome-import',
         activatable: true,
         onActivate: openImport,
     });
-    markRowSubtitle(importRow, 'WD-1-IMPORT-ROW');
     const rows = [...(language ? [language] : []), importRow];
 
-    const fanWork = createCopyBlock('WD-1-FANWORK');
+    const fanWork = createTextBlock(t`Note: Reisen and Tewi are from Touhou Project by Team Shanghai Alice. They are used under a non-commercial fan work interpretation.`);
     fanWork.classList.add('sbWelcomeNote');
     body.append(greeting, intro, createPrefGroup({ field: 'welcome-hello-group', rows }).section, fanWork, createPosition(1));
 }
@@ -117,14 +120,13 @@ async function requestImport(endpoint, { body, useFormData = false }) {
 }
 
 /**
- * Asks before an import replaces the data of the account. The title is the name of the page, and what the
- * dialog says about the replacement is copy that is still to come.
+ * Asks before an import replaces the data of the account. The title is the name of the page.
  * @param {string} sourceName The folder path or the file name.
  * @returns {Promise<boolean>}
  */
 async function confirmImport(sourceName) {
     const body = document.createElement('div');
-    const explanation = createCopyBlock('WD-IMPORT-CONFIRM');
+    const explanation = createTextBlock(t`Files in your account that match the import will be replaced and SillyBunny will reload. This skips this Welcome page. Continue?`);
     const source = document.createElement('code');
     source.textContent = sourceName;
     body.append(explanation, source);
@@ -193,7 +195,7 @@ function fillImport(body, { importer }) {
     actions.className = 'sbWindowActions';
     actions.append(folderButton, zipButton, zipInput);
     body.append(
-        createCopyBlock('WD-IMPORT-EXPLANATION'),
+        createTextBlock(t`Enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over, though files with the same name will be replaced.`),
         createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
         actions,
         status,
@@ -219,7 +221,7 @@ function fillImport(body, { importer }) {
  * @returns {{ getName: () => string }}
  */
 function fillPersona(body, { nameMode, onNameInput, managePersonas }) {
-    const intro = createArtIntro({ art: 'welcome-persona-tewi', slot: 'WD-2-PROMPT' }).intro;
+    const intro = createArtIntro({ art: 'welcome-persona-tewi', text: t`Hey, what should we call you? Characters will know you by the name and persona you set here. You can change it later under Characters ▸ Persona, if you'd like.` }).intro;
     if (nameMode === 'required') {
         const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true, onInput: onNameInput });
         body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section, createPosition(2));
@@ -301,7 +303,7 @@ function fillWhatsNext(body, { openDestination, startup }) {
         onChange: checked => startup.setShownAtStartup(checked),
     });
     body.append(
-        createArtIntro({ art: 'welcome-next-reisen', slot: 'WD-3-INTRO' }).intro,
+        createArtIntro({ art: 'welcome-next-reisen', text: t`All set! Here's where to go next. We'll be around whenever you need us.` }).intro,
         group.section,
         createPrefGroup({ field: 'welcome-startup-group', rows: [showAtStartup] }).section,
         createPosition(3),

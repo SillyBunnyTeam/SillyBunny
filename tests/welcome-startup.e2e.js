@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { WELCOME_COPY } from './helpers/copy-welcome.js';
 import { applyHomeTestSettings, captureAccountStorageSaves } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
@@ -539,7 +540,7 @@ test.describe('the Import From SillyTavern page', () => {
     const confirmImport = async (page) => {
         const alert = page.locator('dialog[role="alertdialog"]');
         await expect(alert).toBeVisible();
-        await expect(alert.locator('[data-sb-copy-slot="WD-IMPORT-CONFIRM"]')).toHaveText('TODO(copy)');
+        await expect(alert).toContainText(WELCOME_COPY.importConfirm);
         await alert.getByRole('button', { name: 'Import', exact: true }).click();
     };
 
