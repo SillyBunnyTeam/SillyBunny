@@ -630,8 +630,8 @@ for (const { name, options } of VIEWPORTS) {
             for (const mark of BOOT_MARKS) {
                 expect(text).toContain(`Boot mark ${mark}: ${Math.round(marks[mark][0])} ms`);
             }
-            const fit = await info.evaluate(node => ({ scrollHeight: node.scrollHeight, clientHeight: node.clientHeight }));
-            expect(fit.scrollHeight).toBeLessThanOrEqual(fit.clientHeight + 1);
+            // The block takes the height of its text once its ResizeObserver has run. WebKit delivers that a few frames after the page shows, so until then the block keeps the height of its rows.
+            await expect.poll(() => info.evaluate(node => node.scrollHeight - node.clientHeight), { message: 'the last line of the debug information is not cut off' }).toBeLessThanOrEqual(1);
         });
     });
 }
