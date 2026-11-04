@@ -79,6 +79,7 @@ import {
     getConfigValue,
 } from './util.js';
 import { isBenignStreamAbort } from './stream-disconnect-guard.js';
+import { forwardAsyncRouteErrors, handleRouteError } from './route-errors.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
 
 // Routers
@@ -111,6 +112,8 @@ if (!cliArgs.enableIPv6 && !cliArgs.enableIPv4) {
 http.globalAgent = new http.Agent({ keepAlive: cliArgs.enableKeepAlive });
 https.globalAgent = new https.Agent({ keepAlive: cliArgs.enableKeepAlive });
 
+// SillyBunny: send a rejected promise from an async handler to the error handlers, because Express 4 ignores it and leaves the request unanswered.
+forwardAsyncRouteErrors();
 const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
@@ -751,6 +754,8 @@ initUserStorage(globalThis.DATA_ROOT)
     .then(verifySecuritySettings)
     .then(preSetupTasks)
     .then(apply404Middleware)
+    // SillyBunny: the last handler answers a failed route, plugin routes included, without error details.
+    .then(() => app.use(handleRouteError))
     .then(() => new ServerStartup(app, cliArgs).start())
     .then(postSetupTasks)
     .catch((error) => {
