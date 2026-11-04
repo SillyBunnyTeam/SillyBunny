@@ -1095,7 +1095,8 @@ export class SlashCommandParser {
             if (cmd.name == 'let') {
                 const keyArg = cmd.namedArgumentList.find(it => it.name == 'key');
                 if (keyArg) {
-                    this.scope.variableNames.push(keyArg.value.toString());
+                    // SillyBunny: an empty "key=" has no value, so there is no variable name to list.
+                    if (keyArg.value !== undefined) this.scope.variableNames.push(keyArg.value.toString());
                 } else if (typeof cmd.unnamedArgumentList[0]?.value == 'string') {
                     this.scope.variableNames.push(cmd.unnamedArgumentList[0].value);
                 }

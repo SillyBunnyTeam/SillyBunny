@@ -36,4 +36,15 @@ test.describe('STscript parser fixes', () => {
         expect.soft(summarizeError(results[2])).toEqual({ type: 'SlashCommandParserError', message: 'Unclosed block comment at position 6', index: 6 });
         expect.soft(summarizeError(results[3])).toEqual({ type: 'SlashCommandParserError', message: 'Unclosed block comment at position 12', index: 12 });
     });
+
+    test('an empty key= on /let parses like an empty value on any other command', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/let key= x' },
+            { script: '/let key= x', verify: false },
+        ]);
+
+        for (const result of results) {
+            expect.soft(result).toEqual({ tree: { executors: [{ name: 'let', named: [{ name: 'key', value: null }], unnamed: ['x'] }] } });
+        }
+    });
 });
