@@ -56,7 +56,7 @@ export function entry(uid, fields = {}) {
 }
 
 export function getSteps(testCase) {
-    return testCase.steps ?? [{ chat: testCase.chat, expected: testCase.expected, loops: testCase.loops }];
+    return testCase.steps ?? [{ chat: testCase.chat, expected: testCase.expected, loops: testCase.loops, ordered: testCase.ordered }];
 }
 
 function keyCase({ name, key = ['moon'], secondary = [], logic = 'AND_ANY', selective = true, caseSensitive = null, wholeWords = null, scanDepth = null, chat, settings = {}, activates, ...rest }) {
@@ -220,4 +220,181 @@ export const SCAN_DEPTH_CASES = toCases([
     { name: 'lets an entry scan deeper than the depth setting', key: ['moon'], scanDepth: 3, chat: ['one', 'two', 'The moon.'], settings: { world_info_depth: 1 }, activates: true },
     { name: 'lets an entry scan less than the depth setting', key: ['moon'], scanDepth: 1, chat: ['one', 'The moon.'], settings: { world_info_depth: 3 }, activates: false },
     { name: 'scans no messages at an entry scan depth of zero', key: ['moon'], scanDepth: 0, chat: ['The moon.'], settings: { world_info_depth: 3 }, activates: false },
+]);
+
+const RECURSIVE = { world_info_recursive: true };
+
+const CHAIN = [
+    entry(1, { key: ['moon'], content: 'river' }),
+    entry(2, { key: ['river'], content: 'bridge' }),
+    entry(3, { key: ['bridge'], content: 'castle' }),
+    entry(4, { key: ['castle'], content: 'tower' }),
+];
+const chain = length => CHAIN.slice(0, length);
+
+const DELAY_LEVELS = [
+    entry(1, { key: ['moon'], content: 'river' }),
+    entry(2, { key: ['moon'], delayUntilRecursion: 2 }),
+    entry(3, { key: ['moon'], delayUntilRecursion: 1 }),
+];
+
+export const RECURSION_CASES = toCases([
+    { name: 'ignores the text of an activated entry when recursion is off', entries: chain(2), chat: ['The moon.'], expected: [1], loops: 1 },
+    { name: 'searches the text of an activated entry when recursion is on', entries: chain(2), chat: ['The moon.'], settings: RECURSIVE, expected: [1, 2], loops: 3 },
+    { name: 'follows a chain of entries until nothing new activates', entries: chain(4), chat: ['The moon.'], settings: RECURSIVE, expected: [1, 2, 3, 4], loops: 5 },
+    { name: 'stays inactive when no activated entry mentions its key', entries: [CHAIN[0], entry(2, { key: ['sea'] })], chat: ['The moon.'], settings: RECURSIVE, expected: [1], loops: 2 },
+    {
+        name: 'keeps an entry with exclude recursion out of recursive scans',
+        entries: [CHAIN[0], entry(2, { key: ['river'], excludeRecursion: true })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1],
+        loops: 2,
+    },
+    {
+        name: 'still activates an entry with exclude recursion from the chat text',
+        entries: [CHAIN[0], entry(2, { key: ['river'], excludeRecursion: true })],
+        chat: ['The moon by the river.'],
+        settings: RECURSIVE,
+        expected: [1, 2],
+        loops: 2,
+    },
+    {
+        name: 'does not search the text of an entry with prevent recursion',
+        entries: [entry(1, { key: ['moon'], content: 'river', preventRecursion: true }), CHAIN[1]],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1],
+        loops: 1,
+    },
+    {
+        name: 'lets recursion activate an entry that prevents recursion',
+        entries: [CHAIN[0], entry(2, { key: ['river'], content: 'bridge', preventRecursion: true }), CHAIN[2]],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1, 2],
+        loops: 2,
+    },
+    {
+        name: 'holds back an entry that waits for recursion until a recursive scan',
+        entries: [entry(1, { key: ['moon'], delayUntilRecursion: true }), entry(2, { key: ['moon'], content: 'river' })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [2, 1],
+        ordered: true,
+        loops: 3,
+    },
+    {
+        name: 'never activates an entry that waits for recursion when recursion is off',
+        entries: [entry(1, { key: ['moon'], delayUntilRecursion: true }), entry(2, { key: ['moon'], content: 'river' })],
+        chat: ['The moon.'],
+        expected: [2],
+        loops: 1,
+    },
+    {
+        name: 'never activates an entry that waits for recursion when no entry starts a recursive scan',
+        entries: [entry(1, { key: ['moon'], delayUntilRecursion: true })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [],
+        loops: 1,
+    },
+    {
+        name: 'activates delayed entries one recursion level at a time',
+        entries: DELAY_LEVELS,
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1, 3, 2],
+        ordered: true,
+        loops: 5,
+    },
+    {
+        name: 'treats a delay until recursion of true as level one',
+        entries: [DELAY_LEVELS[0], DELAY_LEVELS[1], entry(3, { key: ['moon'], delayUntilRecursion: true })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1, 3, 2],
+        ordered: true,
+        loops: 5,
+    },
+    {
+        name: 'activates delayed entries of the same level in one recursive scan',
+        entries: [DELAY_LEVELS[0], entry(2, { key: ['moon'], delayUntilRecursion: true }), DELAY_LEVELS[2]],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1, 2, 3],
+        loops: 3,
+    },
+    {
+        name: 'stops before a higher recursion level when the step cap is reached',
+        entries: DELAY_LEVELS,
+        chat: ['The moon.'],
+        settings: { ...RECURSIVE, world_info_max_recursion_steps: 3 },
+        expected: [1, 3],
+        ordered: true,
+        loops: 3,
+    },
+    { name: 'follows the whole chain when the step cap is zero', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 0 }, expected: [1, 2, 3, 4], loops: 5 },
+    { name: 'counts the first scan as a recursion step', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 1 }, expected: [1], loops: 1 },
+    { name: 'stops a chain after the second step when the step cap is two', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 2 }, expected: [1, 2], loops: 2 },
+    { name: 'stops a chain after the third step when the step cap is three', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 3 }, expected: [1, 2, 3], loops: 3 },
+    { name: 'finishes a chain that fits exactly in the step cap', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 4 }, expected: [1, 2, 3, 4], loops: 4 },
+    { name: 'finishes a chain and ends before a higher step cap', entries: chain(4), chat: ['The moon.'], settings: { ...RECURSIVE, world_info_max_recursion_steps: 9 }, expected: [1, 2, 3, 4], loops: 5 },
+]);
+
+const DEEP_CHAT = ['one', 'two', 'three', 'The moon.', 'five', 'six'];
+const MOON = [entry(1, { key: ['moon'] })];
+
+export const MIN_ACTIVATION_CASES = toCases([
+    { name: 'does not look past the depth setting without a minimum', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 0 }, expected: [], loops: 1 },
+    { name: 'grows the scan depth until the minimum is reached', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1 }, expected: [1], loops: 3 },
+    { name: 'stops growing at the maximum depth', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1, world_info_min_activations_depth_max: 3 }, expected: [], loops: 2 },
+    { name: 'finds an entry at the maximum depth', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1, world_info_min_activations_depth_max: 4 }, expected: [1], loops: 3 },
+    { name: 'ignores a maximum depth that is deeper than the entry', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 1, world_info_min_activations_depth_max: 10 }, expected: [1], loops: 3 },
+    { name: 'keeps growing while the minimum is still not reached', entries: MOON, chat: DEEP_CHAT, settings: { world_info_min_activations: 2 }, expected: [1], loops: 5 },
+    { name: 'stops at the end of the chat when nothing is found', entries: MOON, chat: ['one', 'two', 'three', 'four', 'five', 'six'], settings: { world_info_min_activations: 1 }, expected: [], loops: 5 },
+    {
+        name: 'does not grow the scan when the minimum is already met',
+        entries: [MOON[0], entry(2, { constant: true })],
+        chat: DEEP_CHAT,
+        settings: { world_info_min_activations: 1 },
+        expected: [2],
+        loops: 1,
+    },
+    {
+        name: 'counts a constant entry toward the minimum and grows the scan for the rest',
+        entries: [MOON[0], entry(2, { constant: true })],
+        chat: DEEP_CHAT,
+        settings: { world_info_min_activations: 2 },
+        expected: [1, 2],
+        loops: 3,
+    },
+    {
+        name: 'keeps the scan depth of an entry when the minimum grows the global depth',
+        entries: [entry(1, { key: ['moon'], scanDepth: 2 })],
+        chat: DEEP_CHAT,
+        settings: { world_info_min_activations: 1 },
+        expected: [],
+        loops: 5,
+    },
+    {
+        name: 'keeps the text of activated entries out of deeper minimum scans',
+        entries: [entry(1, { key: ['moon'], content: 'river' }), entry(2, { key: ['river'], excludeRecursion: true })],
+        chat: ['The moon.', 'two', 'three'],
+        settings: { ...RECURSIVE, world_info_min_activations: 2 },
+        expected: [1],
+        loops: 4,
+    },
+    {
+        name: 'follows a deeper scan with a recursive scan while the minimum is not reached',
+        entries: [
+            entry(1, { key: ['one'], content: 'river' }),
+            entry(2, { key: ['river'], content: 'bridge' }),
+            entry(3, { key: ['moon'] }),
+        ],
+        chat: DEEP_CHAT,
+        settings: { ...RECURSIVE, world_info_min_activations: 3 },
+        expected: [1, 2, 3],
+        loops: 7,
+    },
 ]);

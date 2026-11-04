@@ -5,7 +5,9 @@ import { createHarness } from './util/world-info-harness.js';
 import {
     BASELINE_SETTINGS,
     CASE_SENSITIVITY_CASES,
+    MIN_ACTIVATION_CASES,
     PRIMARY_KEY_CASES,
+    RECURSION_CASES,
     REGEX_CASES,
     SCAN_DEPTH_CASES,
     SELECTIVE_LOGIC_CASES,
@@ -66,6 +68,8 @@ describe.each([
     ['World Info whole word matching', WHOLE_WORD_CASES],
     ['World Info regular expression keys', REGEX_CASES],
     ['World Info scan depth', SCAN_DEPTH_CASES],
+    ['World Info recursion', RECURSION_CASES],
+    ['World Info minimum activations', MIN_ACTIVATION_CASES],
 ])('%s', (title, cases) => {
     test.each(cases)('$name', async testCase => {
         const steps = getSteps(testCase);
