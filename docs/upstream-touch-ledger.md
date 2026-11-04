@@ -92,6 +92,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-04 Gemini long decode reporting fix. |
 | Owner | TODO(copy) |
 
+### `src/endpoints/backends/chat-completions.js` - Gemini long decode
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/backends/chat-completions.js`. |
+| Area | Generation lifecycle (Gemini replies across several requests). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/gemini-long-decode.js` owns the continuation loop, the stream stitching and the request rules. |
+| Adapter shape | `sendMakerSuiteRequest()`: `sendRequest()` around the fetch, `capFirstGenerateContentBody()` for the first request, `continueGenerateContentStream()` around the response that `forwardFetchResponse()` receives, `collectGenerateContentHops()`, `mergeGenerateContentHops()` and `getGenerateContentText()` on the non-streaming path, and `getVertexApiVersion()` in the Vertex URLs. `sendGeminiInteractionsRequest()`: `continueInteractionStream()` around the response that `forwardInteractionStream()` receives, and `collectInteractionHops()` with `mergeInteractionHops()` on the non-streaming path. In both handlers, `sendHop()` calls `extendLifetime()` on the resumable generation before each later request. |
+| Protecting tests | `tests/gemini-long-decode.test.js`, `tests/google-model-request.test.js`, `tests/gemini-interactions.test.js`, `tests/resumable-generations.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- gemini-long-decode.test.js google-model-request.test.js gemini-interactions.test.js resumable-generations.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js`, Bun and Node.js boots, and a browser replay of multi-request replies against a local stub of the Gemini API at desktop and mobile widths. |
+| Rollback path | Put the direct `fetch()` calls, `generateResponse.json()` results and the text expression back in the two handlers, put `v1` back in the Vertex URLs, delete `src/gemini-long-decode.js` and remove `extendLifetime()` from `src/resumable-generations.js`. The changes do not write persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-05 Gemini long decode. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |
