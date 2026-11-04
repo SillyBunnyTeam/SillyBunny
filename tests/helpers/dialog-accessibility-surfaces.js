@@ -979,11 +979,6 @@ SURFACES.push(
         scrolls: true,
         // The buttons of a tile, card or row are flat on purpose: the label and icon carry them, the card or row bounds them, and
         // the focus ring is checked on every stop.
-        knownBugs: [{
-            check: 'clipped-labels',
-            widths: [390],
-            why: 'At 200% text the three tiles stay in one row of 112px tracks (.sbHomeTiles, public/css/sillybunny-home.css:481), so a tile title overflows its tile and the description breaks inside words.',
-        }],
         flatControls: /^button\.(?:sbHomeCardOpen|sbHomeFootButton|sbHomeRowMenu|welcomeRecentTab|recentChatOpen|pinChat|chatMenu)\[/,
         rootSelector: HOME_PANEL,
         frameSelector: `${HOME_PANEL} .sbHomeTile`,

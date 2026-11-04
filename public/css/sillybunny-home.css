@@ -1353,6 +1353,16 @@ body.big-avatars .welcomeRecent .chatMessage {
     }
 }
 
+/* The tiles follow the text size, not only the width: they stack when one of three would be narrower than 5em, which is
+   a little more than the 4.3em where the longest word of a voiced line starts to break. The limit is that width in em plus
+   the 24px of gaps and the 16px that the layout keeps beside the tiles, so no width at the normal text size reaches it. */
+@container welcome-home (max-width: calc(15em + 40px)) {
+    .sbHomeTiles {
+        grid-auto-flow: row;
+        grid-auto-rows: 1fr;
+    }
+}
+
 /* The panel of the hero is the width of the picture plus its own padding, and a band holds that at one device pixel per
    art pixel only when its padding is small. The band keeps 4px up to the container width where 16px leaves the day
    hero its fixed step, so the hero is not shrunk by a fraction across a range of common phones. That width is the
