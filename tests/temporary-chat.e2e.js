@@ -5,7 +5,8 @@ import { TC_COPY } from './helpers/copy-temporary-chat.js';
 import { makeCharacterCard } from './helpers/assistant-library.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
-import { DESKTOP, matrixViewports } from './helpers/matrix.js';
+import { DESKTOP, LANDSCAPE_PHONE, matrixViewports, PHONE } from './helpers/matrix.js';
+import { readTextContrast, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
@@ -69,8 +70,9 @@ const ALLOWED_NON_GET_PATHS = new Set([
  * @param {import('@playwright/test').Page} page Page
  * @param {object} [options] Options
  * @param {Record<string, object>} [options.extensionSettings] Extension settings to start with
+ * @param {string} [options.theme] The name of a bundled theme to copy into the settings, as if the user had picked it
  */
-async function boot(page, { extensionSettings = null } = {}) {
+async function boot(page, { extensionSettings = null, theme = null } = {}) {
     const requests = [];
     const settingsSaves = [];
     const generations = [];
@@ -105,6 +107,10 @@ async function boot(page, { extensionSettings = null } = {}) {
         applyWelcomeSettings(settings);
         settings.extension_settings = settings.extension_settings || {};
         Object.assign(settings.extension_settings, extensionSettings ?? {});
+        if (theme) {
+            const { name, ...palette } = data.themes.find(entry => entry.name === theme);
+            settings.power_user = { ...settings.power_user, ...palette, theme: name };
+        }
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     // The list is what the server really holds, and the page never writes the file a temporary chat would need.
@@ -899,6 +905,124 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
                 expect(generations.some(({ body }) => JSON.stringify(body).includes('Hello again'))).toBe(true);
                 expect(reactionsTo(generations, 'Hello again')).toEqual([]);
                 expect(writesSince(context)).toEqual([]);
+            });
+        });
+    });
+}
+
+/** Where the banner of a temporary chat has to hold at the sizes of a phone, upright and on its side. */
+const BANNER_SIZES = [
+    { label: '390x844', size: PHONE },
+    { label: '844x390', size: LANDSCAPE_PHONE },
+];
+
+/** Whether two boxes share more than half a pixel in both directions. */
+const boxesOverlap = (first, second) => Math.min(first.right, second.right) > Math.max(first.left, second.left) + 0.5
+    && Math.min(first.bottom, second.bottom) > Math.max(first.top, second.top) + 0.5;
+
+for (const { label, size } of BANNER_SIZES) {
+    test.describe(`The banner of a temporary chat at ${label}`, () => {
+        test.use({ viewport: size, isMobile: true, hasTouch: true });
+
+        test('is in the chat window, below the top bar and above the first message, and overlaps neither', async ({ page }) => {
+            await startTemporary(page, await boot(page));
+
+            const layout = await page.evaluate(() => {
+                const rect = (node) => {
+                    const { left, top, right, bottom } = node.getBoundingClientRect();
+                    return { left, top, right, bottom };
+                };
+                const banner = document.querySelector('#sb-temporary-chat-banner');
+                return {
+                    insideSheld: document.getElementById('sheld').contains(banner),
+                    viewport: { width: innerWidth, height: innerHeight },
+                    banner: rect(banner),
+                    topBar: rect(document.getElementById('top-bar')),
+                    chat: rect(document.getElementById('chat')),
+                    firstMessage: rect(document.querySelector('#chat .mes')),
+                };
+            });
+            // The chat scrolls, so only the part of the first message inside the chat is on screen.
+            layout.firstMessage = {
+                left: Math.max(layout.firstMessage.left, layout.chat.left),
+                right: Math.min(layout.firstMessage.right, layout.chat.right),
+                top: Math.max(layout.firstMessage.top, layout.chat.top),
+                bottom: Math.min(layout.firstMessage.bottom, layout.chat.bottom),
+            };
+
+            expect(layout.insideSheld, 'the banner is inside #sheld').toBe(true);
+            expect(layout.banner.left, 'inside the window, left').toBeGreaterThanOrEqual(-0.5);
+            expect(layout.banner.right, 'inside the window, right').toBeLessThanOrEqual(layout.viewport.width + 0.5);
+            expect(layout.banner.bottom - layout.banner.top, 'the banner has a height').toBeGreaterThan(0);
+            expect(boxesOverlap(layout.banner, layout.topBar), 'the banner overlaps the top bar').toBe(false);
+            expect(boxesOverlap(layout.banner, layout.firstMessage), 'the banner overlaps the first message').toBe(false);
+            expect(layout.banner.bottom, 'the chat starts where the banner ends').toBeLessThanOrEqual(layout.chat.top + 0.5);
+            expect(layout.banner.top, 'the banner is below the top bar').toBeGreaterThanOrEqual(layout.topBar.bottom - 0.5);
+        });
+
+        test('says its whole title and keeps its button inside it', async ({ page }) => {
+            await startTemporary(page, await boot(page));
+
+            const fit = await page.evaluate(() => {
+                const banner = document.querySelector('#sb-temporary-chat-banner');
+                const title = banner.querySelector(':scope > span');
+                const button = banner.querySelector(':scope > button');
+                const bannerBox = banner.getBoundingClientRect();
+                const buttonBox = button.getBoundingClientRect();
+                return {
+                    titleCut: title.scrollWidth > title.clientWidth + 1,
+                    buttonInside: buttonBox.left >= bannerBox.left - 0.5 && buttonBox.right <= bannerBox.right + 0.5,
+                };
+            });
+
+            expect(fit.titleCut, 'the title is cut by an ellipsis').toBe(false);
+            expect(fit.buttonInside, 'the button is inside the banner').toBe(true);
+        });
+
+        test('reads at 4.5:1 in Libadwaita Light, in its title and on its button', async ({ page }) => {
+            await startTemporary(page, await boot(page, { theme: 'Libadwaita Light' }));
+            expect(await page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.theme)).toBe('Libadwaita Light');
+
+            expect(await readTextContrast(page, page.locator(`${BANNER} > span`)), 'the title').toBeGreaterThanOrEqual(TEXT_CONTRAST);
+            expect(await readTextContrast(page, page.locator(`${BANNER} > button`)), 'the button').toBeGreaterThanOrEqual(TEXT_CONTRAST);
+        });
+
+        test.describe('in forced colours', () => {
+            test.use({ forcedColors: 'active' });
+
+            test('has CanvasText on Canvas for its title, and a button of ButtonText with a border', async ({ page }) => {
+                await startTemporary(page, await boot(page));
+
+                const system = await page.evaluate(() => {
+                    const probe = document.createElement('span');
+                    const read = (color, background) => {
+                        probe.style.cssText = `color: ${color}; background-color: ${background};`;
+                        document.body.append(probe);
+                        const style = getComputedStyle(probe);
+                        return { color: style.color, background: style.backgroundColor };
+                    };
+                    const system = { text: read('CanvasText', 'Canvas'), button: read('ButtonText', 'ButtonFace') };
+                    probe.remove();
+                    return system;
+                });
+                const painted = await page.evaluate(() => {
+                    const banner = document.querySelector('#sb-temporary-chat-banner');
+                    const title = getComputedStyle(banner.querySelector(':scope > span'));
+                    const button = getComputedStyle(banner.querySelector(':scope > button'));
+                    return {
+                        banner: getComputedStyle(banner).backgroundColor,
+                        title: title.color,
+                        button: { color: button.color, borderStyle: button.borderTopStyle, borderWidth: button.borderTopWidth },
+                    };
+                });
+
+                expect(painted.banner, 'the banner is on Canvas').toBe(system.text.background);
+                expect(painted.title, 'the title is CanvasText').toBe(system.text.color);
+                expect(painted.button.color, 'the button text is ButtonText').toBe(system.button.color);
+                expect(painted.button.borderStyle, 'the button has a border').not.toBe('none');
+                expect(painted.button.borderWidth, 'the border has a width').not.toBe('0px');
+                expect(await readTextContrast(page, page.locator(`${BANNER} > span`)), 'the title').toBeGreaterThanOrEqual(TEXT_CONTRAST);
+                expect(await readTextContrast(page, page.locator(`${BANNER} > button`)), 'the button text on what is behind it').toBeGreaterThanOrEqual(TEXT_CONTRAST);
             });
         });
     });

@@ -6,6 +6,7 @@ import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
+import { contrastOf, decodeClip, GLYPH_CONTRAST } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { OPENING_HOLD_MS } from '../public/scripts/sillybunny-home/greeting-art-opening.js';
 
@@ -47,9 +48,9 @@ test.beforeEach(({ baseURL }) => {
  * Starts the app on Home with the cards that the server seeded. Chats are saved for real, so a spec can read a saved
  * chat back, and the model is a stub that records what it is asked.
  * @param {import('@playwright/test').Page} page
- * @param {{ lastMode?: 'roleplay' | 'conversation' }} [options]
+ * @param {{ lastMode?: 'roleplay' | 'conversation', theme?: string }} [options] `theme` is the name of a bundled theme to copy into the settings, as if the user had picked it.
  */
-async function boot(page, { lastMode = 'roleplay' } = {}) {
+async function boot(page, { lastMode = 'roleplay', theme = null } = {}) {
     const world = { generations: [], saves: [], pictures: [] };
 
     page.on('request', (request) => {
@@ -65,6 +66,10 @@ async function boot(page, { lastMode = 'roleplay' } = {}) {
         const settings = JSON.parse(data.settings);
         applyHomeTestSettings(settings);
         settings.accountStorage = { ...withoutAssistantAccount(settings.accountStorage), WelcomePage_LastMode: lastMode };
+        if (theme) {
+            const { name, ...palette } = data.themes.find(entry => entry.name === theme);
+            settings.power_user = { ...settings.power_user, ...palette, theme: name };
+        }
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.route(/\/api\/chats\/save$/, (route) => {
@@ -823,5 +828,59 @@ test.describe('a chat that holds only the greeting, on a phone', () => {
 
         await waitUntilHoldIsOver(page);
         expect(await viewOf(page)).toMatchObject({ top: 0, max: 0, holding: false });
+    });
+});
+
+test.describe('the greeting picture in a theme and a colour mode of its own', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('in Libadwaita Light is sized by the rule, keeps its hairline, and has an edge that stands out from the chat at 3:1', async ({ page }) => {
+        await boot(page, { theme: 'Libadwaita Light' });
+        expect(await page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.theme)).toBe('Libadwaita Light');
+        await openFromHome(page, 'assistant-reisen', 'Start New Chat');
+        await expectOneFigure(page);
+
+        const m = await measure(page);
+        expect(followsTheScale(m), JSON.stringify(m)).toBe(true);
+        const hairline = await page.locator(`${FIGURES} .sbGreetingArtOpen`).evaluate((open) => {
+            const edge = getComputedStyle(open, '::after').boxShadow;
+            return { edge, text: getComputedStyle(document.body).color };
+        });
+        expect(hairline.edge, 'the hairline').toMatch(/ 0px 0px 0px 1px inset$/);
+        expect(hairline.text, 'a light theme has dark text, so the hairline is a dark one').not.toBe('rgb(255, 255, 255)');
+
+        const box = await page.locator(`${FIGURES} .sbGreetingArtOpen`).evaluate((open) => {
+            open.scrollIntoView({ block: 'center' });
+            const { left, top, width, height } = open.getBoundingClientRect();
+            return { left, top, width, height };
+        });
+        const y = Math.round(box.top + box.height / 2);
+        const left = Math.round(box.left);
+        const pixel = await decodeClip(page, { x: left - 6, y: y - 1, width: 16, height: 3 });
+        expect(contrastOf(pixel(left, y), pixel(left - 4, y)), 'the edge of the picture against the chat beside it').toBeGreaterThanOrEqual(GLYPH_CONTRAST);
+    });
+
+    test.describe('in forced colours', () => {
+        test.use({ forcedColors: 'active' });
+
+        test('the picture keeps an edge that the palette does not drop', async ({ page }) => {
+            test.fail(true, 'The edge is the inset box-shadow of .sbGreetingArtOpen::after (public/css/sillybunny-home.css:1527), which forced colours remove, and no forced-colors rule gives the picture an outline or a border.');
+            await boot(page);
+            await openFromHome(page, 'assistant-reisen', 'Start New Chat');
+            await expectOneFigure(page);
+
+            const edge = await page.locator(`${FIGURES} .sbGreetingArtOpen`).evaluate((open) => {
+                const own = getComputedStyle(open);
+                const after = getComputedStyle(open, '::after');
+                const drawn = style => ({
+                    outline: style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0,
+                    border: style.borderTopStyle !== 'none' && parseFloat(style.borderTopWidth) > 0,
+                });
+                return { own: drawn(own), after: drawn(after), shadow: after.boxShadow };
+            });
+
+            expect(edge.shadow, 'forced colours remove the shadow').toBe('none');
+            expect(Object.values(edge.own).concat(Object.values(edge.after)), 'an outline or a border of the button or its edge layer').toContain(true);
+        });
     });
 });

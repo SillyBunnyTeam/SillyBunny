@@ -117,3 +117,29 @@ export async function readChipContrast(page, chip, where) {
         return parts.map(({ part, color, floor }) => ({ where, part, ratio: contrastOf(over(color, fill), fill), floor }));
     });
 }
+
+/**
+ * The contrast of the text of an element against what is painted behind it, read from the page as drawn: the fill of the
+ * element is laid over the pixels just above and just below it, and the text colour over that.
+ * @param {import('@playwright/test').Page} page
+ * @param {import('@playwright/test').Locator} element
+ * @returns {Promise<number>} The lower of the two ratios.
+ */
+export async function readTextContrast(page, element) {
+    await element.scrollIntoViewIfNeeded();
+    const look = await element.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return { box: { left: box.left, top: box.top, width: box.width, height: box.height }, background: style.backgroundColor, color: style.color };
+    });
+    const x = Math.round(look.box.left + look.box.width / 2);
+    const above = Math.round(look.box.top) - 2;
+    const below = Math.round(look.box.top + look.box.height) + 2;
+    const pixel = await decodeClip(page, { x: x - 1, y: above - 1, width: 2, height: below - above + 2 });
+    const background = await resolveColor(page, look.background);
+    const color = await resolveColor(page, look.color);
+    return Math.min(...[pixel(x, above), pixel(x, below)].map((backdrop) => {
+        const fill = over(background, backdrop);
+        return contrastOf(over(color, fill), fill);
+    }));
+}

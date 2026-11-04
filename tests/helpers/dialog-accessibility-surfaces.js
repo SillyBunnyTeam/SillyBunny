@@ -451,6 +451,57 @@ async function pushWhatsNext(page, context) {
     await settleTransitions(page);
 }
 
+/** A chat that the user wrote in is the only temporary chat that asks before it goes, so the surface writes one message. */
+async function startWrittenTemporaryChat(page) {
+    const opened = await page.evaluate(async () => {
+        const script = await import('/script.js');
+        const { startTemporaryChat } = await import('/scripts/sillybunny-temporary-chat.js');
+        const started = await startTemporaryChat(script.this_chid);
+        if (started) await script.sendMessageAsUser('Hello there', '');
+        return started;
+    });
+    expect(opened, 'the temporary chat opened').toBe(true);
+    await expect(page.locator('#sb-temporary-chat-banner')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.SillyTavern.getContext().chat.some(message => message.is_user))).toBe(true);
+}
+
+/** Home is left with the Home button, which asks because the temporary chat holds a message that nothing saved. */
+async function openLeavePrompt(page) {
+    await startWrittenTemporaryChat(page);
+    const opener = page.locator('#sb-home-toggle');
+    // Starting the chat makes the app focus the composer, which can come after the first focus below. The window returns the
+    // focus to the control that had it when the window opened, so the focus has to stay on the opener for a moment first.
+    await expect(async () => {
+        await opener.focus();
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)));
+        await expect(opener).toBeFocused({ timeout: 500 });
+    }).toPass();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.getByRole('alertdialog'));
+    return opener;
+}
+
+const REISEN_CARD_KEY = 'assistant-reisen';
+
+/**
+ * The picture above the greeting of a bundled assistant is a button that enlarges it in a window. The chat is a new one
+ * of the real Reisen card, because only the bundled cards have a picture.
+ */
+async function openGreetingPictureViewer(page) {
+    const start = page.locator(`#chat > .welcomePanel .sbHomeCard[data-sb-home-key="${REISEN_CARD_KEY}"] .sbHomeFootButton`).first();
+    await expect(start).toBeEnabled();
+    await start.focus();
+    await pressKey(page, 'Enter');
+    const opener = page.locator('#chat .sbGreetingArt .sbGreetingArtOpen');
+    await expect(opener).toBeVisible({ timeout: HOME_READY_TIMEOUT });
+    // The chat is printed more than once while it opens, and a button that is replaced loses the focus.
+    await page.waitForTimeout(800);
+    await opener.focus();
+    await pressKey(page, 'Enter');
+    await waitForSurface(page, page.locator(`${OPEN_DIALOG} .sbGreetingArtLarge`));
+    return opener;
+}
+
 // --- Surfaces -------------------------------------------------------------------------------------------
 
 /**
@@ -879,6 +930,39 @@ SURFACES.push(
         // The tab order is the two answers, so Escape is the way out that neither updates nor keeps.
         escapes: [{ closes: true, async check() {} }],
         states: [{ name: 'alert', async enter() {} }],
+    },
+    {
+        id: 'temporary-chat-leave',
+        title: 'Keep This Chat? alert (leaving a temporary chat that holds a message)',
+        viewports: [DESKTOP, PHONE],
+        modal: true,
+        rootSelector: 'dialog[open]',
+        frameSelector: 'dialog[open] .sb-dialog',
+        isOpen: page => page.locator(OPEN_DIALOG),
+        boot: bootMiscWithChat,
+        structure: { name: 'Keep This Chat?', role: 'alertdialog' },
+        // The temporary chat starts through the module, because the Characters list has no single key to Temporary Chat.
+        open: openLeavePrompt,
+        destructive: true,
+        cancel: page => page.getByRole('alertdialog').getByRole('button', { name: 'Cancel', exact: true }),
+        async wasConfirmed(page) {
+            return (await page.locator('#sb-temporary-chat-banner').count()) === 0;
+        },
+        // Escape answers Cancel: the user stays in the temporary chat and nothing is saved or dropped.
+        escapes: [{ closes: true, async check(page) {
+            await expect(page.locator('#sb-temporary-chat-banner')).toBeVisible();
+        } }],
+        states: [{ name: 'alert', async enter() {} }],
+    },
+    {
+        ...HOME_WINDOW,
+        id: 'greeting-picture-viewer',
+        title: 'Greeting picture viewer (opened from the picture above the greeting of Reisen)',
+        boot: bootHome,
+        structure: { name: 'Reisen' },
+        open: openGreetingPictureViewer,
+        escapes: [{ closes: true, async check() {} }],
+        states: [{ name: 'picture', title: 'Reisen', async enter() {} }],
     },
     {
         // Home is the page and not a window on it, so Escape has nothing to close and a page has no response bar. Tab leaves it
