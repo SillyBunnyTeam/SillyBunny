@@ -99,6 +99,20 @@ This is the largest class by a wide margin.
 - **No test:** `b6d657e08` (#380, stale iOS service-worker cache), `fe3e25446` (#429, versioned module URLs evaluate `script.js` twice).
 - **Fixes:** #416 (restore JavaScript revalidation), #906 (boot races the restart cache-clear reload).
 
+### Route errors and crashes
+
+- **Breaks:** one request that fails outside its route's error handling ends the server, and the server stays down.
+- **Cause:** Express 4 ignores the promise that a route handler or middleware returns, so a rejected async route got no answer and reached the `unhandledRejection` handler in `src/server-main.js`. That handler and the `uncaughtException` handler exited with code 0, which the supervisor passes on as a stop. A throw in a stream, readline or timer callback still reaches `uncaughtException`, because no route is on the stack there.
+- **Files:** `src/route-errors.js`, `src/server-main.js`, `src/server-supervisor.js`.
+- **Guards:**
+  - `forwardAsyncRouteErrors()` in `src/route-errors.js` replaces `handle_request()` and `handle_error()` on the Express 4 `Layer` prototype, so a rejected promise from a handler or an error handler goes to `next()`, as the Express 5 router does. It covers every app, router and route made from the server's copy of Express, including the routers that server plugins get. It does not cover a router made from another copy of Express or code that runs outside a route. A falsy rejection reason becomes `Error('Rejected promise')`, because `next()` with a falsy value goes on to the next route. Express 5 does this itself, so the module goes with an upgrade to Express 5.
+  - `handleRouteError()` is registered after the not-found handler, before the server listens. Express calls a four-parameter middleware only for errors and skips the not-found handler for them, so both only have to come after every route, plugin routes included. It logs the error as Express's default handler did, and a client disconnect as the same warning as the process handlers. It answers with the error's own 4xx or 5xx status (400 or 413 from the body parser, 403 for a CSRF token) or 500, with only the status text as the body in every `NODE_ENV`; Express's default handler sent the stack trace outside production. It does not answer a response that has started: it destroys the socket of an unfinished one and leaves a finished one alone.
+  - The `uncaughtException` and `unhandledRejection` handlers exit with `SERVER_CRASH_EXIT_CODE` (1) after the usual cleanup, or after `SUPERVISOR_FORCE_KILL_TIMEOUT_MS` when a cleanup step fails or does not finish.
+  - `runSupervisor()` relaunches a child that reported startup (`SERVER_STARTUP_READY_MESSAGE`) and then exits with a non-zero code or a signal while no stop was requested. It waits `SUPERVISOR_CRASH_RESTART_DELAY_MS` (1 s), doubled for each crash restart within `SUPERVISOR_CRASH_WINDOW_MS` (10 minutes), and a crash after `SUPERVISOR_CRASH_RESTART_LIMIT` (5) such restarts ends the supervisor with the child's exit code. A stop request ends the wait at once. A failure before startup, exit code 0, the restart, plugin update and supervisor reload codes and a requested stop behave as before. The launchers loop only on exit code 75, and Docker's `restart: unless-stopped` restarts on any exit, so they need no change.
+- **Limit:** a crash restart loses what the server process holds in memory, such as session-auth sessions and server-side generations that were running.
+- **Tests:** `tests/route-errors.test.js`, `tests/server-supervisor-crash-restart.test.js`.
+- **Fixes:** `ae27417cc` (async route errors), `120fa5fbf` (crash restarts), `a41adfe62` (crash exit code).
+
 ### Runtimes, Termux, launchers and updates
 
 - **Breaks:** the wrong runtime or shell behaviour on one platform.

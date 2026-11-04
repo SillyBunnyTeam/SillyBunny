@@ -404,6 +404,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
 
+### `src/server-main.js` - route errors and crash exit
+| Field | Value |
+| --- | --- |
+| File | `src/server-main.js`. |
+| Area | Server lifecycle and request error handling. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/route-errors.js` for route errors; `src/server-supervisor.js` owns `SERVER_CRASH_EXIT_CODE` and the crash relaunch. |
+| Adapter shape | `forwardAsyncRouteErrors()` runs once before `express()`. The startup chain registers `handleRouteError` with `app.use()` right after `apply404Middleware`, before the server listens. The `uncaughtException` and `unhandledRejection` handlers call `exitAfterCrash()`, which starts a `SUPERVISOR_FORCE_KILL_TIMEOUT_MS` timer that exits with `SERVER_CRASH_EXIT_CODE` and runs `exitProcess(SERVER_CRASH_EXIT_CODE)`. |
+| Protecting tests | `tests/route-errors.test.js`, `tests/server-supervisor-crash-restart.test.js`. `tests/shutdown.test.js` and `tests/server-restart-monitor.test.js` read `src/server-main.js` and pass unchanged. |
+| Validation | `npm run test:unit --prefix tests -- route-errors.test.js server-supervisor-crash-restart.test.js`, `node --check src/server-main.js`, `npm run lint`, and scratch servers under Bun 1.4.4 and Node.js 24.22.1: a rejected async route answers 500 while the server keeps answering, an uncaught exception relaunches the server, and the sixth crash within 10 minutes ends the supervisor with exit code 1. |
+| Rollback path | Remove the `forwardAsyncRouteErrors()` call, the `handleRouteError` registration, `exitAfterCrash()` (the handlers call `exitProcess()` again) and the `src/route-errors.js` import, then delete `src/route-errors.js` and `tests/route-errors.test.js`. No stored data or settings change. After the rollback a rejected async route leaves its request unanswered and ends the server with exit code 0, which the supervisor does not relaunch. |
+| Last reviewed | 2026-11-05 async route errors answered and crashes relaunched. |
+| Owner | TODO(copy) |
+
 ### `src/server-startup.js` - listen retry and port-conflict diagnostics
 | Field | Value |
 | --- | --- |
