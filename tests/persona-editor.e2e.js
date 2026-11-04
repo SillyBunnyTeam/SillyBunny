@@ -144,6 +144,25 @@ test.describe('Persona editor', () => {
         for (const child of await legacy.all()) await expect(child).toBeHidden();
     });
 
+    test('the page size stays reachable after a size that fits every persona on one page', async ({ page }) => {
+        const extra = Array.from({ length: 8 }, (_, index) => `sb-page-size-${index}.png`);
+        for (const avatar of extra) sessions.get(page).createdAvatars.add(avatar);
+        await page.reload();
+        await waitForApp(page);
+        const editor = await openList(page);
+        const size = editor.getByLabel('Items per page');
+        await expect(size).toBeVisible();
+        const total = await page.evaluate(async () => (await (await fetch('/api/avatars/get', { method: 'POST', headers: (await import('./script.js')).getRequestHeaders() })).json()).length);
+
+        await size.selectOption('1000');
+        await expect(editor.getByRole('listitem')).toHaveCount(total);
+        await expect(size).toBeVisible();
+        await expect(editor.locator('.sb-list-pagination__next')).toBeHidden();
+
+        await size.selectOption('5');
+        await expect(editor.getByRole('listitem')).toHaveCount(5);
+    });
+
     test('Cancel reverts detached edits and Save preserves unknown descriptor keys in the settings payload', async ({ page }) => {
         const persona = await currentPersona(page);
         const unknown = { nested: ['extension-owned', { version: 7 }], enabled: true };

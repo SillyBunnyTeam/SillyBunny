@@ -840,6 +840,29 @@ describe('Persona editor shell', () => {
         expect(rowIds()).toHaveLength(10);
     });
 
+    test('the size control stays after a size that fits every persona on one page, and hides within the smallest size', async () => {
+        await mount(7);
+        const nav = container.querySelector('.sb-list-pagination');
+        const size = container.querySelector('.sb-list-pagination__size');
+        expect(nav.hidden).toBe(false);
+
+        size.value = '10';
+        size.dispatchEvent(new Event('change', { bubbles: true }));
+        await settle();
+        expect(rowIds()).toHaveLength(7);
+        expect(nav.hidden).toBe(false);
+
+        size.value = '5';
+        size.dispatchEvent(new Event('change', { bubbles: true }));
+        await settle();
+        expect(rowIds()).toHaveLength(5);
+    });
+
+    test('the size control is hidden while the personas fit the smallest page size', async () => {
+        await mount(5);
+        expect(container.querySelector('.sb-list-pagination').hidden).toBe(true);
+    });
+
     test('settings is first in the list menu and toggles back to its trigger', async () => {
         await mount();
         const trigger = container.querySelector('.sb-persona-list-menu');

@@ -116,6 +116,39 @@ for (const width of [1440, 390]) {
     });
 }
 
+for (const width of [1440, 390]) {
+    test(`${width}px the page size stays reachable when every entry fits on one page`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.evaluate(async name => {
+            const { loadWorldInfo, saveWorldInfo } = await import('./scripts/world-info.js');
+            const { accountStorage } = await import('./scripts/util/AccountStorage.js');
+            accountStorage.setItem('WI_PerPage', '10');
+            const data = await loadWorldInfo(name);
+            for (let uid = 3; uid < 12; uid++) data.entries[uid] = { ...data.entries[0], uid, comment: `Extra ${uid}`, displayIndex: uid };
+            await saveWorldInfo(name, data, true);
+        }, BOOK);
+        const editor = await openBook(page, 10);
+        const size = editor.getByLabel('Items per page');
+        await expect(size).toBeVisible();
+
+        await size.selectOption('25');
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(12);
+        await expect(size).toBeVisible();
+        await expect(editor.locator('.sb-list-pagination__next')).toBeHidden();
+        await page.screenshot({ path: testInfo.outputPath(`page-size-${width}.png`) });
+
+        await size.selectOption('10');
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(10);
+        await expect(editor.locator('.sb-list-pagination__status')).toHaveText('Page 1 of 2');
+    });
+}
+
+test('the page size control stays hidden while the book has no more entries than the smallest page size', async ({ page }) => {
+    const editor = await openBook(page, 3);
+    await expect(editor.locator('.sb-list-pagination')).toBeHidden();
+});
+
 test.describe('World Info editor', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 

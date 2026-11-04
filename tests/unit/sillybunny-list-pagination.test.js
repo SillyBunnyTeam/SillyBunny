@@ -219,12 +219,37 @@ describe('createListPagination', () => {
         expect(pagination.slice(Array.from({ length: 10 }, (_, index) => index))).toContain(6);
     });
 
-    test('applies the simple hidden rule against the current page size', () => {
+    test('hides only while the total is within the smallest page size, whatever size is current', () => {
         const pagination = makePagination({ readPageSize: () => 4 });
+        for (const total of [0, 1, 2]) {
+            pagination.setTotal(total);
+            expect(pagination.element.hidden).toBe(true);
+        }
         pagination.setTotal(3);
-        expect(pagination.element.hidden).toBe(true);
+        expect(pagination.element.hidden).toBe(false);
+        expect(pagination.element.querySelector('select').hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(true);
         pagination.setTotal(5);
         expect(pagination.element.hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(false);
+    });
+
+    test('leaves the size control in place after a size that fits everything on one page', async () => {
+        const pagination = makePagination();
+        pagination.setTotal(3);
+        const select = pagination.element.querySelector('select');
+        select.value = '4';
+        select.dispatchEvent(new Event('change'));
+        await Promise.resolve();
+
+        expect(pagination.pages).toBe(1);
+        expect(pagination.element.hidden).toBe(false);
+        expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(true);
+        select.value = '2';
+        select.dispatchEvent(new Event('change'));
+        await Promise.resolve();
+        expect(pagination.pages).toBe(2);
+        expect(pagination.element.querySelector('.sb-list-pagination__next').hidden).toBe(false);
     });
 
     test('guards showIndex, then uses the current page size for pageOf and slice', async () => {

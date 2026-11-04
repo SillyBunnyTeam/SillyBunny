@@ -11,7 +11,8 @@ import { t } from '../i18n.js';
  * @param {(size: number) => void} [options.writePageSize]
  * @param {(state: { page: number, pageSize: number, offset: number }) => void} [options.onChange]
  * @param {(() => boolean|Promise<boolean>)|null} [options.guard=null]
- * @param {boolean} [options.keepSizeVisible=false] Keeps the size control visible for a nonempty single page.
+ * @param {boolean} [options.keepSizeVisible=false] Keeps the size control visible for any nonempty list, even one that
+ *   is no longer than the smallest page size. Without it the control hides at that length.
  * @returns {{ element: HTMLElement, setTotal: (total: number) => void,
  *   goTo: (page: number, options?: { isCurrent?: () => boolean }) => Promise<void>, next: () => Promise<void>, prev: () => Promise<void>,
  *   pageOf: (index: number) => number, showIndex: (index: number) => Promise<void>,
@@ -74,12 +75,17 @@ export function createListPagination({
     const offset = () => (page - 1) * pageSize;
     const clampPage = value => Math.min(pageCount(), Math.max(1, Math.trunc(value)));
 
+    // The smallest page size is the shortest list that can ever need pages. A list longer than that keeps the size
+    // control even when the chosen size fits it on one page, because the control is the only way to undo the choice.
+    const smallestSize = Math.min(...sizes);
+
     function render() {
-        element.hidden = keepSizeVisible ? total === 0 : total <= pageSize;
-        if (keepSizeVisible) {
-            previous.hidden = total <= pageSize;
-            following.hidden = total <= pageSize;
-            status.hidden = total <= pageSize;
+        element.hidden = total <= (keepSizeVisible ? 0 : smallestSize);
+        if (keepSizeVisible || !element.hidden) {
+            const isSinglePage = total <= pageSize;
+            previous.hidden = isSinglePage;
+            following.hidden = isSinglePage;
+            status.hidden = isSinglePage;
         }
         previous.disabled = page === 1;
         following.disabled = page === pageCount();
