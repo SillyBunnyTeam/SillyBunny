@@ -21,6 +21,7 @@ import { getIpAddress, retryAfter } from '../express-common.js';
 
 // SillyBunny divergence: private user export/import keeps fork-owned account data and metadata compatible across releases.
 const RESET_POINTS = getConfigValue('rateLimiting.accountsResetMaxAttempts', 5, 'number');
+const PASSWORD_POINTS = getConfigValue('rateLimiting.accountsLoginMaxAttempts', 5, 'number');
 const PREFER_REAL_IP_HEADER = getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
 const RESET_CACHE = new Cache(5 * 60 * 1000);
 const IMPORTABLE_ROOT_FILES = [SETTINGS_FILE, SECRETS_FILE, ENTITY_DATE_ADDED_FILE, ENTITY_LAST_CHAT_FILE];
@@ -50,6 +51,29 @@ const resetLimiter = new RateLimiterMemory({
     points: RESET_POINTS > 0 ? RESET_POINTS : Number.MAX_SAFE_INTEGER,
     duration: 300,
 });
+// SillyBunny: these routes compare the login password, so they count wrong passwords with the login limit, per account.
+const passwordLimiter = new RateLimiterMemory({
+    points: PASSWORD_POINTS > 0 ? PASSWORD_POINTS : Number.MAX_SAFE_INTEGER,
+    duration: 60,
+});
+
+/**
+ * Compares a password with the stored hash of an account and counts each comparison against the account.
+ * A correct password clears the count.
+ * @param {import('../users.js').User} user Account to check
+ * @param {string} password Password to compare
+ * @returns {Promise<boolean>} Whether the password matches
+ * @throws {RateLimiterRes} When the account has no attempts left, before the password is compared
+ */
+async function checkAccountPassword(user, password) {
+    await passwordLimiter.consume(user.handle);
+    if (user.password !== getPasswordHash(password, user.salt)) {
+        return false;
+    }
+
+    await passwordLimiter.delete(user.handle);
+    return true;
+}
 
 function isImportableRelativePath(relativePath) {
     const normalizedPath = normalizeZipEntryPath(relativePath);
@@ -792,7 +816,8 @@ router.post('/change-password', async (request, response) => {
                 return response.status(400).json({ error: 'Missing required fields' });
             }
 
-            if (user.password !== getPasswordHash(request.body.oldPassword, user.salt)) {
+            const passwordMatches = await checkAccountPassword(user, request.body.oldPassword);
+            if (!passwordMatches) {
                 console.error('Change password failed: Incorrect password');
                 return response.status(403).json({ error: 'Incorrect password' });
             }
@@ -816,6 +841,11 @@ router.post('/change-password', async (request, response) => {
 
         return response.sendStatus(204);
     } catch (error) {
+        if (error instanceof RateLimiterRes) {
+            console.error('Change password failed: Too many wrong passwords for', request.body.handle);
+            return retryAfter(response, error).status(429).send({ error: 'Too many attempts. Try again later or contact your admin.' });
+        }
+
         console.error(error);
         return response.sendStatus(500);
     }
@@ -930,7 +960,8 @@ router.post('/reset-settings', async (request, response) => {
                 return response.status(400).json({ error: 'Missing required fields' });
             }
 
-            if (request.user.profile.password !== getPasswordHash(password, request.user.profile.salt)) {
+            const passwordMatches = await checkAccountPassword(request.user.profile, password);
+            if (!passwordMatches) {
                 console.warn('Reset settings failed: Incorrect password');
                 return response.status(403).json({ error: 'Incorrect password' });
             }
@@ -942,6 +973,11 @@ router.post('/reset-settings', async (request, response) => {
 
         return response.sendStatus(204);
     } catch (error) {
+        if (error instanceof RateLimiterRes) {
+            console.error('Reset settings failed: Too many wrong passwords for', request.user.profile.handle);
+            return retryAfter(response, error).status(429).send({ error: 'Too many attempts. Try again later or contact your admin.' });
+        }
+
         console.error('Reset settings failed', error);
         return response.sendStatus(500);
     }
@@ -1013,16 +1049,20 @@ router.post('/reset-step2', async (request, response) => {
             return response.status(400).json({ error: 'Missing required fields' });
         }
 
-        if (request.user.profile.password && request.user.profile.password !== getPasswordHash(request.body.password, request.user.profile.salt)) {
-            console.warn('Reset step 2 failed: Incorrect password');
-            return response.status(400).json({ error: 'Incorrect password' });
-        }
-
         const ip = getIpAddress(request, PREFER_REAL_IP_HEADER);
         const rateLimit = await resetLimiter.get(ip);
 
         if (rateLimit !== null && rateLimit.consumedPoints > resetLimiter.points) {
             throw rateLimit;
+        }
+
+        // SillyBunny: both limits come before the password check, so a locked client gets the same answer for every password.
+        if (request.user.profile.password) {
+            const passwordMatches = await checkAccountPassword(request.user.profile, request.body.password);
+            if (!passwordMatches) {
+                console.warn('Reset step 2 failed: Incorrect password');
+                return response.status(400).json({ error: 'Incorrect password' });
+            }
         }
 
         const code = RESET_CACHE.get(request.user.profile.handle);
