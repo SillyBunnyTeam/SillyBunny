@@ -177,6 +177,24 @@ test.describe('STscript parser fixes', () => {
         expect.soft(await nameAt(page, '/stp-plain key="{{user}}"', 20)).toEqual({ name: 'user', start: 18 });
     });
 
+    test('in lenient parsing an unclosed quote leaves the pipe and the closure end to the command', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/stp-plain "abc | /stp-plain x', verify: false },
+            { script: '/stp-plain {: /stp-plain "abc :} | /stp-plain y', verify: false },
+        ]);
+
+        expect.soft(results[0]).toEqual({ tree: { executors: [{ name: 'stp-plain', unnamed: ['abc '] }, { name: 'stp-plain', unnamed: ['x'] }] } });
+        expect.soft(results[1]).toEqual({
+            tree: {
+                executors: [
+                    { name: 'stp-plain', unnamed: [{ closure: { rawText: ' /stp-plain "abc ', executors: [{ name: 'stp-plain', unnamed: ['abc '] }] } }] },
+                    { name: 'stp-plain', unnamed: ['y'] },
+                ],
+            },
+        });
+        expect.soft(await nameAt(page, '/stp-plain "abc | /stp-pl', 25)).toEqual({ name: 'stp-pl', start: 19 });
+    });
+
     test('a closure among split values keeps the quotes in the rest', async ({ page }) => {
         const results = await parse(page, [
             { script: '/stp-split2 a {: /stp-plain y :} "b c" d' },

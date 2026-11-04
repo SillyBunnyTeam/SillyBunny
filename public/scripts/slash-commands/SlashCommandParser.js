@@ -1330,7 +1330,8 @@ export class SlashCommandParser {
         while (!this.testQuotedValueEnd()) value += this.take(); // take all chars until closing quote
         // SillyBunny: the value ends before the closing quote, so macro positions are counted back from there.
         const valueEnd = this.index;
-        this.take(); // discard closing quote
+        // SillyBunny: in lenient mode the value can end at a pipe or a closure end, and that symbol belongs to the command, so only a quote is discarded.
+        if (this.testSymbol('"')) this.take(); // discard closing quote
         if (this.flags[PARSER_FLAG.REPLACE_GETVAR]) {
             value = this.replaceGetvar(value);
         }
