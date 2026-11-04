@@ -445,22 +445,27 @@ async function multiQueryCollection(directories, collectionIds, source, sourceSe
  * @returns {Promise<any>} Promise
  */
 async function regenerateCorruptedIndexErrorHandler(req, res, error) {
-    if (error instanceof SyntaxError && !req.query.regenerated) {
-        const collectionId = String(req.body.collectionId);
-        const source = String(req.body.source) || 'transformers';
-        const sourceSettings = getSourceSettings(source, req);
+    // SillyBunny: routes return this promise from their catch blocks, so an error from the regeneration must not leave this function.
+    try {
+        if (error instanceof SyntaxError && !req.query.regenerated) {
+            const collectionId = String(req.body.collectionId);
+            const source = String(req.body.source) || 'transformers';
+            const sourceSettings = getSourceSettings(source, req);
 
-        if (collectionId && source) {
-            const index = await getIndex(req.user.directories, collectionId, source, sourceSettings);
-            const exists = await index.isIndexCreated();
+            if (collectionId && source) {
+                const index = await getIndex(req.user.directories, collectionId, source, sourceSettings);
+                const exists = await index.isIndexCreated();
 
-            if (exists) {
-                const path = index.folderPath;
-                console.warn(`Corrupted index detected at ${path}, regenerating...`);
-                await index.deleteIndex();
-                return res.redirect(307, req.originalUrl + '?regenerated=true');
+                if (exists) {
+                    const path = index.folderPath;
+                    console.warn(`Corrupted index detected at ${path}, regenerating...`);
+                    await index.deleteIndex();
+                    return res.redirect(307, req.originalUrl + '?regenerated=true');
+                }
             }
         }
+    } catch (regenerateError) {
+        console.error('Could not regenerate the vector index.', regenerateError);
     }
 
     console.error(error);

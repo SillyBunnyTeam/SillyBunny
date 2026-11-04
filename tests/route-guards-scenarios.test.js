@@ -8,11 +8,20 @@ import { OUTSIDE_FILE_TEXT, prepareEnvironment, USER_HANDLE } from './util/hosti
 // A request that the route never answers fails at this deadline instead of at the test timeout.
 const REQUEST_TIMEOUT_MS = 3_000;
 
+// The real module loads the transformers library when it is imported, and no request here uses it.
+jest.unstable_mockModule('../src/vectors/embedding.js', () => ({
+    getTransformersVector: async () => [0.5, 0.5],
+    getTransformersBatchVector: async texts => texts.map(() => [0.5, 0.5]),
+}));
+
 const ROUTERS = {
     '/api/files': () => import('../src/endpoints/files.js'),
     '/api/chats': () => import('../src/endpoints/chats.js'),
     '/api/groups': () => import('../src/endpoints/groups.js'),
+    '/api/vector': () => import('../src/endpoints/vectors.js'),
 };
+
+const VECTOR_QUERY = { searchText: 'q', source: 'webllm', model: 'model', embeddings: { q: [0.5, 0.5] } };
 
 const CHAT_HEADER = JSON.stringify({ user_name: 'user', character_name: 'seed', create_date: '2026-01-01', chat_metadata: {} });
 const chatMessage = mes => JSON.stringify({ name: 'seed', mes, is_user: false, send_date: '2026-01-01' });
@@ -278,5 +287,15 @@ describe('group delete with an id that is not a string or a number', () => {
 
         expect(result.status).toBe(400);
         expect(fs.existsSync(groupFile)).toBe(true);
+    });
+});
+
+describe('vector index regeneration errors', () => {
+    test('POST /api/vector/query-multi answers 500 when a broken index meets a collectionId that cannot be converted to a string', async () => {
+        write(path.join(directories.vectors, 'webllm', 'broken', 'model', 'index.json'), '{"items":');
+
+        const result = await post('/api/vector/query-multi', { ...VECTOR_QUERY, collectionIds: ['broken'], collectionId: { toString: 1 } });
+
+        expect(result.status).toBe(500);
     });
 });
