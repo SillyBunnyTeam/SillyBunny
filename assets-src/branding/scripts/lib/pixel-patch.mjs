@@ -70,6 +70,19 @@ export function applyPixelPatch(raster, ops) {
     return { raster: fixed, changed };
 }
 
+/** How many distinct pixels the edits cover, however often they overlap. */
+export function listedPixels(ops) {
+    const covered = new Set();
+    for (const { x, y, width, height } of ops) {
+        for (let row = y; row < y + height; row++) {
+            for (let column = x; column < x + width; column++) {
+                covered.add(row * 65536 + column);
+            }
+        }
+    }
+    return covered.size;
+}
+
 /** Hex colours the patch paints that the palette does not contain. Transparent is never off-palette. */
 export function offPaletteColours(ops, palette) {
     const known = new Set(palette.map(formatHex));
