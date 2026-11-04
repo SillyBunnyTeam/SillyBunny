@@ -10,6 +10,25 @@ function summarizeError(result) {
     return { type: result.error?.type, message: result.error?.message, index: result.error?.index };
 }
 
+function executeWithErrorToasts(page, script) {
+    return page.evaluate(async script => {
+        const { executeSlashCommandsWithOptions } = await import('/scripts/slash-commands.js');
+        const errorTitles = [];
+        const showError = window.toastr.error;
+        window.toastr.error = (message, title) => {
+            errorTitles.push(title);
+        };
+        try {
+            const result = await executeSlashCommandsWithOptions(script);
+            return { pipe: result.pipe ?? null, errorTitles };
+        } catch (error) {
+            return { thrown: `${error.name}: ${error.message}`, errorTitles };
+        } finally {
+            window.toastr.error = showError;
+        }
+    }, script);
+}
+
 test.describe('STscript parser fixes', () => {
     test.beforeEach(async ({ page }) => {
         await testSetup.awaitST({ page });
@@ -46,5 +65,12 @@ test.describe('STscript parser fixes', () => {
         for (const result of results) {
             expect.soft(result).toEqual({ tree: { executors: [{ name: 'let', named: [{ name: 'key', value: null }], unnamed: ['x'] }] } });
         }
+    });
+
+    test('a split argument that starts with extra whitespace raises a parser error with its position', async ({ page }) => {
+        const [result] = await parse(page, [{ script: '/parser-flag  STRICT_ESCAPING' }]);
+
+        expect.soft(summarizeError(result)).toEqual({ type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 13.', index: 13 });
+        expect.soft(await executeWithErrorToasts(page, '/parser-flag  STRICT_ESCAPING')).toEqual({ pipe: null, errorTitles: ['SlashCommandParserError'] });
     });
 });

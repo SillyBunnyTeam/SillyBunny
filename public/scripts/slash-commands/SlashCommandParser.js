@@ -1236,7 +1236,8 @@ export class SlashCommandParser {
                     listQuoted.push(false);
                     assignment = new SlashCommandUnnamedArgumentAssignment();
                 } else {
-                    throw new SlashCommandParserError(`Unexpected end of unnamed argument at index ${this.userIndex}.`);
+                    // SillyBunny: a parser error needs the text and the index to show where it is.
+                    throw new SlashCommandParserError(`Unexpected end of unnamed argument at index ${this.userIndex}.`, this.text, this.index);
                 }
                 this.discardWhitespace();
             } else {
