@@ -1,4 +1,5 @@
 import { readDialogAside, writeDialogAside } from '../sillybunny-editor/dialog-aside.js';
+import { attachArtMotion } from './art-player.js';
 import { getPixelArt } from './art-sources.js';
 import {
     alignToDevicePixels,
@@ -135,7 +136,7 @@ export function planArtMode({ contentWidth, availableHeight, panelWidth, panelHe
  * @typedef {object} ArtController
  * @property {HTMLElement} panel
  * @property {string[]} ids
- * @property {{ id: string, figure: HTMLElement }[]} figures
+ * @property {{ id: string, figure: HTMLElement, motion: { stop: () => void, refresh: () => void } | null }[]} figures
  * @property {HTMLElement | null} host The element that holds the panel as a child: a window body, a Help page, or the Home empty state.
  * @property {boolean} seen Whether the panel has been in the document.
  * @property {boolean} alignQueued
@@ -288,8 +289,12 @@ function widenForPanel({ host, surface, panelWidth, asideBefore, contentBefore, 
 }
 
 function setFigures(controller, ids) {
+    controller.figures.forEach(({ motion }) => motion?.stop());
     controller.ids = ids;
-    controller.figures = ids.map(id => ({ id, figure: createPixelFigure(id) }));
+    controller.figures = ids.map((id) => {
+        const figure = createPixelFigure(id);
+        return { id, figure, motion: attachArtMotion(figure, id) };
+    });
     controller.panel.replaceChildren(...controller.figures.map(({ figure }) => figure));
 }
 
@@ -321,6 +326,8 @@ function applyMode(controller, { mode, size, scale, fixed, rows, metrics }) {
     if (mode !== 'hidden') {
         sizeFigures(controller, scale, rows);
         panel.dataset.sbArtFit = describeFit(scale, fixed);
+        // Whether the motion can play depends on the fit, which the line above has just set.
+        controller.figures.forEach(({ motion }) => motion?.refresh());
     }
     if (!host) {
         return;
@@ -406,6 +413,7 @@ function measureHero(controller) {
 function applyHero(controller, { fit, fixed }) {
     sizePixelFigure(controller.figures[0].figure, fit);
     controller.panel.dataset.sbArtFit = describeFit(fit, fixed);
+    controller.figures[0].motion?.refresh();
 }
 
 /**
@@ -561,6 +569,7 @@ function run() {
     const plans = [];
     for (const controller of [...controllers]) {
         if (controller.seen && !controller.panel.isConnected) {
+            controller.figures.forEach(({ motion }) => motion?.stop());
             stop(controller);
             continue;
         }
@@ -698,7 +707,7 @@ export function createHeroArt(id) {
     // Sized for the fixed step before it is in the document, and fitted to its band as soon as the band has a width.
     sizePixelFigure(figure, readFixedScale());
     /** @type {ArtController} */
-    const controller = { kind: 'hero', panel, ids: [id], figures: [{ id, figure }], host: null, seen: false, alignQueued: false };
+    const controller = { kind: 'hero', panel, ids: [id], figures: [{ id, figure, motion: attachArtMotion(figure, id) }], host: null, seen: false, alignQueued: false };
     register(controller);
     return panel;
 }

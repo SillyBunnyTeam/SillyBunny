@@ -128,12 +128,35 @@ export function sizePixelFigure(figure, { step, ratio, rows }) {
     const art = getPixelArt(figure.dataset.sbArtPlaceholder);
     const image = figure.firstElementChild;
     const shownRows = rows ?? art.height;
+    // The player of a moving picture reads the size of an art pixel from here when it makes the layers.
+    figure.style.setProperty('--sb-art-unit', `${pixelCssSize(1, step, ratio)}px`);
     figure.style.width = `${pixelCssSize(art.width, step, ratio)}px`;
     figure.style.height = `${pixelCssSize(shownRows, step, ratio)}px`;
     if (image instanceof HTMLElement) {
         image.style.width = `${pixelCssSize(art.width, step, ratio)}px`;
         image.style.height = `${pixelCssSize(art.height, step, ratio)}px`;
     }
+    for (const layer of figure.querySelectorAll('[data-sb-art-box]')) {
+        placePixelLayer(/** @type {HTMLElement} */ (layer), pixelCssSize(1, step, ratio));
+    }
+}
+
+/**
+ * Puts a picture that lies over the still of a figure at its place. Its box is in art pixels, in `data-sb-art-box`
+ * as `left top width height`, and it is drawn at the same size of an art pixel as the still, so a layer lines up with
+ * the still pixel for pixel at every step.
+ * @param {HTMLElement} layer
+ * @param {number} unit The CSS size of one art pixel.
+ */
+export function placePixelLayer(layer, unit) {
+    const [left, top, width, height] = layer.dataset.sbArtBox.split(' ').map(Number);
+    Object.assign(layer.style, {
+        position: 'absolute',
+        left: `${left * unit}px`,
+        top: `${top * unit}px`,
+        width: `${width * unit}px`,
+        height: `${height * unit}px`,
+    });
 }
 
 /**

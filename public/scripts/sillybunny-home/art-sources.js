@@ -27,6 +27,21 @@ const PIXEL_ART = Object.freeze({
 });
 
 /**
+ * The pixel art that moves, with the description of its motion that `breath-frames.mjs` writes beside the pictures
+ * (`<scene>--breath.json`). The description names the pictures of each figure, so nothing else is listed here.
+ * @type {Readonly<Record<string, string>>}
+ */
+const PIXEL_MOTION = Object.freeze({});
+
+/**
+ * @param {string} file A file name in the picture folder.
+ * @returns {string}
+ */
+export function pictureUrl(file) {
+    return `${ART_BASE}${file}?v=${ART_VERSION}`;
+}
+
+/**
  * @param {string} id For example `gs-reisen`.
  * @returns {{ id: string, url: string, width: number, height: number }}
  */
@@ -35,7 +50,15 @@ export function getPixelArt(id) {
     if (!art) {
         throw new Error(`There is no pixel art named "${id}". Add it to PIXEL_ART in art-sources.js and to the export spec.`);
     }
-    return { id, url: `${ART_BASE}${art.file}?v=${ART_VERSION}`, width: art.width, height: art.height };
+    return { id, url: pictureUrl(art.file), width: art.width, height: art.height };
+}
+
+/**
+ * @param {string} id For example `hero-duo`.
+ * @returns {string | null} The file name of the description of its motion, or null when it stands still.
+ */
+export function getPixelMotionFile(id) {
+    return PIXEL_MOTION[id] ?? null;
 }
 
 /** @returns {string[]} */
