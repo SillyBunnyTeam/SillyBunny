@@ -989,6 +989,8 @@ export class SlashCommandParser {
         cmd.unnamedArgumentList = this.parseUnnamedArgument(true);
         const [flag, state] = cmd.unnamedArgumentList ?? [null, null];
         cmd.endUnnamedArgs = this.index;
+        // SillyBunny: without a flag name there is no flag to set, so the command is malformed.
+        if (!flag) throw new SlashCommandParserError(`Unexpected end of unnamed argument at index ${this.userIndex}.`, this.text, this.index);
         if (Object.keys(PARSER_FLAG).includes(flag.value.toString())) {
             this.flags[PARSER_FLAG[flag.value.toString()]] = isTrueBoolean(state?.value.toString() ?? 'on');
         }

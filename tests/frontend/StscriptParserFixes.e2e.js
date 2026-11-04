@@ -96,4 +96,20 @@ test.describe('STscript parser fixes', () => {
         });
         expect.soft(results[4]).toEqual({ tree: { executors: [{ name: 'stp-split', unnamed: ['|', 'a'], flags: ['STRICT_ESCAPING'] }] } });
     });
+
+    test('/parser-flag without a flag name raises a parser error', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/parser-flag ' },
+            { script: '/parser-flag ', verify: false },
+            { script: '/parser-flag | /stp-plain ok' },
+            { script: '/stp-plain {: /parser-flag :}' },
+        ]);
+
+        expect.soft(results.map(summarizeError)).toEqual([
+            { type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 13.', index: 13 },
+            { type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 13.', index: 13 },
+            { type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 13.', index: 13 },
+            { type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 27.', index: 27 },
+        ]);
+    });
 });
