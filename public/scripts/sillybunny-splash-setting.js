@@ -1,5 +1,4 @@
 import { createComboRow } from './sillybunny-editor/rows.js';
-import { COPY_PLACEHOLDER, markRowSubtitle } from './sillybunny-home/copy.js';
 
 // English only, like the other labels of the Interface drawer.
 const OPTION_LABELS = Object.freeze({
@@ -20,14 +19,13 @@ const OPTION_LABELS = Object.freeze({
 export function createSplashCharacterRow(preferences) {
     const row = createComboRow({
         label: 'Splash Character',
-        subtitle: COPY_PLACEHOLDER,
+        subtitle: 'Choose who appears while SillyBunny starts.',
         field: 'splash-character',
         options: Object.entries(OPTION_LABELS).map(([value, label]) => ({ value, label })),
         value: preferences.getCharacter(),
         wide: true,
         onChange: choice => preferences.setCharacter(choice),
     });
-    markRowSubtitle(row, 'SET-SPLASH-SUB');
     // Borrows the Frontend Icon row's column sizing and select look: the blocking stylesheets have no room
     // for rules of their own.
     row.row.classList.add('sb-interface-settings-group', 'sb-frontend-icon-group');

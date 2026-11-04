@@ -1824,7 +1824,7 @@ export function buildSettingsDrawerHtml() {
                         <input id="sb_conv_lorebooks_enabled" type="checkbox" />
                         <span>Use Character Lorebooks <span class="sb-conversation-setting-scope">Global</span></span>
                     </label>
-                    <p class="sb-conversation-field-hint" data-sb-copy-placeholder="true">TODO(copy)</p>
+                    <p class="sb-conversation-field-hint">When off, Conversation replies use no lorebooks at all, including the override below.</p>
                 </div>
                 <div class="sb-conversation-field-stack">
                     <label for="sb_conv_lorebook_override">Lorebook Override</label>

@@ -2,6 +2,7 @@
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use synchronous DOM assertions. */
 import { describe, expect, test } from '@jest/globals';
 
+import { SETTINGS_COPY } from '../helpers/copy-settings.js';
 import { createSplashCharacterRow } from '../../public/scripts/sillybunny-splash-setting.js';
 import { initSplashPreferences } from '../../public/scripts/sillybunny-splash-preferences.js';
 
@@ -50,12 +51,11 @@ describe('the splash character row', () => {
         ]);
     });
 
-    test('has a subtitle that is a copy placeholder in its own slot', () => {
+    test('has the written subtitle, with no placeholder mark', () => {
         const subtitle = create().row.row.querySelector('.ds-row-subtitle');
 
-        expect(subtitle?.textContent).toBe('TODO(copy)');
-        expect(subtitle?.getAttribute('data-sb-copy-placeholder')).toBe('true');
-        expect(subtitle?.getAttribute('data-sb-copy-slot')).toBe('SET-SPLASH-SUB');
+        expect(subtitle?.textContent).toBe(SETTINGS_COPY.splashSubtitle);
+        expect(subtitle?.hasAttribute('data-sb-copy-placeholder')).toBe(false);
     });
 
     test('shows Random until a character is chosen, and the stored one after', () => {

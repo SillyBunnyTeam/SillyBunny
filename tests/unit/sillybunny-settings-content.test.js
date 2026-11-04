@@ -5,6 +5,7 @@ import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SETTINGS_COPY } from '../helpers/copy-settings.js';
 import { SB_DATA_SECURITY_CONTAINER_ID, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -63,13 +64,20 @@ describe('Data & Security settings split', () => {
         expect(rows.map(row => row.id)).toEqual(['user_backup_controls', 'settings_snapshots_controls']);
     });
 
-    test('Export marks its description as a copy placeholder', () => {
+    test('Export has its written description, translated like its siblings', () => {
         const exportCategory = splitAuthoredSettings().dataSecurity.querySelector('[data-sb-category="export"]');
         expect(exportCategory.querySelector('.sb-settings-category-title').dataset.i18n).toBe('Export');
         const description = exportCategory.querySelector('.sb-settings-category-heading > small');
-        expect(description.textContent).toBe('TODO(copy)');
-        expect(description.dataset.sbCopyPlaceholder).toBe('true');
-        expect(description.dataset.i18n).toBeUndefined();
+        expect(description.textContent).toBe(SETTINGS_COPY.exportDescription);
+        expect(description.dataset.i18n).toBe(SETTINGS_COPY.exportDescription);
+        expect(description.hasAttribute('data-sb-copy-placeholder')).toBe(false);
+    });
+
+    test('Usage Stats has its written subtitle with a translation key of its own', () => {
+        const subtitle = splitAuthoredSettings().dataSecurity.querySelector('#user_stats_controls .ds-row-subtitle');
+        expect(subtitle.textContent).toBe(SETTINGS_COPY.usageStatsSubtitle);
+        expect(subtitle.dataset.i18n).toBe(SETTINGS_COPY.usageStatsSubtitle);
+        expect(subtitle.hasAttribute('data-sb-copy-placeholder')).toBe(false);
     });
 
     test.each([

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { SETTINGS_COPY } from './helpers/copy-settings.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
@@ -371,9 +372,8 @@ for (const { name, options } of VIEWPORTS) {
             const select = row.getByRole('combobox', { name: 'Splash Character' });
             await expect(select.locator('option')).toHaveText(['Random', 'Reisen', 'Tewi', 'Both']);
             await expect(select).toHaveValue('random');
-            await expect(row.locator('.ds-row-subtitle')).toHaveText('TODO(copy)');
-            await expect(row.locator('.ds-row-subtitle')).toHaveAttribute('data-sb-copy-placeholder', 'true');
-            await expect(row.locator('.ds-row-subtitle')).toHaveAttribute('data-sb-copy-slot', 'SET-SPLASH-SUB');
+            await expect(row.locator('.ds-row-subtitle')).toHaveText(SETTINGS_COPY.splashSubtitle);
+            await expect(row.locator('.ds-row-subtitle')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
             const fitsBeside = await row.evaluate(node => node.getBoundingClientRect().right <= document.documentElement.clientWidth + 1);
             expect(fitsBeside).toBe(true);
         });
