@@ -649,8 +649,9 @@ async function viewSettingsSnapshots() {
     // SillyBunny: snapshots use the shared Window body and preserve the existing action/list nodes.
     // SillyBunny: bind before framing moves the header action so the live handler is never lost.
     template.find('.makeSnapshotButton').on('click', () => makeSnapshot(renderSnapshots));
+    // SillyBunny: load the list first, so that the Window opens at its final height.
+    await renderSnapshots();
     callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, ...snapshotsOptions(template) });
-    renderSnapshots();
 }
 
 /**
@@ -911,8 +912,9 @@ async function openAdminPanel() {
     });
 
     // SillyBunny: the admin view is a Window; its new-user inputs retain their source identities.
+    // SillyBunny: load the list first, so that the Window opens at its final height. A failed load still opens it.
+    await renderUsers().catch(error => console.error('Error rendering users:', error));
     callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: false, large: false, allowVerticalScrolling: true, allowHorizontalScrolling: false, ...adminOptions });
-    renderUsers();
 }
 
 /**
