@@ -127,6 +127,13 @@ describe('Google model request compatibility', () => {
         expect(capturedBody.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'medium' });
     });
 
+    test('sends the highest documented thinking level when Gemini 4 is asked for max', async () => {
+        const response = await makeRequest('gemini-4-argon', { reasoning_effort: 'max' });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'high' });
+    });
+
     test('requests image output with a size for Nano Banana 2.1', async () => {
         const response = await makeRequest('gemini-nano-banana-2.1', {
             request_images: true,

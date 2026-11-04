@@ -331,6 +331,17 @@ describe('Gemini Interactions API integration', () => {
         ]);
     });
 
+    test('sends the highest documented thinking level when Gemini 4 is asked for max', async () => {
+        const fetchSpy = createProviderFetchSpy(() => {
+            throw new Error('Unexpected provider call');
+        });
+        const response = await generate({ model: 'gemini-4-argon', reasoning_effort: 'max' });
+        expect(response.status).toBe(200);
+
+        const outgoing = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(outgoing.generation_config.thinking_level).toBe('high');
+    });
+
     test('lists models through the shared Google catalog for the interactions source', async () => {
         const response = await fetch(`${APP_ORIGIN}/api/backends/chat-completions/status`, {
             method: 'POST',
