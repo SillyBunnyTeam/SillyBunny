@@ -416,6 +416,29 @@ describe('Popup frame adapter', () => {
         }
     });
 
+    test('contentChanged lets a content-sized Window measure a shorter height', () => {
+        setupDialogMedia();
+        const animationFrame = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
+            callback();
+            return 0;
+        });
+        const value = popupDom({ type: POPUP_TYPE.TEXT });
+        let height = 400;
+        Object.defineProperty(value.dlg, 'offsetHeight', { configurable: true, get: () => height });
+        const frame = framePopup(value, { tier: 'window', size: 'content' });
+        try {
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.style.minHeight).toBe('400px');
+            height = 300;
+            frame.contentChanged();
+            expect(value.dlg.style.minHeight).toBe('300px');
+        } finally {
+            frame.dispose();
+            animationFrame.mockRestore();
+        }
+    });
+
     test('Dialog adopts a plain boolean without losing identity, state, caption or listeners', () => {
         setupDialogMedia();
         const value = popupDom({ contentHtml: '<h3>Delete user</h3><label class="checkbox_label"><input id="purge" name="deleteUserData" type="checkbox" checked><span data-i18n="Delete data">Delete data</span></label><input name="deleteUserHandle">' });

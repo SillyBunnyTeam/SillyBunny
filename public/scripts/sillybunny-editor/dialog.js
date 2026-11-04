@@ -245,6 +245,12 @@ export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
 
     return {
         refresh: schedule,
+        /** Forgets the recorded height, so that content changed before the first paint can make the Window shorter. */
+        remeasure() {
+            minimumHeight = null;
+            surface.style.removeProperty('min-height');
+            schedule();
+        },
         destroy() {
             if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
             resizeObserver?.disconnect();

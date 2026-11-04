@@ -10,7 +10,7 @@ function payload(request) {
     return body ? JSON.parse((request.headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString()) : {};
 }
 
-export async function bootUtilityDialogs(page, viewport) {
+export async function bootUtilityDialogs(page, viewport, { reducedMotion } = {}) {
     const state = { secrets: [], scrapes: [], replies: [], avatars: [] };
     // Internal entry points are exposed only in the test response, never the shipped module.
     for (const [path, name] of [['welcome-screen.js', 'openRecentChatsSettingsPopup'], ['extensions/stable-diffusion/index.js', 'refinePrompt']]) {
@@ -49,7 +49,7 @@ export async function bootUtilityDialogs(page, viewport) {
         return route.fulfill({ body: 'Fixture transcript' });
     });
     await page.route('**/api/sd/**', route => route.fulfill({ status: 400, body: 'Image generation disabled in dialog tests' }));
-    const misc = await bootMiscDialogs(page, viewport);
+    const misc = await bootMiscDialogs(page, viewport, { reducedMotion });
     // protectMaintainerServer's default secret stub is registered by bootMiscDialogs; override it last.
     await page.route('**/api/secrets/write', route => {
         state.secrets.push(payload(route.request()));

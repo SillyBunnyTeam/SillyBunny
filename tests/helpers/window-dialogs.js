@@ -34,7 +34,7 @@ function fixtureRegexScripts() {
     }));
 }
 
-export async function bootWindowDialogs(page, viewport) {
+export async function bootWindowDialogs(page, viewport, { reducedMotion } = {}) {
     const state = { uploads: [], deletes: [], secrets: [], console: [], consoleArguments: [], pageErrors: [] };
     const files = new Map(Array.from({ length: ATTACHMENT_COUNT }, (_, index) => [`/fixtures/window-${index}.txt`, ATTACHMENT_TEXT]));
     let secretItems = Array.from({ length: SECRET_COUNT }, (_, index) => ({
@@ -113,6 +113,7 @@ export async function bootWindowDialogs(page, viewport) {
     });
 
     const misc = await bootMiscDialogs(page, viewport, {
+        reducedMotion,
         configureSettings(settings) {
             settings.extension_settings.attachments = [...files.keys()].map((url, index) => ({
                 url,

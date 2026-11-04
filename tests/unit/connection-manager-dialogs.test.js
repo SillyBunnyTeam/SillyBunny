@@ -73,7 +73,7 @@ describe('Connection Manager dialog adapters', () => {
         const input = document.createElement('textarea');
         input.className = 'popup-input';
         input.value = 'Profile';
-        options.onOpen({ mainInput: input });
+        options.onOpening({ mainInput: input });
         expect(options.tier).toBe('dialog');
         expect(options.okButton).toBe('Save');
         expect(node.querySelector('textarea')).toBe(input);

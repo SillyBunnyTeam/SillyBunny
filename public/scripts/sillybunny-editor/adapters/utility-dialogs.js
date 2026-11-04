@@ -26,7 +26,7 @@ export function utilityFormOptions({ title, mainLabel = null, clearContent = fal
     return {
         tier: 'dialog',
         ...(title ? { title } : {}),
-        onOpen(popup) {
+        onOpening(popup) {
             const rows = [];
             if (mainLabel) {
                 rows.push(createEntryRow({ label: mainLabel, field: 'main-input', input: popup.mainInput }));
@@ -109,7 +109,7 @@ export function quickReplyTransferOptions(source) {
     }
     return {
         tier: 'dialog',
-        onOpen() { row.trigger.focus({ preventScroll: true }); },
+        onOpening() { row.trigger.focus({ preventScroll: true }); },
         onClose() {
             // Destroying the row returns the select to its old parent, which the caller reads after the dialog resolves.
             row.destroy();
@@ -150,7 +150,7 @@ export function scraperDialogOptions(source, kind) {
     const title = { web: t`Web`, mediawiki: t`MediaWiki`, fandom: t`Fandom`, youtube: t`YouTube` }[kind];
     return {
         tier: 'dialog', title,
-        onOpen(popup) {
+        onOpening(popup) {
             if (!mainLabel) {
                 rows[0]?.control.focus({ preventScroll: true });
                 return;
@@ -189,7 +189,7 @@ export function iconPickerOptions(source) {
     }
     return {
         tier: 'dialog', title: input.placeholder,
-        onOpen(popup) {
+        onOpening(popup) {
             popup.dlg.classList.add('sb-icon-picker');
             input.focus({ preventScroll: true });
         },

@@ -15,7 +15,7 @@ export const SNAPSHOT_FIXTURE = {
 export const SNAPSHOT_TEXT = '{\n    "fixture": "snapshot content stays intercepted"\n}\n';
 export const CUSTOM_BODY_YAML = 'top_k: 20\nrepetition_penalty: 1.1';
 
-export async function bootWindowContentDialogs(page, viewport, { admin = false, adminUsers = null, configureSettings } = {}) {
+export async function bootWindowContentDialogs(page, viewport, { admin = false, adminUsers = null, configureSettings, reducedMotion } = {}) {
     const state = { snapshotRequests: [], secretViewCalls: 0 };
     await page.context().route(/\/api\/settings\/(?:get-snapshots|load-snapshot|make-snapshot|restore-snapshot)$/, route => route.fulfill({ status: 400, body: 'Blocked by window-content dialog test' }));
     await page.context().route(/\/api\/secrets\//, route => {
@@ -27,6 +27,7 @@ export async function bootWindowContentDialogs(page, viewport, { admin = false, 
 
     const misc = await bootMiscDialogs(page, viewport, {
         admin,
+        reducedMotion,
         configureSettings(settings) {
             configureSettings?.(settings);
         },

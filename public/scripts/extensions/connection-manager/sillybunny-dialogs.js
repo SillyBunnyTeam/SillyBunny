@@ -73,7 +73,7 @@ export function profileDialogOptions(root, { edit = false } = {}) {
         tier: 'dialog',
         ...(edit ? { title: t`Edit a connection profile` } : {}),
         okButton: t`Save`,
-        onOpen(popup) {
+        onOpening(popup) {
             const name = createEntryRow({ label: '', field: 'profile-name', input: popup.mainInput });
             adoptCaption(name.row, nameCaption);
             identity.group.prepend(name.row);

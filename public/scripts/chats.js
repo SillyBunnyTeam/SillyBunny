@@ -1670,7 +1670,7 @@ async function openAttachmentManager() {
     // SillyBunny: move the existing Data Bank controls into shared Window chrome without changing their handlers.
     await callGenericPopup(template, POPUP_TYPE.TEXT, '', {
         tier: 'window', title: t`Data Bank`, wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true,
-        onOpen: popup => {
+        onOpening: popup => {
             dataBankFrame = frameDataBankManager(popup, {
                 onSearch() {
                     dataBankFrame.report(template.find('.attachmentsList > .attachmentListItem').length, getDataBankAttachments(true).length);

@@ -167,8 +167,9 @@ export function adaptExtensionsManager(source, {
     headerMenus.append(sortMenu, updateMenu);
 
     return {
-        onOpen: popup => {
-            document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-open'));
+        // The row actions measure with `getBoundingClientRect()`, so they wait for the end of the opening scale.
+        onOpen: () => document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-open')),
+        onOpening: popup => {
             const header = popup.dlg.querySelector('.sb-dialog__header');
             if (!header) return;
             const close = header.querySelector('.popup-button-close, .sb-dialog__close');

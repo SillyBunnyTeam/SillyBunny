@@ -161,7 +161,7 @@ function replaceDefaultNegativeLabel(popup, cancelButtonProvided) {
 /**
  * @param {object} popup A Popup instance (popup.js).
  * @param {{ tier?: 'alert'|'dialog'|'window'|null, title?: string|null, size?: 'content'|'fill', allowEscapeClose?: boolean }} [options]
- * @returns {{ opened: () => void, closing: () => void, dispose: () => void }}
+ * @returns {{ opened: () => void, contentChanged: () => void, closing: () => void, dispose: () => void }}
  */
 export function framePopup(popup, { tier = null, title = null, size = 'fill', allowEscapeClose = true, cancelButtonProvided = false } = {}) {
     const { dlg } = popup;
@@ -170,6 +170,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
     let level = null;
     let framed = false;
     let heightLock = null;
+    let syncLayout = null;
     let disposed = false;
     /** The completion that Popup is running now, so that a chain Close does not start a second one. */
     let completion = null;
@@ -377,6 +378,7 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         };
         if (resolved !== 'alert') joinChain();
         sync();
+        syncLayout = sync;
         let backdropPress = null;
         const isBackdropEvent = event => {
             if (event.target !== dlg || dlg.dataset.presentation !== 'floating' || dlg.classList.contains('sb-dialog--page') || !allowEscapeClose) return false;
@@ -451,6 +453,11 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         popup.setAutoFocus?.();
     }
 
+    function contentChanged() {
+        heightLock?.remeasure();
+        syncLayout?.();
+    }
+
     function closing() {
         if (!framed) return;
         if (dlg.querySelector('[data-sb-overlay-layer]')) {
@@ -466,5 +473,5 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         resolveGone();
     }
 
-    return { opened, closing, dispose };
+    return { opened, contentChanged, closing, dispose };
 }

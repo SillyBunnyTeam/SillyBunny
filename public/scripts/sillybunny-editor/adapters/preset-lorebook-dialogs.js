@@ -75,7 +75,7 @@ export function embeddedLorebookOptions(root) {
 export function lorebookSortingOptions(root, definitions) {
     return {
         tier: 'dialog',
-        onOpen(popup) {
+        onOpening(popup) {
             const warning = root.lastElementChild;
             const rows = definitions.map(definition => {
                 const input = popup.dlg.querySelector(`#${definition.id}`);

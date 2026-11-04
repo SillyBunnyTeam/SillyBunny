@@ -8,10 +8,10 @@ export const CM_VIEWPORTS = [
     { width: 844, height: 390, presentation: 'floating' },
 ];
 
-export async function bootConnectionDialogs(page, viewport) {
+export async function bootConnectionDialogs(page, viewport, { reducedMotion = 'reduce' } = {}) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.emulateMedia({ reducedMotion });
     const saves = [];
     await page.route('**/api/settings/save', route => {
         const request = route.request();

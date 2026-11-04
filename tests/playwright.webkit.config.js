@@ -25,6 +25,7 @@ const DIALOG_SPECS = [
     'preset-lorebook-dialogs',
     'connection-manager-dialogs',
     'dialogs-accessibility',
+    'dialog-opening-layout',
 ];
 
 // Opt-in: `npm run test:e2e:webkit`. The default config stays Chromium only.
