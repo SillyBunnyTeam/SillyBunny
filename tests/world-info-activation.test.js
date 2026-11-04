@@ -4,7 +4,9 @@ import { event_types } from '../public/scripts/events.js';
 import { createHarness } from './util/world-info-harness.js';
 import {
     BASELINE_SETTINGS,
+    BUDGET_CASES,
     CASE_SENSITIVITY_CASES,
+    ENTRY_GATE_CASES,
     INCLUSION_GROUP_CASES,
     MIN_ACTIVATION_CASES,
     PRIMARY_KEY_CASES,
@@ -74,6 +76,8 @@ describe.each([
     ['World Info minimum activations', MIN_ACTIVATION_CASES],
     ['World Info inclusion groups', INCLUSION_GROUP_CASES],
     ['World Info sticky, cooldown and delay', TIMED_EFFECT_CASES],
+    ['World Info entry gates', ENTRY_GATE_CASES],
+    ['World Info budget', BUDGET_CASES],
 ])('%s', (title, cases) => {
     test.each(cases)('$name', async testCase => {
         const steps = getSteps(testCase);

@@ -548,3 +548,126 @@ export const TIMED_EFFECT_CASES = toCases([
         crossCheck: true,
     },
 ]);
+
+const GLOBAL_SCAN_FLAGS = [
+    ['matchPersonaDescription', 'personaDescription', 'the persona description'],
+    ['matchCharacterDescription', 'characterDescription', 'the character description'],
+    ['matchCharacterPersonality', 'characterPersonality', 'the character personality'],
+    ['matchCharacterDepthPrompt', 'characterDepthPrompt', 'the character depth prompt'],
+    ['matchScenario', 'scenario', 'the scenario'],
+    ['matchCreatorNotes', 'creatorNotes', 'the creator notes'],
+];
+
+const globalScanRows = GLOBAL_SCAN_FLAGS.flatMap(([flag, field, label]) => [
+    { name: `scans ${label} when the entry asks for it`, entries: [entry(1, { key: ['moon'], [flag]: true })], chat: ['Quiet.'], scanData: { [field]: 'The moon.' }, expected: [1] },
+    { name: `ignores ${label} when the entry does not ask for it`, entries: [entry(1, { key: ['moon'], [flag]: false })], chat: ['Quiet.'], scanData: { [field]: 'The moon.' }, expected: [] },
+]);
+
+const filtered = characterFilter => entry(1, { key: ['moon'], characterFilter: { isExclude: false, names: [], tags: [], ...characterFilter } });
+
+export const ENTRY_GATE_CASES = toCases([
+    { name: 'skips a disabled entry whose key is present', entries: [entry(1, { key: ['moon'], disable: true })], chat: ['The moon.'], expected: [] },
+    { name: 'skips a disabled constant entry', entries: [entry(1, { constant: true, disable: true })], chat: ['The moon.'], expected: [] },
+    { name: 'activates a constant entry without a key match', entries: [entry(1, { key: ['sun'], constant: true })], chat: ['The moon.'], expected: [1] },
+    { name: 'activates a constant entry that has no keys', entries: [entry(1, { constant: true })], chat: ['The moon.'], expected: [1] },
+    { name: 'activates an entry with the activate decorator without a key match', entries: [entry(1, { key: ['sun'], content: '@@activate\nLore text' })], chat: ['The moon.'], expected: [1] },
+    { name: 'skips an entry with the dont activate decorator when its key is present', entries: [entry(1, { key: ['moon'], content: '@@dont_activate\nLore text' })], chat: ['The moon.'], expected: [] },
+    { name: 'skips a constant entry with the dont activate decorator', entries: [entry(1, { constant: true, content: '@@dont_activate\nLore text' })], chat: ['The moon.'], expected: [] },
+    { name: 'does not treat an unknown decorator as an activate decorator', entries: [entry(1, { key: ['sun'], content: '@@unknown\nLore text' })], chat: ['The moon.'], expected: [] },
+    {
+        name: 'activates an entry when the generation type is one of its triggers',
+        entries: [entry(1, { key: ['moon'], triggers: ['impersonate', 'continue'] })],
+        chat: ['The moon.'],
+        scanData: { trigger: 'continue' },
+        expected: [1],
+    },
+    { name: 'skips an entry when the generation type is not one of its triggers', entries: [entry(1, { key: ['moon'], triggers: ['continue'] })], chat: ['The moon.'], expected: [] },
+    { name: 'ignores an empty trigger list', entries: [entry(1, { key: ['moon'], triggers: [] })], chat: ['The moon.'], scanData: { trigger: 'swipe' }, expected: [1] },
+    { name: 'activates when the roll is below the probability', entries: [entry(1, { key: ['moon'], probability: 40 })], chat: ['The moon.'], random: 0.39, expected: [1] },
+    { name: 'skips an entry when the roll equals the probability', entries: [entry(1, { key: ['moon'], probability: 40 })], chat: ['The moon.'], random: 0.4, expected: [] },
+    { name: 'skips an entry with a probability of zero without a roll', entries: [entry(1, { key: ['moon'], probability: 0 })], chat: ['The moon.'], expected: [] },
+    { name: 'activates an entry with a probability of 100 without a roll', entries: [entry(1, { key: ['moon'], probability: 100 })], chat: ['The moon.'], expected: [1] },
+    { name: 'ignores the probability when the entry does not use it', entries: [entry(1, { key: ['moon'], probability: 0, useProbability: false })], chat: ['The moon.'], expected: [1] },
+    {
+        name: 'does not roll an entry again after it failed its roll in an earlier scan',
+        entries: [entry(1, { key: ['moon'], content: 'river' }), entry(2, { key: ['moon'], probability: 50 })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        random: [0.9, 0.1],
+        expected: [1],
+        loops: 2,
+    },
+    { name: 'scans the prompt that another feature injected for World Info', entries: [entry(1, { key: ['moon'] })], chat: ['Quiet.'], state: { extensionPrompts: { note: { value: 'The moon.', scan: true } } }, expected: [1] },
+    { name: 'ignores an injected prompt that is not meant for World Info', entries: [entry(1, { key: ['moon'] })], chat: ['Quiet.'], state: { extensionPrompts: { note: { value: 'The moon.', scan: false } } }, expected: [] },
+    { name: 'puts the character name into a key', entries: [entry(1, { key: ['{{char}}'] })], chat: ['Aster smiles.'], expected: [1] },
+    { name: 'does not match every message when a key macro resolves to nothing', entries: [entry(1, { key: ['{{char}}'] })], chat: ['Bram smiles.'], state: { name2: '' }, expected: [] },
+    { name: 'puts the user name into a secondary key', entries: [entry(1, { key: ['moon'], keysecondary: ['{{user}}'] })], chat: ['Roleplay User sees the moon.'], expected: [1] },
+    {
+        name: 'ignores a secondary key whose macro resolves to nothing',
+        entries: [entry(1, { key: ['moon'], keysecondary: ['{{user}}'], selectiveLogic: WORLD_INFO_LOGIC.NOT_ANY })],
+        chat: ['The moon.'],
+        state: { name1: '' },
+        expected: [1],
+    },
+    { name: 'activates for a character on the name list', entries: [filtered({ names: ['aster'] })], chat: ['The moon.'], expected: [1] },
+    { name: 'skips a character that is not on the name list', entries: [filtered({ names: ['bram'] })], chat: ['The moon.'], expected: [] },
+    { name: 'skips a character on the exclusion list', entries: [filtered({ names: ['aster'], isExclude: true })], chat: ['The moon.'], expected: [] },
+    { name: 'activates for a character that is not on the exclusion list', entries: [filtered({ names: ['bram'], isExclude: true })], chat: ['The moon.'], expected: [1] },
+    { name: 'activates for a character with a listed tag', entries: [filtered({ tags: ['tag-bram'] })], chat: ['The moon.'], state: { this_chid: 1 }, expected: [1] },
+    { name: 'skips a character without a listed tag', entries: [filtered({ tags: ['tag-bram'] })], chat: ['The moon.'], expected: [] },
+    { name: 'skips a character with an excluded tag', entries: [filtered({ tags: ['tag-bram'], isExclude: true })], chat: ['The moon.'], state: { this_chid: 1 }, expected: [] },
+    { name: 'activates for a character without an excluded tag', entries: [filtered({ tags: ['tag-bram'], isExclude: true })], chat: ['The moon.'], expected: [1] },
+    { name: 'ignores a filter with no names and no tags', entries: [filtered({})], chat: ['The moon.'], expected: [1] },
+    ...globalScanRows,
+    {
+        name: 'does not scan the scenario at an entry scan depth of zero',
+        entries: [entry(1, { key: ['moon'], scanDepth: 0, matchScenario: true })],
+        chat: ['Quiet.'],
+        scanData: { scenario: 'The moon.' },
+        expected: [],
+    },
+]);
+
+const BUDGET_ENTRIES = [
+    entry(1, { key: ['moon'], content: 'one two', order: 300 }),
+    entry(2, { key: ['moon'], content: 'three four five', order: 200 }),
+    entry(3, { key: ['moon'], content: 'six', order: 100 }),
+];
+const TIGHT = 20;
+
+export const BUDGET_CASES = toCases([
+    { name: 'adds entries that fit in the budget', entries: [BUDGET_ENTRIES[0], entry(2, { key: ['moon'], content: 'three', order: 200 })], chat: ['The moon.'], maxContext: TIGHT, expected: [1, 2] },
+    { name: 'skips an entry whose content reaches the budget', entries: BUDGET_ENTRIES.slice(0, 2), chat: ['The moon.'], maxContext: TIGHT, expected: [1] },
+    { name: 'stops adding entries after the first one that does not fit', entries: BUDGET_ENTRIES, chat: ['The moon.'], maxContext: TIGHT, expected: [1] },
+    { name: 'adds a large entry that ignores the budget', entries: [BUDGET_ENTRIES[0], { ...BUDGET_ENTRIES[1], ignoreBudget: true }], chat: ['The moon.'], maxContext: TIGHT, expected: [1, 2] },
+    { name: 'adds a later entry that ignores the budget after an overflow', entries: [BUDGET_ENTRIES[0], BUDGET_ENTRIES[1], { ...BUDGET_ENTRIES[2], ignoreBudget: true }], chat: ['The moon.'], maxContext: TIGHT, expected: [1, 3] },
+    {
+        name: 'reaches a later entry that ignores the budget past a regular entry',
+        entries: [BUDGET_ENTRIES[0], BUDGET_ENTRIES[1], entry(4, { key: ['moon'], content: 'seven', order: 150 }), { ...BUDGET_ENTRIES[2], ignoreBudget: true }],
+        chat: ['The moon.'],
+        maxContext: TIGHT,
+        expected: [1, 3],
+    },
+    { name: 'scales the budget with the context size', entries: [BUDGET_ENTRIES[0], entry(2, { key: ['moon'], content: 'three four', order: 200 })], chat: ['The moon.'], maxContext: TIGHT, expected: [1, 2] },
+    { name: 'skips an entry when a smaller context lowers the budget', entries: [BUDGET_ENTRIES[0], entry(2, { key: ['moon'], content: 'three four', order: 200 })], chat: ['The moon.'], maxContext: 16, expected: [1] },
+    { name: 'lowers the budget to the budget cap', entries: [BUDGET_ENTRIES[0], entry(2, { key: ['moon'], content: 'three four', order: 200 })], chat: ['The moon.'], settings: { world_info_budget_cap: 3 }, expected: [1] },
+    { name: 'does not raise the budget to the budget cap', entries: BUDGET_ENTRIES.slice(0, 2), chat: ['The moon.'], maxContext: TIGHT, settings: { world_info_budget_cap: 100 }, expected: [1] },
+    {
+        name: 'does not scan recursively after the budget overflowed',
+        entries: [entry(1, { key: ['moon'], content: 'river', order: 300 }), entry(2, { key: ['moon'], content: 'a b c d e', order: 200 }), entry(3, { key: ['river'] })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        maxContext: TIGHT,
+        expected: [1],
+        loops: 1,
+    },
+    {
+        name: 'scans recursively when the budget did not overflow',
+        entries: [entry(1, { key: ['moon'], content: 'river', order: 300 }), entry(3, { key: ['river'] })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        maxContext: TIGHT,
+        expected: [1, 3],
+        loops: 3,
+    },
+]);
