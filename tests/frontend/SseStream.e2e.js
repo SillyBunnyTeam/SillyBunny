@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { testSetup } from './frontent-test-utils.js';
 
+// Pauses that getDelay returns at smooth_streaming_speed 37 and 61. The values are rare on purpose,
+// so no other timer of the page matches them.
+const FAST = { speed: 37, letter: 25.2, comma: 315, stop: 630 };
+const SLOW = { speed: 61, letter: 15.6, comma: 195, stop: 390 };
+
 function bytesCutAt(text, ...offsets) {
     const bytes = [...Buffer.from(text, 'utf8')];
     const edges = [0, ...offsets, bytes.length];
@@ -20,6 +25,7 @@ function parsed(events) {
 }
 
 const chatDelta = text => ({ id: 'c1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: text } }] });
+const thinkingDelta = text => ({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: text } });
 const textDelta = text => ({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text } });
 
 /**
@@ -374,6 +380,153 @@ test.describe('SseStream', () => {
 
                 expect(result.streams[0].events).toHaveLength(4);
                 expect(result.debug).toEqual([]);
+            });
+        });
+
+        test.describe('pauses', () => {
+            test('waits for the pause of the previous character before each character', async ({ page }) => {
+                const { letter, comma, stop } = FAST;
+
+                const result = await page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('a,b.c!d?e\nf'))]],
+                    focus: true,
+                    watchPauses: [letter, comma, stop],
+                });
+
+                expect(result.streams[0].events).toHaveLength(11);
+                expect(result.streams[0].pauses).toEqual([
+                    { pause: letter, after: 1 },
+                    { pause: comma, after: 2 },
+                    { pause: letter, after: 3 },
+                    { pause: stop, after: 4 },
+                    { pause: letter, after: 5 },
+                    { pause: stop, after: 6 },
+                    { pause: letter, after: 7 },
+                    { pause: stop, after: 8 },
+                    { pause: letter, after: 9 },
+                    { pause: comma, after: 10 },
+                ]);
+            });
+
+            test('follows the speed setting', async ({ page }) => {
+                const run = speed => page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('ab.c'))]],
+                    settings: { smooth_streaming_speed: speed.speed },
+                    focus: true,
+                    watchPauses: [speed.letter, speed.comma, speed.stop],
+                });
+
+                const fast = await run(FAST);
+                const slow = await run(SLOW);
+
+                expect(fast.streams[0].pauses).toEqual([
+                    { pause: FAST.letter, after: 1 },
+                    { pause: FAST.letter, after: 2 },
+                    { pause: FAST.stop, after: 3 },
+                ]);
+                expect(slow.streams[0].pauses).toEqual([
+                    { pause: SLOW.letter, after: 1 },
+                    { pause: SLOW.letter, after: 2 },
+                    { pause: SLOW.stop, after: 3 },
+                ]);
+            });
+
+            test('finishes with real timers while the page has focus', async ({ page }) => {
+                const result = await page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('ab.c'))]],
+                    settings: { smooth_streaming_speed: 100 },
+                    focus: true,
+                });
+
+                expect(parsed(result.streams[0].events).map(event => event.data.choices[0].delta.content)).toEqual(['a', 'b', '.', 'c']);
+            });
+
+            test('does not wait while the page has no focus', async ({ page }) => {
+                const { letter, comma, stop } = FAST;
+
+                const result = await page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('ab.c'))]],
+                    focus: false,
+                    watchPauses: [letter, comma, stop],
+                });
+
+                expect(result.streams[0].events).toHaveLength(4);
+                expect(result.streams[0].pauses).toEqual([]);
+            });
+
+            test('starts a new message without a pause after the end marker', async ({ page }) => {
+                const { letter, comma, stop } = FAST;
+
+                const result = await page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('a.')), frame('[DONE]'), frame(chatDelta('x'))]],
+                    focus: true,
+                    watchPauses: [letter, comma, stop],
+                });
+
+                expect(result.streams[0].events).toHaveLength(4);
+                expect(result.streams[0].pauses).toEqual([{ pause: letter, after: 1 }]);
+            });
+
+            test('starts a new message without a pause after a null payload', async ({ page }) => {
+                const { letter, comma, stop } = FAST;
+
+                const result = await page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('a.')), frame('null'), frame(chatDelta('x'))]],
+                    focus: true,
+                    watchPauses: [letter, comma, stop],
+                });
+
+                expect(result.streams[0].events).toHaveLength(4);
+                expect(result.streams[0].pauses).toEqual([{ pause: letter, after: 1 }]);
+            });
+
+            test('starts every stream without a pause', async ({ page }) => {
+                const { letter, comma, stop } = FAST;
+
+                const result = await page.evaluate(runStreams, {
+                    streams: [[frame(chatDelta('a.'))], [frame(chatDelta('x'))]],
+                    focus: true,
+                    watchPauses: [letter, comma, stop],
+                });
+
+                expect(result.streams[0].pauses).toEqual([{ pause: letter, after: 1 }]);
+                expect(result.streams[1].pauses).toEqual([]);
+            });
+
+            test.describe('reasoning', () => {
+                const streams = [[frame(thinkingDelta('ab')), frame(textDelta('c.'))]];
+                const watchPauses = [FAST.letter, FAST.comma, FAST.stop];
+
+                test('waits for reasoning characters when the no think setting is off', async ({ page }) => {
+                    const result = await page.evaluate(runStreams, { streams, focus: true, watchPauses });
+
+                    expect(result.streams[0].events).toHaveLength(4);
+                    expect(result.streams[0].pauses).toEqual([
+                        { pause: FAST.letter, after: 1 },
+                        { pause: FAST.letter, after: 2 },
+                        { pause: FAST.letter, after: 3 },
+                    ]);
+                });
+
+                test('does not wait for reasoning characters when the no think setting is on', async ({ page }) => {
+                    const result = await page.evaluate(runStreams, {
+                        streams,
+                        settings: { smooth_streaming_no_think: true },
+                        focus: true,
+                        watchPauses,
+                    });
+
+                    expect(parsed(result.streams[0].events)).toEqual([
+                        { type: 'message', data: { type: 'content_block_delta', index: 0, delta: { thinking: 'a' } } },
+                        { type: 'message', data: { type: 'content_block_delta', index: 0, delta: { thinking: 'b' } } },
+                        { type: 'message', data: { type: 'content_block_delta', index: 1, delta: { text: 'c' } } },
+                        { type: 'message', data: { type: 'content_block_delta', index: 1, delta: { text: '.' } } },
+                    ]);
+                    expect(result.streams[0].pauses).toEqual([
+                        { pause: FAST.letter, after: 2 },
+                        { pause: FAST.letter, after: 3 },
+                    ]);
+                });
             });
         });
     });
