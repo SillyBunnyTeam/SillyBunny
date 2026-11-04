@@ -1694,6 +1694,8 @@ body.hideAllSwipeButtons :is(.swipe_left, .swipe_right),
     box-shadow: 0 0 5px var(--black50a);
 }
 
+/* SillyBunny: the logo files, and the earlier pixel logo that saved chats still show */
+img[src*="img/sillybunny/logo-"],
 img[src*="sillybunny-pixel-logo"] {
     object-fit: contain;
 }

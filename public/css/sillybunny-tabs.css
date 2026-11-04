@@ -3408,39 +3408,11 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: 0.74;
 }
 
-.sb-frontend-icon-header,
-.sb-frontend-icon-copy,
 .sb-shell-header-mode-header {
     display: flex;
     flex-direction: column;
     gap: 6px;
     min-width: 0;
-}
-
-.sb-frontend-icon-options {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-}
-
-.sb-frontend-icon-option {
-    min-height: 76px;
-    padding: 12px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-}
-
-.sb-frontend-icon-preview {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 44px;
-    border-radius: 12px;
-    object-fit: contain;
-    image-rendering: pixelated;
-    background: color-mix(in srgb, var(--sb-button-hover) 58%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 70%, transparent);
 }
 
 .sb-topbar-label-section,
@@ -5502,7 +5474,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     }
 
     .sb-theme-option-row,
-    .sb-frontend-icon-options,
     .sb-topbar-label-option-grid {
         grid-template-columns: 1fr;
     }
@@ -6995,11 +6966,11 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 }
 
 @media screen and (min-width: 621px) {
-    #sb-interface-content .sb-frontend-icon-group > .ds-row-text {
+    #sb-interface-content .sb-interface-select-group > .ds-row-text {
         flex: 1 1 180px;
     }
 
-    #sb-interface-content .sb-frontend-icon-group > .ds-row-suffix {
+    #sb-interface-content .sb-interface-select-group > .ds-row-suffix {
         flex: 1 1 320px;
     }
 }

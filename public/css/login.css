@@ -3,9 +3,9 @@ body.login #shadow_popup {
     display: flex;
 }
 
+/* SillyBunny: the logo is a vector, so it is drawn smooth and not pixelated */
 body.login .logo {
     max-width: 30px;
-    image-rendering: pixelated;
 }
 
 body.login #logoBlock {

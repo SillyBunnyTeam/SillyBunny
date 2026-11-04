@@ -16,10 +16,11 @@
         }
     </style>
     <link rel="preload" as="style" href="style.css">
-    <link rel="icon" type="image/png" sizes="256x256" href="img/sillybunny-pixel-logo-og.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="img/icon-16x16.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="img/icon-32x32.png">
-    <link rel="icon" type="image/png" sizes="48x48" href="img/icon-48x48.png">
+    <!-- SillyBunny: favicons are the logo set in img/sillybunny; the 16 and 32 px files are drawn by hand, so no SVG link is offered. -->
+    <link rel="icon" type="image/png" sizes="16x16" href="img/sillybunny/logo-16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="img/sillybunny/logo-32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="img/sillybunny/logo-48.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="img/sillybunny/logo-64.png">
     <link rel="apple-touch-icon" sizes="57x57" href="img/apple-icon-57x57.png" />
     <link rel="apple-touch-icon" sizes="72x72" href="img/apple-icon-72x72.png" />
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
@@ -28,7 +29,8 @@
     <link href="webfonts/AdwaitaSans/stylesheet.css?v=20261001a" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="style.css">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
-    <link rel="stylesheet" type="text/css" href="css/login.css">
+    <!-- SillyBunny: the key follows login.css, which the service worker answers stale-while-revalidate, so the changed logo rule reaches the first load. -->
+    <link rel="stylesheet" type="text/css" href="css/login.css?v=20261104h">
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
     <link href="webfonts/NotoSans/stylesheet.css" rel="stylesheet">
     <link href="webfonts/AdwaitaMono/stylesheet.css?v=20261030a" rel="stylesheet">
@@ -47,7 +49,8 @@
                 <div id="dialogue_popup_text">
                     <div id="userSelectBlock" class="flex-container flexFlowColumn alignItemsCenter">
                         <h2 id="logoBlock" class="flex-container">
-                            <img src="img/sillybunny-pixel-logo-og.png" alt="SillyBunny" class="logo">
+                            <!-- SillyBunny: the login logo is the vector of the logo set. -->
+                            <img src="img/sillybunny/logo.svg" alt="SillyBunny" class="logo">
                             <span>Welcome to SillyBunny</span>
                         </h2>
                         <h3 id="normalLoginPrompt">

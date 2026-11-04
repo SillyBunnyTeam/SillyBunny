@@ -36,10 +36,17 @@ describe('SillyBunny settings theme drawers', () => {
         for (const drawerId of drawerIds) {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
-        expect(shellTabsSource).toContain('content: [frontendIconSettingsGroup, splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],');
+        // Splash Character, Background Visibility, Bottom Bar Size, in this order; the drawer's subtitle names the same three.
+        expect(shellTabsSource).toContain('content: [splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],');
+        expect(shellTabsSource).toContain('title: \'Background Visibility\',');
+        expect(shellTabsSource).toContain('title: \'Bottom Bar Size\',');
+        expect(shellTabsSource).toContain('description: \'Choose the splash character and adjust background visibility and the bottom bar size.\',');
+        expect(shellTabsSource).not.toContain('Change the app icon');
         expect(shellTabsSource).not.toContain('sb-shell-style-drawer');
         expect(shellTabsSource).not.toContain('data-sb-theme-option');
         expect(shellTabsSource).not.toContain('sb-frontend-icon-drawer');
+        expect(shellTabsSource).not.toContain('sb-frontend-icon');
+        expect(shellTabsSource).not.toContain('Frontend Icon');
         expect(shellTabsSource).not.toContain('sb-background-visibility-drawer');
         expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');
         expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .inline-drawer-header');

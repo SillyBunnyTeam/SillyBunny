@@ -1123,7 +1123,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-agent-grid,
     .sb-theme-option-row,
-    .sb-frontend-icon-options,
     .sb-topbar-label-option-grid {
         grid-template-columns: 1fr;
     }

@@ -627,7 +627,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     topbarIconsOnly: 'sb-topbar-icons-only',
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
     mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
-    frontendIcon: 'sb-frontend-icon',
 
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
     paperTextureEnabled: 'sb-paper-texture-enabled',
@@ -732,21 +731,6 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/extensions-panel.css?v=20260425a', id: 'deferred-extensions-panel-css' },
     ],
 });
-const SB_FRONTEND_ICON_DEFAULT = 'pixel';
-const SB_FRONTEND_ICONS = Object.freeze([
-    {
-        id: 'pixel',
-        label: 'Pixel',
-        description: 'Classic square icon.',
-        src: 'img/sillybunny-pixel-logo-og.png',
-    },
-    {
-        id: 'badge',
-        label: 'Badge',
-        description: 'Clean badge icon.',
-        src: 'img/sillybunny-badge.png',
-    },
-]);
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
 /**
  * Drawers whose open state is written by their own code rather than by the generic persistence
@@ -1399,7 +1383,6 @@ const sbState = {
     initObserver: null,
     inlineDrawerAutoClose: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.settingsDrawerAutoClose), false),
     theme: SB_SHELL_THEME,
-    frontendIcon: normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon)),
     surfaceTransparency: normalizeSurfaceTransparency(safeGetItem(SB_STORAGE_KEYS.surfaceTransparency)),
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
     paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
@@ -1537,21 +1520,6 @@ const sbState = {
         report: null,
     },
 };
-
-function normalizeFrontendIcon(iconId) {
-    const normalizedIconId = normalizeText(iconId);
-    return SB_FRONTEND_ICONS.some(icon => icon.id === normalizedIconId) ? normalizedIconId : SB_FRONTEND_ICON_DEFAULT;
-}
-
-function getFrontendIconConfig(iconId = sbState.frontendIcon) {
-    const normalizedIconId = normalizeFrontendIcon(iconId);
-    return SB_FRONTEND_ICONS.find(icon => icon.id === normalizedIconId) || SB_FRONTEND_ICONS[0];
-}
-
-function getFrontendIconSrc(iconId = sbState.frontendIcon, { absolute = true } = {}) {
-    const src = getFrontendIconConfig(iconId).src;
-    return absolute ? `/${src}` : src;
-}
 
 function normalizeTopbarLabelPart(value, fallback = '') {
     const fallbackValue = SB_TOPBAR_LABEL_PART_IDS.has(fallback) ? fallback : '';
@@ -1929,7 +1897,6 @@ function restorePersistedTopbarState() {
     sbState.bottomBarScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale));
     sbState.desktopButtonScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale));
     sbState.mobileButtonScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale));
-    sbState.frontendIcon = normalizeFrontendIcon(safeGetItem(SB_STORAGE_KEYS.frontendIcon));
     sbState.topbarLabel.desktopParts = safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts) === null
         ? ['char']
         : normalizeTopbarLabelParts(safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts), []);
@@ -3434,42 +3401,6 @@ function initChatAvatarVariables() {
 function applyShellTheme() {
     sbState.theme = SB_SHELL_THEME;
     document.documentElement.dataset.sbTheme = SB_SHELL_THEME;
-}
-
-function applyFrontendIcon(iconId = sbState.frontendIcon) {
-    const normalizedIconId = normalizeFrontendIcon(iconId);
-    const iconController = window.SillyBunnyFrontendIcon;
-
-    if (iconController?.apply) {
-        iconController.apply(normalizedIconId);
-        return;
-    }
-
-    const iconSrc = getFrontendIconSrc(normalizedIconId);
-
-    document.documentElement.dataset.sbFrontendIcon = normalizedIconId;
-
-    for (const image of document.querySelectorAll('img[data-sb-frontend-icon]')) {
-        image.setAttribute('src', iconSrc);
-    }
-
-    for (const link of document.querySelectorAll('link[rel~="icon"]')) {
-        link.setAttribute('href', iconSrc);
-        link.setAttribute('type', 'image/png');
-    }
-}
-
-function setFrontendIconPreference(iconId, { persist = true } = {}) {
-    const nextIconId = normalizeFrontendIcon(iconId);
-
-    sbState.frontendIcon = nextIconId;
-
-    if (persist) {
-        safeSetItem(SB_STORAGE_KEYS.frontendIcon, nextIconId);
-    }
-
-    applyFrontendIcon(nextIconId);
-    updateThemePickerUi();
 }
 
 function setSurfaceTransparency(value, { persist = true } = {}) {
@@ -11536,31 +11467,6 @@ function createPaperTextureSettingsGroup() {
     return group;
 }
 
-function createFrontendIconSettingsGroup() {
-    const group = createElement('section', {
-        className: 'ds-row sb-interface-settings-group sb-frontend-icon-group',
-    });
-    const header = createElement('div', { className: 'ds-row-text' });
-    const title = createElement('label', { className: 'ds-row-label', text: 'Frontend Icon', attrs: { for: 'sb-frontend-icon-select' } });
-    const description = createElement('small', {
-        className: 'ds-row-subtitle',
-        text: 'Choose which SillyBunny icon appears in the app chrome, splash screen, and Home panel.',
-    });
-    const suffix = createElement('div', { className: 'ds-row-suffix' });
-    const select = createElement('select', { id: 'sb-frontend-icon-select', className: 'ds-control-flex text_pole' });
-
-    header.append(title, description);
-
-    for (const icon of SB_FRONTEND_ICONS) {
-        select.appendChild(createElement('option', { text: icon.label, attrs: { value: icon.id } }));
-    }
-    select.value = sbState.frontendIcon;
-    select.addEventListener('change', () => setFrontendIconPreference(select.value));
-    suffix.appendChild(select);
-    group.append(header, suffix);
-    return group;
-}
-
 let splashPreferences = null;
 
 /** The first call starts listening for settings events, so the drawer and the startup share one instance. */
@@ -11760,7 +11666,6 @@ function injectThemePicker() {
     const desktopBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('desktop');
     const mobileBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('mobile');
     const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
-    const frontendIconSettingsGroup = createFrontendIconSettingsGroup();
     const splashCharacterRow = createSplashCharacterRow(getSplashPreferences());
     const shortcutSettingsGroup = createShortcutSettingsGroup();
     const desktopGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('desktop');
@@ -11771,8 +11676,8 @@ function injectThemePicker() {
     const interfaceSettingsGroup = createThemeSettingsDrawer({
         id: 'sb-interface-drawer',
         title: 'Interface',
-        description: 'Change the app icon and bottom chat bar size.',
-        content: [frontendIconSettingsGroup, splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],
+        description: 'Choose the splash character and adjust background visibility and the bottom bar size.',
+        content: [splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],
     });
 
     getMessageStyleSelect()?.addEventListener('change', updateThemePickerUi);
@@ -11852,11 +11757,6 @@ function updateThemePickerUi() {
     const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
-
-    const frontendIconSelect = document.getElementById('sb-frontend-icon-select');
-    if (frontendIconSelect instanceof HTMLSelectElement) {
-        frontendIconSelect.value = sbState.frontendIcon;
-    }
 
     if (sliderInput instanceof HTMLInputElement) {
         sliderInput.min = String(SB_SURFACE_TRANSPARENCY.min);
@@ -15184,7 +15084,6 @@ function initAll() {
     bindCharacterDrawerStateObserver();
     prewarmSettingsPageRoots();
     applyShellTheme();
-    setFrontendIconPreference(sbState.frontendIcon, { persist: false });
     setSurfaceTransparency(sbState.surfaceTransparency, { persist: false });
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
     setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
@@ -15333,9 +15232,6 @@ function initAll() {
         applyTheme() {
             applyShellTheme();
         },
-        setFrontendIcon(iconId) {
-            setFrontendIconPreference(iconId);
-        },
         setSurfaceTransparency(value) {
             setSurfaceTransparency(value);
         },
@@ -15377,9 +15273,6 @@ function initAll() {
         },
         getTheme() {
             return sbState.theme;
-        },
-        getFrontendIcon() {
-            return sbState.frontendIcon;
         },
         getSurfaceTransparency() {
             return sbState.surfaceTransparency;

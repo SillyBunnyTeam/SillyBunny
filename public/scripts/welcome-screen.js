@@ -931,7 +931,6 @@ async function sendWelcomePanel(chats, expand = false) {
                 updateRecentChatFilterView(root);
             }
         });
-        window.SillyBunnyFrontendIcon?.apply?.();
         if (expand) {
             chatElement.querySelectorAll('button.showMoreChats').forEach((button) => {
                 if (button instanceof HTMLButtonElement) {

@@ -131,7 +131,6 @@ exports[`public/script.js named export surface matches the parser-derived export
   "getPastCharacterChats",
   "getRequestHeaders",
   "getSettings",
-  "getSillyBunnyFrontendIconSrc",
   "getSlideToggleOptions",
   "getStoppingStrings",
   "getSystemMessageByType",

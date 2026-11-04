@@ -619,12 +619,6 @@ let characterMenuEntityView = 'characters';
 /** @type {{ render: (model: CharacterListModel) => void|Promise<void> }|null} */
 let characterListRenderer = null;
 export const default_avatar = 'img/ai4.png';
-const SILLYBUNNY_FRONTEND_ICON_STORAGE_KEY = 'sb-frontend-icon';
-const SILLYBUNNY_FRONTEND_ICON_DEFAULT = 'pixel';
-const SILLYBUNNY_FRONTEND_ICONS = Object.freeze({
-    pixel: 'img/sillybunny-pixel-logo-og.png',
-    badge: 'img/sillybunny-badge.png',
-});
 
 // SillyBunny: state accessors let the shared renderer use per-view sorting and
 // paging without changing power-user's persisted character settings — see docs/ui-migration.md
@@ -638,66 +632,13 @@ registerCharacterListSortAccessors({
     },
 });
 registerCharacterListStateRenderer(() => printCharacters(false));
-let appliedSillyBunnyFrontendIconId = '';
 
-function normalizeSillyBunnyFrontendIcon(iconId) {
-    return Object.hasOwn(SILLYBUNNY_FRONTEND_ICONS, String(iconId)) ? String(iconId) : SILLYBUNNY_FRONTEND_ICON_DEFAULT;
-}
-
-function getStoredSillyBunnyFrontendIcon() {
-    try {
-        return normalizeSillyBunnyFrontendIcon(localStorage.getItem(SILLYBUNNY_FRONTEND_ICON_STORAGE_KEY));
-    } catch {
-        return SILLYBUNNY_FRONTEND_ICON_DEFAULT;
-    }
-}
-
-export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
-    const src = SILLYBUNNY_FRONTEND_ICONS[getStoredSillyBunnyFrontendIcon()];
-    return absolute ? `/${src}` : src;
-}
-
-export let system_avatar = getSillyBunnyFrontendIconSrc();
+// SillyBunny: narrator and tool messages show the SillyBunny logo.
+export const system_avatar = 'img/sillybunny/logo-64.png';
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
 export let CLIENT_VERSION = 'SillyBunny:v2.0.0-dev'; // For Horde header
 
-function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
-    const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
-    const src = SILLYBUNNY_FRONTEND_ICONS[normalizedIconId];
-    const absoluteSrc = `/${src}`;
-    const iconAlreadyApplied = appliedSillyBunnyFrontendIconId === normalizedIconId;
-    system_avatar = src;
-
-    document.documentElement.dataset.sbFrontendIcon = normalizedIconId;
-
-    for (const image of document.querySelectorAll('img[data-sb-frontend-icon]')) {
-        if (image.getAttribute('src') !== absoluteSrc) {
-            image.setAttribute('src', absoluteSrc);
-        }
-    }
-
-    if (!iconAlreadyApplied) {
-        for (const link of document.querySelectorAll('link[rel~="icon"]')) {
-            link.setAttribute('href', absoluteSrc);
-            link.setAttribute('type', 'image/png');
-        }
-    }
-
-    appliedSillyBunnyFrontendIconId = normalizedIconId;
-}
-
-window.SillyBunnyFrontendIcon = Object.assign(window.SillyBunnyFrontendIcon || {}, {
-    getId: getStoredSillyBunnyFrontendIcon,
-    getSrc: ({ absolute = true } = {}) => getSillyBunnyFrontendIconSrc({ absolute }),
-    apply: applySillyBunnyFrontendIcon,
-});
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => applySillyBunnyFrontendIcon(), { once: true });
-} else {
-    applySillyBunnyFrontendIcon();
-}
 let optionsPopper = Popper.createPopper(document.getElementById('options_button'), document.getElementById('options'), {
     placement: 'top-start',
 });

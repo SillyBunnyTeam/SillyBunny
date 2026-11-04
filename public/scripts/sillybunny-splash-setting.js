@@ -26,9 +26,8 @@ export function createSplashCharacterRow(preferences) {
         wide: true,
         onChange: choice => preferences.setCharacter(choice),
     });
-    // Borrows the Frontend Icon row's column sizing and select look: the blocking stylesheets have no room
-    // for rules of their own.
-    row.row.classList.add('sb-interface-settings-group', 'sb-frontend-icon-group');
+    // Borrows the column sizing of the Interface drawer's rows: the blocking stylesheets have no room for rules of their own.
+    row.row.classList.add('sb-interface-settings-group', 'sb-interface-select-group');
     row.control.classList.add('text_pole');
     // The account settings can replace the character after the drawer was built.
     preferences.onCharacterChange(choice => row.setValue(choice));
