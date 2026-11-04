@@ -70,13 +70,11 @@ async function openSplash(page, { variant = 'both', loops = VARIANTS, failing = 
         await route.fallback();
     });
     await page.route('**/scripts/sillybunny-splash.js*', async (route) => {
-        // No loops is the table as it ships.
-        if (loops.length === 0) return route.fallback();
         const response = await route.fetch();
         const source = await response.text();
         const table = Object.fromEntries(loops.map(name => [name, `splash-${name}--anim.json`]));
-        const changed = source.replace('var LOOP_FILES = {};', `var LOOP_FILES = ${JSON.stringify(table)};`);
-        if (changed === source) throw new Error('The table of loops is not where the test expects it.');
+        const changed = source.replace(/var LOOP_FILES = \{[^}]*\};/, `var LOOP_FILES = ${JSON.stringify(table)};`);
+        if (!/var LOOP_FILES = \{[^}]*\};/.test(source)) throw new Error('The table of loops is not where the test expects it.');
         await route.fulfill({ response, body: changed });
     });
     await page.route('**/img/sillybunny/splash-*--anim.json*', (route) => {

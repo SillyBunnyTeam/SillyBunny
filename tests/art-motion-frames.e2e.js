@@ -54,8 +54,11 @@ function watch(page) {
     return watched;
 }
 
-/** The files that only a moving picture has: every one of them has a double dash in its name, and no still has. */
-const motionFilesOf = requests => requests.filter(file => file.includes('--'));
+/**
+ * The files that only a moving picture has: every one of them has a double dash in its name, and no still has. The loops
+ * of the splash have them too, and they are not the art of Home.
+ */
+const motionFilesOf = requests => requests.filter(file => file.includes('--') && !file.startsWith('splash-'));
 
 async function openHome(page, { hour }) {
     const watched = watch(page);

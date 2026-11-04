@@ -36,22 +36,24 @@ The tables below are generated from the generation log. They list each model's i
 | local | breath-frames | 56 | 2026-11-02 | 2026-11-04 | 0 | - | $0.00 |
 | local | build-card | 2 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
 | local | compose-scene | 20 | 2026-11-01 | 2026-11-04 | 8 | - | $0.00 |
-| local | export-motion | 41 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
+| local | export-motion | 68 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
 | local | github-assets | 14 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
 | local | icons | 26 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
 | local | pixel-snap | 87 | 2026-11-01 | 2026-11-04 | 54 | - | $0.00 |
 | local | retouch | 3 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
 | local | rim-recolour | 53 | 2026-11-01 | 2026-11-04 | 15 | - | $0.00 |
+| local | splash-frames | 40 | 2026-11-04 | 2026-11-04 | 21 | - | $0.00 |
+| local | splash-hand-fix | 1 | 2026-11-03 | 2026-11-03 | 0 | - | $0.00 |
 | local | vectorize | 14 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
 | openai | gpt-image-2.5-flare-h | 1 | 2026-11-01 | 2026-11-01 | 0 | $0.40 | - |
-| openai | gpt-image-2.5-sunburst-h | 385 | 2026-11-01 | 2026-11-04 | 8 | $52.20 | $8.80 |
+| openai | gpt-image-2.5-sunburst-h | 432 | 2026-11-01 | 2026-11-04 | 8 | $61.00 | $9.20 |
 
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 818 |
-| Total charged | $53.85 |
-| Total estimated, not yet measured | $8.80 |
+| Reference images attached | 970 |
+| Total charged | $62.65 |
+| Total estimated, not yet measured | $9.20 |
 
 ### Current approvals
 
@@ -142,6 +144,27 @@ The tables below are generated from the generation log. They list each model's i
 | pixel/scene-leaves-17.png | pixel-snap | 3ed1728471c29e2d |
 | pixel/scene-leaves-15.png | pixel-snap | a6014b4b9d6dfcd2 |
 | pixel/hero-duo.png | compose-scene | 818d5d45dd1a258f |
+| pixel/splash3-tewi--raised.png | splash-frames | 0d29f1dbe6de9c37 |
+| pixel/splash3-tewi--windup.png | splash-frames | 38e182f17218e945 |
+| pixel/splash3-tewi--swing.png | splash-frames | f9647f265d70dbae |
+| pixel/splash3-tewi--mid.png | splash-frames | 7023ab6ff893987a |
+| pixel/splash3-tewi--strike.png | splash-frames | cdfef1841a651e03 |
+| pixel/splash3-tewi--rebound.png | splash-frames | fcfb01c28b6972d6 |
+| pixel/splash3-tewi--hoist.png | splash-frames | 14290f82c8a9cd3b |
+| pixel/splash3-reisen--raised.png | splash-frames | 5a743bea17ff44f4 |
+| pixel/splash3-reisen--idle.png | splash-frames | 1563f31ff94f2535 |
+| pixel/splash3-reisen--rise.png | splash-frames | 4c685ddd00b84f36 |
+| pixel/splash3-reisen--inhale.png | splash-frames | 07c3c3a85d9f63e3 |
+| pixel/splash3-reisen--call.png | splash-frames | 47c3f4b0d79462dc |
+| pixel/splash3-reisen--hold.png | splash-frames | 84e0dd6080c800f4 |
+| pixel/splash3-reisen--lower.png | splash-frames | 3e60db51fc4f5ba8 |
+| pixel/splash3-both--write-a.png | splash-frames | 8e8c972a8788f7c1 |
+| pixel/splash3-both--write-b.png | splash-frames | 75124019597569c6 |
+| pixel/splash3-both--write-c.png | splash-frames | e033af63e9dfb5b3 |
+| pixel/splash3-both--lean-a.png | splash-frames | 3c07d9926575d8f1 |
+| pixel/splash3-both--lean-b.png | splash-frames | 16e86578c7576ad6 |
+| pixel/splash3-both--sigh.png | splash-frames | dd5d3586c10c8377 |
+| pixel/splash3-both--resume.png | splash-frames | 163e66c1b5bd1071 |
 | pixel/hero-duo-night-reisen.png | pixel-snap | c83ec368f31c6969 |
 | pixel/hero-duo-night-reisen--half.png | pixel-snap | b249d4eb085f6c0f |
 | pixel/hero-duo-night-reisen--closed.png | pixel-snap | 8675215c9c22e2e2 |

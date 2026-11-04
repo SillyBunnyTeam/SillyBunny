@@ -51,7 +51,7 @@ test('a pixel slot carries none of the keys that choose sizes and encoders, beca
 test('the two finished rows use the approved portraits, and every pixel slot is the snapped approved/pixel/<id>.png', () => {
     assert.equal(byId.get('row-reisen').master, 'approved/reisen-portrait-a.png');
     assert.equal(byId.get('row-tewi').master, 'approved/tewi-portrait.png');
-    for (const { id } of masters.assets) {
+    for (const { id } of masters.assets.filter((asset) => !isSplash(asset))) {
         assert.equal(byId.get(id).master, `approved/pixel/${id}.png`);
     }
     for (const asset of shell.assets) {
@@ -98,5 +98,18 @@ test('the frames of a pixel slot are snapped stills of the same size as its base
             const picture = await readRaster(join(BRANDING, master));
             assert.deepEqual([picture.width, picture.height], [base.width, base.height], `${asset.id}--${id}`);
         }
+    }
+});
+
+test('a splash still is exported from the approved picture its loop opens on, whole, so the still and the first frame of the loop are the same picture', async () => {
+    const shipped = join(BRANDING, '..', '..', 'public', 'img', 'sillybunny');
+    for (const asset of shell.assets.filter(isSplash)) {
+        const manifest = JSON.parse(readFileSync(join(shipped, `${asset.id}--anim.json`), 'utf8'));
+        const [layer] = manifest.layers;
+        const opening = Object.values(manifest.timelines)[0].keys.find(({ at }) => at === 0).frame;
+        assert.equal(asset.master, `approved/pixel/${asset.id.replace('splash-', 'splash3-')}--${opening}.png`, asset.id);
+        assert.equal(layer.base, opening, `${asset.id}: the base the manifest names is the opening frame`);
+        const frame = frameBox(await readRaster(join(BRANDING, asset.master)), { crop: asset.crop, margin: asset.margin, square: asset.square });
+        assert.deepEqual([frame.x, frame.y, frame.width, frame.height], [0, 0, manifest.grid.width, manifest.grid.height], asset.id);
     }
 });

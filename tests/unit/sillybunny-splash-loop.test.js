@@ -91,6 +91,8 @@ function mountSplash({ variant = 'both', height = 768, ratio = 1 } = {}) {
     localStorage.clear();
     localStorage.setItem('sb-splash-character', variant);
     new window.Function(splashSource)();
+    // A test lists the loop that it plays, so the loops that the script ships do not start on their own.
+    Object.keys(window.SillyBunnySplash.LOOP_FILES).forEach(name => delete window.SillyBunnySplash.LOOP_FILES[name]);
     new window.Function(loopSource)();
     const preloader = document.getElementById('preloader');
     return {
@@ -897,7 +899,9 @@ describe('the splash script', () => {
         if (mirrored) localStorage.setItem('sb-reduced-motion', 'true');
         mediaQuery.matches = reduced;
         // The table is a variable of the script, so the test gives the script a table that has the loop.
-        const source = splashSource.replace('var LOOP_FILES = {};', `var LOOP_FILES = ${JSON.stringify(Object.fromEntries(loopFor.map(name => [name, `splash-${name}--anim.json`])))};`);
+        const table = JSON.stringify(Object.fromEntries(loopFor.map(name => [name, `splash-${name}--anim.json`])));
+        const source = splashSource.replace(/var LOOP_FILES = \{[^}]*\};/, `var LOOP_FILES = ${table};`);
+        if (source === splashSource && loopFor.length > 0 && !splashSource.includes(`var LOOP_FILES = ${table};`)) throw new Error('The table of loops is not where the test expects it.');
         new window.Function(source)();
         return document.querySelector('.sb-boot-mascot');
     }
@@ -906,12 +910,16 @@ describe('the splash script', () => {
         document.head.querySelectorAll('script[src*="sillybunny-splash-loop"]').forEach(node => node.remove());
     });
 
-    test('ships no loop yet, so nothing is requested and the first paint is what it was', () => {
+    test('lists the loop of each of its variants, and asks for none of them before the still has loaded', () => {
         document.body.innerHTML = PRELOADER_MARKUP;
         new window.Function(splashSource)();
         jest.runAllTimers();
 
-        expect(window.SillyBunnySplash.LOOP_FILES).toEqual({});
+        expect(window.SillyBunnySplash.LOOP_FILES).toEqual({
+            reisen: 'splash-reisen--anim.json',
+            tewi: 'splash-tewi--anim.json',
+            both: 'splash-both--anim.json',
+        });
         expect(scripts()).toHaveLength(0);
     });
 

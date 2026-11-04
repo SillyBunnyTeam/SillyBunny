@@ -90,6 +90,10 @@ describe('splash variant', () => {
 
 const SPEC = fileURLToPath(new URL('../../assets-src/branding/export-specs/shell.json', import.meta.url));
 
+/** The size of each picture in art pixels, as the export writes it. The table of the script has to say the same. */
+const SIZE_TABLE = { reisen: [281, 371], tewi: [237, 317], both: [295, 362] };
+const TALLEST = Math.max(...Object.values(SIZE_TABLE).map(([, height]) => height));
+
 /** The viewport and screen scale that a splash is drawn on. */
 function onScreen({ height, ratio }) {
     window.innerHeight = height;
@@ -101,10 +105,10 @@ describe('splash fit', () => {
         runSplash();
         const { chooseFit, HEIGHT_SHARE, TALLEST_ROWS } = window.SillyBunnySplash;
 
-        expect([HEIGHT_SHARE, TALLEST_ROWS]).toEqual([0.42, 366]);
-        // 0.42 x 1000 x 3 = 1260 device pixels, which holds 3 steps of 366 (1098) and not 4 (1464).
+        expect([HEIGHT_SHARE, TALLEST_ROWS]).toEqual([0.42, TALLEST]);
+        // 0.42 x 1000 x 3 = 1260 device pixels, which holds 3 steps of the tallest picture and not 4.
         expect(chooseFit(1000, 3)).toEqual({ step: 3, smooth: false, cssPerArtPixel: 1 });
-        // 0.42 x 1000 x 4 = 1680 holds 4 steps and not 5 (1830).
+        // 0.42 x 1000 x 4 = 1680 holds 4 steps and not 5.
         expect(chooseFit(1000, 4).step).toBe(4);
     });
 
@@ -128,9 +132,10 @@ describe('splash fit', () => {
         const { chooseFit, STEP_ONE_MAX_SHARE } = window.SillyBunnySplash;
 
         expect(STEP_ONE_MAX_SHARE).toBe(0.6);
-        // 366 / 0.6 = 610 px: the picture is exactly 60% of the viewport.
-        expect(chooseFit(610, 1)).toEqual({ step: 1, smooth: false, cssPerArtPixel: 1 });
-        expect(chooseFit(609, 1).smooth).toBe(true);
+        // The tallest picture is at most 60% of the viewport from this height up, and a pixel less is not enough.
+        const limit = Math.ceil(TALLEST / 0.6);
+        expect(chooseFit(limit, 1)).toEqual({ step: 1, smooth: false, cssPerArtPixel: 1 });
+        expect(chooseFit(limit - 1, 1).smooth).toBe(true);
     });
 
     test('a shrunk picture is 42% of the viewport height, with no step', () => {
@@ -140,7 +145,7 @@ describe('splash fit', () => {
 
         expect(fit.smooth).toBe(true);
         expect(fit.step).toBe(0);
-        expect(366 * fit.cssPerArtPixel).toBeCloseTo(0.42 * 390, 6);
+        expect(TALLEST * fit.cssPerArtPixel).toBeCloseTo(0.42 * 390, 6);
     });
 
     test.each([
@@ -175,9 +180,9 @@ describe('splash fit', () => {
 
 describe('splash picture', () => {
     test.each([
-        ['reisen', 'splash-reisen@native.webp', 204, 366],
-        ['tewi', 'splash-tewi@native.webp', 141, 320],
-        ['both', 'splash-both@native.webp', 263, 366],
+        ['reisen', 'splash-reisen@native.webp', ...SIZE_TABLE.reisen],
+        ['tewi', 'splash-tewi@native.webp', ...SIZE_TABLE.tewi],
+        ['both', 'splash-both@native.webp', ...SIZE_TABLE.both],
     ])('%s is %s, sized before its file loads, with the attributes of its own size', (variant, file, width, height) => {
         onScreen({ height: 768, ratio: 1 });
         const { mascot } = runSplash({ stored: variant });
@@ -194,16 +199,17 @@ describe('splash picture', () => {
         const { mascot } = runSplash({ stored: variant });
         const { width, height } = window.SillyBunnySplash.ART[variant];
 
-        // 0.42 x 1000 x 3 = 1260 device pixels holds 3 steps of the 366 rows of the tallest picture.
+        // 0.42 x 1000 x 3 = 1260 device pixels holds 3 steps of the rows of the tallest picture.
         expect(mascot.getAttribute('data-step')).toBe('3');
         expect([mascot.style.width, mascot.style.height]).toEqual([`${width}px`, `${height}px`]);
     });
 
-    test('on a 390x844 phone at 3x the art is two steps, which is 244px tall', () => {
+    test('on a 390x844 phone at 3x the art is two steps of the screen, which is two thirds of a CSS pixel per art pixel', () => {
         onScreen({ height: 844, ratio: 3 });
         const { mascot } = runSplash({ stored: 'reisen' });
 
-        expect([mascot.getAttribute('data-step'), mascot.style.height]).toEqual(['2', '244px']);
+        expect(mascot.getAttribute('data-step')).toBe('2');
+        expect(Number.parseFloat(mascot.style.height)).toBeCloseTo((2 * SIZE_TABLE.reisen[1]) / 3, 6);
     });
 
     test('the CSS size is the art size times the step over the screen scale, so every art pixel is whole device pixels', () => {
@@ -211,18 +217,18 @@ describe('splash picture', () => {
         const { mascot } = runSplash({ stored: 'both' });
 
         expect(mascot.getAttribute('data-step')).toBe('4');
-        expect([mascot.style.width, mascot.style.height]).toEqual(['263px', '366px']);
+        expect([mascot.style.width, mascot.style.height]).toEqual([`${SIZE_TABLE.both[0]}px`, `${SIZE_TABLE.both[1]}px`]);
     });
 
     test('on a short screen at 1x the picture is shrunk to 42% of the height, in the same proportions, and drawn smooth', () => {
         onScreen({ height: 390, ratio: 1 });
         const { mascot } = runSplash({ stored: 'both' });
-        const scale = (0.42 * 390) / 366;
+        const scale = (0.42 * 390) / TALLEST;
 
         expect(mascot.getAttribute('data-fit')).toBe('smooth');
         expect(mascot.hasAttribute('data-step')).toBe(false);
-        expect(Number.parseFloat(mascot.style.height)).toBeCloseTo(366 * scale, 6);
-        expect(Number.parseFloat(mascot.style.width)).toBeCloseTo(263 * scale, 6);
+        expect(Number.parseFloat(mascot.style.height)).toBeCloseTo(SIZE_TABLE.both[1] * scale, 6);
+        expect(Number.parseFloat(mascot.style.width)).toBeCloseTo(SIZE_TABLE.both[0] * scale, 6);
     });
 
     test('Tewi keeps her height relative to Reisen when the picture is shrunk', () => {
@@ -230,7 +236,7 @@ describe('splash picture', () => {
         const reisen = Number.parseFloat(runSplash({ stored: 'reisen' }).mascot.style.height);
         const tewi = Number.parseFloat(runSplash({ stored: 'tewi' }).mascot.style.height);
 
-        expect(tewi / reisen).toBeCloseTo(320 / 366, 6);
+        expect(tewi / reisen).toBeCloseTo(SIZE_TABLE.tewi[1] / SIZE_TABLE.reisen[1], 6);
     });
 
     test('is drawn again when the window changes size, with no new request for the file', () => {
@@ -241,8 +247,8 @@ describe('splash picture', () => {
         onScreen({ height: 1200, ratio: 2 });
         window.dispatchEvent(new Event('resize'));
 
-        // 0.42 x 1200 x 2 = 1008 device pixels holds two steps of 366.
-        expect([mascot.getAttribute('data-step'), mascot.style.height]).toEqual(['2', '366px']);
+        // 0.42 x 1200 x 2 = 1008 device pixels holds two steps of the tallest picture.
+        expect([mascot.getAttribute('data-step'), mascot.style.height]).toEqual(['2', `${SIZE_TABLE.reisen[1]}px`]);
         expect(mascot.getAttribute('src')).toBe(source);
     });
 
@@ -277,7 +283,8 @@ describe('splash picture', () => {
                 addEventListener: (_type, listener) => pending.push(listener),
             }));
             return {
-                queries: window.matchMedia,
+                // The splash also asks about Reduced Motion, which is not a watch of the scale.
+                scaleQueries: () => window.matchMedia.mock.calls.filter(([query]) => query.includes('resolution')),
                 fire: () => pending.splice(0).forEach(listener => listener()),
                 armed: () => pending.length,
             };
@@ -293,8 +300,8 @@ describe('splash picture', () => {
             screen.fire();
 
             expect(mascot.getAttribute('data-step')).toBe('1');
-            expect(mascot.style.height).toBe('183px');
-            expect(screen.queries).toHaveBeenCalledTimes(2);
+            expect(mascot.style.height).toBe(`${SIZE_TABLE.reisen[1] / 2}px`);
+            expect(screen.scaleQueries()).toHaveLength(2);
             expect(screen.armed()).toBe(1);
         });
 
@@ -306,7 +313,7 @@ describe('splash picture', () => {
 
             screen.fire();
 
-            expect(screen.queries).toHaveBeenCalledTimes(1);
+            expect(screen.scaleQueries()).toHaveLength(1);
             expect(screen.armed()).toBe(0);
         });
     });
@@ -315,13 +322,15 @@ describe('splash picture', () => {
 describe('splash art files', () => {
     const spec = JSON.parse(readFileSync(SPEC, 'utf8'));
 
-    test.each(['reisen', 'tewi', 'both'])('the %s picture is the file of the table, at the size of the table, from the snapped masters', (variant) => {
+    test.each(['reisen', 'tewi', 'both'])('the %s picture is the file of the table, at the size of the table, from the snapped master of its loop\'s opening frame', (variant) => {
         runSplash({ stored: variant });
         const { file, width, height } = window.SillyBunnySplash.ART[variant];
         const bytes = readFileSync(`${publicRoot}img/sillybunny/${file}`);
+        const loop = JSON.parse(readFileSync(`${publicRoot}img/sillybunny/${window.SillyBunnySplash.LOOP_FILES[variant]}`, 'utf8'));
+        const opening = Object.values(loop.timelines)[0].keys.find(({ at }) => at === 0).frame;
 
         expect(readImageSize(bytes)).toEqual({ width, height });
-        expect(spec.assets[`splash-${variant}`]).toMatchObject({ pixel: true, master: `approved/pixel/splash-${variant}.png` });
+        expect(spec.assets[`splash-${variant}`]).toMatchObject({ pixel: true, master: `approved/pixel/splash3-${variant}--${opening}.png` });
         expect(window.SillyBunnySplash.ART_VERSION).toMatch(/^\d{8}[a-z]$/);
     });
 });
@@ -471,14 +480,14 @@ describe('splash sparkles', () => {
         const splash = document.querySelector('.sb-boot-splash');
         expect(splash.style.getPropertyValue('--sb-boot-px')).toBe('1px');
 
-        // 0.42 x 2000 = 840 CSS pixels holds two steps of 366 at 1x.
+        // 0.42 x 2000 = 840 CSS pixels holds two steps of the tallest picture at 1x.
         onScreen({ height: 2000, ratio: 1 });
         window.dispatchEvent(new Event('resize'));
 
         expect(splash.style.getPropertyValue('--sb-boot-px')).toBe('2px');
         onScreen({ height: 390, ratio: 1 });
         window.dispatchEvent(new Event('resize'));
-        expect(Number.parseFloat(splash.style.getPropertyValue('--sb-boot-px'))).toBeCloseTo((0.42 * 390) / 366, 6);
+        expect(Number.parseFloat(splash.style.getPropertyValue('--sb-boot-px'))).toBeCloseTo((0.42 * 390) / TALLEST, 6);
     });
 });
 

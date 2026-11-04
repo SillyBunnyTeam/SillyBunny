@@ -358,6 +358,8 @@ async function openHomeWithMovingHero(page, { scene = HERO_SCENE, moving: extra 
     });
     await page.route('**/img/sillybunny/*--*', (route) => {
         const file = new URL(route.request().url()).pathname.split('/').pop();
+        // The splash plays loops of its own, and they are not the art of Home.
+        if (file.startsWith('splash-')) return route.fallback();
         requests.push(file);
         if (file === 'hero-duo--breath.json') return route.fulfill({ json: scene });
         if (file === 'about-reisen--breath.json') return route.fulfill({ json: ABOUT_SCENE });

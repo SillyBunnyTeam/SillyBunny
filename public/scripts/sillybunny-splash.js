@@ -31,18 +31,22 @@
     // the file has loaded. tests/unit/sillybunny-splash.test.js reads the files and the export spec and fails when a
     // size is stale. The URL is root-relative and the service worker caches /img/ by full URL, so change the key
     // whenever a file changes.
-    var ART_VERSION = '20261104b';
+    var ART_VERSION = '20261106e';
     var ART = {
-        reisen: { file: 'splash-reisen@native.webp', width: 204, height: 366 },
-        tewi: { file: 'splash-tewi@native.webp', width: 141, height: 320 },
-        both: { file: 'splash-both@native.webp', width: 263, height: 366 },
+        reisen: { file: 'splash-reisen@native.webp', width: 281, height: 371 },
+        tewi: { file: 'splash-tewi@native.webp', width: 237, height: 317 },
+        both: { file: 'splash-both@native.webp', width: 295, height: 362 },
     };
 
     // The loop of each variant, as the file that describes it. A variant with no loop stays a still. The loops are played by
     // sillybunny-splash-loop.js, which is not in index.html: this script loads it after the still has been painted, so the
     // first paint never waits for the frames. Change LOOP_SCRIPT_VERSION whenever that file changes. The manifest and the
     // frames are in /img/sillybunny/ with the stills, so they take their key from ART_VERSION and not from LOOP_SCRIPT_VERSION.
-    var LOOP_FILES = {};
+    var LOOP_FILES = {
+        reisen: 'splash-reisen--anim.json',
+        tewi: 'splash-tewi--anim.json',
+        both: 'splash-both--anim.json',
+    };
     var LOOP_SCRIPT_VERSION = '20261105a';
     // The longest that the start of a loop waits for the main thread to be idle, in milliseconds.
     var LOOP_IDLE_LIMIT_MS = 2000;

@@ -16,11 +16,11 @@ const VIEWPORTS = [
 const STARTUP_TIMEOUT = 20_000;
 /** The pictures at their own size in art pixels. The tallest one decides the step of all three. */
 const ART = {
-    reisen: { file: 'splash-reisen@native.webp', width: 204, height: 366 },
-    tewi: { file: 'splash-tewi@native.webp', width: 141, height: 320 },
-    both: { file: 'splash-both@native.webp', width: 263, height: 366 },
+    reisen: { file: 'splash-reisen@native.webp', width: 281, height: 371 },
+    tewi: { file: 'splash-tewi@native.webp', width: 237, height: 317 },
+    both: { file: 'splash-both@native.webp', width: 295, height: 362 },
 };
-const TALLEST_ROWS = 366;
+const TALLEST_ROWS = 371;
 const HEIGHT_SHARE = 0.42;
 
 /** Holds the settings read so the preloader stays up until the returned function runs. */
@@ -416,7 +416,7 @@ for (const { name, options } of VIEWPORTS) {
 }
 
 /**
- * The size of the pictures on screens of every kind, worked out by hand from the rule, with the 366 rows of the tallest
+ * The size of the pictures on screens of every kind, worked out by hand from the rule, with the rows of the tallest
  * picture: the largest whole step whose art is at most 42% of the viewport height. A screen that cannot hold step 1 in
  * 42% still gets step 1 up to 60%, and a shorter one gets the pictures shrunk by a fraction so that the tallest is 42%.
  * `px` is the CSS size of one art pixel, which all three pictures share. The expected values are not computed by the
@@ -429,14 +429,14 @@ const SIZE_TABLE = [
     { width: 1440, height: 900, ratio: 2, fit: 'step', step: 2, px: 1 },
     { width: 1366, height: 768, ratio: 1, fit: 'step', step: 1, px: 1 },
     { width: 1366, height: 768, ratio: 2, fit: 'step', step: 1, px: 0.5 },
-    { width: 1024, height: 600, ratio: 1, fit: 'smooth', px: (0.42 * 600) / 366 },
+    { width: 1024, height: 600, ratio: 1, fit: 'smooth', px: (0.42 * 600) / TALLEST_ROWS },
     { width: 1024, height: 600, ratio: 2, fit: 'step', step: 1, px: 0.5 },
     { width: 768, height: 1024, ratio: 1, fit: 'step', step: 1, px: 1 },
     { width: 768, height: 1024, ratio: 2, fit: 'step', step: 2, px: 1 },
     { width: 390, height: 844, ratio: 1, fit: 'step', step: 1, px: 1 },
     { width: 390, height: 844, ratio: 2, fit: 'step', step: 1, px: 0.5 },
     { width: 390, height: 844, ratio: 3, fit: 'step', step: 2, px: 2 / 3 },
-    { width: 844, height: 390, ratio: 1, fit: 'smooth', px: (0.42 * 390) / 366 },
+    { width: 844, height: 390, ratio: 1, fit: 'smooth', px: (0.42 * 390) / TALLEST_ROWS },
     { width: 844, height: 390, ratio: 2, fit: 'step', step: 1, px: 0.5 },
     { width: 844, height: 390, ratio: 3, fit: 'step', step: 1, px: 1 / 3 },
 ];
@@ -484,17 +484,18 @@ test.describe('Splash on a window that changes size', () => {
             await openSplash(page, { variant: 'both' });
             expect((await readMascot(page)).step).toBe(1);
 
-            // 0.42 x 2000 = 840 CSS pixels at 1x holds two steps of 366.
+            // 0.42 x 2000 = 840 CSS pixels at 1x holds two steps of the tallest picture.
             await page.setViewportSize({ width: 1440, height: 2000 });
 
             await expect.poll(async () => (await readMascot(page)).step).toBe(2);
-            expect((await readMascot(page)).height).toBe(732);
+            expect((await readMascot(page)).height).toBe(2 * ART.both.height);
 
-            // A step of 366 is 73% of 500, which is past the 60% that step 1 may take.
+            // A step of the tallest picture is 74% of 500, which is past the 60% that step 1 may take.
             await page.setViewportSize({ width: 1440, height: 500 });
 
             await expect.poll(async () => (await readMascot(page)).fit).toBe('smooth');
-            expect((await readMascot(page)).height).toBeCloseTo(0.42 * 500, 1);
+            // The tallest picture is 42% of the height, and Both is a little shorter than the tallest.
+            expect((await readMascot(page)).height).toBeCloseTo((0.42 * 500 * ART.both.height) / TALLEST_ROWS, 1);
             expect(requests.filter(url => url.includes('splash-both@native.webp'))).toHaveLength(1);
         } finally {
             releaseBoot();
@@ -680,7 +681,8 @@ test.describe('Splash colours', () => {
     });
 
     test.describe('in forced colours', () => {
-        test.use({ forcedColors: 'active' });
+        // The picture is the still here: a loop covers it with its own pictures, which splash-loop-frames.e2e.js checks in forced colours.
+        test.use({ forcedColors: 'active', reducedMotion: 'reduce' });
 
         test('the mascot is visible, the line is CanvasText on Canvas, and the dots show', async ({ page, browserName }) => {
             // The splash leaves its colours to the browser's forced palette, which replaces them. WebKit has no such palette:
