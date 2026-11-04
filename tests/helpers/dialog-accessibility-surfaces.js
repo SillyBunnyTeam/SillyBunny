@@ -858,7 +858,7 @@ SURFACES.push(
         id: 'managed-update-alert',
         title: 'Update Available alert (opened from the menu of an edited assistant card)',
         boot: bootHomeWithEditedReisen,
-        structure: { name: 'TODO(copy)', role: 'alertdialog' },
+        structure: { name: 'Update Reisen?', role: 'alertdialog' },
         frameSelector: 'dialog[open] .sb-dialog',
         open: openUpdateQuestionFromCardMenu,
         // The tab order is the two answers, so Escape is the way out that neither updates nor keeps.
