@@ -194,3 +194,74 @@ describe('group chat IDs', () => {
         expect(groupChatNames(result.text)).toEqual(['seedchat.jsonl']);
     });
 });
+
+describe('chat export with unexpected input and chat lines', () => {
+    beforeEach(() => {
+        write(path.join(directories.chats, 'seed', 'seed.jsonl'), `${CHAT_HEADER}\n${chatMessage('seed message')}`);
+    });
+
+    test('POST /api/chats/export answers 400 for a file name that is not a string', async () => {
+        const result = await post('/api/chats/export', { file: { name: 'seed.jsonl' }, avatar_url: 'seed.png', format: 'txt' });
+
+        expect(result.status).toBe(400);
+    });
+
+    test('POST /api/chats/export answers 400 for an avatar_url that cannot be converted to a string', async () => {
+        const result = await post('/api/chats/export', { file: 'seed.jsonl', avatar_url: { toString: 1 }, format: 'txt' });
+
+        expect(result.status).toBe(400);
+    });
+
+    test('POST /api/chats/export answers 400 when the chat file cannot be read', async () => {
+        fs.mkdirSync(path.join(directories.groupChats, 'folder.jsonl'));
+
+        const result = await post('/api/chats/export', { file: 'folder.jsonl', is_group: true, format: 'txt' });
+
+        expect(result.status).toBe(400);
+    });
+
+    test.each([
+        ['an empty line', ''],
+        ['a line that is not JSON', 'not json'],
+        ['a null line', 'null'],
+        ['a message whose text is a number', chatMessage(5)],
+        ['a message whose name cannot be converted to a string', JSON.stringify({ name: { toString: 1 }, mes: 'named' })],
+    ])('POST /api/chats/export skips %s', async (_label, line) => {
+        write(path.join(directories.groupChats, 'mixed.jsonl'), [CHAT_HEADER, line, chatMessage('kept')].join('\n'));
+
+        const result = await post('/api/chats/export', { file: 'mixed.jsonl', is_group: true, format: 'txt' });
+
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text).result).toBe('seed: kept\n\n');
+    });
+});
+
+describe('chat info readers and a message whose text is an object', () => {
+    beforeEach(() => {
+        write(path.join(directories.groups, 'grp.json'), JSON.stringify({ id: 'grp', name: 'grp', members: [], chat_id: 'objectchat', chats: ['objectchat'] }));
+        write(path.join(directories.groupChats, 'objectchat.jsonl'), [CHAT_HEADER, chatMessage({ toString: 1 }), chatMessage('last message')].join('\n'));
+    });
+
+    test('POST /api/chats/group/info answers with the chat info', async () => {
+        const result = await post('/api/chats/group/info', { id: 'objectchat' });
+
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text)).toMatchObject({ file_name: 'objectchat.jsonl', chat_items: 2, mes: 'last message' });
+    });
+
+    test('POST /api/chats/search answers without and with a query', async () => {
+        const all = await post('/api/chats/search', { group_id: 'grp' });
+        const matched = await post('/api/chats/search', { group_id: 'grp', query: 'last' });
+
+        expect(all.status).toBe(200);
+        expect(matched.status).toBe(200);
+        expect(JSON.parse(matched.text).map(chat => chat.file_name)).toEqual(['objectchat']);
+    });
+
+    test('POST /api/chats/recent answers with the chat', async () => {
+        const result = await post('/api/chats/recent', { max: 50 });
+
+        expect(result.status).toBe(200);
+        expect(JSON.parse(result.text).map(chat => chat.file_name)).toEqual(['objectchat.jsonl']);
+    });
+});

@@ -1013,11 +1013,13 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                 if (isMessageLine) {
                     jsonData = tryParse(line);
                     if (jsonData) {
-                        messageCharacters += String(jsonData.mes ?? '').length;
+                        // SillyBunny: nothing catches a throw in this event, and converting some objects to a string throws, so only string text counts.
+                        const messageText = typeof jsonData.mes === 'string' ? jsonData.mes : '';
+                        messageCharacters += messageText.length;
 
                         // Skip matching if any match was already found
                         if (hasMatcher && !hasAnyMatch) {
-                            matchBuffer.push(jsonData.mes || '');
+                            matchBuffer.push(messageText);
                             if (matcher(matchBuffer)) {
                                 hasAnyMatch = true;
                                 matchBuffer = [];
@@ -1719,25 +1721,31 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
 });
 
 router.post('/export', validateAvatarUrlMiddleware, async function (request, response) {
-    if (!request.body.file || (!request.body.avatar_url && request.body.is_group === false)) {
-        return response.sendStatus(400);
-    }
-    const pathToFolder = request.body.is_group
-        ? request.user.directories.groupChats
-        : path.join(request.user.directories.chats, String(request.body.avatar_url).replace('.png', ''));
-    const filename = path.join(pathToFolder, sanitize(request.body.file));
-    if (!request.body.is_group && !isPathUnderParent(request.user.directories.chats, filename)) {
-        return response.sendStatus(400);
-    }
-    let exportfilename = request.body.exportfilename;
-    if (!fs.existsSync(filename)) {
-        const errorMessage = {
-            message: `Could not find JSONL file to export. Source chat file: ${filename}.`,
-        };
-        console.error(errorMessage.message);
-        return response.status(404).json(errorMessage);
-    }
+    // SillyBunny: Express does not catch an error that leaves an async route, so the whole handler runs inside this try block.
     try {
+        if (typeof request.body.file !== 'string' || (!request.body.avatar_url && request.body.is_group === false)) {
+            return response.sendStatus(400);
+        }
+        // SillyBunny: a name that sanitizes to an empty string names the chat folder itself.
+        const chatFileName = sanitize(request.body.file);
+        if (!chatFileName) {
+            return response.sendStatus(400);
+        }
+        const pathToFolder = request.body.is_group
+            ? request.user.directories.groupChats
+            : path.join(request.user.directories.chats, String(request.body.avatar_url).replace('.png', ''));
+        const filename = path.join(pathToFolder, chatFileName);
+        if (!request.body.is_group && !isPathUnderParent(request.user.directories.chats, filename)) {
+            return response.sendStatus(400);
+        }
+        let exportfilename = request.body.exportfilename;
+        if (!fs.existsSync(filename)) {
+            const errorMessage = {
+                message: `Could not find JSONL file to export. Source chat file: ${filename}.`,
+            };
+            console.error(errorMessage.message);
+            return response.status(404).json(errorMessage);
+        }
         // Short path for JSONL files
         if (request.body.format === 'jsonl') {
             try {
@@ -1763,27 +1771,42 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
         const rl = readline.createInterface({
             input: readStream,
         });
-        let buffer = '';
-        rl.on('line', (line) => {
-            const data = JSON.parse(line);
-            // Skip non-printable/prompt-hidden messages
-            if (data.is_system) {
-                return;
-            }
-            if (data.mes) {
-                const name = data.name;
-                const message = (data?.extra?.display_text || data?.mes || '').replace(/\r?\n/g, '\n');
-                buffer += (`${name}: ${message}\n\n`);
-            }
+        // SillyBunny: a throw in a stream event escapes this try block, so the stream settles a promise and a line that is not a chat message is skipped.
+        const buffer = await new Promise((resolve, reject) => {
+            let text = '';
+            let skippedLines = 0;
+            // readline re-emits input stream errors; without a listener the emit throws
+            readStream.once('error', reject);
+            rl.once('error', reject);
+            rl.on('line', (line) => {
+                try {
+                    const data = JSON.parse(line);
+                    // Skip non-printable/prompt-hidden messages
+                    if (data.is_system) {
+                        return;
+                    }
+                    if (data.mes) {
+                        const name = data.name;
+                        const message = (data?.extra?.display_text || data?.mes || '').replace(/\r?\n/g, '\n');
+                        text += (`${name}: ${message}\n\n`);
+                    }
+                } catch {
+                    skippedLines++;
+                }
+            });
+            rl.on('close', () => {
+                if (skippedLines > 0) {
+                    console.warn(`Skipped ${skippedLines} lines that are not chat messages while exporting ${filename}.`);
+                }
+                resolve(text);
+            });
         });
-        rl.on('close', () => {
-            const successMessage = {
-                message: `Chat saved to ${exportfilename}`,
-                result: buffer,
-            };
-            console.info(`Chat exported as ${exportfilename}`);
-            return response.status(200).json(successMessage);
-        });
+        const successMessage = {
+            message: `Chat saved to ${exportfilename}`,
+            result: buffer,
+        };
+        console.info(`Chat exported as ${exportfilename}`);
+        return response.status(200).json(successMessage);
     } catch (err) {
         console.error('chat export failed.', err);
         return response.sendStatus(400);
