@@ -3,6 +3,7 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for a DOM helper. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { HOME_COPY } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
@@ -217,14 +218,13 @@ describe('searching the picker', () => {
 });
 
 describe('a library with no character to offer', () => {
-    test('shows a placeholder status in its copy slot and no list', async () => {
+    test('shows its status and no list', async () => {
         const { frame } = await open({ getEntries: () => [] });
 
         const [status] = [...frame.body.querySelectorAll('.sb-status-page')].filter(page => !page.hidden);
         const title = status.querySelector('.sb-status-page__title');
-        expect(title.textContent).toBe('TODO(copy)');
-        expect(title.dataset.sbCopyPlaceholder).toBe('true');
-        expect(title.dataset.sbCopySlot).toBe('AS-PICKER-EMPTY-HEAD');
+        expect(title.textContent).toBe(HOME_COPY.pickerEmptyHead);
+        expect(title.hasAttribute('data-sb-copy-placeholder')).toBe(false);
         expect(frame.body.querySelector('.sb-editor-section').hidden).toBe(true);
     });
 

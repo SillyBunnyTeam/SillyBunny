@@ -4,6 +4,7 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { PINNED_ASSISTANT_ACCOUNT, REISEN_AVATAR, stubAssistantCards, TEWI_AVATAR } from './helpers/assistant-library.js';
 import { installFixtureChats, pickFixtureCharacters } from './helpers/fixture-chats.js';
+import { HOME_COPY } from './helpers/copy-home.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { DESKTOP, matrixViewports, PHONE, sizeFreeTestFor, SMALL_PHONE } from './helpers/matrix.js';
@@ -71,8 +72,6 @@ const HERO_NATIVE = { 'hero-duo': [332, 366], 'hero-duo-night': [361, 362] };
 const REGION_DOM_ORDER = ['hero', 'tiles', 'assistants', 'recent-chats'];
 const REGION_NAMES = { assistants: 'Assistants', 'recent-chats': 'Recent Chats', tiles: 'Quick Links' };
 const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
-/** The longest voiced line that stays in three lines on the narrowest tile, a 360px phone. */
-const LINE_LIMIT = 40;
 const ASSISTANT_NAMES = ['Reisen', 'Tewi'];
 const SUBTITLES = {
     Reisen: 'Did you need help with setup or troubleshooting? Leave it to me!',
@@ -777,37 +776,18 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(page.locator('#maxRecentChats')).toHaveCount(0);
         });
 
-        sizeFreeTest('every copy placeholder carries both copy attributes and no other element does', async ({ page }) => {
+        sizeFreeTest('Home carries no copy placeholder, because every line on it is written', async ({ page }) => {
             await chooseMode(page, 'full');
 
             const report = await page.evaluate(() => {
                 const root = document.querySelector('#chat > .welcomePanel');
-                const marked = [...root.querySelectorAll('[data-sb-copy-placeholder]')];
-                const unmarked = [...root.querySelectorAll('*')].filter(node => node.children.length === 0
-                    && node.textContent.includes('TODO(copy)')
-                    && !node.hasAttribute('data-sb-copy-placeholder'));
                 return {
-                    slots: marked.map(node => node.getAttribute('data-sb-copy-slot')),
-                    flags: marked.map(node => node.getAttribute('data-sb-copy-placeholder')),
-                    texts: marked.map(node => node.textContent.trim()),
-                    unmarked: unmarked.length,
+                    marked: root.querySelectorAll('[data-sb-copy-placeholder], [data-sb-copy-slot]').length,
+                    todo: [...root.querySelectorAll('*')].filter(node => node.children.length === 0 && node.textContent.includes('TODO(copy)')).length,
                 };
             });
 
-            expect(report.unmarked).toBe(0);
-            expect(report.flags.every(flag => flag === 'true')).toBe(true);
-            expect(report.slots.every(slot => /^[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(slot ?? ''))).toBe(true);
-            expect(report.texts.every(text => text === 'TODO(copy)')).toBe(true);
-            expect(report.slots).toEqual(expect.arrayContaining([
-                'HOME-HERO-DESC',
-                'HOME-HERO-FORK',
-                'HOME-HERO-GREETING-01',
-                'RC-FILTER-EMPTY-HEAD',
-                'RC-FILTER-EMPTY-BODY',
-                'HOME-ROW-GS-LINE',
-                'HOME-ROW-HELP',
-                'HOME-ROW-EXTRAS',
-            ]));
+            expect(report).toEqual({ marked: 0, todo: 0 });
         });
 
         for (const mode of ['full', 'compact']) {
@@ -834,6 +814,27 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 expect(Math.abs(layout.last - layout.row.right)).toBeLessThanOrEqual(1);
             });
         }
+
+        test('Full shows the whole voiced line of every tile, and the three tiles keep one height', async ({ page }) => {
+            await chooseMode(page, 'full');
+
+            const report = await page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeTile')].map((node) => {
+                const line = node.querySelector('.sbHomeTileLine');
+                return {
+                    text: line.textContent,
+                    overflow: getComputedStyle(line).overflow,
+                    clamp: getComputedStyle(line).webkitLineClamp,
+                    inside: line.getBoundingClientRect().bottom <= node.getBoundingClientRect().bottom,
+                    height: Math.round(node.getBoundingClientRect().height),
+                };
+            }));
+
+            expect(report.map(entry => entry.text)).toEqual([HOME_COPY.tileGettingStarted, HOME_COPY.tileHelp, HOME_COPY.tileExtras]);
+            expect(report.map(entry => entry.overflow), 'no line is cut by its own box').toEqual(['visible', 'visible', 'visible']);
+            expect(report.map(entry => entry.clamp), 'no line clamp is left on a line').toEqual(['none', 'none', 'none']);
+            expect(report.map(entry => entry.inside), 'every line ends inside its tile').toEqual([true, true, true]);
+            expect(new Set(report.map(entry => entry.height)).size, 'one height').toBe(1);
+        });
 
         test('each tile is a button with a circled icon, a title and a voiced line', async ({ page }) => {
             await chooseMode(page, 'full');
@@ -906,38 +907,29 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect(layout.smaller, 'the label role is no larger than the line').toBe(true);
         });
 
-        test(`a voiced line of ${LINE_LIMIT} characters fits in three lines on a tile, and a longer one is cut at three lines with its text kept`, async ({ page }) => {
+        test('a tile shows a long voiced line in full, never cut, and the three tiles keep one height', async ({ page }) => {
             await chooseMode(page, 'full');
-            const atLimit = 'Pick a model first, then meet everybody.';
-            expect(atLimit).toHaveLength(LINE_LIMIT);
-            const longer = `${atLimit} ${atLimit} ${atLimit}`;
+            const longer = `${HOME_COPY.tileGettingStarted} ${HOME_COPY.tileGettingStarted} ${HOME_COPY.tileGettingStarted}`;
 
-            const result = await page.evaluate(({ atLimit, longer }) => {
-                const lines = [...document.querySelectorAll('.welcomePanel .sbHomeTileLine')];
-                const naturalLines = (line) => {
-                    const clamp = line.style.webkitLineClamp;
-                    line.style.webkitLineClamp = 'unset';
-                    line.style.display = 'block';
-                    const count = Math.round(line.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(line).lineHeight));
-                    line.style.webkitLineClamp = clamp;
-                    line.style.display = '';
-                    return count;
-                };
-                lines.forEach((line) => { line.textContent = atLimit; });
-                const fits = lines.map(naturalLines);
-                lines.forEach((line) => { line.textContent = longer; });
+            const result = await page.evaluate((text) => {
+                const tilesNodes = [...document.querySelectorAll('.welcomePanel .sbHomeTile')];
+                const lines = tilesNodes.map(node => node.querySelector('.sbHomeTileLine'));
+                lines[1].textContent = text;
+                const lineHeight = Number.parseFloat(getComputedStyle(lines[1]).lineHeight);
                 return {
-                    fits,
                     clamp: lines.map(line => getComputedStyle(line).webkitLineClamp),
-                    shown: lines.map(line => Math.round(line.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(line).lineHeight))),
-                    kept: lines.map(line => line.textContent === longer),
+                    clipped: lines.map(line => line.scrollHeight > line.clientHeight),
+                    shownLines: Math.round(lines[1].getBoundingClientRect().height / lineHeight),
+                    heights: new Set(tilesNodes.map(node => Math.round(node.getBoundingClientRect().height))).size,
+                    kept: lines[1].textContent === text,
                 };
-            }, { atLimit, longer });
+            }, longer);
 
-            expect(result.fits.every(count => count <= 3), `lines of a ${LINE_LIMIT}-character line per tile: ${result.fits}`).toBe(true);
-            expect(result.clamp).toEqual(['3', '3', '3']);
-            expect(result.shown.every(count => count <= 3), `lines shown of a long line per tile: ${result.shown}`).toBe(true);
-            expect(result.kept).toEqual([true, true, true]);
+            expect(result.clamp, 'no line clamp is left').toEqual(['none', 'none', 'none']);
+            expect(result.clipped, 'no line is cut').toEqual([false, false, false]);
+            expect(result.shownLines, 'a long line takes the lines it needs').toBeGreaterThan(3);
+            expect(result.heights, 'the tiles of a row keep one height').toBe(1);
+            expect(result.kept).toBe(true);
         });
 
         test('with Getting Started hidden, Help and Bundled Extras each take half of the row', async ({ page }) => {
@@ -1542,13 +1534,14 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(page.locator('.welcomePanel .recentChat .pinChat').first()).toHaveAttribute('title', 'Pin Chat');
         });
 
-        sizeFreeTest('the fork notice link is separate from its placeholder and opens SillyTavern safely', async ({ page }) => {
+        sizeFreeTest('the fork notice link is separate from its sentence and opens SillyTavern safely', async ({ page }) => {
             const link = page.locator('.welcomePanel a[href="https://github.com/SillyTavern/SillyTavern"]');
 
             await expect(link).toHaveText('SillyTavern');
             await expect(link).toHaveAttribute('target', '_blank');
             await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-            await expect(page.locator('.welcomePanel [data-sb-copy-slot="HOME-HERO-FORK"] a')).toHaveCount(0);
+            await expect(page.locator('.welcomePanel .sbHomeFork p')).toHaveText(HOME_COPY.heroFork);
+            await expect(page.locator('.welcomePanel .sbHomeFork p a')).toHaveCount(0);
         });
 
         test('art placeholders keep their native size and are hidden from assistive technology', async ({ page }) => {
@@ -1649,22 +1642,22 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect(band.textWidth, 'readable measure').toBeLessThanOrEqual(band.fontSize * 70);
         });
 
-        sizeFreeTest('the project info keeps its three placeholders in order, the fork link apart from its text', async ({ page }) => {
+        sizeFreeTest('the project info says its three lines in order, the fork link apart from its sentence', async ({ page }) => {
             await chooseMode(page, 'full');
 
-            const slots = await page.locator('.welcomePanel [data-sb-home-region="hero"] [data-sb-copy-placeholder]')
-                .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-sb-copy-slot')));
+            const lines = await page.locator('.welcomePanel [data-sb-home-region="hero"] :is(.sbHomeDescription, .sbHomeFork p, .sbHomeGreeting)')
+                .evaluateAll(nodes => nodes.map(node => node.textContent));
 
-            expect(slots).toEqual(['HOME-HERO-DESC', 'HOME-HERO-FORK', 'HOME-HERO-GREETING-01']);
+            expect(lines).toEqual([HOME_COPY.heroDescription, HOME_COPY.heroFork, HOME_COPY.heroGreeting]);
         });
 
-        sizeFreeTest('an empty Recent Chats list shows the placeholder copy and no filtered state', async ({ page }) => {
+        sizeFreeTest('an empty Recent Chats list shows its heading and body and no filtered state', async ({ page }) => {
             await chooseMode(page, 'full');
             await renderHome(page, []);
 
-            const slots = await page.locator('.welcomePanel [data-sb-home-empty="all"] [data-sb-copy-placeholder]')
-                .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-sb-copy-slot')));
-            expect(slots).toEqual(['RC-EMPTY-HEAD', 'RC-EMPTY-BODY']);
+            const empty = page.locator('.welcomePanel [data-sb-home-empty="all"]');
+            await expect(empty.locator('.sbHomeEmptyTitle')).toHaveText(HOME_COPY.recentEmptyHead);
+            await expect(empty.locator('.sbHomeEmptyDescription')).toHaveText(HOME_COPY.recentEmptyBody);
             await expect(page.locator('.welcomePanel [data-recent-chat-empty-state="filtered"]')).toBeHidden();
         });
 
@@ -1689,8 +1682,8 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await page.locator('.welcomePanel [data-recent-chat-filter="group"]').click();
             await expect(rows).toHaveCount(0);
             await expect(filtered).toBeVisible();
-            await expect(filtered.locator('[data-sb-copy-slot="RC-FILTER-EMPTY-HEAD"]')).toHaveText('TODO(copy)');
-            await expect(filtered.locator('[data-sb-copy-slot="RC-FILTER-EMPTY-BODY"]')).toHaveText('TODO(copy)');
+            await expect(filtered.locator('.sb-status-page__title')).toHaveText(HOME_COPY.recentFilterEmptyHead);
+            await expect(filtered.locator('.sb-status-page__description')).toHaveText(HOME_COPY.recentFilterEmptyBody);
 
             await page.locator('.welcomePanel [data-recent-chat-filter="individual"]').click();
             await expect(filtered).toBeHidden();
@@ -1867,14 +1860,13 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 await expect(page.locator('.welcomePanel details')).toHaveCount(0);
             });
 
-            sizeFreeTest('every tile carries a voiced line as a copy placeholder in its own slot, and only Getting Started has a progress', async ({ page }) => {
+            sizeFreeTest('every tile says its voiced line, and only Getting Started has a progress', async ({ page }) => {
                 await chooseMode(page, 'full');
 
-                for (const [key, slot] of [['getting-started', 'HOME-ROW-GS-LINE'], ['help', 'HOME-ROW-HELP'], ['extras', 'HOME-ROW-EXTRAS']]) {
+                for (const [key, text] of [['getting-started', HOME_COPY.tileGettingStarted], ['help', HOME_COPY.tileHelp], ['extras', HOME_COPY.tileExtras]]) {
                     const line = tile(page, key).locator('.sbHomeTileLine');
-                    await expect(line, key).toHaveText('TODO(copy)');
-                    await expect(line, key).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                    await expect(line, key).toHaveAttribute('data-sb-copy-slot', slot);
+                    await expect(line, key).toHaveText(text);
+                    await expect(line, key).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
                 }
                 await expect(tile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('0 of 4');
                 await expect(tile(page, 'help').locator('.sbHomeTileSub')).toHaveCount(0);
@@ -1887,11 +1879,11 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 await chooseMode(page, 'full');
 
                 await expect(tile(page, 'getting-started')).toHaveAccessibleName('Getting Started');
-                await expect(tile(page, 'getting-started')).toHaveAccessibleDescription('TODO(copy) 0 of 4');
+                await expect(tile(page, 'getting-started')).toHaveAccessibleDescription(`${HOME_COPY.tileGettingStarted} 0 of 4`);
                 await expect(tile(page, 'help')).toHaveAccessibleName('Help');
-                await expect(tile(page, 'help')).toHaveAccessibleDescription('TODO(copy)');
+                await expect(tile(page, 'help')).toHaveAccessibleDescription(HOME_COPY.tileHelp);
                 await expect(tile(page, 'extras')).toHaveAccessibleName('Bundled Extras');
-                await expect(tile(page, 'extras')).toHaveAccessibleDescription('TODO(copy)');
+                await expect(tile(page, 'extras')).toHaveAccessibleDescription(HOME_COPY.tileExtras);
 
                 await chooseMode(page, 'compact');
 
@@ -2170,7 +2162,7 @@ test.describe('Home filtered empty state', () => {
         releaseSheet();
         await expect(filtered).toHaveCSS('visibility', 'visible');
         await expect(filtered.locator('.sb-status-page')).toHaveCSS('display', 'flex');
-        await expect(filtered.locator('.sb-status-page__title')).toHaveAttribute('data-sb-copy-slot', 'RC-FILTER-EMPTY-HEAD');
+        await expect(filtered.locator('.sb-status-page__title')).toHaveText(HOME_COPY.recentFilterEmptyHead);
     });
 });
 
@@ -2185,8 +2177,8 @@ test.describe('Home Recent Chats empty states', () => {
             const centre = node => (box(node).left + box(node).right) / 2;
             const art = root.querySelector('.sbArtPanel');
             const figure = art.querySelector('.sbArtFigure');
-            const title = root.querySelector('[data-sb-copy-slot="RC-EMPTY-HEAD"]');
-            const body = root.querySelector('[data-sb-copy-slot="RC-EMPTY-BODY"]');
+            const title = root.querySelector('.sbHomeEmptyTitle');
+            const body = root.querySelector('.sbHomeEmptyDescription');
             const probe = document.createElement('div');
             probe.style.cssText = 'position: absolute; visibility: hidden; font-size: var(--sb-type-headline); color: var(--sb-muted-fg);';
             const bodyProbe = document.createElement('div');

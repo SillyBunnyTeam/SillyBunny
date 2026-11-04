@@ -17,7 +17,7 @@ export const BUNDLED_EXTRA_GROUP_IDS = Object.freeze(['first-party-extensions', 
 
 /**
  * @typedef {object} BundledExtra
- * @property {string} id Lowercase words joined by hyphens. Names the item's copy slot.
+ * @property {string} id Lowercase words joined by hyphens. Names the item's description in `sillybunny-home/bundled-extras-copy.js`.
  * @property {string} name The item's own name, shown as it is.
  * @property {typeof BUNDLED_EXTRA_GROUP_IDS[number]} group
  * @property {typeof BUNDLED_EXTRA_KINDS[number]} kind
@@ -49,14 +49,6 @@ export const BUNDLED_EXTRAS = Object.freeze([
     { id: 'geechan-universal-roleplay', name: 'Geechan - Universal Roleplay (v5.2)', group: 'presets', kind: 'preset', url: 'https://rentry.org/geechan', presetName: 'Geechan - Universal Roleplay (Chat Completions) (v5.2)' },
     { id: 'tld-card-conversion', name: 'TLD Card Conversion Preset', group: 'presets', kind: 'preset', url: 'https://botbooru.com/profile/25826', presetName: 'TLD Card Conversion Preset (Standalone)' },
 ].map(item => Object.freeze(item)));
-
-/**
- * @param {string} id
- * @returns {string} The name of the placeholder slot for the item's description.
- */
-export function getBundledExtraSlot(id) {
-    return `BE-ITEM-${id.toUpperCase()}`;
-}
 
 /**
  * @param {readonly BundledExtra[]} [items]

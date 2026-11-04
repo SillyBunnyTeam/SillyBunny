@@ -1,12 +1,12 @@
 import { t } from '../i18n.js';
-import { BUNDLED_EXTRAS, getBundledExtraSlot, groupBundledExtras } from '../sillybunny-bundled-extras.js';
+import { BUNDLED_EXTRAS, groupBundledExtras } from '../sillybunny-bundled-extras.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
 import { createPrefGroup, createRow } from '../sillybunny-editor/rows.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
-import { createArtIntro } from './art-intro.js';
-import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
+import { getBundledExtraDescription } from './bundled-extras-copy.js';
 import { openShellTarget } from './shell-targets.js';
 import { createStatusChip } from './status-chip.js';
+import { createArtIntro } from './art-intro.js';
 
 function getGroupTitle(groupId) {
     switch (groupId) {
@@ -18,8 +18,6 @@ function getGroupTitle(groupId) {
         default: throw new Error(`No title for the Bundled Extras group: ${groupId}`);
     }
 }
-
-const ACTION_SLOT_ERROR = 'BE-ACTION-ERROR';
 
 function getStatusLabel(status) {
     switch (status) {
@@ -51,10 +49,8 @@ function getActionLabel(action) {
     }
 }
 
-/** The toast has no copy yet, and it carries the placeholder marks like the text of a page. */
 function reportActionFailure() {
-    const toast = globalThis.toastr?.error(COPY_PLACEHOLDER);
-    toast?.find('.toast-message').attr({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': ACTION_SLOT_ERROR });
+    globalThis.toastr?.error(t`Failed to apply action. Try again, or check the Extensions panel.`);
 }
 
 /**
@@ -109,11 +105,10 @@ function createItemRow(item, actions) {
     const labelId = `sb-bundled-extra-${item.id}-title`;
     const row = createRow({
         label: item.name,
-        subtitle: COPY_PLACEHOLDER,
+        subtitle: getBundledExtraDescription(item.id),
         field: `bundled-extra-${item.id}`,
         suffix: createItemControls(item, actions, labelId),
     });
-    markRowSubtitle(row, getBundledExtraSlot(item.id));
     row.row.querySelector('.ds-row-label').id = labelId;
     return row;
 }
@@ -172,7 +167,7 @@ export async function openBundledExtrasWindow({ openTarget = openShellTarget, it
         title: t`Bundled Extras`,
         className: 'sbBundledExtrasDialog',
         content: body => body.append(
-            createArtIntro({ art: 'extras-tewi', slot: 'BE-INTRO' }).intro,
+            createArtIntro({ art: 'extras-tewi', text: t`Gege, you're in luck! I found all of these add-ons myself! The first-party ones come from the SillyBunny team, and the third-party ones are their biased favourites~` }).intro,
             ...itemGroups,
             createPrefGroup({ field: 'bundled-extras-ui-themes-group', rows: [uiThemes] }).section,
         ),

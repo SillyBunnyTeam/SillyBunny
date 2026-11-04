@@ -3,11 +3,12 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for Getting Started persistence, signals and the toast. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { CHARACTER_DONE_LINES, HOME_COPY, STEP_BODIES } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
-const { createGettingStartedState, getGettingStartedSteps, getStepLineSlot } = await import('../../public/scripts/sillybunny-home/getting-started.js');
+const { createGettingStartedState, getGettingStartedSteps, getStepLine } = await import('../../public/scripts/sillybunny-home/getting-started.js');
 const { GETTING_STARTED_STORAGE_KEY, loadGettingStartedSnapshot, serializeGettingStartedSnapshot } = await import('../../public/scripts/sillybunny-home/getting-started-storage.js');
 const { ASSISTANT_AVATARS, BUNDLED_CARD_AVATARS, isBundledCard, pickCharacterVariant } = await import('../../public/scripts/sillybunny-home/bundled-cards.js');
 const { createGettingStartedSignals, getUnconfirmedConnectionStatuses, isConfirmedConnection, isGeneratedReply, isUserMessage } = await import('../../public/scripts/sillybunny-home/getting-started-signals.js');
@@ -263,26 +264,26 @@ describe('the line of a step in the Getting Started window', () => {
         const { state } = createStoredState(fresh());
         state.setSkipped('character', true);
 
-        expect(getStepLineSlot(character, state)).toBe('GS-3-BODY');
-        expect(getStepLineSlot(connect, state)).toBe('GS-1-BODY');
+        expect(getStepLine(character, state)).toBe(STEP_BODIES.character);
+        expect(getStepLine(connect, state)).toBe(STEP_BODIES.connect);
     });
 
     test.each([
-        ['reisen', 'GS-3-DONE-REISEN'],
-        ['tewi', 'GS-3-DONE-TEWI'],
-        ['other', 'GS-3-DONE-OTHER'],
-    ])('is %s: the done line of step 3 follows the card that finished it', (variant, slot) => {
+        ['reisen', CHARACTER_DONE_LINES.reisen],
+        ['tewi', CHARACTER_DONE_LINES.tewi],
+        ['other', CHARACTER_DONE_LINES.other],
+    ])('is %s: the done line of step 3 follows the card that finished it', (variant, line) => {
         const { state } = createStoredState(fresh());
         state.markDone('character', { variant });
 
-        expect(getStepLineSlot(character, state)).toBe(slot);
+        expect(getStepLine(character, state)).toBe(line);
     });
 
     test('keeps the body of the other steps once they are done', () => {
         const { state } = createStoredState(fresh());
         state.markDone('connect');
 
-        expect(getStepLineSlot(connect, state)).toBe('GS-1-BODY');
+        expect(getStepLine(connect, state)).toBe(STEP_BODIES.connect);
     });
 });
 
@@ -676,7 +677,7 @@ describe('the completion toast', () => {
         return { toast, openTarget };
     }
 
-    test('is one toast with the finished step as its title, copy placeholders, the next step and one Show Me button', () => {
+    test('is one toast with the finished step as its title, the next step and one Show Me button', () => {
         const plan = planCompletionToast({ steps, state: stateWith({ done: ['connect'] }), finishedId: 'connect' });
 
         const { toast } = showWith(plan);
@@ -686,20 +687,19 @@ describe('the completion toast', () => {
         expect(title.textContent).toBe('Connect a Model');
         expect(message.querySelectorAll('button')).toHaveLength(1);
         expect(message.querySelector('button').textContent).toBe('Show Me');
-        expect(message.querySelector('[data-sb-copy-slot="GS-TOAST-DONE"]').textContent).toBe('TODO(copy)');
-        expect(message.querySelector('[data-sb-copy-slot="GS-TOAST-NEXT"]').textContent).toBe('TODO(copy)');
-        expect(message.textContent).toContain('Set Up a Preset');
+        expect(message.querySelector('[data-sb-home-toast="done"]').textContent).toBe(HOME_COPY.toastDone);
+        expect(message.querySelector('[data-sb-home-toast="next-line"]').textContent).toBe(HOME_COPY.toastNext);
+        expect(message.querySelector('strong').textContent).toBe('Set Up a Preset');
+        expect(message.textContent).toContain(`Set Up a Preset ${HOME_COPY.toastNext}`);
         expect(options.escapeHtml).toBe(false);
     });
 
-    test('the copy slots are marked the way every copy placeholder is', () => {
+    test('carries no copy placeholder, because every line is written', () => {
         const plan = planCompletionToast({ steps, state: stateWith({ done: ['connect'] }), finishedId: 'connect' });
 
         const [message] = showWith(plan).toast.success.mock.calls[0];
 
-        message.querySelectorAll('[data-sb-copy-slot]').forEach((node) => {
-            expect(node.dataset.sbCopyPlaceholder).toBe('true');
-        });
+        expect(message.querySelector('[data-sb-copy-placeholder]')).toBeNull();
     });
 
     test('Show Me opens the target of the next step and closes the toast', async () => {

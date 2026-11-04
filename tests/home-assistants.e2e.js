@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { makeCharacterCard, withoutAssistantAccount } from './helpers/assistant-library.js';
+import { HOME_COPY } from './helpers/copy-home.js';
 import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -12,13 +13,13 @@ test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } 
 test.describe.configure({ timeout: 90_000 });
 
 const STARTUP_TIMEOUT = 30_000;
-const COPY_PLACEHOLDER = 'TODO(copy)';
 const SUBTITLES = {
     reisen: 'Did you need help with setup or troubleshooting? Leave it to me!',
     tewi: 'Gege~ Are you a little down on your luck? Ask me anything!',
     pointer: 'Chosen from your character library.',
     own: 'Pick any character from your library as a third assistant.',
 };
+const actionErrorToast = page => page.locator('#toast-container .toast-message', { hasText: HOME_COPY.assistantActionError });
 const THUMBNAIL = readFileSync(new URL('../public/img/ai4.png', import.meta.url));
 
 const VIEWPORTS = [
@@ -444,10 +445,9 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                 await startOf(cardOf(page, 'assistant-reisen')).click();
 
-                const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="AS-ACTION-ERROR"]');
+                const toast = actionErrorToast(page);
                 await expect(toast).toBeVisible();
-                await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                await expect(toast).toHaveText(COPY_PLACEHOLDER);
+                await expect(toast).toHaveText(HOME_COPY.assistantActionError);
                 await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
                 expect(world.chatSaves).toEqual([]);
             });
@@ -700,16 +700,15 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await expect(chooseOf(page)).toBeFocused();
                 });
 
-                sizeFreeTest('shows a marked placeholder status and no rows while the library holds only Reisen and Tewi', async ({ page }) => {
+                sizeFreeTest('shows its status and no rows while the library holds only Reisen and Tewi', async ({ page }) => {
                     await boot(page, { library: BOTH, exact: true });
 
                     const host = await openPicker(page);
 
                     await expect(host.locator('.ds-row')).toHaveCount(0);
-                    const title = host.locator('.sb-status-page__title[data-sb-copy-slot="AS-PICKER-EMPTY-HEAD"]');
+                    const title = host.locator('.sb-status-page__title', { hasText: HOME_COPY.pickerEmptyHead });
                     await expect(title).toBeVisible();
-                    await expect(title).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                    await expect(title).toHaveText(COPY_PLACEHOLDER);
+                    await expect(title).toHaveText(HOME_COPY.pickerEmptyHead);
                 });
 
                 sizeFreeTest('Escape closes it without a change and returns focus to the Choose Assistant card', async ({ page }) => {
@@ -762,9 +761,9 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                     await rowOf(host, page, 'Bob').click();
 
-                    const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="AS-ACTION-ERROR"]');
+                    const toast = actionErrorToast(page);
                     await expect(toast).toBeVisible();
-                    await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                    await expect(toast).toHaveText(HOME_COPY.assistantActionError);
                     expect(await stored(page, 'assistant')).toBeNull();
                     await expect(ownCard(page)).toHaveAttribute('data-sb-assistant-kind', 'choose');
                 });
@@ -947,9 +946,9 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                         await setAsAssistant(page, 'Bob.png');
 
-                        const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="AS-ACTION-ERROR"]');
+                        const toast = actionErrorToast(page);
                         await expect(toast).toBeVisible();
-                        await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                        await expect(toast).toHaveText(HOME_COPY.assistantActionError);
                         expect(await stored(page, 'assistant')).toBe(after);
                         expect(unhandled).toEqual([]);
                     });

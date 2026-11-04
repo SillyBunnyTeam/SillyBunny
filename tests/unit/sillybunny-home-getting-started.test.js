@@ -1,10 +1,11 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure functions. */
 import { describe, expect, jest, test } from '@jest/globals';
+import { HOME_COPY, STEP_BODIES } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
-const { createGettingStartedState, formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLineSlot, getSharedGettingStartedState } = await import('../../public/scripts/sillybunny-home/getting-started.js');
+const { createGettingStartedState, formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLine, getSharedGettingStartedState } = await import('../../public/scripts/sillybunny-home/getting-started.js');
 
 describe('Getting Started steps', () => {
     test('lists the four steps in order with their titles', () => {
@@ -20,10 +21,10 @@ describe('Getting Started steps', () => {
         expect(getGettingStartedSteps().filter(step => step.optional).map(step => step.id)).toEqual(['preset']);
     });
 
-    test('gives each step a body copy slot and a Show Me target', () => {
+    test('gives each step a body and a Show Me target', () => {
         const steps = getGettingStartedSteps();
 
-        expect(steps.map(step => step.slot)).toEqual(['GS-1-BODY', 'GS-2-BODY', 'GS-3-BODY', 'GS-4-BODY']);
+        expect(steps.map(step => step.getBody())).toEqual(Object.values(STEP_BODIES));
         expect(steps.map(step => step.target)).toEqual(['connections', 'presets', 'characters', 'mode-menu']);
     });
 });
@@ -161,22 +162,22 @@ describe('the intro line of the Getting Started window', () => {
     const ids = getGettingStartedSteps().map(step => step.id);
 
     test.each([
-        [0, 4, 'GS-INTRO'],
-        [3, 4, 'GS-INTRO'],
-        [4, 4, 'GS-INTRO-DONE'],
-        [0, 0, 'GS-INTRO'],
-    ])('%i of %i steps resolved says %s', (resolved, total, expected) => {
-        expect(getIntroLineSlot(resolved, total)).toBe(expected);
+        [0, 4, 'the intro', HOME_COPY.gettingStartedIntro],
+        [3, 4, 'the intro', HOME_COPY.gettingStartedIntro],
+        [4, 4, 'the done line', HOME_COPY.gettingStartedIntroDone],
+        [0, 0, 'the intro', HOME_COPY.gettingStartedIntro],
+    ])('%i of %i steps resolved says %s', (resolved, total, _name, expected) => {
+        expect(getIntroLine(resolved, total)).toBe(expected);
     });
 
     test('changes with the art, and back, as the state does', () => {
         const state = createGettingStartedState(ids);
-        const pose = () => [getIntroArtName(state.getResolvedCount(), state.getTotal()), getIntroLineSlot(state.getResolvedCount(), state.getTotal())];
+        const pose = () => [getIntroArtName(state.getResolvedCount(), state.getTotal()), getIntroLine(state.getResolvedCount(), state.getTotal())];
 
         ids.forEach(id => state.setSkipped(id, true));
-        expect(pose()).toEqual(['gs-reisen-done', 'GS-INTRO-DONE']);
+        expect(pose()).toEqual(['gs-reisen-done', HOME_COPY.gettingStartedIntroDone]);
 
         state.setSkipped('chat', false);
-        expect(pose()).toEqual(['gs-reisen', 'GS-INTRO']);
+        expect(pose()).toEqual(['gs-reisen', HOME_COPY.gettingStartedIntro]);
     });
 });

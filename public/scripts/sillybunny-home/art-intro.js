@@ -1,8 +1,14 @@
 import { createArtPanel } from './art-layout.js';
 import { markCopyPlaceholder } from './copy.js';
 
-function createLine(slot) {
-    const line = markCopyPlaceholder(document.createElement('p'), slot);
+/** A written line is a plain paragraph; a line that is not written yet is the placeholder of its slot. */
+function createLine({ slot, text }) {
+    const line = document.createElement('p');
+    if (text === undefined) {
+        markCopyPlaceholder(line, slot);
+    } else {
+        line.textContent = text;
+    }
     line.className = 'sbArtLine';
     return line;
 }
@@ -16,25 +22,29 @@ function createLine(slot) {
  * beside the whole body of the window and not beside the line. The window's own rules for its children keep working.
  *
  * `show` swaps the art and the line for another pair, for a window that follows a state. A swap that names the
- * art or the slot it already has leaves that element alone.
- * @param {object} options
- * @param {string} options.art Name of the art in the export spec.
- * @param {string} options.slot Copy slot of the line.
- * @returns {{ intro: DocumentFragment, panel: HTMLElement, show: (next: { art: string, slot: string }) => void }}
+ * art, and the text or the slot, that it already has leaves that element alone.
+ *
+ * The line is either written (`text`, already translated) or a placeholder for a copy `slot`; `text` wins.
+ * @typedef {{ art: string, slot?: string, text?: string }} ArtIntroPose
+ * @param {ArtIntroPose} options
+ * @returns {{ intro: DocumentFragment, panel: HTMLElement, show: (next: ArtIntroPose) => void }}
  */
-export function createArtIntro({ art, slot }) {
+export function createArtIntro({ art, slot, text }) {
     const { panel, setArts } = createArtPanel([art]);
-    let lineNode = createLine(slot);
+    let shown = { slot, text };
+    let lineNode = createLine(shown);
     const intro = document.createDocumentFragment();
     intro.append(panel, lineNode);
 
     function show(next) {
         setArts([next.art]);
-        if (lineNode.dataset.sbCopySlot !== next.slot) {
-            const replacement = createLine(next.slot);
-            lineNode.replaceWith(replacement);
-            lineNode = replacement;
+        if (shown.slot === next.slot && shown.text === next.text) {
+            return;
         }
+        shown = { slot: next.slot, text: next.text };
+        const replacement = createLine(shown);
+        lineNode.replaceWith(replacement);
+        lineNode = replacement;
     }
     return { intro, panel, show };
 }

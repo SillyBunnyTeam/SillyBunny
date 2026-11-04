@@ -5,7 +5,6 @@ import {
     BUNDLED_EXTRAS,
     BUNDLED_EXTRA_GROUP_IDS,
     BUNDLED_EXTRA_KINDS,
-    getBundledExtraSlot,
     getExtensionFolderName,
     groupBundledExtras,
 } from '../../public/scripts/sillybunny-bundled-extras.js';
@@ -63,14 +62,13 @@ describe('Bundled Extras data', () => {
         expect(kindsByGroup.presets).toEqual(new Set(['preset']));
     });
 
-    test('gives every item a unique id that builds a copy slot name', () => {
+    test('gives every item a unique id of lowercase words joined by hyphens', () => {
         const ids = BUNDLED_EXTRAS.map(item => item.id);
 
         expect(new Set(ids).size).toBe(ids.length);
         for (const id of ids) {
-            expect(getBundledExtraSlot(id)).toMatch(/^BE-ITEM(?:-[A-Z0-9]+)+$/);
+            expect(id).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
         }
-        expect(getBundledExtraSlot('world-info-lab')).toBe('BE-ITEM-WORLD-INFO-LAB');
     });
 
     test('keeps only https source pages, and every extension has one', () => {

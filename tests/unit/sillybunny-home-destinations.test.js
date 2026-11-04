@@ -49,7 +49,7 @@ describe('Home destinations', () => {
             const tile = tiles.find(candidate => candidate.dataset.sbHomeKey === destination.key);
             expect(tile.querySelector('.sbHomeTileIcon i').className).toBe(`${destination.icon} fa-fw`);
             expect(tile.querySelector('.sbHomeTileTitle').textContent).toBe(destination.getTitle());
-            expect(tile.querySelector('.sbHomeTileLine').dataset.sbCopySlot).toBe(destination.lineSlot);
+            expect(tile.querySelector('.sbHomeTileLine').textContent).toBe(destination.getLine());
         }
     });
 

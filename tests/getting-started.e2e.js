@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { CHARACTER_DONE_LINES, HOME_COPY } from './helpers/copy-home.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { captureAccountStorageSaves, gettingStartedValue, savedGettingStarted, stubGettingStarted } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -233,8 +234,9 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page)).toHaveCount(1);
             await expect(toasts(page).locator('.toast-title')).toHaveText('Connect a Model');
             await expect(toasts(page)).toContainText('Set Up a Preset');
-            await expect(toasts(page).locator('[data-sb-copy-slot="GS-TOAST-DONE"]')).toHaveText('TODO(copy)');
-            await expect(toasts(page).locator('[data-sb-copy-slot="GS-TOAST-NEXT"]')).toHaveText('TODO(copy)');
+            await expect(toasts(page).locator('[data-sb-home-toast="done"]')).toHaveText(HOME_COPY.toastDone);
+            await expect(toasts(page).locator('[data-sb-home-toast="next-line"]')).toHaveText(HOME_COPY.toastNext);
+            await expect(toasts(page).locator('.sbHomeToast')).toContainText(`Set Up a Preset ${HOME_COPY.toastNext}`);
             await expect(toasts(page).getByRole('button')).toHaveText(['×', 'Show Me']);
             await expect.poll(() => savedGettingStarted(captured)?.steps.connect, { timeout: SAVE_TIMEOUT }).toBe('done');
         });
@@ -325,7 +327,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page).locator('.toast-title')).toHaveText('Get a Character Card');
             const host = await openWindow(page);
             await expect(rowOf(host, 'Get a Character Card')).toHaveAttribute('data-sb-step-state', 'done');
-            await expect(rowOf(host, 'Get a Character Card').locator('[data-sb-copy-slot]')).toHaveAttribute('data-sb-copy-slot', 'GS-3-DONE-OTHER');
+            await expect(rowOf(host, 'Get a Character Card').locator('.ds-row-subtitle')).toHaveText(CHARACTER_DONE_LINES.other);
         });
 
         sizeFreeTest('the card of Nahida, which earlier versions let the user install, does not finish Get a Character Card', async ({ page }) => {

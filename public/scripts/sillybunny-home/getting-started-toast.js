@@ -1,5 +1,4 @@
 import { t } from '../i18n.js';
-import { markCopyPlaceholder } from './copy.js';
 import { openShellTarget } from './shell-targets.js';
 
 /** @type {unknown} */
@@ -29,7 +28,7 @@ export function planCompletionToast({ steps, state, finishedId }) {
 }
 
 /**
- * Shows the completion toast: the finished step as its title, two lines of copy and one Show Me button that opens
+ * Shows the completion toast: the finished step as its title, two lines and one Show Me button that opens
  * the place of the next step. The toast replaces the one still on screen. toastr has no action button of its own,
  * so the button is part of the message, as in the draft-recovery toast of the editors.
  * @param {NonNullable<ReturnType<typeof planCompletionToast>>} plan
@@ -44,12 +43,17 @@ export function showCompletionToast(plan, { toast = globalThis.toastr, openTarge
     const title = document.createElement('span');
     title.textContent = plan.finished.title;
 
-    const done = markCopyPlaceholder(document.createElement('div'), 'GS-TOAST-DONE');
+    const done = document.createElement('div');
+    done.dataset.sbHomeToast = 'done';
+    done.textContent = t`Well done! That step is finished.`;
 
     const next = document.createElement('div');
     const nextTitle = document.createElement('strong');
     nextTitle.textContent = plan.next.title;
-    const nextLine = markCopyPlaceholder(document.createElement('span'), 'GS-TOAST-NEXT');
+    // The sentence continues after the title of the next step, which is in bold.
+    const nextLine = document.createElement('span');
+    nextLine.dataset.sbHomeToast = 'next-line';
+    nextLine.textContent = t`is next, whenever you're ready.`;
     next.append(nextTitle, ' ', nextLine);
 
     const showMe = document.createElement('button');

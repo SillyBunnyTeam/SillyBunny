@@ -256,14 +256,13 @@ function createDestinationRow({ destination, status, onActivate }) {
     icon.setAttribute('aria-hidden', 'true');
     const row = createRow({
         label: destination.getTitle(),
-        subtitle: COPY_PLACEHOLDER,
+        subtitle: destination.getLine(),
         field: `welcome-destination-${destination.key}`,
         prefix: icon,
         suffix: status,
         activatable: true,
         onActivate,
     });
-    markRowSubtitle(row, destination.lineSlot);
     row.row.dataset.sbWelcomeDestination = destination.key;
     return row;
 }

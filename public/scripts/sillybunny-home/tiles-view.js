@@ -1,4 +1,3 @@
-import { markCopyPlaceholder } from './copy.js';
 import { getHomeDestination } from './destinations.js';
 import { formatProgress } from './getting-started.js';
 
@@ -11,11 +10,11 @@ const TILE_LINES_REGION = 'tile-lines';
  * @param {string} options.key Names the tile for tests and for restoring focus.
  * @param {string} options.icon
  * @param {string} options.title
- * @param {string} options.lineSlot Copy slot of the line the tile says in the voice of an assistant.
+ * @param {string} options.line What the tile says in the voice of an assistant.
  * @param {(tile: HTMLButtonElement) => void} options.onActivate
  * @returns {{ tile: HTMLButtonElement, line: HTMLElement }}
  */
-function createTile({ key, icon, title, lineSlot, onActivate }) {
+function createTile({ key, icon, title, line: lineText, onActivate }) {
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.className = 'sbHomeTile';
@@ -32,8 +31,9 @@ function createTile({ key, icon, title, lineSlot, onActivate }) {
     titleNode.className = 'sbHomeTileTitle';
     titleNode.id = `sb-home-tile-${key}-title`;
     titleNode.textContent = title;
-    const line = markCopyPlaceholder(document.createElement('span'), lineSlot);
+    const line = document.createElement('span');
     line.className = 'sbHomeTileLine';
+    line.textContent = lineText;
     line.id = `sb-home-tile-${key}-line`;
     line.dataset.sbHomeRegion = TILE_LINES_REGION;
 
@@ -74,8 +74,8 @@ export function describeTiles(panel) {
 
 /** A tile of one Home destination, which names its icon, title and voiced line. */
 function createDestinationTile(key, onActivate) {
-    const { icon, lineSlot, getTitle } = getHomeDestination(key);
-    return createTile({ key, icon, title: getTitle(), lineSlot, onActivate });
+    const { icon, getLine, getTitle } = getHomeDestination(key);
+    return createTile({ key, icon, title: getTitle(), line: getLine(), onActivate });
 }
 
 /** Safari does not focus a button on click, and the window returns focus to the element that had it. */

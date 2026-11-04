@@ -1,7 +1,6 @@
 import { t } from '../i18n.js';
 import { createRow } from '../sillybunny-editor/rows.js';
-import { COPY_PLACEHOLDER, markRowSubtitle } from './copy.js';
-import { getStepLineSlot } from './getting-started.js';
+import { getStepLine } from './getting-started.js';
 import { createStatusChip } from './status-chip.js';
 
 function createFlatButton(label) {
@@ -45,7 +44,7 @@ function createStatusTag(status) {
 }
 
 /**
- * One Getting Started step as a boxed-list row: the title, a placeholder for its text and a Show Me button.
+ * One Getting Started step as a boxed-list row: the title, its text and a Show Me button.
  * The Getting Started window lists its steps through this builder. Pass it a `state` and the row also offers
  * Skip, marks an optional step and shows a skipped or a finished one. Without a state the row only points at the step.
  *
@@ -59,7 +58,6 @@ function createStatusTag(status) {
  * @param {object} options
  * @param {import('./getting-started.js').GettingStartedStep} options.step
  * @param {string} options.field Marks the row for tests and for the editor row styles.
- * @param {string} options.slot Copy placeholder slot of the step's text.
  * @param {string} options.labelId Id of the title, which the buttons are described by.
  * @param {(target: string) => void} options.onShowMe Receives the step's shell target.
  * @param {(topicId: string) => void} [options.onLearnMore] Receives the id of the step's Help topic. Without it the row has no Learn More.
@@ -67,7 +65,7 @@ function createStatusTag(status) {
  * @returns {{ row: HTMLElement, sync: () => void }} `sync` shows the state's current view of the step. The
  *   caller calls it when the state changes, because the row cannot know who else changes the state.
  */
-export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMore, state }) {
+export function createStepRow({ step, field, labelId, onShowMe, onLearnMore, state }) {
     const showMe = createFlatButton(t`Show Me`);
     showMe.setAttribute('aria-describedby', labelId);
     showMe.addEventListener('click', () => onShowMe(step.target));
@@ -82,8 +80,7 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMor
     }
 
     const doneMark = state ? createDoneMark() : null;
-    const controller = createRow({ label: step.title, subtitle: COPY_PLACEHOLDER, field, prefix: doneMark ?? undefined, suffix: buttons });
-    markRowSubtitle(controller, slot);
+    const controller = createRow({ label: step.title, subtitle: step.getBody(), field, prefix: doneMark ?? undefined, suffix: buttons });
     controller.row.classList.add('sbHomeStepRow');
     controller.row.querySelector('.ds-row-label').id = labelId;
     // The notes and Learn More share one block under the text, so the text column adds its 2px gap once, and a note line adds only its own height.
@@ -125,7 +122,7 @@ export function createStepRow({ step, field, slot, labelId, onShowMe, onLearnMor
         statusTag.hidden = !skipped && !done;
         notes.hidden = !step.optional && !skipped && !done;
         controller.row.dataset.sbStepState = done ? 'done' : (skipped ? 'skipped' : 'open');
-        markRowSubtitle(controller, getStepLineSlot(step, state, slot));
+        controller.row.querySelector('.ds-row-subtitle').textContent = getStepLine(step, state);
     }
     sync();
     return { row: controller.row, sync };

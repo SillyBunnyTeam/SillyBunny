@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { EXTRA_DESCRIPTIONS, HOME_COPY } from './helpers/copy-home.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -12,7 +13,7 @@ test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } 
 test.describe.configure({ timeout: 90_000 });
 
 const STARTUP_TIMEOUT = 30_000;
-const COPY_PLACEHOLDER = 'TODO(copy)';
+const FIXTURE_DESCRIPTION = 'A theme that only this spec knows.';
 
 const VIEWPORTS = [
     { name: 'desktop 1440x900', checksColours: true, options: { viewport: { width: 1440, height: 900 } } },
@@ -98,6 +99,13 @@ async function boot(page, { installed = {}, missingPresets = [], themeInstall = 
         return world.folders.has(folder)
             ? route.fulfill({ json: { display_name: folder, loading_order: 100, requires: [], optional: [], version: '1.0.0', author: 'Fixture', ...(world.cleanHooks.has(folder) ? { hooks: { clean: 'onClean' } } : {}) } })
             : route.fulfill({ status: 404, body: 'missing' });
+    });
+    // A theme from the server's allowlist needs a description of its own, and the fixture theme is not in the table of the app.
+    await page.route('**/scripts/sillybunny-home/bundled-extras-copy.js*', async (route) => {
+        const source = await (await route.fetch()).text();
+        const anchor = 'const DESCRIPTIONS = Object.freeze({';
+        expect(source).toContain(anchor);
+        return route.fulfill({ contentType: 'text/javascript', body: source.replace(anchor, `${anchor}\n    ${JSON.stringify(FIXTURE_THEME.id)}: () => ${JSON.stringify(FIXTURE_DESCRIPTION)},`) });
     });
     await page.route('**/api/extensions/install', async (route) => {
         const folder = new URL(route.request().postDataJSON().url).pathname.split('/').at(-1);
@@ -196,17 +204,18 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 });
             });
 
-            test('lists every group and row, each with its real state, its actions and the slot of its description', async ({ page }) => {
+            test('lists every group and row, each with its real state, its actions and its description', async ({ page }) => {
                 const host = await openFromTile(page);
 
                 await expect(host.getByRole('heading', { level: 3 })).toHaveText(GROUPS);
                 await expect(host.getByRole('heading', { name: 'Third-Party Themes' })).toHaveCount(0);
                 await expect(host.locator('.ds-row-label')).toHaveText([...ITEMS.map(entry => entry.label), 'UI Themes']);
 
-                const slots = await host.locator('[data-sb-copy-placeholder="true"]').evaluateAll(nodes => nodes.map(node => [node.dataset.sbCopySlot, node.textContent.trim()]));
-                expect(slots.filter(([slot]) => slot.startsWith('BE-ITEM-')).map(([slot]) => slot).sort())
-                    .toEqual(ITEMS.map(entry => `BE-ITEM-${entry.id.toUpperCase()}`).sort());
-                expect(slots.every(([, text]) => text === COPY_PLACEHOLDER)).toBe(true);
+                await expect(host.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
+                for (const entry of ITEMS) {
+                    await expect(rowOf(host, entry.label).locator('.ds-row-subtitle'), entry.id).toHaveText(EXTRA_DESCRIPTIONS[entry.id]);
+                }
+                await expect(host.locator('.sbArtLine')).toHaveText(HOME_COPY.extrasIntro);
 
                 const expected = {
                     'deep-swipe': ['Enabled', ['Disable', 'Remove']],
@@ -433,7 +442,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
 
                 await expect(host.getByRole('heading', { level: 3 })).toHaveText(['First-Party Extensions', 'Third-Party Extensions', 'Themes', 'Third-Party Themes', 'Presets']);
                 await expect(statusOf(rowOf(host, 'Fixture Midnight'))).toHaveText('Not installed');
-                await expect(host.locator('[data-sb-copy-slot="BE-ITEM-FIXTURE-MIDNIGHT"]')).toHaveText(COPY_PLACEHOLDER);
+                await expect(rowOf(host, 'Fixture Midnight').locator('.ds-row-subtitle')).toHaveText(FIXTURE_DESCRIPTION);
             });
 
             sizeFreeTest('installing a CSS theme posts its id, refreshes the UI theme list, and Apply switches to it', async ({ page }) => {
@@ -461,7 +470,6 @@ for (const { name, checksColours, options } of VIEWPORTS) {
                 await expect(host.getByRole('heading', { name: 'Assistants' })).toHaveCount(0);
                 await expect(host.locator('.ds-row-label', { hasText: 'Nahida' })).toHaveCount(0);
                 await expect(host.locator('[data-sb-art-placeholder^="row-"]')).toHaveCount(0);
-                await expect(host.locator('[data-sb-copy-slot^="AS-"]')).toHaveCount(0);
                 expect(world.calls.filter(call => call.path === '/api/characters/import')).toEqual([]);
             });
         });
@@ -483,7 +491,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
         });
 
         test.describe('a theme that fails to install', () => {
-            sizeFreeTest('stays not installed, logs the error and toasts the marked placeholder', async ({ page }) => {
+            sizeFreeTest('stays not installed, logs the error and toasts the failure', async ({ page }) => {
                 await boot(page, { themeInstall: { status: 502, error: 'hash_mismatch' } });
                 await showToasts(page);
                 const errors = [];
@@ -492,9 +500,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
 
                 await buttonsOf(rowOf(host, 'Fixture Midnight')).getByText('Install').click();
 
-                const toast = page.locator('#toast-container .toast-message[data-sb-copy-slot="BE-ACTION-ERROR"]');
-                await expect(toast).toHaveText(COPY_PLACEHOLDER);
-                await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.extrasActionError })).toHaveText(HOME_COPY.extrasActionError);
                 await expect(statusOf(rowOf(host, 'Fixture Midnight'))).toHaveText('Not installed');
                 await expect(buttonsOf(rowOf(host, 'Fixture Midnight'))).toHaveText(['Install']);
                 await expect(buttonsOf(rowOf(host, 'Fixture Midnight'))).toBeEnabled();

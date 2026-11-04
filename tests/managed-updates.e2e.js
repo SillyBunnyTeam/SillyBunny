@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { makeCharacterCard, withoutAssistantAccount } from './helpers/assistant-library.js';
+import { HOME_COPY } from './helpers/copy-home.js';
 import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -12,7 +13,6 @@ test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } 
 test.describe.configure({ timeout: 90_000 });
 
 const STARTUP_TIMEOUT = 30_000;
-const COPY_PLACEHOLDER = 'TODO(copy)';
 const DISMISSED_KEY = 'WelcomePage_ManagedDismissed';
 
 const REISEN = 'default_AssistantReisen.png';
@@ -32,7 +32,7 @@ const menuOf = card => card.locator('.sbHomeRowMenu');
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const alertOf = page => hosts(page).locator('.sb-dialog--alert');
 const restoreOf = (page, key = 'assistant-reisen') => cardOf(page, key).locator('.sbHomeFootButton', { hasText: 'Restore' });
-const failureToast = page => page.locator('#toast-container .toast-message[data-sb-copy-slot="AS-ACTION-ERROR"]');
+const failureToast = page => page.locator('#toast-container .toast-message', { hasText: HOME_COPY.assistantActionError });
 const stored = (page, key) => page.evaluate(async storageKey => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem(storageKey), key);
 const renderHome = page => page.evaluate(async () => (await import('/scripts/welcome-screen.js')).openWelcomeScreen({ force: true }));
 // The app shows other success toasts of its own at start, so the message is told by its text.
@@ -222,8 +222,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 const toast = failureToast(page);
                 await expect(toast).toBeVisible();
-                await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
-                await expect(toast).toHaveText(COPY_PLACEHOLDER);
+                await expect(toast).toHaveText(HOME_COPY.assistantActionError);
                 await expect(restoreOf(page)).toBeEnabled();
                 expect(await stored(page, 'bundledAssistantReisenDeleted')).toBe('true');
                 expect(unhandled).toEqual([]);
@@ -421,7 +420,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 const toast = failureToast(page);
                 await expect(toast).toBeVisible();
-                await expect(toast).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(toast).toHaveText(HOME_COPY.assistantActionError);
                 await expect(hosts(page)).toHaveCount(0);
                 await expectNoToast(updatedToast(page));
                 expect(await stored(page, DISMISSED_KEY)).toBeNull();

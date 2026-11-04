@@ -3,6 +3,7 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for DOM helpers. */
 import { describe, expect, jest, test } from '@jest/globals';
+import { CHARACTER_DONE_LINES, STEP_BODIES } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
@@ -14,7 +15,7 @@ const [connect, preset, character] = getGettingStartedSteps();
 
 function build(step, options = {}) {
     const onShowMe = jest.fn();
-    const built = createStepRow({ step, field: `test-${step.id}`, slot: step.slot, labelId: `test-${step.id}-title`, onShowMe, ...options });
+    const built = createStepRow({ step, field: `test-${step.id}`, labelId: `test-${step.id}-title`, onShowMe, ...options });
     document.body.replaceChildren(built.row);
     return { ...built, onShowMe };
 }
@@ -22,13 +23,14 @@ function build(step, options = {}) {
 const buttonsOf = row => [...row.querySelectorAll('button')].map(button => button.textContent);
 
 describe('the shared step row', () => {
-    test('shows the step title, a marked placeholder for its text, and Show Me, which names the step it belongs to', () => {
+    test('shows the step title, its text, and Show Me, which names the step it belongs to', () => {
         const { row } = build(connect);
 
         expect(row.querySelector('.ds-row-label').textContent).toBe('Connect a Model');
         expect(row.querySelector('.ds-row-label').id).toBe('test-connect-title');
         const subtitle = row.querySelector('.ds-row-subtitle');
-        expect([subtitle.textContent, subtitle.dataset.sbCopyPlaceholder, subtitle.dataset.sbCopySlot]).toEqual(['TODO(copy)', 'true', 'GS-1-BODY']);
+        expect(subtitle.textContent).toBe(STEP_BODIES.connect);
+        expect(subtitle.hasAttribute('data-sb-copy-placeholder')).toBe(false);
         expect(buttonsOf(row)).toEqual(['Show Me']);
         expect(row.querySelector('button').getAttribute('aria-describedby')).toBe('test-connect-title');
     });
@@ -178,21 +180,19 @@ describe('the shared step row, once the app has seen the step done', () => {
     });
 
     test.each([
-        ['reisen', 'GS-3-DONE-REISEN'],
-        ['tewi', 'GS-3-DONE-TEWI'],
-        ['other', 'GS-3-DONE-OTHER'],
-    ])('the done row of step 3 shows the line for %s', (variant, slot) => {
+        ['reisen', CHARACTER_DONE_LINES.reisen],
+        ['tewi', CHARACTER_DONE_LINES.tewi],
+        ['other', CHARACTER_DONE_LINES.other],
+    ])('the done row of step 3 shows the line for %s', (variant, line) => {
         const state = newState();
         const { row, sync } = build(character, { state });
         state.subscribe(sync);
         const subtitle = row.querySelector('.ds-row-subtitle');
-        expect(subtitle.dataset.sbCopySlot).toBe('GS-3-BODY');
+        expect(subtitle.textContent).toBe(STEP_BODIES.character);
 
         state.markDone('character', { variant });
 
-        expect(subtitle.dataset.sbCopySlot).toBe(slot);
-        expect(subtitle.dataset.sbCopyPlaceholder).toBe('true');
-        expect(subtitle.textContent).toBe('TODO(copy)');
+        expect(subtitle.textContent).toBe(line);
     });
 
     test('starts in the done state when the stored value says so', () => {
@@ -202,7 +202,7 @@ describe('the shared step row, once the app has seen the step done', () => {
         const { row } = build(character, { state });
 
         expect(row.dataset.sbStepState).toBe('done');
-        expect(row.querySelector('.ds-row-subtitle').dataset.sbCopySlot).toBe('GS-3-DONE-TEWI');
+        expect(row.querySelector('.ds-row-subtitle').textContent).toBe(CHARACTER_DONE_LINES.tewi);
     });
 });
 

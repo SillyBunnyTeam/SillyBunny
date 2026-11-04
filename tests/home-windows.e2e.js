@@ -1,5 +1,6 @@
 import { expect, test as base } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
+import { EXTRA_DESCRIPTIONS, HOME_COPY, STEP_BODIES } from './helpers/copy-home.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
@@ -198,12 +199,18 @@ async function expectArt(scope, id) {
  * both. Beside a panel the line starts the content column, which keeps at least 360px; below a banner it is the first
  * line of the body.
  */
-async function expectIntro(scope, artName, { slot, rtl = false }) {
+async function expectIntro(scope, artName, { slot, text, rtl = false }) {
     const mode = await expectArt(scope, artName);
-    const line = scope.locator(`.sbArtLine[data-sb-copy-slot="${slot}"]`);
+    const line = text === undefined ? scope.locator(`.sbArtLine[data-sb-copy-slot="${slot}"]`) : scope.locator('.sbArtLine', { hasText: text });
     await expect(line).toHaveCount(1);
-    await expect(line).toHaveAttribute('data-sb-copy-placeholder', 'true');
-    await expect(line).toHaveText(COPY_PLACEHOLDER);
+    if (text === undefined) {
+        await expect(line).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await expect(line).toHaveText(COPY_PLACEHOLDER);
+    } else {
+        await expect(line).toHaveText(text);
+        await expect(line).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
+        await expect(line).not.toHaveAttribute('data-sb-copy-slot', /.*/);
+    }
     const layout = await line.evaluate((node) => {
         const box = element => element.getBoundingClientRect();
         const host = node.parentElement;
@@ -579,7 +586,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await expect(rows).toHaveCount(3);
                 await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
-                await expect(rows).toHaveText([/0 of 4/, /TODO\(copy\)/, /TODO\(copy\)/]);
+                await expect(rows).toContainText([HOME_COPY.tileGettingStarted, HOME_COPY.tileHelp, HOME_COPY.tileExtras]);
+                await expect(rows.first()).toContainText('0 of 4');
                 await expect(rows.locator('.ds-row__chevron')).toHaveCount(3);
                 for (const [index, key] of ['getting-started', 'help', 'extras'].entries()) {
                     const row = rows.nth(index);
@@ -587,10 +595,10 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     const tileGlyph = await homeTile(page, key).locator('.sbHomeTileIcon i').evaluate(glyphOf);
                     expect(await row.locator('.sbWelcomeRowIcon').evaluate(glyphOf), `the ${key} row has the icon of its tile`).toBe(tileGlyph);
                     await expect(row.locator('.sbWelcomeRowIcon')).toHaveAttribute('aria-hidden', 'true');
-                    const tileSlot = await homeTile(page, key).locator('.sbHomeTileLine').getAttribute('data-sb-copy-slot');
-                    await expect(row.locator('[data-sb-copy-slot]'), `the ${key} row says the line of its tile`).toHaveAttribute('data-sb-copy-slot', tileSlot);
+                    const tileLine = await homeTile(page, key).locator('.sbHomeTileLine').textContent();
+                    await expect(row.locator('.ds-row-subtitle'), `the ${key} row says the line of its tile`).toHaveText(tileLine);
                 }
-                await expectSlots(current, ['WD-3-INTRO', 'HOME-ROW-GS-LINE', 'HOME-ROW-HELP', 'HOME-ROW-EXTRAS']);
+                await expectSlots(current, ['WD-3-INTRO']);
                 await expectNoUnmarkedPlaceholder(current);
                 await expect(current.locator('[data-sb-copy-slot^="WD-3-STEP"]')).toHaveCount(0);
                 await expect(current.locator('.sbHomeStepRow')).toHaveCount(0);
@@ -1654,7 +1662,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await menuButton(page).click();
                 await page.getByRole('menuitem', { name: 'About SillyBunny', exact: true }).click();
 
-                const toast = page.locator('#toast-container .toast', { hasText: COPY_PLACEHOLDER });
+                const toast = page.locator('#toast-container .toast', { hasText: HOME_COPY.windowLoadError });
                 await expect(toast).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the About window'))).toBe(true);
@@ -1888,12 +1896,12 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'getting-started')).not.toHaveAttribute('data-sb-stub', /.*/);
             });
 
-            test('shows Reisen\'s art and intro, then the four steps with their placeholders, Show Me and Skip', async ({ page }) => {
+            test('shows Reisen\'s art and intro, then the four steps with their lines, Show Me and Skip', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
-                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO' });
-                await expectSlots(host, ['GS-INTRO', 'GS-1-BODY', 'GS-2-BODY', 'GS-3-BODY', 'GS-4-BODY']);
-                await expectNoUnmarkedPlaceholder(host);
+                await expectIntro(host, 'gs-reisen', { text: HOME_COPY.gettingStartedIntro });
+                await expect(host.locator('.ds-row-subtitle')).toHaveText(Object.values(STEP_BODIES));
+                expect(await readCopyPlaceholders(host), 'no placeholder is left in the window').toEqual([]);
                 await expect(host.locator('.ds-row-label')).toHaveText([
                     'Connect a Model', 'Set Up a Preset', 'Get a Character Card', 'Start Chatting',
                 ]);
@@ -1918,7 +1926,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
             test('Reisen shows her done pose once all four steps are skipped, live, and goes back when one is un-skipped', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
-                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO' });
+                await expectIntro(host, 'gs-reisen', { text: HOME_COPY.gettingStartedIntro });
 
                 for (const title of STEP_TITLES) {
                     await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
@@ -1926,16 +1934,16 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 }
 
                 await expect(host.locator('.sb-dialog__subtitle')).toHaveText('4 of 4');
-                await expectIntro(host, 'gs-reisen-done', { slot: 'GS-INTRO-DONE' });
+                await expectIntro(host, 'gs-reisen-done', { text: HOME_COPY.gettingStartedIntroDone });
                 await expect(host.locator('[data-sb-art-placeholder="gs-reisen"]')).toHaveCount(0);
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
-                await expect(host.locator('[data-sb-copy-slot="GS-INTRO"]')).toHaveCount(0);
+                await expect(host.getByText(HOME_COPY.gettingStartedIntro, { exact: true })).toHaveCount(0);
 
                 await rowOf(host, 'Set Up a Preset').getByRole('button', { name: 'Skip', exact: true }).click();
 
-                await expectIntro(host, 'gs-reisen', { slot: 'GS-INTRO' });
+                await expectIntro(host, 'gs-reisen', { text: HOME_COPY.gettingStartedIntro });
                 await expect(host.locator('[data-sb-art-placeholder="gs-reisen-done"]')).toHaveCount(0);
-                await expect(host.locator('[data-sb-copy-slot="GS-INTRO-DONE"]')).toHaveCount(0);
+                await expect(host.getByText(HOME_COPY.gettingStartedIntroDone, { exact: true })).toHaveCount(0);
             });
 
             test('Skip marks the step, moves the progress in the window and on the tile, and a second press undoes it', async ({ page }) => {
@@ -2134,8 +2142,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await homeTile(page, 'getting-started').click();
 
-                await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toHaveText(COPY_PLACEHOLDER);
-                await expect(page.locator('#toast-container .toast-message[data-sb-copy-placeholder="true"]')).toBeVisible();
+                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.windowLoadError })).toHaveText(HOME_COPY.windowLoadError);
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the Getting Started window'))).toBe(true);
 
@@ -2220,24 +2227,19 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(labelsOf(host)).toHaveText([...EXTRAS_ITEMS, 'UI Themes']);
             });
 
-            sizeFreeTest('keeps the intro and every item description as marked placeholders, with no assistant subtitle', async ({ page }) => {
+            sizeFreeTest('says the intro and a description under every item, with no assistant subtitle and no placeholder', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
-                const found = await readCopyPlaceholders(host);
-                const slots = found.map(entry => entry.slot);
-
-                expect(slots).toContain('BE-INTRO');
-                expect(slots.filter(slot => slot.startsWith('BE-ITEM-'))).toHaveLength(EXTRAS_ITEMS.length);
-                expect(slots.filter(slot => slot.startsWith('AS-'))).toEqual([]);
-                expect(new Set(slots).size).toBe(slots.length);
-                await expectSlots(host, ['BE-INTRO']);
-                await expectNoUnmarkedPlaceholder(host);
+                await expect(host.locator('.sbArtLine')).toHaveText(HOME_COPY.extrasIntro);
+                await expect(host.locator('.ds-row-subtitle')).toHaveText(Object.values(EXTRA_DESCRIPTIONS));
+                await expect(host.getByText('Nahida')).toHaveCount(0);
+                expect(await readCopyPlaceholders(host)).toEqual([]);
             });
 
             test('shows the Tewi art, and no art beside a row', async ({ page }) => {
                 const host = await openFromTile(page, 'extras');
 
-                await expectIntro(host, 'extras-tewi', { slot: 'BE-INTRO' });
+                await expectIntro(host, 'extras-tewi', { text: HOME_COPY.extrasIntro });
                 await expect(host.locator('[data-sb-art-placeholder^="row-"]')).toHaveCount(0);
             });
 
@@ -2309,7 +2311,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await homeTile(page, 'extras').click();
 
-                await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toBeVisible();
+                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.windowLoadError })).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the Bundled Extras window'))).toBe(true);
 
@@ -2359,7 +2361,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await chooseAssistant(page).click();
 
-                await expect(page.locator('#toast-container .toast-message[data-sb-copy-slot="HOME-WINDOW-LOAD-ERROR"]')).toBeVisible();
+                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.windowLoadError })).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the Choose Assistant window'))).toBe(true);
 

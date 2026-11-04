@@ -1,8 +1,8 @@
+import { t } from '../i18n.js';
 import { loadListEditorStyles } from '../sillybunny-editor/list-shell.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { createArtPanel, createHeroArt } from './art-layout.js';
 import { mountAssistants } from './assistants-view.js';
-import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
 import { captureHomeFocus, restoreHomeFocus } from './focus.js';
 // Listens for the Getting Started signals from the moment the app loads, not from the first render of Home.
@@ -73,9 +73,12 @@ function mountFilteredEmptyState(panel) {
         return;
     }
 
-    const { element } = createStatusPage({ icon: 'filter', title: COPY_PLACEHOLDER, description: COPY_PLACEHOLDER, compact: true });
-    markCopyPlaceholder(element.querySelector('.sb-status-page__title'), 'RC-FILTER-EMPTY-HEAD');
-    markCopyPlaceholder(element.querySelector('.sb-status-page__description'), 'RC-FILTER-EMPTY-BODY');
+    const { element } = createStatusPage({
+        icon: 'filter',
+        title: t`No Matching Chats`,
+        description: t`No chats match this filter. Choose All to see every chat.`,
+        compact: true,
+    });
     container.append(element);
     holdUntilStatusPageStyles(container);
 }

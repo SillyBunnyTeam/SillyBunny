@@ -35,7 +35,7 @@ describe('the Learn More button of a step row', () => {
 
     function build(step, options = {}) {
         const onLearnMore = jest.fn();
-        const built = createStepRow({ step, field: `test-${step.id}`, slot: step.slot, labelId: `test-${step.id}-title`, onShowMe: jest.fn(), onLearnMore, ...options });
+        const built = createStepRow({ step, field: `test-${step.id}`, labelId: `test-${step.id}-title`, onShowMe: jest.fn(), onLearnMore, ...options });
         document.body.replaceChildren(built.row);
         return { ...built, onLearnMore };
     }
@@ -81,7 +81,7 @@ describe('the Learn More button of a step row', () => {
     });
 
     test('is not on a row that is not given a way to open Help', () => {
-        const built = createStepRow({ step: connect, field: 'test-connect', slot: connect.slot, labelId: 'test-connect-title', onShowMe: jest.fn() });
+        const built = createStepRow({ step: connect, field: 'test-connect', labelId: 'test-connect-title', onShowMe: jest.fn() });
 
         expect([...built.row.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Show Me']);
     });

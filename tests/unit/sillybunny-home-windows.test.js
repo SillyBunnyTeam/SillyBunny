@@ -3,6 +3,11 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for the window openers. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { HOME_COPY } from '../helpers/copy-home.js';
+
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => String.raw({ raw: strings }, ...values),
+}));
 
 const openGettingStartedWindow = jest.fn();
 const openBundledExtrasWindow = jest.fn();
@@ -20,16 +25,9 @@ function openWindow() {
     return { handle: { closed }, close };
 }
 
-let toastMessage;
-
 beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    toastMessage = document.createElement('div');
-    window.toastr = {
-        error: jest.fn(() => ({
-            find: () => ({ attr: attributes => Object.entries(attributes).forEach(([name, value]) => toastMessage.setAttribute(name, value)) }),
-        })),
-    };
+    window.toastr = { error: jest.fn() };
 });
 
 afterEach(() => {
@@ -118,16 +116,14 @@ describe('Home window openers', () => {
         expect(console.error).toHaveBeenCalledWith('Could not open the Choose Assistant window.', expect.any(Error));
     });
 
-    test('a window that fails to load logs the error, toasts a marked placeholder, and can be tried again', async () => {
+    test('a window that fails to load logs the error, toasts the error, and can be tried again', async () => {
         openGettingStartedWindow.mockRejectedValueOnce(new Error('load failed'));
 
         openGettingStarted();
         await flush();
 
         expect(console.error).toHaveBeenCalledWith('Could not open the Getting Started window.', expect.any(Error));
-        expect(window.toastr.error).toHaveBeenCalledWith('TODO(copy)');
-        expect(toastMessage.dataset.sbCopyPlaceholder).toBe('true');
-        expect(toastMessage.dataset.sbCopySlot).toBe('HOME-WINDOW-LOAD-ERROR');
+        expect(window.toastr.error).toHaveBeenCalledWith(HOME_COPY.windowLoadError);
         const retry = openWindow();
         openGettingStartedWindow.mockResolvedValueOnce(retry.handle);
         openGettingStarted();

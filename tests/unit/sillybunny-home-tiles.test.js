@@ -3,6 +3,7 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for DOM helpers. */
 import { describe, expect, jest, test } from '@jest/globals';
+import { HOME_COPY } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
@@ -84,16 +85,15 @@ describe('the tiles that open windows', () => {
 });
 
 describe('the voiced line of a tile', () => {
-    test('every tile has one in its own copy slot, in the region that Compact hides', () => {
+    test('every tile has its written line, in the region that Compact hides', () => {
         const panel = renderPanel();
         mount(panel, createGettingStartedState(['a', 'b']));
 
         const lines = [...panel.querySelectorAll('.sbHomeTile')].map(tile => tile.querySelector('.sbHomeTileLine'));
 
-        expect(lines.map(line => line.dataset.sbCopySlot)).toEqual(['HOME-ROW-GS-LINE', 'HOME-ROW-HELP', 'HOME-ROW-EXTRAS']);
-        expect(lines.map(line => line.dataset.sbCopyPlaceholder)).toEqual(['true', 'true', 'true']);
+        expect(lines.map(line => line.textContent)).toEqual([HOME_COPY.tileGettingStarted, HOME_COPY.tileHelp, HOME_COPY.tileExtras]);
+        expect(lines.map(line => line.hasAttribute('data-sb-copy-placeholder'))).toEqual([false, false, false]);
         expect(lines.map(line => line.dataset.sbHomeRegion)).toEqual(['tile-lines', 'tile-lines', 'tile-lines']);
-        expect(lines.map(line => line.textContent)).toEqual(['TODO(copy)', 'TODO(copy)', 'TODO(copy)']);
     });
 
     test('only Getting Started has a progress, and the progress is not a placeholder', () => {
@@ -118,7 +118,7 @@ describe('the voiced line of a tile', () => {
         state.setHidden(false);
 
         const tile = panel.querySelector('[data-sb-home-key="getting-started"]');
-        expect(tile.querySelector('.sbHomeTileLine').dataset.sbCopySlot).toBe('HOME-ROW-GS-LINE');
+        expect(tile.querySelector('.sbHomeTileLine').textContent).toBe(HOME_COPY.tileGettingStarted);
         expect(tile.querySelector('.sbHomeTileSub').textContent).toBe('0 of 2');
     });
 });
@@ -133,9 +133,9 @@ describe('the name and the description of a tile', () => {
         const help = panel.querySelector('[data-sb-home-key="help"]');
 
         expect(textOf(panel, started.getAttribute('aria-labelledby'))).toBe('Getting Started');
-        expect(textOf(panel, started.getAttribute('aria-describedby'))).toBe('TODO(copy) 0 of 2');
+        expect(textOf(panel, started.getAttribute('aria-describedby'))).toBe(`${HOME_COPY.tileGettingStarted} 0 of 2`);
         expect(textOf(panel, help.getAttribute('aria-labelledby'))).toBe('Help');
-        expect(textOf(panel, help.getAttribute('aria-describedby'))).toBe('TODO(copy)');
+        expect(textOf(panel, help.getAttribute('aria-describedby'))).toBe(HOME_COPY.tileHelp);
     });
 
     test('a hidden line leaves the description, and the tile without a progress has none left', () => {

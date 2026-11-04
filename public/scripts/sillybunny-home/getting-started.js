@@ -6,7 +6,7 @@ import { CHARACTER_VARIANTS } from './getting-started-storage.js';
  * @property {'connect' | 'preset' | 'character' | 'chat'} id
  * @property {string} title
  * @property {boolean} optional
- * @property {string} slot Copy placeholder slot of the step's description.
+ * @property {() => string} getBody The description of the step while it is open.
  * @property {import('./shell-targets.js').SHELL_TARGETS[number]} target What Show Me opens.
  * @property {string} helpTopic Id of the Help topic that Learn More opens.
  */
@@ -14,10 +14,38 @@ import { CHARACTER_VARIANTS } from './getting-started-storage.js';
 /** @returns {GettingStartedStep[]} */
 export function getGettingStartedSteps() {
     return [
-        { id: 'connect', title: t`Connect a Model`, optional: false, slot: 'GS-1-BODY', target: 'connections', helpTopic: 'connect-to-a-model' },
-        { id: 'preset', title: t`Set Up a Preset`, optional: true, slot: 'GS-2-BODY', target: 'presets', helpTopic: 'choose-a-preset' },
-        { id: 'character', title: t`Get a Character Card`, optional: false, slot: 'GS-3-BODY', target: 'characters', helpTopic: 'add-a-character' },
-        { id: 'chat', title: t`Start Chatting`, optional: false, slot: 'GS-4-BODY', target: 'mode-menu', helpTopic: 'start-a-chat' },
+        {
+            id: 'connect',
+            title: t`Connect a Model`,
+            optional: false,
+            getBody: () => t`A model is the AI that writes the replies. You'll need a key from a provider, or a model running on your own computer. I'll mark this off once you've established a connection.`,
+            target: 'connections',
+            helpTopic: 'connect-to-a-model',
+        },
+        {
+            id: 'preset',
+            title: t`Set Up a Preset`,
+            optional: true,
+            getBody: () => t`A preset shapes how replies are written: their length, writing style, and rules. Of course, you can skip this and stick to the defaults if you'd like - we've provided a few to get you started!`,
+            target: 'presets',
+            helpTopic: 'choose-a-preset',
+        },
+        {
+            id: 'character',
+            title: t`Get a Character Card`,
+            optional: false,
+            getBody: () => t`A character card holds a character's personality and their written scenario. Feel free to import a card you like, or open a chat with a character you already have, like Tewi or me!`,
+            target: 'characters',
+            helpTopic: 'add-a-character',
+        },
+        {
+            id: 'chat',
+            title: t`Start Chatting`,
+            optional: false,
+            getBody: () => t`Well done! Now you can send your first message! Roleplay is the traditional way to interact with your character, following their greeting and scenario. Conversation is a direct, messenger-style chat.`,
+            target: 'mode-menu',
+            helpTopic: 'start-a-chat',
+        },
     ];
 }
 
@@ -44,25 +72,30 @@ export function getIntroArtName(resolved, total) {
  * Reisen's line in the Getting Started window: the done line once every step is resolved, done or skipped.
  * @param {number} resolved
  * @param {number} total
- * @returns {'GS-INTRO' | 'GS-INTRO-DONE'}
+ * @returns {string}
  */
-export function getIntroLineSlot(resolved, total) {
-    return total > 0 && resolved === total ? 'GS-INTRO-DONE' : 'GS-INTRO';
+export function getIntroLine(resolved, total) {
+    return total > 0 && resolved === total
+        ? t`You did it! Everything's set up. Start a chat whenever you're ready, and come find me in your Home screen if anything puzzles you.`
+        : t`Just follow these four small steps, and you'll be ready for your first chat! I'll show you where everything is.`;
 }
 
 /**
- * The slot of the line under a step in the Getting Started window. A finished step 3 has a line of its own, which
- * follows the kind of card that finished it; every other row keeps the body of its step.
+ * The line under a step in the Getting Started window. A finished step 3 has a line of its own, which follows the
+ * kind of card that finished it; every other row keeps the body of its step.
  * @param {GettingStartedStep} step
  * @param {Pick<ReturnType<typeof createGettingStartedState>, 'isDone' | 'getCharacterVariant'>} state
- * @param {string} [bodySlot] The slot to use while the step is open.
  * @returns {string}
  */
-export function getStepLineSlot(step, state, bodySlot = step.slot) {
-    if (step.id === 'character' && state.isDone('character')) {
-        return `GS-3-DONE-${(state.getCharacterVariant() ?? 'other').toUpperCase()}`;
+export function getStepLine(step, state) {
+    if (step.id !== 'character' || !state.isDone('character')) {
+        return step.getBody();
     }
-    return bodySlot;
+    switch (state.getCharacterVariant()) {
+        case 'reisen': return t`You picked me? I'll do my very best to help you!`;
+        case 'tewi': return t`Gege~ Of course you picked me. Better luck next time, Udonge!`;
+        default: return t`Ooh, a good pick! We hope you two get along well.`;
+    }
 }
 
 /**

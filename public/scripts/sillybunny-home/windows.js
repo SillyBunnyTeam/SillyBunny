@@ -1,6 +1,5 @@
-import { COPY_PLACEHOLDER } from './copy.js';
+import { t } from '../i18n.js';
 
-const LOAD_ERROR_SLOT = 'HOME-WINDOW-LOAD-ERROR';
 const PANEL_SELECTOR = '#chat > .welcomePanel';
 
 /** Windows that are loading or open, by name. */
@@ -73,10 +72,8 @@ function openOnce(name, load) {
     };
 }
 
-/** The toast has no copy yet, and it carries the placeholder marks like the text of a page. */
 function reportLoadFailure() {
-    const toast = globalThis.toastr?.error(COPY_PLACEHOLDER);
-    toast?.find('.toast-message').attr({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': LOAD_ERROR_SLOT });
+    globalThis.toastr?.error(t`This window couldn't open. Try again, or reload SillyBunny.`);
 }
 
 /**

@@ -3,9 +3,7 @@ import { openDialog } from '../sillybunny-editor/dialog.js';
 import { createRow, createPrefGroup } from '../sillybunny-editor/rows.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
-import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 
-const EMPTY_LIBRARY_SLOT = 'AS-PICKER-EMPTY-HEAD';
 const CHOICE = 'choose';
 
 // Building every row before the first paint holds the window back on a long list, so the first screenful is built at
@@ -130,8 +128,7 @@ export async function openAssistantPickerWindow({ getEntries, getThumbnailUrl, c
     // browsers without scroll anchoring. The first insertion therefore grows with the position of the selected row.
     buildRowsUpTo(Math.max(FIRST_ROWS, selectedIndex + 1 + FIRST_ROWS / 2));
 
-    const emptyLibrary = createStatus('user', COPY_PLACEHOLDER);
-    markCopyPlaceholder(emptyLibrary.element.querySelector('.sb-status-page__title'), EMPTY_LIBRARY_SLOT);
+    const emptyLibrary = createStatus('user', t`No Characters Yet`);
     emptyLibrary.element.hidden = items.length > 0;
     const noResults = createStatus('magnifying-glass', t`No results`);
     group.section.hidden = items.length === 0;

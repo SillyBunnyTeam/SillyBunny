@@ -50,3 +50,57 @@ describe('createArtIntro', () => {
         expect(body.children[1]).not.toBe(line);
     });
 });
+
+describe('createArtIntro with a written line', () => {
+    function appendToBody(intro) {
+        const body = document.createElement('div');
+        body.append(intro);
+        return body;
+    }
+
+    test('says the text beside the art, with no placeholder mark on it', () => {
+        const { intro } = createArtIntro({ art: 'gs-reisen', text: 'Hello there.' });
+        const body = appendToBody(intro);
+
+        expect(body.querySelector('p').textContent).toBe('Hello there.');
+        expect(body.querySelector('p').className).toBe('sbArtLine');
+        expect(body.querySelectorAll('[data-sb-copy-placeholder], [data-sb-copy-slot]')).toHaveLength(0);
+        expect(body.querySelector('[data-sb-art-placeholder="gs-reisen"]')).not.toBeNull();
+    });
+
+    test('swaps the art and the line for another pair', () => {
+        const { intro, show } = createArtIntro({ art: 'gs-reisen', text: 'First.' });
+        const body = appendToBody(intro);
+
+        show({ art: 'gs-reisen-done', text: 'Second.' });
+
+        expect(body.querySelector('p').textContent).toBe('Second.');
+        expect(body.querySelectorAll('p')).toHaveLength(1);
+        expect(body.querySelector('[data-sb-art-placeholder="gs-reisen-done"]')).not.toBeNull();
+    });
+
+    test('keeps the line element when the same text is shown again, so a state sync does not rebuild it', () => {
+        const { intro, show } = createArtIntro({ art: 'gs-reisen', text: 'Same.' });
+        const body = appendToBody(intro);
+        const line = body.querySelector('p');
+
+        show({ art: 'gs-reisen', text: 'Same.' });
+        expect(body.querySelector('p')).toBe(line);
+
+        show({ art: 'gs-reisen', text: 'Other.' });
+        expect(body.querySelector('p')).not.toBe(line);
+        expect(body.querySelector('p').textContent).toBe('Other.');
+    });
+
+    test('replaces a written line with a placeholder, and a placeholder with a written line', () => {
+        const { intro, show } = createArtIntro({ art: 'gs-reisen', text: 'Written.' });
+        const body = appendToBody(intro);
+
+        show({ art: 'gs-reisen', slot: 'GS-INTRO' });
+        expect(body.querySelector('p').dataset.sbCopySlot).toBe('GS-INTRO');
+
+        show({ art: 'gs-reisen', text: 'Written.' });
+        expect(body.querySelector('p').dataset.sbCopySlot).toBeUndefined();
+        expect(body.querySelector('p').textContent).toBe('Written.');
+    });
+});

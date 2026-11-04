@@ -1,16 +1,12 @@
 import { characters, doNewChat, selectCharacterById } from '../../script.js';
+import { t } from '../i18n.js';
 import { getLastChatMode } from '../sillybunny-chat-mode-memory.js';
 import { conversationState } from '../sillybunny-conversation/state.js';
 import { startTemporaryChat } from '../sillybunny-temporary-chat.js';
 import { createAssistantActions } from './assistant-actions.js';
-import { COPY_PLACEHOLDER } from './copy.js';
 
-const ACTION_ERROR_SLOT = 'AS-ACTION-ERROR';
-
-/** The toast has no copy yet, and it carries the placeholder marks like the text of a page. */
 export function reportFailure() {
-    const toast = globalThis.toastr?.error(COPY_PLACEHOLDER);
-    toast?.find('.toast-message').attr({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': ACTION_ERROR_SLOT });
+    globalThis.toastr?.error(t`This chat couldn't open. Try again, or reload SillyBunny.`);
 }
 
 /** The same event that the Conversation workspace listens to for every other way out of it. */

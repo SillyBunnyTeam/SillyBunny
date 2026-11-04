@@ -3,11 +3,15 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for the app wiring of the assistant cards. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { HOME_COPY } from '../helpers/copy-home.js';
 
 const characters = [{ avatar: 'first.png' }, { avatar: 'second.png' }];
 const doNewChat = jest.fn(async () => {});
 const selectCharacterById = jest.fn();
 jest.unstable_mockModule('../../public/script.js', () => ({ characters, doNewChat, selectCharacterById }));
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => String.raw({ raw: strings }, ...values),
+}));
 const conversationState = { conversationWorkspaceOpen: false };
 jest.unstable_mockModule('../../public/scripts/sillybunny-conversation/state.js', () => ({ conversationState }));
 const startTemporaryChat = jest.fn(async () => true);
@@ -18,8 +22,7 @@ const { createAppAssistantActions } = await import('../../public/scripts/sillybu
 const CARD = { state: 'available', avatar: 'second.png' };
 
 describe('the app actions of an assistant card', () => {
-    const attr = jest.fn();
-    const error = jest.fn(() => ({ find: () => ({ attr }) }));
+    const error = jest.fn();
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -67,7 +70,7 @@ describe('the app actions of an assistant card', () => {
         window.removeEventListener('sb:close-conversation-workspace', closed);
     });
 
-    test('tells the user with the placeholder toast, and starts no chat, when the character has left the library', async () => {
+    test('tells the user with a toast, and starts no chat, when the character has left the library', async () => {
         const logged = jest.spyOn(console, 'error').mockImplementation(() => {});
         const actions = createAppAssistantActions({ openConversation: jest.fn() });
 
@@ -78,8 +81,7 @@ describe('the app actions of an assistant card', () => {
 
         expect(selectCharacterById).not.toHaveBeenCalled();
         expect(doNewChat).not.toHaveBeenCalled();
-        expect(error).toHaveBeenCalledWith('TODO(copy)');
-        expect(attr).toHaveBeenCalledWith({ 'data-sb-copy-placeholder': 'true', 'data-sb-copy-slot': 'AS-ACTION-ERROR' });
+        expect(error).toHaveBeenCalledWith(HOME_COPY.assistantActionError);
     });
 
     test('a Temporary Chat is started for the id of the character', async () => {

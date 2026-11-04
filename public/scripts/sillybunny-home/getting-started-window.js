@@ -2,10 +2,10 @@ import { t } from '../i18n.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
 import { createPrefGroup } from '../sillybunny-editor/rows.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
-import { createArtIntro } from './art-intro.js';
-import { formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLineSlot, getSharedGettingStartedState } from './getting-started.js';
+import { formatProgress, getGettingStartedSteps, getIntroArtName, getIntroLine, getSharedGettingStartedState } from './getting-started.js';
 import { openShellTarget } from './shell-targets.js';
 import { createStepRow } from './step-rows.js';
+import { createArtIntro } from './art-intro.js';
 import { openHelp } from './windows.js';
 
 /** @type {ReturnType<typeof openDialog> | null} */
@@ -51,7 +51,6 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
     const steps = getGettingStartedSteps().map(step => createStepRow({
         step,
         field: `getting-started-${step.id}`,
-        slot: step.slot,
         labelId: `sb-getting-started-${step.id}-title`,
         onShowMe: showMe,
         onLearnMore: learnMore,
@@ -61,7 +60,7 @@ export async function openGettingStartedWindow({ state = getSharedGettingStarted
     const pose = () => {
         const resolved = state.getResolvedCount();
         const total = state.getTotal();
-        return { art: getIntroArtName(resolved, total), slot: getIntroLineSlot(resolved, total) };
+        return { art: getIntroArtName(resolved, total), text: getIntroLine(resolved, total) };
     };
     const { intro, show } = createArtIntro(pose());
 
